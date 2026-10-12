@@ -13,6 +13,10 @@ import {
   USERS,
   EMPLOYEE_A,
   EMPLOYEE_B,
+  PRIVATE_KEY_A,
+  PRIVATE_KEY_B,
+  LEGACY_FILE,
+  PDF_BYTES,
   FAKE_TOGGL_TOKEN,
   FAKE_CLOCKIFY_KEY,
   fixtureSql,
@@ -93,6 +97,14 @@ function setup() {
   docker('exec', WEB, 'chown', '-R', 'www-data:www-data', SCRATCH_DIR, BASE_DIR);
 
   sql(fixtureSql());
+
+  // Documents on disk: two private ones (already in their final form) and one legacy
+  // contract in the PUBLIC uploads directory that the migration has to move.
+  docker('exec', '-u', 'www-data', WEB, 'php', '-r', `require '${SCRATCH_DIR}/api/employee_files.php'; ccrm_employee_private_dir();`);
+  const writeAs = (path, content) => run('docker', ['exec', '-i', '-u', 'www-data', WEB, 'sh', '-c', `cat > ${path}`], content);
+  writeAs(`${SCRATCH_DIR}/uploads/${PRIVATE_KEY_A}`, PDF_BYTES);
+  writeAs(`${SCRATCH_DIR}/uploads/${PRIVATE_KEY_B}`, PDF_BYTES);
+  writeAs(`${SCRATCH_DIR}/uploads/${LEGACY_FILE.replace(/^uploads\//, '')}`, PDF_BYTES);
 }
 
 function teardown() {
@@ -171,8 +183,10 @@ async function main() {
       SESSIONS[key] = await loginUser(u.email);
     }
     console.log(`Authenticated all fixture users.`);
+    // The legacy contract is publicly readable until the first request runs the migration.
+    const legacyBefore = (await fetch(`${BASE}/rbacprobe/${LEGACY_FILE}`)).status;
 
-    // --- R1: Employee A sync.php GET ---
+    // --- R1: Employee A sync.php GET (the first sync request: it also runs the file migration) ---
     section('R1: Employee A sync.php GET isolation');
     const empAGet = await syncGet(SESSIONS.employee_a);
     check('R1: HTTP status is 200', empAGet.status === 200, empAGet.status);
@@ -218,6 +232,8 @@ async function main() {
       d.readScope?.referenceNames?.leads?.['lead-probe-1'] === 'Alpha Lead' &&
       d.readScope?.referenceNames?.projects?.['proj-probe-1'] === 'Project Alpha'
     );
+
+    const legacyAfter = (await fetch(`${BASE}/rbacprobe/${LEGACY_FILE}`)).status;
 
     // --- R3: Unlinked Employee ---
     section('R3: Unlinked Employee GET');
@@ -361,9 +377,9 @@ async function main() {
     check('W5: the directory edit itself landed', val("SELECT name FROM employees WHERE id='pe-b'") === 'Probe Employee B (edited)');
     await post('hr_lite', { employeeSalaries: [{ id: 'sal-b-1', employeeId: 'pe-b', periodType: 'monthly', periodKey: '2026-01', year: 2026, periodNumber: 1, totalSalary: 1, totalPaid: 1, status: 'paid' }] });
     check('W5: HR-lite cannot write payroll', val("SELECT CAST(total_salary AS UNSIGNED) FROM employee_salaries WHERE id='sal-b-1'") === '3200');
-    await post('hr', { employees: [{ id: 'pe-b', name: 'Probe Employee B', salaryAmount: 3300, pin: '920202/2222', files: [{ id: 'pf-b-1', name: 'bob_contract.pdf', path: 'uploads/employees/private/bob_contract.pdf' }] }] });
+    await post('hr', { employees: [{ id: 'pe-b', name: 'Probe Employee B', salaryAmount: 3300, pin: '920202/2222', files: [{ id: 'pf-b-1', name: 'bob_contract.pdf', url: PRIVATE_KEY_B, size: 120, type: 'application/pdf', uploadedAt: '2026-01-01T00:00:00Z' }] }] });
     check('W5: full HR can still change pay', val("SELECT CAST(salary_amount AS UNSIGNED) FROM employees WHERE id='pe-b'") === '3300');
-    await post('hr', { employees: [{ id: 'pe-b', name: 'Probe Employee B', salaryAmount: 3200, pin: '920202/2222', files: [{ id: 'pf-b-1', name: 'bob_contract.pdf', path: 'uploads/employees/private/bob_contract.pdf' }] }] });
+    await post('hr', { employees: [{ id: 'pe-b', name: 'Probe Employee B', salaryAmount: 3200, pin: '920202/2222', files: [{ id: 'pf-b-1', name: 'bob_contract.pdf', url: PRIVATE_KEY_B, size: 120, type: 'application/pdf', uploadedAt: '2026-01-01T00:00:00Z' }] }] });
 
     // leave: approved_by is the server's
     const hrLeave = await post('hr', { employeeVacations: [
@@ -416,6 +432,140 @@ async function main() {
     check('W9: saving it keeps the stored title and subtype', val("SELECT CONCAT(title,'|',subtype,'|',status) FROM financial_records WHERE id='fr-sal-1'") === 'Salary Alice|salary|planned');
     await post('pipeliner', { settings: { companyBillingSettings: { companyName: 'WIPED' } } });
     check('W9: a role that was never sent the billing blob cannot overwrite it', val("SELECT value FROM system_settings WHERE `key`='COMPANY_BILLING_SETTINGS'").includes('Probe Billing Co'));
+
+    // ====================================================== self-service + documents
+    section('R2: my_employment overview');
+    const ov = await api(SESSIONS.employee_a, 'api/my_employment.php', { query: '?action=overview' });
+    const od = ov.data || {};
+    check('R2: overview answers 200', ov.status === 200 && od.success === true, ov.raw.slice(0, 160));
+    check('R2: identity is A', od.identity?.id === 'pe-a' && od.identity?.name === USERS.employee_a.name);
+    check('R2: personal data present, notes never', od.personal?.pin === '910101/1111' && !('notes' in (od.personal || {})) && !JSON.stringify(od).includes('Alice confidential HR notes'));
+    check('R2: own pay and payroll rows, without financialRecordId',
+      od.pay?.salaryAmount === 2500 && od.pay?.payroll?.length === 1 && od.pay.payroll[0].id === 'sal-a-1' && !('financialRecordId' in od.pay.payroll[0]));
+    check('R2: own leave only, with types and balances',
+      (od.leave?.requests || []).every((r) => ['vac-a-1', 'vac-a-pending', 'vac-hr-new'].includes(r.id)) && od.leave?.types?.length >= 2 && od.leave?.balances?.length >= 2);
+    check('R2: own documents only, with an authenticated download URL',
+      od.documents?.length === 1 && od.documents[0].id === 'pf-a-1' && od.documents[0].downloadUrl.includes('employee_file.php') && !JSON.stringify(od).includes('private/employees/'));
+    check("R2: nothing of B's anywhere in the body", !ov.raw.includes('920202/2222') && !ov.raw.includes('Bob') && !ov.raw.includes('bob_contract') && !ov.raw.includes('3200'));
+    check('R2: Employee cannot edit contact data or see edit forms', od.can?.editProfile === false && od.can?.requestLeave === true);
+
+    section('R3: my_employment for an unlinked login');
+    const unl = await api(SESSIONS.employee_unlinked, 'api/my_employment.php', { query: '?action=overview' });
+    check('R3: not_linked', unl.data?.success === false && unl.data?.code === 'not_linked', unl.raw.slice(0, 160));
+    const viewerOv = await api(SESSIONS.viewer, 'api/my_employment.php', { query: '?action=overview' });
+    check('R3: a role without any self.* key is refused', viewerOv.status === 403 && viewerOv.data?.code === 'forbidden');
+    const hoursA = await api(SESSIONS.employee_a, 'api/my_employment.php', { query: '?action=hours&year=2026&month=1&employee=pe-b&user_id=222&employee_id=pe-b' });
+    check("R3: hours use the caller's own row, never a client-supplied id (A has none attached)", hoursA.data?.no_user_attached === true, hoursA.raw.slice(0, 160));
+
+    section('R4: private employee documents');
+    const fileUrl = (emp, file) => `?employee=${emp}&file=${file}`;
+    const ownFile = await api(SESSIONS.employee_a, 'api/employee_file.php', { query: fileUrl('pe-a', 'pf-a-1') });
+    check('R4: A downloads own contract', ownFile.status === 200 && (ownFile.headers.get('content-type') || '').startsWith('application/pdf') && ownFile.raw.startsWith('%PDF-'), `${ownFile.status} ${ownFile.headers.get('content-type')}`);
+    // (A site-wide Content-Security-Policy from the deployment's .htaccess replaces the endpoint's own;
+    // the endpoint only inlines PDFs and images and always sends nosniff, so that is acceptable.)
+    check('R4: nosniff, no-store and an inline disposition with the original name',
+      /nosniff/.test(ownFile.headers.get('x-content-type-options') || '') && /no-store/.test(ownFile.headers.get('cache-control') || '') &&
+      /^inline;.*alice_contract\.pdf/.test(ownFile.headers.get('content-disposition') || ''),
+      `xcto=${ownFile.headers.get('x-content-type-options')} cc=${ownFile.headers.get('cache-control')} cd=${ownFile.headers.get('content-disposition')}`);
+    const otherFile = await api(SESSIONS.employee_a, 'api/employee_file.php', { query: fileUrl('pe-b', 'pf-b-1') });
+    check("R4: A cannot read B's contract (403)", otherFile.status === 403 && !otherFile.raw.startsWith('%PDF-'), `${otherFile.status}`);
+    const mixFile = await api(SESSIONS.employee_a, 'api/employee_file.php', { query: fileUrl('pe-a', 'pf-b-1') });
+    check("R4: B's file id under A's record is not found", mixFile.status === 404);
+    const unlinkedFile = await api(SESSIONS.employee_unlinked, 'api/employee_file.php', { query: fileUrl('pe-a', 'pf-a-1') });
+    check('R4: an unlinked login cannot read it either', unlinkedFile.status === 403);
+    const hrFile = await api(SESSIONS.hr, 'api/employee_file.php', { query: fileUrl('pe-b', 'pf-b-1') });
+    check("R4: HR with employees.files reads B's contract", hrFile.status === 200 && hrFile.raw.startsWith('%PDF-'));
+    const traversal = await api(SESSIONS.hr, 'api/employee_file.php', { query: '?employee=pe-b&file=../../config' });
+    check('R4: a path in place of a file id finds nothing', traversal.status === 404 || traversal.status === 400);
+    const direct = await fetch(`${BASE}/rbacprobe/uploads/${PRIVATE_KEY_A}`);
+    check('R4: the direct URL of a private file is denied', direct.status === 403 || direct.status === 404, String(direct.status));
+
+    section('M4: legacy public contract moved to private storage');
+    const empC = () => JSON.parse(val("SELECT files_json FROM employees WHERE id='pe-c'"));
+    const cKey = empC()[0].url;
+    check('M4: record now points at a private storage key', /^private\/employees\/[a-f0-9]{32}\.pdf$/.test(cKey), cKey);
+    check('M4: the old public path is gone (404)', legacyBefore === 200 && legacyAfter === 404, `before=${legacyBefore} after=${legacyAfter}`);
+    check('M4: the file exists in the private directory', docker('exec', WEB, 'sh', '-c', `test -f ${SCRATCH_DIR}/uploads/${cKey} && echo yes || echo no`).trim() === 'yes');
+    const filesBefore = val("SELECT files_json FROM employees WHERE id='pe-c'");
+    await syncGet(SESSIONS.admin);
+    await syncGet(SESSIONS.admin);
+    check('M4: running the migration again changes nothing', val("SELECT files_json FROM employees WHERE id='pe-c'") === filesBefore);
+    const carolFile = await api(SESSIONS.hr, 'api/employee_file.php', { query: fileUrl('pe-c', 'pf-c-1') });
+    check('M4: HR can open the migrated contract', carolFile.status === 200 && carolFile.raw.startsWith('%PDF-'));
+
+    section('W3: leave requests');
+    const reqLeave = (key, body) => api(SESSIONS[key], 'api/my_employment.php', { method: 'POST', body: { action: 'request_leave', ...body } });
+    const w3 = await reqLeave('employee_variant', { vacationTypeId: 'annual', startDate: '2026-12-07', endDate: '2026-12-11', daysCount: 99, status: 'approved', approvedBy: 'forged@probe.test', employeeId: 'pe-a', employee_id: 'pe-a' });
+    check('W3: request accepted', w3.status === 201 && w3.data?.success === true, w3.raw.slice(0, 200));
+    const w3row = val("SELECT CONCAT(employee_id,'|',status,'|',IFNULL(approved_by,'NULL'),'|',days_count) FROM employee_vacations WHERE id='" + (w3.data?.request?.id || 'none') + "'");
+    check('W3: stored as requested, approved_by NULL, employee = caller, days computed by the server', w3row === 'pe-v|requested|NULL|5.0', w3row);
+    const overlap = await reqLeave('employee_variant', { vacationTypeId: 'annual', startDate: '2026-12-10', endDate: '2026-12-14' });
+    check('W3: an overlapping request is refused (overlap)', overlap.status === 409 && overlap.data?.code === 'overlap', overlap.raw.slice(0, 120));
+    const weekend = await reqLeave('employee_variant', { vacationTypeId: 'annual', startDate: '2026-12-19', endDate: '2026-12-20' });
+    check('W3: a weekend-only request is refused (no_working_days)', weekend.data?.code === 'no_working_days');
+    const badType = await reqLeave('employee_variant', { vacationTypeId: 'nonsense', startDate: '2027-01-11', endDate: '2027-01-12' });
+    check('W3: an unknown leave type is refused', badType.data?.code === 'unknown_type');
+    const backwards = await reqLeave('employee_variant', { vacationTypeId: 'annual', startDate: '2027-01-12', endDate: '2027-01-11' });
+    check('W3: reversed dates are refused', backwards.data?.code === 'invalid_dates');
+    const garbage = await reqLeave('employee_variant', { vacationTypeId: 'annual', startDate: '2027-02-30', endDate: '2027-03-01' });
+    check('W3: an impossible date is refused', garbage.data?.code === 'invalid_dates');
+    const cancelOwn = await api(SESSIONS.employee_variant, 'api/my_employment.php', { method: 'POST', body: { action: 'cancel_leave', id: w3.data?.request?.id } });
+    check('W3: cancelling an own requested leave works', cancelOwn.data?.success === true && val("SELECT COUNT(*) FROM employee_vacations WHERE id='" + w3.data?.request?.id + "'") === '0', cancelOwn.raw.slice(0, 120));
+    const cancelApproved = await api(SESSIONS.employee_a, 'api/my_employment.php', { method: 'POST', body: { action: 'cancel_leave', id: 'vac-a-1' } });
+    check('W3: cancelling an own approved leave is refused', cancelApproved.data?.code === 'not_cancellable' && val("SELECT COUNT(*) FROM employee_vacations WHERE id='vac-a-1'") === '1');
+    const cancelOther = await api(SESSIONS.employee_a, 'api/my_employment.php', { method: 'POST', body: { action: 'cancel_leave', id: 'vac-b-1' } });
+    check("W3: cancelling B's leave looks like it does not exist", cancelOther.status === 404 && val("SELECT COUNT(*) FROM employee_vacations WHERE id='vac-b-1'") === '1');
+    const cancelPending = await api(SESSIONS.employee_a, 'api/my_employment.php', { method: 'POST', body: { action: 'cancel_leave', id: 'vac-a-pending' } });
+    check('W3: A cancels own pending request', cancelPending.data?.success === true);
+    check("W3: B's sick leave never appears in A's overview", !(await api(SESSIONS.employee_a, 'api/my_employment.php', { query: '?action=overview' })).raw.includes('vac-b-sick'));
+
+    section('W4: update_contact');
+    const contact = (key, body) => api(SESSIONS[key], 'api/my_employment.php', { method: 'POST', body: { action: 'update_contact', ...body } });
+    const w4a = await contact('employee_a', { phone: '+421000000000' });
+    check('W4: self.profile = view is refused', w4a.status === 403 && w4a.data?.code === 'forbidden' && val("SELECT phone FROM employees WHERE id='pe-a'") === '+421901111111');
+    const w4b = await contact('employee_variant', { phone: '+421900999999', addressStreet: 'New Street 1', addressCity: 'Kosice', addressZip: '04001', addressCountry: 'Slovakia',
+      salaryAmount: 1, pin: 'x', name: 'Hacked', notes: 'pwned', email: 'hacked@probe.test', isActive: false, salaryType: 'hourly', files: [], userId: 'probe-admin', timeTrackingUserId: '1' });
+    check('W4: with edit, contact fields change', w4b.data?.success === true && val("SELECT CONCAT(phone,'|',address_street,'|',address_city) FROM employees WHERE id='pe-v'") === '+421900999999|New Street 1|Kosice', w4b.raw.slice(0, 160));
+    check('W4: pay, PIN, name, notes, e-mail, state, link and ids are unchanged',
+      val("SELECT CONCAT(name,'|',pin,'|',CAST(salary_amount AS UNSIGNED),'|',notes,'|',email,'|',is_active,'|',salary_type,'|',user_id,'|',IFNULL(time_tracking_user_id,'NULL'),'|',files_json) FROM employees WHERE id='pe-v'")
+        === 'Probe Variant|930303/3333|2100|Vera confidential HR notes|probe-employee-variant@probe.test|1|monthly|probe-employee-variant|NULL|[]');
+
+    section('W8: uploads');
+    const pdfForm = (extra = {}, name = 'contract.pdf') => {
+      const f = new FormData();
+      f.append('file', new Blob([PDF_BYTES], { type: 'application/pdf' }), name);
+      f.append('eventId', 'emp_contract_probe');
+      for (const [k, v] of Object.entries(extra)) f.append(k, v);
+      return f;
+    };
+    const upEmployee = await api(SESSIONS.employee_a, 'upload.php', { method: 'POST', body: pdfForm({ module: 'employees' }), raw: true });
+    check('W8: an Employee cannot upload an employee document (403)', upEmployee.status === 403, `${upEmployee.status} ${upEmployee.raw.slice(0, 100)}`);
+    const upHr = await api(SESSIONS.hr, 'upload.php', { method: 'POST', body: pdfForm({ module: 'employees' }), raw: true });
+    const hrKey = upHr.data?.filePath || '';
+    check('W8: HR upload is stored privately under a random name', upHr.status === 200 && /^private\/employees\/[a-f0-9]{32}\.pdf$/.test(hrKey) && upHr.data?.fileName === 'contract.pdf', upHr.raw.slice(0, 200));
+    check('W8: the file is in the private directory and not in public uploads',
+      docker('exec', WEB, 'sh', '-c', `test -f ${SCRATCH_DIR}/uploads/${hrKey} && echo yes || echo no`).trim() === 'yes' &&
+      docker('exec', WEB, 'sh', '-c', `ls ${SCRATCH_DIR}/uploads | grep -c emp_contract_probe || true`).trim() === '0');
+    const directHr = await fetch(`${BASE}/rbacprobe/uploads/${hrKey}`);
+    check('W8: the freshly uploaded file is not directly reachable', directHr.status === 403 || directHr.status === 404, String(directHr.status));
+    const upLite = await api(SESSIONS.hr_lite, 'upload.php', { method: 'POST', body: pdfForm({ module: 'employees' }), raw: true });
+    check('W8: HR-lite (employees.files on) may upload', upLite.status === 200);
+    const upPhp = await api(SESSIONS.hr, 'upload.php', { method: 'POST', body: pdfForm({ module: 'employees' }, 'shell.php.pdf'), raw: true });
+    check('W8: an executable double extension is still refused', upPhp.status === 415, `${upPhp.status}`);
+    const upBadPdf = await api(SESSIONS.hr, 'upload.php', { method: 'POST', body: (() => { const f = new FormData(); f.append('file', new Blob(['not a pdf at all, just text padding padding'], { type: 'application/pdf' }), 'bad.pdf'); f.append('eventId', 'x'); f.append('module', 'employees'); return f; })(), raw: true });
+    check('W8: a damaged document is still refused (magic bytes)', upBadPdf.status === 422, `${upBadPdf.status}`);
+    const upViewer = await api(SESSIONS.no_edit, 'upload.php', { method: 'POST', body: pdfForm({}), raw: true });
+    check('W8: a role with no edit right still cannot upload', upViewer.status === 403);
+    const delEmployee = await api(SESSIONS.employee_a, 'api/delete_file.php', { method: 'POST', body: { fileName: 'anything.pdf' } });
+    check('W8: delete_file refuses a role without files.delete (403)', delEmployee.status === 403, `${delEmployee.status}`);
+    const delLegacy = await api(SESSIONS.employee_a, 'api/delete_file.php', { method: 'POST', body: { fileName: 'emp_contract_1700000000000_carol_contract.pdf' } });
+    check('W8: delete_file refuses the legacy contract name to anyone without employees.files', delLegacy.status === 403);
+
+    // detaching a document from a record removes its file, but only after the save committed
+    const hrEmp = (await syncGet(SESSIONS.hr)).data.employees.find((e) => e.id === 'pe-c');
+    const detach = await post('hr', { employees: [{ ...hrEmp, files: [] }] });
+    check('W8: detaching a document deletes its file after the commit',
+      detach.data?.success === true && docker('exec', WEB, 'sh', '-c', `test -f ${SCRATCH_DIR}/uploads/${cKey} && echo yes || echo no`).trim() === 'no');
 
     // --- W7: protected roles survive an admin push (kept last: it rewrites the registry) ---
     section('W7: protected roles');

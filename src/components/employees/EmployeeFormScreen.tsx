@@ -22,6 +22,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import type { Employee, EmployeeFile, EmployeeSettings, FinancialCategory } from "../../types";
+import { employeeFileHref } from "../../utils/employeeFiles";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
 interface EmployeeFormScreenProps {
@@ -1047,8 +1048,9 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {employeeFileHref(employee?.id, file) ? (
                       <a
-                        href={file.url}
+                        href={employeeFileHref(employee?.id, file) as string}
                         target="_blank"
                         rel="noreferrer"
                         className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-white transition"
@@ -1056,6 +1058,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                       >
                         <Download className="w-4 h-4" />
                       </a>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => handleRemoveFile(file.id)}

@@ -31,6 +31,7 @@ import type {
   EmployeeVacation,
   FinancialCategory
 } from "../../types";
+import { employeeFileHref } from "../../utils/employeeFiles";
 import { VacationRequestModal } from "./VacationRequestModal";
 import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
@@ -2115,8 +2116,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                            {employeeFileHref(employee.id, file) ? (
                             <a
-                              href={file.url || file.filePath || "#"}
+                              href={employeeFileHref(employee.id, file) as string}
                               target="_blank"
                               rel="noreferrer"
                               className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
@@ -2124,6 +2126,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             >
                               <Download className="w-4 h-4" />
                             </a>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => handleRemoveContract(file.id)}

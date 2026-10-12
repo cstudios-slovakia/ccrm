@@ -2372,6 +2372,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Dynamic tables belonging to deleted project types. DDL implicitly commits in
     // MySQL, so these are collected during the transaction and executed after it.
     $deferredTableDrops = [];
+    // Private employee documents a save detached or whose employee it removed. Unlinked
+    // only after the commit, and only if no record references them any more.
+    $deferredEmployeeFileKeys = [];
 
     try {
         // Ensure dynamic unified-entry table schemas BEFORE opening the
@@ -5048,6 +5051,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $processedEmpIds[] = $empId;
 
+                // A document detached from the record is deleted from disk after the commit.
+                if ($empRights['documents'] && $stored !== null) {
+                    $oldFiles = json_decode((string)($stored['files_json'] ?? ''), true);
+                    $keptKeys = [];
+                    foreach ((array)($emp['files'] ?? []) as $nf) {
+                        $k = is_array($nf) ? ccrm_employee_file_key($nf) : null;
+                        if ($k !== null) {
+                            $keptKeys[$k] = true;
+                        }
+                    }
+                    foreach ((array)$oldFiles as $of) {
+                        $k = is_array($of) ? ccrm_employee_file_key($of) : null;
+                        if ($k !== null && !isset($keptKeys[$k])) {
+                            $deferredEmployeeFileKeys[] = $k;
+                        }
+                    }
+                }
+
                 // Link to a login (§3.1). Only Admin, or employees = edit together with
                 // pm_managers = edit, may set or clear it; for anyone else the field is
                 // ignored. One login maps to at most one employee, and the link is never
@@ -5077,6 +5098,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $empToDelete = $isDeltaSync ? $deletionsFor('employees', $existingEmpIds) : array_diff($existingEmpIds, $processedEmpIds);
             if (!empty($empToDelete) && !$ccrm_skip_deletes('employees', 'employees')) {
                 ccrm_delete_omitted($pdo, 'employees', $empToDelete, null, [], false, $isDeltaSync);
+                foreach ($empToDelete as $delEmpId) {
+                    foreach ((array)json_decode((string)($storedEmp[$delEmpId]['files_json'] ?? ''), true) as $df) {
+                        $k = is_array($df) ? ccrm_employee_file_key($df) : null;
+                        if ($k !== null) {
+                            $deferredEmployeeFileKeys[] = $k;
+                        }
+                    }
+                }
             }
         }
 
@@ -5315,6 +5344,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ccrm_process_workflow_queue($pdo);
         } catch (\Throwable $e) {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+        }
+
+        if ($deferredEmployeeFileKeys) {
+            ccrm_employee_private_gc($pdo, $deferredEmployeeFileKeys);
         }
 
         // Now that the transaction is closed, drop the dynamic tables of any project

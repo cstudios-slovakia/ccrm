@@ -23,10 +23,18 @@ export const USERS = {
   finance: { id: 'probe-finance', name: 'Probe Finance', email: 'probe-finance@probe.test', role: 'FinanceOnly' },
   pipeliner: { id: 'probe-pipeliner', name: 'Probe Pipeliner', email: 'probe-pipeliner@probe.test', role: 'Pipeliner' },
   leads_only: { id: 'probe-leads-only', name: 'Probe LeadsOnly', email: 'probe-leads-only@probe.test', role: 'LeadsOnly' },
+  no_edit: { id: 'probe-no-edit', name: 'Probe No Edit', email: 'probe-no-edit@probe.test', role: 'NoEdit' },
   account_editor: { id: 'probe-account-editor', name: 'Probe Account Editor', email: 'probe-account-editor@probe.test', role: 'AccountEditor' },
 };
 
 export const BILLING_SETTINGS = { companyName: 'Probe Billing Co', iban: 'SK0000000000000000000000' };
+
+// Storage keys of the private documents the probe writes to disk (see run.mjs).
+export const PRIVATE_KEY_A = 'private/employees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1.pdf';
+export const PRIVATE_KEY_B = 'private/employees/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2.pdf';
+// A contract still sitting in the public uploads directory: the migration must move it.
+export const LEGACY_FILE = 'uploads/emp_contract_1700000000000_carol_contract.pdf';
+export const PDF_BYTES = '%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n';
 
 export const EMPLOYEE_A = {
   id: 'pe-a',
@@ -46,7 +54,8 @@ export const EMPLOYEE_A = {
   auto_expense: 1,
   expense_category_id: 'exp-root',
   vacation_allowances: JSON.stringify({ 2026: { annual: 25, carried: 0 } }),
-  files: JSON.stringify([{ id: 'pf-a-1', name: 'alice_contract.pdf', path: 'uploads/employees/private/alice_contract.pdf', uploadedAt: '2026-01-01' }]),
+  tt_user_id: null,
+  files: JSON.stringify([{ id: 'pf-a-1', name: 'alice_contract.pdf', url: PRIVATE_KEY_A, size: 120, type: 'application/pdf', uploadedAt: '2026-01-01T00:00:00Z' }]),
 };
 
 export const EMPLOYEE_B = {
@@ -67,7 +76,54 @@ export const EMPLOYEE_B = {
   auto_expense: 1,
   expense_category_id: 'exp-root',
   vacation_allowances: JSON.stringify({ 2026: { annual: 20, carried: 0 } }),
-  files: JSON.stringify([{ id: 'pf-b-1', name: 'bob_contract.pdf', path: 'uploads/employees/private/bob_contract.pdf', uploadedAt: '2026-01-01' }]),
+  tt_user_id: '222',
+  files: JSON.stringify([{ id: 'pf-b-1', name: 'bob_contract.pdf', url: PRIVATE_KEY_B, size: 120, type: 'application/pdf', uploadedAt: '2026-01-01T00:00:00Z' }]),
+};
+
+// Linked to the EmployeeVariant login (self.profile and self.vacations at edit).
+export const EMPLOYEE_V = {
+  id: 'pe-v',
+  name: 'Probe Variant',
+  user_id: 'probe-employee-variant',
+  email: 'probe-employee-variant@probe.test',
+  pin: '930303/3333',
+  phone: '+421903333333',
+  address_street: 'Vera Street 30',
+  address_city: 'Presov',
+  address_zip: '08001',
+  address_country: 'Slovakia',
+  notes: 'Vera confidential HR notes',
+  salary_type: 'monthly',
+  salary_amount: 2100,
+  salary_due_day: 10,
+  auto_expense: 0,
+  expense_category_id: null,
+  vacation_allowances: JSON.stringify({ annual: 20, sick: 10 }),
+  tt_user_id: null,
+  files: JSON.stringify([]),
+};
+
+// Not linked to any login; its contract is in the public uploads directory (migration target).
+export const EMPLOYEE_C = {
+  id: 'pe-c',
+  name: 'Probe Employee C',
+  user_id: null,
+  email: 'probe-employee-c@probe.test',
+  pin: '940404/4444',
+  phone: '+421904444444',
+  address_street: 'Carol Street 40',
+  address_city: 'Nitra',
+  address_zip: '94901',
+  address_country: 'Slovakia',
+  notes: 'Carol confidential HR notes',
+  salary_type: 'monthly',
+  salary_amount: 1900,
+  salary_due_day: 15,
+  auto_expense: 0,
+  expense_category_id: null,
+  vacation_allowances: JSON.stringify({}),
+  tt_user_id: null,
+  files: JSON.stringify([{ id: 'pf-c-1', name: 'carol_contract.pdf', url: '/' + LEGACY_FILE, size: 120, type: 'application/pdf', uploadedAt: '2026-01-01T00:00:00Z' }]),
 };
 
 const q = (v) => (v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'");
@@ -136,6 +192,8 @@ export function fixtureSql() {
   const pipelinerPerms = { ...nothing, pipeline_stages: 'edit' };
   const leadsOnlyPerms = { ...nothing, leads: 'edit', 'leads.delete': 'edit', tasks: 'edit', 'tasks.view_all': 'edit' };
   const accountEditorPerms = { ...nothing, 'self.account': 'edit' };
+  // Every key explicit, so nothing falls back to a legacy "edit" default: this role can edit nothing.
+  const noEditPerms = { ...nothing, tasks: 'view', updates: 'view' };
 
   const roles = [
     { name: 'Admin', permissions: {} },
@@ -149,6 +207,7 @@ export function fixtureSql() {
     { name: 'Pipeliner', permissions: pipelinerPerms },
     { name: 'LeadsOnly', permissions: leadsOnlyPerms },
     { name: 'AccountEditor', permissions: accountEditorPerms },
+    { name: 'NoEdit', permissions: noEditPerms },
   ];
 
   const employeeSettings = {
@@ -157,7 +216,10 @@ export function fixtureSql() {
     defaultSalaryDueDay: 15,
     salaryPeriod: 'monthly',
     salaryTypes: ['monthly', 'hourly'],
-    vacationTypes: ['vacation', 'sick_leave'],
+    vacationTypes: [
+      { id: 'annual', name: 'Annual leave', isPaid: true, defaultDays: 25, color: '#0ea5e9' },
+      { id: 'sick', name: 'Sick leave', isPaid: false, defaultDays: 10, color: '#ef4444' },
+    ],
     timeTracking: {
       provider: 'toggl',
       togglApiToken: FAKE_TOGGL_TOKEN,
@@ -181,18 +243,18 @@ export function fixtureSql() {
   }
 
   // Employees
-  lines.push('DELETE FROM employees WHERE id IN ("pe-a", "pe-b");');
-  for (const e of [EMPLOYEE_A, EMPLOYEE_B]) {
+  lines.push('DELETE FROM employees WHERE id IN ("pe-a", "pe-b", "pe-v", "pe-c");');
+  for (const e of [EMPLOYEE_A, EMPLOYEE_B, EMPLOYEE_V, EMPLOYEE_C]) {
     lines.push(
-      `INSERT INTO employees (id, name, user_id, pin, phone, address_street, address_city, address_zip, address_country, notes, salary_type, salary_amount, salary_due_day, auto_expense, expense_category_id, vacation_allowances_json, files_json, is_active) VALUES (${q(e.id)}, ${q(e.name)}, ${q(e.user_id)}, ${q(e.pin)}, ${q(e.phone)}, ${q(e.address_street)}, ${q(e.address_city)}, ${q(e.address_zip)}, ${q(e.address_country)}, ${q(e.notes)}, ${q(e.salary_type)}, ${e.salary_amount}, ${e.salary_due_day}, ${e.auto_expense}, ${q(e.expense_category_id)}, ${q(e.vacation_allowances)}, ${q(e.files)}, 1);`
+      `INSERT INTO employees (id, name, user_id, email, pin, phone, address_street, address_city, address_zip, address_country, notes, salary_type, salary_amount, salary_due_day, auto_expense, expense_category_id, vacation_allowances_json, time_tracking_user_id, files_json, is_active) VALUES (${q(e.id)}, ${q(e.name)}, ${q(e.user_id)}, ${q(e.email)}, ${q(e.pin)}, ${q(e.phone)}, ${q(e.address_street)}, ${q(e.address_city)}, ${q(e.address_zip)}, ${q(e.address_country)}, ${q(e.notes)}, ${q(e.salary_type)}, ${e.salary_amount}, ${e.salary_due_day}, ${e.auto_expense}, ${q(e.expense_category_id)}, ${q(e.vacation_allowances)}, ${q(e.tt_user_id)}, ${q(e.files)}, 1);`
     );
   }
 
   // Employee Salaries & Vacations
-  lines.push('DELETE FROM employee_salaries WHERE employee_id IN ("pe-a", "pe-b");');
-  lines.push('DELETE FROM employee_vacations WHERE employee_id IN ("pe-a", "pe-b");');
+  lines.push('DELETE FROM employee_salaries WHERE employee_id IN ("pe-a", "pe-b", "pe-v", "pe-c");');
+  lines.push('DELETE FROM employee_vacations WHERE employee_id IN ("pe-a", "pe-b", "pe-v", "pe-c");');
   lines.push(`INSERT INTO employee_salaries (id, employee_id, period_type, period_key, year, period_number, items_json, total_salary, total_paid, status) VALUES ('sal-a-1', 'pe-a', 'monthly', '2026-01', 2026, 1, '[]', 2500, 2500, 'paid'), ('sal-b-1', 'pe-b', 'monthly', '2026-01', 2026, 1, '[]', 3200, 3200, 'paid');`);
-  lines.push(`INSERT INTO employee_vacations (id, employee_id, vacation_type_id, start_date, end_date, days_count, status) VALUES ('vac-a-1', 'pe-a', 'vacation', '2026-06-01', '2026-06-05', 5, 'approved'), ('vac-b-1', 'pe-b', 'vacation', '2026-07-01', '2026-07-05', 5, 'approved');`);
+  lines.push(`INSERT INTO employee_vacations (id, employee_id, vacation_type_id, start_date, end_date, days_count, status) VALUES ('vac-a-1', 'pe-a', 'annual', '2026-06-01', '2026-06-05', 5, 'approved'), ('vac-a-pending', 'pe-a', 'annual', '2026-11-02', '2026-11-03', 2, 'requested'), ('vac-b-1', 'pe-b', 'annual', '2026-07-01', '2026-07-05', 5, 'approved'), ('vac-b-sick', 'pe-b', 'sick', '2026-08-03', '2026-08-04', 2, 'approved');`);
 
   // Leads & Clients
   lines.push('DELETE FROM leads WHERE id IN ("lead-probe-1", "client-probe-1");');

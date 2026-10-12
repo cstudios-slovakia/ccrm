@@ -1279,6 +1279,13 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_repair_demo_employee_vacations($pdo);
         ccrm_migrate_user_role_varchar($pdo);
         ccrm_migrate_employee_role_rbac($pdo);
+        // Employee documents used to sit in the public uploads directory.
+        try {
+            require_once __DIR__ . '/employee_files.php';
+            ccrm_migrate_employee_files_private($pdo);
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee document migration skipped: ' . $e->getMessage());
+        }
     }
 
     /**

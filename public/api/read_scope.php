@@ -301,11 +301,21 @@ function ccrm_project_employee_settings(?array $settings, array $scope): ?array 
     }
 
     if (ccrm_can($scope, 'employees', 'view') || $hasSelf) {
-        return [
+        $safe = [
             'salaryPeriod' => $settings['salaryPeriod'] ?? 'monthly',
             'salaryTypes' => $settings['salaryTypes'] ?? ['monthly', 'hourly'],
             'vacationTypes' => $settings['vacationTypes'] ?? ['vacation', 'sick_leave'],
         ];
+        // The defaults a "new employee" form pre-fills are plain configuration, not
+        // secrets; HR roles without general_config still need them to create a record.
+        if (ccrm_can($scope, 'employees', 'view')) {
+            foreach (['salaryDueDay', 'defaultSalaryDueDay', 'defaultAutoExpense', 'defaultExpenseCategoryId'] as $k) {
+                if (array_key_exists($k, $settings)) {
+                    $safe[$k] = $settings[$k];
+                }
+            }
+        }
+        return $safe;
     }
 
     return null;
