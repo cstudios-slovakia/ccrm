@@ -178,3 +178,25 @@ export const generateOrderNumber = (prefix = "OBJ", sequence = 1, date = new Dat
   const seqStr = String(sequence).padStart(4, "0");
   return `${prefix}-${year}-${seqStr}`;
 };
+
+export const formatCarrierTrackingUrl = (carrier?: string, trackingNumber?: string): string | null => {
+  if (!trackingNumber?.trim()) return null;
+  const num = encodeURIComponent(trackingNumber.trim());
+  const c = (carrier || "").toLowerCase();
+  if (c.includes("dpd")) {
+    return `https://tracking.dpd.de/status/sk_SK/parcel/${num}`;
+  }
+  if (c.includes("packeta") || c.includes("zásielkovňa") || c.includes("zasielkovna")) {
+    return `https://tracking.packeta.com/sk/?id=${num}`;
+  }
+  if (c.includes("gls")) {
+    return `https://gls-group.eu/SK/sk/sledovanie-zasielok?match=${num}`;
+  }
+  if (c.includes("sps") || c.includes("slovak parcel")) {
+    return `https://www.sps-sro.sk/sk/sledovanie-zasielky.html?parcel=${num}`;
+  }
+  if (c.includes("posta") || c.includes("pošta")) {
+    return `https://sledovanie.posta.sk/${num}`;
+  }
+  return null;
+};
