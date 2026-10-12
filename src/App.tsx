@@ -22,6 +22,10 @@ import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listId
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
+import { hasLaunchIntent } from "./utils/launchIntent";
+import { useAppBadge } from "./utils/appBadge";
+import { countBadgeTasks } from "./utils/taskBadge";
+import { PwaInstallBanner } from "./components/PwaInstallBanner";
 import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardWidgets";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
@@ -41,7 +45,7 @@ import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/F
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
-import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X } from "lucide-react";
+import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X, Plus, ArrowUpRight } from "lucide-react";
 import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
@@ -2855,7 +2859,8 @@ ${log.payload || ''}
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
     (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
 
-  // Embedded Tasks Mode (used by Chrome Extension popup and side panel)
+  // Embedded Tasks Mode: the compact "My tasks" window (Pop out button, Picture-in-Picture
+  // or popup), loaded as `#tasks?embed=tasks`.
   const isEmbeddedTasks = useMemo(() => {
     try {
       if (typeof window === "undefined") return false;
@@ -2871,6 +2876,21 @@ ${log.payload || ''}
       return false;
     }
   }, [activeTab]);
+
+  // Badge on the installed app's icon: missed + today tasks of the signed-in user.
+  // Recomputed every minute because a task turns "missed" when its time passes.
+  const [badgeCount, setBadgeCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!currentUser || isEmbeddedTasks || !taskAccess.view) {
+      setBadgeCount(null);
+      return;
+    }
+    const update = () => setBadgeCount(countBadgeTasks(tasks, currentUser.name, taskStates).total);
+    update();
+    const timer = window.setInterval(update, 60000);
+    return () => window.clearInterval(timer);
+  }, [tasks, taskStates, currentUser?.name, isEmbeddedTasks, taskAccess.view]);
+  useAppBadge(badgeCount);
 
   // View router
   const renderWorkspaceView = () => {
@@ -3814,6 +3834,13 @@ ${log.payload || ''}
           // login - unless the role may not open it, in which case the first
           // permitted module wins (the route guard would only show a wall).
           const userAccess = buildAccess(user, roles);
+          // A deep link the user arrived with (installed-app shortcut, share, "New
+          // task" link) outranks the default landing page: signing in is the
+          // detour, not the destination. The Tasks view picks the params up.
+          if (hasLaunchIntent(window.location.hash) && userAccess.canOpenRoute("tasks")) {
+            setActiveTab(getTabFromHash());
+            return;
+          }
           const preferred = getDefaultPageForUser(user) || "dashboard";
           const dp = userAccess.canOpenRoute(preferred) ? preferred : (firstAllowedRoute(userAccess) ?? preferred);
           setActiveTab(dp);
@@ -4010,6 +4037,7 @@ ${log.payload || ''}
           
           <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {currentUser && <PwaInstallBanner language={userLanguage} userKey={currentUser.email || currentUser.name || "anon"} />}
               {showNotifBanner && currentUser && getBrowserNotificationPermission() === "default" && (
                 <div className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="flex items-center gap-3">

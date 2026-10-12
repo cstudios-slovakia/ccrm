@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpDown, Flame, FolderKanban, Lock, Minus, Plus, X } from "lucide-react";
 import type { Lead, Project, Task, UserProfile } from "../types";
@@ -43,6 +43,12 @@ interface QuickTaskModalProps {
     leadStateParents?: Record<string, string>;
     /** Pre-filled deadline (the calendar's "+" on a day); defaults to today. */
     initialDeadline?: string;
+    /**
+     * Text arriving from outside (a shortcut, the share target, the bookmarklet).
+     * Fills the title on open; a new `id` while the form is already open adds the
+     * text as another line, so a half-typed task is never overwritten.
+     */
+    incomingTitle?: { id: number; text: string };
     /** Receives the new tasks (one per title line); persisting them is the caller's job. */
     onCreate: (tasks: Task[]) => void;
     onClose: () => void;
@@ -67,6 +73,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     leadStageGroups,
     leadStateParents,
     initialDeadline,
+    incomingTitle,
     onCreate,
     onClose,
     inline = false,
@@ -74,7 +81,15 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
-    const [title, setTitle] = useState("");
+    const [title, setTitle] = useState(() => incomingTitle?.text ?? "");
+    // StrictMode runs effects twice; remember which delivery was applied already.
+    const appliedIncomingRef = useRef<number | null>(incomingTitle?.id ?? null);
+    useEffect(() => {
+        if (!incomingTitle || appliedIncomingRef.current === incomingTitle.id) return;
+        appliedIncomingRef.current = incomingTitle.id;
+        if (!incomingTitle.text) return;
+        setTitle((prev) => (prev.trim() ? prev.replace(/\s+$/, "") + "\n" + incomingTitle.text : incomingTitle.text));
+    }, [incomingTitle]);
     const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
     const [deadline, setDeadline] = useState(() => initialDeadline || toLocalDateStr(new Date()));
     const [deadlineTime, setDeadlineTime] = useState("16:00");

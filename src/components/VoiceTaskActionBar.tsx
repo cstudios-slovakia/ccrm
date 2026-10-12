@@ -33,7 +33,25 @@ export interface VoiceTaskActionBarProps {
     containerClassName?: string;
     hideManualButton?: boolean;
     isSubmittingManual?: boolean;
+    /**
+     * Deep link `#tasks?voice=1`. A new non-zero value asks the bar to get ready:
+     * it starts recording at once when the microphone is already allowed, and
+     * otherwise highlights the button and waits for the click, because browsers
+     * only show the microphone prompt for a user gesture.
+     */
+    armRequest?: number;
+    onArmHandled?: () => void;
 }
+
+/** "granted" | "denied" | "prompt" | "unknown" — never throws (Safari lacks the query). */
+const microphonePermission = async (): Promise<"granted" | "denied" | "prompt" | "unknown"> => {
+    try {
+        const status = await navigator.permissions?.query({ name: "microphone" as PermissionName });
+        return status ? status.state : "unknown";
+    } catch {
+        return "unknown";
+    }
+};
 
 export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     onTasksCreated,
@@ -54,6 +72,8 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     containerClassName = "",
     hideManualButton = false,
     isSubmittingManual = false,
+    armRequest = 0,
+    onArmHandled,
 }) => {
     const t = (en: string, sk: string, hu: string) => {
         if (systemLanguage === "sk") return sk;
@@ -64,6 +84,9 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     const myName = currentUser?.name || "";
 
     const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+    const [isArmed, setIsArmed] = useState(false);
+    const micButtonRef = useRef<HTMLButtonElement | null>(null);
+    const armHandledRef = useRef<number | null>(null);
     const [isVoiceTranscribing, setIsVoiceTranscribing] = useState(false);
     const [voiceRecordDuration, setVoiceRecordDuration] = useState(0);
     const [audioVolumeBars, setAudioVolumeBars] = useState<number[]>([
@@ -124,6 +147,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
     const handleStartVoiceRecording = async () => {
         if (!canCreate || isVoiceTranscribing || isVoiceRecording) return;
+        setIsArmed(false);
         try {
             audioChunksRef.current = [];
 
@@ -528,6 +552,28 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
         }
     };
 
+    // Deep link `#tasks?voice=1` (see armRequest). The ref makes a repeated effect
+    // run (StrictMode, a remount) a no-op for a request that was already handled.
+    useEffect(() => {
+        if (!armRequest) {
+            armHandledRef.current = null; // the parent consumed it; the next request is new again
+            return;
+        }
+        if (armHandledRef.current === armRequest) return;
+        armHandledRef.current = armRequest;
+        onArmHandled?.();
+        if (!canCreate) return;
+        setIsArmed(true);
+        requestAnimationFrame(() => {
+            micButtonRef.current?.focus();
+            micButtonRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+        });
+        void microphonePermission().then((state) => {
+            if (state === "granted") void handleStartVoiceRecording();
+        });
+        window.setTimeout(() => setIsArmed(false), 20000);
+    }, [armRequest]);
+
     const defaultManualText = t("Create New Task", "Vytvoriť novú úlohu", "Új feladat");
     const labelText = manualButtonText || defaultManualText;
 
@@ -675,11 +721,11 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     ) : (
                         <button
                             type="button"
+                            ref={micButtonRef}
+                            data-testid="voice-record-button"
+                            data-armed={isArmed ? "true" : undefined}
                             onClick={handleStartVoiceRecording}
-                            className={
-                                voiceButtonClassName ||
-                                "w-full py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
-                            }
+                            className={`${voiceButtonClassName || "w-full py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"}${isArmed ? " ring-4 ring-rose-300/70 animate-pulse" : ""} focus-visible:ring-4 focus-visible:ring-rose-300/70 outline-none`}
                             disabled={!canCreate}
                             title={t(
                                 "Record Voice Task (Auto-transcribes and creates task)",
@@ -694,6 +740,20 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                         </button>
                     )}
                 </div>
+
+                {isArmed && !isVoiceRecording && !isVoiceTranscribing && (
+                    <p
+                        role="status"
+                        data-testid="voice-armed-hint"
+                        className="text-caption font-semibold text-rose-600 animate-in fade-in slide-in-from-top-1 duration-200"
+                    >
+                        {t(
+                            "Ready — press the microphone to start recording.",
+                            "Pripravené — stlačte mikrofón a začnite nahrávať.",
+                            "Kész — nyomja meg a mikrofont a felvétel indításához.",
+                        )}
+                    </p>
+                )}
 
                 {renderDebugPlayer()}
             </div>
@@ -828,11 +888,11 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 ) : (
                     <button
                         type="button"
-                        onClick={handleStartVoiceRecording}
-                        className={
-                            voiceButtonClassName ||
-                            "w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
-                        }
+                        ref={micButtonRef}
+                            data-testid="voice-record-button"
+                            data-armed={isArmed ? "true" : undefined}
+                            onClick={handleStartVoiceRecording}
+                        className={`${voiceButtonClassName || "w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"}${isArmed ? " ring-4 ring-rose-300/70 animate-pulse" : ""} focus-visible:ring-4 focus-visible:ring-rose-300/70 outline-none`}
                         disabled={!canCreate}
                         title={t(
                             "Record Voice Task (Auto-transcribes and creates task)",
@@ -848,7 +908,21 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 )}
             </div>
 
-            {renderDebugPlayer()}
+            {isArmed && !isVoiceRecording && !isVoiceTranscribing && (
+                    <p
+                        role="status"
+                        data-testid="voice-armed-hint"
+                        className="text-caption font-semibold text-rose-600 animate-in fade-in slide-in-from-top-1 duration-200"
+                    >
+                        {t(
+                            "Ready — press the microphone to start recording.",
+                            "Pripravené — stlačte mikrofón a začnite nahrávať.",
+                            "Kész — nyomja meg a mikrofont a felvétel indításához.",
+                        )}
+                    </p>
+                )}
+
+                {renderDebugPlayer()}
         </div>
     );
 };

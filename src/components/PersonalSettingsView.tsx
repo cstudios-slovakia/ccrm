@@ -17,6 +17,7 @@ import {
   type NotificationPermissionState,
 } from "../utils/browserNotifications";
 import { PageHeader } from "./layout";
+import { PwaInstallCard } from "./PwaInstallCard";
 
 interface PersonalSettingsViewProps {
   currentUser: UserProfile;
@@ -657,6 +658,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              <PwaInstallCard systemLanguage={activeLang} userKey={currentUser.email || currentUser.name || "anon"} />
 
               <div className="flex justify-end pt-2">
                 <button

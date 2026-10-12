@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useReadScope } from "../hooks/useReadScope";
 import { referenceLeadName, referenceProjectName } from "../utils/readScope";
@@ -32,6 +32,7 @@ import {
     ArrowUpDown,
     Hash,
     UserCheck,
+    PictureInPicture2,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
@@ -60,6 +61,9 @@ import {
     type TaskAccess,
 } from "../utils/taskSelectors";
 import { PageHeader } from "./layout";
+import { consumeLaunchIntent, parseLaunchIntent } from "../utils/launchIntent";
+import { isEmbedUrl } from "../utils/pwaInstallLogic";
+import { openTasksMiniWindow } from "../utils/popOut";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
@@ -576,13 +580,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return dateStr >= startStr && dateStr <= endStr;
     };
 
+    // Names of leads/projects this role may not open but whose tasks it can see.
+    const readScope = useReadScope();
+
     // --- Translations Helper ---
     const t = (en: string, sk: string, hu: string) => {
         if (systemLanguage === "sk") return sk;
         if (systemLanguage === "hu") return hu;
-    // Names of leads/projects this role may not open but whose tasks it can see.
-    const readScope = useReadScope();
-
         return en;
     };
 
@@ -798,6 +802,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Add Task Inline Card State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
     const [addDeadline, setAddDeadline] = useState<string | undefined>(undefined);
+    // Text handed in by a deep link (`#tasks?newTask=…`: app shortcut, share target,
+    // bookmarklet) and the `#tasks?voice=1` request for the voice recorder.
+    const [incomingTitle, setIncomingTitle] = useState<{ id: number; text: string } | undefined>(undefined);
+    const [voiceArmRequest, setVoiceArmRequest] = useState(0);
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -967,6 +975,60 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const closeAddDrawer = useCallback(() => setIsAddDrawerOpen(false), []);
+
+    // Deep links into this view. Read on mount (the address may carry them from
+    // before sign-in) and on every hash change (the installed app was already open
+    // and a shortcut or share navigated it). The params are removed from the
+    // address as soon as they are read, so a reload does not repeat the action.
+    useEffect(() => {
+        const handleLaunchIntent = () => {
+            const intent = parseLaunchIntent(window.location.hash);
+            if (intent.newTask === null && !intent.voice) return;
+            consumeLaunchIntent();
+            if (!taskAccess.create) {
+                (window as any).showToast?.(
+                    t(
+                        "Your role cannot create tasks.",
+                        "Vaša rola nemôže vytvárať úlohy.",
+                        "A szerepköre nem hozhat létre feladatot.",
+                    ),
+                    "warning",
+                );
+                return;
+            }
+            // Both the create form and the voice bar live on My Tasks.
+            setViewMode("calendar");
+            if (intent.voice) {
+                // The voice bar is shown instead of the create form, never beside it.
+                setIsAddDrawerOpen(false);
+                setVoiceArmRequest((n) => n + 1);
+            }
+            if (intent.newTask !== null) {
+                setAddDeadline(undefined);
+                setIncomingTitle((prev) => ({ id: (prev?.id ?? 0) + 1, text: intent.newTask as string }));
+                setIsAddDrawerOpen(true);
+            }
+        };
+        handleLaunchIntent();
+        window.addEventListener("hashchange", handleLaunchIntent);
+        return () => window.removeEventListener("hashchange", handleLaunchIntent);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [taskAccess.create]);
+
+    const handlePopOut = async () => {
+        const result = await openTasksMiniWindow();
+        if (result === "blocked") {
+            (window as any).showToast?.(
+                t(
+                    "Your browser blocked the pop-up window. Allow pop-ups for CCRM and try again.",
+                    "Prehliadač zablokoval vyskakovacie okno. Povoľte pre CCRM vyskakovacie okná a skúste znova.",
+                    "A böngésző letiltotta a felugró ablakot. Engedélyezze a felugró ablakokat a CCRM-hez, és próbálja újra.",
+                ),
+                "warning",
+            );
+        }
+    };
+    const isMiniWindow = isEmbedUrl(window.location.search, window.location.hash);
 
     // Helpers
     const today = new Date();
@@ -4001,6 +4063,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         leadStageGroups={leadStageGroups}
                         leadStateParents={leadStateParents}
                         initialDeadline={addDeadline}
+                        incomingTitle={incomingTitle}
                         onCreate={(created) => setTasks((prev) => [...created, ...prev])}
                         onClose={closeAddDrawer}
                     />
@@ -4018,6 +4081,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             "Új feladat",
                         )}
                         onManualCreateClick={() => openAddTask()}
+                        armRequest={voiceArmRequest}
+                        onArmHandled={() => setVoiceArmRequest(0)}
                         onTasksCreated={(createdTasks) => {
                             setTasks((prev) => [...createdTasks, ...prev]);
                         }}
@@ -4641,6 +4706,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                               )}
                           </button>
                       </div>
+
+                      {!isMiniWindow && (
+                          <button
+                              type="button"
+                              onClick={handlePopOut}
+                              data-testid="tasks-pop-out"
+                              title={t(
+                                  "Open My Tasks in a small window that stays on top of your other windows",
+                                  "Otvoriť Moje úlohy v malom okne, ktoré zostane nad ostatnými oknami",
+                                  "A Saját feladatok megnyitása kis ablakban, amely a többi ablak felett marad",
+                              )}
+                              className="inline-flex items-center gap-1.5 self-start ws-sm:self-auto px-3 py-2 rounded-xl border border-slate-200 bg-white text-ui font-bold text-slate-600 shadow-sm whitespace-nowrap cursor-pointer transition-all duration-150 ease-out hover:-translate-y-px hover:text-indigo-600 hover:border-indigo-200 hover:shadow-md active:translate-y-0 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                          >
+                              <PictureInPicture2 className="h-4 w-4" />
+                              {t("Pop out", "Samostatné okno", "Kiemelés")}
+                          </button>
+                      )}
 
                       {viewMode === "calendar" &&
                           renderCalendarNav({
