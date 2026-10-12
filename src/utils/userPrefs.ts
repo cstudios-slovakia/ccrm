@@ -107,6 +107,20 @@ export interface UserPrefs {
    */
   projectsEquationExcluded: string[];
   /**
+   * Performance Dashboard, "Combined Pipeline & Projects Invoicable Breakdown" panel:
+   * the figure with its status pills ("detail") or the figure alone ("summary").
+   * Replaces `ccrm_overview_equation_stats_expanded` localStorage flag (dropped, not migrated).
+   */
+  dashboardEquationView: "detail" | "summary";
+  /** Same panel: show how many records each status and group holds. */
+  dashboardEquationCounts: boolean;
+  /**
+   * Same panel: status keys the user switched off (${groupId}:${itemKey}), so they stay
+   * out of the total on the next visit. Replaces `ccrm_overview_equation_stats_disabled`
+   * (dropped, not migrated).
+   */
+  dashboardEquationExcluded: string[];
+  /**
    * Finance trend chart: weekly net cash flow, or the running bank balance.
    *
    * Only the *choice of curve* is per user. The manual weekly anchors the
@@ -170,6 +184,15 @@ export interface UserPrefs {
   sidebarGroups: Array<{ id: string; title: string; items: string[] }> | null;
   /** Default startup screen / landing page route id. */
   defaultPage: string | null;
+  /**
+   * Project detail view: the right-hand tab it opens on ("timeline" | "tasks" |
+   * "gantt" | "finances" | "files"). `null` means "never chosen" — the view then
+   * picks the first tab the project's type has. A stored tab the project's type
+   * does not offer (a Gantt tab on a type without one) is ignored, not an error.
+   */
+  projectDefaultTab: string | null;
+  /** Lead detail view: the tab it opens on ("timeline" | "tasks"). `null` = timeline. */
+  leadDefaultTab: string | null;
   /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
   favorites: FavoriteItem[];
   /**
@@ -193,6 +216,12 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
   projectsVisibleStatuses: null,
+  projectsEquationView: "detail",
+  projectsEquationCounts: true,
+  projectsEquationExcluded: [],
+  dashboardEquationView: "detail",
+  dashboardEquationCounts: true,
+  dashboardEquationExcluded: [],
   financialTrendMode: "relative",
   financialProjectionMonths: 0,
   financialHistoryMonths: 3,
@@ -202,15 +231,14 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
-  projectsEquationView: "detail",
-  projectsEquationCounts: true,
-  projectsEquationExcluded: [],
   ragDefaultAgent: null,
   sidebarPinned: false,
   sidebarCompactness: "comfortable",
   sidebarUnpinnedStyle: "overlay",
   sidebarGroups: null,
   defaultPage: null,
+  projectDefaultTab: null,
+  leadDefaultTab: null,
   favorites: [],
   recentClientIds: [],
 };

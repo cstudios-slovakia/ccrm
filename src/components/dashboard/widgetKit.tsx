@@ -26,13 +26,15 @@ export const WidgetCard: React.FC<{
   icon: any;
   accent: string;
   title: string;
+  /** Tooltip for the card's heading. */
+  titleTooltip?: string;
   /** Toggles and links that live on the right of the heading. */
   actions?: React.ReactNode;
   /** A table pins its own footer to the bottom, so it manages its padding. */
   flush?: boolean;
   children: React.ReactNode;
   className?: string;
-}> = ({ icon: Icon, accent, title, actions, flush, children, className }) => (
+}> = ({ icon: Icon, accent, title, titleTooltip, actions, flush, children, className }) => (
   <div
     className={cn(
       "h-full bg-white border border-slate-200 rounded-3xl shadow-sm box-border flex flex-col",
@@ -48,7 +50,7 @@ export const WidgetCard: React.FC<{
         >
           <Icon className="h-4 w-4 text-white" strokeWidth={2.25} />
         </span>
-        <h2 className="m-0 type-overline text-slate-500 truncate">
+        <h2 className="m-0 type-overline text-slate-500 truncate" title={titleTooltip || title}>
           {title}
         </h2>
       </div>
