@@ -357,7 +357,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       type: "sales",
       status: defaultOrderStatus(orderStatuses),
       customerType: "client",
-      clientId: leads[0]?.id || null,
+      clientId: null,
       delivery: {
         recipient: "",
         street: "",

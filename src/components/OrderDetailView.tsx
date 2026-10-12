@@ -274,6 +274,16 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     setClientSearchQuery("");
   };
 
+  // Detach / unselect client
+  const handleClearClient = () => {
+    setFormData(prev => ({
+      ...prev,
+      clientId: null
+    }));
+    setClientSearchQuery("");
+    setIsClientSearchOpen(false);
+  };
+
   // Item operations
   const handleAddItem = (type: OrderItemType = "product", preset?: Partial<OrderItem>) => {
     const newItem: OrderItem = {
@@ -610,7 +620,16 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           setClientSearchQuery("");
                           setIsClientSearchOpen(false);
                         }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    ) : selectedClient ? (
+                      <button
+                        type="button"
+                        onClick={handleClearClient}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 cursor-pointer p-0.5 rounded transition-colors"
+                        title={t("Detach client", "Odpojiť klienta", "Ügyfél leválasztása")}
                       >
                         <X className="size-3.5" />
                       </button>
@@ -662,16 +681,26 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         <UserCheck className="size-3.5 text-emerald-600" />
                         {t("Synced CRM Client", "Zosynchronizovaný klient", "Szinkronizált ügyfél")}
                       </span>
-                      {onOpenClient && (
+                      <div className="flex items-center gap-2">
+                        {onOpenClient && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenClient(selectedClient.id)}
+                            className="text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 hover:underline cursor-pointer"
+                          >
+                            {t("Open Profile", "Otvoriť profil", "Profil megnyitása")}
+                            <ExternalLink className="size-3" />
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => onOpenClient(selectedClient.id)}
-                          className="text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 hover:underline"
+                          onClick={handleClearClient}
+                          className="text-micro font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 hover:underline cursor-pointer"
                         >
-                          {t("Open Profile", "Otvoriť profil", "Profil megnyitása")}
-                          <ExternalLink className="size-3" />
+                          <X className="size-3" />
+                          {t("Change / Detach", "Zmeniť / Odpojiť", "Módosítás / Leválasztás")}
                         </button>
-                      )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -720,7 +749,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleSelectClient(selectedClient)}
-                        className="text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1"
+                        className="text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
                       >
                         <RotateCcw className="size-3" />
                         {t("Re-sync addresses", "Znovu zosúladiť adresy", "Címek újraszinkronizálása")}
@@ -728,13 +757,22 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 rounded-xl border border-dashed border-slate-300 text-center text-slate-500 text-ui">
-                    <p className="font-medium">
-                      {t("No client selected yet.", "Zatiaľ nie je vybraný žiadny klient.", "Még nincs kiválasztva ügyfél.")}
-                    </p>
-                    <p className="text-micro text-slate-400 mt-1">
-                      {t("Type above to search and attach an existing CRM client.", "Vyhľadajte a priraďte existujúceho klienta vyššie.", "Keressen és csatoljon egy létező ügyfelet.")}
-                    </p>
+                  <div className="p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 text-center space-y-2">
+                    <div className="size-10 rounded-xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                      <User className="size-5 text-slate-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-ui font-bold text-slate-700">
+                        {t("No client selected", "Nie je vybraný žiadny klient", "Nincs kiválasztva ügyfél")}
+                      </h4>
+                      <p className="text-micro text-slate-400 max-w-sm mx-auto mt-0.5">
+                        {t(
+                          "Search and select an existing CRM client above to link this order, or switch to Guest Checkout.",
+                          "Hore vyhľadajte a vyberte existujúceho klienta pre prepojenie s objednávkou, alebo prepnite na Nákup bez registrácie.",
+                          "Keressen és válasszon ki egy ügyfelet fent a megrendelés összekapcsolásához, vagy váltson Vendég fizetésre."
+                        )}
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
