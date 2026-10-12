@@ -1494,18 +1494,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
-  const getInitialDetailTab = (): "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices" => {
+  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "financial_status" | "files";
+
+  const getInitialDetailTab = (): DetailTabKey => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
     const tabParam = params.get("tab");
-    if (tabParam === "invoices" || tabParam === "files" || tabParam === "leads" || tabParam === "financial_status" || tabParam === "timeline" || tabParam === "tasks") {
-      return tabParam as "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices";
+    if (
+      tabParam === "invoices" ||
+      tabParam === "orders" ||
+      tabParam === "files" ||
+      tabParam === "leads" ||
+      tabParam === "financial_status" ||
+      tabParam === "timeline" ||
+      tabParam === "tasks"
+    ) {
+      return tabParam as DetailTabKey;
     }
     return "timeline";
   };
 
-  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices">(getInitialDetailTab);
+  const [activeDetailTab, setActiveDetailTab] = useState<DetailTabKey>(getInitialDetailTab);
 
-  const handleDetailTabChange = (tab: "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices") => {
+  const handleDetailTabChange = (tab: DetailTabKey) => {
     setActiveDetailTab(tab);
     const hash = window.location.hash;
     const [base, query] = hash.split("?");
@@ -3691,7 +3701,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 items={[
                   { key: "timeline", icon: <Clock className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.history_timeline") },
                   { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
-                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: activeClient.timeline.filter(e => e.fileName).length },
+                  { key: "orders", icon: <ShoppingCart className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
+                  { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
                   {
                     key: "leads",
                     icon: <Layers className="h-4.5 w-4.5" />,
@@ -3699,8 +3710,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     count: (activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length,
                   },
                   { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
-                  { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
-                  { key: "orders", icon: <ShoppingCart className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
+                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: activeClient.timeline.filter(e => e.fileName).length },
                 ]}
               />
 
