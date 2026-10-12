@@ -22,9 +22,9 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
 - **One Build = One Version Bump**: Every significant change, new build, or release milestone requires bumping the application version.
-- **Version File**: Update `export const VERSION = "1.11.X-Lemon";` in [`src/utils/version.ts`](file:///Users/erik/Documents/vibe%20coding/crm/src/utils/version.ts).
-- **Changelog**: Add a structured entry in [`1.11-lemon-changelog.md`](file:///Users/erik/Documents/vibe%20coding/crm/1.11-lemon-changelog.md) with date and clear breakdown.
-- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.11.X-Lemon)` or `fix(...): description (v1.11.X-Lemon)`).
+- **Version File**: Update `export const VERSION = "1.12.X-Mango";` in [`src/utils/version.ts`](file:///Users/erik/Documents/vibe%20coding/crm/src/utils/version.ts).
+- **Changelog**: Add a structured entry in [`1.12-mango-changelog.md`](file:///Users/erik/Documents/vibe%20coding/crm/1.12-mango-changelog.md) with date and clear breakdown.
+- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.12.X-Mango)` or `fix(...): description (v1.12.X-Mango)`).
 
 ### 2. Verification & Build Cleanliness
 
