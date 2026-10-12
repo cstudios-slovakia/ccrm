@@ -524,14 +524,42 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                   "Úlohu môže archivovať iba ten, kto ju vytvoril.",
                   "Csak a feladat létrehozója archiválhatja.",
               );
-    // One client / lead filter for My Tasks and Global Tasks; "" shows everything.
+    // Task-attribute filters shared by My Tasks, Global Tasks and Done & Archived.
+    // Each one is fired by clicking that attribute on a task (client / lead
+    // badge excepted — that is a link) or by the matching dropdown, and each
+    // shows as a removable chip in every section. "" / null shows everything;
+    // the assignee uses "all" because the Global Tasks select always has.
     const [clientFilter, setClientFilter] = useState("");
+    const [projectFilter, setProjectFilter] = useState("");
+    const [assigneeFilter, setAssigneeFilter] = useState("all");
+    const [tagFilter, setTagFilter] = useState<string | null>(null);
+    // My Tasks only: Global Tasks and Done & Archived have a date-range picker
+    // for this. A due-date click there fills the picker instead.
+    const [myDayFilter, setMyDayFilter] = useState("");
+
     const matchesClientFilter = (task: Task) =>
         !clientFilter || String(task.relatedLeadId ?? "") === clientFilter;
+    const matchesTaskFilters = (task: Task) => {
+        if (!matchesClientFilter(task)) return false;
+        if (projectFilter && String(task.relatedProjectId ?? "") !== projectFilter)
+            return false;
+        if (assigneeFilter !== "all" && !task.assignedUsers?.includes(assigneeFilter))
+            return false;
+        if (tagFilter) {
+            const target = tagFilter.toLowerCase();
+            const taskTags = [
+                ...(task.tags || []),
+                ...extractTagsFromText(task.title || ""),
+                ...extractTagsFromText(task.description || ""),
+            ].map((tg) => tg.toLowerCase());
+            if (!taskTags.includes(target)) return false;
+        }
+        return true;
+    };
     const myTasks = tasks
         .filter(isMyTask)
         .filter((task) => !task.archived)
-        .filter(matchesClientFilter);
+        .filter(matchesTaskFilters);
 
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
     const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
@@ -663,6 +691,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Archive: the same switch over the completed-task history — the grouped list
     // (default) or a calendar of the same filtered tasks, again with its own
     // anchor, scope and day selection.
+    // Done & Archived: two sub-tabs over one filter set — tasks marked done,
+    // and tasks someone archived by hand. An archived task lives only under
+    // Archived, even when it is also done.
+    const [archiveTab, setArchiveTab] = useState<"done" | "archived">("done");
     const [archiveView, setArchiveView] = useState<"list" | "calendar">("list");
     const [archiveCalendarDate, setArchiveCalendarDate] = useState(new Date());
     const [archiveCalendarScope, setArchiveCalendarScope] = useState<
@@ -713,7 +745,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [globalDateEnd, setGlobalDateEnd] = useState<Date | null>(null);
     const [archiveDateStart, setArchiveDateStart] = useState<Date | null>(null);
     const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
-    const [archiveTagFilter, setArchiveTagFilter] = useState<string | null>(null);
 
     // Toggle switch & days threshold to show closed tasks on the tasks card
     const [showClosedTasks, setShowClosedTasks] = useState<boolean>(() => {
@@ -782,9 +813,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Global view filters & user list memo
     const [globalPriorityFilter, setGlobalPriorityFilter] = useState("all");
     const [globalStateFilter, setGlobalStateFilter] = useState("all");
-    // "all" keeps the whole-team board; any other value narrows both halves of
-    // the split view to that one project manager.
-    const [globalUserFilter, setGlobalUserFilter] = useState("all");
+    // The assignee filter (`assigneeFilter`, above): "all" keeps the whole-team
+    // board; any other value narrows both halves of the split view to that one
+    // project manager.
     const allUsersList = useMemo(() => {
         const list = users.map((u) => u.name);
         tasks.forEach((t) => {
@@ -809,10 +840,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // last task reassigned). Fall back to the team-wide board instead of
     // leaving the filter pinned to a name that matches nothing.
     React.useEffect(() => {
-        if (globalUserFilter !== "all" && !allUsersList.includes(globalUserFilter)) {
-            setGlobalUserFilter("all");
+        if (assigneeFilter !== "all" && !allUsersList.includes(assigneeFilter)) {
+            setAssigneeFilter("all");
         }
-    }, [allUsersList, globalUserFilter]);
+    }, [allUsersList, assigneeFilter]);
 
     // All distinct tags collected from stored task.tags plus hashtags in titles/descriptions
     const allExistingTags = useMemo(() => {
@@ -874,12 +905,48 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return list;
     }, [users, projects, leads, t]);
 
-    // Handler when any tag is clicked anywhere: switch to Archive and filter by tag
+    // Clicking a tag anywhere filters the section you are in by it (clicking the
+    // active tag again clears it). Until 1.11 this jumped to the Archive.
     const handleTagClick = useCallback((tag: string) => {
         setEditingTask(null);
-        setViewMode("archive");
-        setArchiveTagFilter(tag.replace(/^#/, ""));
+        const clean = tag.replace(/^#/, "");
+        setTagFilter((prev) =>
+            prev?.toLowerCase() === clean.toLowerCase() ? null : clean,
+        );
     }, []);
+    // Same click-again-to-clear behaviour for the project and assignee badges.
+    const handleProjectClick = (projectId: string) =>
+        setProjectFilter((prev) => (prev === projectId ? "" : projectId));
+    const handleAssigneeClick = (name: string) =>
+        setAssigneeFilter((prev) => (prev === name ? "all" : name));
+    // A due-date click filters to that one day, wherever the section keeps its
+    // date filter: the range picker on Global Tasks and Done & Archived, a
+    // plain day chip on My Tasks. Clicking the active day clears it.
+    const handleDayClick = (dateStr: string) => {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        if (!y || !m || !d) return;
+        const day = new Date(y, m - 1, d);
+        const isActive = (start: Date | null, end: Date | null) =>
+            !!start && toLocalDateStr(start) === dateStr && toLocalDateStr(end || start) === dateStr;
+        if (viewMode === "global") {
+            const clear = isActive(globalDateStart, globalDateEnd);
+            setGlobalDateStart(clear ? null : day);
+            setGlobalDateEnd(clear ? null : day);
+        } else if (viewMode === "archive") {
+            const clear = isActive(archiveDateStart, archiveDateEnd);
+            setArchiveDateStart(clear ? null : day);
+            setArchiveDateEnd(clear ? null : day);
+        } else {
+            setMyDayFilter((prev) => (prev === dateStr ? "" : dateStr));
+        }
+    };
+    const isDayActive = (dateStr: string) => {
+        const sameDay = (start: Date | null, end: Date | null) =>
+            !!start && toLocalDateStr(start) === dateStr && toLocalDateStr(end || start) === dateStr;
+        if (viewMode === "global") return sameDay(globalDateStart, globalDateEnd);
+        if (viewMode === "archive") return sameDay(archiveDateStart, archiveDateEnd);
+        return myDayFilter === dateStr;
+    };
 
     // The create popup; `addDeadline` pre-fills its date (the calendar's "+" on a day).
     const openAddTask = (deadline?: string) => {
@@ -1015,24 +1082,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filteredArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
-            if (!matchesClientFilter(task)) return false;
+            if (task.archived) return false;
+            // Client, project, assignee and tag — the filters every section shares.
+            if (!matchesTaskFilters(task)) return false;
 
             // The archive is a team-wide history: every user sees the completed
             // tasks of the whole team, not just their own. Use the "Completed By"
             // filter to narrow it down to a single person.
-
-            // Tag filter
-            if (archiveTagFilter) {
-                const targetTag = archiveTagFilter.toLowerCase();
-                const taskTags = [
-                    ...(task.tags || []),
-                    ...extractTagsFromText(task.title || ""),
-                    ...extractTagsFromText(task.description || ""),
-                ].map((tg) => tg.toLowerCase());
-                if (!taskTags.includes(targetTag)) {
-                    return false;
-                }
-            }
 
             // Item 9 — calendar date-range filter (by deadline/due date)
             if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd))
@@ -1064,6 +1120,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }
 
             // Timing Status
+            // Set from the Archived tab; nothing here is unfinished, so the
+            // Done tab's count reads 0 while it is on.
+            if (archiveTimingFilter === "not_completed") return false;
             if (archiveTimingFilter !== "all") {
                 const overdueDays = calculateOverdueDays(
                     task.deadline,
@@ -1087,9 +1146,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveTimingFilter,
         archiveDateStart,
         archiveDateEnd,
-        archiveTagFilter,
         unknownCompletedBy,
         clientFilter,
+        projectFilter,
+        assigneeFilter,
+        tagFilter,
     ]);
 
     const archivedTasksGroupedByDate = useMemo(() => {
@@ -1114,7 +1175,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filteredManuallyArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!task.archived) return false;
-            if (!matchesClientFilter(task)) return false;
+            if (!matchesTaskFilters(task)) return false;
 
             // Search Query
             if (archiveSearchQuery.trim()) {
@@ -1133,22 +1194,41 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 return false;
             }
 
-            // Tag filter
-            if (archiveTagFilter) {
-                const targetTag = archiveTagFilter.toLowerCase();
-                const taskTags = [
-                    ...(task.tags || []),
-                    ...extractTagsFromText(task.title || ""),
-                    ...extractTagsFromText(task.description || ""),
-                ].map((tg) => tg.toLowerCase());
-                if (!taskTags.includes(targetTag)) {
-                    return false;
-                }
-            }
-
             // Date filter
             if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd)) {
                 return false;
+            }
+
+            // Archiving doesn't require the task to be done, and an unfinished
+            // task has no completer or completion time — so a Completed By or
+            // On Time / Overdue filter matches finished tasks only.
+            const isDone = isDoneState(task.status);
+
+            // Completed By
+            if (
+                archiveUserFilter !== "all" &&
+                (!isDone ||
+                    (task.completedBy || unknownCompletedBy) !==
+                        archiveUserFilter)
+            ) {
+                return false;
+            }
+
+            // Timing Status
+            if (archiveTimingFilter === "not_completed") {
+                if (isDone) return false;
+            } else if (archiveTimingFilter !== "all") {
+                if (!isDone) return false;
+                const overdueDays = calculateOverdueDays(
+                    task.deadline,
+                    task.completedAt,
+                    task.deadlineTime,
+                );
+                const isOverdue = overdueDays !== null && overdueDays > 0;
+                if (archiveTimingFilter === "overdue" && !isOverdue)
+                    return false;
+                if (archiveTimingFilter === "on_time" && isOverdue)
+                    return false;
             }
 
             return true;
@@ -1157,16 +1237,26 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         tasks,
         archiveSearchQuery,
         archivePriorityFilter,
+        archiveUserFilter,
+        archiveTimingFilter,
+        unknownCompletedBy,
         archiveDateStart,
         archiveDateEnd,
-        archiveTagFilter,
         clientFilter,
+        projectFilter,
+        assigneeFilter,
+        tagFilter,
     ]);
 
     // Completed tasks land on the archive calendar by their due date, which is
     // the same date the grouped list buckets them under.
     const archivedTasksForDate = (dateStr: string) =>
         filteredArchivedTasks
+            .filter((task) => task.deadline === dateStr)
+            .sort(byDeadlineTime);
+
+    const manuallyArchivedTasksForDate = (dateStr: string) =>
+        filteredManuallyArchivedTasks
             .filter((task) => task.deadline === dateStr)
             .sort(byDeadlineTime);
 
@@ -1271,7 +1361,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // --- Bulk Selection & Operations ---
-    const isSingleUserView = canSeeAllTasks && globalUserFilter !== "all";
+    const isSingleUserView = canSeeAllTasks && assigneeFilter !== "all";
 
     const matchesGlobalFilters = React.useCallback(
         (task: Task) => {
@@ -1282,17 +1372,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 return false;
             if (globalStateFilter !== "all" && task.status !== globalStateFilter)
                 return false;
-            if (
-                isSingleUserView &&
-                !task.assignedUsers?.includes(globalUserFilter)
-            )
-                return false;
             if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
                 return false;
-            if (!matchesClientFilter(task)) return false;
+            // Client, project, assignee and tag — the filters every section shares.
+            if (!matchesTaskFilters(task)) return false;
             return true;
         },
-        [globalPriorityFilter, globalStateFilter, isSingleUserView, globalUserFilter, globalDateStart, globalDateEnd, clientFilter]
+        [globalPriorityFilter, globalStateFilter, globalDateStart, globalDateEnd, clientFilter, projectFilter, assigneeFilter, tagFilter]
     );
 
     const filteredGlobalTasks = useMemo(() => {
@@ -1304,19 +1390,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const visibleTasksInCurrentView = useMemo(() => {
         if (viewMode === "calendar") {
-            return myTasks;
+            return myDayFilter
+                ? myTasks.filter((task) => task.deadline === myDayFilter)
+                : myTasks;
         }
         if (viewMode === "global") {
             return filteredGlobalTasks;
         }
         if (viewMode === "archive") {
-            const map = new Map<string, Task>();
-            filteredArchivedTasks.forEach((t) => map.set(t.id, t));
-            filteredManuallyArchivedTasks.forEach((t) => map.set(t.id, t));
-            return Array.from(map.values());
+            return archiveTab === "done"
+                ? filteredArchivedTasks
+                : filteredManuallyArchivedTasks;
         }
         return [];
-    }, [viewMode, myTasks, filteredGlobalTasks, filteredArchivedTasks, filteredManuallyArchivedTasks]);
+    }, [viewMode, archiveTab, myTasks, myDayFilter, filteredGlobalTasks, filteredArchivedTasks, filteredManuallyArchivedTasks]);
 
     const areAllVisibleSelected = useMemo(() => {
         if (visibleTasksInCurrentView.length === 0) return false;
@@ -2390,21 +2477,26 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
 
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
-    // All personal and delegated tasks are grouped together in the same time divisions:
-    const overdueTasks = myTasks
+    // All personal and delegated tasks are grouped together in the same time divisions.
+    // The day chip narrows these lists only — the calendar beside them keeps
+    // showing every day, so there is still a month to look at.
+    const bucketSourceTasks = myDayFilter
+        ? myTasks.filter((t) => t.deadline === myDayFilter)
+        : myTasks;
+    const overdueTasks = bucketSourceTasks
         .filter((t) => isTaskOverdue(t))
         .sort(byDeadline);
-    const todayTasks = myTasks
+    const todayTasks = bucketSourceTasks
         .filter((t) => t.deadline === todayStr && !isTaskOverdue(t) && !isDoneState(t.status))
         .sort(byDeadlineTime);
-    const tomorrowTasks = myTasks
+    const tomorrowTasks = bucketSourceTasks
         .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
         .sort(byDeadlineTime);
-    const futureTasks = myTasks
+    const futureTasks = bucketSourceTasks
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort(byDeadline);
     const doneTasks = showClosedTasks
-        ? myTasks
+        ? bucketSourceTasks
               .filter((t) => isClosedRecentTask(t))
               .sort(byCompletionDesc)
         : [];
@@ -2934,6 +3026,107 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // One row of the Archived tab — a task someone archived by hand, done or
+    // not. Shared by the list and the calendar's day view.
+    const renderManuallyArchivedTaskRow = (task: Task) => {
+        const isSelected = selectedTaskIds.has(task.id);
+        return (
+            <div
+                key={task.id}
+                className={`p-2.5 rounded-xl border ${
+                    isSelected
+                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
+                        : "border-slate-200 bg-slate-50/60"
+                } flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 text-ui`}
+            >
+                <div className="flex-1 min-w-0 flex items-center gap-3">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelect(task.id);
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                        aria-label={`Select ${task.title}`}
+                    />
+                    <span
+                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                            task.priority === "high"
+                                ? "bg-rose-500"
+                                : task.priority === "medium"
+                                  ? "bg-amber-500"
+                                  : "bg-slate-400"
+                        }`}
+                    />
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                                onClick={() => setEditingTask(task)}
+                                className={`font-extrabold truncate cursor-pointer transition-colors ${
+                                    isDoneState(task.status)
+                                        ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
+                                        : "text-slate-700 hover:text-indigo-600"
+                                }`}
+                            >
+                                <TaskPillText
+                                    text={task.title}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
+                            </span>
+                            {task.assignedUsers &&
+                                task.assignedUsers.length > 0 && (
+                                    <span className="text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30">
+                                        <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                        <span className="truncate">
+                                            {task.assignedUsers.join(", ")}
+                                        </span>
+                                    </span>
+                                )}
+                        </div>
+                        <div className="text-micro font-bold text-slate-400 mt-0.5">
+                            {t("Due", "Termín", "Határidő")}
+                            : {formatTaskDate(task.deadline)}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                        onClick={() => handleUnarchiveTask(task)}
+                        disabled={!mayArchiveTask(task)}
+                        title={
+                            mayArchiveTask(task)
+                                ? undefined
+                                : archiveDeniedHint()
+                        }
+                        className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
+                    >
+                        <RotateCcw className="h-3 w-3 stroke-[2.5]" />
+                        {t(
+                            "Unarchive",
+                            "Zrušiť archiváciu",
+                            "Archiválás visszavonása",
+                        )}
+                    </button>
+                    {mayDeleteTask(task) && (
+                        <button
+                            onClick={() => handleDeleteTask(task)}
+                            title={t(
+                                "Delete permanently",
+                                "Natrvalo odstrániť",
+                                "Végleges törlés",
+                            )}
+                            className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                        >
+                            <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     // One time bucket of the left-hand task panel (Overdue / Today / Tomorrow /
     // Upcoming). Shared by My Calendar and Global Tasks so both panels look and
     // behave the same. Pass `expanded` to make the bucket collapsible; leave it
@@ -3004,7 +3197,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const columnUsers = !canSeeAllTasks
             ? [myName]
             : isSingleUserView
-              ? [globalUserFilter]
+              ? [assigneeFilter]
               : allUsersList;
 
         const filteredTasks = filteredGlobalTasks;
@@ -3234,8 +3427,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     )}
                                 </span>
                                 <CustomSelect
-                                    value={globalUserFilter}
-                                    onChange={(v) => setGlobalUserFilter(v)}
+                                    value={assigneeFilter}
+                                    onChange={(v) => setAssigneeFilter(v)}
                                     size="sm"
                                     options={[
                                         {
@@ -3546,7 +3739,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             className={`flex flex-col space-y-6 min-h-0 ${
                 isCentered
                     ? "w-full max-w-3xl ws-lg:max-w-4xl mx-auto p-2"
-                    : "lg:h-full ws-lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
+                    : "overflow-visible h-auto pr-2 pb-8"
             }`}
         >
             {/* Create New Task Section: Sticky action bar matching column width */}
@@ -4114,7 +4307,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     return (
         <div
-            className={`w-full ${viewMode === "archive" ? "h-auto shrink-0" : "lg:h-[calc(100vh-8rem)] h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
+            className={`w-full ${viewMode === "archive" || viewMode === "calendar" ? "h-auto shrink-0" : "lg:h-[calc(100vh-8rem)] h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
         >
             {/* HEADER */}
             <PageHeader
@@ -4132,9 +4325,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Globális feladatok",
                                 )
                               : t(
-                                  "Task Archive",
-                                  "Archív dokončených úloh",
-                                  "Feladat archívum",
+                                  "Done & Archived Tasks",
+                                  "Hotové a archivované úlohy",
+                                  "Kész és archivált feladatok",
                               )}
               subtitle={viewMode === "calendar"
                             ? t(
@@ -4148,11 +4341,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Aktívne pracovné zaťaženie celého tímu.",
                                     "Az egész csapat aktív munkaterhelése.",
                                 )
-                              : t(
-                                  "History of completed tasks, logging details, and timing status.",
-                                  "História dokončených úloh s informáciami o dobe omeškania.",
-                                  "Befejezett feladatok előzményei és késési státuszai.",
-                              )}
+                              : archiveTab === "done"
+                                ? t(
+                                      "History of completed tasks, logging details, and timing status.",
+                                      "História dokončených úloh s informáciami o dobe omeškania.",
+                                      "Befejezett feladatok előzményei és késési státuszai.",
+                                  )
+                                : t(
+                                      "Tasks archived by hand — hidden from the calendar and task lists.",
+                                      "Ručne archivované úlohy — skryté z kalendára a zoznamov úloh.",
+                                      "Kézzel archivált feladatok — elrejtve a naptárból és a feladatlistákból.",
+                                  )}
               actions={<>
                   <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 ws-sm:gap-4 flex-wrap">
                       <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1 self-start ws-sm:self-auto overflow-x-auto max-w-full">
@@ -4188,7 +4387,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                               }`}
                           >
-                              {t("Archive", "Archív", "Archívum")}
+                              {t(
+                                  "Done & Archived",
+                                  "Hotové a archív",
+                                  "Kész és archívum",
+                              )}
                           </button>
                       </div>
 
@@ -4220,6 +4423,48 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 "Vissza a naptárhoz",
                             )}
                         </button>
+                        {/* Done / Archived sub-tabs. The counts follow the
+                            filters, so they say what each tab will show. */}
+                        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
+                            {(["done", "archived"] as const).map((tab) => (
+                                <button
+                                    key={tab}
+                                    type="button"
+                                    onClick={() => {
+                                        if (tab === archiveTab) return;
+                                        setArchiveTab(tab);
+                                        setArchiveSelectedDay(null);
+                                        // Every task on Done is completed, so
+                                        // "Not completed" would empty it.
+                                        if (
+                                            tab === "done" &&
+                                            archiveTimingFilter === "not_completed"
+                                        )
+                                            setArchiveTimingFilter("all");
+                                        setSelectedTaskIds(new Set());
+                                    }}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                        archiveTab === tab
+                                            ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                            : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                    }`}
+                                >
+                                    {tab === "done" ? (
+                                        <CheckSquare className="h-3.5 w-3.5" />
+                                    ) : (
+                                        <ArchiveIcon className="h-3.5 w-3.5" />
+                                    )}
+                                    {tab === "done"
+                                        ? t("Done", "Hotové", "Kész")
+                                        : t("Archived", "Archivované", "Archivált")}
+                                    <span className="text-micro font-bold text-slate-400 bg-slate-200/70 px-1.5 py-0.5 rounded-full">
+                                        {tab === "done"
+                                            ? filteredArchivedTasks.length
+                                            : filteredManuallyArchivedTasks.length}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                         <div className="flex items-center gap-3 flex-wrap">
                             {/* The archive reads either as the grouped history
                                 list or as a calendar of the same completed
@@ -4274,18 +4519,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     </button>
                                 ))}
                             </div>
-                            <span className="type-overline text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
-                                {t(
-                                    "Total Done:",
-                                    "Celkovo hotovo:",
-                                    "Összesen kész:",
-                                )}{" "}
-                                {tasks.filter((t) => isDoneState(t.status)).length}
-                            </span>
                         </div>
                     </div>
 
                     {/* FILTER ROW */}
+                    {/* One filter set drives both tabs. */}
                     <div className="grid grid-cols-1 ws-sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100 mb-4 shrink-0 text-micro font-bold">
                         {/* Client / Lead */}
                         <div className="ws-sm:col-span-5 empty:hidden">
@@ -4379,6 +4617,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     },
                                     { value: "on_time", label: t("On Time", "Načas", "Időben") },
                                     { value: "overdue", label: t("Overdue", "Omeškané", "Lejárt") },
+                                    // Only archived tasks can be unfinished.
+                                    ...(archiveTab === "archived"
+                                        ? [
+                                              {
+                                                  value: "not_completed",
+                                                  label: t(
+                                                      "Not completed",
+                                                      "Nedokončené",
+                                                      "Nem befejezett",
+                                                  ),
+                                              },
+                                          ]
+                                        : []),
                                 ]}
                             />
                         </div>
@@ -4420,23 +4671,38 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     {archiveView === "calendar" ? (
                         <div className="h-140 ws-lg:h-[calc(100vh-22rem)] ws-lg:min-h-130 flex flex-col rounded-3xl border border-slate-200 overflow-hidden bg-white">
-                            {renderCalendarPanel({
-                                anchor: archiveCalendarDate,
-                                scope: archiveCalendarScope,
-                                selectedDay: archiveSelectedDay,
-                                onSelectDay: setArchiveSelectedDay,
-                                tasksForDate: archivedTasksForDate,
-                                renderDayItem: renderArchivedTaskRow,
-                                emptyDayLabel: t(
-                                    "No tasks completed on this day.",
-                                    "V tento deň nebola dokončená žiadna úloha.",
-                                    "Ezen a napon nem fejeztek be feladatot.",
-                                ),
-                            })}
+                            {archiveTab === "done"
+                                ? renderCalendarPanel({
+                                      anchor: archiveCalendarDate,
+                                      scope: archiveCalendarScope,
+                                      selectedDay: archiveSelectedDay,
+                                      onSelectDay: setArchiveSelectedDay,
+                                      tasksForDate: archivedTasksForDate,
+                                      renderDayItem: renderArchivedTaskRow,
+                                      emptyDayLabel: t(
+                                          "No tasks completed on this day.",
+                                          "V tento deň nebola dokončená žiadna úloha.",
+                                          "Ezen a napon nem fejeztek be feladatot.",
+                                      ),
+                                  })
+                                : renderCalendarPanel({
+                                      anchor: archiveCalendarDate,
+                                      scope: archiveCalendarScope,
+                                      selectedDay: archiveSelectedDay,
+                                      onSelectDay: setArchiveSelectedDay,
+                                      tasksForDate: manuallyArchivedTasksForDate,
+                                      renderDayItem: renderManuallyArchivedTaskRow,
+                                      emptyDayLabel: t(
+                                          "No archived tasks due on this day.",
+                                          "Na tento deň nie je žiadna archivovaná úloha.",
+                                          "Erre a napra nincs archivált feladat.",
+                                      ),
+                                  })}
                         </div>
                     ) : (
                         <div className="pr-1">
-                            {filteredArchivedTasks.length > 0 && (
+                            {archiveTab === "done" &&
+                                filteredArchivedTasks.length > 0 && (
                                 <div className="space-y-6">
                                     {archivedTasksGroupedByDate.map((group) => (
                                         <div key={group.date} className="space-y-2">
@@ -4458,140 +4724,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 </div>
                             )}
 
-                            {filteredManuallyArchivedTasks.length > 0 && (
-                                <div className={filteredArchivedTasks.length > 0 ? "mt-8 pt-6 border-t border-slate-100" : ""}>
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <ArchiveIcon className="h-4 w-4 text-slate-400" />
-                                        <span className="type-overline text-slate-500">
-                                            {t(
-                                                "Archived Tasks",
-                                                "Archivované úlohy",
-                                                "Archivált feladatok",
-                                            )}
-                                        </span>
-                                        <span className="text-micro font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                            {filteredManuallyArchivedTasks.length}
-                                        </span>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {filteredManuallyArchivedTasks.map((task) => {
-                                            const isSelected = selectedTaskIds.has(task.id);
-                                            return (
-                                                <div
-                                                    key={task.id}
-                                                    className={`p-2.5 rounded-xl border ${
-                                                        isSelected
-                                                            ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
-                                                            : "border-slate-200 bg-slate-50/60"
-                                                    } flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 text-ui`}
-                                                >
-                                                    <div className="flex-1 min-w-0 flex items-center gap-3">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={(e) => {
-                                                                e.stopPropagation();
-                                                                handleToggleSelect(task.id);
-                                                            }}
-                                                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
-                                                            aria-label={`Select ${task.title}`}
-                                                        />
-                                                        <span
-                                                            className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                                                                task.priority ===
-                                                                "high"
-                                                                    ? "bg-rose-500"
-                                                                    : task.priority ===
-                                                                        "medium"
-                                                                      ? "bg-amber-500"
-                                                                      : "bg-slate-400"
-                                                            }`}
-                                                        />
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span
-                                                                    onClick={() => setEditingTask(task)}
-                                                                    className={`font-extrabold truncate cursor-pointer transition-colors ${
-                                                                        isDoneState(task.status)
-                                                                            ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
-                                                                            : "text-slate-700 hover:text-indigo-600"
-                                                                    }`}
-                                                                >
-                                                                    <TaskPillText
-                                                                        text={task.title}
-                                                                        onTagClick={handleTagClick}
-                                                                        knownEntities={mentionEntities}
-                                                                    />
-                                                                </span>
-                                                                {task.assignedUsers &&
-                                                                    task.assignedUsers
-                                                                        .length > 0 && (
-                                                                        <span className="text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30">
-                                                                            <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                                                            <span className="truncate">
-                                                                                {task.assignedUsers.join(
-                                                                                    ", ",
-                                                                                )}
-                                                                            </span>
-                                                                        </span>
-                                                                    )}
-                                                            </div>
-                                                            <div className="text-micro font-bold text-slate-400 mt-0.5">
-                                                                {t(
-                                                                    "Due",
-                                                                    "Termín",
-                                                                    "Határidő",
-                                                                )}
-                                                                : {formatTaskDate(task.deadline)}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5 shrink-0">
-                                                        <button
-                                                            onClick={() =>
-                                                                handleUnarchiveTask(
-                                                                    task,
-                                                                )
-                                                            }
-                                                            disabled={!mayArchiveTask(task)}
-                                                            title={
-                                                                mayArchiveTask(task)
-                                                                    ? undefined
-                                                                    : archiveDeniedHint()
-                                                            }
-                                                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
-                                                        >
-                                                            <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                                                            {t(
-                                                                "Unarchive",
-                                                                "Zrušiť archiváciu",
-                                                                "Archiválás visszavonása",
-                                                            )}
-                                                        </button>
-                                                        {mayDeleteTask(task) && (
-                                                            <button
-                                                                onClick={() =>
-                                                                    handleDeleteTask(task)
-                                                                }
-                                                                title={t(
-                                                                    "Delete permanently",
-                                                                    "Natrvalo odstrániť",
-                                                                    "Végleges törlés",
-                                                                )}
-                                                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                                                            >
-                                                                <Trash2 className="h-3 w-3 stroke-[2.5]" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                            {archiveTab === "archived" &&
+                                filteredManuallyArchivedTasks.length > 0 && (
+                                <div className="space-y-2">
+                                    {filteredManuallyArchivedTasks.map(
+                                        renderManuallyArchivedTaskRow,
+                                    )}
                                 </div>
                             )}
 
-                            {filteredArchivedTasks.length === 0 && filteredManuallyArchivedTasks.length === 0 && (
+                            {(archiveTab === "done"
+                                ? filteredArchivedTasks
+                                : filteredManuallyArchivedTasks
+                            ).length === 0 && (
                                 <div className="py-20 text-center text-slate-400">
                                     <div className="text-display mb-3">🔍</div>
                                     <div className="font-bold text-slate-700 uppercase tracking-wider">
@@ -4620,7 +4765,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {renderMyTaskListColumn(true)}
                 </div>
             ) : (
-                <div className="flex-1 min-h-0 grid grid-cols-1 ws-lg:grid-cols-2 gap-8">
+                <div className="flex-1 min-h-0 grid grid-cols-1 ws-lg:grid-cols-2 ws-lg:items-start gap-8">
                     {/* LEFT COLUMN: TASK LISTS */}
                     {renderMyTaskListColumn(false)}
 
@@ -4630,7 +4775,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {renderTimelineView()}
                         </div>
                     ) : (
-                        <div className="flex flex-col ws-lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
+                        <div className="flex flex-col h-auto self-start ws-lg:sticky ws-lg:top-4 bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
                             {renderCalendarPanel({
                                 anchor: currentDate,
                                 scope: calendarScope,
