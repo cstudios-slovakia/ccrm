@@ -2232,6 +2232,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         return true;
     };
 
+    // Read scope of the caller: the same resolution the GET filters by, so a write
+    // is limited to what the caller was allowed to read in the first place.
+    $scope = ccrm_read_scope($pdo, $sessionUser);
+    // A collection that sits behind an HR toggle on top of its module (payroll
+    // behind employees.salaries, leave behind employees.vacations).
+    $ccrm_skip_unless = function (string $toggleKey, string $collection) use ($scope, &$permissionSkipped): bool {
+        if (ccrm_can($scope, $toggleKey)) {
+            return false;
+        }
+        if (!in_array($collection, $permissionSkipped, true)) {
+            $permissionSkipped[] = $collection;
+            error_log('[ccrm] permissionSkipped: ' . $collection . ' (no ' . $toggleKey . ')');
+        }
+        return true;
+    };
+    // Note a row the caller may not touch because it lies outside their visible set.
+    $ccrm_note_out_of_scope = function (string $tag) use (&$permissionSkipped): void {
+        if (!in_array($tag, $permissionSkipped, true)) {
+            $permissionSkipped[] = $tag;
+            error_log('[ccrm] permissionSkipped: ' . $tag . ' (row outside the visible set of the caller)');
+        }
+    };
+
     $input = file_get_contents('php://input');
     $payload = json_decode($input, true);
 
@@ -2616,7 +2639,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // identity and API credentials on any unrelated settings save.
             $existingBillingRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'COMPANY_BILLING_SETTINGS'")->fetchColumn();
             $billingValue = ($existingBillingRaw !== false && $existingBillingRaw !== null) ? $existingBillingRaw : null;
-            if (array_key_exists('companyBillingSettings', $s) && is_array($s['companyBillingSettings'])) {
+            // The GET sends these two blobs only to roles that use them (invoices,
+            // financial, general_config); everyone else holds an empty default, which
+            // must never be written back over the stored company identity and keys.
+            $canSeeBilling = ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config');
+            if ($canSeeBilling && array_key_exists('companyBillingSettings', $s) && is_array($s['companyBillingSettings'])) {
                 $billingValue = json_encode($s['companyBillingSettings'], JSON_UNESCAPED_UNICODE);
             }
 
@@ -2624,7 +2651,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingInvInt = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? json_decode($existingInvIntRaw, true) : [];
             if (!is_array($existingInvInt)) { $existingInvInt = []; }
             $invIntValue = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? $existingInvIntRaw : null;
-            if (array_key_exists('invoicingIntegrations', $s) && is_array($s['invoicingIntegrations'])) {
+            if ($canSeeBilling && array_key_exists('invoicingIntegrations', $s) && is_array($s['invoicingIntegrations'])) {
                 $mergedInvInt = ccrm_merge_invoicing_secrets($s['invoicingIntegrations'], $existingInvInt);
                 $mergedInvInt = ccrm_encrypt_invoicing_secrets($mergedInvInt);
                 $invIntValue = json_encode($mergedInvInt, JSON_UNESCAPED_UNICODE);
@@ -2911,10 +2938,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                $isSelf = ($sessionUser !== null) && (
-                    strtolower(trim($sessionUser['email'] ?? '')) === $uEmail ||
-                    ($sessionUser['id'] ?? '') === $userId
-                );
+                // The row being written must BE the session user. Matching the payload's
+                // e-mail alone let a payload carrying a colleague's id and the caller's
+                // own e-mail pass as "self" while resolving to the colleague's row.
+                $isSelf = ($sessionUser !== null) && ($sessionUser['id'] ?? '') === $userId;
 
                 // SECURITY: a non-admin may only modify their OWN record and can
                 // never change their role (prevents self-promotion to admin).
@@ -2927,6 +2954,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Lock to the stored role, ignoring any client value.
                     $role = $existingRoles[$userId] ?? ccrm_normalize_role($sessionUser['role'] ?? '');
                 }
+                // Login name and e-mail of the caller's own row: changeable only with
+                // self.account. Task visibility is matched by NAME, so a name another
+                // user already holds is refused (case-insensitive), and e-mails stay
+                // unique. The password and preferences are never gated.
+                $nameToStore = $u['name'];
+                $emailToStore = $u['email'];
+                if (!$isAdmin && $existingRecord !== null) {
+                    $storedName = (string)($existingRecord['name'] ?? '');
+                    $storedEmail = (string)($existingRecord['email'] ?? '');
+                    if (!ccrm_can($scope, 'self.account')) {
+                        $nameToStore = $storedName;
+                        $emailToStore = $storedEmail;
+                        if (trim((string)$u['name']) !== $storedName || trim((string)$u['email']) !== $storedEmail) {
+                            $ccrm_note_out_of_scope('users:account');
+                        }
+                    } else {
+                        $nameKey = mb_strtolower(trim((string)$u['name']), 'UTF-8');
+                        if ($nameKey !== mb_strtolower(trim($storedName), 'UTF-8')) {
+                            $nameTaken = false;
+                            foreach ($userRows as $other) {
+                                if ($other['id'] !== $userId && mb_strtolower(trim((string)$other['name']), 'UTF-8') === $nameKey) {
+                                    $nameTaken = true;
+                                    break;
+                                }
+                            }
+                            if ($nameTaken || $nameKey === '') {
+                                $nameToStore = $storedName;
+                                $ccrm_note_out_of_scope('users:nameTaken');
+                            }
+                        }
+                        $mailKey = strtolower(trim((string)$u['email']));
+                        if ($mailKey !== strtolower(trim($storedEmail))
+                            && isset($emailToUser[$mailKey]) && $emailToUser[$mailKey]['id'] !== $userId) {
+                            $emailToStore = $storedEmail;
+                            $ccrm_note_out_of_scope('users:emailTaken');
+                        }
+                    }
+                }
+
                 // Audit any admin-driven role change.
                 if ($isAdmin && isset($existingRoles[$userId]) && $existingRoles[$userId] !== $role) {
                     ccrm_audit_log($pdo, $sessionUser, 'user.role_change',
@@ -2983,8 +3049,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $insUser->execute([
                     $userId,
-                    $u['name'],
-                    $u['email'],
+                    $nameToStore,
+                    $emailToStore,
                     $hash,
                     $role,
                     $u['avatar'] ?? null,
@@ -3458,6 +3524,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $leadId = $l['id'];
                 $processedLeadIds[] = $leadId;
 
+                // A row the caller was never sent (a client while they only hold
+                // leads, or the reverse) is not theirs to overwrite, whatever the
+                // payload claims about its type.
+                if (isset($dbLeads[$leadId]) && !ccrm_lead_row_visible($dbLeads[$leadId], $scope)) {
+                    $ccrm_note_out_of_scope('leads:outside-scope');
+                    continue;
+                }
+
                 // Clients live in the same table. A role with clients.edit but not
                 // leads.edit (or the reverse) must still persist the rows it is
                 // allowed to touch, instead of skip_writes('leads') no-op'ing the
@@ -3802,6 +3876,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $filteredLeadDeletes = [];
             foreach ($leadsToDelete as $delId) {
                 $row = $dbLeads[$delId] ?? null;
+                // Never delete what the caller could not see: a full snapshot omits
+                // every row that was filtered out of their GET.
+                if ($row && !ccrm_lead_row_visible($row, $scope)) {
+                    $ccrm_note_out_of_scope('leads:outside-scope');
+                    continue;
+                }
                 $isClientRow = $row && (($row['client_type'] ?? 'person') !== 'person');
                 if ($isClientRow ? $canDeleteClient : $canDeleteLead) {
                     $filteredLeadDeletes[] = $delId;
@@ -3829,6 +3909,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTaskIds = array_keys($dbTasks);
             $processedTaskIds = [];
 
+            // Without tasks.view_all the caller only ever received their own, created
+            // and assigned tasks; an edit to any other existing task is ignored.
+            // Judged on the STORED row, so a forged owner or assignee list in the
+            // payload cannot grant reach.
+            $visibleTaskIds = null;
+            if (empty($scope['isAdmin']) && !ccrm_can($scope, 'tasks.view_all')) {
+                $payloadTaskIds = [];
+                foreach ($payload['tasks'] as $pt0) {
+                    if (is_array($pt0) && !empty($pt0['id']) && isset($dbTasks[$pt0['id']])) {
+                        $payloadTaskIds[] = (string)$pt0['id'];
+                    }
+                }
+                $visibleTaskIds = ccrm_visible_task_ids($pdo, $scope, $payloadTaskIds);
+            }
+
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
@@ -3844,6 +3939,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 $taskId = $t['id'];
+
+                if ($visibleTaskIds !== null && isset($dbTasks[$taskId]) && !isset($visibleTaskIds[(string)$taskId])) {
+                    $ccrm_note_out_of_scope('tasks:outside-scope');
+                    $processedTaskIds[] = $taskId;
+                    continue;
+                }
 
                 // Conflict guard: keep the newer stored row rather than letting a stale
                 // re-send revert it. The id must be marked processed before skipping,
@@ -4592,15 +4693,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.14. Synchronize Financial Records
         if (isset($payload['financialRecords']) && is_array($payload['financialRecords']) && !$ccrm_skip_writes('financial', 'financialRecords')) {
-            $stmt = $pdo->query("SELECT `id` FROM `financial_records`");
-            $existingFrIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $storedFr = [];
+            $stmt = $pdo->query("SELECT `id`, `subtype`, `title`, `description` FROM `financial_records`");
+            while ($frRow0 = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $storedFr[$frRow0['id']] = $frRow0;
+            }
+            $existingFrIds = array_keys($storedFr);
             $processedFrIds = [];
+            $canSeeSalaryRows = ccrm_can($scope, 'employees.salaries');
 
             $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_planned_end_date`, `recurring_amount_history_json`, `recurring_skipped_dates_json`, `recurring_source_id`, `recurring_occurrence_date`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_planned_end_date` = VALUES(`recurring_planned_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `recurring_skipped_dates_json` = VALUES(`recurring_skipped_dates_json`), `recurring_source_id` = VALUES(`recurring_source_id`), `recurring_occurrence_date` = VALUES(`recurring_occurrence_date`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
 
             foreach ($payload['financialRecords'] as $fr) {
                 $frId = $fr['id'];
                 $frTitle = mb_substr((string) ccrm_sanitize_db_text($fr['title'] ?? '', 1020), 0, 255, 'UTF-8');
+                $frDescription = $fr['description'] ?? null;
+                $frSubtype = $fr['subtype'] ?? 'regular';
+                // The GET shows a salary row as "Payroll (<period>)" to callers without
+                // employees.salaries. What they send back is that placeholder, so the
+                // stored name-bearing title, description and subtype stay as they are.
+                if (!$canSeeSalaryRows && isset($storedFr[$frId])
+                    && (($storedFr[$frId]['subtype'] ?? '') === 'salary' || str_starts_with((string)$frId, 'fr-sal-'))) {
+                    $frTitle = (string)$storedFr[$frId]['title'];
+                    $frDescription = $storedFr[$frId]['description'];
+                    $frSubtype = $storedFr[$frId]['subtype'];
+                }
                 $frCategoryPathSanitized = ccrm_sanitize_db_text($fr['categoryPath'] ?? null, 1020);
                 $frCategoryPath = $frCategoryPathSanitized !== null ? mb_substr($frCategoryPathSanitized, 0, 255, 'UTF-8') : null;
                 $frClientId = !empty($fr['clientId']) ? mb_substr((string) ccrm_sanitize_db_text($fr['clientId'], 200), 0, 50, 'UTF-8') : null;
@@ -4625,9 +4742,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $insFr->execute([
                     $frId,
                     $fr['type'] ?? 'expense',
-                    $fr['subtype'] ?? 'regular',
+                    $frSubtype,
                     $frTitle,
-                    $fr['description'] ?? null,
+                    $frDescription,
                     !empty($fr['categoryId']) ? $fr['categoryId'] : null,
                     $frCategoryPath,
                     round((float)($fr['amountPlanned'] ?? 0), 2),
@@ -4855,9 +4972,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.17. Synchronize Employees
         if (isset($payload['employees']) && is_array($payload['employees']) && !$ccrm_skip_writes('employees', 'employees')) {
-            $stmt = $pdo->query("SELECT `id` FROM `employees`");
-            $existingEmpIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            // Stored rows, for the field-group merge below. A caller sees only the
+            // groups their toggles allow (see ccrm_project_employee_row), so the row
+            // they push back is missing the rest. Writing the missing fields with
+            // their defaults would wipe the salary, PIN and documents of everyone.
+            $storedEmp = [];
+            $storedEmpStmt = $pdo->query("SELECT * FROM `employees`");
+            while ($sRow = $storedEmpStmt->fetch(PDO::FETCH_ASSOC)) {
+                $storedEmp[$sRow['id']] = $sRow;
+            }
+            $existingEmpIds = array_keys($storedEmp);
             $processedEmpIds = [];
+            $empRights = ccrm_employee_group_rights($scope);
+            $canLinkEmpUsers = ccrm_can_link_employee_user($scope) && ccrm_column_exists($pdo, 'employees', 'user_id');
 
             $insEmp = $pdo->prepare("INSERT INTO `employees` (
                 `id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`,
@@ -4878,31 +5005,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`)");
 
             foreach ($payload['employees'] as $emp) {
+                if (!is_array($emp) || empty($emp['id'])) {
+                    continue;
+                }
                 $empId = $emp['id'];
+                $stored = $storedEmp[$empId] ?? null;
+                // A group the caller may not write keeps its stored columns; a brand
+                // new row gets the column defaults.
+                $keep = function (string $col, $default) use ($stored) {
+                    return $stored !== null ? $stored[$col] : $default;
+                };
+                $personal = $empRights['personal'];
+                $pay = $empRights['pay'];
                 $insEmp->execute([
                     $empId,
                     $emp['name'] ?? 'Unnamed Employee',
-                    $emp['pin'] ?? null,
+                    $personal ? ($emp['pin'] ?? null) : $keep('pin', null),
                     $emp['email'] ?? null,
-                    $emp['phone'] ?? null,
-                    $emp['addressStreet'] ?? null,
-                    $emp['addressCity'] ?? null,
-                    $emp['addressZip'] ?? null,
-                    $emp['addressCountry'] ?? 'Slovakia',
-                    $emp['salaryType'] ?? 'monthly',
-                    (float)($emp['salaryAmount'] ?? 0),
-                    isset($emp['salaryDueDay']) && $emp['salaryDueDay'] !== null ? (int)$emp['salaryDueDay'] : null,
-                    json_encode($emp['vacationAllowances'] ?? (object)[], JSON_UNESCAPED_UNICODE),
+                    $personal ? ($emp['phone'] ?? null) : $keep('phone', null),
+                    $personal ? ($emp['addressStreet'] ?? null) : $keep('address_street', null),
+                    $personal ? ($emp['addressCity'] ?? null) : $keep('address_city', null),
+                    $personal ? ($emp['addressZip'] ?? null) : $keep('address_zip', null),
+                    $personal ? ($emp['addressCountry'] ?? 'Slovakia') : $keep('address_country', 'Slovakia'),
+                    $pay ? ($emp['salaryType'] ?? 'monthly') : $keep('salary_type', 'monthly'),
+                    $pay ? (float)($emp['salaryAmount'] ?? 0) : (float)$keep('salary_amount', 0),
+                    $pay
+                        ? (isset($emp['salaryDueDay']) && $emp['salaryDueDay'] !== null ? (int)$emp['salaryDueDay'] : null)
+                        : $keep('salary_due_day', null),
+                    $empRights['leave']
+                        ? json_encode($emp['vacationAllowances'] ?? (object)[], JSON_UNESCAPED_UNICODE)
+                        : $keep('vacation_allowances_json', json_encode((object)[])),
                     $emp['timeTrackingProvider'] ?? 'toggl',
                     $emp['timeTrackingUserId'] ?? null,
                     $emp['timeTrackingUserName'] ?? null,
-                    !empty($emp['autoExpense']) ? 1 : 0,
-                    $emp['expenseCategoryId'] ?? null,
-                    json_encode($emp['files'] ?? [], JSON_UNESCAPED_UNICODE),
+                    $pay ? (!empty($emp['autoExpense']) ? 1 : 0) : (int)$keep('auto_expense', 0),
+                    $pay ? ($emp['expenseCategoryId'] ?? null) : $keep('expense_category_id', null),
+                    $empRights['documents']
+                        ? json_encode($emp['files'] ?? [], JSON_UNESCAPED_UNICODE)
+                        : $keep('files_json', json_encode([])),
                     isset($emp['isActive']) ? ((bool)$emp['isActive'] ? 1 : 0) : 1,
-                    $emp['notes'] ?? null
+                    $personal ? ($emp['notes'] ?? null) : $keep('notes', null)
                 ]);
                 $processedEmpIds[] = $empId;
+
+                // Link to a login (§3.1). Only Admin, or employees = edit together with
+                // pm_managers = edit, may set or clear it; for anyone else the field is
+                // ignored. One login maps to at most one employee, and the link is never
+                // derived from an e-mail address.
+                if ($canLinkEmpUsers && array_key_exists('userId', $emp)) {
+                    $wantUserId = ($emp['userId'] === null || $emp['userId'] === '') ? null : (string)$emp['userId'];
+                    $haveUserId = $stored !== null && $stored['user_id'] !== null ? (string)$stored['user_id'] : null;
+                    if ($wantUserId !== $haveUserId) {
+                        $linkOk = true;
+                        if ($wantUserId !== null) {
+                            $uChk = $pdo->prepare("SELECT 1 FROM `users` WHERE `id` = ? LIMIT 1");
+                            $uChk->execute([$wantUserId]);
+                            $dupChk = $pdo->prepare("SELECT 1 FROM `employees` WHERE `user_id` = ? AND `id` <> ? LIMIT 1");
+                            $dupChk->execute([$wantUserId, $empId]);
+                            $linkOk = $uChk->fetchColumn() !== false && $dupChk->fetchColumn() === false;
+                        }
+                        if ($linkOk) {
+                            $pdo->prepare("UPDATE `employees` SET `user_id` = ? WHERE `id` = ?")->execute([$wantUserId, $empId]);
+                            ccrm_audit_log($pdo, $sessionUser, 'employee.user_link', $empId . ' -> ' . ($wantUserId ?? 'none'));
+                        } else {
+                            $ccrm_note_out_of_scope('employees:userId');
+                        }
+                    }
+                }
             }
 
             $empToDelete = $isDeltaSync ? $deletionsFor('employees', $existingEmpIds) : array_diff($existingEmpIds, $processedEmpIds);
@@ -4912,7 +5081,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.18. Synchronize Employee Salaries & Auto-Expense Linkage
-        if (isset($payload['employeeSalaries']) && is_array($payload['employeeSalaries']) && !$ccrm_skip_writes('employees', 'employeeSalaries')) {
+        if (isset($payload['employeeSalaries']) && is_array($payload['employeeSalaries']) && !$ccrm_skip_writes('employees', 'employeeSalaries') && !$ccrm_skip_unless('employees.salaries', 'employeeSalaries')) {
             $stmt = $pdo->query("SELECT `id` FROM `employee_salaries`");
             $existingSalIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedSalIds = [];
@@ -5057,9 +5226,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.19. Synchronize Employee Vacations
-        if (isset($payload['employeeVacations']) && is_array($payload['employeeVacations']) && !$ccrm_skip_writes('employees', 'employeeVacations')) {
-            $stmt = $pdo->query("SELECT `id` FROM `employee_vacations`");
-            $existingVacIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (isset($payload['employeeVacations']) && is_array($payload['employeeVacations']) && !$ccrm_skip_writes('employees', 'employeeVacations') && !$ccrm_skip_unless('employees.vacations', 'employeeVacations')) {
+            $storedVac = [];
+            $stmt = $pdo->query("SELECT `id`, `status`, `approved_by` FROM `employee_vacations`");
+            while ($vRow = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $storedVac[$vRow['id']] = $vRow;
+            }
+            $existingVacIds = array_keys($storedVac);
             $processedVacIds = [];
 
             $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (
@@ -5078,6 +5251,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($payload['employeeVacations'] as $vac) {
                 $vacId = $vac['id'];
+                $vacStatus = $vac['status'] ?? 'approved';
+                // Who approved is the server's call, never the client's: it is the
+                // session user at the moment the status BECOMES approved or rejected,
+                // and the stored value while it stays that way. Any other status has
+                // nobody who decided it.
+                $prevVac = $storedVac[$vacId] ?? null;
+                if (in_array($vacStatus, ['approved', 'rejected'], true)) {
+                    $vacApprovedBy = ($prevVac !== null && $prevVac['status'] === $vacStatus && ($prevVac['approved_by'] ?? '') !== '')
+                        ? $prevVac['approved_by']
+                        : $sessionEmail;
+                } else {
+                    $vacApprovedBy = null;
+                }
                 $insVac->execute([
                     $vacId,
                     $vac['employeeId'],
@@ -5085,9 +5271,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $vac['startDate'],
                     $vac['endDate'],
                     (float)($vac['daysCount'] ?? 1.0),
-                    $vac['status'] ?? 'approved',
+                    $vacStatus,
                     $vac['note'] ?? null,
-                    $vac['approvedBy'] ?? $sessionEmail
+                    $vacApprovedBy
                 ]);
                 $processedVacIds[] = $vacId;
             }
@@ -5100,7 +5286,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.20. Synchronize Employee Settings
         if (isset($payload['employeeSettings']) && is_array($payload['employeeSettings']) && !$ccrm_skip_writes('general_config', 'employeeSettings')) {
-            $empSettingsVal = json_encode($payload['employeeSettings'], JSON_UNESCAPED_UNICODE);
+            // The GET masks the Toggl / Clockify credentials, so what comes back is
+            // the mask: keep the stored secret (the integrations pattern above).
+            $incomingEmpSettings = $payload['employeeSettings'];
+            $storedEmpSettingsRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'EMPLOYEE_SETTINGS'")->fetchColumn();
+            $storedEmpSettings = ($storedEmpSettingsRaw !== false && $storedEmpSettingsRaw !== null) ? json_decode($storedEmpSettingsRaw, true) : [];
+            $storedTimeTracking = (is_array($storedEmpSettings) && isset($storedEmpSettings['timeTracking']) && is_array($storedEmpSettings['timeTracking']))
+                ? $storedEmpSettings['timeTracking'] : [];
+            if (isset($incomingEmpSettings['timeTracking']) && is_array($incomingEmpSettings['timeTracking'])) {
+                $incomingEmpSettings['timeTracking'] = ccrm_merge_secrets(
+                    $incomingEmpSettings['timeTracking'],
+                    $storedTimeTracking,
+                    ccrm_employee_settings_secret_keys()
+                );
+            } elseif ($storedTimeTracking) {
+                $incomingEmpSettings['timeTracking'] = $storedTimeTracking;
+            }
+            $empSettingsVal = json_encode($incomingEmpSettings, JSON_UNESCAPED_UNICODE);
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EMPLOYEE_SETTINGS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             $insSet->execute([$empSettingsVal]);
         }

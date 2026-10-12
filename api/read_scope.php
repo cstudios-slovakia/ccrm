@@ -256,6 +256,11 @@ function ccrm_project_employee_row(array $row, array $scope): ?array {
     return $projected;
 }
 
+/** Secret keys inside EMPLOYEE_SETTINGS.timeTracking: masked on the way out, merged on the way in. */
+function ccrm_employee_settings_secret_keys(): array {
+    return ['togglApiToken', 'clockifyApiKey'];
+}
+
 /**
  * Mask secret tokens in EMPLOYEE_SETTINGS.
  */
@@ -266,7 +271,7 @@ function ccrm_mask_employee_settings(?array $settings): ?array {
     if (isset($settings['timeTracking']) && is_array($settings['timeTracking'])) {
         $settings['timeTracking'] = ccrm_mask_secrets(
             $settings['timeTracking'],
-            ['togglApiToken', 'clockifyApiKey']
+            ccrm_employee_settings_secret_keys()
         );
     }
     return $settings;
@@ -304,4 +309,77 @@ function ccrm_project_employee_settings(?array $settings, array $scope): ?array 
     }
 
     return null;
+}
+
+/**
+ * May the caller see this STORED lead/client row? The same classifier the sync
+ * GET filters by, applied to a raw `leads` row, so a write or delete is limited
+ * to exactly the rows the caller was sent.
+ */
+function ccrm_lead_row_visible(array $dbRow, array $scope): bool {
+    return ccrm_is_client_record($dbRow) ? ccrm_can($scope, 'clients') : ccrm_can($scope, 'leads');
+}
+
+/**
+ * Of the given task ids, the ones the caller may see (set: id => true). Evaluated
+ * against the STORED rows, never against what the payload claims, so a forged
+ * owner / assignee list cannot widen the caller's reach. Ids that do not exist
+ * are not in the result.
+ *
+ * @param string[] $taskIds
+ * @return array<string,true>
+ */
+function ccrm_visible_task_ids(\PDO $pdo, array $scope, array $taskIds): array {
+    $taskIds = array_values(array_unique(array_map('strval', $taskIds)));
+    $visible = [];
+    if (!$taskIds) {
+        return $visible;
+    }
+    foreach (array_chunk($taskIds, 500) as $chunk) {
+        $in = implode(',', array_fill(0, count($chunk), '?'));
+        $stmt = $pdo->prepare("SELECT `id`, `owner`, `created_by` FROM `tasks` WHERE `id` IN ($in)");
+        $stmt->execute($chunk);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        if (!$rows) {
+            continue;
+        }
+        $assigned = [];
+        $aStmt = $pdo->prepare("SELECT `task_id`, `user_name` FROM `task_assignees` WHERE `task_id` IN ($in)");
+        $aStmt->execute($chunk);
+        while ($a = $aStmt->fetch(\PDO::FETCH_ASSOC)) {
+            $assigned[$a['task_id']][] = $a['user_name'];
+        }
+        foreach ($rows as $row) {
+            $task = [
+                'id' => $row['id'],
+                'owner' => $row['owner'],
+                'createdBy' => $row['created_by'],
+                'assignedUsers' => $assigned[$row['id']] ?? [],
+            ];
+            if (ccrm_can_view_task($task, $scope)) {
+                $visible[(string)$row['id']] = true;
+            }
+        }
+    }
+    return $visible;
+}
+
+/**
+ * The employee field groups of §3.4, as the caller's right to each. Directory is
+ * always writable with `employees` = edit; the rest sit behind a toggle.
+ *
+ * @return array{personal:bool,pay:bool,leave:bool,documents:bool}
+ */
+function ccrm_employee_group_rights(array $scope): array {
+    return [
+        'personal' => ccrm_can($scope, 'employees.personal'),
+        'pay' => ccrm_can($scope, 'employees.salaries'),
+        'leave' => ccrm_can($scope, 'employees.vacations'),
+        'documents' => ccrm_can($scope, 'employees.files'),
+    ];
+}
+
+/** Who may link or unlink a login and an employee record (§3.1): Admin, or employees = edit AND pm_managers = edit. */
+function ccrm_can_link_employee_user(array $scope): bool {
+    return !empty($scope['isAdmin']) || (ccrm_can_edit($scope, 'employees') && ccrm_can_edit($scope, 'pm_managers'));
 }

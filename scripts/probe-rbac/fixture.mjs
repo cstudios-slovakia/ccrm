@@ -19,7 +19,14 @@ export const USERS = {
   employee_unlinked: { id: 'probe-employee-unlinked', name: 'Probe Unlinked', email: 'probe-employee-unlinked@probe.test', role: 'Employee' },
   viewer: { id: 'probe-viewer', name: 'Probe Viewer', email: 'probe-viewer@probe.test', role: 'Viewer' },
   employee_variant: { id: 'probe-employee-variant', name: 'Probe Variant', email: 'probe-employee-variant@probe.test', role: 'EmployeeVariant' },
+  // Roles that exist to prove one specific write rule each.
+  finance: { id: 'probe-finance', name: 'Probe Finance', email: 'probe-finance@probe.test', role: 'FinanceOnly' },
+  pipeliner: { id: 'probe-pipeliner', name: 'Probe Pipeliner', email: 'probe-pipeliner@probe.test', role: 'Pipeliner' },
+  leads_only: { id: 'probe-leads-only', name: 'Probe LeadsOnly', email: 'probe-leads-only@probe.test', role: 'LeadsOnly' },
+  account_editor: { id: 'probe-account-editor', name: 'Probe Account Editor', email: 'probe-account-editor@probe.test', role: 'AccountEditor' },
 };
+
+export const BILLING_SETTINGS = { companyName: 'Probe Billing Co', iban: 'SK0000000000000000000000' };
 
 export const EMPLOYEE_A = {
   id: 'pe-a',
@@ -124,6 +131,12 @@ export function fixtureSql() {
     'tasks.view_all': 'edit',
   };
 
+  const nothing = { ...empPerms };
+  const financeOnlyPerms = { ...nothing, financial: 'edit', 'financial.delete': 'edit' };
+  const pipelinerPerms = { ...nothing, pipeline_stages: 'edit' };
+  const leadsOnlyPerms = { ...nothing, leads: 'edit', 'leads.delete': 'edit', tasks: 'edit', 'tasks.view_all': 'edit' };
+  const accountEditorPerms = { ...nothing, 'self.account': 'edit' };
+
   const roles = [
     { name: 'Admin', permissions: {} },
     { name: 'Project Manager', permissions: pmPerms },
@@ -132,6 +145,10 @@ export function fixtureSql() {
     { name: 'Employee', permissions: empPerms },
     { name: 'Viewer', permissions: viewerPerms },
     { name: 'EmployeeVariant', permissions: empVariantPerms },
+    { name: 'FinanceOnly', permissions: financeOnlyPerms },
+    { name: 'Pipeliner', permissions: pipelinerPerms },
+    { name: 'LeadsOnly', permissions: leadsOnlyPerms },
+    { name: 'AccountEditor', permissions: accountEditorPerms },
   ];
 
   const employeeSettings = {
@@ -154,6 +171,7 @@ export function fixtureSql() {
     'DELETE FROM system_settings WHERE `key` IN ("ROLES_RBAC", "EMPLOYEE_SETTINGS");',
     `REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${q(JSON.stringify(roles))});`,
     `REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('EMPLOYEE_SETTINGS', ${q(JSON.stringify(employeeSettings))});`,
+    `REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('COMPANY_BILLING_SETTINGS', ${q(JSON.stringify(BILLING_SETTINGS))});`,
   ];
 
   for (const u of Object.values(USERS)) {

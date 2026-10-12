@@ -85,6 +85,11 @@ function setup() {
     docker('exec', WEB, 'sh', '-c', `sed "s/define('DB_NAME', '[^']*')/define('DB_NAME', '${SCRATCH_DB}')/" /var/www/html/config.php > ${dir}/config.php`);
   }
   run('docker', ['exec', '-i', WEB, 'sh', '-c', `cat > ${BASE_DIR}/sync.php`], oldSync);
+  // CCRM_PROBE_AGAINST_BASELINE=1 serves the OLD sync.php as the system under test, to watch
+  // the read/write checks fail first (the checks must be able to fail to mean anything).
+  if (process.env.CCRM_PROBE_AGAINST_BASELINE) {
+    run('docker', ['exec', '-i', WEB, 'sh', '-c', `cat > ${SCRATCH_DIR}/sync.php`], oldSync);
+  }
   docker('exec', WEB, 'chown', '-R', 'www-data:www-data', SCRATCH_DIR, BASE_DIR);
 
   sql(fixtureSql());
@@ -141,6 +146,19 @@ async function syncPost(sessId, payload) {
   let json = null;
   try { json = JSON.parse(text); } catch {}
   return { status: res.status, raw: text, data: json };
+}
+
+// Any authenticated endpoint under the scratch web root, as a given session.
+async function api(sessId, path, { method = 'GET', body, query = '', headers = {}, raw = false } = {}) {
+  const res = await fetch(`${BASE}/rbacprobe/${path}${query}`, {
+    method,
+    headers: { Cookie: `CCRMSESSID=${sessId}`, ...(body !== undefined && !raw ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch {}
+  return { status: res.status, raw: text, data: json, headers: res.headers };
 }
 
 // ----------------------------------------------------------------------------- main
@@ -282,6 +300,130 @@ async function main() {
     }
     const adminCur = (await syncGet(SESSIONS.admin)).data || {};
     check('R7: Admin employeeSettings masks secrets', adminCur.employeeSettings?.timeTracking?.togglApiToken === MASK);
+
+    // ======================================================================= writes
+    // Every write check forges a request the way a hostile browser could, then reads
+    // the DATABASE (not the response) to see whether anything moved.
+    const val = (q) => sql(q).trim().split('\n').pop().trim();
+    const row = (q) => val(q);
+    const post = (key, body) => syncPost(SESSIONS[key], { syncProtocol: 2, ...body });
+    const postV1 = (key, body) => syncPost(SESSIONS[key], body);
+    const skipped = (r) => (r.data?.permissionSkipped || []).join(',');
+
+    // --- W1: Employee A forges HR writes ---
+    section('W1: Employee A cannot write HR data');
+    const hrCounts = () => val("SELECT CONCAT((SELECT COUNT(*) FROM employees),'/',(SELECT COUNT(*) FROM employee_salaries),'/',(SELECT COUNT(*) FROM employee_vacations))");
+    const hrBefore = hrCounts();
+    await post('employee_a', { employees: [{ id: 'pe-b', name: 'Hacked', pin: 'x', salaryAmount: 1, salaryType: 'hourly', notes: 'pwned', files: [], isActive: false }] });
+    check('W1: B employee row unchanged', val("SELECT CONCAT(name,'|',pin,'|',CAST(salary_amount AS UNSIGNED),'|',notes,'|',is_active) FROM employees WHERE id='pe-b'") === 'Probe Employee B|920202/2222|3200|Bob confidential HR notes|1');
+    await post('employee_a', { employeeSalaries: [{ id: 'sal-b-1', employeeId: 'pe-b', periodType: 'monthly', periodKey: '2026-01', year: 2026, periodNumber: 1, totalSalary: 1, totalPaid: 1, status: 'paid' }] });
+    check('W1: B salary unchanged', val("SELECT CAST(total_salary AS UNSIGNED) FROM employee_salaries WHERE id='sal-b-1'") === '3200');
+    await post('employee_a', { employeeVacations: [
+      { id: 'vac-b-1', employeeId: 'pe-b', vacationTypeId: 'vacation', startDate: '2026-07-01', endDate: '2026-07-05', daysCount: 5, status: 'rejected' },
+      { id: 'vac-a-forged', employeeId: 'pe-a', vacationTypeId: 'vacation', startDate: '2026-09-01', endDate: '2026-09-02', daysCount: 2, status: 'approved', approvedBy: 'me@probe.test' },
+    ] });
+    check('W1: B leave unchanged', val("SELECT status FROM employee_vacations WHERE id='vac-b-1'") === 'approved');
+    check('W1: self-approved leave not created', val("SELECT COUNT(*) FROM employee_vacations WHERE id='vac-a-forged'") === '0');
+    await post('employee_a', { deleted: { employeeVacations: ['vac-b-1'], employeeSalaries: ['sal-b-1'], employees: ['pe-b'] } });
+    await postV1('employee_a', { employees: [], employeeSalaries: [], employeeVacations: [] });
+    check('W1: named deletes and an empty v1 snapshot change nothing', hrCounts() === hrBefore, hrCounts());
+
+    // --- W2: renaming / e-mail / password ---
+    section('W2: Employee A account changes');
+    await post('employee_a', { users: [{ id: USERS.employee_a.id, name: USERS.employee_b.name, email: 'renamed-a@probe.test', role: 'Employee' }] });
+    check('W2: rename to a colleague and e-mail change ignored (no self.account)',
+      val(`SELECT CONCAT(name,'|',email) FROM users WHERE id='${USERS.employee_a.id}'`) === `${USERS.employee_a.name}|${USERS.employee_a.email}`);
+    const hashBefore = val(`SELECT password_hash FROM users WHERE id='${USERS.employee_a.id}'`);
+    await post('employee_a', { users: [{ id: USERS.employee_a.id, name: USERS.employee_a.name, email: USERS.employee_a.email, role: 'Employee', password: 'N3w-Passw0rd!' }] });
+    check('W2: a password change still works', val(`SELECT password_hash FROM users WHERE id='${USERS.employee_a.id}'`) !== hashBefore);
+    // someone else's row, claimed with the caller's own e-mail
+    await post('employee_a', { users: [{ id: USERS.employee_b.id, name: 'Taken Over', email: USERS.employee_a.email, role: 'Employee' }] });
+    check('W2: a payload naming a colleague id with own e-mail does not touch the colleague',
+      val(`SELECT name FROM users WHERE id='${USERS.employee_b.id}'`) === USERS.employee_b.name);
+    // with self.account: unique name and e-mail
+    await post('account_editor', { users: [{ id: USERS.account_editor.id, name: USERS.employee_b.name.toUpperCase(), email: USERS.account_editor.email, role: 'AccountEditor' }] });
+    check('W2: self.account cannot take a colleague name (case-insensitive)', val(`SELECT name FROM users WHERE id='${USERS.account_editor.id}'`) === USERS.account_editor.name);
+    await post('account_editor', { users: [{ id: USERS.account_editor.id, name: USERS.account_editor.name, email: USERS.employee_b.email, role: 'AccountEditor' }] });
+    check('W2: self.account cannot take a colleague e-mail', val(`SELECT email FROM users WHERE id='${USERS.account_editor.id}'`) === USERS.account_editor.email);
+    await post('account_editor', { users: [{ id: USERS.account_editor.id, name: 'Renamed Editor', email: USERS.account_editor.email, role: 'AccountEditor' }] });
+    check('W2: self.account may take a free name', val(`SELECT name FROM users WHERE id='${USERS.account_editor.id}'`) === 'Renamed Editor');
+
+    // --- W5: stripped rows pushed back ---
+    section('W5: stripped employee rows pushed back');
+    const liteGet = (await syncGet(SESSIONS.hr_lite)).data;
+    const liteRows = liteGet.employees || [];
+    check('W5: HR-lite received rows without pay fields', liteRows.length >= 2 && !liteRows.some((e) => 'salaryAmount' in e));
+    const stripped = liteRows.map((e) => (e.id === 'pe-b' ? { ...e, name: 'Probe Employee B (edited)' } : e));
+    const w5 = await post('hr_lite', { employees: stripped });
+    check('W5: push accepted', w5.status === 200 && w5.data?.success === true, w5.raw.slice(0, 200));
+    check('W5: pay columns untouched', val("SELECT CONCAT(salary_type,'|',CAST(salary_amount AS UNSIGNED),'|',auto_expense,'|',expense_category_id) FROM employees WHERE id='pe-b'") === 'monthly|3200|1|exp-root');
+    check('W5: documents untouched', val("SELECT files_json FROM employees WHERE id='pe-b'").includes('bob_contract.pdf'));
+    check('W5: the directory edit itself landed', val("SELECT name FROM employees WHERE id='pe-b'") === 'Probe Employee B (edited)');
+    await post('hr_lite', { employeeSalaries: [{ id: 'sal-b-1', employeeId: 'pe-b', periodType: 'monthly', periodKey: '2026-01', year: 2026, periodNumber: 1, totalSalary: 1, totalPaid: 1, status: 'paid' }] });
+    check('W5: HR-lite cannot write payroll', val("SELECT CAST(total_salary AS UNSIGNED) FROM employee_salaries WHERE id='sal-b-1'") === '3200');
+    await post('hr', { employees: [{ id: 'pe-b', name: 'Probe Employee B', salaryAmount: 3300, pin: '920202/2222', files: [{ id: 'pf-b-1', name: 'bob_contract.pdf', path: 'uploads/employees/private/bob_contract.pdf' }] }] });
+    check('W5: full HR can still change pay', val("SELECT CAST(salary_amount AS UNSIGNED) FROM employees WHERE id='pe-b'") === '3300');
+    await post('hr', { employees: [{ id: 'pe-b', name: 'Probe Employee B', salaryAmount: 3200, pin: '920202/2222', files: [{ id: 'pf-b-1', name: 'bob_contract.pdf', path: 'uploads/employees/private/bob_contract.pdf' }] }] });
+
+    // leave: approved_by is the server's
+    const hrLeave = await post('hr', { employeeVacations: [
+      { id: 'vac-a-1', employeeId: 'pe-a', vacationTypeId: 'vacation', startDate: '2026-06-01', endDate: '2026-06-05', daysCount: 5, status: 'approved', approvedBy: 'forged@probe.test' },
+      { id: 'vac-hr-new', employeeId: 'pe-a', vacationTypeId: 'vacation', startDate: '2026-10-01', endDate: '2026-10-02', daysCount: 2, status: 'pending', approvedBy: 'forged@probe.test' },
+    ] });
+    check('W5: HR leave push accepted', hrLeave.status === 200 && hrLeave.data?.success === true, hrLeave.raw.slice(0, 200));
+    check('W5: approved_by of a pending request is empty whatever the client says', val("SELECT IFNULL(approved_by,'NULL') FROM employee_vacations WHERE id='vac-hr-new'") === 'NULL');
+    await post('hr', { employeeVacations: [{ id: 'vac-hr-new', employeeId: 'pe-a', vacationTypeId: 'vacation', startDate: '2026-10-01', endDate: '2026-10-02', daysCount: 2, status: 'approved', approvedBy: 'forged@probe.test' }] });
+    check('W5: approval records the session user, not the payload', val("SELECT approved_by FROM employee_vacations WHERE id='vac-hr-new'") === USERS.hr.email);
+    check('W5: HR-lite without leave... (has leave toggle) sees leave', Array.isArray(liteGet.employeeVacations) && liteGet.employeeVacations.length >= 2);
+
+    // employee settings: a masked token coming back never overwrites the stored one
+    const adminSettings = (await syncGet(SESSIONS.admin)).data.employeeSettings;
+    await post('admin', { employeeSettings: adminSettings });
+    check('W5: masked Toggl/Clockify secrets echoed back leave the stored ones',
+      val("SELECT value FROM system_settings WHERE `key`='EMPLOYEE_SETTINGS'").includes(FAKE_TOGGL_TOKEN) &&
+      val("SELECT value FROM system_settings WHERE `key`='EMPLOYEE_SETTINGS'").includes(FAKE_CLOCKIFY_KEY));
+
+    // --- W6: tasks ---
+    section('W6: task scope');
+    await post('employee_a', { tasks: [{ id: 'task-b-own', title: 'pwned', deadline: '2026-12-31', owner: USERS.employee_a.name, status: 'New', assignedUsers: [USERS.employee_a.name] }] });
+    check("W6: B's task unchanged", val("SELECT title FROM tasks WHERE id='task-b-own'") === 'Task Owned By Bob');
+    check("W6: B's task not handed to A", val("SELECT COUNT(*) FROM task_assignees WHERE task_id='task-b-own' AND user_name='" + USERS.employee_a.name + "'") === '0');
+    await post('employee_a', { deleted: { tasks: ['task-b-own'] } });
+    check("W6: named delete of B's task changes nothing", val("SELECT COUNT(*) FROM tasks WHERE id='task-b-own'") === '1');
+    const w6 = await post('employee_a', { tasks: [{ id: 'task-a-new', title: 'Mine', deadline: '2026-12-31', owner: USERS.employee_a.name, status: 'New', assignedUsers: [USERS.employee_a.name] }] });
+    check('W6: creating an own task works', w6.data?.success === true && val("SELECT created_by FROM tasks WHERE id='task-a-new'") === USERS.employee_a.name, w6.raw.slice(0, 200));
+    await post('employee_a', { tasks: [{ id: 'task-a-own', title: 'Mine, retitled', deadline: '2026-12-31', owner: USERS.employee_a.name, status: 'New', assignedUsers: [USERS.employee_a.name] }] });
+    check('W6: editing an own task works', val("SELECT title FROM tasks WHERE id='task-a-own'") === 'Mine, retitled');
+
+    const delOther = await api(SESSIONS.employee_a, 'api/task.php', { method: 'DELETE', body: { id: 'task-b-own' } });
+    check("W6: api/task.php refuses a task the caller cannot see (403)", delOther.status === 403 && val("SELECT COUNT(*) FROM tasks WHERE id='task-b-own'") === '1', delOther.raw.slice(0, 120));
+    const delOwn = await api(SESSIONS.employee_a, 'api/task.php', { method: 'DELETE', body: { id: 'task-a-created' } });
+    check('W6: api/task.php lets the creator delete their own task', delOwn.status === 200 && val("SELECT COUNT(*) FROM tasks WHERE id='task-a-created'") === '0', delOwn.raw.slice(0, 120));
+
+    // --- leads / clients scope, finance salary rows, billing blobs ---
+    section('W9: leads, finance and settings write scope');
+    const leadRow = (id, name, extra = {}) => ({ id, name, clientType: 'person', status: 'new', owner: 'Probe Admin', value: 1, ...extra });
+    await post('leads_only', { leads: [leadRow('client-probe-1', 'Pwned Client')] });
+    check('W9: leads-only cannot overwrite a client row', val("SELECT name FROM leads WHERE id='client-probe-1'") === 'Beta Client');
+    await postV1('leads_only', { leads: [leadRow('lead-probe-1', 'Alpha Lead')] });
+    check('W9: leads-only full snapshot does not delete the clients it never saw', val("SELECT COUNT(*) FROM leads WHERE id='client-probe-1'") === '1');
+    await post('leads_only', { deleted: { leads: ['client-probe-1'] } });
+    check('W9: leads-only named delete of a client is dropped', val("SELECT COUNT(*) FROM leads WHERE id='client-probe-1'") === '1');
+    const finGet = (await syncGet(SESSIONS.finance)).data;
+    const salRow = (finGet.financialRecords || []).find((r) => r.id === 'fr-sal-1');
+    check('W9: finance-only sees the salary row anonymised', !!salRow && salRow.title.startsWith('Payroll'), JSON.stringify(salRow)?.slice(0, 160));
+    await post('finance', { financialRecords: [{ ...salRow, status: 'planned' }] });
+    check('W9: saving it keeps the stored title and subtype', val("SELECT CONCAT(title,'|',subtype,'|',status) FROM financial_records WHERE id='fr-sal-1'") === 'Salary Alice|salary|planned');
+    await post('pipeliner', { settings: { companyBillingSettings: { companyName: 'WIPED' } } });
+    check('W9: a role that was never sent the billing blob cannot overwrite it', val("SELECT value FROM system_settings WHERE `key`='COMPANY_BILLING_SETTINGS'").includes('Probe Billing Co'));
+
+    // --- W7: protected roles survive an admin push (kept last: it rewrites the registry) ---
+    section('W7: protected roles');
+    await post('admin', { roles: [{ name: 'Admin', permissions: {} }, { name: 'Custom', permissions: {} }] });
+    const roleNames = JSON.parse(val("SELECT value FROM system_settings WHERE `key`='ROLES_RBAC'")).map((r) => r.name);
+    check('W7: Admin push without Employee / Project Manager keeps them', roleNames.includes('Employee') && roleNames.includes('Project Manager') && roleNames.includes('Custom'), roleNames.join(','));
+    await post('employee_a', { roles: [] });
+    check('W7: a non-admin cannot touch the registry', JSON.parse(val("SELECT value FROM system_settings WHERE `key`='ROLES_RBAC'")).length === roleNames.length);
 
   } finally {
     teardown();
