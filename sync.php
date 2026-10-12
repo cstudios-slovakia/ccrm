@@ -1242,6 +1242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'hasTimeline' => (int)$row['has_timeline'] === 1,
                 'hasGantt' => (int)$row['has_gantt'] === 1,
                 'hasDeadline' => (int)($row['has_deadline'] ?? 0) === 1,
+                'hasInvoiceDate' => (int)($row['has_invoice_date'] ?? 0) === 1,
                 'deadlineWarningDays' => (int)($row['deadline_warning_days'] ?? 0),
                 'deadlineRequired' => (int)($row['deadline_required'] ?? 0) === 1,
                 'hasFiles' => (int)($row['has_files'] ?? 0) === 1,
@@ -1313,7 +1314,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 // project; the client draws 0 and 'never rated' the same way, so
                 // both travel as 0 rather than as a null it would have to guard.
                 'rating' => isset($pRow['rating']) ? (int)$pRow['rating'] : 0,
-                'deadline' => $pRow['deadline'] ?? null,
+                'invoiceDate' => $pRow['invoice_date'] ?? null,
+                'completionDeadline' => $pRow['completion_deadline'] ?? null,
                 'delayReason' => $pRow['delay_reason'] ?? null,
                 'startDate' => $pRow['start_date'] ?? null,
                 'finishedAt' => $pRow['finished_at'] ?? null,
@@ -2195,7 +2197,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
                 $pdo->exec($createData);
-                if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createData));
+                // The RAG mirror has no `projects` table, so drop the FK — with the
+                // comma before it, or the statement ends in ", )" and never parses.
+                if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createData)); } catch(\Exception $e) {}
 
                 // Add or Remove Columns for Data Table
                 // The built-in "Files" attribute keeps each document slot's uploads
@@ -2253,7 +2257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
                 $pdo->exec($createTimeline);
-                if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createTimeline));
+                if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createTimeline)); } catch(\Exception $e) {}
 
                 // Add event_type if missing in existing table
                 if (!ccrm_column_exists($pdo, $timelineTable, 'event_type')) {
@@ -2315,7 +2319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
                 $pdo->exec($createGantt);
-                if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createGantt));
+                if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createGantt)); } catch(\Exception $e) {}
             }
         }
 
@@ -2537,8 +2541,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $existingRolesCount
                 ));
             } else {
+                $incomingRoles = $payload['roles'];
+                $incomingNames = [];
+                foreach ($incomingRoles as $r) {
+                    if (is_array($r) && !empty($r['name'])) {
+                        $incomingNames[strtolower(trim((string)$r['name']))] = true;
+                    }
+                }
+                $existingRolesMap = [];
+                if (isset($existingRolesDecoded) && is_array($existingRolesDecoded)) {
+                    foreach ($existingRolesDecoded as $er) {
+                        if (is_array($er) && !empty($er['name'])) {
+                            $existingRolesMap[strtolower(trim((string)$er['name']))] = $er;
+                        }
+                    }
+                }
+                foreach (ccrm_protected_role_names() as $pName) {
+                    $pKey = strtolower($pName);
+                    if (!isset($incomingNames[$pKey])) {
+                        if (isset($existingRolesMap[$pKey])) {
+                            $incomingRoles[] = $existingRolesMap[$pKey];
+                        } else {
+                            $fb = ccrm_find_role(ccrm_fallback_roles(), $pName);
+                            if ($fb) {
+                                $incomingRoles[] = $fb;
+                            }
+                        }
+                    }
+                }
                 $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-                $insSet->execute(['ROLES_RBAC', json_encode($payload['roles'])]);
+                $insSet->execute(['ROLES_RBAC', json_encode($incomingRoles)]);
                 ccrm_audit_log($pdo, $sessionUser, 'roles.update', 'RBAC role registry updated');
             }
         }
@@ -2741,11 +2773,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
             $processedPtIds = [];
-            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `list_columns_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `file_fields_json`=VALUES(`file_fields_json`), `list_columns_json`=VALUES(`list_columns_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
+            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `has_invoice_date`, `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `list_columns_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `has_invoice_date`=VALUES(`has_invoice_date`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `file_fields_json`=VALUES(`file_fields_json`), `list_columns_json`=VALUES(`list_columns_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
             
             foreach ($payload['projectTypes'] as $pt) {
                 if (!isset($pt['id'])) continue;
                 $ptDeadlineRequired = !empty($pt['deadlineRequired']) ? 1 : 0;
+                // A client older than the invoice-date switch sends none; keep what
+                // is stored (a never-saved type follows its old deadline switch).
+                if (array_key_exists('hasInvoiceDate', $pt)) {
+                    $ptHasInvoiceDate = !empty($pt['hasInvoiceDate']) ? 1 : 0;
+                } else {
+                    $prevInv = $pdo->prepare("SELECT `has_invoice_date` FROM `project_types` WHERE `id` = ?");
+                    $prevInv->execute([$pt['id']]);
+                    $prevInvVal = $prevInv->fetchColumn();
+                    $ptHasInvoiceDate = $prevInvVal === false ? (!empty($pt['hasDeadline']) ? 1 : 0) : (int)$prevInvVal;
+                }
                 $ptHasFiles = !empty($pt['hasFiles']) ? 1 : 0;
                 $ptFileFields = json_encode(is_array($pt['fileFields'] ?? null) ? array_values($pt['fileFields']) : []);
                 // A client older than these settings sends none of them; keep what
@@ -2793,6 +2835,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($pt['hasTimeline']) ? 1 : 0,
                     !empty($pt['hasGantt']) ? 1 : 0,
                     !empty($pt['hasDeadline']) ? 1 : 0,
+                    $ptHasInvoiceDate,
                     // Same clamp as normalizeDeadlineWarningDays on the client:
                     // a positive whole number of days, or 0 for "only once late".
                     max(0, min(365, (int)($pt['deadlineWarningDays'] ?? 0))),
@@ -2842,10 +2885,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'projects', 'value')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");
             }
+            if (!ccrm_column_exists($pdo, 'projects', 'invoice_date') && ccrm_column_exists($pdo, 'projects', 'deadline')) {
+                $pdo->exec("ALTER TABLE `projects` CHANGE COLUMN `deadline` `invoice_date` DATE NULL");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'completion_deadline')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
+            }
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `archived`=VALUES(`archived`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `archived`=VALUES(`archived`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2865,13 +2914,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // so "unnamed" has one representation and the client's fallback
                 // to the paired lead's name keeps working either way.
                 $projName = trim((string)($p['name'] ?? ''));
-                // Deadlines are calendar days. Anything that is not one — "", null,
-                // a stray timestamp — clears the column instead of making MySQL
-                // guess at a DATE it cannot parse.
-                $projDeadline = null;
-                if (preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['deadline'] ?? ''), $dm)) {
-                    $projDeadline = $dm[1];
+                // Invoice date and deadline are calendar days. Anything that is not
+                // one — "", null, a stray timestamp — clears the column instead of
+                // making MySQL guess at a DATE it cannot parse.
+                $projInvoiceDate = null;
+                if (preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['invoiceDate'] ?? ''), $dm)) {
+                    $projInvoiceDate = $dm[1];
                 }
+                // The completion deadline - a calendar day too, same rule.
+                $projCompletionDeadline = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['completionDeadline'] ?? ''), $cm) ? $cm[1] : null;
                 // The real start and finish — calendar days too, same rule.
                 $projStart = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['startDate'] ?? ''), $sm) ? $sm[1] : null;
                 $projFinished = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['finishedAt'] ?? ''), $fm) ? $fm[1] : null;
@@ -2932,7 +2983,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $p['status'] ?? 'active',
                     !empty($p['division']) ? trim((string)$p['division']) : null,
                     $projRating,
-                    $projDeadline,
+                    $projInvoiceDate,
+                    $projCompletionDeadline,
                     $projDelayReason,
                     $projStart,
                     $projFinished,
@@ -4861,7 +4913,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // The raw PDO message names tables, columns and sometimes the offending
         // value. It is captured in error_logs (admin-only) above; the client gets
         // a generic message.
-        echo json_encode(['success' => false, 'message' => 'Failed database synchronization.']);
+        $failMessage = 'Failed database synchronization.';
+        // An admin can read error_logs anyway; showing the cause here saves the
+        // trip when the failure is reproducible from the screen they are on.
+        if (!empty($isAdmin)) {
+            $failMessage .= ' (' . $e->getMessage() . ')';
+        }
+        echo json_encode(['success' => false, 'message' => $failMessage]);
     }
     exit;
 }

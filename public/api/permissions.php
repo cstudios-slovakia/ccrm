@@ -85,7 +85,22 @@ if (!function_exists('ccrm_permission_sections')) {
             ['id' => 'invoices', 'permissions' => [$access('invoices'), $deleteToggle('invoices')]],
             ['id' => 'warehouse', 'permissions' => [$access('warehouse'), $deleteToggle('warehouse')]],
             ['id' => 'financial', 'permissions' => [$access('financial'), $deleteToggle('financial')]],
-            ['id' => 'employees', 'permissions' => [$access('employees'), $deleteToggle('employees'), $toggle('employees.salaries', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view'])]],
+            ['id' => 'employees', 'permissions' => [
+                $access('employees'),
+                $deleteToggle('employees'),
+                $toggle('employees.salaries', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
+                $toggle('employees.vacations', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
+                $toggle('employees.files', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
+                $toggle('employees.personal', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
+            ]],
+            ['id' => 'self_service', 'permissions' => [
+                $access('self.profile', 'nothing', 'nothing'),
+                $toggle('self.payroll', 'nothing', 'nothing'),
+                $access('self.vacations', 'nothing', 'nothing'),
+                $toggle('self.files', 'nothing', 'nothing'),
+                $toggle('self.hours', 'nothing', 'nothing'),
+                $toggle('self.account', 'edit', 'nothing'),
+            ]],
             ['id' => 'meetings', 'permissions' => [$access('meetings'), $deleteToggle('meetings')]],
             ['id' => 'files', 'permissions' => [
                 $access('files', 'edit', 'nothing', ['keys' => ['files.view', 'files.create'], 'edit' => ['files.create']]),
@@ -204,6 +219,12 @@ if (!function_exists('ccrm_permission_sections')) {
                     'warehouse.delete' => 'edit',
                     'financial' => 'edit',
                     'financial.delete' => 'edit',
+                    'employees' => 'edit',
+                    'employees.delete' => 'edit',
+                    'employees.salaries' => 'edit',
+                    'employees.vacations' => 'edit',
+                    'employees.files' => 'edit',
+                    'employees.personal' => 'edit',
                     'meetings' => 'edit',
                     'meetings.delete' => 'edit',
                     'files' => 'edit',
@@ -223,7 +244,17 @@ if (!function_exists('ccrm_permission_sections')) {
                     'system_reset' => 'nothing',
                     'ai_config' => 'nothing',
                     'nav_edit' => 'nothing',
+                    'self.account' => 'edit',
+                    'self.profile' => 'nothing',
+                    'self.payroll' => 'nothing',
+                    'self.vacations' => 'nothing',
+                    'self.files' => 'nothing',
+                    'self.hours' => 'nothing',
                 ],
+            ],
+            [
+                'name' => 'Employee',
+                'permissions' => ccrm_employee_role_permissions(),
             ],
         ];
     }
@@ -321,6 +352,75 @@ if (!function_exists('ccrm_permission_sections')) {
     /** adminRolePermissions(): the full map the Admin role always has. */
     function ccrm_admin_role_permissions(): array {
         return array_fill_keys(ccrm_all_permission_keys(), 'edit');
+    }
+
+    /** ccrm_employee_role_permissions(): the safe default map for the native Employee role. */
+    function ccrm_employee_role_permissions(): array {
+        return [
+            'dashboard' => 'nothing',
+            'dashboard.custom' => 'nothing',
+            'tasks' => 'edit',
+            'tasks.delete' => 'nothing',
+            'tasks.view_all' => 'nothing',
+            'leads' => 'nothing',
+            'leads.delete' => 'nothing',
+            'clients' => 'nothing',
+            'clients.delete' => 'nothing',
+            'projects' => 'nothing',
+            'projects.delete' => 'nothing',
+            'invoices' => 'nothing',
+            'invoices.delete' => 'nothing',
+            'warehouse' => 'nothing',
+            'warehouse.delete' => 'nothing',
+            'financial' => 'nothing',
+            'financial.delete' => 'nothing',
+            'employees' => 'nothing',
+            'employees.delete' => 'nothing',
+            'employees.salaries' => 'nothing',
+            'employees.vacations' => 'nothing',
+            'employees.files' => 'nothing',
+            'employees.personal' => 'nothing',
+            'meetings' => 'nothing',
+            'meetings.delete' => 'nothing',
+            'files' => 'nothing',
+            'files.delete' => 'nothing',
+            'email' => 'nothing',
+            'unified_entries' => 'nothing',
+            'unified_entries.delete' => 'nothing',
+            'automation' => 'nothing',
+            'social_media' => 'nothing',
+            'overview' => 'nothing',
+            'updates' => 'edit',
+            'rag_ai' => 'nothing',
+            'general_config' => 'nothing',
+            'pm_managers' => 'nothing',
+            'pipeline_stages' => 'nothing',
+            'traffic_sources' => 'nothing',
+            'ai_config' => 'nothing',
+            'system_reset' => 'nothing',
+            'nav_edit' => 'nothing',
+            'self.account' => 'nothing',
+            'self.profile' => 'view',
+            'self.payroll' => 'edit',
+            'self.vacations' => 'edit',
+            'self.files' => 'edit',
+            'self.hours' => 'edit',
+        ];
+    }
+
+    /** Protected role names that the matrix will not let anyone delete. */
+    function ccrm_protected_role_names(): array {
+        return ['Admin', 'Project Manager', 'Employee'];
+    }
+
+    function ccrm_is_protected_role_name(?string $roleName): bool {
+        $name = strtolower(trim((string)$roleName));
+        foreach (ccrm_protected_role_names() as $p) {
+            if (strtolower($p) === $name) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
