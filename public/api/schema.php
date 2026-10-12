@@ -889,6 +889,94 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_vac_emp (`employee_id`),
               INDEX idx_vac_dates (`start_date`, `end_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Orders (E-shop & Commercial Orders)
+            "CREATE TABLE IF NOT EXISTS `orders` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `order_number` VARCHAR(100) NOT NULL UNIQUE,
+              `type` ENUM('sales', 'purchase') NOT NULL DEFAULT 'sales' COMMENT 'sales = odberateľská/eshop, purchase = dodávateľská',
+              `status` VARCHAR(50) NOT NULL DEFAULT 'new' COMMENT 'Customizable status key from orderStatuses setting',
+              `customer_type` ENUM('client', 'guest') NOT NULL DEFAULT 'client' COMMENT 'client = registrovaný lead/klient, guest = nákup bez registrácie',
+              `client_id` VARCHAR(50) NULL COMMENT 'References leads.id for registered sales clients',
+              `supplier_id` VARCHAR(50) NULL COMMENT 'References suppliers.id for purchase orders',
+              `guest_name` VARCHAR(255) NULL,
+              `guest_email` VARCHAR(255) NULL,
+              `guest_phone` VARCHAR(50) NULL,
+              `guest_company` VARCHAR(255) NULL,
+              `guest_ico` VARCHAR(50) NULL,
+              `guest_dic` VARCHAR(50) NULL,
+              `guest_ic_dph` VARCHAR(50) NULL,
+              `delivery_recipient` VARCHAR(255) NULL,
+              `delivery_street` VARCHAR(255) NULL,
+              `delivery_city` VARCHAR(100) NULL,
+              `delivery_zip` VARCHAR(20) NULL,
+              `delivery_country` VARCHAR(10) NOT NULL DEFAULT 'SK',
+              `delivery_phone` VARCHAR(50) NULL,
+              `delivery_notes` TEXT NULL,
+              `shipping_method` VARCHAR(100) NULL,
+              `shipping_pickup_point_id` VARCHAR(100) NULL,
+              `shipping_tracking_number` VARCHAR(100) NULL,
+              `billing_name` VARCHAR(255) NULL,
+              `billing_street` VARCHAR(255) NULL,
+              `billing_city` VARCHAR(100) NULL,
+              `billing_zip` VARCHAR(20) NULL,
+              `billing_country` VARCHAR(10) NOT NULL DEFAULT 'SK',
+              `billing_ico` VARCHAR(50) NULL,
+              `billing_dic` VARCHAR(50) NULL,
+              `billing_ic_dph` VARCHAR(50) NULL,
+              `payment_method` VARCHAR(100) NULL,
+              `payment_status` ENUM('unpaid', 'paid', 'partially_paid', 'refunded') NOT NULL DEFAULT 'unpaid',
+              `paid_at` DATETIME NULL,
+              `payment_reference` VARCHAR(100) NULL,
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `items_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `services_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `total_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `total_tax_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `total_gross_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `order_date` DATE NOT NULL,
+              `requested_delivery_date` DATE NULL,
+              `confirmed_delivery_date` DATE NULL,
+              `warehouse_id` VARCHAR(50) NULL,
+              `notes` TEXT NULL,
+              `customer_note` TEXT NULL,
+              `created_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_orders_type_status (`type`, `status`),
+              INDEX idx_orders_customer_type (`customer_type`),
+              INDEX idx_orders_client (`client_id`),
+              INDEX idx_orders_supplier (`supplier_id`),
+              INDEX idx_orders_date (`order_date`),
+              INDEX idx_orders_payment_status (`payment_status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Order Items (Products & Additional Services)
+            "CREATE TABLE IF NOT EXISTS `order_items` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `order_id` VARCHAR(50) NOT NULL,
+              `item_type` ENUM('product', 'service') NOT NULL DEFAULT 'product' COMMENT 'product = skladový tovar, service = doplnková služba',
+              `item_id` VARCHAR(50) NULL COMMENT 'References warehouse_items.id for products',
+              `sku` VARCHAR(100) NULL,
+              `ean` VARCHAR(50) NULL,
+              `name` VARCHAR(255) NOT NULL,
+              `variant_title` VARCHAR(100) NULL,
+              `quantity` DECIMAL(12,2) NOT NULL DEFAULT 1.00,
+              `unit` VARCHAR(20) NOT NULL DEFAULT 'ks',
+              `unit_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+              `discount_percent` DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+              `tax_rate` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+              `total_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `total_gross_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `fulfilled_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `service_code` VARCHAR(50) NULL,
+              `notes` VARCHAR(255) NULL,
+              `sort_order` INT NOT NULL DEFAULT 0,
+              INDEX idx_order_items_order (`order_id`),
+              INDEX idx_order_items_item (`item_id`),
+              INDEX idx_order_items_type (`item_type`),
+              CONSTRAINT fk_order_items_order FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -1248,6 +1336,86 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_seed_default_financial_categories($pdo);
         ccrm_seed_default_employees($pdo);
         ccrm_migrate_user_role_varchar($pdo);
+        ccrm_migrate_orders($pdo);
+    }
+
+    /**
+     * Creates and migrates `orders` and `order_items` tables for e-shop and commercial orders.
+     */
+    function ccrm_migrate_orders(PDO $pdo): void {
+        try {
+            $hasOrders = (int)$pdo->query(
+                "SELECT COUNT(*) FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'"
+            )->fetchColumn() > 0;
+            if (!$hasOrders) {
+                $statements = ccrm_schema_statements();
+                foreach ($statements as $stmt) {
+                    if (strpos($stmt, '`orders`') !== false || strpos($stmt, '`order_items`') !== false) {
+                        try { $pdo->exec($stmt); } catch (\Throwable $e) {}
+                    }
+                }
+                return;
+            }
+
+            $orderCols = [
+                'customer_type' => "ALTER TABLE `orders` ADD COLUMN `customer_type` ENUM('client', 'guest') NOT NULL DEFAULT 'client' AFTER `status`",
+                'guest_name' => "ALTER TABLE `orders` ADD COLUMN `guest_name` VARCHAR(255) NULL AFTER `supplier_id`",
+                'guest_email' => "ALTER TABLE `orders` ADD COLUMN `guest_email` VARCHAR(255) NULL AFTER `guest_name`",
+                'guest_phone' => "ALTER TABLE `orders` ADD COLUMN `guest_phone` VARCHAR(50) NULL AFTER `guest_email`",
+                'guest_company' => "ALTER TABLE `orders` ADD COLUMN `guest_company` VARCHAR(255) NULL AFTER `guest_phone`",
+                'guest_ico' => "ALTER TABLE `orders` ADD COLUMN `guest_ico` VARCHAR(50) NULL AFTER `guest_company`",
+                'guest_dic' => "ALTER TABLE `orders` ADD COLUMN `guest_dic` VARCHAR(50) NULL AFTER `guest_ico`",
+                'guest_ic_dph' => "ALTER TABLE `orders` ADD COLUMN `guest_ic_dph` VARCHAR(50) NULL AFTER `guest_dic`",
+                'delivery_recipient' => "ALTER TABLE `orders` ADD COLUMN `delivery_recipient` VARCHAR(255) NULL AFTER `guest_ic_dph`",
+                'delivery_street' => "ALTER TABLE `orders` ADD COLUMN `delivery_street` VARCHAR(255) NULL AFTER `delivery_recipient`",
+                'delivery_city' => "ALTER TABLE `orders` ADD COLUMN `delivery_city` VARCHAR(100) NULL AFTER `delivery_street`",
+                'delivery_zip' => "ALTER TABLE `orders` ADD COLUMN `delivery_zip` VARCHAR(20) NULL AFTER `delivery_city`",
+                'delivery_country' => "ALTER TABLE `orders` ADD COLUMN `delivery_country` VARCHAR(10) NOT NULL DEFAULT 'SK' AFTER `delivery_zip`",
+                'delivery_phone' => "ALTER TABLE `orders` ADD COLUMN `delivery_phone` VARCHAR(50) NULL AFTER `delivery_country`",
+                'delivery_notes' => "ALTER TABLE `orders` ADD COLUMN `delivery_notes` TEXT NULL AFTER `delivery_phone`",
+                'shipping_method' => "ALTER TABLE `orders` ADD COLUMN `shipping_method` VARCHAR(100) NULL AFTER `delivery_notes`",
+                'shipping_pickup_point_id' => "ALTER TABLE `orders` ADD COLUMN `shipping_pickup_point_id` VARCHAR(100) NULL AFTER `shipping_method`",
+                'shipping_tracking_number' => "ALTER TABLE `orders` ADD COLUMN `shipping_tracking_number` VARCHAR(100) NULL AFTER `shipping_pickup_point_id`",
+                'billing_name' => "ALTER TABLE `orders` ADD COLUMN `billing_name` VARCHAR(255) NULL AFTER `shipping_tracking_number`",
+                'billing_street' => "ALTER TABLE `orders` ADD COLUMN `billing_street` VARCHAR(255) NULL AFTER `billing_name`",
+                'billing_city' => "ALTER TABLE `orders` ADD COLUMN `billing_city` VARCHAR(100) NULL AFTER `billing_street`",
+                'billing_zip' => "ALTER TABLE `orders` ADD COLUMN `billing_zip` VARCHAR(20) NULL AFTER `billing_city`",
+                'billing_country' => "ALTER TABLE `orders` ADD COLUMN `billing_country` VARCHAR(10) NOT NULL DEFAULT 'SK' AFTER `billing_zip`",
+                'billing_ico' => "ALTER TABLE `orders` ADD COLUMN `billing_ico` VARCHAR(50) NULL AFTER `billing_country`",
+                'billing_dic' => "ALTER TABLE `orders` ADD COLUMN `billing_dic` VARCHAR(50) NULL AFTER `billing_ico`",
+                'billing_ic_dph' => "ALTER TABLE `orders` ADD COLUMN `billing_ic_dph` VARCHAR(50) NULL AFTER `billing_dic`",
+                'payment_method' => "ALTER TABLE `orders` ADD COLUMN `payment_method` VARCHAR(100) NULL AFTER `billing_ic_dph`",
+                'payment_status' => "ALTER TABLE `orders` ADD COLUMN `payment_status` ENUM('unpaid', 'paid', 'partially_paid', 'refunded') NOT NULL DEFAULT 'unpaid' AFTER `payment_method`",
+                'paid_at' => "ALTER TABLE `orders` ADD COLUMN `paid_at` DATETIME NULL AFTER `payment_status`",
+                'payment_reference' => "ALTER TABLE `orders` ADD COLUMN `payment_reference` VARCHAR(100) NULL AFTER `paid_at`",
+                'items_net_amount' => "ALTER TABLE `orders` ADD COLUMN `items_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00 AFTER `currency`",
+                'services_net_amount' => "ALTER TABLE `orders` ADD COLUMN `services_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00 AFTER `items_net_amount`",
+                'customer_note' => "ALTER TABLE `orders` ADD COLUMN `customer_note` TEXT NULL AFTER `notes`",
+            ];
+            foreach ($orderCols as $col => $sql) {
+                if (!ccrm_column_exists($pdo, 'orders', $col)) {
+                    try { $pdo->exec($sql); } catch (\Throwable $e) {}
+                }
+            }
+
+            if (ccrm_column_exists($pdo, 'order_items', 'id')) {
+                if (!ccrm_column_exists($pdo, 'order_items', 'item_type')) {
+                    try { $pdo->exec("ALTER TABLE `order_items` ADD COLUMN `item_type` ENUM('product', 'service') NOT NULL DEFAULT 'product' AFTER `order_id`"); } catch (\Throwable $e) {}
+                }
+                if (!ccrm_column_exists($pdo, 'order_items', 'ean')) {
+                    try { $pdo->exec("ALTER TABLE `order_items` ADD COLUMN `ean` VARCHAR(50) NULL AFTER `sku`"); } catch (\Throwable $e) {}
+                }
+                if (!ccrm_column_exists($pdo, 'order_items', 'variant_title')) {
+                    try { $pdo->exec("ALTER TABLE `order_items` ADD COLUMN `variant_title` VARCHAR(100) NULL AFTER `name`"); } catch (\Throwable $e) {}
+                }
+                if (!ccrm_column_exists($pdo, 'order_items', 'service_code')) {
+                    try { $pdo->exec("ALTER TABLE `order_items` ADD COLUMN `service_code` VARCHAR(50) NULL AFTER `fulfilled_quantity`"); } catch (\Throwable $e) {}
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] ccrm_migrate_orders: ' . $e->getMessage());
+        }
     }
 
     /**

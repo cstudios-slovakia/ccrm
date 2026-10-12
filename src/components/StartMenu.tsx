@@ -357,6 +357,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         defaultSection: "operations"
       },
       {
+        id: "orders",
+        label: t("Orders", "Objednávky", "Rendelések"),
+        description: t("E-shop & commercial orders, guest checkout, deliveries & status pipeline", "E-shop a obchodné objednávky, nákup bez registrácie, doprava a stavy", "Webáruház és kereskedelmi rendelések, vendég vásárlás, szállítás"),
+        icon: Icons.ShoppingCart || Coins,
+        color: "#0284c7",
+        bgColor: "rgba(2, 132, 199, 0.12)",
+        defaultSection: "operations"
+      },
+      {
         id: "financial",
         label: getTranslation(systemLanguage, "sidebar.financial"),
         description: t("Cash flow trend, matrix table, ledger & recurring rules", "Trend cashflow, tabuľka, pohyby a trvalé príkazy", "Cashflow trend, mátrix tábla, mozgások"),

@@ -4,11 +4,13 @@ import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import { QuickTaskModal } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
 import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
+import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
+import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -136,6 +138,7 @@ const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
 const EmployeesView = safeLazy(() => import("./components/employees/EmployeesView").then(m => ({ default: m.EmployeesView })));
+const OrdersView = safeLazy(() => import("./components/OrdersView").then(m => ({ default: m.OrdersView })));
 
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
@@ -186,6 +189,7 @@ const computeSettingsSig = (s: any): string => {
     // Normalized on both sides: an install that never opened the editor has
     // nothing stored, and that must compare equal to the built-ins it is shown.
     normalizeProjectStatusDefs(s.projectStatuses),
+    normalizeOrderStatusDefs(s.orderStatuses),
     s.integrationsConfig ?? null,
     s.companyBillingSettings ?? null,
     s.invoicingIntegrations ?? null,
@@ -208,6 +212,7 @@ const computePushSig = (p: {
   financialMode?: unknown; financialSimplifiedTable?: unknown;
   invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
   employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
+  orders?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
@@ -217,6 +222,7 @@ const computePushSig = (p: {
   p.financialMode, p.financialSimplifiedTable,
   p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
   p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
+  p.orders,
   computeSettingsSig(p.settings),
 ]);
 
@@ -422,6 +428,9 @@ function App() {
       client: "clients",
       lead: "leads",
       project: "projects",
+      order: "orders",
+      objednavky: "orders",
+      rendelesek: "orders",
       employee: "employees",
       salaries: "employees",
       salary: "employees",
@@ -433,12 +442,12 @@ function App() {
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (!validTabs.includes(resolvedBase)) return "dashboard";
     const route = resolvedBase + subPath;
     return queryRaw ? `${route}?${queryRaw}` : route;
@@ -635,6 +644,9 @@ function App() {
   const [employeeSalaries, setEmployeeSalaries] = useState<EmployeeSalary[]>([]);
   const [employeeVacations, setEmployeeVacations] = useState<EmployeeVacation[]>([]);
   const [employeeSettings, setEmployeeSettings] = useState<EmployeeSettings | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const ordersRef = useRef<Order[]>([]);
+  const [orderStatuses, setOrderStatuses] = useState<OrderStatusDef[]>(() => normalizeOrderStatusDefs(null));
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -1044,6 +1056,9 @@ ${log.payload || ''}
         case "invoices":
           viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
           break;
+        case "orders":
+          viewName = t("Orders", "Objednávky", "Rendelések");
+          break;
         case "dashboard":
           viewName = getTranslation(userLanguage, "sidebar.dashboard");
           break;
@@ -1129,6 +1144,7 @@ ${log.payload || ''}
   employeeSalariesRef.current = employeeSalaries;
   employeeVacationsRef.current = employeeVacations;
   employeeSettingsRef.current = employeeSettings;
+  ordersRef.current = orders;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -1154,6 +1170,7 @@ ${log.payload || ''}
     nextInvoicesOffers?: InvoiceOffer[],
     nextAiCustomTemplates?: AiCustomTemplate[],
     nextClientCategories?: ClientCategory[],
+    nextOrders?: Order[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -1198,6 +1215,7 @@ ${log.payload || ''}
     const liveEmployeeSalaries = employeeSalariesRef.current;
     const liveEmployeeVacations = employeeVacationsRef.current;
     const liveEmployeeSettings = employeeSettingsRef.current;
+    const liveOrders = nextOrders ?? ordersRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -1226,6 +1244,7 @@ ${log.payload || ''}
       employeeSalaries: liveEmployeeSalaries,
       employeeVacations: liveEmployeeVacations,
       employeeSettings: liveEmployeeSettings,
+      orders: liveOrders,
       // Always sent whole: it is one small blob, and the server's contract is
       // "omitted means unchanged", so narrowing it would be indistinguishable
       // from a client that predates the key.
@@ -1255,6 +1274,7 @@ ${log.payload || ''}
         taskStates,
         taskStateColors,
         projectStatuses,
+        orderStatuses,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
         companyBillingSettings: companyBillingSettingsRef.current,
         invoicingIntegrations: invoicingIntegrationsRef.current,
@@ -1301,6 +1321,7 @@ ${log.payload || ''}
       narrow("employees", liveEmployees);
       narrow("employeeSalaries", liveEmployeeSalaries);
       narrow("employeeVacations", liveEmployeeVacations);
+      narrow("orders", liveOrders);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1818,6 +1839,15 @@ ${log.payload || ''}
     });
   };
 
+  const updateOrdersAndSync = (newOrders: Order[] | ((prev: Order[]) => Order[])) => {
+    setOrders(prev => {
+      const next = typeof newOrders === "function" ? newOrders(prev) : newOrders;
+      ordersRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
   const updateCompanyBillingSettingsAndSync = (newSettings: CompanyBillingSettings | null | ((prev: CompanyBillingSettings | null) => CompanyBillingSettings | null)) => {
     setCompanyBillingSettings(prev => {
       const next = typeof newSettings === "function" ? newSettings(prev) : newSettings;
@@ -2201,6 +2231,7 @@ ${log.payload || ''}
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
       projectStatuses,
+      orderStatuses,
       financialMode, financialSimplifiedTable,
     });
     // Before we have ever seen the server's settings, just record the current
@@ -2229,7 +2260,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, orderStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2479,6 +2510,9 @@ ${log.payload || ''}
       if (data.employeeVacations && Array.isArray(data.employeeVacations)) {
         setEmployeeVacations(sameOr(data.employeeVacations));
       }
+      if (data.orders && Array.isArray(data.orders)) {
+        setOrders(sameOr(data.orders));
+      }
       if (data.employeeSettings !== undefined) {
         // sameOr keeps the old reference when nothing changed. A fresh object on
         // every sync poll re-ran the employee form's init effect and blanked a
@@ -2554,6 +2588,10 @@ ${log.payload || ''}
           const next = normalizeProjectStatusDefs(s.projectStatuses);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
+        setOrderStatuses((prev) => {
+          const next = normalizeOrderStatusDefs(s.orderStatuses);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
         serverSettingsAppliedRef.current = true;
         // Remember what the server just gave us. The settings-sync effect compares
@@ -2593,6 +2631,7 @@ ${log.payload || ''}
         employees: baselineOf(data.employees ?? employeesRef.current),
         employeeSalaries: baselineOf(data.employeeSalaries ?? employeeSalariesRef.current),
         employeeVacations: baselineOf(data.employeeVacations ?? employeeVacationsRef.current),
+        orders: baselineOf(data.orders ?? ordersRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -2630,6 +2669,7 @@ ${log.payload || ''}
         employeeSalaries: data.employeeSalaries ?? employeeSalariesRef.current,
         employeeVacations: data.employeeVacations ?? employeeVacationsRef.current,
         employeeSettings: data.employeeSettings ?? employeeSettingsRef.current,
+        orders: data.orders ?? ordersRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -2885,6 +2925,10 @@ ${log.payload || ''}
           setProjectTypes={updateProjectTypesAndSync}
           projectStatuses={projectStatuses}
           setProjectStatuses={setProjectStatuses}
+          orderStatuses={orderStatuses}
+          setOrderStatuses={setOrderStatuses}
+          orders={orders}
+          setOrders={updateOrdersAndSync}
           projects={projects}
           setProjects={updateProjectsAndSync}
           companyBillingSettings={companyBillingSettings}
@@ -2985,6 +3029,7 @@ ${log.payload || ''}
         <ClientsView 
           leads={leads}
           setLeads={updateLeadsAndSync}
+          orders={orders}
           projectManagers={projectManagers}
           projectManagerColors={projectManagerColors}
           leadSources={leadSources}
@@ -3130,6 +3175,10 @@ ${log.payload || ''}
           setProjectTypes={updateProjectTypesAndSync}
           projectStatuses={projectStatuses}
           setProjectStatuses={setProjectStatuses}
+          orderStatuses={orderStatuses}
+          setOrderStatuses={setOrderStatuses}
+          orders={orders}
+          setOrders={updateOrdersAndSync}
           projects={projects}
           setProjects={updateProjectsAndSync}
           financialCategories={financialCategories}
@@ -3248,6 +3297,7 @@ ${log.payload || ''}
         return (
           <ClientsView
             leads={leads}
+            orders={orders}
             access={access.module("clients")}
             financeAccess={access.module("financial")}
             taskAccess={taskAccess}
@@ -3327,6 +3377,31 @@ ${log.payload || ''}
             onOpenSettings={() => {
               window.location.hash = "settings/invoicing";
               setActiveTab("settings/invoicing");
+            }}
+          />
+        );
+      case "orders":
+        return (
+          <OrdersView
+            orders={orders}
+            setOrders={updateOrdersAndSync}
+            leads={leads}
+            setLeads={updateLeadsAndSync}
+            warehouseItems={warehouseItems}
+            warehouses={warehouses}
+            setWarehouseMovements={updateWarehouseMovementsAndSync}
+            invoicesOffers={invoicesOffers}
+            setInvoicesOffers={updateInvoicesOffersAndSync}
+            systemCurrency={currencyCode}
+            userLanguage={userLanguage}
+            currentUser={activeUser}
+            getPermission={getPermission}
+            onOpenClient={(clientId) => {
+              const cl = leads.find(l => l.id === clientId);
+              if (cl) {
+                window.location.hash = `clients/${encodeURIComponent(cl.name)}`;
+                setActiveTab(`clients/${encodeURIComponent(cl.name)}`);
+              }
             }}
           />
         );
@@ -3715,6 +3790,7 @@ ${log.payload || ''}
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
     <ProjectStatusesProvider value={projectStatuses}>
+    <OrderStatusesProvider value={orderStatuses}>
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -4200,6 +4276,7 @@ ${log.payload || ''}
       )}
     </div>
     </QuickAddClientProvider>
+    </OrderStatusesProvider>
     </ProjectStatusesProvider>
     </UserPrefsContext.Provider>
   );

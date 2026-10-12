@@ -1221,3 +1221,108 @@ export interface FavoriteItem {
 }
 
 export type FavoriteEntityType = "project" | "client" | "lead" | "entry";
+
+// ── E-SHOP & COMMERCIAL ORDERS ENGINE ─────────────────────────
+export type OrderType = 'sales' | 'purchase';
+export type CustomerType = 'client' | 'guest';
+export type OrderPaymentStatus = 'unpaid' | 'paid' | 'partially_paid' | 'refunded';
+export type OrderItemType = 'product' | 'service';
+
+export interface DeliveryAddress {
+  recipient?: string | null;
+  street?: string | null;
+  city?: string | null;
+  zip?: string | null;
+  country: string;
+  phone?: string | null;
+  notes?: string | null;
+}
+
+export interface BillingAddress {
+  name?: string | null;
+  street?: string | null;
+  city?: string | null;
+  zip?: string | null;
+  country: string;
+  ico?: string | null;
+  dic?: string | null;
+  icDph?: string | null;
+}
+
+export interface GuestCustomer {
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+  ico?: string | null;
+  dic?: string | null;
+  icDph?: string | null;
+}
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  itemType: OrderItemType; // 'product' vs 'service'
+  itemId?: string | null;  // References WarehouseItem.id for physical products
+  sku?: string | null;
+  ean?: string | null;
+  name: string;
+  variantTitle?: string | null;
+  quantity: number;
+  unit: string;
+  unitPrice: number;       // Net price per unit
+  discountPercent: number;
+  taxRate: number;         // e.g. 20 for 20% DPH
+  totalNetAmount: number;
+  totalGrossAmount: number;
+  fulfilledQuantity: number;
+  serviceCode?: string | null; // e.g. 'SHIPPING_DPD', 'PAYMENT_COD'
+  notes?: string | null;
+  sortOrder: number;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  type: OrderType;
+  status: string; // Dynamically matched against OrderStatusDef.key
+
+  // Customer Attachment
+  customerType: CustomerType;
+  clientId?: string | null;   // References Lead.id for registered sales clients
+  supplierId?: string | null; // References Supplier.id for purchase orders
+  guest?: GuestCustomer;
+
+  // Delivery & Billing
+  delivery: DeliveryAddress;
+  shippingMethod?: string | null;
+  shippingPickupPointId?: string | null;
+  shippingTrackingNumber?: string | null;
+
+  billing: BillingAddress;
+  paymentMethod?: string | null;
+  paymentStatus: OrderPaymentStatus;
+  paidAt?: string | null;
+  paymentReference?: string | null;
+
+  // Financial Totals
+  currency: string;
+  itemsNetAmount: number;     // Physical goods net subtotal
+  servicesNetAmount: number;  // Additional services net subtotal
+  totalNetAmount: number;     // Total net
+  totalTaxAmount: number;     // Total VAT
+  totalGrossAmount: number;   // Total gross to pay
+
+  // Schedule & Operations
+  orderDate: string;          // YYYY-MM-DD
+  requestedDeliveryDate?: string | null;
+  confirmedDeliveryDate?: string | null;
+  warehouseId?: string | null;
+  notes?: string | null;
+  customerNote?: string | null;
+  createdBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+
+  items?: OrderItem[];
+}

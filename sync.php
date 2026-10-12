@@ -178,7 +178,7 @@ function ccrm_decode_attr_value($stored) {
 }
 
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -1818,8 +1818,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         if (isset($settings['EMPLOYEE_SETTINGS'])) {
             $employeeSettings = json_decode($settings['EMPLOYEE_SETTINGS'], true);
         }
+
+        $orders = [];
+        if ($pdo->query("SHOW TABLES LIKE 'orders'")->rowCount() > 0) {
+            $orderStmt = $pdo->query("SELECT * FROM `orders` ORDER BY `order_date` DESC, `created_at` DESC");
+            $itemsByOrder = [];
+            if ($pdo->query("SHOW TABLES LIKE 'order_items'")->rowCount() > 0) {
+                $allItemsStmt = $pdo->query("SELECT * FROM `order_items` ORDER BY `sort_order` ASC");
+                while ($itemRow = $allItemsStmt->fetch()) {
+                    $itemsByOrder[$itemRow['order_id']][] = [
+                        'id' => $itemRow['id'],
+                        'orderId' => $itemRow['order_id'],
+                        'itemType' => $itemRow['item_type'] ?? 'product',
+                        'itemId' => $itemRow['item_id'],
+                        'sku' => $itemRow['sku'],
+                        'ean' => $itemRow['ean'] ?? null,
+                        'name' => $itemRow['name'],
+                        'variantTitle' => $itemRow['variant_title'] ?? null,
+                        'quantity' => (float)$itemRow['quantity'],
+                        'unit' => $itemRow['unit'] ?? 'ks',
+                        'unitPrice' => (float)$itemRow['unit_price'],
+                        'discountPercent' => (float)($itemRow['discount_percent'] ?? 0.0),
+                        'taxRate' => (float)($itemRow['tax_rate'] ?? 20.0),
+                        'totalNetAmount' => (float)($itemRow['total_net_amount'] ?? 0.0),
+                        'totalGrossAmount' => (float)($itemRow['total_gross_amount'] ?? 0.0),
+                        'fulfilledQuantity' => (float)($itemRow['fulfilled_quantity'] ?? 0.0),
+                        'serviceCode' => $itemRow['service_code'] ?? null,
+                        'notes' => $itemRow['notes'],
+                        'sortOrder' => (int)($itemRow['sort_order'] ?? 0),
+                    ];
+                }
+            }
+            while ($row = $orderStmt->fetch()) {
+                $orders[] = [
+                    'id' => $row['id'],
+                    'orderNumber' => $row['order_number'],
+                    'type' => $row['type'],
+                    'status' => $row['status'],
+                    'customerType' => $row['customer_type'] ?? 'client',
+                    'clientId' => $row['client_id'],
+                    'supplierId' => $row['supplier_id'],
+                    'guest' => [
+                        'name' => $row['guest_name'],
+                        'email' => $row['guest_email'],
+                        'phone' => $row['guest_phone'],
+                        'company' => $row['guest_company'],
+                        'ico' => $row['guest_ico'],
+                        'dic' => $row['guest_dic'],
+                        'icDph' => $row['guest_ic_dph'],
+                    ],
+                    'delivery' => [
+                        'recipient' => $row['delivery_recipient'],
+                        'street' => $row['delivery_street'],
+                        'city' => $row['delivery_city'],
+                        'zip' => $row['delivery_zip'],
+                        'country' => $row['delivery_country'] ?? 'SK',
+                        'phone' => $row['delivery_phone'],
+                        'notes' => $row['delivery_notes'],
+                    ],
+                    'shippingMethod' => $row['shipping_method'],
+                    'shippingPickupPointId' => $row['shipping_pickup_point_id'],
+                    'shippingTrackingNumber' => $row['shipping_tracking_number'],
+                    'billing' => [
+                        'name' => $row['billing_name'],
+                        'street' => $row['billing_street'],
+                        'city' => $row['billing_city'],
+                        'zip' => $row['billing_zip'],
+                        'country' => $row['billing_country'] ?? 'SK',
+                        'ico' => $row['billing_ico'],
+                        'dic' => $row['billing_dic'],
+                        'icDph' => $row['billing_ic_dph'],
+                    ],
+                    'paymentMethod' => $row['payment_method'],
+                    'paymentStatus' => $row['payment_status'] ?? 'unpaid',
+                    'paidAt' => $row['paid_at'],
+                    'paymentReference' => $row['payment_reference'],
+                    'currency' => $row['currency'] ?? 'EUR',
+                    'itemsNetAmount' => (float)($row['items_net_amount'] ?? 0.0),
+                    'servicesNetAmount' => (float)($row['services_net_amount'] ?? 0.0),
+                    'totalNetAmount' => (float)($row['total_net_amount'] ?? 0.0),
+                    'totalTaxAmount' => (float)($row['total_tax_amount'] ?? 0.0),
+                    'totalGrossAmount' => (float)($row['total_gross_amount'] ?? 0.0),
+                    'orderDate' => $row['order_date'],
+                    'requestedDeliveryDate' => $row['requested_delivery_date'],
+                    'confirmedDeliveryDate' => $row['confirmed_delivery_date'],
+                    'warehouseId' => $row['warehouse_id'],
+                    'notes' => $row['notes'],
+                    'customerNote' => $row['customer_note'] ?? null,
+                    'createdBy' => $row['created_by'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                    'items' => $itemsByOrder[$row['id']] ?? [],
+                ];
+            }
+        }
     } catch (\Throwable $e) {
-        error_log('[ccrm sync] employees fetch error: ' . $e->getMessage());
+        error_log('[ccrm sync] employees/orders fetch error: ' . $e->getMessage());
     }
 
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
@@ -1891,6 +1985,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'employeeSalaries' => $employeeSalaries,
         'employeeVacations' => $employeeVacations,
         'employeeSettings' => $employeeSettings,
+        'orders' => $orders,
         // Manual weekly bank-balance anchors behind the finance trend chart.
         // Shared workspace data, not a per-user setting: these anchors define
         // the shape of the projection curve, so everyone has to see the same
@@ -4798,6 +4893,185 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $empSettingsVal = json_encode($payload['employeeSettings'], JSON_UNESCAPED_UNICODE);
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EMPLOYEE_SETTINGS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             $insSet->execute([$empSettingsVal]);
+        }
+
+        // 4.21. Synchronize Orders & Order Items
+        if (isset($payload['orders']) && is_array($payload['orders'])) {
+            $stmt = $pdo->query("SELECT `id` FROM `orders`");
+            $existingOrderIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedOrderIds = [];
+
+            $insOrder = $pdo->prepare("
+                INSERT INTO `orders` (
+                    `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`,
+                    `guest_name`, `guest_email`, `guest_phone`, `guest_company`, `guest_ico`, `guest_dic`, `guest_ic_dph`,
+                    `delivery_recipient`, `delivery_street`, `delivery_city`, `delivery_zip`, `delivery_country`, `delivery_phone`, `delivery_notes`,
+                    `shipping_method`, `shipping_pickup_point_id`, `shipping_tracking_number`,
+                    `billing_name`, `billing_street`, `billing_city`, `billing_zip`, `billing_country`, `billing_ico`, `billing_dic`, `billing_ic_dph`,
+                    `payment_method`, `payment_status`, `paid_at`, `payment_reference`,
+                    `currency`, `items_net_amount`, `services_net_amount`, `total_net_amount`, `total_tax_amount`, `total_gross_amount`,
+                    `order_date`, `requested_delivery_date`, `confirmed_delivery_date`, `warehouse_id`, `notes`, `customer_note`, `created_by`
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?
+                )
+                ON DUPLICATE KEY UPDATE
+                    `order_number` = VALUES(`order_number`),
+                    `type` = VALUES(`type`),
+                    `status` = VALUES(`status`),
+                    `customer_type` = VALUES(`customer_type`),
+                    `client_id` = VALUES(`client_id`),
+                    `supplier_id` = VALUES(`supplier_id`),
+                    `guest_name` = VALUES(`guest_name`),
+                    `guest_email` = VALUES(`guest_email`),
+                    `guest_phone` = VALUES(`guest_phone`),
+                    `guest_company` = VALUES(`guest_company`),
+                    `guest_ico` = VALUES(`guest_ico`),
+                    `guest_dic` = VALUES(`guest_dic`),
+                    `guest_ic_dph` = VALUES(`guest_ic_dph`),
+                    `delivery_recipient` = VALUES(`delivery_recipient`),
+                    `delivery_street` = VALUES(`delivery_street`),
+                    `delivery_city` = VALUES(`delivery_city`),
+                    `delivery_zip` = VALUES(`delivery_zip`),
+                    `delivery_country` = VALUES(`delivery_country`),
+                    `delivery_phone` = VALUES(`delivery_phone`),
+                    `delivery_notes` = VALUES(`delivery_notes`),
+                    `shipping_method` = VALUES(`shipping_method`),
+                    `shipping_pickup_point_id` = VALUES(`shipping_pickup_point_id`),
+                    `shipping_tracking_number` = VALUES(`shipping_tracking_number`),
+                    `billing_name` = VALUES(`billing_name`),
+                    `billing_street` = VALUES(`billing_street`),
+                    `billing_city` = VALUES(`billing_city`),
+                    `billing_zip` = VALUES(`billing_zip`),
+                    `billing_country` = VALUES(`billing_country`),
+                    `billing_ico` = VALUES(`billing_ico`),
+                    `billing_dic` = VALUES(`billing_dic`),
+                    `billing_ic_dph` = VALUES(`billing_ic_dph`),
+                    `payment_method` = VALUES(`payment_method`),
+                    `payment_status` = VALUES(`payment_status`),
+                    `paid_at` = VALUES(`paid_at`),
+                    `payment_reference` = VALUES(`payment_reference`),
+                    `currency` = VALUES(`currency`),
+                    `items_net_amount` = VALUES(`items_net_amount`),
+                    `services_net_amount` = VALUES(`services_net_amount`),
+                    `total_net_amount` = VALUES(`total_net_amount`),
+                    `total_tax_amount` = VALUES(`total_tax_amount`),
+                    `total_gross_amount` = VALUES(`total_gross_amount`),
+                    `order_date` = VALUES(`order_date`),
+                    `requested_delivery_date` = VALUES(`requested_delivery_date`),
+                    `confirmed_delivery_date` = VALUES(`confirmed_delivery_date`),
+                    `warehouse_id` = VALUES(`warehouse_id`),
+                    `notes` = VALUES(`notes`),
+                    `customer_note` = VALUES(`customer_note`)
+            ");
+
+            $delItems = $pdo->prepare("DELETE FROM `order_items` WHERE `order_id` = ?");
+            $insItem = $pdo->prepare("
+                INSERT INTO `order_items` (
+                    `id`, `order_id`, `item_type`, `item_id`, `sku`, `ean`, `name`, `variant_title`,
+                    `quantity`, `unit`, `unit_price`, `discount_percent`, `tax_rate`,
+                    `total_net_amount`, `total_gross_amount`, `fulfilled_quantity`, `service_code`, `notes`, `sort_order`
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+
+            foreach ($payload['orders'] as $ord) {
+                $orderId = $ord['id'];
+                $guest = $ord['guest'] ?? [];
+                $delivery = $ord['delivery'] ?? [];
+                $billing = $ord['billing'] ?? [];
+                $insOrder->execute([
+                    $orderId,
+                    $ord['orderNumber'] ?? ('OBJ-' . date('Ymd') . '-' . substr(bin2hex(random_bytes(3)), 0, 4)),
+                    $ord['type'] ?? 'sales',
+                    $ord['status'] ?? 'new',
+                    $ord['customerType'] ?? 'client',
+                    $ord['clientId'] ?? null,
+                    $ord['supplierId'] ?? null,
+                    $guest['name'] ?? null,
+                    $guest['email'] ?? null,
+                    $guest['phone'] ?? null,
+                    $guest['company'] ?? null,
+                    $guest['ico'] ?? null,
+                    $guest['dic'] ?? null,
+                    $guest['icDph'] ?? null,
+                    $delivery['recipient'] ?? null,
+                    $delivery['street'] ?? null,
+                    $delivery['city'] ?? null,
+                    $delivery['zip'] ?? null,
+                    $delivery['country'] ?? 'SK',
+                    $delivery['phone'] ?? null,
+                    $delivery['notes'] ?? null,
+                    $ord['shippingMethod'] ?? null,
+                    $ord['shippingPickupPointId'] ?? null,
+                    $ord['shippingTrackingNumber'] ?? null,
+                    $billing['name'] ?? null,
+                    $billing['street'] ?? null,
+                    $billing['city'] ?? null,
+                    $billing['zip'] ?? null,
+                    $billing['country'] ?? 'SK',
+                    $billing['ico'] ?? null,
+                    $billing['dic'] ?? null,
+                    $billing['icDph'] ?? null,
+                    $ord['paymentMethod'] ?? null,
+                    $ord['paymentStatus'] ?? 'unpaid',
+                    $ord['paidAt'] ?? null,
+                    $ord['paymentReference'] ?? null,
+                    $ord['currency'] ?? 'EUR',
+                    (float)($ord['itemsNetAmount'] ?? 0.0),
+                    (float)($ord['servicesNetAmount'] ?? 0.0),
+                    (float)($ord['totalNetAmount'] ?? 0.0),
+                    (float)($ord['totalTaxAmount'] ?? 0.0),
+                    (float)($ord['totalGrossAmount'] ?? 0.0),
+                    $ord['orderDate'] ?? date('Y-m-d'),
+                    $ord['requestedDeliveryDate'] ?? null,
+                    $ord['confirmedDeliveryDate'] ?? null,
+                    $ord['warehouseId'] ?? null,
+                    $ord['notes'] ?? null,
+                    $ord['customerNote'] ?? null,
+                    $ord['createdBy'] ?? $sessionEmail
+                ]);
+                $processedOrderIds[] = $orderId;
+
+                if (isset($ord['items']) && is_array($ord['items'])) {
+                    $delItems->execute([$orderId]);
+                    $sortOrder = 0;
+                    foreach ($ord['items'] as $item) {
+                        $itemId = $item['id'] ?? ('item_' . bin2hex(random_bytes(10)));
+                        $insItem->execute([
+                            $itemId,
+                            $orderId,
+                            $item['itemType'] ?? 'product',
+                            $item['itemId'] ?? null,
+                            $item['sku'] ?? null,
+                            $item['ean'] ?? null,
+                            $item['name'] ?? '',
+                            $item['variantTitle'] ?? null,
+                            (float)($item['quantity'] ?? 1.0),
+                            $item['unit'] ?? 'ks',
+                            (float)($item['unitPrice'] ?? 0.0),
+                            (float)($item['discountPercent'] ?? 0.0),
+                            (float)($item['taxRate'] ?? 20.0),
+                            (float)($item['totalNetAmount'] ?? 0.0),
+                            (float)($item['totalGrossAmount'] ?? 0.0),
+                            (float)($item['fulfilledQuantity'] ?? 0.0),
+                            $item['serviceCode'] ?? null,
+                            $item['notes'] ?? null,
+                            $sortOrder++
+                        ]);
+                    }
+                }
+            }
+
+            $ordersToDelete = $isDeltaSync ? $deletionsFor('orders', $existingOrderIds) : array_diff($existingOrderIds, $processedOrderIds);
+            if (!empty($ordersToDelete)) {
+                ccrm_delete_omitted($pdo, 'orders', $ordersToDelete, null, [], false, $isDeltaSync);
+            }
         }
 
         $pdo->commit();

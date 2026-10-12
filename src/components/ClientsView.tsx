@@ -8,9 +8,11 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare
+  AlertTriangle, CheckSquare, ShoppingCart
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order } from "../types";
+import { useOrderStatuses } from "../hooks/useOrderStatuses";
+import { orderStatusColor, orderStatusLabel } from "../utils/orders";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
@@ -79,6 +81,8 @@ interface ClientsViewProps {
   currencyCode?: string | null;
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  orders?: Order[];
+  setOrders?: React.Dispatch<React.SetStateAction<Order[]>>;
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   /** Customer categories (the Categories panel of the client register). */
@@ -425,6 +429,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   currencyCode,
   financialRecords = [],
   setFinancialRecords,
+  orders = [],
+  setOrders,
   financialCategories = [],
   clientCategories = [],
   setClientCategories,
@@ -1531,6 +1537,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ((primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)))
     );
   }, [financialRecords, activeClient]);
+
+  const orderStatuses = useOrderStatuses();
+  const clientOrders = useMemo(() => {
+    if (!activeClient) return [];
+    const leadIds = (activeClient.associatedLeads || []).map((l: any) => l.id);
+    const primaryId = activeClient.associatedLeads?.[0]?.id;
+    return orders.filter((o) =>
+      (primaryId && o.clientId === primaryId) ||
+      (o.clientId && leadIds.includes(o.clientId)) ||
+      (o.customerType === "client" && o.clientId === activeClient.id) ||
+      (o.billing?.name && activeClient.name && o.billing.name.toLowerCase() === activeClient.name.toLowerCase())
+    );
+  }, [orders, activeClient]);
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
     if (!canEdit) return;
@@ -3681,6 +3700,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   },
                   { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
                   { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
+                  { key: "orders", icon: <ShoppingCart className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
                 ]}
               />
 
@@ -5043,6 +5063,81 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           </div>
                         </form>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ORDERS TAB */}
+              {activeDetailTab === "orders" && (
+                <div className="space-y-5 text-left animate-in fade-in duration-150">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
+                        <ShoppingCart className="h-4.5 w-4.5 text-sky-600 stroke-[2.5]" />
+                        {t("Client Orders & E-Shop Purchases", "Objednávky a nákupy klienta", "Ügyfél rendelései és vásárlásai")}
+                      </h3>
+                      <p className="text-caption text-slate-500 mt-0.5">
+                        {t("History of all commercial and e-shop orders placed by this client.", "História všetkých obchodných a e-shopových objednávok tohto klienta.", "Az ügyfél összes rendelése.")}
+                      </p>
+                    </div>
+                  </div>
+
+                  {clientOrders.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption">
+                      {t("This client has no recorded orders yet.", "Tento klient zatiaľ nemá žiadne zaznamenané objednávky.", "Ennek az ügyfélnek még nincsenek rendelései.")}
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {clientOrders.map(order => {
+                        const statusColor = orderStatusColor(order.status, orderStatuses);
+                        const statusName = orderStatusLabel(order.status, t, orderStatuses);
+                        return (
+                          <div
+                            key={order.id}
+                            className="p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs hover:shadow-sm transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-caption text-slate-900">{order.orderNumber}</span>
+                                <span className="text-micro text-slate-400 font-mono">{order.orderDate}</span>
+                                <span
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold"
+                                  style={{ backgroundColor: `${statusColor}18`, color: statusColor }}
+                                >
+                                  {statusName}
+                                </span>
+                              </div>
+                              <div className="text-micro text-slate-500 flex items-center gap-2">
+                                <span>{(order.items || []).length} {t("items", "položiek", "tétel")}</span>
+                                {order.shippingMethod && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{order.shippingMethod}</span>
+                                  </>
+                                )}
+                                {order.shippingTrackingNumber && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="font-mono">{order.shippingTrackingNumber}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <div className="font-mono font-bold text-ui text-slate-900">
+                                {order.totalGrossAmount.toFixed(2)} {order.currency || currencyCode || "EUR"}
+                              </div>
+                              <span className={`inline-block px-1.5 py-0.5 rounded text-micro font-bold ${
+                                order.paymentStatus === "paid" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
+                              }`}>
+                                {order.paymentStatus === "paid" ? t("Paid", "Zaplatené", "Fizetve") : t("Unpaid", "Nezaplatené", "Fizetetlen")}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

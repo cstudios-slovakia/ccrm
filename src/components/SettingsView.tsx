@@ -14,8 +14,11 @@ import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
+import { OrderStatusSettings } from "./OrderStatusSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import type { ProjectStatusDef } from "../utils/projects";
+import type { OrderStatusDef } from "../utils/orders";
+import type { Order } from "../types";
 import { VisibleModulesSettings } from "./VisibleModulesSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -521,6 +524,12 @@ interface SettingsViewProps {
   projects?: Project[];
   setProjects?: (updater: Project[] | ((prev: Project[]) => Project[])) => void;
 
+  /** The order statuses, edited on the Order Statuses tab. */
+  orderStatuses?: OrderStatusDef[];
+  setOrderStatuses?: React.Dispatch<React.SetStateAction<OrderStatusDef[]>>;
+  orders?: Order[];
+  setOrders?: (updater: Order[] | ((prev: Order[]) => Order[])) => void;
+
   /** Finance tab: the movement-category tree, and the records a deleted category un-files. */
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
@@ -559,6 +568,7 @@ const SETTINGS_TABS = [
   { id: "license", permKey: "general_config" },
   { id: "invoicing", permKey: "general_config" },
   { id: "projects", permKey: "general_config" },
+  { id: "orders", permKey: "general_config" },
   { id: "finance", permKey: "financial" },
   { id: "unified", permKey: "general_config" },
   { id: "sources", permKey: "traffic_sources" },
@@ -642,6 +652,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setProjectStatuses,
   projects = [],
   setProjects,
+  orderStatuses,
+  setOrderStatuses,
+  orders = [],
+  setOrders,
   financialCategories,
   setFinancialCategories,
   setFinancialRecords,
@@ -4046,6 +4060,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 setStatuses={setProjectStatuses}
                 projects={projects}
                 setProjects={setProjects}
+                userLanguage={userLanguage}
+                canEdit={getPermission("general_config") === "edit"}
+              />
+            )}
+          </div>
+        )}
+
+        {/* TAB: Orders Configuration */}
+        {activeSubTab === "orders" && getPermission("general_config") !== "nothing" && (
+          <div className="ws-lg:col-span-12 space-y-6">
+            {renderReadOnlyBanner("general_config")}
+            {orderStatuses && setOrderStatuses && (
+              <OrderStatusSettings
+                statuses={orderStatuses}
+                setStatuses={setOrderStatuses}
+                orders={orders}
+                setOrders={setOrders}
                 userLanguage={userLanguage}
                 canEdit={getPermission("general_config") === "edit"}
               />

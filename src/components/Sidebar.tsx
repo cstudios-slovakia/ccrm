@@ -182,6 +182,19 @@ export const getSidebarItemColors = (item: any, isActive: boolean) => {
       style: {},
       iconColor: item.color || "var(--color-indigo-500)"
     };
+  }  if (item.id === "orders") {
+    if (isActive) {
+      return {
+        className: "bg-sky-600 text-white font-bold shadow-lg shadow-sky-600/30 border border-sky-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-sky-700 hover:text-sky-800 hover:bg-sky-50/50",
+      style: {},
+      iconColor: item.color || "#0284c7"
+    };
   }
 
   if (item.isEmerald || item.id === "financial") {
@@ -897,6 +910,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "leads",
       "clients",
       "invoices",
+      "orders",
       "warehouse",
       "financial",
       "employees",
@@ -948,6 +962,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
       { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "orders", label: systemLanguage === "sk" ? "Objednávky" : systemLanguage === "hu" ? "Rendelések" : "Orders", icon: Icons.ShoppingCart || Coins, color: "#0284c7" },
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
       { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62", isSand: true },
