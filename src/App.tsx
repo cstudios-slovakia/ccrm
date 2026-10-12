@@ -647,6 +647,36 @@ function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const ordersRef = useRef<Order[]>([]);
   const [orderStatuses, setOrderStatuses] = useState<OrderStatusDef[]>(() => normalizeOrderStatusDefs(null));
+  const [cerpVersion, setCerpVersion] = useState<string | null>(() => {
+    if (typeof window !== "undefined" && (window as unknown as { __CERP_VERSION__?: string }).__CERP_VERSION__) {
+      return (window as unknown as { __CERP_VERSION__?: string }).__CERP_VERSION__ || null;
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const detectCerp = async () => {
+      try {
+        if (typeof window !== "undefined" && (window as unknown as { __CERP_VERSION__?: string }).__CERP_VERSION__) {
+          setCerpVersion((window as unknown as { __CERP_VERSION__?: string }).__CERP_VERSION__ || null);
+          return;
+        }
+        const res = await fetch("/erp/api/bootstrap.php", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.installed !== false) {
+            const ver = data.version || "0.1.30-Alloy";
+            setCerpVersion(ver);
+            if (typeof window !== "undefined") {
+              (window as unknown as { __CERP_INSTALLED__?: boolean }).__CERP_INSTALLED__ = true;
+              (window as unknown as { __CERP_VERSION__?: string }).__CERP_VERSION__ = ver;
+            }
+          }
+        }
+      } catch (_) {}
+    };
+    detectCerp();
+  }, []);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -4031,7 +4061,10 @@ ${log.payload || ''}
               </ErrorBoundary>
             </div>
             <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center type-overline text-slate-400 select-none">
-              <span>v{VERSION}</span>
+              <span>
+                v{VERSION}
+                {cerpVersion ? ` with ${cerpVersion.startsWith("v") ? cerpVersion : `v${cerpVersion}`}` : ""}
+              </span>
             </footer>
           </main>
         </div>
