@@ -5,8 +5,6 @@
  * with the configured dynamic CRM system name.
  */
 
-let activeManifestBlobUrl: string | null = null;
-
 export function updatePwaManifest(systemName: string): void {
     const name = (systemName || "").trim() || "CCRM";
 
@@ -34,56 +32,14 @@ export function updatePwaManifest(systemName: string): void {
     }
     appNameMeta.content = name;
 
-    // 3. Dynamically update Web App Manifest with a Blob URL
-    try {
-        const manifestJson = {
-            name: name,
-            short_name: name,
-            description: "Client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment.",
-            start_url: "/",
-            display: "standalone",
-            background_color: "#f3f6ff",
-            theme_color: "#4f46e5",
-            orientation: "any",
-            icons: [
-                {
-                    src: "/icon_192.png",
-                    sizes: "192x192",
-                    type: "image/png",
-                    purpose: "any maskable"
-                },
-                {
-                    src: "/icon_512.png",
-                    sizes: "512x512",
-                    type: "image/png",
-                    purpose: "any maskable"
-                },
-                {
-                    src: "/favicon.svg",
-                    sizes: "512x512",
-                    type: "image/svg+xml",
-                    purpose: "any maskable"
-                }
-            ]
-        };
-
-        const manifestBlob = new Blob([JSON.stringify(manifestJson, null, 2)], {
-            type: "application/manifest+json",
-        });
-
-        if (activeManifestBlobUrl) {
-            URL.revokeObjectURL(activeManifestBlobUrl);
-        }
-        activeManifestBlobUrl = URL.createObjectURL(manifestBlob);
-
-        let manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
-        if (!manifestLink) {
-            manifestLink = document.createElement("link");
-            manifestLink.rel = "manifest";
-            document.head.appendChild(manifestLink);
-        }
-        manifestLink.href = activeManifestBlobUrl;
-    } catch (err) {
-        console.warn("Failed to generate dynamic PWA manifest Blob:", err);
+    // 3. The Web App Manifest itself is NOT generated here. `/manifest.json` is rendered
+    // by the server (api/manifest.php, system name injected) from the static manifest, so
+    // it carries the shortcuts, share target and launch handler. A blob manifest built
+    // in the browser used to replace it and silently dropped all of those, and blob URLs
+    // cannot resolve the relative shortcut / icon URLs reliably anyway.
+    const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
+    if (manifestLink && manifestLink.href.startsWith("blob:")) {
+        manifestLink.href = "/manifest.json";
     }
 }
+

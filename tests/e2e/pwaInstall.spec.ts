@@ -414,6 +414,17 @@ test('manifest declares the shortcuts, the share target and a stable identity', 
   }
 });
 
+test('the page keeps the real manifest link (a blob manifest would drop the shortcuts)', async ({ page }) => {
+  await startSession(page);
+  await page.goto('/?qa=93#tasks', { waitUntil: 'domcontentloaded' });
+  await waitForAppReady(page);
+  const hrefs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('link[rel="manifest"]')).map((l) => (l as HTMLLinkElement).href),
+  );
+  expect(hrefs).toHaveLength(1);
+  expect(hrefs[0]).toMatch(/\/manifest\.json$/);
+});
+
 test('the service worker has a pass-through fetch handler and never caches', async ({ request }) => {
   const source = await (await request.get('/sw.js')).text();
   // Comments explain the rule and mention the very calls it forbids.
