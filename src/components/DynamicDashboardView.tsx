@@ -1411,13 +1411,15 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const DEFAULT_LEAD_STAGES = useMemo(() => ["new", "contacted", "offer sent", "accepted", "rejected"], []);
   const allKnownLeadStages = useMemo(() => {
     const seen = new Set<string>();
-    const list = [
+    const known = [
       ...(pipelineStages || []),
       ...Object.keys(leadStageGroups || {}),
       ...Object.keys(leadStateColors || {}),
       ...(leads || []).map(l => l.status),
-      ...DEFAULT_LEAD_STAGES,
-    ];
+    ]
+      .map(stage => String(stage ?? "").trim())
+      .filter(Boolean);
+    const list = known.length > 0 ? known : DEFAULT_LEAD_STAGES;
     return list
       .map(stage => String(stage ?? "").trim())
       .filter(stage => {
@@ -1432,11 +1434,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const DEFAULT_TASK_STATES = useMemo(() => ["New", "In progress", "Blocked", "Done"], []);
   const allKnownTaskStates = useMemo(() => {
     const seen = new Set<string>();
-    const list = [
+    const known = [
       ...(taskStates || []),
       ...Object.keys(taskStateColors || {}),
-      ...DEFAULT_TASK_STATES,
-    ];
+    ]
+      .map(state => String(state ?? "").trim())
+      .filter(Boolean);
+    const list = known.length > 0 ? known : DEFAULT_TASK_STATES;
     return list
       .map(state => String(state ?? "").trim())
       .filter(state => {

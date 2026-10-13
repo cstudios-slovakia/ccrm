@@ -365,6 +365,7 @@ const PRESETS: WidgetPreset[] = [
       renderer: "stageDonut",
       title: text("Leads by stage", "Leady podľa fázy", "Leadek fázis szerint"),
       size: "md",
+      settings: { statuses: [] },
       mapping: { labelsKey: "status", dataKey: "count" },
       query: { action: "leads_by_status", params: {} }
     })

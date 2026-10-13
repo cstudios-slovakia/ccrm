@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { StartMenuLayout } from "./startMenuLayout";
 import type { ProjectListColumn, FavoriteItem } from "../types";
+import type { StoredLeadColumn, LeadSort } from "./leadColumns";
 
 /**
  * Per-user interface preferences.
@@ -82,6 +83,12 @@ export interface UserPrefs {
    * which is not the same as "none selected" — it falls back to every open state.
    */
   leadsVisibleStates: string[] | null;
+  /** Leads screen: column sorting key and direction. */
+  leadsSortSettings: LeadSort | null;
+  /** Leads screen: configured list columns. */
+  leadsListColumns: StoredLeadColumn[] | null;
+  /** Leads screen: whether collapsible filters bar is shown. */
+  leadsShowFilters: boolean;
   /**
    * Projects screen: which project statuses are shown. `null` means "never chosen",
    * which falls back to every active (non-closed) status.
@@ -215,6 +222,9 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
+  leadsSortSettings: null,
+  leadsListColumns: null,
+  leadsShowFilters: true,
   projectsVisibleStatuses: null,
   projectsEquationView: "detail",
   projectsEquationCounts: true,

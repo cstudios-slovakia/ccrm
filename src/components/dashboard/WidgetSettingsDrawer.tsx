@@ -189,9 +189,13 @@ export const WidgetSettingsDrawer: React.FC<{
     // Everything selected is the same thing as no filter, and is stored that way
     // so a phase added in Settings later shows up on its own. Explicitly unchecking
     // every status stores ["__none__"] so reload doesn't revert to all on.
+    const allSelected =
+      statusOptions.length > 0 &&
+      statusOptions.every((opt) => next.some((n) => n.toLowerCase() === opt.toLowerCase()));
+
     if (next.length === 0) {
       onSettings({ statuses: ["__none__"] });
-    } else if (next.length === statusOptions.length) {
+    } else if (allSelected) {
       onSettings({ statuses: [] });
     } else {
       onSettings({ statuses: next });

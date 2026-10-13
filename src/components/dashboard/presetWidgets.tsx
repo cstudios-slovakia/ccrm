@@ -646,57 +646,61 @@ export const StageDonutWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
         />
       }
     >
-      <div className="flex items-center gap-6">
-        <div className="relative w-33 h-33 shrink-0">
-          <svg width="132" height="132" viewBox="0 0 120 120" aria-hidden="true">
-            <circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" className="text-slate-100" strokeWidth="16" />
-            {arcs.map((arc) => (
-              <circle
-                key={arc.key}
-                cx="60"
-                cy="60"
-                r={radius}
-                fill="none"
-                stroke={arc.color}
-                strokeWidth="16"
-                strokeDasharray={arc.dash}
-                strokeDashoffset={arc.offset}
-                transform="rotate(-90 60 60)"
-              />
-            ))}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span
-              className="text-heading font-bold text-slate-900 leading-none"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {total.toLocaleString()}
-            </span>
-            <span className="type-overline text-slate-400 mt-0.75">
-              {ctx.t("leads", "leadov", "lead")}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-col flex-1 min-w-0">
-          {list.map((row, index) => (
-            <div key={`${row?.status ?? index}`} className="flex items-center gap-2 h-5.5">
+      {list.length === 0 ? (
+        <EmptyWidgetRows t={ctx.t} />
+      ) : (
+        <div className="flex items-center gap-6">
+          <div className="relative w-33 h-33 shrink-0">
+            <svg width="132" height="132" viewBox="0 0 120 120" aria-hidden="true">
+              <circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" className="text-slate-100" strokeWidth="16" />
+              {arcs.map((arc) => (
+                <circle
+                  key={arc.key}
+                  cx="60"
+                  cy="60"
+                  r={radius}
+                  fill="none"
+                  stroke={arc.color}
+                  strokeWidth="16"
+                  strokeDasharray={arc.dash}
+                  strokeDashoffset={arc.offset}
+                  transform="rotate(-90 60 60)"
+                />
+              ))}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span
-                className="w-2 h-2 rounded-[3px] shrink-0"
-                style={{ backgroundColor: colorForStatus(row?.status, ctx.leadStateColors, "#94a3b8") }}
-              />
-              <span className="text-ui font-semibold text-slate-700 flex-1 truncate capitalize">
-                {labelForStatus(row?.status, ctx.leadStates)}
-              </span>
-              <span
-                className="text-ui font-bold text-slate-900"
+                className="text-heading font-bold text-slate-900 leading-none"
                 style={{ fontVariantNumeric: "tabular-nums" }}
               >
-                {num(row?.count).toLocaleString()}
+                {total.toLocaleString()}
+              </span>
+              <span className="type-overline text-slate-400 mt-0.75">
+                {ctx.t("leads", "leadov", "lead")}
               </span>
             </div>
-          ))}
+          </div>
+          <div className="flex flex-col flex-1 min-w-0">
+            {list.map((row, index) => (
+              <div key={`${row?.status ?? index}`} className="flex items-center gap-2 h-5.5">
+                <span
+                  className="w-2 h-2 rounded-[3px] shrink-0"
+                  style={{ backgroundColor: colorForStatus(row?.status, ctx.leadStateColors, "#94a3b8") }}
+                />
+                <span className="text-ui font-semibold text-slate-700 flex-1 truncate capitalize">
+                  {labelForStatus(row?.status, ctx.leadStates)}
+                </span>
+                <span
+                  className="text-ui font-bold text-slate-900"
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                >
+                  {num(row?.count).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </WidgetCard>
   );
 };
