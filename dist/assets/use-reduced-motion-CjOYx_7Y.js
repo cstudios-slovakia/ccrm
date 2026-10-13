@@ -1,0 +1,1 @@
+import{Sc as e,_r as t,gr as n,vr as r,xc as i}from"./index-BZuSjp-L.js";var a=e(i(),1);function o(){!t.current&&n();let[e]=(0,a.useState)(r.current);return e}export{o as t};

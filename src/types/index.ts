@@ -303,6 +303,23 @@ export interface Task {
    */
   emailReminders?: Record<string, TaskEmailReminder>;
   tags?: string[];
+  /**
+   * The task cannot be moved to a done state until `conclusion` is filled in.
+   * Only offered while Settings → Tasks → "Offer 'Requires conclusion'" is on,
+   * but a task that already carries the flag keeps it when the setting is
+   * switched off again.
+   */
+  requiresConclusion?: boolean;
+  /** How the task was finished — a short note or report, written when it is completed. */
+  conclusion?: string;
+}
+
+/** Settings → Tasks. Stored as one blob, like {@link ProjectAutoCreateSettings}. */
+export interface TaskSettings {
+  /** Offer the "Requires conclusion" checkbox when a task is created. */
+  offerConclusion: boolean;
+  /** Whether the "Requires conclusion" checkbox should be checked by default on new tasks. */
+  defaultRequiresConclusion: boolean;
 }
 
 /** When a task e-mail reminder goes out: the deadline's morning, 1 hour or 1 day before. */
@@ -498,11 +515,17 @@ export interface ProjectType {
   hasGantt: boolean;
   /**
    * Projects of this type are time-boxed: they carry a deadline, and the list
-   * counts down to it. Off by default, so a type that is not time-boxed shows
-   * no deadline field and no countdown anywhere — the same opt-in shape as
+   * counts down to it — measured against the real finish date in the project's
+   * Timeline once there is one. Off by default, so a type that is not time-boxed
+   * shows no deadline field and no countdown anywhere — the same opt-in shape as
    * hasTimeline and hasGantt.
    */
   hasDeadline?: boolean;
+  /**
+   * Projects of this type carry an invoice date: a plain date, no countdown.
+   * Its own switch, apart from `hasDeadline`.
+   */
+  hasInvoiceDate?: boolean;
   /**
    * How many days ahead of the deadline a project starts warning, which is what
    * turns the countdown badge amber. 0 means "only once it is actually late".
@@ -619,10 +642,18 @@ export interface Project {
   managers: string[]; // employee ids or names
   data: Record<string, any>; // keyed by attribute.id
   /**
-   * Due date as "YYYY-MM-DD", or null when none is set. Only ever shown for a
-   * project whose type has `hasDeadline`.
+   * Invoice date as "YYYY-MM-DD", or null when none is set ("Termín fakturácie").
+   * A plain date: it drives no countdown and no delay flag. Only ever shown for
+   * a project whose type has `hasInvoiceDate`.
    */
-  deadline?: string | null;
+  invoiceDate?: string | null;
+  /**
+   * The date the project has to be completed by ("Deadline" / "Termín
+   * dokončenia"), "YYYY-MM-DD", or null when none is set. This is the date the
+   * countdown and the delay flag run on, against the real finish date. Only ever
+   * shown for a project whose type has `hasDeadline`.
+   */
+  completionDeadline?: string | null;
   /**
    * Why this project is running late. Required — and only required — once the
    * project is actually past its deadline: the red flag on the list stays lit
@@ -1095,6 +1126,8 @@ export interface EmployeeFile {
 
 export interface Employee {
   id: string;
+  /** The login this record is linked to (users.id). Set by a person, never derived from an e-mail. */
+  userId?: string | null;
   name: string;
   role?: string;
   avatar?: string;
@@ -1110,8 +1143,6 @@ export interface Employee {
   salaryAmount?: number;
   salaryDueDay?: number | null;
   vacationAllowances?: Record<string, number>;
-  /** The login this record is linked to (users.id). Set by a person, never derived from an e-mail. */
-  userId?: string | null;
   timeTrackingProvider?: 'toggl' | 'clockify' | 'manual';
   timeTrackingUserId?: string | null;
   timeTrackingUserName?: string | null;

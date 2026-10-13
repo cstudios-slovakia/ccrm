@@ -30,9 +30,10 @@ import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
 import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
-import { useConfirmDialog } from "../ui/ConfirmDialog";
 import { PageHeader, Tabs } from "../layout";
 import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
+import { deleteRecordsWithUndo } from "../../utils/recordActions";
+import { asLang } from "../../utils/undoMessages";
 
 interface EmployeesViewProps {
   access: ModuleAccess;
@@ -206,7 +207,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(initialUrlState.employeeId);
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(initialUrlState.editEmployee);
   const [isEditMode, setIsEditMode] = useState<boolean>(!!initialUrlState.isEditMode);
-  const [confirmAction, confirmDialog] = useConfirmDialog();
 
   // Navigation helpers that update URL hash
   const navigateToTab = (tab: "list" | "matrix" | "settings") => {
@@ -299,25 +299,23 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     });
   };
 
-  // Handle Delete Employee
-  const handleDeleteEmployee = async (empId: string) => {
-    const ok = await confirmAction({
-      title: t("Delete Employee", "Zmazať zamestnanca", "Alkalmazott törlése"),
-      message: t(
-        "Are you sure you want to delete this employee? Their profile and records will be removed.",
-        "Naozaj chcete zmazať tohto zamestnanca? Jeho profil a záznamy budú odstránené.",
-        "Biztosan törölni szeretné ezt az alkalmazottat?"
-      ),
-      confirmLabel: t("Delete", "Zmazať", "Törlés"),
-      cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
-      danger: true
+  // Handle Delete Employee — the hold on the button is the confirmation; the
+  // server delete waits for the undo window (utils/recordActions).
+  const handleDeleteEmployee = (empId: string) => {
+    const target = employees.find((e) => e.id === empId);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "employees",
+      allRecords: employees,
+      targets: [target],
+      setRecords: setEmployees,
+      lang: asLang(systemLanguage),
+      entity: "employee",
+      titleOf: (e) => e.name,
+      applyExtra: () => {
+        if (selectedEmployeeId === empId) navigateToTab("list");
+      },
     });
-    if (ok) {
-      setEmployees((prev) => prev.filter((e) => e.id !== empId));
-      if (selectedEmployeeId === empId) {
-        navigateToTab("list");
-      }
-    }
   };
 
   // Handle Save Salary
@@ -348,7 +346,17 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   // Handle Delete Vacation
   const handleDeleteVacation = (vacId: string) => {
-    setVacations((prev) => prev.filter((v) => v.id !== vacId));
+    const target = vacations.find((v) => v.id === vacId);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "employeeVacations",
+      allRecords: vacations,
+      targets: [target],
+      setRecords: setVacations,
+      lang: asLang(systemLanguage),
+      entity: "record",
+      titleOf: () => employees.find((e) => e.id === target.employeeId)?.name,
+    });
   };
 
   // Handle Save Settings
@@ -573,7 +581,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
       </div>
 
       {/* Delete Confirmation Dialog */}
-      {confirmDialog}
     </div>
   );
 };

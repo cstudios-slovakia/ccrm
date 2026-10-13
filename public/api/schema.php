@@ -143,6 +143,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
               `completed_at` VARCHAR(16) NULL COMMENT 'YYYY-MM-DD HH:MM local completion timestamp; NULL for legacy rows',
               `email_reminders_json` TEXT NULL COMMENT 'Per-user e-mail reminder choice, JSON: user name to morning, 1h or 1d',
+              `requires_conclusion` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = the task cannot be completed until conclusion is written',
+              `conclusion` TEXT NULL COMMENT 'How the task was finished; written when it is completed',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1221,6 +1223,14 @@ if (!function_exists('ccrm_schema_statements')) {
         // when. Sent by api/task_reminders.php through the system SMTP profile.
         if (!ccrm_column_exists($pdo, 'tasks', 'email_reminders_json')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `email_reminders_json` TEXT NULL AFTER `completed_at`");
+        }
+        // "Requires conclusion": a task flagged with it cannot be completed until
+        // the person finishing it has written how it went (the conclusion).
+        if (!ccrm_column_exists($pdo, 'tasks', 'requires_conclusion')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `requires_conclusion` TINYINT(1) NOT NULL DEFAULT 0 AFTER `email_reminders_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'conclusion')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `conclusion` TEXT NULL AFTER `requires_conclusion`");
         }
         // A recurring rule is stored as one row, so the reports derive every past
         // charge from the rule itself. Raising the price used to rewrite the months

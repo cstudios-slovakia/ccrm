@@ -22,6 +22,7 @@ import {
   projectStatusLabel,
   projectStatusOptions,
   projectStatusOrder,
+  projectTypeHasInvoiceDate,
   type ProjectStatusDef,
 } from "./projects.ts";
 import type { Lead, Project, ProjectType } from "../types/index.ts";
@@ -81,19 +82,19 @@ test("normalizeDeadlineWarningDays reads every kind of nothing as 'only once lat
 
 test("a type that is not time-boxed has no deadline, whatever the project says", () => {
   const t = type({ hasDeadline: false });
-  assert.equal(evaluateProjectDeadline(project({ deadline: "2026-09-30" }), t, TODAY), null);
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: "2026-09-30" }), t, TODAY), null);
 });
 
 test("no date, an unreadable date, or no type yields nothing to render", () => {
-  assert.equal(evaluateProjectDeadline(project({ deadline: null }), type(), TODAY), null);
-  assert.equal(evaluateProjectDeadline(project({ deadline: "" }), type(), TODAY), null);
-  assert.equal(evaluateProjectDeadline(project({ deadline: "30. 9. 2026" }), type(), TODAY), null);
-  assert.equal(evaluateProjectDeadline(project({ deadline: "2026-09-30" }), undefined, TODAY), null);
-  assert.equal(evaluateProjectDeadline(project({ deadline: "2026-09-30" }), type(), "not a date"), null);
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: null }), type(), TODAY), null);
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: "" }), type(), TODAY), null);
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: "30. 9. 2026" }), type(), TODAY), null);
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: "2026-09-30" }), undefined, TODAY), null);
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: "2026-09-30" }), type(), "not a date"), null);
 });
 
 test("a deadline comfortably ahead reads as ok", () => {
-  const s = evaluateProjectDeadline(project({ deadline: "2026-11-30" }), type(), TODAY);
+  const s = evaluateProjectDeadline(project({ completionDeadline: "2026-11-30" }), type(), TODAY);
   assert.equal(s?.daysLeft, 88);
   assert.equal(s?.overdueDays, 0);
   assert.equal(s?.tone, "ok");
@@ -102,16 +103,16 @@ test("a deadline comfortably ahead reads as ok", () => {
 });
 
 test("the warning window is inclusive on both ends and the day before it is not", () => {
-  const inside = evaluateProjectDeadline(project({ deadline: "2026-09-10" }), type(), TODAY);
+  const inside = evaluateProjectDeadline(project({ completionDeadline: "2026-09-10" }), type(), TODAY);
   assert.equal(inside?.daysLeft, 7);
   assert.equal(inside?.tone, "soon");
 
-  const outside = evaluateProjectDeadline(project({ deadline: "2026-09-11" }), type(), TODAY);
+  const outside = evaluateProjectDeadline(project({ completionDeadline: "2026-09-11" }), type(), TODAY);
   assert.equal(outside?.daysLeft, 8);
   assert.equal(outside?.tone, "ok");
 
   // Due today is still "soon", not yet late.
-  const dueToday = evaluateProjectDeadline(project({ deadline: TODAY }), type(), TODAY);
+  const dueToday = evaluateProjectDeadline(project({ completionDeadline: TODAY }), type(), TODAY);
   assert.equal(dueToday?.daysLeft, 0);
   assert.equal(dueToday?.tone, "soon");
   assert.equal(dueToday?.isOverdue, false);
@@ -119,13 +120,13 @@ test("the warning window is inclusive on both ends and the day before it is not"
 
 test("a warning window of zero flags nothing until the deadline has passed", () => {
   const t = type({ deadlineWarningDays: 0 });
-  assert.equal(evaluateProjectDeadline(project({ deadline: "2026-09-04" }), t, TODAY)?.tone, "ok");
-  assert.equal(evaluateProjectDeadline(project({ deadline: TODAY }), t, TODAY)?.tone, "ok");
-  assert.equal(evaluateProjectDeadline(project({ deadline: "2026-09-02" }), t, TODAY)?.tone, "overdue");
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: "2026-09-04" }), t, TODAY)?.tone, "ok");
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: TODAY }), t, TODAY)?.tone, "ok");
+  assert.equal(evaluateProjectDeadline(project({ completionDeadline: "2026-09-02" }), t, TODAY)?.tone, "overdue");
 });
 
 test("a passed deadline counts the days it is late by", () => {
-  const s = evaluateProjectDeadline(project({ deadline: "2026-08-27" }), type(), TODAY);
+  const s = evaluateProjectDeadline(project({ completionDeadline: "2026-08-27" }), type(), TODAY);
   assert.equal(s?.daysLeft, -7);
   assert.equal(s?.overdueDays, 7);
   assert.equal(s?.tone, "overdue");
@@ -134,7 +135,7 @@ test("a passed deadline counts the days it is late by", () => {
 });
 
 test("a finished or abandoned project is never late", () => {
-  const late = { deadline: "2026-08-01" };
+  const late = { completionDeadline: "2026-08-01" };
   for (const status of ["completed", "cancelled"]) {
     const s = evaluateProjectDeadline(project({ ...late, status }), type(), TODAY);
     assert.equal(s?.tone, "closed", status);
@@ -146,7 +147,7 @@ test("a finished or abandoned project is never late", () => {
 });
 
 test("a deadline carrying a time is read as the calendar day", () => {
-  const s = evaluateProjectDeadline(project({ deadline: "2026-09-10 16:30" }), type(), TODAY);
+  const s = evaluateProjectDeadline(project({ completionDeadline: "2026-09-10 16:30" }), type(), TODAY);
   assert.equal(s?.deadline, "2026-09-10");
   assert.equal(s?.daysLeft, 7);
 });
@@ -319,7 +320,7 @@ test("an unknown status lights no step", () => {
 });
 
 test("a real finish date outranks the deadline and ends the countdown", () => {
-  const late = evaluateProjectDeadline(project({ deadline: "2026-08-20", finishedAt: "2026-08-25" }), type(), TODAY);
+  const late = evaluateProjectDeadline(project({ completionDeadline: "2026-08-20", finishedAt: "2026-08-25" }), type(), TODAY);
   assert.equal(late?.tone, "finished");
   assert.equal(late?.deadline, "2026-08-25");
   assert.equal(late?.plannedDeadline, "2026-08-20");
@@ -328,15 +329,15 @@ test("a real finish date outranks the deadline and ends the countdown", () => {
   // Finished late is not "currently overdue" (the list's live countdown), but
   // it still missed the plan and still owes a reason.
   assert.equal(projectMissedDeadline(late), true);
-  assert.equal(projectNeedsDelayReason(project({ deadline: "2026-08-20" }), late), true);
+  assert.equal(projectNeedsDelayReason(project({ completionDeadline: "2026-08-20" }), late), true);
 
-  const early = evaluateProjectDeadline(project({ deadline: "2026-09-30", finishedAt: "2026-09-01" }), type(), TODAY);
+  const early = evaluateProjectDeadline(project({ completionDeadline: "2026-09-30", finishedAt: "2026-09-01" }), type(), TODAY);
   assert.equal(early?.finishedLateDays, 0);
   assert.equal(projectMissedDeadline(early), false);
-  assert.equal(projectNeedsDelayReason(project({ deadline: "2026-09-30" }), early), false);
+  assert.equal(projectNeedsDelayReason(project({ completionDeadline: "2026-09-30" }), early), false);
 
   // A finish date with no planned deadline still has something to show.
-  const unplanned = evaluateProjectDeadline(project({ deadline: null, finishedAt: "2026-09-01" }), type(), TODAY);
+  const unplanned = evaluateProjectDeadline(project({ completionDeadline: null, finishedAt: "2026-09-01" }), type(), TODAY);
   assert.equal(unplanned?.deadline, "2026-09-01");
   assert.equal(unplanned?.plannedDeadline, "");
 
@@ -361,7 +362,7 @@ test("completing a project stamps today as its finish date, reopening clears it"
 });
 
 test("a project in an added closed status is never late", () => {
-  const late = project({ deadline: "2026-08-20", status: "lost" });
+  const late = project({ completionDeadline: "2026-08-20", status: "lost" });
   assert.equal(evaluateProjectDeadline(late, type(), TODAY, CUSTOM)?.tone, "closed");
   // Without the list that defines it, "lost" is unknown — and so still open.
   assert.equal(evaluateProjectDeadline(late, type(), TODAY)?.tone, "overdue");
@@ -374,13 +375,13 @@ test("the start date falls back to the creation day", () => {
 });
 
 test("a late project owes a reason, and only a late one", () => {
-  const late = project({ deadline: "2026-08-20" });
+  const late = project({ completionDeadline: "2026-08-20" });
   const lateDl = evaluateProjectDeadline(late, type(), TODAY);
   assert.equal(lateDl?.isOverdue, true);
   assert.equal(projectNeedsDelayReason(late, lateDl), true);
 
   // Explained — the flag goes out.
-  const explained = project({ deadline: "2026-08-20", delayReason: "  waiting on the client  " });
+  const explained = project({ completionDeadline: "2026-08-20", delayReason: "  waiting on the client  " });
   assert.equal(projectDelayReason(explained), "waiting on the client");
   assert.equal(projectNeedsDelayReason(explained, lateDl), false);
 
@@ -388,15 +389,15 @@ test("a late project owes a reason, and only a late one", () => {
   assert.equal(projectNeedsDelayReason(project({ delayReason: "   " }), lateDl), true);
 
   // Still on time, no deadline at all, or already closed: nothing to explain.
-  const onTime = project({ deadline: "2026-12-01" });
+  const onTime = project({ completionDeadline: "2026-12-01" });
   assert.equal(projectNeedsDelayReason(onTime, evaluateProjectDeadline(onTime, type(), TODAY)), false);
   assert.equal(projectNeedsDelayReason(late, evaluateProjectDeadline(late, type({ hasDeadline: false }), TODAY)), false);
-  const closed = project({ deadline: "2026-08-20", status: "completed" });
+  const closed = project({ completionDeadline: "2026-08-20", status: "completed" });
   assert.equal(projectNeedsDelayReason(closed, evaluateProjectDeadline(closed, type(), TODAY)), false);
 
   // A real finish after the planned date is the same debt — filling in actual
   // dates must not hide the reason field the open overdue state already showed.
-  const finishedLate = project({ deadline: "2026-08-20", finishedAt: "2026-08-25" });
+  const finishedLate = project({ completionDeadline: "2026-08-20", finishedAt: "2026-08-25" });
   const finishedLateDl = evaluateProjectDeadline(finishedLate, type(), TODAY);
   assert.equal(projectMissedDeadline(finishedLateDl), true);
   assert.equal(projectNeedsDelayReason(finishedLate, finishedLateDl), true);
@@ -417,4 +418,27 @@ test("project archived state defaults to falsy and preserves boolean value", () 
   assert.equal(Boolean(p.archived), false);
   const pArchived = project({ archived: true });
   assert.equal(pArchived.archived, true);
+});
+
+test("an open project with no finish date is flagged as soon as today passes its deadline", () => {
+  const open = project({ completionDeadline: "2026-08-20", status: "active", finishedAt: null });
+  const dl = evaluateProjectDeadline(open, type(), TODAY);
+  assert.equal(dl?.tone, "overdue");
+  assert.equal(dl?.isOverdue, true);
+  assert.equal(projectMissedDeadline(dl), true);
+  assert.equal(projectNeedsDelayReason(open, dl), true);
+  // Once a finish date lands after the deadline the flag stays; before it, it goes.
+  const lateFinish = project({ completionDeadline: "2026-08-20", finishedAt: "2026-08-25" });
+  assert.equal(projectMissedDeadline(evaluateProjectDeadline(lateFinish, type(), TODAY)), true);
+  const earlyFinish = project({ completionDeadline: "2026-08-20", finishedAt: "2026-08-18" });
+  assert.equal(projectMissedDeadline(evaluateProjectDeadline(earlyFinish, type(), TODAY)), false);
+});
+
+test("projectTypeHasInvoiceDate respects explicit flag and falls back to hasDeadline", () => {
+  assert.equal(projectTypeHasInvoiceDate({ hasInvoiceDate: true, hasDeadline: false }), true);
+  assert.equal(projectTypeHasInvoiceDate({ hasInvoiceDate: false, hasDeadline: true }), false);
+  assert.equal(projectTypeHasInvoiceDate({ hasInvoiceDate: undefined, hasDeadline: true }), true);
+  assert.equal(projectTypeHasInvoiceDate({ hasInvoiceDate: undefined, hasDeadline: false }), false);
+  assert.equal(projectTypeHasInvoiceDate(null), false);
+  assert.equal(projectTypeHasInvoiceDate(undefined), false);
 });

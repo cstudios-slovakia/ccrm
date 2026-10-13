@@ -43,6 +43,9 @@ import {
   type MotionValue
 } from "framer-motion";
 import { normalizeSidebarGroups, flattenSidebarGroups, type SidebarGroup } from "../utils/sidebarLayout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 
 /**
  * `dashboard` used to BE the task panel — the tasks section was split out of it
@@ -1339,13 +1342,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const current = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
     if (current.length <= 1) return;
     const toDelete = current.find((g) => g.id === groupId);
-    const remaining = current.filter((g) => g.id !== groupId);
-    if (toDelete && toDelete.items.length > 0 && remaining.length > 0) {
-      remaining[0].items = Array.from(new Set([...remaining[0].items, ...toDelete.items]));
-    }
-    setStoredSidebarGroups(remaining);
-    const newActiveLayout = flattenSidebarGroups(remaining);
-    onSaveUserLayout(newActiveLayout, undefined, remaining);
+    if (!toDelete) return;
+    // Built without touching `current`, which is also the snapshot Undo writes back.
+    const remaining = current
+      .filter((g) => g.id !== groupId)
+      .map((g, index) =>
+        index === 0 && toDelete.items.length > 0
+          ? { ...g, items: Array.from(new Set([...g.items, ...toDelete.items])) }
+          : g
+      );
+    const write = (groups: typeof current) => {
+      setStoredSidebarGroups(groups);
+      onSaveUserLayout(flattenSidebarGroups(groups), undefined, groups);
+    };
+    runUndoable({
+      message: singleMessage(asLang(systemLanguage), "group", "delete", toDelete.title),
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => write(remaining),
+      revert: () => write(current),
+    });
   };
 
   // Flattened active items with group boundaries for direct nav button rendering
@@ -1711,18 +1726,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                             {/* Delete Group */}
                             {sidebarGroups.length > 1 && (
-                              <button
-                                type="button"
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation();
+                              <HoldToConfirmButton
+                                  tone="danger"
+                                  lang={asLang(systemLanguage)}
+                                  what={entry.title}
+                                  onConfirm={() => {
                                   handleDeleteSidebarGroup(entry.groupId);
                                 }}
-                                className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                  title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
                               >
                                 <Trash2 className="h-3 w-3" />
-                              </button>
+                              </HoldToConfirmButton>
                             )}
                           </div>
                         )}

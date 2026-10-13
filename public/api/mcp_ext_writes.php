@@ -210,9 +210,20 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees))];
 }
 
+/**
+ * A task flagged "Requires conclusion" cannot be finished without one, whether
+ * the conclusion is already stored or comes with this call. Same rule as the
+ * app (src/utils/taskConclusion.ts) and the sync endpoint.
+ */
+function mcp_require_conclusion_to_finish(array $row, $incoming): void {
+    if ((int)($row['requires_conclusion'] ?? 0) !== 1) return;
+    if (trim((string)($row['conclusion'] ?? '')) !== '' || trim((string)$incoming) !== '') return;
+    throw new \InvalidArgumentException("This task requires a conclusion before it can be completed. Pass 'conclusion' with a short note on how it was finished.");
+}
+
 function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
-    $cur = $pdo->prepare("SELECT status, completed_at FROM tasks WHERE id = ?");
+    $cur = $pdo->prepare("SELECT status, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ?");
     $cur->execute([$id]);
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
@@ -233,8 +244,15 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         $add('status', $status);
         $wasDone = mcp_done_task_state((string)$row['status'], (array)mcp_config_json($pdo, 'TASK_STATES', []));
         $isDone = mcp_done_task_state($status, (array)mcp_config_json($pdo, 'TASK_STATES', []));
-        if ($isDone && !$wasDone) { $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i')); }
+        if ($isDone && !$wasDone) {
+            mcp_require_conclusion_to_finish($row, $args['conclusion'] ?? null);
+            $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i'));
+        }
         if (!$isDone && $wasDone) { $add('completed_by', null); $add('completed_at', null); }
+    }
+    if (array_key_exists('conclusion', $args)) {
+        $c = trim((string)$args['conclusion']);
+        $add('conclusion', $c === '' ? null : mb_substr($c, 0, 5000));
     }
     if (array_key_exists('owner', $args)) { $newOwner = mcp_user_exists($pdo, mcp_require_string($args, 'owner')); $add('owner', $newOwner); }
     foreach (['related_project_id' => 'project_id', 'related_lead_id' => 'client_id'] as $col => $arg) {
@@ -261,11 +279,15 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
 function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
     $done = mcp_task_done_state($pdo);
-    $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ? WHERE id = ?");
-    $stmt->execute([$done, $user['name'], date('Y-m-d H:i'), $id]);
-    $chk = $pdo->prepare("SELECT 1 FROM tasks WHERE id = ?");
+    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ?");
     $chk->execute([$id]);
-    if (!$chk->fetchColumn()) throw new \Exception("Task not found with ID: {$id}");
+    $row = $chk->fetch(\PDO::FETCH_ASSOC);
+    if (!$row) throw new \Exception("Task not found with ID: {$id}");
+    // `note` is the older name of the same field.
+    $conclusion = trim((string)($args['conclusion'] ?? $args['note'] ?? ''));
+    mcp_require_conclusion_to_finish($row, $conclusion);
+    $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ?, conclusion = COALESCE(?, conclusion) WHERE id = ?");
+    $stmt->execute([$done, $user['name'], date('Y-m-d H:i'), $conclusion === '' ? null : mb_substr($conclusion, 0, 5000), $id]);
     mcp_audit($pdo, $user, 'task_complete', "Marked task $id as done");
     return ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];
 }

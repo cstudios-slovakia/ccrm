@@ -1153,6 +1153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'completedBy' => $row['completed_by'] ?? null,
                 'completedAt' => $row['completed_at'] ?? null,
                 'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
+                'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
+                'conclusion' => $row['conclusion'] ?? null,
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
             ];
@@ -1266,6 +1268,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // out, so an install that never opened the editor gets the built-ins.
     $projectStatuses = ccrm_normalize_project_statuses(
         isset($settings['PROJECT_STATUSES']) ? json_decode($settings['PROJECT_STATUSES'], true) : null
+    );
+    // Settings → Tasks. Normalized on the way out for the same reason.
+    $taskSettings = ccrm_normalize_task_settings(
+        isset($settings['TASK_SETTINGS']) ? json_decode($settings['TASK_SETTINGS'], true) : null
     );
     $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
@@ -2366,6 +2372,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
+            'taskSettings' => $taskSettings,
             'projectStatuses' => $projectStatuses,
             'integrationsConfig' => $integrationsConfig,
             'companyBillingSettings' => (ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config')) && isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
@@ -2777,6 +2784,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null,
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
+                // Omitted means unchanged: a client that predates Settings → Tasks
+                // must not switch the option off for everyone by saving an
+                // unrelated setting.
+                'TASK_SETTINGS' => isset($s['taskSettings']) && is_array($s['taskSettings'])
+                    ? json_encode(ccrm_normalize_task_settings($s['taskSettings']))
+                    : null,
                 // Omitted means unchanged: a client that predates the editor must
                 // not reset everyone's statuses by saving an unrelated setting.
                 'PROJECT_STATUSES' => isset($s['projectStatuses']) && is_array($s['projectStatuses'])
@@ -2800,7 +2813,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
                     'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
-                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES',
+                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'TASK_SETTINGS',
                 ]);
             }
             if ($canSettingsPipeline) {
@@ -3144,6 +3157,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : array_diff($existingUserIds, $processedUserIds);
                 if (!empty($usersToDelete)) {
                     ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true, $isDeltaSync);
+                    try {
+                        $delPkStmt = $pdo->prepare("DELETE FROM `user_passkeys` WHERE `user_id` = ?");
+                        foreach ($usersToDelete as $delUid) {
+                            $delPkStmt->execute([$delUid]);
+                        }
+                    } catch (\Throwable $e) { /* ignore if table missing */ }
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
                 }
             }
@@ -3996,7 +4015,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`)");
+
+            // "Requires conclusion": which states finish a task, for the guard below.
+            $conclusionTaskStates = json_decode((string)($pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn() ?: '[]'), true);
+            $conclusionTaskStates = is_array($conclusionTaskStates) ? array_values($conclusionTaskStates) : [];
+            $conclusionIsDone = function ($status) use ($conclusionTaskStates) {
+                $status = (string)$status;
+                return strtolower($status) === 'done'
+                    || ($conclusionTaskStates && $status === (string)end($conclusionTaskStates));
+            };
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync — but
@@ -4027,14 +4055,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $isNewTask = !isset($dbTasks[$taskId]);
                 $oldTaskStatus = null;
                 $oldTaskOwner = null;
+                $oldRequiresConclusion = false;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner` FROM `tasks` WHERE `id` = ? LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion` FROM `tasks` WHERE `id` = ? LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
                         $oldTaskStatus = $oldRow['status'] ?? null;
                         $oldTaskOwner = $oldRow['owner'] ?? null;
+                        $oldRequiresConclusion = intval($oldRow['requires_conclusion'] ?? 0) === 1;
                     }
+                }
+
+                // A task that asked for a conclusion cannot be finished without one.
+                // The app blocks this before it gets here; this catches an outdated
+                // client or a hand-made request. The stored flag counts as well as
+                // the incoming one, so clearing the flag and finishing in a single
+                // save does not slip through. Rejected the same way as a stale
+                // write: kept as stored, and reported back as a conflict.
+                $incomingConclusion = isset($t['conclusion']) ? trim((string)$t['conclusion']) : '';
+                $wantsConclusion = !empty($t['requiresConclusion']) || !empty($oldRequiresConclusion);
+                if (!$isNewTask && $wantsConclusion && $incomingConclusion === ''
+                    && $conclusionIsDone($t['status'] ?? '') && !$conclusionIsDone($oldTaskStatus ?? '')) {
+                    $processedTaskIds[] = $taskId;
+                    $conflictedIds['tasks'][] = $taskId;
+                    continue;
                 }
 
                 $insTask->execute([
@@ -4054,7 +4099,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
                     (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null,
-                    ccrm_encode_task_reminders($t['emailReminders'] ?? null)
+                    ccrm_encode_task_reminders($t['emailReminders'] ?? null),
+                    !empty($t['requiresConclusion']) ? 1 : 0,
+                    $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null
                 ]);
                 $processedTaskIds[] = $taskId;
 

@@ -1138,6 +1138,149 @@ export async function installBackendMocks(page: Page) {
       body: JSON.stringify({ success: true, data }),
     });
   });
+
+  // Passkeys mock for WebAuthn tests & QA
+  interface MockPasskey {
+    id: string;
+    name: string;
+    created_at: string;
+    last_used_at: string | null;
+    aaguid: string;
+    authenticator_name: string;
+    age_days: number;
+    age_hours: number;
+    age_minutes: number;
+    age_seconds: number;
+    last_used_days: number | null;
+    last_used_hours: number | null;
+    last_used_minutes: number | null;
+    last_used_seconds: number | null;
+  }
+  const pushedPasskeys: MockPasskey[] = [];
+
+  await page.route('**/api/passkeys.php', async (route) => {
+    let action = '';
+    let body: any = {};
+    try {
+      body = JSON.parse(route.request().postData() || '{}');
+      action = body.action || '';
+    } catch {
+      action = '';
+    }
+
+    if (action === 'status') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, available: true }),
+      });
+    }
+
+    if (action === 'list') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, passkeys: pushedPasskeys }),
+      });
+    }
+
+    if (action === 'register_options') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          options: {
+            challenge: 'dGVzdC1jaGFsbGVuZ2UtMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMg',
+            rp: { name: 'CCRM', id: 'localhost' },
+            user: { name: 'erik@crm.com', id: 'dXNlci1lcmlr', displayName: 'Erik' },
+            pubKeyCredParams: [
+              { type: 'public-key', alg: -7 },
+              { type: 'public-key', alg: -257 },
+            ],
+            authenticatorSelection: {
+              residentKey: 'required',
+              userVerification: 'required',
+              requireResidentKey: true,
+            },
+            attestation: 'none',
+            timeout: 60000,
+            excludeCredentials: pushedPasskeys.map((p) => ({ type: 'public-key', id: p.id })),
+          },
+        }),
+      });
+    }
+
+    if (action === 'login_options') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          options: {
+            challenge: 'dGVzdC1sb2dpbi1jaGFsbGVuZ2UtMTIzNDU2Nzg5MDEyMzQ',
+            rpId: 'localhost',
+            userVerification: 'required',
+            timeout: 60000,
+            allowCredentials: [],
+          },
+        }),
+      });
+    }
+
+    if (action === 'register_verify') {
+      const credId = body?.credential?.id || ('pk-' + (pushedPasskeys.length + 1));
+      pushedPasskeys.push({
+        id: credId,
+        name: body?.name || 'Passkey',
+        created_at: new Date().toISOString(),
+        last_used_at: null,
+        aaguid: '08987058-cadc-4b81-b6e1-30de50dcbe96',
+        authenticator_name: 'Windows Hello',
+        age_days: 0,
+        age_hours: 0,
+        age_minutes: 0,
+        age_seconds: 5,
+        last_used_days: null,
+        last_used_hours: null,
+        last_used_minutes: null,
+        last_used_seconds: null,
+      });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    }
+
+    if (action === 'login_verify') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, user: TEST_USER }),
+      });
+    }
+
+    if (action === 'delete') {
+      const idToDelete = body?.id;
+      const idx = pushedPasskeys.findIndex((p) => p.id === idToDelete);
+      if (idx !== -1) {
+        pushedPasskeys.splice(idx, 1);
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true }),
+      });
+    }
+
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true }),
+    });
+  });
+
   await page.route('**/upload.php', (route) =>
     route.fulfill({
       status: 200,

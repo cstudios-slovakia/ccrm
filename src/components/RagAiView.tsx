@@ -34,6 +34,10 @@ import {
 import { ExecutiveCallModal } from "./executive/ExecutiveCallModal";
 import { BlobatarAvatar } from "./common/BlobatarAvatar";
 import { PageHeader } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { reinsertAt } from "../utils/undoableList";
+import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 
 export interface Message {
   id: string;
@@ -162,6 +166,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
   // Episodic Decisions State
   const [decisions, setDecisions] = useState<EpisodicDecision[]>([]);
+  // Decisions and agents deleted under an open undo window are still on the
+  // server; a refetch must not bring them back on screen meanwhile.
+  const hiddenDecisionIdsRef = useRef<Set<string>>(new Set());
+  const hiddenAgentIdsRef = useRef<Set<string>>(new Set());
   const [isDecisionsDrawerOpen, setIsDecisionsDrawerOpen] = useState(false);
   const [isNewDecisionModalOpen, setIsNewDecisionModalOpen] = useState(false);
   const [decisionTitle, setDecisionTitle] = useState("");
@@ -234,7 +242,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             skill_content: a.skill_content || "",
             is_autonomous: a.is_autonomous === 1 || a.is_autonomous === "1" || a.is_autonomous === true
           }));
-          setCustomAgents(parsedAgents);
+          setCustomAgents(parsedAgents.filter((a) => !hiddenAgentIdsRef.current.has(a.id)));
         }
       }
     } catch (err) {
@@ -250,7 +258,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.decisions)) {
-          setDecisions(data.decisions);
+          setDecisions(data.decisions.filter((d: EpisodicDecision) => !hiddenDecisionIdsRef.current.has(String(d.id))));
         }
       }
     } catch (err) {
@@ -341,49 +349,50 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     };
   }, [currentUser, activeChatKey, activeTargetAgentId]);
 
-  // Reset chat history
-  const handleResetChat = async () => {
-    const confirmationMsg = systemLanguage === "sk"
-      ? "Naozaj chcete vymazať históriu tohto rozhovoru z databázy?"
-      : systemLanguage === "hu"
-        ? "Biztosan törölni szeretné a beszélgetés előzményeit?"
-        : "Are you sure you want to clear this conversation history?";
-
-    if (!confirm(confirmationMsg)) return;
-
-    setIsLoading(true);
+  // Reset chat history — hold to confirm; the stored history is deleted on the
+  // server when the undo window closes, and Undo brings the messages back.
+  const handleResetChat = () => {
+    const chatKey = activeChatKey;
+    const agentId = activeTargetAgentId;
+    const previousMessages = messages;
+    const previousHistory = chatHistories[chatKey];
     const userId = currentUser?.email || "default_user";
-
-    try {
-      const res = await fetchWithTimeout("/api/chat_rag.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "reset",
-          user_id: userId,
-          agent_id: activeTargetAgentId
-        })
-      });
-      if (res.ok) {
-        const greeting = [
-          {
-            id: "reset-msg",
-            sender: "agent" as const,
-            text: getGreetingMessage(selectedRole, isCouncilMode),
-            timestamp: new Date()
-          }
-        ];
-        setMessages(greeting);
-        setChatHistories((prev) => ({
-          ...prev,
-          [activeChatKey]: greeting
-        }));
+    const greeting = [
+      {
+        id: "reset-msg",
+        sender: "agent" as const,
+        text: getGreetingMessage(selectedRole, isCouncilMode),
+        timestamp: new Date()
       }
-    } catch (err) {
-      console.warn("Failed to reset conversation history", err);
-    } finally {
-      setIsLoading(false);
-    }
+    ];
+    runUndoable({
+      message: asLang(systemLanguage) === "sk" ? "História rozhovoru bola vymazaná"
+        : asLang(systemLanguage) === "hu" ? "A beszélgetés előzményei törölve"
+        : "Conversation history cleared",
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => {
+        setMessages(greeting);
+        setChatHistories((prev) => ({ ...prev, [chatKey]: greeting }));
+      },
+      revert: () => {
+        setMessages(previousMessages);
+        setChatHistories((prev) => {
+          const next = { ...prev };
+          if (previousHistory) next[chatKey] = previousHistory;
+          else delete next[chatKey];
+          return next;
+        });
+      },
+      failureMessage: t("Failed to reset conversation history", "História rozhovoru sa nepodarilo vymazať", "A beszélgetés előzményeit nem sikerült törölni"),
+      onCommit: async () => {
+        const res = await fetchWithTimeout("/api/chat_rag.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "reset", user_id: userId, agent_id: agentId })
+        });
+        if (!res.ok) throw new Error("");
+      },
+    });
   };
 
 
@@ -498,22 +507,38 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     }
   };
 
-  const handleDeleteDecision = async (id: string | number) => {
-    if (!confirm(t("Delete this decision from strategic memory?", "Zmazať toto rozhodnutie zo strategickej pamäte?", "Törli ezt a döntést a stratégiai memóriából?"))) return;
-    try {
-      await fetchWithTimeout("/api/chat_rag.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "delete_decision",
-          user_id: currentUser?.email || "default_user",
-          decision_id: id
-        })
-      });
-      await fetchDecisions();
-    } catch (err) {
-      console.warn("Failed to delete decision", err);
-    }
+  const handleDeleteDecision = (id: string | number) => {
+    const key = String(id);
+    const index = decisions.findIndex((d) => String(d.id) === key);
+    const target = decisions[index];
+    if (!target) return;
+    runUndoable({
+      message: singleMessage(asLang(systemLanguage), "decision", "delete", target.title),
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => {
+        hiddenDecisionIdsRef.current.add(key);
+        setDecisions((prev) => prev.filter((d) => String(d.id) !== key));
+      },
+      revert: () => {
+        hiddenDecisionIdsRef.current.delete(key);
+        setDecisions((prev) => reinsertAt(prev, [{ item: target, index }], (d: EpisodicDecision) => String(d.id)));
+      },
+      failureMessage: t("Failed to delete decision", "Rozhodnutie sa nepodarilo zmazať", "A döntést nem sikerült törölni"),
+      onCommit: async () => {
+        const res = await fetchWithTimeout("/api/chat_rag.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "delete_decision",
+            user_id: currentUser?.email || "default_user",
+            decision_id: id
+          })
+        });
+        if (!res.ok) throw new Error("");
+        hiddenDecisionIdsRef.current.delete(key);
+        await fetchDecisions();
+      },
+    });
   };
 
   // Quick save message to decision log
@@ -646,26 +671,37 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   };
 
   // Delete Agent
-  const handleDeleteAgent = async (id: string) => {
+  const handleDeleteAgent = (id: string) => {
     if (id === "orchestrator" || id === "durian") return;
-    if (!confirm(t("Delete this agent and chat history?", "Zmazať tohto agenta a jeho históriu?", "Törli ezt az ügynököt és a chat előzményeit?"))) return;
-
-    setIsLoading(true);
-    try {
-      const res = await fetchWithTimeout("/api/chat_rag.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete_agent", id })
-      });
-      if (res.ok) {
-        if (selectedAgentId === id) setSelectedAgentId("orchestrator");
+    const index = customAgents.findIndex((a) => a.id === id);
+    const target = customAgents[index];
+    if (!target) return;
+    const wasSelected = selectedAgentId === id;
+    runUndoable({
+      message: singleMessage(asLang(systemLanguage), "agent", "delete", target.name),
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => {
+        hiddenAgentIdsRef.current.add(id);
+        setCustomAgents((prev) => prev.filter((a) => a.id !== id));
+        if (wasSelected) setSelectedAgentId("orchestrator");
+      },
+      revert: () => {
+        hiddenAgentIdsRef.current.delete(id);
+        setCustomAgents((prev) => reinsertAt(prev, [{ item: target, index }], (a: CustomAgent) => a.id));
+        if (wasSelected) setSelectedAgentId(id);
+      },
+      failureMessage: t("Error deleting agent", "Agenta sa nepodarilo zmazať", "Az ügynök törlése nem sikerült"),
+      onCommit: async () => {
+        const res = await fetchWithTimeout("/api/chat_rag.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete_agent", id })
+        });
+        if (!res.ok) throw new Error("");
+        hiddenAgentIdsRef.current.delete(id);
         await fetchAgents();
-      }
-    } catch (err) {
-      console.warn("Error deleting agent", err);
-    } finally {
-      setIsLoading(false);
-    }
+      },
+    });
   };
 
 
@@ -999,17 +1035,18 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     >
                       <Edit className="h-3 w-3" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
+                    <HoldToConfirmButton
+                        tone="danger"
+                        lang={asLang(systemLanguage)}
+                        what={custom.name}
+                        onConfirm={() => {
                         handleDeleteAgent(custom.id);
                       }}
-                      className="p-1 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50"
-                      title={t("Delete", "Zmazať", "Törlés")}
+                        className="p-1 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                        title={t("Delete", "Zmazať", "Törlés")}
                     >
                       <Trash2 className="h-3 w-3" />
-                    </button>
+                    </HoldToConfirmButton>
                   </div>
                 </div>
               );
@@ -1071,16 +1108,17 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
             {/* Top Action Buttons - subtle reset */}
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleResetChat}
-                disabled={isLoading}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-micro font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer disabled:opacity-50"
-                title={t("Reset Chat History", "Vyčistiť históriu chatu", "Chat előzmények törlése")}
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={asLang(systemLanguage)}
+                  what={t("conversation history", "históriu rozhovoru", "beszélgetés előzményei")}
+                  onConfirm={handleResetChat}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-micro font-bold text-slate-500 hover:text-slate-800 transition-all disabled:opacity-50"
+                  title={t("Reset Chat History", "Vyčistiť históriu chatu", "Chat előzmények törlése")}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
                 <span>{t("Reset Chat", "Vyčistiť chat", "Chat törlése")}</span>
-              </button>
+              </HoldToConfirmButton>
             </div>
           </div>
 
@@ -1331,13 +1369,16 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                         </span>
                         <h4 className="font-heading font-bold text-ui text-slate-900">{d.title}</h4>
                       </div>
-                      <button
-                        onClick={() => handleDeleteDecision(d.id)}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition-colors"
-                        title={t("Delete Decision", "Zmazať", "Törlés")}
+                      <HoldToConfirmButton
+                          tone="danger"
+                          lang={asLang(systemLanguage)}
+                          what={d.title}
+                          onConfirm={() => handleDeleteDecision(d.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition-colors"
+                          title={t("Delete Decision", "Zmazať", "Törlés")}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      </HoldToConfirmButton>
                     </div>
 
                     <p className="text-ui text-slate-700 leading-relaxed whitespace-pre-wrap">{d.summary}</p>

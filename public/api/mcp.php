@@ -722,6 +722,7 @@ function mcp_core_tool_definitions(): array {
                     'priority' => ['type' => 'string', 'description' => 'Priority: low, medium, high'],
                     'deadline' => ['type' => 'string', 'description' => 'Deadline in YYYY-MM-DD format'],
                     'status' => ['type' => 'string', 'description' => 'A configured task status'],
+                    'conclusion' => ['type' => 'string', 'description' => 'How the task was finished. Required when moving a task that has "requires conclusion" set to a done status.'],
                     'owner' => ['type' => 'string', 'description' => 'Primary assignee name'],
                     'project_id' => ['type' => 'string', 'description' => 'Linked project ID']
                 ],
@@ -735,7 +736,8 @@ function mcp_core_tool_definitions(): array {
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Task ID'],
-                    'note' => ['type' => 'string', 'description' => 'Optional completion note']
+                    'conclusion' => ['type' => 'string', 'description' => 'How the task was finished (a short note or report). Required when the task has "requires conclusion" set; otherwise optional.'],
+                    'note' => ['type' => 'string', 'description' => 'Older name of conclusion']
                 ],
                 'required' => ['id']
             ]

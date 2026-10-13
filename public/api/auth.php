@@ -125,6 +125,63 @@ if (!function_exists('ccrm_send_cors')) {
         @session_destroy();
     }
 
+    /** Open the authenticated session for a users row and return the profile array login.php answers with. */
+    function ccrm_establish_login_session(\PDO $pdo, array $row, bool $remember): array {
+        // The address this user reached the CRM at is the one mailed links should use.
+        ccrm_remember_app_url($pdo);
+
+        // Establish the authenticated session (extended lifetime when "remember me").
+        ccrm_start_session($remember);
+        session_regenerate_id(true);
+        $_SESSION['ccrm_uid']   = $row['id'];
+        $_SESSION['ccrm_role']  = $row['role'];
+        $_SESSION['ccrm_email'] = $row['email'];
+        // When this session was issued, so a later password change can retire it. Taken
+        // from the DB clock (not PHP's) because it is compared against the DB-written
+        // users.sessions_valid_from — see ccrm_current_user(). ccrm_checked_at is a local
+        // monotonic-enough marker for the revalidation interval only, never compared to
+        // a DB timestamp.
+        try {
+            $_SESSION['ccrm_issued_at'] = $pdo->query("SELECT NOW()")->fetchColumn() ?: null;
+        } catch (\Throwable $e) {
+            $_SESSION['ccrm_issued_at'] = null;
+        }
+        $_SESSION['ccrm_checked_at'] = time();
+
+        // Persist (or clear) the non-sensitive marker cookie so later requests keep
+        // the right session lifetime. This cookie is NOT a credential — auth still
+        // relies entirely on the server-side session.
+        $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+        if ($remember) {
+            setcookie('CCRM_REMEMBER', '1', [
+                'expires'  => time() + CCRM_REMEMBER_LIFETIME,
+                'path'     => '/',
+                'httponly' => true,
+                'samesite' => 'Lax',
+                'secure'   => $secure,
+            ]);
+        } elseif (isset($_COOKIE['CCRM_REMEMBER'])) {
+            setcookie('CCRM_REMEMBER', '', [
+                'expires'  => time() - 42000,
+                'path'     => '/',
+                'httponly' => true,
+                'samesite' => 'Lax',
+                'secure'   => $secure,
+            ]);
+        }
+
+        return [
+            'name'          => $row['name'],
+            'email'         => $row['email'],
+            'role'          => ccrm_role_label($row['role']),
+            'color'         => $row['color'] ?? '#3b82f6',
+            'avatar'        => $row['avatar'] ?? null,
+            'activityLog'   => [],
+            // Secrets stay server-side: mask the mailbox password like the sync GET.
+            'metadata_json' => ccrm_mask_user_metadata($row['metadata_json'] ?? null),
+        ];
+    }
+
     function ccrm_current_user(): ?array {
         ccrm_start_session();
         if (empty($_SESSION['ccrm_uid'])) {
@@ -623,6 +680,26 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * Settings → Tasks, normalized. Mirrors normalizeTaskSettings in
+     * src/utils/taskConclusion.ts: the client compares this blob against its own
+     * to decide whether settings changed, so both sides have to agree on what a
+     * malformed value means.
+     *
+     *   offerConclusion           true — the "Requires conclusion" checkbox is offered
+     *                             when a task is created (on by default)
+     *   defaultRequiresConclusion true — the checkbox is checked by default on new tasks
+     */
+    function ccrm_normalize_task_settings($cfg): array {
+        if (!is_array($cfg)) {
+            $cfg = [];
+        }
+        return [
+            'offerConclusion'           => !array_key_exists('offerConclusion', $cfg) || (bool)$cfg['offerConclusion'],
+            'defaultRequiresConclusion' => ($cfg['defaultRequiresConclusion'] ?? false) === true,
+        ];
+    }
+
+    /**
      * Per-phase SLA limits, normalized: lowercased state name -> whole positive
      * days. Mirrors normalizeLeadStateSla in src/utils/leadSla.ts, key sorting
      * included — the client compares this blob against its own to decide whether
@@ -831,11 +908,11 @@ if (!function_exists('ccrm_send_cors')) {
                 $created[] = [
                     'id' => $projectId,
                     'projectTypeId' => $typeId,
-                    // No name and no deadline: an auto-created project reads as its
+                    // No name and no dates: an auto-created project reads as its
                     // paired lead until someone names it (projectDisplayName), and
                     // only its manager knows when it is actually due.
                     'name' => '',
-                    'deadline' => null,
+                    'invoiceDate' => null,
                     'leadId' => $leadId,
                     'clientId' => $leadId,
                     'status' => 'new',

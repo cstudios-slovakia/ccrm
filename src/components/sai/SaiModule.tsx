@@ -51,6 +51,10 @@ import { StrategicReportView } from './StrategicReportView';
 import { QaAssistantDrawer } from './QaAssistantDrawer';
 import { GuidedDemoWalkthrough } from './GuidedDemoWalkthrough';
 import { SimulationStepsBar } from './SimulationStepsBar';
+import { HoldToConfirmButton } from "../ui/HoldToConfirm";
+import { runUndoable } from "../../utils/undoable";
+import { reinsertAt } from "../../utils/undoableList";
+import { asLang, singleMessage, undoLabel } from "../../utils/undoMessages";
 
 interface SaiModuleProps {
   isDemoMode?: boolean;
@@ -70,6 +74,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
   const [activeIsDemo, setActiveIsDemo] = useState<boolean>(isDemoMode);
   const [activeView, setActiveView] = useState<'list' | 'create' | 'running' | 'report'>('list');
   const [pastSimulations, setPastSimulations] = useState<any[]>([]);
+  // Deleted under an open undo window: still on the server, so a reload of the list hides them.
+  const hiddenSimulationIdsRef = useRef<Set<string>>(new Set());
   const [loadingList, setLoadingList] = useState<boolean>(true);
   const [editingDraftData, setEditingDraftData] = useState<DraftData | null>(null);
   const [isGuidedDemoOpen, setIsGuidedDemoOpen] = useState<boolean>(false);
@@ -261,7 +267,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
     setLoadingList(true);
     try {
       const list = await listPastSimulations();
-      setPastSimulations(list);
+      setPastSimulations(list.filter((s: any) => !hiddenSimulationIdsRef.current.has(s.id)));
     } catch (err) {
       console.error('Failed to load past simulations:', err);
     } finally {
@@ -743,24 +749,32 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
     }
   };
 
-  // Delete past simulation
-  const handleDeleteSimulation = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (!confirm(t('Are you sure you want to permanently delete this simulation and remove its data from the database?', 'Naozaj chcete natrvalo odstrániť túto simuláciu a vymazať jej dáta z databázy?', 'Biztosan véglegesen törölni szeretné ezt a szimulációt és adatait az adatbázisból?'))) {
-      return;
-    }
-
-    try {
-      const ok = await deleteServerSimulation(id);
-      if (ok) {
+  // Delete past simulation — strategy C: it leaves the list at once and its data is
+  // removed from the database when the undo window closes; a failure brings it back.
+  const handleDeleteSimulation = (id: string) => {
+    const index = pastSimulations.findIndex(s => s.id === id);
+    const target = pastSimulations[index];
+    if (!target) return;
+    const wasActive = activeSimulationId === id;
+    runUndoable({
+      message: singleMessage(asLang(systemLanguage), "simulation", "delete", (target as any).title || (target as any).name),
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => {
+        hiddenSimulationIdsRef.current.add(id);
         setPastSimulations(prev => prev.filter(s => s.id !== id));
-        if (activeSimulationId === id) {
-          navigateView('list');
-        }
-      }
-    } catch (err) {
-      console.error('Delete failed:', err);
-    }
+        if (wasActive) navigateView('list');
+      },
+      revert: () => {
+        hiddenSimulationIdsRef.current.delete(id);
+        setPastSimulations(prev => reinsertAt(prev, [{ item: target, index }], (s: any) => s.id));
+      },
+      failureMessage: t('Delete failed', 'Zmazanie zlyhalo', 'A törlés sikertelen'),
+      onCommit: async () => {
+        const ok = await deleteServerSimulation(id);
+        if (!ok) throw new Error('');
+        hiddenSimulationIdsRef.current.delete(id);
+      },
+    });
   };
 
   const handleStopSimulation = () => {
@@ -1122,14 +1136,16 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                               {isUnstarted && <Bookmark className="w-3 h-3 text-amber-700" />}
                               {statusLabel}
                             </span>
-                            <button
-                              type="button"
-                              onClick={(e) => handleDeleteSimulation(e, sim.id)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                              title={isUnstarted ? t('Delete draft', 'Zmazať koncept', 'Piszkozat törlése') : t('Delete simulation', 'Zmazať simuláciu', 'Szimuláció törlése')}
+                            <HoldToConfirmButton
+                                tone="danger"
+                                lang={asLang(systemLanguage)}
+                                what={sim.title}
+                                onConfirm={() => handleDeleteSimulation(sim.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                title={isUnstarted ? t('Delete draft', 'Zmazať koncept', 'Piszkozat törlése') : t('Delete simulation', 'Zmazať simuláciu', 'Szimuláció törlése')}
                             >
                               <Trash2 className="w-4 h-4" />
-                            </button>
+                            </HoldToConfirmButton>
                           </div>
 
                           <div>

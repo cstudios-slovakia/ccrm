@@ -14,6 +14,9 @@ import {
   type CategoryDropTarget
 } from "../utils/financialCategoryTree";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { singleMessage } from "../utils/undoMessages";
 
 interface FinancialCategoriesManagerProps {
   financialCategories: FinancialCategory[];
@@ -180,33 +183,60 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
 
   const handleDeleteCategory = (id: string) => {
     if (!canDelete) return;
-    if (confirm(t("Delete category and its subcategories?", "Vymazať kategóriu a všetky jej podkategórie?", "Törli a kategóriát és alkategóriáit?"))) {
-      // Find all nested child ids recursively
-      const toDeleteIds = new Set<string>([id]);
-      let changed = true;
-      while (changed) {
-        changed = false;
-        financialCategories.forEach((c) => {
-          if (c.parentId && toDeleteIds.has(c.parentId) && !toDeleteIds.has(c.id)) {
-            toDeleteIds.add(c.id);
-            changed = true;
-          }
-        });
-      }
-
-      setFinancialCategories((prev) => prev.filter((c) => !toDeleteIds.has(c.id)));
-      // The movements filed under them stay, now uncategorized, so every tab keeps counting them.
-      setFinancialRecords((prev) =>
-        prev.some((r) => r.categoryId && toDeleteIds.has(r.categoryId))
-          ? prev.map((r) =>
-              r.categoryId && toDeleteIds.has(r.categoryId)
-                ? { ...r, categoryId: null, categoryPath: null, updatedAt: new Date().toISOString() }
-                : r
-            )
-          : prev
-      );
-      (window as any).showToast?.(t("Category removed", "Kategória odstránená", "Kategória eltávolítva"));
+    const target = financialCategories.find((c) => c.id === id);
+    if (!target) return;
+    // Find all nested child ids recursively
+    const toDeleteIds = new Set<string>([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      financialCategories.forEach((c) => {
+        if (c.parentId && toDeleteIds.has(c.parentId) && !toDeleteIds.has(c.id)) {
+          toDeleteIds.add(c.id);
+          changed = true;
+        }
+      });
     }
+    const children = financialCategories.filter((c) => toDeleteIds.has(c.id) && c.id !== id);
+    // The movements filed under them stay, now uncategorized, so every tab keeps
+    // counting them. How each was filed is noted as they are re-filed, so Undo
+    // files it back exactly.
+    const refiled = new Map<string, { categoryId?: string | null; categoryPath?: string | null; updatedAt?: string }>();
+    deleteRecordsWithUndo({
+      collection: "financialCategories",
+      allRecords: financialCategories,
+      targets: [target, ...children],
+      setRecords: setFinancialCategories,
+      lang: userLanguage,
+      entity: "category",
+      titleOf: (c) => c.name,
+      message: singleMessage(userLanguage, "category", "delete", target.name),
+      applyExtra: () => {
+        const stamp = new Date().toISOString();
+        setFinancialRecords((prev) =>
+          prev.some((r) => r.categoryId && toDeleteIds.has(r.categoryId))
+            ? prev.map((r) => {
+                if (!r.categoryId || !toDeleteIds.has(r.categoryId)) return r;
+                refiled.set(r.id, { categoryId: r.categoryId, categoryPath: r.categoryPath, updatedAt: r.updatedAt });
+                return { ...r, categoryId: null, categoryPath: null, updatedAt: stamp };
+              })
+            : prev
+        );
+      },
+      revertExtra: () => {
+        if (refiled.size === 0) return;
+        setFinancialRecords((prev) =>
+          prev.map((r) => {
+            const was = refiled.get(r.id);
+            if (!was || r.categoryId) return r;
+            const back: any = { ...r, categoryId: was.categoryId, categoryPath: was.categoryPath };
+            if (was.updatedAt === undefined) delete back.updatedAt;
+            else back.updatedAt = was.updatedAt;
+            return back;
+          })
+        );
+      },
+    });
   };
 
   const endCategoryDrag = () => {
@@ -335,14 +365,16 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
           <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
         </div>
         {canDelete && (
-          <button
-            type="button"
-            onClick={() => handleDeleteCategory(cat.id)}
-            className="p-1 text-slate-400 hover:text-rose-600 transition-colors duration-150 cursor-pointer"
-            title={t("Delete category", "Vymazať", "Törlés")}
+          <HoldToConfirmButton
+              tone="danger"
+              lang={userLanguage}
+              what={cat.name}
+              onConfirm={() => handleDeleteCategory(cat.id)}
+              className="p-1 text-slate-400 hover:text-rose-600 transition-colors duration-150"
+              title={t("Delete category", "Vymazať", "Törlés")}
           >
             <Trash2 className={styles.trash} />
-          </button>
+          </HoldToConfirmButton>
         )}
       </div>
     );

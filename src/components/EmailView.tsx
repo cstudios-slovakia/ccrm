@@ -18,6 +18,10 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
 import { isOutgoingMail } from "../utils/mailTimeline";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { reinsertAt } from "../utils/undoableList";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 interface EmailViewProps {
   currentUser: any;
@@ -80,6 +84,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Folder & Email States
   const activeFolder = "INBOX";
   const [emails, setEmails] = useState<any[]>([]);
+  // Mails deleted under an open undo window: the server still has them, so a
+  // reload of the folder must not bring them back on screen meanwhile.
+  const hiddenEmailKeysRef = React.useRef<Set<string>>(new Set());
+  const emailKey = (m: any) => `${m.isSent ? "S" : "I"}:${m.uid}`;
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
   const [threadBodies, setThreadBodies] = useState<Record<string, any>>({});
   
@@ -514,7 +522,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
 
-      setEmails(combined);
+      setEmails(hiddenEmailKeysRef.current.size ? combined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : combined);
       setLastSyncAt(new Date());
     } catch (err) {
       notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
@@ -667,25 +675,39 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
-  const handleDeleteEmail = async (uid: any) => {
+  // Strategy C: hidden at once, deleted on the mail server when the undo window
+  // closes. A failure puts the mail back with the server's message.
+  const handleDeleteEmail = (uid: any) => {
     if (!canDelete) return;
-    if (!confirm(t("Are you sure you want to delete this email?", "Naozaj chcete odstrániť tento e-mail?", "Biztosan törölni szeretné ezt az e-mailt?"))) return;
-    try {
-      const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(activeFolder)}`, {
-        method: "DELETE",
-        headers: { "X-User-Email": currentUser.email }
-      });
-      const data = await res.json();
-      if (data.success) {
-        notify(t("Email deleted successfully.", "E-mail bol úspešne odstránený.", "Az e-mail sikeresen törölve."));
-        setSelectedEmail(null);
+    const index = emails.findIndex((e) => e.uid === uid);
+    const target = emails[index] ?? (selectedEmail?.uid === uid ? selectedEmail : null);
+    if (!target) return;
+    const key = emailKey(target);
+    const folder = activeFolder;
+    runUndoable({
+      message: singleMessage(systemLanguage, "email", "delete", target.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")),
+      undoLabel: undoLabel(systemLanguage),
+      apply: () => {
+        hiddenEmailKeysRef.current.add(key);
+        setEmails(prev => prev.filter(e => e.uid !== uid));
+        setSelectedEmail((cur: any) => (cur && cur.uid === uid ? null : cur));
+      },
+      revert: () => {
+        hiddenEmailKeysRef.current.delete(key);
+        if (index >= 0) setEmails(prev => reinsertAt(prev, [{ item: target, index }], (e: any) => `${e.isSent ? "S" : "I"}:${e.uid}`));
+      },
+      failureMessage: t("Failed to remove email", "Nepodarilo sa odstrániť e-mail", "Az e-mail eltávolítása nem sikerült"),
+      onCommit: async () => {
+        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(folder)}`, {
+          method: "DELETE",
+          headers: { "X-User-Email": currentUser.email }
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || "");
+        hiddenEmailKeysRef.current.delete(key);
         loadEmails(1, filter);
-      } else {
-        notify(data.error || t("Failed to remove email", "Nepodarilo sa odstrániť e-mail", "Az e-mail eltávolítása nem sikerült"), "error");
-      }
-    } catch (err) {
-      notify(t("Communication block error.", "Chyba komunikačného bloku.", "Kommunikációs blokk hiba."), "error");
-    }
+      },
+    });
   };
 
   // Group emails to Conversation flows (threads)
@@ -1705,15 +1727,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               </button>
                             )}
                             {isExpanded && canDelete && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteEmail(email.uid)}
-                                className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95 cursor-pointer"
-                                title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
-                                aria-label={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
+                              <HoldToConfirmButton
+                                  tone="danger"
+                                  lang={systemLanguage}
+                                  what={email.subject}
+                                  onConfirm={() => handleDeleteEmail(email.uid)}
+                                  className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
+                                  title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
                               >
                                 <Trash2 size={15} />
-                              </button>
+                              </HoldToConfirmButton>
                             )}
                             <button
                               type="button"
@@ -1793,15 +1816,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     {bodyObj && renderDigestButton(selectedEmail.uid, lead)}
                     {readToggleButton(isSeen, () => setSeenFlag(selectedEmail, !isSeen))}
                     {canDelete && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteEmail(selectedEmail.uid)}
-                        className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95 cursor-pointer"
-                        title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
-                        aria-label={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
+                      <HoldToConfirmButton
+                          tone="danger"
+                          lang={systemLanguage}
+                          what={selectedEmail.subject}
+                          onConfirm={() => handleDeleteEmail(selectedEmail.uid)}
+                          className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
+                          title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
                       >
                         <Trash2 size={17} />
-                      </button>
+                      </HoldToConfirmButton>
                     )}
                   </div>
                 </div>

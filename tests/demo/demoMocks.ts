@@ -44,6 +44,10 @@ function answerApi(pathname: string, search: URLSearchParams, method: string, bo
     case 'license.php':
       return { success: true, license: LICENSE };
 
+    case 'passkeys.php':
+      if (action === 'status') return { success: true, available: false };
+      return { success: true, passkeys: [] };
+
     /* 07 — RAG AI & Agenti. A GET without `action` is the chat-history request. */
     case 'chat_rag.php':
       if (action === 'get_agents') return { success: true, agents: RAG_AGENTS };

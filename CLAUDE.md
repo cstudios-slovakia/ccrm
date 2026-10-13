@@ -51,6 +51,9 @@ These live in `.agents/rules/` and apply to every change:
 - [`view-size.md`](.agents/rules/view-size.md) — type, spacing and layout
   follow the per-device View size; ruleset in
   [`docs/VIEW-SIZE.md`](docs/VIEW-SIZE.md).
+- [`project-totals.md`](.agents/rules/project-totals.md) — the projects list ends
+  in a Totals row; a new countable column is registered in
+  `SUMMABLE_PROJECT_COLUMNS` so it is totalled automatically.
 - [`licensing.md`](.agents/rules/licensing.md) — a licence gates updates and
   nothing else; never let one disable part of the running app.
 

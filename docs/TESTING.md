@@ -383,6 +383,14 @@ outside `npm test` because it needs Docker + MySQL. A new permission is not
 done until it has a read check and a write check here (see
 `docs/db_integration_notes/RBAC_SYSTEM.md`, "Adding a permission").
 
+### 5f. Passkeys / WebAuthn ceremony tests (`npm run test:passkeys`)
+
+Runs headless verification of WebAuthn options generation, serialization/deserialization, challenge expiration and single-use lifecycle, and AAGUID lookup without requiring a database or browser:
+
+```bash
+npm run test:passkeys
+```
+
 ---
 
 ## 6. When to run what
@@ -390,6 +398,7 @@ done until it has a read check and a write check here (see
 | Situation | Run |
 |---|---|
 | Mid-change, want fast feedback | `npm run test:unit` |
+| Touched passkeys (`api/passkeys*.php`) | `npm run test:passkeys` |
 | Touched a specific module's UI | `npm run test:qa:crawler` |
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |

@@ -42,6 +42,9 @@ import { formatNumber } from "../../utils/currency";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
+import { HoldToConfirmButton } from "../ui/HoldToConfirm";
+import { runUndoable } from "../../utils/undoable";
+import { asLang, singleMessage, undoLabel } from "../../utils/undoMessages";
 
 interface EmployeeDetailViewProps {
   employee: Employee;
@@ -743,12 +746,28 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     }
   };
 
+  // The latest employee, for an Undo that runs after the card has re-rendered.
+  const employeeRef = React.useRef(employee);
+  employeeRef.current = employee;
+
   const handleRemoveContract = (fileId: string) => {
-    const updated = {
-      ...employee,
-      files: (employee.files || []).filter((f) => f.id !== fileId)
-    };
-    onUpdateEmployee(updated);
+    const files = employee.files || [];
+    const index = files.findIndex((f) => f.id === fileId);
+    const removed = files[index];
+    if (!removed) return;
+    runUndoable({
+      message: singleMessage(asLang(systemLanguage), "file", "delete", removed.name),
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => onUpdateEmployee({ ...employee, files: files.filter((f) => f.id !== fileId) }),
+      // Put the document back at its old place, on top of whatever the employee looks like now.
+      revert: () => {
+        const current = employeeRef.current;
+        if ((current.files || []).some((f) => f.id === fileId)) return;
+        const next = [...(current.files || [])];
+        next.splice(Math.min(index, next.length), 0, removed);
+        onUpdateEmployee({ ...current, files: next });
+      },
+    });
   };
 
   return (
@@ -2092,13 +2111,15 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             )}
 
                             {rights.editVacations && (
-                            <button
-                              type="button"
-                              onClick={() => onDeleteVacation(vac.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition"
+                            <HoldToConfirmButton
+                                tone="danger"
+                                lang={asLang(systemLanguage)}
+                                what={employee.name}
+                                onConfirm={() => onDeleteVacation(vac.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            </HoldToConfirmButton>
                             )}
                           </div>
                         </div>
@@ -2234,14 +2255,16 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             </a>
                             ) : null}
                             {rights.editFiles && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveContract(file.id)}
-                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
-                              title={t("Delete Document", "Zmazať dokument", "Törlés")}
+                            <HoldToConfirmButton
+                                tone="danger"
+                                lang={asLang(systemLanguage)}
+                                what={file.name}
+                                onConfirm={() => handleRemoveContract(file.id)}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                                title={t("Delete Document", "Zmazať dokument", "Törlés")}
                             >
                               <Trash2 className="w-4 h-4" />
-                            </button>
+                            </HoldToConfirmButton>
                             )}
                           </div>
                         </div>

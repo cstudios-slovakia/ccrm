@@ -40,6 +40,8 @@ import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEditDrawer } from "./TaskEditDrawer";
+import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
+import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { QuickTaskModal } from "./QuickTaskModal";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
@@ -562,6 +564,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 ...(task.tags || []),
                 ...extractTagsFromText(task.title || ""),
                 ...extractTagsFromText(task.description || ""),
+                ...extractTagsFromText(task.conclusion || ""),
             ].map((tg) => tg.toLowerCase());
             if (!taskTags.includes(target)) return false;
         }
@@ -809,6 +812,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+    // Completing a task that requires a conclusion asks for it first.
+    const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(systemLanguage);
 
     // Multi-select & Bulk Actions State
     const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -1173,7 +1179,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const matchesTitle = task.title.toLowerCase().includes(query);
                 const matchesDesc =
                     task.description?.toLowerCase().includes(query) || false;
-                if (!matchesTitle && !matchesDesc) return false;
+                const matchesConclusion =
+                    task.conclusion?.toLowerCase().includes(query) || false;
+                if (!matchesTitle && !matchesDesc && !matchesConclusion) return false;
             }
 
             // Priority
@@ -1256,7 +1264,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const matchesTitle = task.title.toLowerCase().includes(query);
                 const matchesDesc =
                     task.description?.toLowerCase().includes(query) || false;
-                if (!matchesTitle && !matchesDesc) return false;
+                const matchesConclusion =
+                    task.conclusion?.toLowerCase().includes(query) || false;
+                if (!matchesTitle && !matchesDesc && !matchesConclusion) return false;
             }
 
             // Priority
@@ -1485,10 +1495,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         let modifiedCount = 0;
         let skippedCount = 0;
+        // A task that requires a conclusion cannot be finished in bulk: each one
+        // needs its own, so those are left as they were. Counted from the current
+        // list rather than inside the updater below, which may run later.
+        const needsConclusionCount = tasks.filter(
+            (tk) =>
+                selectedTaskIds.has(tk.id) &&
+                mayEditTask(tk) &&
+                needsConclusionToFinish(tk, newStatus, taskStates),
+        ).length;
 
         setTasks((prev) =>
             prev.map((t) => {
                 if (selectedTaskIds.has(t.id)) {
+                    if (needsConclusionToFinish(t, newStatus, taskStates)) return t;
                     if (mayEditTask(t)) {
                         modifiedCount++;
                         return {
@@ -1507,6 +1527,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setActiveBulkMenu(null);
 
         if (typeof (window as any).showToast === "function") {
+            if (needsConclusionCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${needsConclusionCount} task(s) need a conclusion and were not completed. Complete them one by one.`,
+                        `${needsConclusionCount} úloh vyžaduje záver a nebolo dokončených. Dokončite ich jednotlivo.`,
+                        `${needsConclusionCount} feladat összegzést igényel, ezért nem lett befejezve. Fejezze be őket egyenként.`,
+                    ),
+                    "warning",
+                );
+            }
             if (modifiedCount > 0) {
                 (window as any).showToast(
                     t(
@@ -2677,7 +2707,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     value={task.status}
                                     disabled={!mayEditTask(task)}
                                     size="sm"
-                                    onChange={(newStatus) => {
+                                    onChange={async (newStatus) => {
+                                        // A task that requires a conclusion is only
+                                        // completed once one is written.
+                                        let conclusion: string | undefined;
+                                        if (needsConclusionToFinish(task, newStatus, taskStates)) {
+                                            const written = await askConclusion(task);
+                                            if (written === null) return;
+                                            conclusion = written;
+                                        }
+
                                         const now = new Date();
                                         const completedAtStr = isDoneState(newStatus)
                                             ? toLocalDateStr(now) +
@@ -2696,6 +2735,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                           status: newStatus,
                                                           completedBy: completedByName,
                                                           completedAt: completedAtStr,
+                                                          ...(conclusion !== undefined ? { conclusion } : {}),
                                                       }
                                                     : t,
                                             ),
@@ -2869,10 +2909,29 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 />
                             </span>
                         )}
+                        {task.conclusion && (
+                            <span
+                                className="inline-flex items-center gap-1 text-micro font-medium text-emerald-700 bg-emerald-50/80 border border-emerald-200/60 rounded-md px-1.5 py-0.5 truncate max-w-60 ws-sm:max-w-45"
+                                title={`${t("Conclusion", "Záver", "Összegzés")}: ${task.conclusion}`}
+                            >
+                                <CheckSquare className="h-2.5 w-2.5 text-emerald-600 shrink-0" />
+                                <span className="font-bold text-emerald-800 shrink-0">
+                                    {t("Conclusion", "Záver", "Összegzés")}:
+                                </span>
+                                <span className="truncate">
+                                    <TaskPillText
+                                        text={task.conclusion}
+                                        onTagClick={handleTagClick}
+                                        knownEntities={mentionEntities}
+                                    />
+                                </span>
+                            </span>
+                        )}
                         {task.tags && task.tags.length > 0 && (() => {
                             const textTags = new Set([
                                 ...extractTagsFromText(task.title || "").map((t) => t.toLowerCase()),
                                 ...extractTagsFromText(task.description || "").map((t) => t.toLowerCase()),
+                                ...extractTagsFromText(task.conclusion || "").map((t) => t.toLowerCase()),
                             ]);
                             const extraTags = task.tags.filter((t) => !textTags.has(t.toLowerCase()));
                             if (extraTags.length === 0) return null;
@@ -3012,6 +3071,25 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     onTagClick={handleTagClick}
                                     knownEntities={mentionEntities}
                                 />
+                            </div>
+                        )}
+                        {task.conclusion && (
+                            <div
+                                onClick={() => setEditingTask(task)}
+                                className="text-micro font-medium text-emerald-800 bg-emerald-50/80 border border-emerald-200/70 hover:bg-emerald-100/80 hover:border-emerald-300 rounded-md px-2 py-0.5 mt-1 inline-flex items-center gap-1.5 max-w-full cursor-pointer transition-colors shadow-2xs"
+                                title={`${t("Conclusion", "Záver", "Összegzés")}: ${task.conclusion}`}
+                            >
+                                <CheckSquare className="h-3 w-3 text-emerald-600 shrink-0" />
+                                <span className="font-bold text-emerald-900 shrink-0">
+                                    {t("Conclusion", "Záver", "Összegzés")}:
+                                </span>
+                                <span className="truncate">
+                                    <TaskPillText
+                                        text={task.conclusion}
+                                        onTagClick={handleTagClick}
+                                        knownEntities={mentionEntities}
+                                    />
+                                </span>
                             </div>
                         )}
                     </div>
@@ -3186,6 +3264,34 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 "text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30",
                             )}
                         </div>
+                        {task.description && (
+                            <div className="text-micro font-semibold text-slate-500 truncate mt-0.5">
+                                <TaskPillText
+                                    text={task.description}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
+                            </div>
+                        )}
+                        {task.conclusion && (
+                            <div
+                                onClick={() => setEditingTask(task)}
+                                className="text-micro font-medium text-emerald-800 bg-emerald-50/80 border border-emerald-200/70 hover:bg-emerald-100/80 hover:border-emerald-300 rounded-md px-2 py-0.5 mt-1 inline-flex items-center gap-1.5 max-w-full cursor-pointer transition-colors shadow-2xs"
+                                title={`${t("Conclusion", "Záver", "Összegzés")}: ${task.conclusion}`}
+                            >
+                                <CheckSquare className="h-3 w-3 text-emerald-600 shrink-0" />
+                                <span className="font-bold text-emerald-900 shrink-0">
+                                    {t("Conclusion", "Záver", "Összegzés")}:
+                                </span>
+                                <span className="truncate">
+                                    <TaskPillText
+                                        text={task.conclusion}
+                                        onTagClick={handleTagClick}
+                                        knownEntities={mentionEntities}
+                                    />
+                                </span>
+                            </div>
+                        )}
                         <div className="mt-0.5">
                             {renderDayChip(
                                 task.deadline,
@@ -5113,6 +5219,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
             )}
 
+            {conclusionDialog}
+
             {editingTask && (
                 <TaskEditDrawer
                     key={editingTask.id}
@@ -5122,6 +5230,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     users={users}
                     taskStates={taskStates}
                     systemLanguage={systemLanguage}
+                    currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}
                     mailConfigured={mailConfigured}
                     canEdit={mayEditTask(editingTask)}

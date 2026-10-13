@@ -14,6 +14,7 @@ export type BuiltinProjectColumnKey =
   | "client"
   | "managers"
   | "rating"
+  | "invoiceDate"
   | "deadline"
   | "progress"
   | "status"
@@ -31,6 +32,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
   "client",
   "managers",
   "rating",
+  "invoiceDate",
   "deadline",
   "progress",
   "status",
@@ -63,13 +65,86 @@ export const BUILTIN_COLUMN_LABELS: Record<BuiltinProjectColumnKey, [string, str
   client: ["Client", "Klient", "Ügyfél"],
   managers: ["Managers", "Manažéri", "Menedzserek"],
   rating: ["Rating", "Hodnotenie", "Értékelés"],
-  deadline: ["Deadline", "Termín", "Határidő"],
+  invoiceDate: ["Invoice date", "Termín fakturácie", "Számlázási határidő"],
+  deadline: ["Deadline", "Termín dokončenia", "Határidő"],
   progress: ["Progress", "Postup", "Haladás"],
   status: ["Status", "Stav", "Állapot"],
   value: ["Value", "Hodnota", "Érték"],
   invoicable: ["Invoicable", "Fakturovateľné", "Számlázható"],
   division: ["Division", "Divízia", "Divízió"],
 };
+
+/* -------------------------------------------------------------------------- */
+/* Totals row                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** What a project is worth, as the list works it out for one row. */
+export interface ProjectMoneyFigures {
+  totalBudget: number;
+  invoiced: number;
+  invoicable: number;
+  currency: string;
+  /** False for a project with no value at all — its cells are empty and add nothing. */
+  hasValue: boolean;
+}
+
+/**
+ * The columns the Totals row adds up, and how one project feeds each.
+ *
+ * **This is the only place a countable column is declared.** The footer of the
+ * projects list walks the visible columns and sums every one found here, so a
+ * new countable field is one line below — no change to the view. A column that
+ * is not listed simply gets an empty cell in the Totals row.
+ *
+ * A figure is a money amount, so it is summed per currency: adding euros to
+ * forints would be a number nobody can read.
+ */
+export const SUMMABLE_PROJECT_COLUMNS: Partial<
+  Record<BuiltinProjectColumnKey, (figures: ProjectMoneyFigures) => number>
+> = {
+  value: f => f.totalBudget,
+  invoicable: f => f.invoicable,
+};
+
+export const isSummableProjectColumn = (key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(SUMMABLE_PROJECT_COLUMNS, key);
+
+/** One currency's share of a column's total. */
+export interface ColumnTotalPart {
+  currency: string;
+  amount: number;
+}
+
+/**
+ * The Totals row for the given columns: for each summable one, the sum over
+ * `rows` split by currency (in order of first appearance). A column with
+ * nothing to add — no row has a value — is absent rather than zero.
+ */
+export function totalProjectColumns(
+  columns: readonly { key: string }[],
+  rows: readonly ProjectMoneyFigures[],
+): Map<string, ColumnTotalPart[]> {
+  const totals = new Map<string, ColumnTotalPart[]>();
+
+  for (const { key } of columns) {
+    if (!isSummableProjectColumn(key)) continue;
+    const measure = SUMMABLE_PROJECT_COLUMNS[key as BuiltinProjectColumnKey]!;
+
+    const byCurrency = new Map<string, number>();
+    for (const row of rows) {
+      if (!row.hasValue) continue;
+      const amount = measure(row);
+      if (!Number.isFinite(amount)) continue;
+      byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? 0) + amount);
+    }
+
+    if (byCurrency.size > 0) {
+      totals.set(key, [...byCurrency].map(([currency, amount]) => ({ currency, amount })));
+    }
+  }
+
+  return totals;
+}
 
 const ATTRIBUTE_COLUMN_PREFIX = "attr:";
 

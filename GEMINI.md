@@ -35,3 +35,10 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 
 - **Managed Exclusively via Craft CMS**: All news, release notes, and product update entries must be managed exclusively through Craft CMS (via GraphQL API `entries(section: "updateNotes", site: "*")`).
 - **No Hardcoded or Local DB Entries**: News and update entries must NEVER be hardcoded in client source code or stored in the application's local database.
+
+### 4. Projects List - Totals Row
+
+- The projects list (table view) ends with a **Totals** row. It sums every visible column declared in `SUMMABLE_PROJECT_COLUMNS` in [`src/utils/projectColumns.ts`](src/utils/projectColumns.ts) - today `value` and `invoicable`.
+- **When you add a countable column or field** (an amount, quantity, hours, a count - anything where a total means something): add one line to `SUMMABLE_PROJECT_COLUMNS` saying how a project feeds it, and add a case to `src/utils/projectColumns.test.ts`. `ProjectsView.tsx` does not need to change.
+- Money is summed per currency, never across currencies. Do not register columns where a total is meaningless (dates, ratings, percentages, text).
+- Full rule: [`.agents/rules/project-totals.md`](.agents/rules/project-totals.md).

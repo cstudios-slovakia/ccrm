@@ -7,6 +7,8 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { DeadlineTimePicker, taskProjectOptions } from "./TaskEditDrawer";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
+import { TaskConclusionToggle } from "./TaskConclusionToggle";
+import { useTaskSettings } from "../hooks/useTaskSettings";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
@@ -96,6 +98,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     const [relatedLeadId, setRelatedLeadId] = useState("");
     const [relatedProjectId, setRelatedProjectId] = useState("");
     const [isLocking, setIsLocking] = useState(false);
+    const { offerConclusion, defaultRequiresConclusion } = useTaskSettings();
+    const [requiresConclusion, setRequiresConclusion] = useState(() => Boolean(defaultRequiresConclusion));
     const [emailReminders, setEmailReminders] = useState<Task["emailReminders"]>(undefined);
     const [assignedUser, setAssignedUser] = useState(currentUserName || users[0]?.name || "");
 
@@ -181,6 +185,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             relatedProjectId: relatedProjectId || undefined,
             isLocking: relatedLeadId ? isLocking : false,
             emailReminders,
+            // Only while the setting offers it: a stale tick must not outlive the setting.
+            requiresConclusion: offerConclusion && requiresConclusion ? true : undefined,
         }));
 
         onCreate(created);
@@ -206,6 +212,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         } else {
             // Keep the popup open for the next task: clear the title and refocus.
             setTitle("");
+            setRequiresConclusion(Boolean(defaultRequiresConclusion));
             setTimeout(() => {
                 document.querySelector<HTMLTextAreaElement>("[data-quick-task-form] textarea")?.focus();
             }, 50);
@@ -300,6 +307,15 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                             className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-ui font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-12.5"
                         />
                     </div>
+
+                    {offerConclusion && (
+                        <TaskConclusionToggle
+                            compact
+                            checked={requiresConclusion}
+                            onChange={setRequiresConclusion}
+                            t={t}
+                        />
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <div className="space-y-1">

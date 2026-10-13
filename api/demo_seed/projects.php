@@ -145,9 +145,9 @@ function demo_seed_projects(PDO $pdo): void {
         ['id' => 'attr_file_drawing', 'name' => $T(['en' => 'Shop drawing', 'sk' => 'Dielenský výkres', 'hu' => 'Műhelyrajz'])],
     ];
     $pdo->prepare(
-        "INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`,
+        "INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `has_invoice_date`,
             `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `timeline_event_types_json`, `timeline_attributes_json`, `list_columns_json`)
-         VALUES (?, ?, ?, 'Gem', '#0ea5e9', ?, 1, 1, 1, 7, 0, 1, ?, ?, '[]', NULL)"
+         VALUES (?, ?, ?, 'Gem', '#0ea5e9', ?, 1, 1, 1, 1, 7, 0, 1, ?, ?, '[]', NULL)"
     )->execute([
         $typeId,
         $T(['en' => 'Stone fabrication job', 'sk' => 'Zákazková kamenárska výroba', 'hu' => 'Egyedi kőmegmunkálási munka']),
@@ -176,45 +176,46 @@ function demo_seed_projects(PDO $pdo): void {
     $st = static fn(string $key) => in_array($key, $statusKeys, true) ? $key : $statusKeys[0];
 
     // --- Projects -------------------------------------------------------------
-    // [n, name, leadId, status, division, rating, start, deadline, finished, delayReason, budget, value, manager(s), data]
+    // [n, name, leadId, status, division, rating, start, deadline, invoice date, finished, delayReason, budget, value, manager(s), data]
+    // Day offsets from today. The deadline is what the countdown and the delay flag run on.
     $projects = [
         [1, $T(['en' => 'Villa Slavín – facade and entrance hall cladding', 'sk' => 'Vila Slavín – obklad fasády a vstupnej haly', 'hu' => 'Vila Slavín – homlokzat és előcsarnok burkolata']),
-            demo_id('clients', 1), 'active', $divMain, 5, -75, 38, null, null, 15200.00, 24132.00, [$alex, $sam],
+            demo_id('clients', 1), 'active', $divMain, 5, -75, 38, 45, null, null, 15200.00, 24132.00, [$alex, $sam],
             ['material' => 'Porcelain', 'area' => '180', 'thickness' => '6 mm', 'site' => 'Vlárska 28, Bratislava', 'install_date' => demo_d(12), 'checks' => [$checks[0], $checks[1], $checks[2]]]],
         [2, $T(['en' => 'Kitchen worktop – Horváthová', 'sk' => 'Kuchynská doska – Horváthová', 'hu' => 'Konyhai munkalap – Horváthová']),
-            demo_id('clients', 2), 'completed', $divMain, 4, -52, -15, -17, null, 2350.00, 4832.40, [$jordan],
+            demo_id('clients', 2), 'completed', $divMain, 4, -52, -15, -10, -17, null, 2350.00, 4832.40, [$jordan],
             ['material' => 'Quartz', 'area' => '9.2', 'thickness' => '20 mm', 'site' => 'Štúrova 31, Nitra', 'install_date' => demo_d(-17), 'checks' => $checks]],
         [3, $T(['en' => 'Hotel Alpenblick – reception, spa and lobby', 'sk' => 'Hotel Alpenblick – recepcia, wellness a lobby', 'hu' => 'Hotel Alpenblick – recepció, wellness és előcsarnok']),
-            demo_id('clients', 6), 'new', $divMain, 5, 21, 96, null, null, 21800.00, 32692.80, [$jordan, $alex],
+            demo_id('clients', 6), 'new', $divMain, 5, 21, 96, 105, null, null, 21800.00, 32692.80, [$jordan, $alex],
             ['material' => 'Porcelain', 'area' => '146', 'thickness' => '12 mm', 'site' => 'Leopoldstraße 112, München', 'checks' => [$checks[0]]]],
         [4, $T(['en' => 'Interiéry Dvořák – showroom tables and sills', 'sk' => 'Interiéry Dvořák – showroomové stoly a parapety', 'hu' => 'Interiéry Dvořák – bemutatótermi asztalok és párkányok']),
-            demo_id('clients', 4), 'on_hold', $divMain, 3, -40, -5, null,
+            demo_id('clients', 4), 'on_hold', $divMain, 3, -40, -5, 10, null,
             $T(['en' => 'Waiting for the client\'s decision on the window sill profile.', 'sk' => 'Čakáme na rozhodnutie klienta o profile parapetov.', 'hu' => 'Az ügyfél döntésére várunk az ablakpárkány profiljáról.']),
             4900.00, 9364.80, [$sam],
             ['material' => 'Sintered stone', 'area' => '12', 'thickness' => '12 mm', 'site' => 'Cejl 52, Brno', 'checks' => [$checks[0], $checks[1]]]],
         [5, $T(['en' => 'Novák – showroom slab cladding', 'sk' => 'Novák – obklad showroomu z dosiek', 'hu' => 'Novák – bemutatóterem lapburkolat']),
-            'lead-1', 'active', $divMain, 4, -9, 33, null, null, 7400.00, 12500.00, [$sam],
+            'lead-1', 'active', $divMain, 4, -9, 33, 40, null, null, 7400.00, 12500.00, [$sam],
             ['material' => 'Marble', 'area' => '48', 'thickness' => '20 mm', 'site' => 'Mlynské Nivy 42, Bratislava', 'install_date' => demo_d(24), 'checks' => [$checks[0]]]],
     ];
 
     $insProj = $pdo->prepare(
-        "INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`,
+        "INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `completion_deadline`, `invoice_date`, `delay_reason`,
             `start_date`, `finished_at`, `budget`, `value`, `archived`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"
     );
     $insMgr = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
     $dataTable = "proj_data_{$safe}";
     $evSeq = 0;
     $gSeq = 0;
     foreach ($projects as $p) {
-        [$n, $name, $leadId, $status, $division, $rating, $startOff, $deadlineOff, $finishedOff, $delay, $budget, $value, $managers, $data] = $p;
+        [$n, $name, $leadId, $status, $division, $rating, $startOff, $deadlineOff, $invoiceOff, $finishedOff, $delay, $budget, $value, $managers, $data] = $p;
         if (!demo_row_exists($pdo, 'leads', $leadId)) {
             continue; // the client module did not run — nothing to pair with
         }
         $projId = demo_id('projects', $n);
         $insProj->execute([
             $projId, $typeId, $name, $leadId, $leadId, $st($status), $division, $rating,
-            demo_d($deadlineOff), $delay, demo_d($startOff), $finishedOff === null ? null : demo_d($finishedOff), $budget, $value,
+            demo_d($deadlineOff), demo_d($invoiceOff), $delay, demo_d($startOff), $finishedOff === null ? null : demo_d($finishedOff), $budget, $value,
         ]);
         foreach ($managers as $m) {
             $insMgr->execute([$projId, $m]);

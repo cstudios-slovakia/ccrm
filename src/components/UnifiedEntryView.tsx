@@ -13,6 +13,10 @@ import { ClientSelect } from "./ui/ClientSelect";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { PageHeader } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { unifiedEntryKey } from "../utils/pendingDeletions";
+import { singleMessage } from "../utils/undoMessages";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -514,29 +518,32 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     </div>
   );
 
-  const handleDeleteItem = (id: string, isFolder: boolean) => {
+  // A folder takes everything nested in it along; one Undo brings all of it back.
+  const handleDeleteItem = (id: string, _isFolder: boolean) => {
     if (!canDelete) return;
-    const confirmMsg = isFolder
-      ? t(
-          `Deleting a ${folderSingularEn.toLowerCase()} will delete all its nested contents recursively. Proceed?`,
-          `Vymazaním ${folderSingularSk.toLowerCase()}a sa vymaže aj všetok jeho obsah. Pokračovať?`,
-          `A(z) ${folderSingularHu.toLowerCase()} törlésével az összes benne lévő tartalom rekurzívan törlődik. Folytatja?`)
-      : t(
-          `Are you sure you want to delete this ${entrySingularEn.toLowerCase()}?`,
-          `Naozaj vymazať tento ${entrySingularSk.toLowerCase()}?`,
-          `Biztosan törli ezt a(z) ${entrySingularHu.toLowerCase()} elemet?`);
-
-    if (confirm(confirmMsg)) {
-      const deleteRecursive = (idToDelete: string, currentRows: UnifiedEntryRow[]): UnifiedEntryRow[] => {
-        let result = currentRows.filter(r => r.id !== idToDelete);
-        const children = currentRows.filter(r => r.parentId === idToDelete);
-        for (const child of children) {
-          result = deleteRecursive(child.id, result);
+    const target = rows.find(r => r.id === id);
+    if (!target) return;
+    const doomed = new Set<string>([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const r of rows) {
+        if (r.parentId && doomed.has(r.parentId) && !doomed.has(r.id)) {
+          doomed.add(r.id);
+          grew = true;
         }
-        return result;
-      };
-      setRows(prev => deleteRecursive(id, prev));
+      }
     }
+    deleteRecordsWithUndo({
+      collection: unifiedEntryKey(registry.id),
+      allRecords: rows,
+      targets: rows.filter(r => doomed.has(r.id)),
+      setRecords: setRows,
+      lang: systemLanguage,
+      entity: "record",
+      titleOf: () => target.title,
+      message: doomed.size === 1 ? undefined : singleMessage(systemLanguage, "record", "delete", target.title),
+    });
   };
 
   const handleMoveItem = (targetFolderId: string | null) => {
@@ -975,7 +982,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   {isMoneyActive && <th className="py-3.5 px-4">{t("Amount", "Suma", "Összeg")}</th>}
                   {isClientActive && <th className="py-3.5 px-4">{t("Client", "Klient", "Ügyfél")}</th>}
                   {isLeadActive && <th className="py-3.5 px-4">{t("Lead", "Lead", "Lead")}</th>}
-                  <th className="py-3.5 px-6 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                  <th className="py-3.5 px-6 text-right sticky right-0 z-20 bg-slate-50 border-l border-slate-100">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
@@ -1213,7 +1220,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       })()}
 
                       {/* Action buttons */}
-                      <td className="py-3 px-6 text-right">
+                      <td className="py-3 px-6 text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 transition-colors group-hover:bg-slate-50">
                         <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                           {canEdit && registry.foldersEnabled && (
                             <button
@@ -1247,14 +1254,16 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           </button>
                           )}
                           {canDelete && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteItem(row.id, row.isFolder)}
-                            className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                            title={t("Delete item", "Vymazať položku", "Elem törlése")}
+                          <HoldToConfirmButton
+                              tone="danger"
+                              lang={systemLanguage}
+                              what={row.title}
+                              onConfirm={() => handleDeleteItem(row.id, row.isFolder)}
+                              className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                              title={t("Delete item", "Vymazať položku", "Elem törlése")}
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </HoldToConfirmButton>
                           )}
                         </div>
                       </td>
