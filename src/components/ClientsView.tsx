@@ -8,9 +8,10 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink
+  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink, Ticket as TicketIcon
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
+import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, PRIORITY_COLORS } from "../utils/tickets";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, generateOrderNumber, calculateOrderTotals, defaultOrderStatus } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
@@ -124,6 +125,8 @@ interface ClientsViewProps {
   users?: UserProfile[];
   projects?: Project[];
   taskStateColors?: Record<string, string>;
+  tickets?: Ticket[];
+  ticketStatuses?: TicketStatusDefinition[];
 }
 
 /** The "without a category" row of the category filter. Not a real category id. */
@@ -459,6 +462,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   users = [],
   projects = [],
   taskStateColors = {},
+  tickets = [],
+  ticketStatuses = DEFAULT_TICKET_STATUSES,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   // Role gates. `view` is what let the user in; read-only users still search,
@@ -1013,6 +1018,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: string;
       timeline: TimelineEvent[];
       categories: string[];
+      ticketAllowedEmails: string[];
       clientCategoryId: string | null;
       archived: boolean;
       aiSummary?: string;
@@ -1063,6 +1069,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           district: lead.district || "",
           timeline: lead.timeline || [],
           categories: [],
+          ticketAllowedEmails: [],
           clientCategoryId: lead.clientCategoryId || null,
           archived: !!lead.archived,
           aiSummary: lead.aiSummary || "",
@@ -1102,6 +1109,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         lead.categories.forEach(cat => {
           if (!profilesMap[clientKey].categories.includes(cat)) {
             profilesMap[clientKey].categories.push(cat);
+          }
+        });
+      }
+
+      if (lead.ticketAllowedEmails && Array.isArray(lead.ticketAllowedEmails)) {
+        lead.ticketAllowedEmails.forEach(em => {
+          const clean = String(em || "").trim().toLowerCase();
+          if (clean && !profilesMap[clientKey].ticketAllowedEmails.includes(clean)) {
+            profilesMap[clientKey].ticketAllowedEmails.push(clean);
           }
         });
       }
@@ -1514,7 +1530,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
-  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "financial_status" | "files";
+  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "financial_status" | "files" | "tickets";
 
   const getInitialDetailTab = (): DetailTabKey => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
@@ -1526,7 +1542,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       tabParam === "leads" ||
       tabParam === "financial_status" ||
       tabParam === "timeline" ||
-      tabParam === "tasks"
+      tabParam === "tasks" ||
+      tabParam === "tickets"
     ) {
       return tabParam as DetailTabKey;
     }
@@ -1567,6 +1584,60 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ((primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)))
     );
   }, [financialRecords, activeClient]);
+
+  const clientTickets = useMemo(() => {
+    if (!activeClient) return [];
+    const leadIds = new Set((activeClient.associatedLeads || []).map((l: any) => l.id));
+    const clientProjectIds = new Set(
+      projects
+        .filter((p) => (p.leadId && leadIds.has(p.leadId)) || (p.clientId && leadIds.has(p.clientId)))
+        .map((p) => p.id),
+    );
+    return tickets
+      .filter(
+        (tk) =>
+          !tk.archived &&
+          ((tk.leadId && leadIds.has(tk.leadId)) ||
+            (tk.clientId && leadIds.has(tk.clientId)) ||
+            (tk.projectId && clientProjectIds.has(tk.projectId))),
+      )
+      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  }, [tickets, projects, activeClient]);
+
+  const [newClientWhitelistEmail, setNewClientWhitelistEmail] = useState("");
+
+  const handleAddClientWhitelistEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEdit || !activeClient) return;
+    const raw = newClientWhitelistEmail.trim().toLowerCase();
+    if (!raw) return;
+    const current = activeClient.ticketAllowedEmails || [];
+    if (current.includes(raw)) {
+      setNewClientWhitelistEmail("");
+      return;
+    }
+    const nextList = [...current, raw];
+    setLeads((prev) =>
+      prev.map((lead) =>
+        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+          ? { ...lead, ticketAllowedEmails: nextList }
+          : lead,
+      ),
+    );
+    setNewClientWhitelistEmail("");
+  };
+
+  const handleRemoveClientWhitelistEmail = (email: string) => {
+    if (!canEdit || !activeClient) return;
+    const nextList = (activeClient.ticketAllowedEmails || []).filter((em) => em !== email);
+    setLeads((prev) =>
+      prev.map((lead) =>
+        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+          ? { ...lead, ticketAllowedEmails: nextList }
+          : lead,
+      ),
+    );
+  };
 
   const orderStatuses = useOrderStatuses();
   const clientOrders = useMemo(() => {
@@ -4090,6 +4161,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   },
                   { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
                   { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: activeClient.timeline.filter(e => e.fileName).length },
+                  { key: "tickets", icon: <TicketIcon className="h-4.5 w-4.5" />, label: t("Tickets", "Tikety", "Jegyek"), count: clientTickets.length || undefined },
                 ]}
               />
 
@@ -5601,6 +5673,187 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       })}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* TICKETS & EMAIL WHITELIST TAB */}
+              {activeDetailTab === "tickets" && (
+                <div className="space-y-6 text-left animate-in fade-in duration-150">
+                  {/* Client Support Email Whitelist */}
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="font-heading font-bold text-slate-800 text-ui flex items-center gap-1.5">
+                          <Mail className="w-4 h-4 text-emerald-600" />
+                          <span>
+                            {t(
+                              "Support Ticket Email Whitelist",
+                              "Povolené e-maily pre podporné tikety",
+                              "Engedélyezett e-mailek támogatási jegyekhez",
+                            )}
+                          </span>
+                        </h4>
+                        <p className="text-micro text-slate-500 mt-0.5">
+                          {t(
+                            "Allowed sender emails or @domains for support tickets on this client. Leave empty to accept support ticket requests from any email address verbatim.",
+                            "Povolené e-maily alebo @domény pre tikety tohto klienta. Ak necháte prázdne, systém prijme požiadavky na tikety z ľubovoľného e-mailu.",
+                            "Engedélyezett küldő e-mailek vagy @domainek az ügyfél jegyeihez. Ha üresen hagyja, bármely e-mail címről érkező jegyet elfogad.",
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {canEdit && (
+                      <form onSubmit={handleAddClientWhitelistEmail} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newClientWhitelistEmail}
+                          onChange={(e) => setNewClientWhitelistEmail(e.target.value)}
+                          placeholder={t("client@company.sk or @company.sk", "klient@firma.sk alebo @firma.sk", "ugyfel@ceg.hu vagy @ceg.hu")}
+                          className="flex-1 h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-mono"
+                        />
+                        <button
+                          type="submit"
+                          className="px-3.5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-bold cursor-pointer"
+                        >
+                          {t("Add", "Pridať", "Hozzáadás")}
+                        </button>
+                      </form>
+                    )}
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {(activeClient.ticketAllowedEmails || []).length === 0 ? (
+                        <span className="text-micro text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                          {t(
+                            "No email whitelist set — accepting support ticket requests from any sender verbatim.",
+                            "Žiadny zoznam e-mailov — tikety sa prijímajú od akéhokoľvek odosielateľa.",
+                            "Nincs e-mail korlátozás — bármely feladótól érkező jegyet elfogad.",
+                          )}
+                        </span>
+                      ) : (
+                        (activeClient.ticketAllowedEmails || []).map((em) => (
+                          <span
+                            key={em}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-caption font-mono font-bold text-slate-700"
+                          >
+                            {em}
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveClientWhitelistEmail(em)}
+                                className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Client Tickets List */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b-2 border-slate-100 pb-2">
+                      <div>
+                        <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
+                          <TicketIcon className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" />
+                          {t("Client & Project Support Tickets", "Podporné tikety klienta a projektov", "Ügyfél és projekt támogatási jegyek")}
+                        </h3>
+                        <p className="text-caption text-slate-500 mt-0.5">
+                          {t(
+                            "Tickets directly linked to this client or attached to any of this client's projects.",
+                            "Tikety priamo priradené klientovi alebo k projektom tohto klienta.",
+                            "Közvetlenül az ügyfélhez vagy az ügyfél projektjeihez tartozó jegyek.",
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.location.hash = "tickets";
+                        }}
+                        className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-caption font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>{t("Open Tickets Module", "Otvoriť modul Tikety", "Jegyek modul megnyitása")}</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {clientTickets.length === 0 ? (
+                      <div className="py-10 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption">
+                        {t(
+                          "No support tickets recorded for this client or its projects yet.",
+                          "Pre tohto klienta ani jeho projekty zatiaľ neboli zaznamenané žiadne tikety.",
+                          "Még nincsenek támogatási jegyek ehhez az ügyfélhez vagy projektjeihez.",
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {clientTickets.map((tk) => {
+                          const stColor = ticketStatusColor(tk.status, ticketStatuses);
+                          const stLabel = ticketStatusLabel(tk.status, systemLanguage, ticketStatuses);
+                          const linkedProj = tk.projectId ? projects.find((p) => p.id === tk.projectId) : null;
+                          return (
+                            <div
+                              key={tk.id}
+                              onClick={() => {
+                                window.location.hash = `tickets/${tk.id}`;
+                              }}
+                              className="p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-indigo-300 shadow-2xs transition-all flex items-center justify-between gap-3 cursor-pointer"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-micro font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                                    {tk.ticketNumber}
+                                  </span>
+                                  <span className="font-bold text-ui text-slate-800 truncate">{tk.subject}</span>
+                                  {linkedProj && (
+                                    <span
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.location.hash = `projects/${linkedProj.id}?tab=tickets`;
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-micro font-bold hover:bg-purple-100"
+                                    >
+                                      <Briefcase className="w-3 h-3" />
+                                      <span>{linkedProj.name || linkedProj.id}</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-micro text-slate-400 mt-1">
+                                  <span>{tk.reporterEmail || tk.reporterName || "—"}</span>
+                                  <span>•</span>
+                                  <span>{String(tk.createdAt || "").slice(0, 16)}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                                  style={{
+                                    backgroundColor: `${PRIORITY_COLORS[tk.priority] || "#3b82f6"}18`,
+                                    color: PRIORITY_COLORS[tk.priority] || "#3b82f6",
+                                  }}
+                                >
+                                  {tk.priority}
+                                </span>
+                                <span
+                                  className="px-2.5 py-1 rounded-full text-micro font-bold border"
+                                  style={{
+                                    backgroundColor: `${stColor}15`,
+                                    color: stColor,
+                                    borderColor: `${stColor}40`,
+                                  }}
+                                >
+                                  {stLabel}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

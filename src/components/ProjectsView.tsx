@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X } from "lucide-react";
-import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
+import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
@@ -156,6 +156,10 @@ interface ProjectsViewProps {
   mailConfigured?: boolean;
   divisions?: string[];
   divisionColors?: Record<string, string>;
+  tickets?: Ticket[];
+  setTickets?: React.Dispatch<React.SetStateAction<Ticket[]>>;
+  ticketStatuses?: TicketStatusDefinition[];
+  ticketSettings?: TicketSettings;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -188,6 +192,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   mailConfigured,
   divisions = ["Cstudios", "Cstudios Budapest"],
   divisionColors = {},
+  tickets,
+  setTickets,
+  ticketStatuses,
+  ticketSettings,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -532,7 +540,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       // while that project is still the open one — the view writes out its
       // last edit as it closes, and that must not open it again.
       setEditingProject(cur => (cur && cur.id === updatedProject.id ? updatedProject : cur));
-      if (window.location.hash !== `#projects/${updatedProject.id}`) {
+      if (!window.location.hash.startsWith(`#projects/${updatedProject.id}`)) {
         window.location.hash = `projects/${updatedProject.id}`;
       }
     }
@@ -1585,6 +1593,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         mailConfigured={mailConfigured}
         divisions={divisions}
         divisionColors={divisionColors}
+        tickets={tickets}
+        setTickets={setTickets}
+        ticketStatuses={ticketStatuses}
+        ticketSettings={ticketSettings}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);

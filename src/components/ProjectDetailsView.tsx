@@ -34,7 +34,9 @@ import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { ratingValue } from "../utils/rating";
 import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
-import type { Task } from "../types";
+import { ProjectTicketsPanel } from "./ProjectTicketsPanel";
+import type { Task, Ticket, TicketStatusDefinition, TicketSettings } from "../types";
+import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
@@ -42,9 +44,9 @@ import { registerPendingSave } from "../utils/pendingSaves";
 import { useViewSize } from "../utils/viewSize";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files";
+type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files" | "tickets";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "tasks" || value === "gantt" || value === "finances" || value === "files";
+  value === "timeline" || value === "tasks" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -106,6 +108,10 @@ interface ProjectDetailsViewProps {
   mailConfigured?: boolean;
   divisions?: string[];
   divisionColors?: Record<string, string>;
+  tickets?: Ticket[];
+  setTickets?: React.Dispatch<React.SetStateAction<Ticket[]>>;
+  ticketStatuses?: TicketStatusDefinition[];
+  ticketSettings?: TicketSettings;
 }
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
@@ -138,6 +144,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   mailConfigured,
   divisions = ["Cstudios", "Cstudios Budapest"],
   divisionColors = {},
+  tickets = [],
+  setTickets,
+  ticketStatuses = DEFAULT_TICKET_STATUSES,
+  ticketSettings = DEFAULT_TICKET_SETTINGS,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -2633,8 +2643,45 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-rose-500/20 text-rose-600">{missingFileCount}</span>
                 ) : undefined,
               },
+              {
+                key: "tickets",
+                hidden: !(projectType.hasTickets || project.ticketWidgetEnabled),
+                icon: <Icons.Ticket />,
+                label: t("Tickets & Widget", "Tikety a widget", "Jegyek és widget"),
+                count:
+                  tickets.filter(tk =>
+                    tk.projectId === project.id &&
+                    !tk.archived &&
+                    tk.status !== "resolved" &&
+                    tk.status !== "closed"
+                  ).length || undefined,
+              },
             ]}
           />
+
+          {/* TAB CONTENT: Tickets & Floating Widget */}
+          {activeRightTab === "tickets" && (projectType.hasTickets || project.ticketWidgetEnabled) && (
+            <div className="flex-1 ws-lg:overflow-y-auto scrollbar-thin ws-lg:pr-1">
+              <ProjectTicketsPanel
+                project={project}
+                projectType={projectType}
+                tickets={tickets}
+                setTickets={setTickets}
+                ticketStatuses={ticketStatuses}
+                ticketSettings={ticketSettings}
+                users={users}
+                currentUser={currentUser}
+                userLanguage={userLanguage}
+                canEdit={canEdit}
+                onUpdateProject={(patch) => {
+                  const next = buildProject(patch);
+                  if (next) {
+                    onSave(next, { close: false });
+                  }
+                }}
+              />
+            </div>
+          )}
 
           {/* TAB CONTENT: Tasks — ordinary tasks that carry this project's id */}
           {activeRightTab === "tasks" && setTasks && (

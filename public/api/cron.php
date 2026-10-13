@@ -88,10 +88,24 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// 2b. Support Ticket IMAP Polling
+$ticketPollResult = null;
+try {
+    require_once __DIR__ . '/tickets.php';
+    $ticketPollResult = ccrm_poll_ticket_imap($pdo, false);
+} catch (\Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
-    echo json_encode(['success' => true, 'message' => 'Queue processed successfully.', 'taskReminders' => $taskReminders]);
+    echo json_encode([
+        'success' => true,
+        'message' => 'Queue processed successfully.',
+        'taskReminders' => $taskReminders,
+        'ticketPoll' => $ticketPollResult,
+    ]);
 } catch (\Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
     http_response_code(500);
