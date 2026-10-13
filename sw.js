@@ -18,6 +18,13 @@ self.addEventListener("activate", (event) => {
 });
 
 
+// Pass-through fetch handler. It never calls respondWith(), so every request goes
+// straight to the network exactly as before: nothing is cached, nothing can go
+// stale. It exists because Chrome only fires `beforeinstallprompt` (the in-app
+// "Install" button) for a service worker that has a fetch handler; the browser
+// menu entry works without one, the button does not.
+self.addEventListener("fetch", () => {});
+
 // Web Push event listener (RFC 8291/8292 payloads from Apple APNs / Google FCM)
 self.addEventListener("push", (event) => {
   let payload = {
