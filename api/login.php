@@ -139,59 +139,9 @@ try {
     $pdo->prepare("DELETE FROM `login_attempts` WHERE `ip` = ?")->execute([$clientIp]);
 } catch (\Throwable $e) { /* ignore */ }
 
-// The address this user reached the CRM at is the one mailed links should use.
-ccrm_remember_app_url($pdo);
-
-// Establish the authenticated session (extended lifetime when "remember me").
-ccrm_start_session($remember);
-session_regenerate_id(true);
-$_SESSION['ccrm_uid']   = $row['id'];
-$_SESSION['ccrm_role']  = $row['role'];
-$_SESSION['ccrm_email'] = $row['email'];
-// When this session was issued, so a later password change can retire it. Taken
-// from the DB clock (not PHP's) because it is compared against the DB-written
-// users.sessions_valid_from — see ccrm_current_user(). ccrm_checked_at is a local
-// monotonic-enough marker for the revalidation interval only, never compared to
-// a DB timestamp.
-try {
-    $_SESSION['ccrm_issued_at'] = $pdo->query("SELECT NOW()")->fetchColumn() ?: null;
-} catch (\Throwable $e) {
-    $_SESSION['ccrm_issued_at'] = null;
-}
-$_SESSION['ccrm_checked_at'] = time();
-
-// Persist (or clear) the non-sensitive marker cookie so later requests keep
-// the right session lifetime. This cookie is NOT a credential — auth still
-// relies entirely on the server-side session.
-$secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
-if ($remember) {
-    setcookie('CCRM_REMEMBER', '1', [
-        'expires'  => time() + CCRM_REMEMBER_LIFETIME,
-        'path'     => '/',
-        'httponly' => true,
-        'samesite' => 'Lax',
-        'secure'   => $secure,
-    ]);
-} elseif (isset($_COOKIE['CCRM_REMEMBER'])) {
-    setcookie('CCRM_REMEMBER', '', [
-        'expires'  => time() - 42000,
-        'path'     => '/',
-        'httponly' => true,
-        'samesite' => 'Lax',
-        'secure'   => $secure,
-    ]);
-}
+$profile = ccrm_establish_login_session($pdo, $row, $remember);
 
 echo json_encode([
     'success' => true,
-    'user' => [
-        'name'          => $row['name'],
-        'email'         => $row['email'],
-        'role'          => ccrm_role_label($row['role']),
-        'color'         => $row['color'] ?? '#3b82f6',
-        'avatar'        => $row['avatar'] ?? null,
-        'activityLog'   => [],
-        // Secrets stay server-side: mask the mailbox password like the sync GET.
-        'metadata_json' => ccrm_mask_user_metadata($row['metadata_json']),
-    ],
+    'user' => $profile,
 ]);

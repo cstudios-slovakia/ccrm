@@ -36,6 +36,12 @@ RUN a2enmod rewrite headers && \
       > /etc/apache2/conf-available/ccrm-htaccess.conf && \
     a2enconf ccrm-htaccess
 
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Install PHP dependencies
+COPY composer.json composer.lock /var/www/html/
+RUN cd /var/www/html && composer install --no-dev --no-interaction --prefer-dist --no-scripts --no-plugins
+
 # Copy compiled assets and PHP scripts to document root
 COPY --from=builder /app/dist /var/www/html
 
