@@ -660,7 +660,15 @@ export const rendererOfWidget = (widget: any): WidgetRenderer | null => {
 /** A widget's settings, with the preset's defaults filled in for what is missing. */
 export const settingsOfWidget = (widget: any): WidgetSettings => {
   const defaults = (presetOfWidget(widget)?.build()?.settings ?? {}) as WidgetSettings;
-  return { ...defaults, ...(widget?.settings ?? {}) };
+  const merged = { ...defaults, ...(widget?.settings ?? {}) } as WidgetSettings;
+  // A widget filtered only through its query (saved before settings existed, or
+  // AI-made) must still show that filter in the drawer instead of "all phases".
+  const queryStatuses = widget?.query?.params?.statuses;
+  const hasSettingsPick = Array.isArray(merged.statuses) && merged.statuses.length > 0;
+  if (!hasSettingsPick && Array.isArray(queryStatuses) && queryStatuses.length > 0) {
+    merged.statuses = [...queryStatuses];
+  }
+  return merged;
 };
 
 /**

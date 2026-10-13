@@ -15,7 +15,7 @@ import {
 import { formatTranslation, getTranslation } from "../../utils/translations";
 import { formatMoney, formatNumber } from "../../utils/currency";
 import { asLang } from "../../utils/undoMessages";
-import { Page, PageHeader, Tabs, Surface, EmptyState, FormGrid, Field } from "../layout";
+import { Page as PageLayout, PageHeader, Tabs, Surface, EmptyState, FormGrid, Field } from "../layout";
 import type { TabItem } from "../layout";
 import {
   cancelMyLeave,
@@ -44,7 +44,14 @@ type Notice = { tone: "ok" | "error"; text: string } | null;
 interface MyEmploymentViewProps {
   systemLanguage?: string;
   systemCurrency?: string;
+  /** Rendered as a tab of the People section: the host supplies the page header and layout. */
+  embedded?: boolean;
 }
+
+/** Page stand-in when embedded: keeps the vertical rhythm, adds no header-level chrome. */
+const EmbeddedPage = ({ children }: { children: React.ReactNode }) => (
+  <div className="flex flex-col gap-6">{children}</div>
+);
 
 const inputClass =
   "w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm disabled:bg-slate-50 disabled:text-slate-500";
@@ -59,7 +66,8 @@ const statusBadge = (status: string): string => {
   return "bg-amber-50 text-amber-800 border-amber-200";
 };
 
-export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLanguage = "en", systemCurrency = "EUR" }) => {
+export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLanguage = "en", systemCurrency = "EUR", embedded = false }) => {
+  const Page = embedded ? EmbeddedPage : PageLayout;
   const lang = asLang(systemLanguage);
   const tr = useCallback((key: string) => getTranslation(lang, key), [lang]);
   const locale = lang === "hu" ? "hu-HU" : lang === "sk" ? "sk-SK" : "en-GB";
@@ -197,7 +205,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
   };
 
   // ---- rendering ----------------------------------------------------------------------
-  const header = (
+  const header = embedded ? null : (
     <PageHeader
       icon={<UserRound className="text-[#9e7638]" />}
       title={tr("myEmployment.title")}

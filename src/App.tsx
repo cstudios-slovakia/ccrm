@@ -34,7 +34,6 @@ import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation, formatTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
 import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
-import { MyEmploymentView } from "./components/employees/MyEmploymentView";
 import { employeeRightsFrom } from "./utils/employeeRights";
 import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
@@ -374,8 +373,6 @@ function App() {
       lead: "leads",
       project: "projects",
       employee: "employees",
-      "my_employment": "my-employment",
-      myemployment: "my-employment",
       salaries: "employees",
       salary: "employees",
       vacation: "employees",
@@ -384,6 +381,10 @@ function App() {
       berek: "employees",
     };
 
+    if (hashLower === "my-employment" || hashLower === "my_employment" || hashLower === "myemployment") {
+      return "employees/me";
+    }
+
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
     if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
@@ -391,7 +392,7 @@ function App() {
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", "my-employment", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -1067,10 +1068,7 @@ ${log.payload || ''}
           viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
           break;
         case "employees":
-          viewName = t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek");
-          break;
-        case "my-employment":
-          viewName = getTranslation(userLanguage, "sidebar.my_employment");
+          viewName = getTranslation(userLanguage, "sidebar.employees");
           break;
         case "invoices":
           viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
@@ -3126,6 +3124,7 @@ ${log.payload || ''}
           rights={employeeRights}
           users={users}
           roles={roles}
+          selfService={access.hasSelfServiceAccess}
           systemLanguage={userLanguage}
           systemCurrency={currencyCode}
           currentUser={activeUser}
@@ -3691,8 +3690,6 @@ ${log.payload || ''}
             setAppTab={setActiveTab}
           />
         );
-      case "my-employment":
-        return <MyEmploymentView systemLanguage={userLanguage} systemCurrency={systemCurrency} />;
       case "social_media":
         return (
           <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} access={access.module("social_media")} />
@@ -3743,6 +3740,7 @@ ${log.payload || ''}
           rights={employeeRights}
           users={users}
           roles={roles}
+            selfService={access.hasSelfServiceAccess}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             currentUser={activeUser}

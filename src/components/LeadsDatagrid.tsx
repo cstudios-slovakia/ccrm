@@ -105,6 +105,7 @@ import {
   projectStatusLabel,
 } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
+import { parseAppHash } from "../utils/hash";
 import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla, isClosedLeadState } from "../utils/leadSla";
 import { orderLeadStates } from "../utils/leadStates";
 import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
@@ -114,6 +115,15 @@ import { isSystemMailConfigured } from "../utils/taskReminders";
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
 // any specific time can be entered instead of the fixed presets.
+/** Pipeline stage from `#leads?status=`, or "all" on any other route. */
+function leadStatusFromHash(): string {
+    if (typeof window === "undefined") return "all";
+    const { route, params } = parseAppHash(window.location.hash);
+    if (route !== "leads") return "all";
+    const status = (params.get("status") || "").trim().toLowerCase();
+    return status || "all";
+}
+
 const GATE_DEADLINE_TIME_PRESETS = [
     "09:00",
     "10:00",
@@ -1653,7 +1663,29 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Filters and Search
     const [searchQuery, setSearchQuery] = useState("");
-    const [selectedState, setSelectedState] = useState("all");
+    // `#leads?status=new` (the dashboard phase donut) opens the list already
+    // filtered to that pipeline stage. "all" when the param is absent.
+    const [selectedState, setSelectedState] = useState(leadStatusFromHash);
+    // Keep the stage filter and the hash in step: a donut click lands here
+    // already filtered, the dropdown (and Clear) rewrite `?status=`, and Back
+    // restores the previous stage.
+    useEffect(() => {
+        const apply = () => setSelectedState(leadStatusFromHash());
+        window.addEventListener("hashchange", apply);
+        return () => window.removeEventListener("hashchange", apply);
+    }, []);
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const { route, params } = parseAppHash(window.location.hash);
+        if (route !== "leads") return;
+        const current = (params.get("status") || "").trim().toLowerCase();
+        const next = selectedState !== "all" ? selectedState.trim().toLowerCase() : "";
+        if (current === next) return;
+        if (next) params.set("status", next);
+        else params.delete("status");
+        const qs = params.toString();
+        window.location.hash = qs ? `leads?${qs}` : "leads";
+    }, [selectedState]);
     const [selectedSource, setSelectedSource] = useState("all");
     const [selectedDivision, setSelectedDivision] = useState("all");
     const [selectedType, setSelectedType] = useState("all");
@@ -1670,6 +1702,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Collapsible Filters State (persisted per user, defaults to true)
     const [storedShowFilters, setStoredShowFilters] = useUserPref("leadsShowFilters");
     const showFilters = storedShowFilters ?? true;
+    const openedStatusFilters = useRef(false);
+    useEffect(() => {
+        if (openedStatusFilters.current) return;
+        openedStatusFilters.current = true;
+        if (leadStatusFromHash() !== "all") setStoredShowFilters(true);
+    }, [setStoredShowFilters]);
     const setShowFilters = (v: boolean | ((prev: boolean) => boolean)) => {
         const next = typeof v === "function" ? v(showFilters) : v;
         setStoredShowFilters(next);

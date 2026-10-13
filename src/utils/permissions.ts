@@ -386,11 +386,13 @@ export interface AccessResolver {
   module: (moduleKey: string) => ModuleAccess;
   /** Any settings category open at `view` or better. */
   hasSettingsAccess: boolean;
+  /** Any self-service (own employment data) key open at `view` or better. */
+  hasSelfServiceAccess: boolean;
   /** Whether the sidebar / router may open a route id (see `sectionForRoute`). */
   canOpenRoute: (routeId: string) => boolean;
 }
 
-/** Keys of the self-service section — any of them granted opens My employment. */
+/** Keys of the self-service section — any of them granted opens the My employment tab of People. */
 export const SELF_SERVICE_PERMISSION_KEYS = [
   "self.profile",
   "self.payroll",
@@ -409,7 +411,10 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   const base = routeId.split("/")[0].split("?")[0];
   if (base === "personal-settings") return null;
   if (base === "settings") return "settings";
-  if (base === "my-employment") return "my-employment";
+  // People (employees) is one section: the directory / payroll tabs need the employees module,
+  // the My employment tab needs a self.* key. Either opens the section; `my-employment` is the
+  // old address of that tab.
+  if (base === "employees" || base === "my-employment") return "people";
   // SAI rehearses sales conversations against the lead / client base. It has no permission key of
   // its own; it follows leads so a role with no sales access (Employee) is not offered it.
   if (base === "sai") return "leads";
@@ -470,7 +475,7 @@ export const buildAccess = (user: UserProfile | null | undefined, roles: RolePer
     const key = permissionKeyForRoute(routeId);
     if (key === null) return true;
     if (key === "settings") return hasSettingsAccess;
-    if (key === "my-employment") return hasSelfServiceAccess;
+    if (key === "people") return can("employees") || hasSelfServiceAccess;
     return can(key);
   };
 
@@ -482,6 +487,7 @@ export const buildAccess = (user: UserProfile | null | undefined, roles: RolePer
     canEdit,
     module,
     hasSettingsAccess,
+    hasSelfServiceAccess,
     canOpenRoute,
   };
 };
@@ -491,7 +497,6 @@ export const firstAllowedRoute = (accessResolver: AccessResolver): string | null
   const candidates = [
     "dashboard",
     "tasks",
-    "my-employment",
     "leads",
     "clients",
     "projects",

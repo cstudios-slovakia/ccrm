@@ -62,13 +62,13 @@ const withTasksSection = (layout: string[]): string[] => {
       next.splice(at + 1, 0, "tasks");
     }
   }
-  // My employment is a system page, not a module a layout author knows about: a stored or
-  // role layout written before it existed would otherwise never show it. It only appears
-  // for people allowed to open it (isItemVisibleInSystem).
-  if (!next.includes("my-employment")) {
-    const at = next.indexOf("tasks");
-    next = [...next];
-    next.splice(at === -1 ? next.length : at + 1, 0, "my-employment");
+  // My employment used to be its own nav item; it now lives as a tab of People (`employees`).
+  if (next.includes("my-employment")) {
+    next = next.filter((id) => id !== "my-employment");
+    if (!next.includes("employees")) {
+      const at = next.indexOf("tasks");
+      next.splice(at === -1 ? next.length : at + 1, 0, "employees");
+    }
   }
   return next;
 };
@@ -213,7 +213,7 @@ export const getSidebarItemColors = (item: any, isActive: boolean) => {
     };
   }
 
-  if (item.isSand || item.id === "employees" || item.id === "my-employment") {
+  if (item.isSand || item.id === "employees") {
     if (isActive) {
       return {
         className: "bg-[#b58b4c] text-white font-bold shadow-lg shadow-[#b58b4c]/30 border border-[#c29b62]/40",
@@ -904,7 +904,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [
       "dashboard",
       "tasks",
-      "my-employment",
       "overview",
       "projects",
       "rag_ai",
@@ -956,7 +955,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [
       { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
       { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
-      { id: "my-employment", label: getTranslation(systemLanguage, "sidebar.my_employment"), icon: EmployeeTieIcon, color: "#c29b62", isSand: true },
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
       { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },

@@ -130,28 +130,29 @@ async function asEmployee(page: Page, myEmployment: unknown = OVERVIEW) {
 }
 
 test.describe('Employee role', () => {
-  test('the sidebar offers only Tasks, My employment and Updates', async ({ page }) => {
+  test('the sidebar offers only Tasks, People and Updates', async ({ page }) => {
     await asEmployee(page);
     await gotoView(page, '#tasks');
     const sidebar = page.locator('[data-sidebar="true"]');
-    for (const key of ['sidebar.tasks', 'sidebar.my_employment']) {
+    for (const key of ['sidebar.tasks', 'sidebar.employees']) {
       await expect(sidebar.locator(`[title="${sk(key)}"]`).first()).toBeVisible();
     }
-    for (const key of ['sidebar.leads', 'sidebar.clients', 'sidebar.employees', 'sidebar.financial', 'sidebar.warehouse', 'sidebar.meetings']) {
+    for (const key of ['sidebar.leads', 'sidebar.clients', 'sidebar.my_employment', 'sidebar.financial', 'sidebar.warehouse', 'sidebar.meetings']) {
       await expect(sidebar.locator(`[title="${sk(key)}"]`)).toHaveCount(0);
     }
     // SAI is a sales module: no sales access, no SAI.
     await expect(sidebar.locator('[title="SAI"]')).toHaveCount(0);
   });
 
-  test('#employees shows the No access panel', async ({ page }) => {
+  test('#employees opens the own-data tab, not the company directory', async ({ page }) => {
     await asEmployee(page);
     await gotoView(page, '#employees');
-    await expect(page.getByText('K tejto sekcii nemáte prístup')).toBeVisible();
+    await expect(page.getByTestId('my-employment-page')).toBeVisible();
     await expect(page.getByText('950122/8104')).toHaveCount(0);
+    await expect(page.getByText('K tejto sekcii nemáte prístup')).toHaveCount(0);
   });
 
-  test('#my-employment renders the own data with no edit controls', async ({ page }) => {
+  test('#my-employment still opens the own-data tab', async ({ page }) => {
     await asEmployee(page);
     await gotoView(page, '#my-employment');
     await expect(page.getByTestId('my-employment-page')).toBeVisible();
