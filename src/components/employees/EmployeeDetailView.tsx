@@ -29,9 +29,13 @@ import type {
   EmployeeSalary,
   EmployeeSettings,
   EmployeeVacation,
-  FinancialCategory
+  FinancialCategory,
+  RolePermission,
+  UserProfile
 } from "../../types";
 import { employeeFileHref } from "../../utils/employeeFiles";
+import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
+import { LinkedUserPicker } from "./LinkedUserPicker";
 import { VacationRequestModal } from "./VacationRequestModal";
 import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
@@ -55,6 +59,11 @@ interface EmployeeDetailViewProps {
   onDeleteVacation: (vacationId: string) => void;
   systemLanguage?: string;
   systemCurrency?: string;
+  /** What this person may see and change; the server sends nothing beyond it. */
+  rights?: EmployeeRights;
+  /** Logins and roles, for the "linked user account" picker. */
+  users?: UserProfile[];
+  roles?: RolePermission[];
 }
 
 export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
@@ -72,10 +81,16 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   onSaveVacation,
   onDeleteVacation,
   systemLanguage = "sk",
-  systemCurrency = "€"
+  systemCurrency = "€",
+  rights = FULL_EMPLOYEE_RIGHTS,
+  users = [],
+  roles = []
 }) => {
   // Check if Toggl API key is configured
   const hasTogglKey = useMemo(() => {
+    // A role without general_config is never sent the key (the server masks or omits it), yet the
+    // hours endpoint answers for anyone with employees access: a mapped tracker user is enough.
+    if (employee.timeTrackingUserId) return true;
     const rawKey = settings.togglApiKey || settings.timeTracking?.togglApiToken;
     if (!rawKey || typeof rawKey !== "string") return false;
     const trimmed = rawKey.trim();
@@ -84,19 +99,31 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
       trimmed !== "9c8a1b2e3d4f5g6h7i8j9k0l" &&
       trimmed !== "test_dummy_token"
     );
-  }, [settings.togglApiKey, settings.timeTracking?.togglApiToken]);
+  }, [settings.togglApiKey, settings.timeTracking?.togglApiToken, employee.timeTrackingUserId]);
 
   const getInitialTab = (): "hours" | "salaries" | "vacations" | "files" => {
     const raw = typeof window !== "undefined" ? window.location.hash : "";
     const params = new URLSearchParams(raw.split("?")[1] || "");
     const tabParam = params.get("tab");
-    if (tabParam === "salaries" || tabParam === "vacations" || tabParam === "files") {
+    if (
+      (tabParam === "salaries" && rights.salaries) ||
+      (tabParam === "vacations" && rights.vacations) ||
+      (tabParam === "files" && rights.files)
+    ) {
       return tabParam;
     }
     if (tabParam === "hours" && hasTogglKey) {
       return "hours";
     }
-    return hasTogglKey ? "hours" : "salaries";
+    return firstAllowedTab();
+  };
+
+  // The first tab this person may open: hours, then pay, leave, documents.
+  const firstAllowedTab = (): "hours" | "salaries" | "vacations" | "files" => {
+    if (hasTogglKey) return "hours";
+    if (rights.salaries) return "salaries";
+    if (rights.vacations) return "vacations";
+    return "files";
   };
 
   const [activeTab, setActiveTab] = useState<"hours" | "salaries" | "vacations" | "files">(getInitialTab);
@@ -117,7 +144,11 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
       const raw = window.location.hash;
       const params = new URLSearchParams(raw.split("?")[1] || "");
       const tabParam = params.get("tab");
-      if (tabParam === "salaries" || tabParam === "vacations" || tabParam === "files") {
+      if (
+        (tabParam === "salaries" && rights.salaries) ||
+        (tabParam === "vacations" && rights.vacations) ||
+        (tabParam === "files" && rights.files)
+      ) {
         setActiveTab(tabParam);
       } else if (tabParam === "hours" && hasTogglKey) {
         setActiveTab("hours");
@@ -130,7 +161,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   // If Toggl key is not set up, don't stay on hours tab
   useEffect(() => {
     if (!hasTogglKey && activeTab === "hours") {
-      handleTabClick("salaries");
+      handleTabClick(firstAllowedTab());
     }
   }, [hasTogglKey, activeTab]);
 
@@ -325,17 +356,18 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   }, []);
 
   // Card in-place edit mode state
-  const [isEditingCard, setIsEditingCard] = useState<boolean>(() => !!initialEditMode || isUrlEdit);
+  const [isEditingCard, setIsEditingCard] = useState<boolean>(() => rights.edit && (!!initialEditMode || isUrlEdit));
 
   useEffect(() => {
-    if (initialEditMode) {
+    if (initialEditMode && rights.edit) {
       setIsEditingCard(true);
     }
-  }, [initialEditMode]);
+  }, [initialEditMode, rights.edit]);
 
   // Form field states for in-place editing
   const [editName, setEditName] = useState<string>(employee.name || "");
   const [editRole, setEditRole] = useState<string>(employee.role || "");
+  const [editUserId, setEditUserId] = useState<string | null>(employee.userId ?? null);
   const [editPin, setEditPin] = useState<string>(employee.pin || "");
   const [editEmail, setEditEmail] = useState<string>(employee.email || "");
   const [editPhone, setEditPhone] = useState<string>(employee.phone || "");
@@ -382,6 +414,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   const resetEditFields = () => {
     setEditName(employee.name || "");
     setEditRole(employee.role || "");
+    setEditUserId(employee.userId ?? null);
     setEditPin(employee.pin || "");
     setEditEmail(employee.email || "");
     setEditPhone(employee.phone || "");
@@ -535,6 +568,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   }, [isEditingCard]);
 
   const handleStartEdit = () => {
+    if (!rights.edit) return;
     setIsEditingCard(true);
     setCardSaveError(null);
     if (typeof window !== "undefined") {
@@ -569,23 +603,32 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         ...employee,
         name: editName.trim(),
         role: editRole.trim() || undefined,
-        pin: editPin.trim() || null,
         email: editEmail.trim() || null,
-        phone: editPhone.trim() || null,
         isActive: editIsActive,
-        addressStreet: editStreet.trim() || null,
-        addressCity: editCity.trim() || null,
-        addressZip: editZip.trim() || null,
-        addressCountry: editCountry.trim() || null,
-        salaryType: editSalaryType,
-        salaryAmount: Number(editSalaryAmount) || 0,
-        salaryDueDay: editSalaryDueDay ? Number(editSalaryDueDay) : null,
         timeTrackingUserId: editTimeTrackingUserId || null,
         timeTrackingUserName: editTimeTrackingUserName || null,
-        autoExpense: editAutoExpense,
-        expenseCategoryId: editExpenseCategoryId || null,
-        vacationAllowances: editVacationAllowances,
-        notes: editNotes.trim() || null,
+        ...(rights.editPersonal
+          ? {
+              pin: editPin.trim() || null,
+              phone: editPhone.trim() || null,
+              addressStreet: editStreet.trim() || null,
+              addressCity: editCity.trim() || null,
+              addressZip: editZip.trim() || null,
+              addressCountry: editCountry.trim() || null,
+              notes: editNotes.trim() || null,
+            }
+          : {}),
+        ...(rights.editSalaries
+          ? {
+              salaryType: editSalaryType,
+              salaryAmount: Number(editSalaryAmount) || 0,
+              salaryDueDay: editSalaryDueDay ? Number(editSalaryDueDay) : null,
+              autoExpense: editAutoExpense,
+              expenseCategoryId: editExpenseCategoryId || null,
+            }
+          : {}),
+        ...(rights.editVacations ? { vacationAllowances: editVacationAllowances } : {}),
+        ...(rights.canLinkUsers ? { userId: editUserId } : {}),
         updatedAt: new Date().toISOString()
       };
 
@@ -694,6 +737,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
   const handleDropFile = async (e: React.DragEvent) => {
     e.preventDefault();
+    if (!rights.editFiles) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       await uploadSingleFile(e.dataTransfer.files[0]);
     }
@@ -836,6 +880,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           placeholder="Developer"
                         />
                       </div>
+                      {rights.editPersonal && (
                       <div>
                         <label className="type-overline text-slate-500 block mb-0.5">
                           {t("PIN / RČ", "Rodné číslo", "Személyi szám")}
@@ -848,6 +893,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           placeholder="950122/8104"
                         />
                       </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -863,6 +909,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           placeholder="peter@cstudios.sk"
                         />
                       </div>
+                      {rights.editPersonal && (
                       <div>
                         <label className="type-overline text-slate-500 block mb-0.5">
                           {t("Phone", "Telefón", "Telefonszám")}
@@ -875,11 +922,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           placeholder="+421 9..."
                         />
                       </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* 2. Vacation Quotas (Edit) */}
+                {rights.editVacations && (
                 <div className="space-y-2 pt-2.5 border-t border-slate-100">
                   <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
                     <Calendar className="w-3 h-3 text-[#c29b62]" />
@@ -911,8 +960,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     ))}
                   </div>
                 </div>
+                )}
 
                 {/* 3. Permanent Residence & Address (Edit) */}
+                {rights.editPersonal && (
                 <div className="space-y-2 pt-2.5 border-t border-slate-100">
                   <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
                     <MapPin className="w-3 h-3 text-[#c29b62]" />
@@ -974,8 +1025,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* 4. Salary & Compensation Terms (Edit) */}
+                {rights.editSalaries && (
                 <div className="space-y-2 pt-2.5 border-t border-slate-100">
                   <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
                     <Coins className="w-3 h-3 text-[#c29b62]" />
@@ -1152,8 +1205,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
                   </div>
                 </div>
+                )}
 
                 {/* 5. Internal Notes & Observations (Edit) */}
+                {rights.editPersonal && (
                 <div className="space-y-1.5 pt-2.5 border-t border-slate-100">
                   <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
                     <FileText className="w-3 h-3 text-[#c29b62]" />
@@ -1171,6 +1226,23 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
                   />
                 </div>
+                )}
+              </div>
+
+              {/* Linked user account (Admin, or employees + pm_managers at edit) */}
+              <div className="pt-2.5 border-t border-slate-100">
+                <LinkedUserPicker
+                  compact
+                  value={editUserId}
+                  onChange={setEditUserId}
+                  users={users}
+                  employees={employees}
+                  roles={roles}
+                  employeeId={employee.id}
+                  employeeEmail={editEmail}
+                  canLink={rights.canLinkUsers}
+                  systemLanguage={systemLanguage}
+                />
               </div>
 
               {/* Bottom Actions in Edit Mode */}
@@ -1230,6 +1302,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
 
                     {/* Salary badge pill */}
+                    {rights.salaries && (
                     <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] text-ui font-semibold">
                       <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
                       {isSensitiveHidden ? (
@@ -1242,6 +1315,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                         </span>
                       )}
                     </div>
+                    )}
                   </div>
                 </div>
 
@@ -1274,6 +1348,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
                   </button>
 
+                  {rights.edit && (
                   <button
                     type="button"
                     onClick={handleStartEdit}
@@ -1283,6 +1358,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     <Edit3 className="w-3.5 h-3.5 text-[#c29b62] group-hover:scale-110 transition-transform" />
                     <span className="text-ui font-bold">{t("Edit", "Upraviť", "Szerkesztés")}</span>
                   </button>
+                  )}
                 </div>
               </div>
 
@@ -1332,6 +1408,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </div>
 
               {/* 2. VACATION QUOTAS - AND THEIR USAGE */}
+              {rights.vacations && (
               <div className="pt-4 border-t border-slate-100 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 type-overline text-slate-400">
@@ -1413,8 +1490,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   })}
                 </div>
               </div>
+              )}
 
               {/* 3. PERMANENT RESIDENCE & ADDRESS */}
+              {rights.personal && (
               <div className="pt-4 border-t border-slate-100 space-y-2">
                 <div className="flex items-center gap-1.5 type-overline text-slate-400">
                   <MapPin className="w-3.5 h-3.5 text-[#c29b62]" />
@@ -1436,8 +1515,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </p>
                 )}
               </div>
+              )}
 
               {/* 4. SALARY & COMPENSATION TERMS */}
+              {rights.salaries && (
               <div className="pt-4 border-t border-slate-100 space-y-2.5 text-ui">
                 <div className="flex items-center gap-1.5 type-overline text-slate-400 mb-1">
                   <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
@@ -1494,8 +1575,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </span>
                 </div>
               </div>
+              )}
 
               {/* 5. INTERNAL NOTES & OBSERVATIONS */}
+              {rights.personal && (
               <div className="pt-4 border-t border-slate-100 space-y-2">
                 <div className="flex items-center gap-1.5 type-overline text-slate-400">
                   <FileText className="w-3.5 h-3.5 text-[#c29b62]" />
@@ -1520,8 +1603,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </p>
                 )}
               </div>
+              )}
 
               {/* Quick Link to Contracts & Documents */}
+              {rights.files && (
               <div className="pt-4 border-t border-slate-100">
                 <button
                   type="button"
@@ -1544,6 +1629,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </div>
                 </button>
               </div>
+              )}
             </div>
           )}
         </div>
@@ -1566,6 +1652,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </button>
             )}
 
+            {rights.salaries && (
             <button
               onClick={() => handleTabClick("salaries")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui font-bold transition shadow-sm ${
@@ -1577,7 +1664,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               <Coins className="w-4 h-4" />
               <span>{t("Salaries & Payments", "História miezd a výplat", "Bérek és kifizetések")}</span>
             </button>
+            )}
 
+            {rights.vacations && (
             <button
               onClick={() => handleTabClick("vacations")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui font-bold transition shadow-sm ${
@@ -1589,7 +1678,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               <Calendar className="w-4 h-4" />
               <span>{t("Vacation & Absences", "Dovolenka a absencie", "Szabadság és távollét")}</span>
             </button>
+            )}
 
+            {rights.files && (
             <button
               onClick={() => handleTabClick("files")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui font-bold transition shadow-sm ${
@@ -1612,6 +1703,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 </span>
               )}
             </button>
+            )}
           </div>
 
           {/* TAB 1: WORKED HOURS (TOGGL) */}
@@ -1652,7 +1744,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           )}
 
           {/* TAB 2: SALARIES & PAYMENTS HISTORY */}
-          {activeTab === "salaries" && (
+          {rights.salaries && activeTab === "salaries" && (
             <div className="space-y-6 animate-in fade-in duration-150">
               <div className="p-6 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
                 <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
@@ -1669,6 +1761,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     </p>
                   </div>
 
+                  {rights.editSalaries && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1680,6 +1773,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     <Plus className="w-3.5 h-3.5" />
                     <span>{t("Add Salary", "Pridať mzdu", "Bér hozzáadása")}</span>
                   </button>
+                  )}
                 </div>
 
                 {employeeSalaries.length === 0 ? (
@@ -1691,6 +1785,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                         "Még nincsenek rögzített bérek ehhez az alkalmazotthoz. Itt hozzáadhat egy kifizetést vagy használhatja a Bérmátrixot."
                       )}
                     </p>
+                    {rights.editSalaries && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1702,6 +1797,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       <Plus className="w-3.5 h-3.5" />
                       {t("Add First Salary", "Pridať prvú mzdu", "Első bér hozzáadása")}
                     </button>
+                    )}
                   </div>
                 ) : (
                   <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
@@ -1764,6 +1860,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 {sal.paymentDate ? new Date(sal.paymentDate).toLocaleDateString() : "—"}
                               </td>
                               <td className="py-2.5 px-3 text-right">
+                                {rights.editSalaries && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1776,6 +1873,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 >
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1789,7 +1887,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           )}
 
           {/* TAB 3: VACATIONS & ABSENCES */}
-          {activeTab === "vacations" && (
+          {rights.vacations && activeTab === "vacations" && (
             <div className="space-y-6 animate-in fade-in duration-150">
               {/* Top: Leave Allowance KPI Cards */}
               <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
@@ -1869,6 +1967,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     </div>
                   </div>
 
+                  {rights.editVacations && (
                   <button
                     onClick={() => {
                       setVacationToEdit(null);
@@ -1879,6 +1978,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     <Plus className="w-3.5 h-3.5" />
                     <span>{t("Record Vacation", "Zadať voľno", "Szabadság rögzítése")}</span>
                   </button>
+                  )}
                 </div>
 
                 {/* Calendar Day-of-week header */}
@@ -1978,6 +2078,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 : t("Rejected", "Zamietnuté", "Elutasítva")}
                             </span>
 
+                            {rights.editVacations && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1988,7 +2089,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
+                            )}
 
+                            {rights.editVacations && (
                             <button
                               type="button"
                               onClick={() => onDeleteVacation(vac.id)}
@@ -1996,6 +2099,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -2006,7 +2110,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             </div>
           )}
           {/* TAB 4: CONTRACTS & DOCUMENTS (FILES) */}
-          {activeTab === "files" && (
+          {rights.files && activeTab === "files" && (
             <div className="space-y-6 animate-in fade-in duration-150">
               {/* Header card with upload CTA */}
               <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 p-5 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass">
@@ -2029,6 +2133,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </div>
                 </div>
 
+                {rights.editFiles && (
                 <label className="flex items-center gap-2 px-4 py-2.5 text-ui font-bold rounded-2xl bg-[#c29b62] hover:bg-[#b58b4c] text-white cursor-pointer transition shadow-md shadow-[#c29b62]/20">
                   {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                   <span>
@@ -2043,6 +2148,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     className="hidden"
                   />
                 </label>
+                )}
               </div>
 
               {/* Document List / Empty state */}
@@ -2127,6 +2233,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               <Download className="w-4 h-4" />
                             </a>
                             ) : null}
+                            {rights.editFiles && (
                             <button
                               type="button"
                               onClick={() => handleRemoveContract(file.id)}
@@ -2135,6 +2242,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
+                            )}
                           </div>
                         </div>
                       );

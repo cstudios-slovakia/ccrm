@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon, Bot, Key, Copy, Check, Eye, EyeOff, Sparkles, Terminal, Code2, Trash2, Bell, Volume2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
-import type { Language } from "../utils/translations";
+import { getTranslation, type Language } from "../utils/translations";
 import type { Appearance, ThemeMode } from "../utils/theme";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ThemeSettings } from "./ThemeSettings";
@@ -36,6 +36,11 @@ interface PersonalSettingsViewProps {
   setErrorSidebarEnabled: (enabled: boolean) => void;
   /** Tab to open on, from the route (`personal-settings/email`). */
   initialSubTab?: string;
+  /**
+   * self.account: may this person change their own login name and e-mail? Off locks both fields (the
+   * server ignores the change too). Password and preferences are never locked.
+   */
+  canChangeAccount?: boolean;
 }
 
 const SUB_TABS = ["profile", "email", "mcp", "errors"] as const;
@@ -56,7 +61,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   onSync,
   errorSidebarEnabled,
   setErrorSidebarEnabled,
-  initialSubTab
+  initialSubTab,
+  canChangeAccount = true
 }) => {
   const activeLang = userLanguage || systemLanguage;
   const t = (en: string, sk: string, hu: string) => activeLang === "sk" ? sk : activeLang === "hu" ? hu : en;
@@ -368,8 +374,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
       if (u.email === currentUser.email) {
         const updated = {
           ...u,
-          name: name.trim(),
-          email: email.trim(),
+          // Locked by the role (self.account): keep the stored login name and e-mail.
+          name: canChangeAccount ? name.trim() : u.name,
+          email: canChangeAccount ? email.trim() : u.email,
           password: password.trim()
         };
         // Update session storage current user in real-time
@@ -548,14 +555,23 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                 <User className="h-4.5 w-4.5 text-indigo-500" /> {t("Personal Information", "Osobné Údaje", "Személyes adatok")}
               </h3>
 
+              {!canChangeAccount && (
+                <p className="type-meta text-slate-500 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2" data-testid="personal-account-locked">
+                  {getTranslation(systemLanguage, "personal.account_locked")}
+                </p>
+              )}
+
               <div className="space-y-1.5">
                 <label className="type-overline text-slate-600">{t("Display Name", "Meno a priezvisko", "Megjelenítendő név")}</label>
                 <input
                   type="text"
                   required
                   value={name}
+                  readOnly={!canChangeAccount}
+                  aria-readonly={!canChangeAccount}
+                  data-testid="personal-name"
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className={`w-full px-4 py-2.5 rounded-xl ${canChangeAccount ? "bg-white" : "bg-slate-50 text-slate-500 cursor-not-allowed"} border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500`}
                 />
               </div>
 
@@ -565,8 +581,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   type="email"
                   required
                   value={email}
+                  readOnly={!canChangeAccount}
+                  aria-readonly={!canChangeAccount}
+                  data-testid="personal-email"
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className={`w-full px-4 py-2.5 rounded-xl ${canChangeAccount ? "bg-white" : "bg-slate-50 text-slate-500 cursor-not-allowed"} border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500`}
                 />
               </div>
 

@@ -32,8 +32,8 @@ const SCRATCH_DIR = '/var/www/html/rbacprobe';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const publicDir = fileURLToPath(new URL('../../public/', import.meta.url));
-// R7 compares Admin / Project Manager against the last sync.php that did no read filtering.
-const BASELINE_REF = process.env.CCRM_PROBE_BASELINE_REF || '69fb9be';
+// R7 compares Admin / Project Manager against the last sync.php that did no read filtering (the parent of the commit that added it).
+const BASELINE_REF = process.env.CCRM_PROBE_BASELINE_REF || '3c5b20b~1';
 const BASE_DIR = '/var/www/html/rbacprobe_base';
 
 const run = (cmd, args, input) =>
@@ -290,9 +290,14 @@ async function main() {
       const cur = normalise(dropUserId((await syncGet(SESSIONS[key])).data || {}));
       const base = normalise(dropUserId((await syncGet(SESSIONS[key], 'rbacprobe_base')).data || {}));
       GET_PROBES[key] = { cur, base };
-      const diffKeys = [...new Set([...Object.keys(cur), ...Object.keys(base)])].filter(
-        (k) => !SCOPED_KEYS[key].includes(k) && JSON.stringify(cur[k]) !== JSON.stringify(base[k]),
-      );
+      // Everything the old GET sent must still be sent, unchanged. A NEW field is allowed: other
+      // features add fields to the payload, and this probe is about nothing being taken away or altered.
+      const keepsEverything = (b, c) => {
+        if (Array.isArray(b)) return Array.isArray(c) && b.length === c.length && b.every((v, i) => keepsEverything(v, c[i]));
+        if (b && typeof b === 'object') return !!c && typeof c === 'object' && Object.keys(b).every((k) => keepsEverything(b[k], c[k]));
+        return b === c;
+      };
+      const diffKeys = Object.keys(base).filter((k) => !SCOPED_KEYS[key].includes(k) && !keepsEverything(base[k], cur[k]));
       for (const k of diffKeys) {
         const a = JSON.stringify(cur[k]) ?? 'undefined';
         const b = JSON.stringify(base[k]) ?? 'undefined';
@@ -585,7 +590,10 @@ async function main() {
     // swarm
     await gated('swarm llm_proxy', 'employee_a', 'api/swarm.php', { query: '?action=llm_proxy', method: 'POST', body: { messages: [] } });
     const swarmCtx = await api(SESSIONS.no_edit, 'api/swarm.php', { query: '?action=fetch_crm_context&sources=all&lookback_months=12' });
-    check('R5: swarm CRM context carries nothing for a role with no module access', swarmCtx.data?.context?.character_count === 0 && !swarmCtx.raw.includes('Alpha'), swarmCtx.raw.slice(0, 160));
+    check('R5: SAI (swarm) is closed to a role with no sales access', swarmCtx.status === 403 && !swarmCtx.raw.includes('Alpha'), swarmCtx.raw.slice(0, 160));
+    await gated('swarm list', 'employee_a', 'api/swarm.php', { query: '?action=list' });
+    const swarmLeadsOnly = await api(SESSIONS.leads_only, 'api/swarm.php', { query: '?action=fetch_crm_context&sources=existing_clients,active_leads&lookback_months=12' });
+    check('R5: a leads-only role gets the leads source but not the clients source', swarmLeadsOnly.status === 200 && !swarmLeadsOnly.raw.includes('Beta Client'), swarmLeadsOnly.raw.slice(0, 160));
 
     // search
     const searchA = await api(SESSIONS.employee_a, 'api/universal_search.php', { query: '?query=Alpha' });

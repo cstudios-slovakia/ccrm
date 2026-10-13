@@ -1110,6 +1110,8 @@ export interface Employee {
   salaryAmount?: number;
   salaryDueDay?: number | null;
   vacationAllowances?: Record<string, number>;
+  /** The login this record is linked to (users.id). Set by a person, never derived from an e-mail. */
+  userId?: string | null;
   timeTrackingProvider?: 'toggl' | 'clockify' | 'manual';
   timeTrackingUserId?: string | null;
   timeTrackingUserName?: string | null;

@@ -410,6 +410,9 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   if (base === "personal-settings") return null;
   if (base === "settings") return "settings";
   if (base === "my-employment") return "my-employment";
+  // SAI rehearses sales conversations against the lead / client base. It has no permission key of
+  // its own; it follows leads so a role with no sales access (Employee) is not offered it.
+  if (base === "sai") return "leads";
   if (base.startsWith("user-")) return "pm_managers";
   if (base.startsWith("dash_")) return "dashboard.custom";
   if (base.startsWith("ue_")) return "unified_entries";

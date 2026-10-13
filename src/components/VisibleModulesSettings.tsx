@@ -138,6 +138,15 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         bgColor: "rgba(16, 185, 129, 0.12)"
       },
       {
+        id: "my-employment",
+        category: "operations",
+        title: getTranslation(language, "sidebar.my_employment"),
+        description: t("Your own data, pay, leave and documents", "Vaše údaje, mzda, dovolenky a dokumenty", "Saját adatai, bére, szabadsága és dokumentumai"),
+        icon: EmployeeTieIcon,
+        color: "#c29b62",
+        bgColor: "rgba(194, 155, 98, 0.12)"
+      },
+      {
         id: "employees",
         category: "operations",
         title: getTranslation(language, "sidebar.employees"),

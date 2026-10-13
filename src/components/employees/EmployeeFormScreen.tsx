@@ -21,7 +21,9 @@ import {
   Check,
   ChevronRight
 } from "lucide-react";
-import type { Employee, EmployeeFile, EmployeeSettings, FinancialCategory } from "../../types";
+import type { Employee, EmployeeFile, EmployeeSettings, FinancialCategory, RolePermission, UserProfile } from "../../types";
+import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
+import { LinkedUserPicker } from "./LinkedUserPicker";
 import { employeeFileHref } from "../../utils/employeeFiles";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
@@ -33,6 +35,12 @@ interface EmployeeFormScreenProps {
   financialCategories: FinancialCategory[];
   systemLanguage?: string;
   systemCurrency?: string;
+  /** What this person may see and change; a group they cannot edit is not shown. */
+  rights?: EmployeeRights;
+  /** For the "linked user account" picker. */
+  employees?: Employee[];
+  users?: UserProfile[];
+  roles?: RolePermission[];
 }
 
 export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
@@ -42,9 +50,14 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
   settings,
   financialCategories,
   systemLanguage = "sk",
-  systemCurrency = "€"
+  systemCurrency = "€",
+  rights = FULL_EMPLOYEE_RIGHTS,
+  employees = [],
+  users = [],
+  roles = []
 }) => {
   const isEditing = !!employee;
+  const [linkedUserId, setLinkedUserId] = useState<string | null>(employee?.userId ?? null);
 
   // Form State
   const [name, setName] = useState<string>("");
@@ -369,24 +382,34 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
       ...employee,
       id: empId,
       name: name.trim(),
-      pin: pin.trim(),
       email: email.trim(),
-      phone: phone.trim(),
-      addressStreet: addressStreet.trim(),
-      addressCity: addressCity.trim(),
-      addressZip: addressZip.trim(),
-      addressCountry: addressCountry.trim() || "Slovakia",
-      salaryType,
-      salaryAmount: Number(salaryAmount) || 0,
-      salaryDueDay: salaryDueDay.trim() ? Number(salaryDueDay) : null,
-      vacationAllowances,
+      ...(rights.editPersonal
+        ? {
+            pin: pin.trim(),
+            phone: phone.trim(),
+            addressStreet: addressStreet.trim(),
+            addressCity: addressCity.trim(),
+            addressZip: addressZip.trim(),
+            addressCountry: addressCountry.trim() || "Slovakia",
+            notes: notes.trim(),
+          }
+        : {}),
+      ...(rights.editSalaries
+        ? {
+            salaryType,
+            salaryAmount: Number(salaryAmount) || 0,
+            salaryDueDay: salaryDueDay.trim() ? Number(salaryDueDay) : null,
+            autoExpense,
+            expenseCategoryId: expenseCategoryId || null,
+          }
+        : {}),
+      ...(rights.editVacations ? { vacationAllowances } : {}),
+      ...(rights.editFiles ? { files } : {}),
+      // Only a person who may link sends the link; the server ignores it from anyone else.
+      ...(rights.canLinkUsers ? { userId: linkedUserId } : {}),
       timeTrackingProvider: "toggl",
       timeTrackingUserId: timeTrackingUserId || null,
       timeTrackingUserName: timeTrackingUserName || null,
-      autoExpense,
-      expenseCategoryId: expenseCategoryId || null,
-      files,
-      notes: notes.trim(),
       isActive,
       updatedAt: new Date().toISOString(),
       createdAt: employee?.createdAt || new Date().toISOString()
@@ -544,6 +567,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 </div>
               </div>
 
+              {rights.editPersonal && (
               <div>
                 <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Personal ID / PIN (Rodné číslo)", "Rodné číslo / Identifikátor", "Személyi azonosító")}
@@ -556,7 +580,9 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>
+              )}
 
+              {rights.editPersonal && (
               <div>
                 <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Phone Number", "Telefónne číslo", "Telefonszám")}
@@ -572,6 +598,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   />
                 </div>
               </div>
+              )}
 
               <div className="ws-sm:col-span-2">
                 <label className="block text-ui font-bold text-slate-600 mb-1.5">
@@ -592,6 +619,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
           </div>
 
           {/* Card 2: Permanent Address */}
+          {rights.editPersonal && (
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60">
               <div className="w-8 h-8 rounded-xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center font-bold">
@@ -661,8 +689,10 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               </div>
             </div>
           </div>
+          )}
 
           {/* Card 3: Compensation & Payroll */}
+          {rights.editSalaries && (
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60">
               <div className="w-8 h-8 rounded-xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center font-bold">
@@ -778,8 +808,10 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               </div>
             </div>
           </div>
+          )}
 
           {/* Card 4: Internal Notes */}
+          {rights.editPersonal && (
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60">
               <div className="w-8 h-8 rounded-xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center font-bold">
@@ -803,11 +835,13 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               className="w-full px-4 py-3 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
             />
           </div>
+          )}
         </div>
 
         {/* RIGHT COLUMN: Vacation Quotas, Toggl Track & Contracts (5 cols) */}
         <div className="ws-lg:col-span-5 space-y-6">
           {/* Card 5: Vacation & Leave Allowances */}
+          {rights.editVacations && (
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60">
               <div className="w-8 h-8 rounded-xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center font-bold">
@@ -864,6 +898,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               ))}
             </div>
           </div>
+          )}
 
           {/* Card 6: Toggl Track User Mapping */}
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
@@ -975,7 +1010,23 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
             </div>
           </div>
 
+          {/* Card 6b: Linked user account */}
+          <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
+            <LinkedUserPicker
+              value={linkedUserId}
+              onChange={setLinkedUserId}
+              users={users}
+              employees={employees}
+              roles={roles}
+              employeeId={employee?.id ?? null}
+              employeeEmail={email}
+              canLink={rights.canLinkUsers}
+              systemLanguage={systemLanguage}
+            />
+          </div>
+
           {/* Card 7: Contracts & Uploaded Documents */}
+          {rights.editFiles && (
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200/60">
               <div className="flex items-center gap-3">
@@ -1073,6 +1124,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* BOTTOM FIXED / STICKY ACTION BAR */}

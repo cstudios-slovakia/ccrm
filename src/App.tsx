@@ -32,6 +32,8 @@ import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation, formatTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
 import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
+import { MyEmploymentView } from "./components/employees/MyEmploymentView";
+import { employeeRightsFrom } from "./utils/employeeRights";
 import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -367,6 +369,8 @@ function App() {
       lead: "leads",
       project: "projects",
       employee: "employees",
+      "my_employment": "my-employment",
+      myemployment: "my-employment",
       salaries: "employees",
       salary: "employees",
       vacation: "employees",
@@ -382,7 +386,7 @@ function App() {
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", "my-employment", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -1057,6 +1061,9 @@ ${log.payload || ''}
         case "employees":
           viewName = t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek");
           break;
+        case "my-employment":
+          viewName = getTranslation(userLanguage, "sidebar.my_employment");
+          break;
         case "invoices":
           viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
           break;
@@ -1080,6 +1087,8 @@ ${log.payload || ''}
   // shortcuts and the route guard all read from it. Views receive their own
   // `ModuleAccess` slice so none of them has to know about roles.
   const access = useMemo(() => buildAccess(currentUser, roles), [currentUser, roles]);
+  const employeeRights = useMemo(() => employeeRightsFrom(access), [access]);
+  const dashboardSourceAccess = useMemo(() => ({ can: access.can, isAdmin: access.isAdmin }), [access]);
 
   const taskAccess = (() => {
     const m = access.module("tasks");
@@ -2962,6 +2971,7 @@ ${log.payload || ''}
       const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
         <SettingsView 
+          employees={employeeRights.view ? employees : undefined}
           systemName={systemName} 
           setSystemName={setSystemName} 
           leadStates={orderedLeadStates}
@@ -3040,6 +3050,7 @@ ${log.payload || ''}
           <DynamicDashboardView
             dashboard={dashboard}
             access={access.module("dashboard.custom")}
+            sourceAccess={dashboardSourceAccess}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.map((d) => (d.id === updated.id ? updated : d))
@@ -3091,6 +3102,9 @@ ${log.payload || ''}
       return (
         <EmployeesView
           access={access.module("employees")}
+          rights={employeeRights}
+          users={users}
+          roles={roles}
           systemLanguage={userLanguage}
           systemCurrency={currencyCode}
           currentUser={activeUser}
@@ -3205,6 +3219,7 @@ ${log.payload || ''}
       const settingsActionId = parts[3] || null;
       return (
         <SettingsView 
+          employees={employeeRights.view ? employees : undefined}
           systemName={systemName} 
           setSystemName={setSystemName} 
           leadStates={orderedLeadStates}
@@ -3479,6 +3494,7 @@ ${log.payload || ''}
       case "personal-settings":
         return (
           <PersonalSettingsView
+            canChangeAccount={access.can("self.account")}
             currentUser={activeUser}
             users={users}
             setUsers={updateUsersAndSync}
@@ -3542,6 +3558,7 @@ ${log.payload || ''}
             dashboard={homeDashboard}
             variant="home"
             access={access.module("dashboard")}
+            sourceAccess={dashboardSourceAccess}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.some(d => d.id === HOME_DASHBOARD_ID)
@@ -3651,6 +3668,8 @@ ${log.payload || ''}
             setAppTab={setActiveTab}
           />
         );
+      case "my-employment":
+        return <MyEmploymentView systemLanguage={userLanguage} systemCurrency={systemCurrency} />;
       case "social_media":
         return (
           <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} access={access.module("social_media")} />
@@ -3698,6 +3717,9 @@ ${log.payload || ''}
         return (
           <EmployeesView
             access={access.module("employees")}
+          rights={employeeRights}
+          users={users}
+          roles={roles}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             currentUser={activeUser}

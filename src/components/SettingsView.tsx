@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
+import type { Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
@@ -31,6 +31,7 @@ import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { formatTimestampLocalized } from "../utils/localTime";
 import { LicenseSettings } from "./LicenseSettings";
+import { linkedEmployeeOf } from "../utils/employeeLink";
 import { isAtSeatLimit } from "../utils/license";
 import type { LicenseState } from "../utils/license";
 import {
@@ -41,6 +42,8 @@ import {
   isSectionFullyDenied,
   isSectionFullyGranted,
   adminRolePermissions,
+  employeeRolePermissions,
+  EMPLOYEE_ROLE_NAME,
   newRolePermissions,
   resolveRolePermissions,
   withPermission,
@@ -461,6 +464,8 @@ interface SettingsViewProps {
   // Active permission checker — a key from src/utils/permissions.ts
   getPermission: (key: string) => PermissionValue;
   currentUser: UserProfile;
+  /** Employee records (only for roles that can read them), to show which login is linked to whom. */
+  employees?: Employee[];
   
   leadStateColors: Record<string, string>;
   setLeadStateColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
@@ -599,6 +604,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setRoles,
   getPermission,
   currentUser,
+  employees,
   leadStateColors,
   setLeadStateColors,
   leadSourceColors,
@@ -1056,7 +1062,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // registry, else the first role at all. Never a hardcoded name — a workspace
   // may have renamed or removed "Project Manager".
   const defaultNewUserRole = (list: RolePermission[]): string =>
-    (list.find(r => !isAdminRoleName(r.name)) ?? list[0])?.name ?? "";
+    (findRole(list, EMPLOYEE_ROLE_NAME) ?? list.find(r => !isAdminRoleName(r.name)) ?? list[0])?.name ?? "";
   const [newUserRole, setNewUserRole] = React.useState(() => defaultNewUserRole(roles));
   React.useEffect(() => {
     if (!findRole(roles, newUserRole)) setNewUserRole(defaultNewUserRole(roles));
@@ -2684,6 +2690,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  // The server saves the role registry for Admin only, so the reset is Admin-only as well.
+  const canResetEmployeeRole = isAdminRoleName(currentUser?.role);
+  const resetEmployeeRole = () => {
+    if (!canResetEmployeeRole) return;
+    if (!window.confirm(formatTranslation(userLanguage, "settings.rbac.reset_defaults_confirm", { role: EMPLOYEE_ROLE_NAME }))) return;
+    setRoles(prev => prev.map(r => (r.name.toLowerCase() === EMPLOYEE_ROLE_NAME.toLowerCase() ? { ...r, permissions: employeeRolePermissions() } : r)));
+    (window as any).showToast(formatTranslation(userLanguage, "settings.rbac.reset_defaults_done", { role: EMPLOYEE_ROLE_NAME }));
+  };
+
   const updateRolePermission = (roleName: string, key: string, value: PermissionValue) => {
     if (getPermission("pm_managers") !== "edit") return;
     if (isAdminRoleName(roleName)) {
@@ -4291,6 +4306,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {getTranslation(userLanguage, "settings.managers.unknown_role")}
                               </span>
                             )}
+                            {employees && (() => {
+                              const linked = linkedEmployeeOf(employees, u.id);
+                              return (
+                                <span
+                                  data-testid="user-linked-employee"
+                                  title={getTranslation(userLanguage, "settings.users.linked_employee")}
+                                  className={`px-2 py-0.5 rounded-full border type-overline ${
+                                    linked ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-400"
+                                  }`}
+                                >
+                                  {linked ? linked.name : getTranslation(userLanguage, "settings.users.not_linked")}
+                                </span>
+                              );
+                            })()}
                             </div>
                           </td>
                           <td className="py-3 px-4">
@@ -4743,6 +4772,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               
                               {isProtectedRoleName(role.name) && (
                                 <span className="type-overline text-slate-400 block select-none">{getTranslation(userLanguage, "settings.rbac.protected")}</span>
+                              )}
+
+                              {/* Employee is a native role with recommended safe defaults: Admin can restore them. */}
+                              {role.name.toLowerCase() === EMPLOYEE_ROLE_NAME.toLowerCase() && canResetEmployeeRole && (
+                                <button
+                                  type="button"
+                                  onClick={resetEmployeeRole}
+                                  data-testid="rbac-reset-employee"
+                                  title={getTranslation(userLanguage, "settings.rbac.reset_defaults_tip")}
+                                  className="text-amber-700 hover:text-amber-900 hover:bg-amber-50 border border-amber-200/80 py-1 px-2.5 rounded-xl type-overline transition-colors cursor-pointer"
+                                >
+                                  {getTranslation(userLanguage, "settings.rbac.reset_defaults")}
+                                </button>
                               )}
 
                               {/* Navigation layout upload button */}

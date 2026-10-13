@@ -17,6 +17,10 @@ ccrm_send_cors('GET, POST, OPTIONS');
 
 // All Swarm operations require authenticated user session
 $sessionUser = ccrm_require_auth();
+// SAI is a sales module (it rehearses conversations against the lead / client base) and has no
+// permission key of its own: it needs a view of leads or clients, like its menu entry (see
+// permissionKeyForRoute). This also keeps its LLM proxy away from roles that have no sales access.
+ccrm_gate_any($sessionUser, ['leads', 'clients']);
 
 // Include autoloader / classes
 require_once __DIR__ . '/Swarm/SwarmManager.php';
@@ -85,8 +89,7 @@ $action = $_GET['action'] ?? ($_POST['action'] ?? 'list');
 // ACTION: LLM PROXY (Secure browser -> CCRM -> OpenAI gateway)
 // ─────────────────────────────────────────────────────────────
 if ($action === 'llm_proxy') {
-    // The proxy spends the workspace's AI credit: it needs the AI assistant permission.
-    ccrm_gate($sessionUser, 'rag_ai');
+    // (gated for every action at the top of this file)
     $creds = get_server_llm_credentials($pdo);
     if (empty($creds['apiKey'])) {
         http_response_code(400);

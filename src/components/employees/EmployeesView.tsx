@@ -14,9 +14,11 @@ import type {
   EmployeeSettings,
   EmployeeVacation,
   FinancialCategory,
-  UserProfile as AuthUser
+  UserProfile as AuthUser,
+  RolePermission
 } from "../../types";
 import type { ModuleAccess } from "../../utils/permissions";
+import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import {
   DEFAULT_MOCK_EMPLOYEES,
   generateDefaultMockSalaries,
@@ -48,6 +50,12 @@ interface EmployeesViewProps {
   financialCategories: FinancialCategory[];
   /** Sample staff is demo data: only a demo install may load or auto-seed it. */
   isDemoMode?: boolean;
+  /** What this person may see and change, field group by field group (see utils/employeeRights). */
+  rights?: EmployeeRights;
+  /** Logins, for the "linked user account" picker. */
+  users?: AuthUser[];
+  /** Role registry, to warn when a linked login can open this whole module. */
+  roles?: RolePermission[];
 }
 
 // Helper to resolve an employee by ID, case-insensitive ID, name, or name slug
@@ -179,11 +187,22 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   employeeSettings,
   setEmployeeSettings,
   financialCategories = [],
-  isDemoMode = false
+  isDemoMode = false,
+  rights = FULL_EMPLOYEE_RIGHTS,
+  users = [],
+  roles = []
 }) => {
   // Navigation state derived from URL hash
   const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
-  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
+  const [requestedView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
+  // A typed or bookmarked address never opens a screen this person has no right to: the pay
+  // matrix needs the pay toggle, create / edit needs employees = edit, settings needs general_config.
+  const currentView: "list" | "detail" | "matrix" | "form" | "settings" =
+    (requestedView === "matrix" && !rights.salaries) ||
+    (requestedView === "form" && !rights.edit) ||
+    (requestedView === "settings" && !rights.canConfigure)
+      ? "list"
+      : requestedView;
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(initialUrlState.employeeId);
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(initialUrlState.editEmployee);
   const [isEditMode, setIsEditMode] = useState<boolean>(!!initialUrlState.isEditMode);
@@ -352,7 +371,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
           actions={
             currentView === "list" ? (
               <>
-                {isDemoMode && employees.length === 0 && (
+                {isDemoMode && rights.edit && employees.length === 0 && (
                   <button
                     type="button"
                     onClick={handleSeedMockData}
@@ -362,6 +381,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                     <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
                   </button>
                 )}
+                {rights.edit && (
                 <button
                   type="button"
                   onClick={() => navigateToAddEmployee()}
@@ -370,6 +390,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                   <Plus className="size-4" />
                   <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
                 </button>
+                )}
               </>
             ) : undefined
           }
@@ -386,8 +407,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               onChange={navigateToTab}
               items={[
                 { key: "list", icon: <Users className="w-3.5 h-3.5" />, label: t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete") },
-                { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix") },
-                { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások") },
+                { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix"), hidden: !rights.salaries },
+                { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások"), hidden: !rights.canConfigure },
               ]}
             />
 
@@ -434,6 +455,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onSeedMockData={isDemoMode ? handleSeedMockData : undefined}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
           />
         )}
 
@@ -454,6 +476,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onDeleteVacation={handleDeleteVacation}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
+            users={users}
+            roles={roles}
           />
         )}
 
@@ -514,6 +539,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             financialCategories={financialCategories}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
+            employees={employees}
+            users={users}
+            roles={roles}
             onSave={(emp) => {
               handleSaveEmployee(emp);
               navigateToEmployeeDetail(emp.id);

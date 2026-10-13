@@ -332,3 +332,12 @@ test("P1: PHP registry equals TS registry", () => {
   assert.deepEqual(php.employee, employeeRolePermissions(), "PHP Employee permissions match TS");
 });
 
+
+test("SAI follows leads: a role with no sales access is not offered it, and it is not open to everyone", () => {
+  assert.equal(permissionKeyForRoute("sai"), "leads");
+  const employee = buildAccess({ id: "u", name: "U", email: "u@x", role: "Employee" } as any, [
+    { name: "Employee", permissions: employeeRolePermissions() } as any,
+  ]);
+  assert.equal(employee.canOpenRoute("sai"), false);
+  assert.equal(employee.canOpenRoute("tasks"), true);
+});

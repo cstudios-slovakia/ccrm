@@ -71,6 +71,7 @@ import {
   type GridItem
 } from "../utils/dashboardGrid";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { canViewWidget, type SourceAccess } from "../utils/dashboardSources";
 import {
   WIDGET_SIZES,
   WIDGET_SIZE_LABELS,
@@ -120,6 +121,11 @@ interface DynamicDashboardViewProps {
   pipelineStages?: string[];
   /** Role access for this dashboard. `edit: false` is view-only widgets. */
   access?: ModuleAccess;
+  /**
+   * Which modules the viewer can read. A widget whose data comes from a module they cannot view is left
+   * out (the server would refuse or empty it); the saved layout keeps it for people who can.
+   */
+  sourceAccess?: SourceAccess;
   /* --- What the designed cards paint with. All configured in Settings, so a
      card never invents a colour: a phase badge here is the same blue as the
      same phase on the sales board. --- */
@@ -410,6 +416,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   variant = "custom",
   pipelineStages = [],
   access = FULL_MODULE_ACCESS,
+  sourceAccess,
   leadStateColors = null,
   leadSourceColors = null,
   taskStates = [],
@@ -575,13 +582,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
    * to `tempLayout` by widget id.
    */
   const widgets: any[] = useMemo(() => {
-    const list = tempLayout?.widgets || [];
+    const list = (tempLayout?.widgets || []).filter((w: any) => canViewWidget(w, sourceAccess));
     return list.map((w: any) => {
       const override = viewOverrides[w.id];
       if (!override) return w;
       return applySettingsToQuery(w, { ...settingsOfWidget(w), ...override }, currentUserName);
     });
-  }, [tempLayout, viewOverrides, currentUserName]);
+  }, [tempLayout, viewOverrides, currentUserName, sourceAccess]);
 
   // The "Invoicable value by status" widget is drawn from the data this view
   // already holds, so nothing below is worth computing until one is on the board.
