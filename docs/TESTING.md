@@ -345,6 +345,44 @@ changes (`financialOverviewTable.ts`, `recurringExpenses.ts`,
 `futureMovements.ts`, `projectBilling.ts`, `equationEvaluator.ts`). It is
 outside `npm test` for the same reason as 5b and 5c: it needs Docker + MySQL.
 
+## 5e. The RBAC probe: does the server really hold the line?
+
+```bash
+npm run test:rbac       # needs `docker compose up` (containers crm + ccrm-db-1)
+```
+
+`scripts/probe-rbac/run.mjs` proves that **the server** enforces the role
+matrix, which the mocked QA suite cannot see. Like 5d it never touches the dev
+data: it clones the dev database into a scratch schema, serves a copy of
+`public/` from a scratch directory in the dev web container, seeds one user per
+role (Admin, Project Manager, Employee, a restricted custom role, a role with
+no edit rights, a role with every module off) and drops everything afterwards.
+It logs in as each of them and inspects raw response bodies and the database.
+
+Groups of checks, about 190 in all:
+
+1. **R - read scope.** What `sync.php` GET, `my_employment.php`, the private
+   document endpoint and the gated AI / search / dashboard / report /
+   integration endpoints return per role: no hidden collection, field or row
+   appears anywhere in the body (not just in the fields the UI renders), and
+   Admin and Project Manager answers match the last unfiltered `sync.php`.
+2. **W - write scope.** Forged `sync.php` POSTs and direct endpoint calls leave
+   the database unchanged: tasks, leads and clients outside the visible set,
+   salaries, PIN, leave approval, role registry, the user link, own-account
+   rename / e-mail change, masked time-tracking tokens.
+3. **M - migrations.** The Employee role is added once and an existing role of
+   that name is left alone; `employees.user_id` is added with its unique index
+   and foreign key, twice in a row.
+4. **P1 - parity.** TypeScript and PHP permission registries and the Employee
+   role map are identical (`src/utils/permissions.test.ts`).
+
+Run it after any change to `permissions.ts` / `permissions.php`,
+`read_scope.php`, `sync.php`, `my_employment.php`, `employee_file*.php`,
+`upload.php`, or any endpoint that reads CRM data on behalf of a user. It is
+outside `npm test` because it needs Docker + MySQL. A new permission is not
+done until it has a read check and a write check here (see
+`docs/db_integration_notes/RBAC_SYSTEM.md`, "Adding a permission").
+
 ---
 
 ## 6. When to run what
@@ -357,6 +395,7 @@ outside `npm test` for the same reason as 5b and 5c: it needs Docker + MySQL.
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |
 | Touched how `sync.php`/`api/*.php` stores or reads back a field | `npm run test:persistence` — GET-after-POST against the local Docker backend (see 5c) |
 | Touched the MCP gateway (`public/api/mcp*.php`) or a formula it ports | `npm run test:mcp` — roles, field stripping, TS↔PHP parity and write paths on a scratch database (see 5d) |
+| Touched permissions, `read_scope.php`, or who may read or write what on the server | `npm run test:rbac` - per-role read and write checks against a scratch database (see 5e) |
 | **Finished a feature or a fix** | **`npm run test:qa`** (scoped automatically) |
 | Several sessions share this checkout | `node scripts/qa/run-qa.mjs --files <your files>` — the automatic diff would scope to everyone's changes |
 | Another run is live (`Waiting:` printed) | nothing — it queues and starts when the other run ends |
