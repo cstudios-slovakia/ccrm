@@ -230,6 +230,16 @@ export interface WidgetSettings {
    */
   excludedLeadStatuses?: string[];
   excludedProjectStatuses?: string[];
+  /**
+   * Status-value equation: "detail" draws every status as a pill, "summary"
+   * only the total and one line per group. Absent means "detail". The card's own
+   * toggle changes it for the viewer without saving; the drawer sets the default.
+   */
+  view?: "detail" | "summary";
+  /** Status-value equation: the "Remaining invoicable" line on a group. Absent means shown. */
+  showRemaining?: boolean;
+  /** Status-value equation: how many records each status and group holds. Absent means shown. */
+  showCounts?: boolean;
 }
 
 export interface WidgetPreset {
@@ -662,9 +672,8 @@ export const settingsOfWidget = (widget: any): WidgetSettings => {
 export const applySettingsToQuery = (widget: any, settings: WidgetSettings, currentUser?: string): any => {
   const action = widget?.query?.action;
 
-  // The phase breakdown takes the same `statuses` filter, and nothing else the
-  // drawer offers: its rows *are* the phases.
-  if (action === "leads_by_status") {
+  // The phase breakdown, pipeline value, and task breakdown take the same `statuses` filter
+  if (action === "leads_by_status" || action === "pipeline_value" || action === "tasks_summary") {
     return {
       ...widget,
       settings,

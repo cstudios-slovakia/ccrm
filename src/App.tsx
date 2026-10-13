@@ -4,11 +4,13 @@ import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import { QuickTaskModal } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
+import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
 import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
 import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
+import { TaskSettingsProvider } from "./hooks/useTaskSettings";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -198,6 +200,9 @@ const computeSettingsSig = (s: any): string => {
     normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
+    // Normalized on both sides, like the project auto-creation blob above. See
+    // normalizeTaskSettings / ccrm_normalize_task_settings.
+    normalizeTaskSettings(s.taskSettings),
     // Normalized on both sides: an install that never opened the editor has
     // nothing stored, and that must compare equal to the built-ins it is shown.
     normalizeProjectStatusDefs(s.projectStatuses),
@@ -782,6 +787,9 @@ function App() {
   // app — the public webhook and workflow actions — and so two devices syncing
   // the same new lead cannot each produce a project for it.
   const [projectAutoCreate, setProjectAutoCreate] = useState<ProjectAutoCreateSettings>(DEFAULT_PROJECT_AUTO_CREATE);
+  // Settings → Tasks. Today only whether the "Requires conclusion" checkbox is
+  // offered when a task is created.
+  const [taskSettings, setTaskSettings] = useState<TaskSettings>(DEFAULT_TASK_SETTINGS);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -1279,6 +1287,7 @@ ${log.payload || ''}
         projectAutoCreate,
         taskStates,
         taskStateColors,
+        taskSettings,
         projectStatuses,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
         companyBillingSettings: companyBillingSettingsRef.current,
@@ -1443,7 +1452,8 @@ ${log.payload || ''}
               skipped.has(key) ||
               skipped.has(`${key}:delete`) ||
               deleteBlockedKeys.has(key) ||
-              (key === "leads" && (skipped.has("leads:clients") || skipped.has("leads:clients:delete")))
+              (key === "leads" && (skipped.has("leads:clients") || skipped.has("leads:clients:delete"))) ||
+              (key === "customDashboards" && (skipped.has("customDashboards:home") || skipped.has("customDashboards:home:delete")))
             ) {
               continue;
             }
@@ -1469,7 +1479,12 @@ ${log.payload || ''}
             // the next full pull puts the stored value back.
             if (tag.startsWith("settings:")) return (payload as any).settings != null;
             const base = tag.replace(/:delete$/, "");
-            const payloadKey = base === "leads:clients" ? "leads" : base;
+            const payloadKey =
+              base === "leads:clients"
+                ? "leads"
+                : base === "customDashboards:home"
+                ? "customDashboards"
+                : base;
             if (tag.endsWith(":delete")) {
               const ids = (payload as any).deleted?.[payloadKey];
               return Array.isArray(ids) && ids.length > 0;
@@ -2271,7 +2286,7 @@ ${log.payload || ''}
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
       projectStatuses,
       financialMode, financialSimplifiedTable,
     });
@@ -2301,7 +2316,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings, projectStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2638,6 +2653,10 @@ ${log.payload || ''}
         });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setTaskSettings((prev) => {
+          const next = normalizeTaskSettings(s.taskSettings);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setProjectStatuses((prev) => {
           const next = normalizeProjectStatusDefs(s.projectStatuses);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -3021,6 +3040,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskSettings={taskSettings}
+          setTaskSettings={setTaskSettings}
           isDemoMode={isDemoMode}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
@@ -3272,6 +3293,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskSettings={taskSettings}
+          setTaskSettings={setTaskSettings}
           setLeads={updateLeadsAndSync}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
@@ -3879,6 +3902,7 @@ ${log.payload || ''}
     <UserPrefsContext.Provider value={userPrefsApi}>
     <ReadScopeContext.Provider value={readScope}>
     <ProjectStatusesProvider value={projectStatuses}>
+    <TaskSettingsProvider value={taskSettings}>
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -4461,6 +4485,7 @@ ${log.payload || ''}
       )}
     </div>
     </QuickAddClientProvider>
+    </TaskSettingsProvider>
     </ProjectStatusesProvider>
     </ReadScopeContext.Provider>
     </UserPrefsContext.Provider>

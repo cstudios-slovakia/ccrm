@@ -292,6 +292,7 @@ const PROJECT_TYPES = [
     hasTimeline: true,
     hasGantt: true,
     hasDeadline: true,
+    hasInvoiceDate: true,
     deadlineWarningDays: 7,
     deadlineRequired: false,
     hasFiles: true,
@@ -342,7 +343,8 @@ const PROJECTS = [
     // one, and one nobody has rated — so the rating filter has something to
     // include and something to exclude whichever way it is set.
     rating: 5,
-    deadline: isoDate(4),
+    completionDeadline: isoDate(4),
+    invoiceDate: isoDate(10),
     managers: ['Erik'],
     data: {
       'attr-area': 145,
@@ -398,7 +400,8 @@ const PROJECTS = [
     leadId: null,
     clientId: null,
     status: 'active',
-    deadline: isoDate(-6),
+    completionDeadline: isoDate(-6),
+    invoiceDate: isoDate(-2),
     managers: [],
     data: { 'attr-area': 62 },
     timeline: [],
@@ -886,6 +889,8 @@ export async function installBackendMocks(page: Page) {
   const pushedUserMeta = new Map<string, unknown>();
   /** project type id -> the listColumns the app last pushed for that type. */
   const pushedListColumns = new Map<string, unknown>();
+  /** dashboard id -> dashboard pushed by the app. */
+  const pushedCustomDashboards = new Map<string, any>();
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -902,6 +907,7 @@ export async function installBackendMocks(page: Page) {
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
           ),
+          customDashboards: Array.from(pushedCustomDashboards.values()),
         }),
       });
     }
@@ -909,12 +915,16 @@ export async function installBackendMocks(page: Page) {
       const body = request.postDataJSON() as {
         users?: { email?: string; metadata_json?: unknown }[];
         projectTypes?: { id?: string; listColumns?: unknown }[];
+        customDashboards?: { id?: string }[];
       };
       for (const u of body?.users ?? []) {
         if (u?.email && u.metadata_json !== undefined) pushedUserMeta.set(u.email, u.metadata_json);
       }
       for (const pt of body?.projectTypes ?? []) {
         if (pt?.id && pt.listColumns !== undefined) pushedListColumns.set(pt.id, pt.listColumns);
+      }
+      for (const cd of body?.customDashboards ?? []) {
+        if (cd?.id) pushedCustomDashboards.set(cd.id, cd);
       }
     } catch {
       /* not JSON — nothing to remember */
@@ -1007,16 +1017,21 @@ export async function installBackendMocks(page: Page) {
     } catch {
       action = '';
     }
+    const isExplicitNone = statuses.includes('__none__');
     const inStatuses = (status: string) =>
-      statuses.length === 0 || statuses.some((s) => s.trim().toLowerCase() === status.toLowerCase());
+      !isExplicitNone && (statuses.length === 0 || statuses.some((s) => s.trim().toLowerCase() === status.toLowerCase()));
 
     const data = (() => {
       switch (action) {
         case 'leads_count':
           return { count: LEADS.length };
-        case 'pipeline_value':
-          return { value: LEADS.reduce((sum, lead) => sum + (Number(lead.value) || 0), 0) };
+        case 'pipeline_value': {
+          if (isExplicitNone) return { value: 0 };
+          const filtered = statuses.length > 0 ? LEADS.filter((l) => inStatuses(l.status)) : LEADS;
+          return { value: filtered.reduce((sum, lead) => sum + (Number(lead.value) || 0), 0) };
+        }
         case 'leads_by_status': {
+          if (isExplicitNone) return [];
           const rows = [
             { status: 'new', count: 4, total_value: 18000 },
             { status: 'contacted', count: 3, total_value: 21000 },
@@ -1026,14 +1041,16 @@ export async function installBackendMocks(page: Page) {
           if (statuses.length === 0) return rows;
           // Mirrors the real endpoint: the picked phases, in the picked order,
           // with a zero row standing in for a phase no lead sits in.
-          return statuses.map(
-            (status) =>
-              rows.find((row) => row.status.toLowerCase() === status.trim().toLowerCase()) ?? {
-                status,
-                count: 0,
-                total_value: 0,
-              },
-          );
+          return statuses
+            .filter((s) => s !== '__none__')
+            .map(
+              (status) =>
+                rows.find((row) => row.status.toLowerCase() === status.trim().toLowerCase()) ?? {
+                  status,
+                  count: 0,
+                  total_value: 0,
+                },
+            );
         }
         case 'leads_by_source':
           return [
@@ -1042,11 +1059,16 @@ export async function installBackendMocks(page: Page) {
             { source: 'campaign', count: 2, total_value: 11000 },
           ];
         case 'tasks_summary': {
+          if (isExplicitNone) return [];
           // Grouped off the seeded tasks, using the app's own configured state
           // names, so the Dashboard's open-tasks and status cards colour their
           // segments the same way the task board does.
           const counts = new Map<string, number>();
-          TASKS.forEach((task) => counts.set(task.status, (counts.get(task.status) ?? 0) + 1));
+          TASKS.forEach((task) => {
+            if (inStatuses(task.status)) {
+              counts.set(task.status, (counts.get(task.status) ?? 0) + 1);
+            }
+          });
           return [...counts.entries()].map(([status, count]) => ({ status, count }));
         }
         case 'tasks_by_owner':

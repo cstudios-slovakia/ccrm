@@ -342,6 +342,7 @@ try {
             }
             $result = [];
             foreach ($wanted as $status) {
+                if ($status === '__none__') continue;
                 $result[] = $byStatus[mb_strtolower($status)]
                     ?? ['status' => $status, 'count' => 0, 'total_value' => 0];
             }
@@ -375,16 +376,43 @@ try {
             if (empty($wanted)) {
                 $stmt = $pdo->query("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0{$leadScopeAnd}");
             } else {
-                $placeholders = implode(',', array_fill(0, count($wanted), '?'));
-                $stmt = $pdo->prepare("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0 AND LOWER(`status`) IN ({$placeholders}){$leadScopeAnd}");
-                $stmt->execute(array_map(fn($s) => mb_strtolower($s), $wanted));
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $stmt = $pdo->query("SELECT 0 FROM `leads` WHERE 1 = 0");
+                } else {
+                    $placeholders = implode(',', array_fill(0, count($cleanWanted), '?'));
+                    $stmt = $pdo->prepare("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0 AND LOWER(`status`) IN ({$placeholders}){$leadScopeAnd}");
+                    $stmt->execute(array_map(fn($s) => mb_strtolower($s), $cleanWanted));
+                }
             }
             $result = ['value' => (float)($stmt->fetchColumn() ?: 0)];
             break;
 
         case 'tasks_summary':
-            $stmt = $pdo->prepare("SELECT `status`, COUNT(*) as `count` FROM `tasks` `t`" . ($taskScope !== '' ? " WHERE {$taskScope}" : '') . " GROUP BY `status` ORDER BY `count` DESC");
-            $stmt->execute($taskScopeBind);
+            $wanted = $data['params']['statuses'] ?? null;
+            $wanted = is_array($wanted)
+                ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
+                : [];
+
+            $whereParts = [];
+            $bind = [];
+            if ($taskScope !== '') {
+                $whereParts[] = $taskScope;
+                $bind = array_merge($bind, $taskScopeBind);
+            }
+            if (!empty($wanted)) {
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $whereParts[] = '1 = 0';
+                } else {
+                    $placeholders = implode(',', array_fill(0, count($cleanWanted), '?'));
+                    $whereParts[] = "LOWER(`t`.`status`) IN ({$placeholders})";
+                    $bind = array_merge($bind, array_map(fn($s) => mb_strtolower($s), $cleanWanted));
+                }
+            }
+            $where = $whereParts ? ' WHERE ' . implode(' AND ', $whereParts) : '';
+            $stmt = $pdo->prepare("SELECT `status`, COUNT(*) as `count` FROM `tasks` `t`{$where} GROUP BY `status` ORDER BY `count` DESC");
+            $stmt->execute($bind);
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             break;
 
@@ -413,8 +441,13 @@ try {
             $whereParts = [];
             $bind = [];
             if (!empty($wanted)) {
-                $whereParts[] = 'LOWER(`l`.`status`) IN (' . implode(',', array_fill(0, count($wanted), '?')) . ')';
-                $bind = array_map(fn($s) => mb_strtolower($s), $wanted);
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $whereParts[] = '1 = 0';
+                } else {
+                    $whereParts[] = 'LOWER(`l`.`status`) IN (' . implode(',', array_fill(0, count($cleanWanted), '?')) . ')';
+                    $bind = array_map(fn($s) => mb_strtolower($s), $cleanWanted);
+                }
             }
             $recentLeadScope = ccrm_lead_scope_sql($scope, 'l');
             if ($recentLeadScope !== '') {
@@ -474,8 +507,13 @@ try {
                 ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
                 : [];
             if (!empty($wanted)) {
-                $where[] = 'LOWER(`t`.`status`) IN (' . implode(',', array_fill(0, count($wanted), '?')) . ')';
-                foreach ($wanted as $status) { $bind[] = mb_strtolower($status); }
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $where[] = '1 = 0';
+                } else {
+                    $where[] = 'LOWER(`t`.`status`) IN (' . implode(',', array_fill(0, count($cleanWanted), '?')) . ')';
+                    foreach ($cleanWanted as $status) { $bind[] = mb_strtolower($status); }
+                }
             }
 
             $owner = trim((string)($data['params']['owner'] ?? ''));

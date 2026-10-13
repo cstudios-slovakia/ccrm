@@ -43,6 +43,37 @@ const Field: React.FC<{ label: string; aside?: React.ReactNode; children: React.
   </div>
 );
 
+/** A labelled on/off row, drawn like the column list's switches. */
+const SwitchRow: React.FC<{
+  label: string;
+  hint?: string;
+  on: boolean;
+  onChange: (value: boolean) => void;
+}> = ({ label, hint, on, onChange }) => (
+  <label className="flex items-center gap-2.5 min-h-11 py-2 px-3 border-t border-slate-100 first:border-t-0 cursor-pointer">
+    <span className="flex-1 flex flex-col min-w-0">
+      <span className={cn("text-ui font-bold", on ? "text-slate-800" : "text-slate-500")}>{label}</span>
+      {hint ? <span className="text-caption font-semibold text-slate-400">{hint}</span> : null}
+    </span>
+    <input
+      type="checkbox"
+      checked={on}
+      onChange={(e) => onChange(e.target.checked)}
+      aria-label={label}
+      className="sr-only"
+    />
+    <span
+      aria-hidden="true"
+      className={cn(
+        "w-8.5 h-5 rounded-full flex items-center p-0.5 box-border transition-colors shrink-0",
+        on ? "bg-indigo-600 justify-end" : "bg-slate-200 justify-start"
+      )}
+    >
+      <span className="w-4 h-4 rounded-full bg-white shadow-sm" />
+    </span>
+  </label>
+);
+
 /** The twelve-column strip that shows what a size actually takes up. */
 const SizePreview: React.FC<{ span: number; active: boolean }> = ({ span, active }) => (
   <span className="flex gap-0.5 w-full">
@@ -131,26 +162,40 @@ export const WidgetSettingsDrawer: React.FC<{
 
   const isTaskTable = widget?.query?.action === "recent_tasks";
   const isLeadTable = widget?.query?.action === "recent_leads";
+  const isTask = isTaskTable || widget?.query?.action === "tasks_summary";
   const isTable = columnCatalogue.length > 0;
+  const isEquation = preset?.id === "status_value_equation" || excludableGroups.length > 0;
 
   const currentSize: WidgetSize = (WIDGET_SIZES as string[]).includes(widget?.size)
     ? (widget.size as WidgetSize)
     : "full";
 
-  const picked: string[] = Array.isArray(settings.statuses) ? settings.statuses : [];
+  const isExplicitEmpty = Array.isArray(settings.statuses) && settings.statuses.includes("__none__");
+  const picked: string[] = Array.isArray(settings.statuses)
+    ? settings.statuses.filter((s) => s !== "__none__")
+    : [];
   const hasPick = picked.length > 0;
-  const isStatusOn = (status: string) =>
-    !hasPick || picked.some((s) => s.toLowerCase() === status.toLowerCase());
+  const isStatusOn = (status: string) => {
+    if (isExplicitEmpty) return false;
+    return !hasPick || picked.some((s) => s.toLowerCase() === status.toLowerCase());
+  };
 
   const toggleStatus = (status: string) => {
-    const base = hasPick ? picked : statusOptions;
-    const on = base.some((s) => s.toLowerCase() === status.toLowerCase());
+    const base = isExplicitEmpty ? [] : hasPick ? picked : statusOptions;
+    const on = isStatusOn(status);
     const next = on
       ? base.filter((s) => s.toLowerCase() !== status.toLowerCase())
       : [...base, status];
     // Everything selected is the same thing as no filter, and is stored that way
-    // so a phase added in Settings later shows up on its own.
-    onSettings({ statuses: next.length === statusOptions.length || next.length === 0 ? [] : next });
+    // so a phase added in Settings later shows up on its own. Explicitly unchecking
+    // every status stores ["__none__"] so reload doesn't revert to all on.
+    if (next.length === 0) {
+      onSettings({ statuses: ["__none__"] });
+    } else if (next.length === statusOptions.length) {
+      onSettings({ statuses: [] });
+    } else {
+      onSettings({ statuses: next });
+    }
   };
 
   /* The visible column list, in order, followed by the ones switched off. */
@@ -368,7 +413,7 @@ export const WidgetSettingsDrawer: React.FC<{
           {statusOptions.length > 0 && (
             <Field
               label={
-                isTaskTable
+                isTask
                   ? t("Show statuses", "Zobraziť stavy", "Állapotok mutatása")
                   : t("Show phases", "Zobraziť fázy", "Fázisok mutatása")
               }
@@ -405,6 +450,46 @@ export const WidgetSettingsDrawer: React.FC<{
                 })}
               </div>
             </Field>
+          )}
+
+          {isEquation && (
+            <>
+              <Field label={t("Default view", "Predvolené zobrazenie", "Alapértelmezett nézet")}>
+                <SegmentedToggle
+                  large
+                  value={settings.view === "summary" ? "summary" : "detail"}
+                  onChange={(value) => onSettings({ view: value as "detail" | "summary" })}
+                  options={[
+                    { value: "detail", label: t("Detail", "Detail", "Részletes") },
+                    { value: "summary", label: t("Summary", "Prehľad", "Összegzés") }
+                  ]}
+                />
+              </Field>
+              <Field label={t("Show", "Zobraziť", "Megjelenítés")}>
+                <div className="shrink-0 flex flex-col border border-slate-100 rounded-2xl overflow-hidden">
+                  <SwitchRow
+                    label={t("Remaining invoicable", "Zostáva vyfakturovať", "Hátralévő számlázható")}
+                    hint={t(
+                      "The amount still to invoice, under each group that has one",
+                      "Suma, ktorá sa ešte má vyfakturovať, pod skupinou, ktorá ju má",
+                      "A még számlázandó összeg azoknál a csoportoknál, amelyeknek van"
+                    )}
+                    on={settings.showRemaining !== false}
+                    onChange={(value) => onSettings({ showRemaining: value })}
+                  />
+                  <SwitchRow
+                    label={t("Item counts", "Počty položiek", "Tételszámok")}
+                    hint={t(
+                      "How many leads or projects each status and group holds",
+                      "Koľko leadov alebo projektov má každý stav a skupina",
+                      "Hány lead vagy projekt van az egyes állapotokban és csoportokban"
+                    )}
+                    on={settings.showCounts !== false}
+                    onChange={(value) => onSettings({ showCounts: value })}
+                  />
+                </div>
+              </Field>
+            </>
           )}
 
           {excludableGroups.length > 0 && (
