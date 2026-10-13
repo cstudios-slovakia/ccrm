@@ -291,10 +291,9 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
  * event, Gantt row and custom attribute: each write throws into a catch that
  * only logs, while the UI keeps showing the edit until the next reload.
  *
- * @param array<int,mixed> $projects   the projects of the push
- * @param string[]         $skipTypeIds types the same push already created tables for
+ * @param array<int,mixed> $projects the projects of the push
  */
-function ccrm_heal_project_type_tables(PDO $pdo, array $projects, array $skipTypeIds = [], $ragPdo = null): void {
+function ccrm_heal_project_type_tables(PDO $pdo, array $projects, $ragPdo = null): void {
     $wanted = [];
     foreach ($projects as $p) {
         if (is_array($p) && isset($p['projectTypeId']) && is_string($p['projectTypeId']) && $p['projectTypeId'] !== '') {
@@ -304,7 +303,6 @@ function ccrm_heal_project_type_tables(PDO $pdo, array $projects, array $skipTyp
     $tableExists = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");
     $typeRow = $pdo->prepare("SELECT * FROM `project_types` WHERE `id` = ?");
     foreach (array_keys($wanted) as $typeId) {
-        if (in_array($typeId, $skipTypeIds, true)) continue;
         $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($typeId));
         if ($safeId === '') continue;
         $missing = false;
@@ -2659,11 +2657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ccrm_heal_project_type_tables). This is DDL, so it has to run before
         // beginTransaction() below, which it would otherwise commit.
         if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
-            $pushedTypeIds = [];
-            foreach (is_array($payload['projectTypes'] ?? null) ? $payload['projectTypes'] : [] as $pushedType) {
-                if (is_array($pushedType) && isset($pushedType['id'])) $pushedTypeIds[] = $pushedType['id'];
-            }
-            ccrm_heal_project_type_tables($pdo, $payload['projects'], $pushedTypeIds, $ragPdo ?? null);
+            ccrm_heal_project_type_tables($pdo, $payload['projects'], $ragPdo ?? null);
         }
 
         $pdo->beginTransaction();
@@ -3436,6 +3430,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Save Timeline
                 if (isset($p['timeline']) && is_array($p['timeline'])) {
                     $timelineTable = "proj_timeline_" . $safeId;
+                    // The rows are replaced by delete-then-insert. If an insert throws
+                    // (a bad value, a missing table), the delete must not stand: the
+                    // swallowed error would otherwise commit an emptied timeline.
+                    $pdo->exec("SAVEPOINT ccrm_proj_timeline");
                     try {
                         $pdo->prepare("DELETE FROM `{$timelineTable}` WHERE `project_id` = ?")->execute([$projId]);
                         if (isset($ragPdo) && $ragPdo) {
@@ -3465,6 +3463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
                     } catch (\Throwable $e) {
+                        try { $pdo->exec("ROLLBACK TO SAVEPOINT ccrm_proj_timeline"); } catch (\Throwable $_) {}
                         if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
                     }
                 }
@@ -3472,6 +3471,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Save Gantt
                 if (isset($p['gantt']) && is_array($p['gantt'])) {
                     $ganttTable = "proj_gantt_" . $safeId;
+                    // Same rule as the timeline above: a failed insert keeps the old rows.
+                    $pdo->exec("SAVEPOINT ccrm_proj_gantt");
                     try {
                         $pdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]);
                         if (isset($ragPdo) && $ragPdo) {
@@ -3487,6 +3488,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             if ($ragInsGantt) try { $ragInsGantt->execute($args); } catch(\Exception $e) {}
                         }
                     } catch (\Throwable $e) {
+                        try { $pdo->exec("ROLLBACK TO SAVEPOINT ccrm_proj_gantt"); } catch (\Throwable $_) {}
                         if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
                     }
                 }

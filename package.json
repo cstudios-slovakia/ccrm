@@ -15,6 +15,7 @@
     "test:unit": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
     "test:qa": "node scripts/qa/run-qa.mjs",
     "test:persistence": "node scripts/probe-persistence.mjs",
+    "test:persistence:projects": "node scripts/probe-project-tabs.mjs",
     "test:mcp": "node --experimental-strip-types scripts/probe-mcp/run.mjs",
     "test:rbac": "node --experimental-strip-types scripts/probe-rbac/run.mjs",
     "test:qa:full": "node scripts/qa/run-qa.mjs --full",
