@@ -16,9 +16,14 @@ test('a stage on the donut opens leads filtered to that status', async ({ page }
 
   await expect(card.getByRole('link', { name: 'Otvoriť' })).toHaveCount(0);
   await expect(card.locator('a[href="#leads?status=new"]')).toBeVisible();
-  await expect(card.locator('a[href="#leads?status=offer%20sent"]')).toBeVisible();
+  const offerSent = card.locator('a[href="#leads?status=offer%20sent"]');
+  await expect(offerSent).toBeVisible();
+  await expect(offerSent.locator('svg')).toBeVisible();
+  await card.screenshot({ path: 'test-results/stage-donut-links.png' });
+  await offerSent.hover();
+  await card.screenshot({ path: 'test-results/stage-donut-links-hover.png' });
 
-  await card.locator('a[href="#leads?status=offer%20sent"]').click();
+  await offerSent.click();
 
   await expect(page).toHaveURL(/#leads\?status=offer(%20|\+)sent/);
   await expect(page.getByRole('button', { name: /offer sent \(/i })).toBeVisible();
