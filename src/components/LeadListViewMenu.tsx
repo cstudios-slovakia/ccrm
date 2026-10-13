@@ -80,13 +80,13 @@ export const LeadListViewMenu: React.FC<LeadListViewMenuProps> = ({
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cn(
-          "h-10 flex items-center gap-1.5 px-3 rounded-2xl border text-ui font-extrabold transition-all duration-150 active:scale-95 cursor-pointer shadow-sm",
+          "h-10 flex items-center gap-1.5 px-3 rounded-xl border text-ui font-bold transition-all duration-150 active:scale-95 cursor-pointer",
           open
-            ? "bg-blue-100 border-blue-300 text-blue-900"
-            : "bg-white border-slate-200/70 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+            ? "bg-slate-200 border-slate-300 text-slate-800"
+            : "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
         )}
       >
-        <SlidersHorizontal className="h-4 w-4 shrink-0 text-blue-600" />
+        <SlidersHorizontal className="h-4 w-4 shrink-0" />
         <span>{t("View", "Pohľad", "Nézet")}</span>
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform duration-200", open && "rotate-180")} />
       </button>

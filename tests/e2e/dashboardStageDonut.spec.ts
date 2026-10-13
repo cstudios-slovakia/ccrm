@@ -19,9 +19,6 @@ test('a stage on the donut opens leads filtered to that status', async ({ page }
   const offerSent = card.locator('a[href="#leads?status=offer%20sent"]');
   await expect(offerSent).toBeVisible();
   await expect(offerSent.locator('svg')).toBeVisible();
-  await card.screenshot({ path: 'test-results/stage-donut-links.png' });
-  await offerSent.hover();
-  await card.screenshot({ path: 'test-results/stage-donut-links-hover.png' });
 
   await offerSent.click();
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
@@ -48,6 +48,7 @@ import {
     UserCheck,
     Share2,
     TableProperties,
+    Rows3,
     Edit3,
     Check,
     Layers,
@@ -899,6 +900,149 @@ interface LeadsDatagridProps {
     divisionColors?: Record<string, string>;
 }
 
+/** List/kanban, favorites, view menu and the expand chevron — the right cluster of the leads filter bar. */
+function LeadFilterToolbarControls({
+    dense = false,
+    t,
+    systemLanguage,
+    viewMode,
+    onViewMode,
+    showFilters,
+    onToggleFilters,
+    hasOverflowFilters,
+    compactMode,
+    onToggleCompact,
+    favoritesOnly,
+    onToggleFavorites,
+    hasActiveFilters,
+    hasExpandedFilters,
+    onClear,
+    viewMenu,
+}: {
+    dense?: boolean;
+    t: (en: string, sk: string, hu: string) => string;
+    systemLanguage: string;
+    viewMode: string;
+    onViewMode: (mode: "list" | "kanban") => void;
+    showFilters: boolean;
+    onToggleFilters: () => void;
+    /** False when every overflow filter already fits on the first row. */
+    hasOverflowFilters: boolean;
+    compactMode: boolean;
+    onToggleCompact: () => void;
+    favoritesOnly: boolean;
+    onToggleFavorites: () => void;
+    hasActiveFilters: boolean;
+    hasExpandedFilters: boolean;
+    onClear: () => void;
+    viewMenu: () => React.ReactNode;
+}) {
+    const listLabel = systemLanguage === "sk" ? "Zoznam" : systemLanguage === "hu" ? "Lista" : "List";
+    const favoritesLabel = systemLanguage === "sk" ? "Obľúbené" : systemLanguage === "hu" ? "Kedvencek" : "Favorites";
+    const modes = [
+        { mode: "list" as const, Icon: Rows3, label: listLabel },
+        { mode: "kanban" as const, Icon: Layers, label: "Kanban" },
+    ];
+
+    return (
+        <>
+            <button
+                type="button"
+                onClick={onToggleCompact}
+                aria-pressed={compactMode}
+                title={systemLanguage === "sk" ? "Kompaktné" : systemLanguage === "hu" ? "Kompakt" : "Compact"}
+                className={`h-10 w-10 inline-flex items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 ${
+                    compactMode
+                        ? "bg-indigo-600 border-indigo-700 text-white shadow-sm"
+                        : "bg-white border-slate-200 text-slate-400 hover:text-slate-600"
+                }`}
+            >
+                <Minimize2 className="h-4 w-4" />
+            </button>
+
+            <div className={`flex h-10 items-center ${dense ? "gap-0.5 px-0.5" : "gap-1 px-1"} rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0`}>
+                {modes.map(({ mode, Icon, label }) => (
+                    <button
+                        key={mode}
+                        type="button"
+                        onClick={() => onViewMode(mode)}
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={viewMode === mode}
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all cursor-pointer ${
+                            viewMode === mode
+                                ? "bg-white text-indigo-600 shadow-sm"
+                                : "text-slate-400 hover:text-slate-600"
+                        }`}
+                    >
+                        <Icon className="h-4 w-4" />
+                    </button>
+                ))}
+            </div>
+
+            <button
+                type="button"
+                onClick={onToggleFavorites}
+                aria-pressed={favoritesOnly}
+                title={
+                    favoritesOnly
+                        ? (systemLanguage === "sk" ? "Zobraziť všetky leady" : systemLanguage === "hu" ? "Összes lead mutatása" : "Show all leads")
+                        : (systemLanguage === "sk" ? "Filtrovať iba obľúbené" : systemLanguage === "hu" ? "Csak kedvencek" : "Filter favorites only")
+                }
+                aria-label={favoritesLabel}
+                className={`h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                    dense ? "w-10" : "px-3"
+                } ${
+                    favoritesOnly
+                        ? "bg-rose-50 border-rose-300 text-rose-600"
+                        : "bg-white border-slate-200 text-slate-500 hover:text-slate-700"
+                }`}
+            >
+                <Heart className={`h-4 w-4 ${favoritesOnly ? "fill-rose-500 text-rose-500" : "text-slate-400"}`} />
+                {!dense && <span className="text-ui font-bold">{favoritesLabel}</span>}
+            </button>
+
+            {viewMenu()}
+
+            {hasOverflowFilters && (
+                <button
+                    type="button"
+                    onClick={onToggleFilters}
+                    aria-expanded={showFilters}
+                    aria-label={t("More filters", "Ďalšie filtre", "További szűrők")}
+                    title={t("More filters", "Ďalšie filtre", "További szűrők")}
+                    className={`relative h-10 w-10 inline-flex items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 ${
+                        showFilters
+                            ? "bg-slate-200 border-slate-300 text-slate-800"
+                            : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                    }`}
+                >
+                    <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`} />
+                    {hasExpandedFilters && !showFilters && (
+                        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-600" />
+                    )}
+                </button>
+            )}
+
+            {hasActiveFilters && (
+                <button
+                    type="button"
+                    onClick={onClear}
+                    title={t("Clear all active filters", "Vymazať všetky aktívne filtre", "Az összes aktív szűrő törlése")}
+                    aria-label={t("Clear", "Vymazať", "Törlés")}
+                    className="h-10 w-10 inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-all cursor-pointer shrink-0"
+                >
+                    <X className="h-4 w-4" />
+                </button>
+            )}
+        </>
+    );
+}
+
+/** Filters that sit on the first row while they fit, then drop to the expanded row. Time, then type, then the rest in their previous order. */
+const LEAD_OVERFLOW_FILTERS = ["time", "type", "division", "rating", "archive", "city", "source"] as const;
+type LeadOverflowFilter = (typeof LEAD_OVERFLOW_FILTERS)[number];
+
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     systemName,
     leads,
@@ -1699,17 +1843,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [offerPresetName, setOfferPresetName] = useState<string>("All Time");
     const [isOfferDatePickerOpen, setIsOfferDatePickerOpen] = useState(false);
 
-    // Collapsible Filters State (persisted per user, defaults to true)
+    // Collapsed bar: search, lead state, PM, list/kanban, favorites, view.
+    // The rest open from the chevron. Persisted per user; default is collapsed.
     const [storedShowFilters, setStoredShowFilters] = useUserPref("leadsShowFilters");
-    const showFilters = storedShowFilters ?? true;
-    const openedStatusFilters = useRef(false);
-    useEffect(() => {
-        if (openedStatusFilters.current) return;
-        openedStatusFilters.current = true;
-        if (leadStatusFromHash() !== "all") setStoredShowFilters(true);
-    }, [setStoredShowFilters]);
+    const showFilters = storedShowFilters ?? false;
     const setShowFilters = (v: boolean | ((prev: boolean) => boolean)) => {
         const next = typeof v === "function" ? v(showFilters) : v;
+        if (!next) setIsOfferDatePickerOpen(false);
         setStoredShowFilters(next);
     };
     const [selectedOwner, setSelectedOwner] = useState("all");
@@ -1803,6 +1943,110 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         selectedArchiveFilter,
         offerPresetName,
     ]);
+
+    // How many of LEAD_OVERFLOW_FILTERS fit on the first row after search, stage, PM and the view controls.
+    const [inlineFilterCount, setInlineFilterCount] = useState<number>(LEAD_OVERFLOW_FILTERS.length);
+    const filterRowRef = useRef<HTMLDivElement>(null);
+    const filterSearchRef = useRef<HTMLDivElement>(null);
+    const filterStageRef = useRef<HTMLDivElement>(null);
+    const filterPmRef = useRef<HTMLDivElement>(null);
+    const filterToolbarRef = useRef<HTMLDivElement>(null);
+    const filterMeasureRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+        const row = filterRowRef.current;
+        if (!row) return;
+        const measure = () => {
+            const toolbar = filterToolbarRef.current;
+            const search = filterSearchRef.current;
+            const stage = filterStageRef.current;
+            const pm = filterPmRef.current;
+            const probes = filterMeasureRef.current;
+            if (!toolbar || !search || !stage || !pm || !probes) return;
+            // The desktop control cluster is display:none below ws-sm. Leave every
+            // extra filter on the expanded row until that cluster is on screen.
+            if (toolbar.offsetWidth === 0) {
+                setInlineFilterCount((prev) => (prev === 0 ? prev : 0));
+                return;
+            }
+            const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
+            const searchMin = Number.parseFloat(getComputedStyle(search).minWidth) || search.offsetWidth;
+            const base = searchMin + stage.offsetWidth + pm.offsetWidth + toolbar.offsetWidth + gap * 3;
+            let room = row.clientWidth - base;
+            let count = 0;
+            for (const key of LEAD_OVERFLOW_FILTERS) {
+                const el = probes.querySelector(`[data-filter-measure="${key}"]`);
+                const w = el instanceof HTMLElement ? el.offsetWidth : 0;
+                if (w <= 0) break;
+                const need = w + gap;
+                if (need > room + 1) break;
+                room -= need;
+                count += 1;
+            }
+            setInlineFilterCount((prev) => (prev === count ? prev : count));
+        };
+        measure();
+        const ro = new ResizeObserver(measure);
+        [row, filterSearchRef.current, filterStageRef.current, filterPmRef.current, filterToolbarRef.current, filterMeasureRef.current].forEach(
+            (el) => {
+                if (el) ro.observe(el);
+            },
+        );
+        filterMeasureRef.current?.querySelectorAll("[data-filter-measure]").forEach((el) => ro.observe(el));
+        return () => ro.disconnect();
+    }, []);
+
+
+    const leadFilterIsActive = (key: LeadOverflowFilter) => {
+        switch (key) {
+            case "time":
+                return offerPresetName !== "All Time";
+            case "type":
+                return selectedType !== "all";
+            case "division":
+                return selectedDivision !== "all";
+            case "rating":
+                return selectedRating !== "all";
+            case "archive":
+                return selectedArchiveFilter !== "active";
+            case "city":
+                return selectedCity !== "all";
+            case "source":
+                return selectedSource !== "all";
+        }
+    };
+
+    const inlineLeadFilters = LEAD_OVERFLOW_FILTERS.slice(0, inlineFilterCount);
+    const overflowLeadFilters = LEAD_OVERFLOW_FILTERS.slice(inlineFilterCount);
+    const hasExpandedFilters = overflowLeadFilters.some(leadFilterIsActive);
+
+    const clearLeadFilters = () => {
+        setSelectedOwner("all");
+        setSelectedCity("all");
+        setSelectedSource("all");
+        setSelectedDivision("all");
+        setSelectedType("all");
+        setSelectedState("all");
+        setSelectedRating("all");
+        setSelectedArchiveFilter("active");
+        setFilterOfferStartDate(null);
+        setFilterOfferEndDate(null);
+        setOfferPresetName("All Time");
+        setIsOfferDatePickerOpen(false);
+    };
+
+    const renderLeadViewMenu = () => (
+        <LeadListViewMenu
+            t={t}
+            sort={leadSort}
+            sortOptions={leadSortOptions}
+            onSortChange={setStoredSort}
+            columns={allColumns}
+            onColumnsChange={handleSaveColumns}
+            columnLabel={getLeadColumnLabel}
+            onReset={handleResetView}
+        />
+    );
 
     // Create Lead modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -9516,336 +9760,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }
     };
 
-    return (
-        <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-            {/* 0. Title header */}
-            <PageHeader
-              icon={<Layers className="h-6 w-6 text-blue-600" />}
-              title={getTranslation(systemLanguage, "leads.title")}
-              subtitle={getTranslation(systemLanguage, "leads.subtitle")}
-            />
-
-            {/* Active Leads Value Equation Statistics */}
-            <StatusValueEquationStats
-                items={activeLeadStatusItems}
-                currency={currencyCode}
-                language={systemLanguage}
-                title={
-                    systemLanguage === "sk"
-                        ? "Prehľad hodnôt aktívnych fáz"
-                        : systemLanguage === "hu"
-                          ? "Aktív fázisok értékének összesítése"
-                          : "Active Pipeline Value Breakdown"
-                }
-                subtitle={
-                    systemLanguage === "sk"
-                        ? "Kliknutím na fázu ju zahrniete alebo vylúčite zo súčtu"
-                        : systemLanguage === "hu"
-                          ? "Kattintson egy fázisra a végösszegből való kizáráshoz/hozzáadáshoz"
-                          : "Click any status pill to toggle its inclusion in the equation total"
-                }
-                unitLabel={
-                    systemLanguage === "sk"
-                        ? "leadov"
-                        : systemLanguage === "hu"
-                          ? "lead"
-                          : "leads"
-                }
-                storageKey="ccrm_leads_equation_stats"
-                themeColor="blue"
-            />
-
-            {/* Control search, filter, and sort bar (Blue accents) */}
-            <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4 relative z-30">
-                <div className="flex flex-wrap items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
-                    <div className="flex items-center gap-2.5 w-full ws-sm:max-w-md">
-                        <div className="relative flex-1 min-w-[11rem]">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder={getTranslation(
-                                    systemLanguage,
-                                    "leads.filter.search",
-                                )}
-                                className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-blue-50/20 border border-blue-100 text-ui text-slate-800 placeholder:text-slate-400 font-medium focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all shadow-inner"
-                            />
-                        </div>
-
-                        {/* Filters toggle button */}
-                        <button
-                            type="button"
-                            onClick={() => setShowFilters(!showFilters)}
-                            className={`px-4 py-2.5 rounded-2xl text-ui font-extrabold border transition-all flex items-center gap-1.5 shadow-sm shrink-0 ${
-                                showFilters
-                                    ? "bg-blue-50 border-blue-300 text-blue-700 font-bold shadow-blue-100"
-                                    : "bg-white border-slate-200/60 hover:bg-slate-50 text-slate-600"
-                            }`}
-                        >
-                            <SlidersHorizontal className="h-4 w-4 text-blue-500" />
-                            {getTranslation(
-                                systemLanguage,
-                                "leads.btn.filters",
-                            )}{" "}
-                            {showFilters ? "(ON)" : "(OFF)"}
-                        </button>
-
-                        {hasActiveFilters && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSelectedOwner("all");
-                                    setSelectedCity("all");
-                                    setSelectedSource("all");
-                                    setSelectedDivision("all");
-                                    setSelectedType("all");
-                                    setSelectedState("all");
-                                    setSelectedRating("all");
-                                    setSelectedArchiveFilter("active");
-                                    setFilterOfferStartDate(null);
-                                    setFilterOfferEndDate(null);
-                                    setOfferPresetName("All Time");
-                                }}
-                                className="px-3 py-2.5 rounded-2xl text-ui font-extrabold bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 hover:text-rose-700 transition-all flex items-center gap-1 shadow-sm shrink-0 animate-fade-in"
-                                title={t(
-                                    "Clear all active filters",
-                                    "Vymazať všetky aktívne filtre",
-                                    "Az összes aktív szűrő törlése",
-                                )}
-                            >
-                                <X className="h-3.5 w-3.5" />
-                                {t("Clear", "Vymazať", "Törlés")}
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-center gap-3 w-full ws-sm:w-auto">
-                        {/* View Mode Toggle: List vs Kanban */}
-                        <div className="flex bg-slate-100 p-0.5 rounded-2xl border border-slate-200 gap-0.5 select-none shrink-0 w-full ws-sm:w-auto justify-center">
-                            <button
-                                type="button"
-                                onClick={() => setViewMode("list")}
-                                className={`px-3 py-1.5 rounded-xl type-overline transition-all cursor-pointer flex items-center gap-1.5 ${
-                                    viewMode === "list"
-                                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/10"
-                                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
-                                }`}
-                            >
-                                <TableProperties className="h-3.5 w-3.5" />
-                                {systemLanguage === "sk"
-                                    ? "Zoznam"
-                                    : systemLanguage === "hu"
-                                      ? "Lista"
-                                      : "List"}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setViewMode("kanban")}
-                                className={`px-3 py-1.5 rounded-xl type-overline transition-all cursor-pointer flex items-center gap-1.5 ${
-                                    viewMode === "kanban"
-                                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/10"
-                                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
-                                }`}
-                            >
-                                <Layers className="h-3.5 w-3.5" />
-                                {systemLanguage === "sk"
-                                    ? "Kanban"
-                                    : systemLanguage === "hu"
-                                      ? "Kanban"
-                                      : "Kanban"}
-                            </button>
-                        </div>
-
-                        {/* Compact Mode Toggle */}
-                        <button
-                            type="button"
-                            onClick={() => setCompactMode(!compactMode)}
-                            className={`px-3 py-1.5 rounded-xl type-overline transition-all cursor-pointer flex items-center gap-1.5 border shrink-0 ${
-                                compactMode
-                                    ? "bg-indigo-600 border-indigo-700 text-white shadow-md shadow-indigo-600/10"
-                                    : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
-                            }`}
-                        >
-                            <Minimize2 className="h-3.5 w-3.5" />
-                            {systemLanguage === "sk"
-                                ? "Kompaktné"
-                                : systemLanguage === "hu"
-                                  ? "Kompakt"
-                                  : "Compact"}
-                        </button>
-
-                        {/* Favorites Only Filter Toggle */}
-                        <button
-                            type="button"
-                            onClick={() => setFilterFavoritesOnly((prev) => !prev)}
-                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-ui font-bold transition-all shadow-xs cursor-pointer select-none ${
-                                filterFavoritesOnly
-                                    ? "bg-rose-50 border-rose-300 text-rose-600 shadow-rose-100/50"
-                                    : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
-                            }`}
-                            title={
-                                filterFavoritesOnly
-                                    ? (systemLanguage === "sk" ? "Zobraziť všetky leady" : systemLanguage === "hu" ? "Összes lead mutatása" : "Show all leads")
-                                    : (systemLanguage === "sk" ? "Filtrovať iba obľúbené" : systemLanguage === "hu" ? "Csak kedvencek" : "Filter favorites only")
-                            }
-                        >
-                            <Heart
-                                className={`h-3.5 w-3.5 ${
-                                    filterFavoritesOnly ? "fill-rose-500 text-rose-500" : "text-slate-400"
-                                }`}
-                            />
-                            <span>
-                                {systemLanguage === "sk"
-                                    ? "Obľúbené"
-                                    : systemLanguage === "hu"
-                                      ? "Kedvencek"
-                                      : "Favorites"}
-                            </span>
-                        </button>
-
-                        {/* View settings menu (sort & table columns) */}
-                        {viewMode === "list" && (
-                            <LeadListViewMenu
-                                t={t}
-                                sort={leadSort}
-                                sortOptions={leadSortOptions}
-                                onSortChange={setStoredSort}
-                                columns={allColumns}
-                                onColumnsChange={handleSaveColumns}
-                                columnLabel={getLeadColumnLabel}
-                                onReset={handleResetView}
-                            />
-                        )}
-
-                        <button
-                            onClick={() => {
-                                setNewLeadStatus(leadStates[0] || "");
-                                setNewLeadSource(leadSources[0] || "");
-                                setNewLeadDivision("");
-                                setNewLeadOwner(
-                                    autoAssignActive
-                                        ? ""
-                                        : projectManagers[0] || "",
-                                );
-                                setIsModalOpen(true);
-                            }}
-                            className="w-full ws-sm:w-auto px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-ui font-extrabold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 group hover:-translate-y-0.5"
-                        >
-                            <Plus className="h-4 w-4 text-white group-hover:rotate-90 transition-transform" />
-                            {getTranslation(
-                                systemLanguage,
-                                "leads.btn.add",
-                            ).toUpperCase()}
-                        </button>
-                    </div>
-                </div>
-
-                {/* Collapsible filter panels */}
-                {showFilters && (
-                    <div className="grid grid-cols-2 ws-md:grid-cols-4 ws-xl:grid-cols-8 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
-                        {/* Primary Filter: Pipeline Stage (Highlighted, most visible, larger single-select dropdown) */}
-                        <div className="col-span-2 ws-md:col-span-2 ws-xl:col-span-2 flex flex-col gap-1 p-2 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50/70 border-2 border-blue-400 shadow-xs ring-2 ring-blue-500/15">
-                            <div className="flex items-center justify-between px-1">
-                                <span className="type-overline font-extrabold text-blue-700 tracking-wider flex items-center gap-1.5">
-                                    <Layers className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                                    {getTranslation(systemLanguage, "leads.table.state")}
-                                    <span className="px-1.5 py-0.2 rounded-full text-micro font-extrabold bg-blue-600 text-white uppercase tracking-wider">
-                                        {t("Main", "Hlavný", "Fő")}
-                                    </span>
-                                </span>
-                                <span className="text-micro font-bold text-blue-600/80">
-                                    {selectedState === "all"
-                                        ? `${pipelineLeads.length} ${t("total", "spolu", "összesen")}`
-                                        : `${pipelineLeads.filter(l => (l.status || "").toLowerCase() === selectedState.toLowerCase() || leadStateParents[(l.status || "").toLowerCase()] === selectedState.toLowerCase()).length} ${t("leads", "leadov", "lead")}`}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2 bg-white border border-blue-300 rounded-xl px-2.5 py-1.5 shadow-xs">
-                                <div
-                                    className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
-                                    style={{
-                                        backgroundColor: selectedState === "all"
-                                            ? "#2563eb"
-                                            : getSafeStateColor(selectedState),
-                                    }}
-                                />
-                                <CustomSelect
-                                    value={selectedState}
-                                    onChange={(v) => setSelectedState(v)}
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline font-bold text-slate-800 w-full justify-between gap-2"
-                                    options={[
-                                        {
-                                            value: "all",
-                                            label: `${t("All Stages", "Všetky fázy", "Minden fázis")} (${pipelineLeads.length})`,
-                                        },
-                                        ...leadStates.map((s) => {
-                                            const count = pipelineLeads.filter(
-                                                (l) =>
-                                                    (l.status || "").toLowerCase() === s.toLowerCase() ||
-                                                    leadStateParents[(l.status || "").toLowerCase()] === s.toLowerCase(),
-                                            ).length;
-                                            return {
-                                                value: s.toLowerCase(),
-                                                label: `${s} (${count})`,
-                                            };
-                                        }),
-                                    ]}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Filter 1: Project Manager */}
-                        <div className="flex flex-col gap-1">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {getTranslation(
-                                    systemLanguage,
-                                    "leads.table.pm",
-                                )}
-                            </span>
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <UserCheck className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                <CustomSelect
-                                    value={selectedOwner}
-                                    onChange={(v) => setSelectedOwner(v)}
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline text-slate-700 w-full justify-between gap-2"
-                                    options={[
-                                        {
-                                            value: "all",
-                                            label: getTranslation(
-                                                systemLanguage,
-                                                "leads.filter.manager",
-                                            ),
-                                        },
-                                        ...projectManagers.map((pm) => ({
-                                            value: pm.toLowerCase(),
-                                            label: pm,
-                                        })),
-                                    ]}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Filter 2: City */}
-                        <div className="flex flex-col gap-1">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {getTranslation(
-                                    systemLanguage,
-                                    "leads.table.city",
-                                )}
-                            </span>
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <MapPin className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                <CustomSelect
-                                    value={selectedCity}
-                                    onChange={(v) => setSelectedCity(v)}
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline text-slate-700 w-full justify-between gap-2"
-                                    options={[
+    const renderLeadFilter = (key: LeadOverflowFilter, interactive: boolean) => {
+        switch (key) {
+            case "city":
+                return (
+                        <div className="shrink-0 w-max">
+                            <CustomSelect
+                                fitLabel
+                                className="h-10"
+                                icon={<MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                                value={selectedCity}
+                                onChange={(v) => setSelectedCity(v)}
+                                options={[
                                         {
                                             value: "all",
                                             label: getTranslation(
@@ -9859,26 +9785,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         })),
                                     ]}
                                 />
-                            </div>
                         </div>
 
-                        {/* Filter 3: Source */}
-                        <div className="flex flex-col gap-1">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {getTranslation(
-                                    systemLanguage,
-                                    "leads.table.source",
-                                )}
-                            </span>
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Share2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                <CustomSelect
-                                    value={selectedSource}
-                                    onChange={(v) => setSelectedSource(v)}
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline text-slate-700 w-full justify-between gap-2"
-                                    options={[
+                );
+            case "source":
+                return (
+                        <div className="shrink-0 w-max">
+                            <CustomSelect
+                                fitLabel
+                                className="h-10"
+                                icon={<Share2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                                value={selectedSource}
+                                onChange={(v) => setSelectedSource(v)}
+                                options={[
                                         {
                                             value: "all",
                                             label: getTranslation(
@@ -9892,26 +9811,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         })),
                                     ]}
                                 />
-                            </div>
                         </div>
 
-                        {/* Filter: Division */}
-                        <div className="flex flex-col gap-1">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {getTranslation(
-                                    systemLanguage,
-                                    "profile.division",
-                                )}
-                            </span>
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Building2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                <CustomSelect
-                                    value={selectedDivision}
-                                    onChange={(v) => setSelectedDivision(v)}
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline text-slate-700 w-full justify-between gap-2"
-                                    options={[
+                );
+            case "division":
+                return (
+                        <div className="shrink-0 w-max">
+                            <CustomSelect
+                                fitLabel
+                                className="h-10"
+                                icon={<Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                                value={selectedDivision}
+                                onChange={(v) => setSelectedDivision(v)}
+                                options={[
                                         {
                                             value: "all",
                                             label: getTranslation(
@@ -9932,28 +9844,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         })),
                                     ]}
                                 />
-                            </div>
                         </div>
 
-                        {/* Filter 4: Client Type */}
-                        <div className="flex flex-col gap-1">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {getTranslation(
-                                    systemLanguage,
-                                    "leads.table.type",
-                                )}
-                            </span>
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Users className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                <CustomSelect
-                                    value={selectedType}
-                                    onChange={(v) =>
-                                        setSelectedType(v as any)
-                                    }
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline text-slate-700 w-full justify-between gap-2"
-                                    options={[
+                );
+            case "type":
+                return (
+                        <div className="shrink-0 w-max">
+                            <CustomSelect
+                                fitLabel
+                                className="h-10"
+                                value={selectedType}
+                                onChange={(v) => setSelectedType(v as any)}
+                                options={[
                                         {
                                             value: "all",
                                             label: getTranslation(
@@ -9990,31 +9892,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         },
                                     ]}
                                 />
-                            </div>
                         </div>
 
-                        {/* Filter 6: Last Offer Sent Date */}
-                        <div className="flex flex-col gap-1 relative z-50">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {systemLanguage === "sk"
-                                    ? "Posledná ponuka odoslaná"
-                                    : systemLanguage === "hu"
-                                      ? "Utolsó ajánlat elküldve"
-                                      : "Last Offer Sent"}
-                            </span>
-                            <div>
+                );
+            case "time":
+                return (
+                        <div className="relative z-50 shrink-0 w-max">
                                 <button
                                     type="button"
+                                    title={t("Last offer sent", "Posledná ponuka odoslaná", "Utolsó ajánlat elküldve")}
                                     onClick={() =>
                                         setIsOfferDatePickerOpen(
                                             !isOfferDatePickerOpen,
                                         )
                                     }
-                                    className="w-full flex items-center justify-between gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5 text-left text-caption font-bold text-slate-700 hover:border-blue-400 transition-colors"
+                                    className="w-max h-10 flex items-center justify-between gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 text-left text-ui font-semibold text-slate-700 hover:border-slate-300 transition-colors cursor-pointer whitespace-nowrap"
                                 >
-                                    <div className="flex items-center gap-1.5 truncate">
-                                        <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                        <span className="truncate uppercase tracking-wider">
+                                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                        <Calendar className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                        <span className="whitespace-nowrap">
                                             {offerPresetName ===
                                                 "Custom Range" &&
                                             filterOfferStartDate
@@ -10050,7 +9946,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </button>
 
-                                {isOfferDatePickerOpen && (
+                                {interactive && isOfferDatePickerOpen && (
                                     <div className="absolute top-12 right-0 bg-white border-2 border-slate-100 shadow-2xl rounded-[24px] p-4 flex flex-col ws-md:flex-row gap-4 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-70 ws-md:w-170">
                                         {/* Left sidebar: Preset quick intervals */}
                                         <div className="w-full ws-md:w-45 border-r border-slate-100 pr-3 flex flex-col space-y-1 justify-start text-left shrink-0">
@@ -10530,49 +10426,33 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </div>
                                     </div>
                                 )}
-                            </div>
                         </div>
 
-                        {/* Filter 7: Client rating / importance */}
-                        <div className="flex flex-col gap-1">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {t(
-                                    "Rating",
-                                    "Hodnotenie",
-                                    "Értékelés",
-                                )}
-                            </span>
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Star className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                                <CustomSelect
-                                    value={selectedRating}
-                                    onChange={(v) => setSelectedRating(v)}
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline text-slate-700 w-full justify-between gap-2"
-                                    options={ratingFilterOptions(t)}
-                                />
-                            </div>
+                );
+            case "rating":
+                return (
+                        <div className="shrink-0 w-max">
+                            <CustomSelect
+                                fitLabel
+                                className="h-10"
+                                icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                                value={selectedRating}
+                                onChange={(v) => setSelectedRating(v)}
+                                options={ratingFilterOptions(t)}
+                            />
                         </div>
 
-                        {/* Filter 8: Archive Status */}
-                        <div className="flex flex-col gap-1">
-                            <span className="type-overline text-slate-400 pl-1">
-                                {t(
-                                    "Archive",
-                                    "Archív",
-                                    "Archívum",
-                                )}
-                            </span>
-                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
-                                <Archive className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                <CustomSelect
-                                    value={selectedArchiveFilter}
-                                    onChange={(v) => setSelectedArchiveFilter(v as any)}
-                                    size="sm"
-                                    unstyled
-                                    className="type-overline text-slate-700 w-full justify-between gap-2"
-                                    options={[
+                );
+            case "archive":
+                return (
+                        <div className="shrink-0 w-max">
+                            <CustomSelect
+                                fitLabel
+                                className="h-10"
+                                icon={<Archive className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                                value={selectedArchiveFilter}
+                                onChange={(v) => setSelectedArchiveFilter(v as any)}
+                                options={[
                                         {
                                             value: "active",
                                             label: t("Active Only", "Iba aktívne", "Csak aktív"),
@@ -10587,10 +10467,208 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         },
                                     ]}
                                 />
-                            </div>
+                        </div>
+                );
+            default:
+                return null;
+        }
+    };
+
+    return (
+        <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative min-w-0">
+            {/* 0. Title header */}
+            <PageHeader
+              icon={<Layers className="h-6 w-6 text-blue-600" />}
+              title={getTranslation(systemLanguage, "leads.title")}
+              subtitle={getTranslation(systemLanguage, "leads.subtitle")}
+              actions={canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewLeadStatus(leadStates[0] || "");
+                    setNewLeadSource(leadSources[0] || "");
+                    setNewLeadDivision("");
+                    setNewLeadOwner(autoAssignActive ? "" : projectManagers[0] || "");
+                    setIsModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-blue-600 text-white font-bold text-ui hover:bg-blue-700 shadow-md shadow-blue-600/20 cursor-pointer"
+                >
+                  <Plus className="h-4.5 w-4.5" />
+                  <span>{getTranslation(systemLanguage, "leads.btn.add")}</span>
+                </button>
+              ) : undefined}
+            />
+
+            {/* Active Leads Value Equation Statistics */}
+            <StatusValueEquationStats
+                items={activeLeadStatusItems}
+                currency={currencyCode}
+                language={systemLanguage}
+                title={
+                    systemLanguage === "sk"
+                        ? "Prehľad hodnôt aktívnych fáz"
+                        : systemLanguage === "hu"
+                          ? "Aktív fázisok értékének összesítése"
+                          : "Active Pipeline Value Breakdown"
+                }
+                subtitle={
+                    systemLanguage === "sk"
+                        ? "Kliknutím na fázu ju zahrniete alebo vylúčite zo súčtu"
+                        : systemLanguage === "hu"
+                          ? "Kattintson egy fázisra a végösszegből való kizáráshoz/hozzáadáshoz"
+                          : "Click any status pill to toggle its inclusion in the equation total"
+                }
+                unitLabel={
+                    systemLanguage === "sk"
+                        ? "leadov"
+                        : systemLanguage === "hu"
+                          ? "lead"
+                          : "leads"
+                }
+                storageKey="ccrm_leads_equation_stats"
+                themeColor="blue"
+            />
+
+            {/* Search, stage, PM and the view controls share the first row while
+                they fit. The row wraps instead of overflowing; time, type, then
+                the other filters join it while they fit, and the rest open below. */}
+            <div className="glass-panel relative z-30 flex w-full min-w-0 flex-col gap-2 ws-sm:gap-2.5 p-2 ws-sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+                <div ref={filterRowRef} className="flex flex-wrap items-center gap-2 ws-sm:gap-2.5 min-w-0">
+                    <div ref={filterSearchRef} className="flex flex-wrap items-center gap-2 min-w-0 w-full max-w-full basis-full ws-sm:w-auto ws-sm:max-w-xs ws-sm:min-w-48 ws-sm:grow ws-sm:basis-48">
+                        <div className="relative min-w-0 flex-1 basis-40">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder={getTranslation(systemLanguage, "leads.filter.search")}
+                                className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-ui font-semibold text-slate-800 bg-white"
+                            />
+                        </div>
+                        <div className="flex ws-sm:hidden max-w-full flex-wrap items-center justify-end gap-1.5 shrink-0">
+                            <LeadFilterToolbarControls
+                                    dense
+                                    t={t}
+                                    systemLanguage={systemLanguage}
+                                    viewMode={viewMode}
+                                    onViewMode={(mode) => setViewMode(mode)}
+                                    showFilters={showFilters}
+                                    onToggleFilters={() => setShowFilters((v) => !v)}
+                                    hasOverflowFilters={overflowLeadFilters.length > 0}
+                                    compactMode={compactMode}
+                                    onToggleCompact={() => setCompactMode(!compactMode)}
+                                    favoritesOnly={filterFavoritesOnly}
+                                    onToggleFavorites={() => setFilterFavoritesOnly((prev) => !prev)}
+                                    hasActiveFilters={hasActiveFilters}
+                                    hasExpandedFilters={hasExpandedFilters}
+                                    onClear={clearLeadFilters}
+                                    viewMenu={renderLeadViewMenu}
+                                />
                         </div>
                     </div>
+
+                    <div ref={filterStageRef} className="max-w-full shrink-0">
+                        <CustomSelect
+                            fitLabel
+                            className="h-10"
+                            icon={
+                                <span
+                                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                                    style={{
+                                        backgroundColor: selectedState === "all" ? "#2563eb" : getSafeStateColor(selectedState),
+                                    }}
+                                />
+                            }
+                            value={selectedState}
+                            onChange={(v) => setSelectedState(v)}
+                            options={[
+                                {
+                                    value: "all",
+                                    label: `${t("All Stages", "Všetky fázy", "Minden fázis")} (${pipelineLeads.length})`,
+                                },
+                                ...leadStates.map((s) => {
+                                    const count = pipelineLeads.filter(
+                                        (l) =>
+                                            (l.status || "").toLowerCase() === s.toLowerCase() ||
+                                            leadStateParents[(l.status || "").toLowerCase()] === s.toLowerCase(),
+                                    ).length;
+                                    return {
+                                        value: s.toLowerCase(),
+                                        label: `${s} (${count})`,
+                                    };
+                                }),
+                            ]}
+                        />
+                    </div>
+
+                    <div ref={filterPmRef} className="max-w-full shrink-0">
+                        <CustomSelect
+                            fitLabel
+                            className="h-10"
+                            icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                            value={selectedOwner}
+                            onChange={(v) => setSelectedOwner(v)}
+                            options={[
+                                {
+                                    value: "all",
+                                    label: getTranslation(systemLanguage, "leads.filter.manager"),
+                                },
+                                ...projectManagers.map((pm) => ({
+                                    value: pm.toLowerCase(),
+                                    label: pm,
+                                })),
+                            ]}
+                        />
+                    </div>
+
+                    {inlineLeadFilters.map((key) => (
+                        <React.Fragment key={key}>{renderLeadFilter(key, true)}</React.Fragment>
+                    ))}
+
+                    <div ref={filterToolbarRef} className="hidden ws-sm:flex ws-sm:ml-auto max-w-full flex-wrap items-center justify-end gap-2 shrink-0">
+                        <LeadFilterToolbarControls
+                            t={t}
+                            systemLanguage={systemLanguage}
+                            viewMode={viewMode}
+                            onViewMode={(mode) => setViewMode(mode)}
+                            showFilters={showFilters}
+                            onToggleFilters={() => setShowFilters((v) => !v)}
+                            hasOverflowFilters={overflowLeadFilters.length > 0}
+                            compactMode={compactMode}
+                            onToggleCompact={() => setCompactMode(!compactMode)}
+                            favoritesOnly={filterFavoritesOnly}
+                            onToggleFavorites={() => setFilterFavoritesOnly((prev) => !prev)}
+                            hasActiveFilters={hasActiveFilters}
+                            hasExpandedFilters={hasExpandedFilters}
+                            onClear={clearLeadFilters}
+                            viewMenu={renderLeadViewMenu}
+                        />
+                    </div>
+                </div>
+
+                {/* Probes are clipped and out of flow. `fixed` does not escape
+                    `.glass-panel` (backdrop-filter is their containing block) and was widening the page. */}
+                <div inert aria-hidden className="pointer-events-none absolute h-0 w-full overflow-hidden">
+                    <div ref={filterMeasureRef} className="flex w-max">
+                        {LEAD_OVERFLOW_FILTERS.map((key) => (
+                            <div key={key} data-filter-measure={key}>
+                                {renderLeadFilter(key, false)}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {showFilters && overflowLeadFilters.length > 0 && (
+                    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 ws-sm:gap-2.5">
+                        {overflowLeadFilters.map((key) => (
+                            <React.Fragment key={key}>{renderLeadFilter(key, true)}</React.Fragment>
+                        ))}
+                    </div>
                 )}
+
+            </div>
+
+            <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4">
 
                 {pipelineLeads.length === 0 && (
                     <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
