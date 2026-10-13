@@ -6,7 +6,8 @@ import {
   Plus,
   Settings as SettingsIcon,
   ChevronRight,
-  Loader2
+  Loader2,
+  UserRound
 } from "lucide-react";
 import type {
   Employee,
@@ -30,7 +31,8 @@ import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
 import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
-import { PageHeader, Tabs } from "../layout";
+import { MyEmploymentView } from "./MyEmploymentView";
+import { PageHeader, Tabs, type TabItem } from "../layout";
 import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
 import { deleteRecordsWithUndo } from "../../utils/recordActions";
 import { asLang } from "../../utils/undoMessages";
@@ -57,7 +59,11 @@ interface EmployeesViewProps {
   users?: AuthUser[];
   /** Role registry, to warn when a linked login can open this whole module. */
   roles?: RolePermission[];
+  /** The person may open the "My employment" tab (any self.* permission). */
+  selfService?: boolean;
 }
+
+type EmployeesViewName = "list" | "detail" | "matrix" | "form" | "settings" | "me";
 
 // Helper to resolve an employee by ID, case-insensitive ID, name, or name slug
 export const findEmployeeByIdOrSlug = (
@@ -99,7 +105,7 @@ export const findEmployeeByIdOrSlug = (
 const parseEmployeesUrlState = (
   allEmployees: Employee[]
 ): {
-  view: "list" | "detail" | "matrix" | "form" | "settings";
+  view: EmployeesViewName;
   employeeId: string | null;
   editEmployee: Employee | null;
   isEditMode?: boolean;
@@ -110,6 +116,11 @@ const parseEmployeesUrlState = (
   const base = (parts[0] || "").toLowerCase();
   const sub = (parts[1] || "").toLowerCase();
   const params = new URLSearchParams(queryPart || "");
+
+  // 0. #employees/me or the old #my-employment address: the signed-in person's own data
+  if (base === "my-employment" || base === "my_employment" || base === "myemployment" || (base === "employees" && (sub === "me" || sub === "my-employment"))) {
+    return { view: "me", employeeId: null, editEmployee: null };
+  }
 
   // 1. #employee-<idOrSlug> (e.g. #employee-emp_1 or #employee-peter-kovac)
   if (base.startsWith("employee-")) {
@@ -191,29 +202,42 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   isDemoMode = false,
   rights = FULL_EMPLOYEE_RIGHTS,
   users = [],
-  roles = []
+  roles = [],
+  selfService = false
 }) => {
   // Navigation state derived from URL hash
   const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
-  const [requestedView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
-  // A typed or bookmarked address never opens a screen this person has no right to: the pay
-  // matrix needs the pay toggle, create / edit needs employees = edit, settings needs general_config.
-  const currentView: "list" | "detail" | "matrix" | "form" | "settings" =
-    (requestedView === "matrix" && !rights.salaries) ||
-    (requestedView === "form" && !rights.edit) ||
-    (requestedView === "settings" && !rights.canConfigure)
-      ? "list"
-      : requestedView;
+  const [requestedView, setCurrentView] = useState<EmployeesViewName>(initialUrlState.view);
+  // A typed or bookmarked address never opens a screen this person has no right to: the directory,
+  // pay matrix and employee screens need the employees module (a regular employee lands on their
+  // own tab), the pay matrix needs the pay toggle, create / edit needs employees = edit, settings
+  // needs general_config, and My employment needs a self-service permission.
+  const currentView: EmployeesViewName = (() => {
+    const needsDirectory =
+      requestedView === "list" || requestedView === "detail" || requestedView === "matrix" || requestedView === "form";
+    if (needsDirectory && !rights.view) return selfService ? "me" : "list";
+    if (requestedView === "me" && !selfService) return "list";
+    if (
+      (requestedView === "matrix" && !rights.salaries) ||
+      (requestedView === "form" && !rights.edit) ||
+      (requestedView === "settings" && !rights.canConfigure)
+    ) {
+      return "list";
+    }
+    return requestedView;
+  })();
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(initialUrlState.employeeId);
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(initialUrlState.editEmployee);
   const [isEditMode, setIsEditMode] = useState<boolean>(!!initialUrlState.isEditMode);
 
   // Navigation helpers that update URL hash
-  const navigateToTab = (tab: "list" | "matrix" | "settings") => {
+  const navigateToTab = (tab: "list" | "matrix" | "settings" | "me") => {
     if (tab === "matrix") {
       window.location.hash = "employees/salaries";
     } else if (tab === "settings") {
       window.location.hash = "employees/settings";
+    } else if (tab === "me") {
+      window.location.hash = "employees/me";
     } else {
       window.location.hash = "employees";
     }
@@ -280,7 +304,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   // module immediately displays rich data. A real install starts empty.
   const initialCheckRef = React.useRef(false);
   React.useEffect(() => {
-    if (isDemoMode && !initialCheckRef.current && employees.length === 0) {
+    if (isDemoMode && rights.edit && !initialCheckRef.current && employees.length === 0) {
       initialCheckRef.current = true;
       handleSeedMockData();
     }
@@ -364,17 +388,26 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     setEmployeeSettings(updated);
   };
 
+  // One section, several audiences: the directory / payroll tabs need the employees module, the
+  // My employment tab needs a self-service permission, settings needs general_config.
+  const tabItems: TabItem<"list" | "matrix" | "me" | "settings">[] = [
+    { key: "list", icon: <Users className="w-3.5 h-3.5" />, label: t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete"), hidden: !rights.view },
+    { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix"), hidden: !rights.view || !rights.salaries },
+    { key: "me", icon: <UserRound className="w-3.5 h-3.5" />, label: t("My employment", "Moje zamestnanie", "Munkaviszonyom"), hidden: !selfService },
+    { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások"), hidden: !rights.canConfigure },
+  ];
+
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
       {/* Module header: title first, then the sub-navigation (docs/VIEW-SIZE.md §6.1) */}
       {currentView !== "form" && (
         <PageHeader
           icon={<EmployeeTieIcon className="size-6" color="#9e7638" />}
-          title={t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek")}
+          title={t("People", "Ľudia", "Munkatársak")}
           subtitle={t(
-            "Staff directory, salary structures, Toggl time tracking & vacation planner",
-            "Prehľad zamestnancov, štruktúra miezd, meranie času a plánovač dovoleniek",
-            "Munkatársak, bérstruktúra, időkövetés és szabadságtervező"
+            "Your employment, staff directory, payroll, time tracking & leave",
+            "Vaše zamestnanie, zoznam zamestnancov, mzdy, meranie času a dovolenky",
+            "Munkaviszonya, munkatársak, bérek, időkövetés és szabadságok"
           )}
           actions={
             currentView === "list" ? (
@@ -410,15 +443,13 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
         <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
           {/* Sub-view switcher tabs */}
           <div className="flex items-center gap-2">
-            <Tabs
-              value={currentView === "detail" ? "list" : currentView}
-              onChange={navigateToTab}
-              items={[
-                { key: "list", icon: <Users className="w-3.5 h-3.5" />, label: t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete") },
-                { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix"), hidden: !rights.salaries },
-                { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások"), hidden: !rights.canConfigure },
-              ]}
-            />
+            {tabItems.filter((i) => !i.hidden).length > 1 && (
+              <Tabs
+                value={currentView === "list" || currentView === "matrix" || currentView === "me" || currentView === "settings" ? currentView : "list"}
+                onChange={navigateToTab}
+                items={tabItems}
+              />
+            )}
 
             {currentView === "detail" && selectedEmployee && (
               <div className="flex items-center gap-2 pl-2">
@@ -432,7 +463,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
           {/* Quick Toolbar (Demo Seed if empty) */}
           <div className="flex items-center gap-2">
-            {isDemoMode && employees.length === 0 && (
+            {isDemoMode && rights.edit && employees.length === 0 && (
               <button
                 type="button"
                 onClick={handleSeedMockData}
@@ -562,6 +593,14 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 navigateToTab("list");
               }
             }}
+          />
+        )}
+
+        {currentView === "me" && (
+          <MyEmploymentView
+            systemLanguage={systemLanguage}
+            systemCurrency={systemCurrency}
+            embedded
           />
         )}
 

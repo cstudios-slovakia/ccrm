@@ -213,8 +213,8 @@ export function useCurrentScreenContext(activeTab: string, language: Language = 
         return {
           route,
           category: "employees",
-          title: language === "sk" ? "Zamestnanci a mzdy" : language === "hu" ? "Alkalmazottak és bérek" : "Employees & Payroll",
-          summary: "The user is in the Employees & Payroll module managing staff directory, salary structures, Toggl time tracking, absence planner, and payroll matrix."
+          title: language === "sk" ? "Ľudia" : language === "hu" ? "Munkatársak" : "People",
+          summary: "The user is in the People section: own employment data, staff directory, payroll, time tracking and leave."
         };
 
       default:

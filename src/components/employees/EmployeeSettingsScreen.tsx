@@ -252,7 +252,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
           </button>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-600 font-medium">
-            {t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek")}
+            {t("People", "Ľudia", "Munkatársak")}
           </span>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-[#b58b4c] font-bold">

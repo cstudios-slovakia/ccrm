@@ -82,7 +82,7 @@ upgrade are the ones that had lost their custom role and need reassigning.
 `permissionKeyForRoute(routeId)` maps a hash route to the key that guards it
 (`lead-…` → `leads`, `client-…` → `clients`, `dash_…` → `dashboard.custom`,
 `ue_…` → `unified_entries`, `settings…` → any settings key, `user-…` →
-`pm_managers`, `sai` → `leads`, `my-employment` → any `self.*` read key,
+`pm_managers`, `sai` → `leads`, `employees` / `employees/me` / `my-employment` → the People section (directory **or** any `self.*` read key),
 `personal-settings` → open to everyone). The sidebar and the
 start menu hide what the router would refuse; `firstAllowedRoute(access)` picks
 the landing page for a denied redirect.
@@ -120,7 +120,7 @@ requires `employees` ≥ view; with `employees` = edit the toggle also lets the 
 These four have `legacyDefault: edit`, so a role that predates them keeps today's access on upgrade.
 The `self.*` keys (`self.profile`, `self.payroll`, `self.vacations`, `self.files`, `self.hours`,
 `self.account`) never require `employees` and only ever reach the caller's **own linked row**. Any of the
-first five opens the route `my-employment`.
+first five opens the People section (`#employees`, own-data tab). The old address `#my-employment` still lands there.
 
 ### Linking a login to an employee
 

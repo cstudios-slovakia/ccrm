@@ -138,19 +138,10 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         bgColor: "rgba(16, 185, 129, 0.12)"
       },
       {
-        id: "my-employment",
-        category: "operations",
-        title: getTranslation(language, "sidebar.my_employment"),
-        description: t("Your own data, pay, leave and documents", "Vaše údaje, mzda, dovolenky a dokumenty", "Saját adatai, bére, szabadsága és dokumentumai"),
-        icon: EmployeeTieIcon,
-        color: "#c29b62",
-        bgColor: "rgba(194, 155, 98, 0.12)"
-      },
-      {
         id: "employees",
         category: "operations",
         title: getTranslation(language, "sidebar.employees"),
-        description: t("Staff directory, salaries matrix, Toggl tracking & leave planner", "Zoznam zamestnancov, matica miezd, meranie času a dovolenky", "Munkatársak, bérmátrix, időkövetés és szabadságok"),
+        description: t("Your employment, staff directory, payroll, time tracking & leave", "Vaše zamestnanie, zoznam zamestnancov, mzdy, meranie času a dovolenky", "Munkaviszonya, munkatársak, bérek, időkövetés és szabadságok"),
         icon: EmployeeTieIcon,
         color: "#c29b62",
         bgColor: "rgba(194, 155, 98, 0.12)"

@@ -176,7 +176,9 @@ test("routes map to their guarding key", () => {
   assert.equal(permissionKeyForRoute("projects?id=1"), "projects");
   assert.equal(permissionKeyForRoute("projects/123"), "projects");
   assert.equal(permissionKeyForRoute("project-123"), "projects");
-  assert.equal(permissionKeyForRoute("my-employment"), "my-employment");
+  assert.equal(permissionKeyForRoute("my-employment"), "people");
+  assert.equal(permissionKeyForRoute("employees/me"), "people");
+  assert.equal(permissionKeyForRoute("employees"), "people");
   assert.equal(permissionKeyForRoute("personal-settings"), null);
   assert.equal(permissionKeyForRoute(""), "tasks");
   assert.equal(permissionKeyForRoute("something-else"), "tasks");
@@ -269,15 +271,17 @@ test("buildAccess for Employee role grants only allowed self and task abilities"
   assert.equal(a.can("self.files"), true);
   assert.equal(a.can("self.hours"), true);
   assert.equal(a.can("self.account"), false);
-  // Routes
+  // Routes: People opens for the self-service tab even though the directory is locked
   assert.equal(a.canOpenRoute("my-employment"), true);
   assert.equal(a.canOpenRoute("tasks"), true);
-  assert.equal(a.canOpenRoute("employees"), false);
+  assert.equal(a.canOpenRoute("employees"), true);
+  assert.equal(a.canOpenRoute("employees/me"), true);
+  assert.equal(a.hasSelfServiceAccess, true);
   assert.equal(a.canOpenRoute("leads"), false);
   assert.equal(firstAllowedRoute(a), "tasks");
 });
 
-test("canOpenRoute('my-employment') works for each self.* combination", () => {
+test("canOpenRoute('employees') opens for each self.* key, and for the directory alone", () => {
   const selfKeys = ["self.profile", "self.payroll", "self.vacations", "self.files", "self.hours"] as const;
   for (const k of selfKeys) {
     const role: RolePermission = {
@@ -285,16 +289,27 @@ test("canOpenRoute('my-employment') works for each self.* combination", () => {
       permissions: { ...newRolePermissions(), [k]: k === "self.profile" ? "view" : "edit" },
     };
     const a = buildAccess(user("SingleKey"), [role]);
-    assert.equal(a.canOpenRoute("my-employment"), true, `should open with ${k}`);
+    assert.equal(a.canOpenRoute("employees"), true, `should open with ${k}`);
+    assert.equal(a.canOpenRoute("my-employment"), true, `old address should open with ${k}`);
   }
 
-  // With none of the 5 self keys
+  // With none of the 5 self keys and no directory access
   const roleNone: RolePermission = {
     name: "NoSelf",
     permissions: { ...newRolePermissions(), "self.account": "edit" },
   };
   const aNone = buildAccess(user("NoSelf"), [roleNone]);
+  assert.equal(aNone.canOpenRoute("employees"), false);
   assert.equal(aNone.canOpenRoute("my-employment"), false);
+
+  // The directory alone (no self.* key) still opens the section
+  const roleDir: RolePermission = {
+    name: "DirOnly",
+    permissions: { ...newRolePermissions(), employees: "view" },
+  };
+  const aDir = buildAccess(user("DirOnly"), [roleDir]);
+  assert.equal(aDir.canOpenRoute("employees"), true);
+  assert.equal(aDir.hasSelfServiceAccess, false);
 });
 
 test("Employee is a protected role and cannot be deleted", () => {

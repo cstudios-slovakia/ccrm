@@ -369,18 +369,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         defaultSection: "operations"
       },
       {
-        id: "my-employment",
-        label: getTranslation(systemLanguage, "sidebar.my_employment"),
-        description: t("Your own data, pay, leave and documents", "Vaše údaje, mzda, dovolenky a dokumenty", "Saját adatai, bére, szabadsága és dokumentumai"),
-        icon: EmployeeTieIcon,
-        color: "#c29b62",
-        bgColor: "rgba(194, 155, 98, 0.12)",
-        defaultSection: "operations"
-      },
-      {
         id: "employees",
         label: getTranslation(systemLanguage, "sidebar.employees"),
-        description: t("Staff directory, salaries matrix, Toggl tracking & leave planner", "Zoznam zamestnancov, matica miezd, meranie času a dovolenky", "Munkatársak, bérmátrix, időkövetés és szabadságok"),
+        description: t("Your employment, staff directory, payroll, time tracking & leave", "Vaše zamestnanie, zoznam zamestnancov, mzdy, meranie času a dovolenky", "Munkaviszonya, munkatársak, bérek, időkövetés és szabadságok"),
         icon: EmployeeTieIcon,
         color: "#c29b62",
         bgColor: "rgba(194, 155, 98, 0.12)",
