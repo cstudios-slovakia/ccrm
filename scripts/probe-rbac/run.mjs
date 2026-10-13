@@ -697,6 +697,50 @@ echo json_encode(['text' => $r['raw_context']]);`;
     await post('employee_a', { roles: [] });
     check('W7: a non-admin cannot touch the registry', JSON.parse(val("SELECT value FROM system_settings WHERE `key`='ROLES_RBAC'")).length === roleNames.length);
 
+    // ============================================================ migrations (M1-M3, M5)
+    // Run last: they rewrite the role registry and drop a column in the scratch database.
+    section('M: migrations');
+    const migScript = `<?php
+chdir(__DIR__);
+require __DIR__ . '/api/auth.php';
+require __DIR__ . '/api/schema.php';
+require __DIR__ . '/config.php';
+$pdo = get_db_connection();
+switch ($argv[1] ?? '') {
+    case 'fallback': echo json_encode(array_column(ccrm_fallback_roles(), 'name')); break;
+    case 'migrate_role': ccrm_migrate_employee_role_rbac($pdo); ccrm_migrate_employee_role_rbac($pdo); break;
+    case 'apply': ccrm_apply_schema($pdo); ccrm_apply_schema($pdo); break;
+}`;
+    run('docker', ['exec', '-i', '-u', 'www-data', WEB, 'sh', '-c', `cat > ${SCRATCH_DIR}/_mig.php`], migScript);
+    const mig = (action) => docker('exec', '-u', 'www-data', WEB, 'php', `${SCRATCH_DIR}/_mig.php`, action);
+    const rolesInDb = () => JSON.parse(val("SELECT value FROM system_settings WHERE `key`='ROLES_RBAC'"));
+
+    check('M1: a fresh install\'s fallback registry contains Employee', JSON.parse(mig('fallback')).includes('Employee'));
+
+    sql(`UPDATE system_settings SET value='${JSON.stringify([{ name: 'Admin', permissions: {} }, { name: 'Project Manager', permissions: {} }])}' WHERE \`key\`='ROLES_RBAC'`);
+    mig('migrate_role');
+    check('M2: an existing registry without Employee gets it appended exactly once (migration run twice)',
+      rolesInDb().filter((r) => r.name.toLowerCase() === 'employee').length === 1 && rolesInDb().length === 3, JSON.stringify(rolesInDb().map((r) => r.name)));
+    check('M2: ...with the full default map', Object.keys(rolesInDb().find((r) => r.name === 'Employee').permissions).length >= 40);
+
+    sql(`UPDATE system_settings SET value='${JSON.stringify([{ name: 'Admin', permissions: {} }, { name: 'employee', permissions: { tasks: 'view' } }])}' WHERE \`key\`='ROLES_RBAC'`);
+    mig('migrate_role');
+    const kept = rolesInDb();
+    check('M3: an existing custom role named "employee" is left exactly as it was',
+      kept.length === 2 && kept[1].name === 'employee' && JSON.stringify(kept[1].permissions) === JSON.stringify({ tasks: 'view' }), JSON.stringify(kept));
+
+    sql('ALTER TABLE employees DROP FOREIGN KEY fk_employees_user_id');
+    for (const idx of sql("SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='employees' AND COLUMN_NAME='user_id'").trim().split('\n').slice(1)) {
+      sql(`ALTER TABLE employees DROP INDEX \`${idx.trim()}\``);
+    }
+    sql('ALTER TABLE employees DROP COLUMN user_id');
+    check('M5: the user_id column is gone before the migration', val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='employees' AND COLUMN_NAME='user_id'") === '0');
+    mig('apply');
+    check('M5: user_id is added once, with its unique index and foreign key (migration run twice)',
+      val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='employees' AND COLUMN_NAME='user_id'") === '1' &&
+      Number(val("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='employees' AND COLUMN_NAME='user_id' AND NON_UNIQUE=0")) >= 1 &&
+      val("SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='employees' AND COLUMN_NAME='user_id' AND REFERENCED_TABLE_NAME='users'") === '1');
+
   } finally {
     teardown();
   }
