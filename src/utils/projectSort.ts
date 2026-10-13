@@ -2,7 +2,7 @@
 // especially "a project with no value sorts last, whichever way you sort" —
 // are the same in the table, the cards, and the tests.
 
-export type BuiltinProjectSortKey = "default" | "manual" | "name" | "client" | "type" | "managers" | "rating" | "deadline" | "progress" | "status" | "value" | "invoicable" | "division";
+export type BuiltinProjectSortKey = "default" | "manual" | "name" | "client" | "type" | "managers" | "rating" | "invoiceDate" | "deadline" | "progress" | "status" | "value" | "invoicable" | "division";
 
 /**
  * A column to order by: one of the built-in ones, or `attr:<attributeId>` for a
@@ -55,6 +55,7 @@ export const PROJECT_SORT_KEYS: readonly BuiltinProjectSortKey[] = [
   "type",
   "managers",
   "rating",
+  "invoiceDate",
   "deadline",
   "progress",
   "status",
@@ -134,7 +135,12 @@ export interface ProjectSortValues {
    * directions instead of pretending to be the least important one.
    */
   rating: number | null;
-  /** "YYYY-MM-DD", or null when the project has none (or its type has no deadlines). */
+  /** The invoice date, "YYYY-MM-DD", or null when the project has none (or its type has no invoice date). */
+  invoiceDate: string | null;
+  /**
+   * The deadline, "YYYY-MM-DD", or null when the project has none (or its type
+   * has no deadlines). A finished project sorts by its real finish date.
+   */
   deadline: string | null;
   /** 0-100, or null when the project has no roadmap. */
   progress: number | null;

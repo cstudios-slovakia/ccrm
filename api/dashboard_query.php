@@ -4,12 +4,13 @@
  * Exposes secure, read-only analytics query actions.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
 
 if (php_sapi_name() !== 'cli') {
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
 }
 
 $configFile = dirname(__DIR__) . '/config.php';
@@ -59,6 +60,53 @@ function ccrm_redact_result_rows(array $rows): array {
         }
     }
     return $rows;
+}
+
+/**
+ * The permission keys a raw SELECT needs, from the tables it names: a view right on every
+ * module whose table it touches (the leads table holds leads AND clients, so both; the
+ * task tables are not row-scoped here, so tasks.view_all; mail bodies sit in timeline_events
+ * and rag_emails, so email). A table that is diagnostic rather than business data
+ * (error_logs) is Admin-only and reported as 'admin'.
+ *
+ * @return string[]
+ */
+function ccrm_dashboard_sql_requirements(string $sql): array {
+    $lower = strtolower($sql);
+    $byTable = [
+        'leads' => ['leads', 'clients'],
+        'lead_categories' => ['leads', 'clients'],
+        'timeline_events' => ['leads', 'clients', 'email'],
+        'tasks' => ['tasks', 'tasks.view_all'],
+        'task_assignees' => ['tasks', 'tasks.view_all'],
+        'roles' => ['pm_managers'],
+        'role_permissions' => ['pm_managers'],
+        'meeting_notes' => ['meetings'],
+        'meeting_tasks' => ['meetings'],
+        // Indexed mail and mail summaries hold every user's mailbox; raw SQL cannot be narrowed
+        // to the caller's own, so they are Admin-only here.
+        'email_summaries' => ['admin'],
+        'rag_emails' => ['admin'],
+        'unified_entries' => ['unified_entries'],
+        'custom_dashboards' => ['dashboard.custom'],
+        'error_logs' => ['admin'],
+        'project_types' => ['projects'],
+        'projects' => ['projects'],
+        'project_managers' => ['projects'],
+    ];
+    $needs = [];
+    foreach ($byTable as $table => $keys) {
+        if (preg_match('/\b' . preg_quote($table, '/') . '\b/', $lower)) {
+            $needs = array_merge($needs, $keys);
+        }
+    }
+    if (preg_match('/\bue_[a-z0-9_]+\b/', $lower)) {
+        $needs[] = 'unified_entries';
+    }
+    if (preg_match('/\bproj_(data|timeline|gantt)_[a-z0-9_]+\b/', $lower)) {
+        $needs[] = 'projects';
+    }
+    return array_values(array_unique($needs));
 }
 
 function is_safe_select_query($sql, $pdo) {
@@ -177,10 +225,60 @@ try {
     exit;
 }
 
+// What the caller may read. The command-line run has no user and is unrestricted.
+$scope = isset($sessionUser) ? ccrm_read_scope($pdo, $sessionUser) : null;
+$ccrmDenied = function (): void {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Forbidden']);
+    exit;
+};
+$ccrmCan = function (string $key) use ($scope): bool {
+    return $scope === null || ccrm_can($scope, $key);
+};
+// A preset needs a view right on the module it reads (leads and clients share a table and
+// are narrowed by row below; tasks are narrowed to the caller's own without view_all).
+$ccrmPresetModules = [
+    'leads_count' => ['leads', 'clients'],
+    'leads_by_status' => ['leads', 'clients'],
+    'leads_by_source' => ['leads', 'clients'],
+    'pipeline_value' => ['leads', 'clients'],
+    'recent_leads' => ['leads', 'clients'],
+    'tasks_summary' => ['tasks'],
+    'tasks_by_owner' => ['tasks'],
+    'recent_tasks' => ['tasks'],
+    'recent_meetings' => ['meetings'],
+];
+if (isset($ccrmPresetModules[$action])) {
+    $any = false;
+    foreach ($ccrmPresetModules[$action] as $key) {
+        $any = $any || $ccrmCan($key);
+    }
+    if (!$any) {
+        $ccrmDenied();
+    }
+}
+$leadScope = ccrm_lead_scope_sql($scope);
+$leadScopeAnd = $leadScope === '' ? '' : " AND {$leadScope}";
+$leadScopeWhere = $leadScope === '' ? '' : " WHERE {$leadScope}";
+[$taskScope, $taskScopeBind] = ccrm_task_scope_sql($scope, 't');
+
 try {
     $result = [];
     switch ($action) {
         case 'sql':
+            // The ad-hoc query runs raw SQL, which cannot be narrowed row by row, so it needs
+            // Admin, or custom-dashboard editing together with a view right on every module
+            // whose table it names.
+            if ($scope !== null && empty($scope['isAdmin'])) {
+                if (!ccrm_can_edit($scope, 'dashboard.custom')) {
+                    $ccrmDenied();
+                }
+                foreach (ccrm_dashboard_sql_requirements((string)($data['sql'] ?? $data['params']['sql'] ?? '')) as $needKey) {
+                    if ($needKey === 'admin' || !ccrm_can($scope, $needKey)) {
+                        $ccrmDenied();
+                    }
+                }
+            }
             $sql = $data['sql'] ?? $data['params']['sql'] ?? '';
             $params = $data['params']['bind'] ?? $data['params'] ?? [];
             if (isset($params['sql'])) {
@@ -210,10 +308,10 @@ try {
         case 'leads_count':
             $status = $data['params']['status'] ?? null;
             if ($status) {
-                $stmt = $pdo->prepare("SELECT COUNT(*) FROM `leads` WHERE `status` = ?");
+                $stmt = $pdo->prepare("SELECT COUNT(*) FROM `leads` WHERE `status` = ?{$leadScopeAnd}");
                 $stmt->execute([$status]);
             } else {
-                $stmt = $pdo->query("SELECT COUNT(*) FROM `leads`");
+                $stmt = $pdo->query("SELECT COUNT(*) FROM `leads`{$leadScopeWhere}");
             }
             $result = ['count' => (int)$stmt->fetchColumn()];
             break;
@@ -230,7 +328,7 @@ try {
                 ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
                 : [];
 
-            $stmt = $pdo->query("SELECT `status`, COUNT(*) as `count`, SUM(`value`) as `total_value` FROM `leads` GROUP BY `status` ORDER BY `count` DESC");
+            $stmt = $pdo->query("SELECT `status`, COUNT(*) as `count`, SUM(`value`) as `total_value` FROM `leads`{$leadScopeWhere} GROUP BY `status` ORDER BY `count` DESC");
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             if (empty($wanted)) {
@@ -244,13 +342,14 @@ try {
             }
             $result = [];
             foreach ($wanted as $status) {
+                if ($status === '__none__') continue;
                 $result[] = $byStatus[mb_strtolower($status)]
                     ?? ['status' => $status, 'count' => 0, 'total_value' => 0];
             }
             break;
 
         case 'leads_by_source':
-            $stmt = $pdo->query("SELECT `source`, COUNT(*) as `count`, SUM(`value`) as `total_value` FROM `leads` GROUP BY `source` ORDER BY `count` DESC");
+            $stmt = $pdo->query("SELECT `source`, COUNT(*) as `count`, SUM(`value`) as `total_value` FROM `leads`{$leadScopeWhere} GROUP BY `source` ORDER BY `count` DESC");
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             break;
 
@@ -275,22 +374,51 @@ try {
             }
 
             if (empty($wanted)) {
-                $stmt = $pdo->query("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0");
+                $stmt = $pdo->query("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0{$leadScopeAnd}");
             } else {
-                $placeholders = implode(',', array_fill(0, count($wanted), '?'));
-                $stmt = $pdo->prepare("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0 AND LOWER(`status`) IN ({$placeholders})");
-                $stmt->execute(array_map(fn($s) => mb_strtolower($s), $wanted));
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $stmt = $pdo->query("SELECT 0 FROM `leads` WHERE 1 = 0");
+                } else {
+                    $placeholders = implode(',', array_fill(0, count($cleanWanted), '?'));
+                    $stmt = $pdo->prepare("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0 AND LOWER(`status`) IN ({$placeholders}){$leadScopeAnd}");
+                    $stmt->execute(array_map(fn($s) => mb_strtolower($s), $cleanWanted));
+                }
             }
             $result = ['value' => (float)($stmt->fetchColumn() ?: 0)];
             break;
 
         case 'tasks_summary':
-            $stmt = $pdo->query("SELECT `status`, COUNT(*) as `count` FROM `tasks` GROUP BY `status` ORDER BY `count` DESC");
+            $wanted = $data['params']['statuses'] ?? null;
+            $wanted = is_array($wanted)
+                ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
+                : [];
+
+            $whereParts = [];
+            $bind = [];
+            if ($taskScope !== '') {
+                $whereParts[] = $taskScope;
+                $bind = array_merge($bind, $taskScopeBind);
+            }
+            if (!empty($wanted)) {
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $whereParts[] = '1 = 0';
+                } else {
+                    $placeholders = implode(',', array_fill(0, count($cleanWanted), '?'));
+                    $whereParts[] = "LOWER(`t`.`status`) IN ({$placeholders})";
+                    $bind = array_merge($bind, array_map(fn($s) => mb_strtolower($s), $cleanWanted));
+                }
+            }
+            $where = $whereParts ? ' WHERE ' . implode(' AND ', $whereParts) : '';
+            $stmt = $pdo->prepare("SELECT `status`, COUNT(*) as `count` FROM `tasks` `t`{$where} GROUP BY `status` ORDER BY `count` DESC");
+            $stmt->execute($bind);
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             break;
 
         case 'tasks_by_owner':
-            $stmt = $pdo->query("SELECT `owner`, COUNT(*) as `count` FROM `tasks` GROUP BY `owner` ORDER BY `count` DESC");
+            $stmt = $pdo->prepare("SELECT `owner`, COUNT(*) as `count` FROM `tasks` `t`" . ($taskScope !== '' ? " WHERE {$taskScope}" : '') . " GROUP BY `owner` ORDER BY `count` DESC");
+            $stmt->execute($taskScopeBind);
             $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
             break;
 
@@ -310,12 +438,22 @@ try {
                 ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
                 : [];
 
-            $where = '';
+            $whereParts = [];
             $bind = [];
             if (!empty($wanted)) {
-                $where = ' WHERE LOWER(`l`.`status`) IN (' . implode(',', array_fill(0, count($wanted), '?')) . ')';
-                $bind = array_map(fn($s) => mb_strtolower($s), $wanted);
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $whereParts[] = '1 = 0';
+                } else {
+                    $whereParts[] = 'LOWER(`l`.`status`) IN (' . implode(',', array_fill(0, count($cleanWanted), '?')) . ')';
+                    $bind = array_map(fn($s) => mb_strtolower($s), $cleanWanted);
+                }
             }
+            $recentLeadScope = ccrm_lead_scope_sql($scope, 'l');
+            if ($recentLeadScope !== '') {
+                $whereParts[] = $recentLeadScope;
+            }
+            $where = $whereParts ? ' WHERE ' . implode(' AND ', $whereParts) : '';
 
             $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `leads` `l`{$where}");
             $countStmt->execute($bind);
@@ -369,8 +507,13 @@ try {
                 ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
                 : [];
             if (!empty($wanted)) {
-                $where[] = 'LOWER(`t`.`status`) IN (' . implode(',', array_fill(0, count($wanted), '?')) . ')';
-                foreach ($wanted as $status) { $bind[] = mb_strtolower($status); }
+                $cleanWanted = array_values(array_filter($wanted, fn($s) => $s !== '__none__'));
+                if (empty($cleanWanted)) {
+                    $where[] = '1 = 0';
+                } else {
+                    $where[] = 'LOWER(`t`.`status`) IN (' . implode(',', array_fill(0, count($cleanWanted), '?')) . ')';
+                    foreach ($cleanWanted as $status) { $bind[] = mb_strtolower($status); }
+                }
             }
 
             $owner = trim((string)($data['params']['owner'] ?? ''));
@@ -382,6 +525,13 @@ try {
                 $bind[] = $owner;
             }
 
+            // Without tasks.view_all only the caller's own, created and assigned tasks.
+            if ($taskScope !== '') {
+                $where[] = $taskScope;
+                // The scope's bind values come AFTER the filters' placeholders in the SQL
+                // text only when appended last, which is where its condition sits.
+                foreach ($taskScopeBind as $tb) { $bind[] = $tb; }
+            }
             $whereSql = ' WHERE ' . implode(' AND ', $where);
 
             $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `tasks` `t`{$whereSql}");

@@ -51,6 +51,11 @@ import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { archiveLeadsWithUndo } from "../utils/leadActions";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { runUndoable } from "../utils/undoable";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -1626,12 +1631,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const handleDeleteClientInvoice = (id: string) => {
-    if (!canDeleteFinance) return;
-    if (confirm(t("Delete this invoice?", "Vymazať túto faktúru?", "Törli ezt a számlát?"))) {
-      if (setFinancialRecords) {
-        setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
-      }
-    }
+    if (!canDeleteFinance || !setFinancialRecords) return;
+    const target = financialRecords.find((r) => r.id === id);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "financialRecords",
+      allRecords: financialRecords,
+      targets: [target],
+      setRecords: setFinancialRecords,
+      lang: systemLanguage,
+      entity: "invoice",
+      titleOf: (r) => r.title,
+    });
   };
 
   /**
@@ -1979,15 +1990,27 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setRecordingState("stopped");
   };
 
+  // The recording leaves the event being logged at once; Undo puts the exact
+  // previous player state back. The uploaded file itself is never touched.
   const removeAudioFile = () => {
-    if (confirm(t("Are you sure you want to remove this recording?", "Naozaj chcete odstrániť túto nahrávku?", "Biztosan eltávolítja ezt a felvételt?"))) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      setAudioUrl(null);
-      setUploadedAudioFile(null);
-      setRecordingState("none");
-    }
+    const before = { url: audioUrl, file: uploadedAudioFile, state: recordingState };
+    runUndoable({
+      message: singleMessage(systemLanguage, "recording", "delete", ""),
+      undoLabel: undoLabel(systemLanguage),
+      apply: () => {
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        setAudioUrl(null);
+        setUploadedAudioFile(null);
+        setRecordingState("none");
+      },
+      revert: () => {
+        setAudioUrl(before.url);
+        setUploadedAudioFile(before.file);
+        setRecordingState(before.state);
+      },
+    });
   };
 
   const formatDuration = (sec: number): string => {
@@ -2800,17 +2823,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // name, so all of them change together — the same rule the profile editor uses.
   const setClientArchived = (clientName: string, archived: boolean) => {
     const key = clientName.trim().toLowerCase();
+    if (archived) {
+      // Held and undoable: one Undo puts every lead row of the profile back.
+      archiveLeadsWithUndo({
+        targets: leads.filter(lead => lead.name.trim().toLowerCase() === key && !lead.archived),
+        setLeads,
+        lang: systemLanguage,
+        label: { entity: "client", title: clientName },
+      });
+      return;
+    }
     setLeads(prev => prev.map(lead =>
       lead.name.trim().toLowerCase() === key && !!lead.archived !== archived ? { ...lead, archived } : lead
     ));
     (window as any).showToast?.(
-      archived
-        ? t(
-            "Client archived — hidden from the client list. Find it under Archived.",
-            "Klient archivovaný — zmizne zo zoznamu klientov. Nájdete ho v Archíve.",
-            "Ügyfél archiválva — eltűnik az ügyféllistáról. Az Archívumban találja."
-          )
-        : t("Client restored — back in the client list.", "Klient obnovený — je späť v zozname klientov.", "Ügyfél visszaállítva — újra az ügyféllistán.")
+      t("Client restored — back in the client list.", "Klient obnovený — je späť v zozname klientov.", "Ügyfél visszaállítva — újra az ügyféllistán.")
     );
   };
 
@@ -2818,11 +2845,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // the clients stay, uncategorised.
   const handleClientCategoriesDeleted = (ids: Set<string>) => {
     if (filterClientCategory && ids.has(filterClientCategory)) setFilterClientCategory("");
+    // How each client was filed, so the category's Undo can file it back.
+    const filed = new Map(
+      leads.filter(l => l.clientCategoryId && ids.has(l.clientCategoryId)).map(l => [l.id, l.clientCategoryId as string])
+    );
     setLeads(prev =>
       prev.some(l => l.clientCategoryId && ids.has(l.clientCategoryId))
         ? prev.map(l => (l.clientCategoryId && ids.has(l.clientCategoryId) ? { ...l, clientCategoryId: null } : l))
         : prev
     );
+    return () => {
+      if (filed.size === 0) return;
+      setLeads(prev => prev.map(l => (filed.has(l.id) && !l.clientCategoryId ? { ...l, clientCategoryId: filed.get(l.id) } : l)));
+    };
   };
 
   const getInitials = (name: string) => {
@@ -2963,20 +2998,27 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </span>
           }
           actions={<>
-          <button
-            type="button"
-            onClick={() => setClientArchived(activeClient.name, !activeClient.archived)}
-            className={`h-9 px-3 rounded-xl border transition-all text-ui font-semibold flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer ${
-              activeClient.archived
-                ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700"
-                : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400"
-            }`}
-          >
-            {activeClient.archived ? <ArchiveRestore className="h-4 w-4 stroke-[2.5]" /> : <Archive className="h-4 w-4 stroke-[2.5]" />}
-            {activeClient.archived
-              ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")
-              : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
-          </button>
+          {activeClient.archived ? (
+            <button
+              type="button"
+              onClick={() => setClientArchived(activeClient.name, false)}
+              className="h-9 px-3 rounded-xl border transition-all text-ui font-semibold flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700"
+            >
+              <ArchiveRestore className="h-4 w-4 stroke-[2.5]" />
+              {t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")}
+            </button>
+          ) : (
+            <HoldToConfirmButton
+              tone="archive"
+              lang={systemLanguage}
+              what={activeClient.name}
+              onConfirm={() => setClientArchived(activeClient.name, true)}
+              className="h-9 px-3 rounded-xl border transition-all text-ui font-semibold flex items-center gap-2 shadow-sm active:scale-95 bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400"
+              icon={<Archive className="h-4 w-4 stroke-[2.5]" />}
+            >
+              {t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+            </HoldToConfirmButton>
+          )}
           <FavoriteHeartButton
             entityId={`client_${encodeURIComponent(activeClient.name)}`}
             type="client"
@@ -4510,34 +4552,42 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 >
                                   <Download className="h-4 w-4" />
                                 </a>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (confirm(systemLanguage === "sk" ? "Naozaj chcete natrvalo odpojiť tento dokument?" : systemLanguage === "hu" ? "Biztosan véglegesen le szeretné választani ezt a dokumentumot?" : "Are you sure you want to permanently detach this document?")) {
-                                      const backupLeads = [...leads];
-                                      setLeads(prev => prev.map(lead => {
-                                        if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
-                                          return {
-                                            ...lead,
-                                            timeline: (lead.timeline || []).filter(evt => evt.id !== file.id)
-                                          };
-                                        }
-                                        return lead;
-                                      }));
-                                      (window as any).showToast(
-                                        systemLanguage === "sk" ? "Dokument bol úspešne odpojený!" : systemLanguage === "hu" ? "Dokumentum sikeresen leválasztva!" : "Document detached successfully!",
-                                        {
-                                          label: systemLanguage === "sk" ? "Krok späť" : systemLanguage === "hu" ? "Visszavonás" : "Undo",
-                                          onClick: () => setLeads(backupLeads)
-                                        }
-                                      );
-                                    }
+                                <HoldToConfirmButton
+                                    tone="danger"
+                                    lang={systemLanguage}
+                                    what={file.fileName || file.title}
+                                    onConfirm={() => {
+                                    const clientKey = activeClient.name.trim().toLowerCase();
+                                    // Where the event sat on each lead of the profile, so Undo
+                                    // puts it back in the same place and touches nothing else.
+                                    const removed = new Map<string, { event: TimelineEvent; index: number }>();
+                                    leads.forEach(lead => {
+                                      if (lead.name.trim().toLowerCase() !== clientKey) return;
+                                      const index = (lead.timeline || []).findIndex(evt => evt.id === file.id);
+                                      if (index >= 0) removed.set(lead.id, { event: (lead.timeline || [])[index], index });
+                                    });
+                                    runUndoable({
+                                      message: singleMessage(systemLanguage, "file", "delete", file.fileName || file.title),
+                                      undoLabel: undoLabel(systemLanguage),
+                                      apply: () => setLeads(prev => prev.map(lead =>
+                                        removed.has(lead.id)
+                                          ? { ...lead, timeline: (lead.timeline || []).filter(evt => evt.id !== file.id) }
+                                          : lead
+                                      )),
+                                      revert: () => setLeads(prev => prev.map(lead => {
+                                        const hit = removed.get(lead.id);
+                                        if (!hit || (lead.timeline || []).some(evt => evt.id === file.id)) return lead;
+                                        const next = [...(lead.timeline || [])];
+                                        next.splice(Math.min(hit.index, next.length), 0, hit.event);
+                                        return { ...lead, timeline: next };
+                                      })),
+                                    });
                                   }}
-                                  className="p-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all text-rose-600 hover:text-rose-700 shadow-sm"
-                                  title={systemLanguage === "sk" ? "Odpojiť dokument" : systemLanguage === "hu" ? "Dokumentum leválasztása" : "Detach Document"}
+                                    className="p-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-all text-rose-600 hover:text-rose-700 shadow-sm"
+                                    title={systemLanguage === "sk" ? "Odpojiť dokument" : systemLanguage === "hu" ? "Dokumentum leválasztása" : "Detach Document"}
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                </button>
+                                </HoldToConfirmButton>
                               </div>
                             </div>
                           );
@@ -4875,14 +4925,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     </button>
                                   )}
                                   {canDeleteFinance && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteClientInvoice(inv.id)}
-                                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                                      title={t("Delete invoice", "Vymazať faktúru", "Számla törlése")}
+                                    <HoldToConfirmButton
+                                        tone="danger"
+                                        lang={systemLanguage}
+                                        what={inv.title}
+                                        onConfirm={() => handleDeleteClientInvoice(inv.id)}
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                                        title={t("Delete invoice", "Vymazať faktúru", "Számla törlése")}
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
+                                    </HoldToConfirmButton>
                                   )}
                                 </div>
                               </td>
@@ -5453,7 +5505,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {renderSortIcon("totalValue")}
                   </button>
                 </th>
-                <th className="sticky top-0 bg-white z-10 py-3.5 px-4 rounded-tr-[24px] border-b-2 border-slate-100 w-12">
+                <th className="sticky top-0 right-0 bg-white z-20 py-3.5 px-4 rounded-tr-[24px] border-b-2 border-l border-slate-100 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>
               </tr>
@@ -5592,19 +5644,32 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </td>
 
                     {/* Archive / restore */}
-                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-4 ws-lg:text-right">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setClientArchived(client.name, !client.archived);
-                        }}
-                        title={client.archived ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása") : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
-                        aria-label={client.archived ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása") : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
-                        className="p-2 rounded-xl text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:scale-90 transition-all duration-150 cursor-pointer"
-                      >
-                        {client.archived ? <ArchiveRestore className="h-4 w-4 stroke-[2.5]" /> : <Archive className="h-4 w-4 stroke-[2.5]" />}
-                      </button>
+                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-4 ws-lg:text-right ws-lg:sticky ws-lg:right-0 ws-lg:z-10 ws-lg:bg-white ws-lg:group-hover:bg-emerald-50 ws-lg:shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] ws-lg:border-l ws-lg:border-slate-100/80">
+                      {client.archived ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setClientArchived(client.name, false);
+                          }}
+                          title={t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")}
+                          aria-label={t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")}
+                          className="p-2 rounded-xl text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:scale-90 transition-all duration-150 cursor-pointer"
+                        >
+                          <ArchiveRestore className="h-4 w-4 stroke-[2.5]" />
+                        </button>
+                      ) : (
+                        <HoldToConfirmButton
+                          tone="archive"
+                          lang={systemLanguage}
+                          what={client.name}
+                          onConfirm={() => setClientArchived(client.name, true)}
+                          title={t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+                          className="p-2 rounded-xl text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:scale-90 transition-all duration-150"
+                        >
+                          <Archive className="h-4 w-4 stroke-[2.5]" />
+                        </HoldToConfirmButton>
+                      )}
                     </td>
 
                   </tr>

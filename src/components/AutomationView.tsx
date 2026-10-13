@@ -18,6 +18,10 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { viewSizeScale } from "../utils/viewSize";
 import { PageHeader } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { reinsertAt } from "../utils/undoableList";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 const SYSTEM_COLORS = [
   { name: "Purple", hex: "#7e22ce" },
@@ -881,6 +885,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   const canDelete = access.delete;
   const projectStatuses = useProjectStatuses();
   const [workflows, setWorkflows] = useState<any[]>([]);
+  const hiddenWorkflowIdsRef = React.useRef<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"list" | "editor" | "logs" | "settings">("list");
   const [selectedWorkflow, setSelectedWorkflow] = useState<any>(null);
@@ -1197,7 +1202,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       const res = await fetch("/api/workflows.php?action=list");
       const data = await res.json();
       if (data.success) {
-        setWorkflows(data.workflows || []);
+        // A workflow deleted under an open undo window is still on the server.
+        setWorkflows((data.workflows || []).filter((w: any) => !hiddenWorkflowIdsRef.current.has(w.id)));
       } else {
         showToast(data.message || "Failed to fetch workflows", "error");
       }
@@ -1340,27 +1346,37 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     }
   };
 
-  // Delete workflow
-  const deleteWorkflow = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Delete workflow — strategy C: it leaves the list at once and is deleted on the
+  // server when the undo window closes; a failure brings it back.
+  const deleteWorkflow = (id: string) => {
     if (!canDelete) return;
-    if (!window.confirm(t("Are you sure you want to delete this workflow?", "Naozaj chcete vymazať tento workflow?", "Biztosan törli ezt a munkafolyamatot?"))) {
-      return;
-    }
-    try {
-      const res = await fetch("/api/workflows.php?action=delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(t("Workflow deleted", "Workflow bol vymazaný", "Munkafolyamat törölve"));
+    const index = workflows.findIndex((w) => w.id === id);
+    const target = workflows[index];
+    if (!target) return;
+    runUndoable({
+      message: singleMessage(systemLanguage, "workflow", "delete", target.name),
+      undoLabel: undoLabel(systemLanguage),
+      apply: () => {
+        hiddenWorkflowIdsRef.current.add(id);
+        setWorkflows((prev) => prev.filter((w) => w.id !== id));
+      },
+      revert: () => {
+        hiddenWorkflowIdsRef.current.delete(id);
+        setWorkflows((prev) => reinsertAt(prev, [{ item: target, index }], (w: any) => w.id));
+      },
+      failureMessage: t("Error deleting workflow", "Workflow sa nepodarilo vymazať", "A munkafolyamat törlése nem sikerült"),
+      onCommit: async () => {
+        const res = await fetch("/api/workflows.php?action=delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || "");
+        hiddenWorkflowIdsRef.current.delete(id);
         fetchWorkflows();
-      }
-    } catch (err) {
-      showToast("Error deleting workflow", "error");
-    }
+      },
+    });
   };
 
   const handleNewWorkflow = (shouldUpdateHash = true) => {
@@ -1921,14 +1937,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         </button>
                         )}
                         {canDelete && (
-                        <button
-                          type="button"
-                          onClick={(e) => deleteWorkflow(wf.id, e)}
-                          title={t("Delete", "Vymazať", "Töröl")}
-                          className="p-1.5 hover:bg-rose-50 rounded-xl text-rose-500 transition-colors cursor-pointer"
+                        <HoldToConfirmButton
+                            tone="danger"
+                            lang={systemLanguage}
+                            what={wf.name}
+                            onConfirm={() => deleteWorkflow(wf.id)}
+                            title={t("Delete", "Vymazať", "Töröl")}
+                            className="p-1.5 hover:bg-rose-50 rounded-xl text-rose-500 transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />
-                        </button>
+                        </HoldToConfirmButton>
                         )}
                       </div>
                     </div>

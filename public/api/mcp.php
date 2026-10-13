@@ -28,6 +28,7 @@ if (file_exists($configFile)) {
 }
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/mcp_ext.php';
 require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
@@ -163,7 +164,8 @@ function mcp_tool_permissions(): array {
         'create_employee' => $e('employees'), 'update_employee' => $e('employees'),
         'list_salaries' => $v('employees', 'employees.salaries'),
         'record_salary_payout' => ['edit' => ['employees'], 'view' => ['employees.salaries']],
-        'list_vacations' => $v('employees'), 'record_vacation' => $e('employees'),
+        'list_vacations' => $v('employees', 'employees.vacations'),
+        'record_vacation' => ['edit' => ['employees'], 'view' => ['employees.vacations']],
     ];
     // Part B tools (mcp_ext.php).
     $map += mcp_ext_fin_permissions();
@@ -570,7 +572,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_client',
-            'description' => 'Get a client record with the projects and invoicing documents of the whole client: every record sharing its name (as the Clients register shows it), plus unlinked projects named for it (linked_by = name_match). Projects carry the resolved contract value, status group, deadline and url; documents carry payment status. For one-call context use get_client_dossier.',
+            'description' => 'Get a client record with the projects and invoicing documents of the whole client: every record sharing its name (as the Clients register shows it), plus unlinked projects named for it (linked_by = name_match). Projects carry the resolved contract value, status group, invoice date (invoice_date), deadline (completion_deadline) and url; documents carry payment status. For one-call context use get_client_dossier.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -720,6 +722,7 @@ function mcp_core_tool_definitions(): array {
                     'priority' => ['type' => 'string', 'description' => 'Priority: low, medium, high'],
                     'deadline' => ['type' => 'string', 'description' => 'Deadline in YYYY-MM-DD format'],
                     'status' => ['type' => 'string', 'description' => 'A configured task status'],
+                    'conclusion' => ['type' => 'string', 'description' => 'How the task was finished. Required when moving a task that has "requires conclusion" set to a done status.'],
                     'owner' => ['type' => 'string', 'description' => 'Primary assignee name'],
                     'project_id' => ['type' => 'string', 'description' => 'Linked project ID']
                 ],
@@ -733,7 +736,8 @@ function mcp_core_tool_definitions(): array {
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Task ID'],
-                    'note' => ['type' => 'string', 'description' => 'Optional completion note']
+                    'conclusion' => ['type' => 'string', 'description' => 'How the task was finished (a short note or report). Required when the task has "requires conclusion" set; otherwise optional.'],
+                    'note' => ['type' => 'string', 'description' => 'Older name of conclusion']
                 ],
                 'required' => ['id']
             ]
@@ -754,7 +758,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 4: Projects & Gantt Roadmaps
         [
             'name' => 'list_projects',
-            'description' => 'List and filter delivery projects with contract value, budget, rating, deadline, delay reason and finish date.',
+            'description' => 'List and filter delivery projects with contract value, budget, rating, invoice date (invoice_date), deadline (completion_deadline), delay reason and finish date, plus project_type (name and the has_invoice_date / has_deadline switches: a null date on a type without the switch is not applicable rather than missing).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -768,7 +772,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_project',
-            'description' => 'Retrieve project details with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number and payment status), milestones, linked tasks and a url.',
+            'description' => 'Retrieve project details (incl. start_date, invoice_date, completion_deadline = the Deadline, delay_reason, finished_at; project_type tells whether its type uses the invoice date and the deadline) with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number and payment status), milestones, linked tasks and a url.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -789,7 +793,8 @@ function mcp_core_tool_definitions(): array {
                     'value' => ['type' => 'number', 'description' => 'Contract value to be invoiced'],
                     'project_type_id' => ['type' => 'string', 'description' => 'Project type (default: the first one)'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
-                    'deadline' => ['type' => 'string', 'description' => 'Deadline date (YYYY-MM-DD)'],
+                    'invoice_date' => ['type' => 'string', 'description' => 'Invoice date (YYYY-MM-DD) - the "Invoice date" field in the app'],
+                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app'],
                     'status' => ['type' => 'string', 'description' => 'A configured project status (default: the first of the "new" group)']
                 ],
                 'required' => ['name']
@@ -811,7 +816,8 @@ function mcp_core_tool_definitions(): array {
                     'division' => ['type' => 'string', 'description' => 'Division'],
                     'archived' => ['type' => 'boolean', 'description' => 'Archive / restore'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
-                    'deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD)']
+                    'invoice_date' => ['type' => 'string', 'description' => 'Invoice date (YYYY-MM-DD) - the "Invoice date" field in the app'],
+                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app']
                 ],
                 'required' => ['id']
             ]
@@ -1167,7 +1173,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 11: Employees, Salaries & Vacations
         [
             'name' => 'list_employees',
-            'description' => 'List company employees with compensation rates, contact details, and vacation allowances.',
+            'description' => 'List company employees with compensation rates, contact details, vacation allowances and the app login they are linked to (user_id; null when none).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1295,6 +1301,26 @@ function mcp_core_tool_definitions(): array {
 
 function mcp_strip_keys(array $row, array $keys): array {
     foreach ($keys as $k) { unset($row[$k]); }
+    return $row;
+}
+
+/**
+ * An employee row limited to the field groups the key owner may read, the same split the
+ * sync GET applies (ccrm_project_employee_row): personal data, pay, leave and documents
+ * each sit behind their own toggle on top of `employees`.
+ */
+function mcp_project_employee(array $row): array {
+    $groups = [
+        'employees.personal' => ['pin', 'phone', 'address_street', 'address_city', 'address_zip', 'address_country', 'notes'],
+        'employees.salaries' => ['salary_type', 'salary_amount', 'salary_due_day', 'auto_expense', 'expense_category_id'],
+        'employees.vacations' => ['vacation_allowances_json'],
+        'employees.files' => ['files_json'],
+    ];
+    foreach ($groups as $permission => $columns) {
+        if (!mcp_can($permission)) {
+            $row = mcp_strip_keys($row, $columns);
+        }
+    }
     return $row;
 }
 
@@ -1756,7 +1782,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
 
-            $sql = "SELECT p.id, p.name, p.status, p.division, p.rating, p.value, p.budget, p.deadline, p.delay_reason, p.start_date, p.finished_at, p.lead_id, p.client_id, l.name as client_name, p.archived, p.created_at
+            $sql = "SELECT p.id, p.name, p.status, p.division, p.rating, p.value, p.budget, p.invoice_date, p.completion_deadline, p.delay_reason, p.start_date, p.finished_at, p.project_type_id, p.lead_id, p.client_id, l.name as client_name, p.archived, p.created_at
                     FROM projects p
                     LEFT JOIN leads l ON l.id = COALESCE(p.lead_id, p.client_id)
                     WHERE " . implode(' AND ', $where) . "
@@ -1765,7 +1791,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return array_map(fn($p) => $p + ['url' => mcp_project_url($pdo, (string)$p['id'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return array_map(fn($p) => $p + ['project_type' => mcp_project_type_info($pdo, $p['project_type_id']), 'url' => mcp_project_url($pdo, (string)$p['id'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
 
         case 'get_project':
             $stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
@@ -1775,6 +1801,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 throw new \Exception("Project not found with ID: " . $args['id']);
             }
             $proj['url'] = mcp_project_url($pdo, (string)$proj['id']);
+            $proj['project_type'] = mcp_project_type_info($pdo, $proj['project_type_id'] ?? null);
 
             // The client: client_id, else the paired lead, else the client the project is named for.
             $owner = mcp_project_client($pdo, $proj);
@@ -2072,7 +2099,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
 
-            $sql = "SELECT id, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, project_id, client_id, created_by 
+            $sql = "SELECT id, subtype, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, project_id, client_id, created_by 
                     FROM financial_records 
                     WHERE " . implode(' AND ', $where) . " 
                     ORDER BY issue_date DESC 
@@ -2080,7 +2107,11 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $expenseRows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if (!mcp_can('employees.salaries')) {
+                $expenseRows = array_map(fn($r) => ccrm_is_salary_finance_row($r) ? ccrm_anonymise_salary_finance_row($r) : $r, $expenseRows);
+            }
+            return $expenseRows;
 
         case 'record_expense':
             return mcp_do_record_expense($pdo, $user, $args);
@@ -2339,20 +2370,23 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $where = ["1=1"];
             $params = [];
             if (!empty($args['search'])) {
-                $where[] = "(name LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
                 $s = '%' . trim($args['search']) . '%';
-                $params = array_merge($params, [$s, $s, $s, $s]);
+                if (mcp_can('employees.personal')) {
+                    $where[] = "(name LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
+                    $params = array_merge($params, [$s, $s, $s, $s]);
+                } else {
+                    // A search that matched on a PIN or phone would confirm one to someone who may not read it.
+                    $where[] = "(name LIKE ? OR email LIKE ?)";
+                    $params = array_merge($params, [$s, $s]);
+                }
             }
             if (!isset($args['active_only']) || !empty($args['active_only'])) {
                 $where[] = "is_active = 1";
             }
-            $stmt = $pdo->prepare("SELECT id, name, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
+            $stmt = $pdo->prepare("SELECT id, name, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
             $stmt->execute($params);
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            if (!mcp_can('employees.salaries')) {
-                $rows = array_map(fn($r) => mcp_strip_keys($r, MCP_EMPLOYEE_SENSITIVE), $rows);
-            }
-            return $rows;
+            return array_map('mcp_project_employee', $rows);
 
         case 'get_employee':
             $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ? LIMIT 1");
@@ -2360,19 +2394,19 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $emp = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$emp) throw new \Exception("Employee not found with ID: " . $args['id']);
             
-            // Salaries and personal id only for holders of employees.salaries
+            // Pay records only with employees.salaries, leave only with employees.vacations
             if (mcp_can('employees.salaries')) {
                 $salStmt = $pdo->prepare("SELECT * FROM employee_salaries WHERE employee_id = ? ORDER BY year DESC, period_number DESC LIMIT 12");
                 $salStmt->execute([$args['id']]);
                 $emp['salaries'] = $salStmt->fetchAll(\PDO::FETCH_ASSOC);
-            } else {
-                $emp = mcp_strip_keys($emp, MCP_EMPLOYEE_SENSITIVE);
             }
+            $emp = mcp_project_employee($emp);
 
-            // Fetch vacations
-            $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
-            $vacStmt->execute([$args['id']]);
-            $emp['vacations'] = $vacStmt->fetchAll(\PDO::FETCH_ASSOC);
+            if (mcp_can('employees.vacations')) {
+                $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
+                $vacStmt->execute([$args['id']]);
+                $emp['vacations'] = $vacStmt->fetchAll(\PDO::FETCH_ASSOC);
+            }
 
             return $emp;
 
@@ -2388,13 +2422,13 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $ins->execute([
                 $id,
                 $name,
-                mcp_can('employees.salaries') ? ($args['pin'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['pin'] ?? null) : null,
                 $args['email'] ?? null,
-                $args['phone'] ?? null,
-                $args['address_street'] ?? null,
-                $args['address_city'] ?? null,
-                $args['address_zip'] ?? null,
-                $args['address_country'] ?? 'Slovakia',
+                mcp_can('employees.personal') ? ($args['phone'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_street'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_city'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_zip'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_country'] ?? 'Slovakia') : 'Slovakia',
                 mcp_can('employees.salaries') ? ($args['salary_type'] ?? 'monthly') : 'monthly',
                 mcp_can('employees.salaries') ? (float)($args['salary_amount'] ?? 0) : 0.0,
                 (mcp_can('employees.salaries') && isset($args['salary_due_day'])) ? (int)$args['salary_due_day'] : null,
@@ -2409,11 +2443,18 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $id = $args['id'];
             $fields = [];
             $params = [];
-            // Salary and personal-id fields are writable only with employees.salaries.
+            // Pay fields are writable only with employees.salaries, personal data only with employees.personal.
             if (!mcp_can('employees.salaries')) {
-                foreach (['pin', 'salary_type', 'salary_amount', 'salary_due_day', 'auto_expense'] as $f) {
+                foreach (['salary_type', 'salary_amount', 'salary_due_day', 'auto_expense'] as $f) {
                     if (isset($args[$f])) {
                         throw new \Exception("Field '{$f}' needs the employees.salaries permission.");
+                    }
+                }
+            }
+            if (!mcp_can('employees.personal')) {
+                foreach (['pin', 'phone', 'address_street', 'address_city', 'address_zip'] as $f) {
+                    if (isset($args[$f])) {
+                        throw new \Exception("Field '{$f}' needs the employees.personal permission.");
                     }
                 }
             }

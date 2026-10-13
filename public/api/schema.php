@@ -143,6 +143,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
               `completed_at` VARCHAR(16) NULL COMMENT 'YYYY-MM-DD HH:MM local completion timestamp; NULL for legacy rows',
               `email_reminders_json` TEXT NULL COMMENT 'Per-user e-mail reminder choice, JSON: user name to morning, 1h or 1d',
+              `requires_conclusion` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = the task cannot be completed until conclusion is written',
+              `conclusion` TEXT NULL COMMENT 'How the task was finished; written when it is completed',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -339,6 +341,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `has_timeline` TINYINT(1) NOT NULL DEFAULT 0,
               `has_gantt` TINYINT(1) NOT NULL DEFAULT 0,
               `has_deadline` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_invoice_date` TINYINT(1) NOT NULL DEFAULT 0,
               `deadline_warning_days` INT NOT NULL DEFAULT 0,
               `deadline_required` TINYINT(1) NOT NULL DEFAULT 0,
               `has_files` TINYINT(1) NOT NULL DEFAULT 0,
@@ -360,7 +363,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
               `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
               `rating` TINYINT NULL COMMENT 'Star Rating 1-5, 0 = not rated, NULL = never set',
-              `deadline` DATE NULL,
+              `invoice_date` DATE NULL COMMENT 'Invoice date (shown as Invoice date in the UI)',
+              `completion_deadline` DATE NULL COMMENT 'Date the project has to be completed by (shown as Deadline in the UI)',
               `delay_reason` VARCHAR(500) NULL,
               `start_date` DATE NULL,
               `finished_at` DATE NULL,
@@ -824,6 +828,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `employees` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `name` VARCHAR(150) NOT NULL,
+              `user_id` VARCHAR(50) NULL UNIQUE,
               `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
               `email` VARCHAR(150) NULL,
               `phone` VARCHAR(50) NULL,
@@ -846,7 +851,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_emp_active (`is_active`),
-              INDEX idx_emp_name (`name`)
+              INDEX idx_emp_name (`name`),
+              CONSTRAINT fk_employees_user_id FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Employee Salaries & Payouts (Monthly / Weekly payroll records)
@@ -1024,6 +1030,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'project_types', 'has_deadline')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_deadline` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_gantt`");
         }
+        // The invoice date is its own switch, apart from the deadline. Types that
+        // were time-boxed when it was split off keep showing the date they had.
+        if (!ccrm_column_exists($pdo, 'project_types', 'has_invoice_date')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_invoice_date` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_deadline`");
+            $pdo->exec("UPDATE `project_types` SET `has_invoice_date` = `has_deadline`");
+        }
         if (!ccrm_column_exists($pdo, 'project_types', 'deadline_warning_days')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `deadline_warning_days` INT NOT NULL DEFAULT 0 AFTER `has_deadline`");
         }
@@ -1052,13 +1064,23 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'projects', 'name')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `name` VARCHAR(200) NULL AFTER `project_type_id`");
         }
-        if (!ccrm_column_exists($pdo, 'projects', 'deadline')) {
-            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `deadline` DATE NULL AFTER `status`");
+        // 1.11.160: `deadline` was always the date the project is invoiced, which
+        // the UI now says out loud - the column follows (data kept). The real
+        // "Deadline" is a column of its own, `completion_deadline`.
+        if (!ccrm_column_exists($pdo, 'projects', 'invoice_date')) {
+            if (ccrm_column_exists($pdo, 'projects', 'deadline')) {
+                $pdo->exec("ALTER TABLE `projects` CHANGE COLUMN `deadline` `invoice_date` DATE NULL");
+            } else {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `invoice_date` DATE NULL AFTER `status`");
+            }
+        }
+        if (!ccrm_column_exists($pdo, 'projects', 'completion_deadline')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
         }
         // A project past its deadline must say why. NULL on every existing row,
         // which is exactly what an unexplained delay looks like to the client.
         if (!ccrm_column_exists($pdo, 'projects', 'delay_reason')) {
-            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `delay_reason` VARCHAR(500) NULL AFTER `deadline`");
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `delay_reason` VARCHAR(500) NULL AFTER `completion_deadline`");
         }
         // When the project really started and really finished, set by hand. NULL
         // start reads as the creation date on the client; a set finish date
@@ -1202,6 +1224,14 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'tasks', 'email_reminders_json')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `email_reminders_json` TEXT NULL AFTER `completed_at`");
         }
+        // "Requires conclusion": a task flagged with it cannot be completed until
+        // the person finishing it has written how it went (the conclusion).
+        if (!ccrm_column_exists($pdo, 'tasks', 'requires_conclusion')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `requires_conclusion` TINYINT(1) NOT NULL DEFAULT 0 AFTER `email_reminders_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'conclusion')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `conclusion` TEXT NULL AFTER `requires_conclusion`");
+        }
         // A recurring rule is stored as one row, so the reports derive every past
         // charge from the rule itself. Raising the price used to rewrite the months
         // already paid at the old one; the superseded amounts now travel with the
@@ -1239,6 +1269,13 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'projects', 'division')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `division` VARCHAR(100) NULL AFTER `status`");
         }
+        // Employees: link to user login
+        if (!ccrm_column_exists($pdo, 'employees', 'user_id')) {
+            $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasEmp > 0) {
+                $pdo->exec("ALTER TABLE `employees` ADD COLUMN `user_id` VARCHAR(50) NULL AFTER `name`, ADD UNIQUE INDEX `uq_employees_user_id` (`user_id`), ADD CONSTRAINT `fk_employees_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL");
+            }
+        }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
@@ -1251,6 +1288,14 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_seed_default_employees($pdo);
         ccrm_repair_demo_employee_vacations($pdo);
         ccrm_migrate_user_role_varchar($pdo);
+        ccrm_migrate_employee_role_rbac($pdo);
+        // Employee documents used to sit in the public uploads directory.
+        try {
+            require_once __DIR__ . '/employee_files.php';
+            ccrm_migrate_employee_files_private($pdo);
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee document migration skipped: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -1308,6 +1353,43 @@ if (!function_exists('ccrm_schema_statements')) {
             $pdo->exec("UPDATE `users` SET `role` = 'Viewer' WHERE `role` = 'viewer'");
         } catch (\Throwable $e) {
             error_log('[ccrm] ccrm_migrate_user_role_varchar relabel: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Ensure the native Employee role exists in ROLES_RBAC for existing installs.
+     * Idempotent: if a role named 'Employee' already exists, leaves it untouched and logs it.
+     */
+    function ccrm_migrate_employee_role_rbac(PDO $pdo): void {
+        require_once __DIR__ . '/permissions.php';
+        try {
+            $stmtRoles = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC' LIMIT 1");
+            $stmtRoles->execute();
+            $rolesRaw = $stmtRoles->fetchColumn();
+            if ($rolesRaw !== false && $rolesRaw !== null && trim((string)$rolesRaw) !== '') {
+                $rolesList = json_decode((string)$rolesRaw, true);
+                if (is_array($rolesList)) {
+                    $hasEmp = false;
+                    foreach ($rolesList as $r) {
+                        if (is_array($r) && strtolower(trim((string)($r['name'] ?? ''))) === 'employee') {
+                            $hasEmp = true;
+                            break;
+                        }
+                    }
+                    if (!$hasEmp) {
+                        $rolesList[] = [
+                            'name' => 'Employee',
+                            'permissions' => ccrm_employee_role_permissions(),
+                        ];
+                        $upd = $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'ROLES_RBAC'");
+                        $upd->execute([json_encode($rolesList)]);
+                    } else {
+                        error_log("[ccrm] ccrm_migrate_employee_role_rbac: role 'Employee' already exists in ROLES_RBAC, leaving untouched.");
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee role migration error: ' . $e->getMessage());
         }
     }
 
@@ -1462,6 +1544,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 $pdo->exec("CREATE TABLE IF NOT EXISTS `employees` (
                   `id` VARCHAR(50) NOT NULL PRIMARY KEY,
                   `name` VARCHAR(150) NOT NULL,
+                  `user_id` VARCHAR(50) NULL UNIQUE,
                   `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
                   `email` VARCHAR(150) NULL,
                   `phone` VARCHAR(50) NULL,
@@ -1484,7 +1567,8 @@ if (!function_exists('ccrm_schema_statements')) {
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX idx_emp_active (`is_active`),
-                  INDEX idx_emp_name (`name`)
+                  INDEX idx_emp_name (`name`),
+                  CONSTRAINT fk_employees_user_id FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
             }
             $hasSal = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_salaries'")->fetchColumn();

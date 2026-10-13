@@ -94,6 +94,9 @@ try {
         }
 
         $pdo->exec("DELETE FROM `users`;");
+        try {
+            $pdo->exec("DELETE FROM `user_passkeys`;");
+        } catch (\Throwable $e) { /* ignore if table does not exist */ }
         $pdo->exec("DELETE FROM `system_settings`;");
 
         // Seed default Admin with a RANDOM password (never a known default like

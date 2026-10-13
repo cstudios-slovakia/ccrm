@@ -90,6 +90,8 @@ import {
   type PastRecurringCharge
 } from "../utils/pastRecurringCharges";
 import { PageHeader, Tabs } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
@@ -3917,26 +3919,36 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     // A movement standing in for one charge of a recurring rule: deleting it
     // hands the day back to the rule, which charges it by its schedule again.
     const target = financialRecords.find((r) => r.id === id);
-    const standsIn = target?.recurringSourceId && target.recurringOccurrenceDate ? target : null;
-    const question = standsIn
-      ? t(
-          "Delete this payment? The recurring rule will charge that day by its schedule again.",
-          "Naozaj vymazať túto platbu? Pravidelný pohyb bude tento deň opäť účtovať podľa plánu.",
-          "Törli ezt a fizetést? Az ismétlődő tétel újra az ütemezés szerint terheli azt a napot."
-        )
-      : t("Are you sure you want to delete this financial record?", "Naozaj chcete vymazať tento finančný záznam?", "Biztosan törölni szeretné ezt a tételt?");
-    if (confirm(question)) {
-      setFinancialRecords((prev) =>
-        prev
-          .filter((r) => r.id !== id)
-          .map((r) =>
-            standsIn && r.id === standsIn.recurringSourceId
+    if (!target) return;
+    const standsIn = target.recurringSourceId && target.recurringOccurrenceDate ? target : null;
+    const sourceBefore = standsIn ? financialRecords.find((r) => r.id === standsIn.recurringSourceId) : undefined;
+    deleteRecordsWithUndo({
+      collection: "financialRecords",
+      allRecords: financialRecords,
+      targets: [target],
+      setRecords: setFinancialRecords,
+      lang: userLanguage,
+      entity: "record",
+      titleOf: (r) => r.title,
+      applyExtra: () => {
+        if (!standsIn) return;
+        setFinancialRecords((prev) =>
+          prev.map((r) =>
+            r.id === standsIn.recurringSourceId
               ? { ...r, recurringSkippedDates: unskipRecurringDate(r, standsIn.recurringOccurrenceDate!) }
               : r
           )
-      );
-      (window as any).showToast?.(t("Record deleted", "Záznam bol vymazaný", "Tétel törölve"));
-    }
+        );
+      },
+      revertExtra: () => {
+        if (!sourceBefore) return;
+        setFinancialRecords((prev) =>
+          prev.map((r) =>
+            r.id === sourceBefore.id ? { ...r, recurringSkippedDates: sourceBefore.recurringSkippedDates } : r
+          )
+        );
+      },
+    });
   };
 
   // Shared Transaction Form Fields (used in both Slideout Drawer for Edit and Center Popup for Create)
@@ -5767,16 +5779,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {isWeeklyTableOpen && (
                     <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200  animate-in fade-in duration-200">
                       <table className="w-full text-left text-ui">
-                        <thead className="bg-slate-50  type-overline text-slate-500  border-b border-slate-200 ">
+                        <thead className="bg-slate-50 type-overline text-slate-500 border-b border-slate-200 sticky top-0 z-20">
                           <tr>
-                            <th className="py-3 px-4">{activeResolution === "month" || financialMode === "simplified" ? t("Month / Period", "Mesiac / Obdobie", "Hónap / Időszak") : t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
-                            <th className="py-3 px-4">{t("Type", "Typ", "Típus")}</th>
-                            <th className="py-3 px-4 text-right">{t("Cumulative Income", "Príjmy", "Bevételek")}</th>
-                            <th className="py-3 px-4 text-right">{t("Cumulative Expense", "Výdavky", "Kiadások")}</th>
-                            <th className="py-3 px-4 text-right">{activeResolution === "month" || financialMode === "simplified" ? t("Monthly Net Flow", "Mesačný čistý tok", "Havi nettó folyam") : t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
-                            <th className="py-3 px-4 text-right text-emerald-600 ">{financialMode === "simplified" ? t("🏦 Cumulative Balance", "🏦 Kumulatívny stav", "🏦 Kumulált egyenleg") : t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
-                            <th className="py-3 px-4 text-center">{financialMode === "simplified" ? t("Action", "Akcia", "Művelet") : t("Calibration", "Nastavenie", "Kalibráció")}</th>
-                            <th className="py-3 px-4 text-center">{financialMode === "simplified" ? t("Items", "Položky", "Tételek") : t("Movements", "Pohyby", "Tételek")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{activeResolution === "month" || financialMode === "simplified" ? t("Month / Period", "Mesiac / Obdobie", "Hónap / Időszak") : t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Type", "Typ", "Típus")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Cumulative Income", "Príjmy", "Bevételek")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Cumulative Expense", "Výdavky", "Kiadások")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{activeResolution === "month" || financialMode === "simplified" ? t("Monthly Net Flow", "Mesačný čistý tok", "Havi nettó folyam") : t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right text-emerald-600">{financialMode === "simplified" ? t("🏦 Cumulative Balance", "🏦 Kumulatívny stav", "🏦 Kumulált egyenleg") : t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-center">{financialMode === "simplified" ? t("Action", "Akcia", "Művelet") : t("Calibration", "Nastavenie", "Kalibráció")}</th>
+                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-center">{financialMode === "simplified" ? t("Items", "Položky", "Tételek") : t("Movements", "Pohyby", "Tételek")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100  font-medium">
@@ -7254,14 +7266,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       >
                                         <Pencil className="h-3.5 w-3.5" />
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteTransaction(rec.id)}
-                                        className="p-1.5 hover:bg-rose-50  rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                        title={t("Delete movement", "Vymazať pohyb", "Törlés")}
+                                      <HoldToConfirmButton
+                                          tone="danger"
+                                          lang={userLanguage}
+                                          what={rec.title}
+                                          onConfirm={() => handleDeleteTransaction(rec.id)}
+                                          className="p-1.5 hover:bg-rose-50  rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                                          title={t("Delete movement", "Vymazať pohyb", "Törlés")}
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
+                                      </HoldToConfirmButton>
                                     </div>
                                   </td>
                                 </tr>
@@ -7555,18 +7569,18 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
 
           {/* RECURRING EXPENSES TABLE */}
-          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
-            <div className="overflow-x-auto scrollbar-thin">
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm">
+            <div className="overflow-x-auto scrollbar-thin rounded-3xl">
               <table className="w-full text-left text-ui border-collapse">
-                <thead className="bg-slate-50  text-slate-600  type-overline border-b border-slate-200 ">
+                <thead className="bg-slate-50 text-slate-600 type-overline border-b border-slate-200 sticky top-0 z-20">
                   <tr>
-                    <th className="py-3.5 px-4 min-w-55">{t("Recurring Movement & Description", "Pravidelný pohyb & Popis", "Rendszeres tétel & Leírás")}</th>
-                    <th className="py-3.5 px-4 min-w-55">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</th>
-                    <th className="py-3.5 px-4 min-w-50">{t("Category Path", "Hierarchia kategórie", "Kategória útvonal")}</th>
-                    <th className="py-3.5 px-4 min-w-37.5">{t("Linked Entity", "Prepojenie", "Kapcsolódó elem")}</th>
-                    <th className="py-3.5 px-4 w-40 text-right">{t("Cost / Month", "Suma / Mesiac", "Összeg / Hó")}</th>
-                    <th className="py-3.5 px-4 w-27.5 text-center">{t("Status", "Stav", "Állapot")}</th>
-                    <th className="py-3.5 px-4 w-27.5 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-55 rounded-tl-3xl">{t("Recurring Movement & Description", "Pravidelný pohyb & Popis", "Rendszeres tétel & Leírás")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-55">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-50">{t("Category Path", "Hierarchia kategórie", "Kategória útvonal")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-37.5">{t("Linked Entity", "Prepojenie", "Kapcsolódó elem")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 w-40 text-right">{t("Cost / Month", "Suma / Mesiac", "Összeg / Hó")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 w-27.5 text-center">{t("Status", "Stav", "Állapot")}</th>
+                    <th className="sticky top-0 right-0 z-30 bg-slate-50 py-3.5 px-4 w-27.5 text-right rounded-tr-3xl">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>
 
@@ -7818,14 +7832,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               >
                                 <Copy className="h-3.5 w-3.5" />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTransaction(rec.id)}
-                                className="p-1.5 hover:bg-rose-50  rounded-lg text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                title={t("Delete rule", "Vymazať pravidlo", "Törlés")}
+                              <HoldToConfirmButton
+                                  tone="danger"
+                                  lang={userLanguage}
+                                  what={rec.title}
+                                  onConfirm={() => handleDeleteTransaction(rec.id)}
+                                  className="p-1.5 hover:bg-rose-50  rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                                  title={t("Delete rule", "Vymazať pravidlo", "Törlés")}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              </HoldToConfirmButton>
                             </div>
                           </td>
                         </tr>

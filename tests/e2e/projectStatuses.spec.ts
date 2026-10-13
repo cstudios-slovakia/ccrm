@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { holdToConfirm } from './helpers/hold';
 
 /**
  * Project statuses are configured in Settings → Project settings, the way the
@@ -78,7 +79,7 @@ test.describe('Project statuses', () => {
       .toBe('V realizácii');
 
     // Remove "on hold": project-2 sits in it and is moved to where projects start.
-    await statusRow(page, 'on_hold').getByRole('button', { name: 'Odstrániť stav' }).click();
+    await holdToConfirm(statusRow(page, 'on_hold').getByRole('button', { name: /^Zmazať:/ }));
     await expect(statusRow(page, 'on_hold')).toHaveCount(0);
     await expect.poll(() => pushed.projects.get('project-2')?.status, { timeout: 10_000 }).toBe('new');
     await expect.poll(() => pushedKeys(pushed), { timeout: 10_000 }).not.toContain('on_hold');
@@ -97,11 +98,11 @@ test.describe('Project statuses', () => {
     page.on('dialog', (dialog) => void dialog.accept());
 
     for (const key of ['on_hold', 'active']) {
-      await statusRow(page, key).getByRole('button', { name: 'Odstrániť stav' }).click();
+      await holdToConfirm(statusRow(page, key).getByRole('button', { name: /^Zmazať:/ }));
       await expect(statusRow(page, key)).toHaveCount(0);
     }
     // "new" is now the only open status left — a new project would have nowhere to start.
-    await statusRow(page, 'new').getByRole('button', { name: 'Odstrániť stav' }).click();
+    await holdToConfirm(statusRow(page, 'new').getByRole('button', { name: /^Zmazať:/ }));
     await expect(statusRow(page, 'new')).toBeVisible();
   });
 });

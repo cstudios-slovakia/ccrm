@@ -47,6 +47,31 @@ function mcp_project_url(\PDO $pdo, string $id): string {
     return mcp_app_base($pdo) . '#projects/' . rawurlencode($id);
 }
 
+/**
+ * What a project's type switches on, so a null date can be read correctly: a type
+ * without has_invoice_date / has_deadline never shows that field, which is
+ * different from "not set yet". Null for a project whose type is gone.
+ */
+function mcp_project_type_info(\PDO $pdo, ?string $typeId): ?array {
+    static $cache = [];
+    if ($typeId === null || $typeId === '') return null;
+    if (!array_key_exists($typeId, $cache)) {
+        $stmt = $pdo->prepare("SELECT id, name, has_timeline, has_gantt, has_deadline, has_invoice_date, deadline_warning_days, deadline_required FROM project_types WHERE id = ?");
+        $stmt->execute([$typeId]);
+        $t = $stmt->fetch(\PDO::FETCH_ASSOC);
+        $cache[$typeId] = $t ? [
+            'id' => $t['id'], 'name' => $t['name'],
+            'has_timeline' => (int)$t['has_timeline'] === 1,
+            'has_gantt' => (int)$t['has_gantt'] === 1,
+            'has_deadline' => (int)$t['has_deadline'] === 1,
+            'has_invoice_date' => (int)$t['has_invoice_date'] === 1,
+            'deadline_warning_days' => (int)$t['deadline_warning_days'],
+            'deadline_required' => (int)$t['deadline_required'] === 1,
+        ] : null;
+    }
+    return $cache[$typeId];
+}
+
 // ============================================================================
 // Text matching
 // ============================================================================
@@ -312,13 +337,13 @@ function mcp_project_status_groups(\PDO $pdo): array {
     return $out;
 }
 
-/** One project as a list row: resolved contract value, status group, deadline and link. */
+/** One project as a list row: resolved contract value, status group, invoice date, deadline and link. */
 function mcp_project_row(\PDO $pdo, array $p, array &$ctx, array $groups): array {
     $row = [
         'id' => $p['id'], 'name' => $p['name'] ?: null, 'status' => $p['status'],
         'status_group' => $groups[$p['status']] ?? null,
         'value' => mcp_project_value($pdo, $p, $ctx), 'budget' => $p['budget'] === null ? null : (float)$p['budget'],
-        'start_date' => $p['start_date'], 'deadline' => $p['deadline'], 'finished_at' => $p['finished_at'],
+        'start_date' => $p['start_date'], 'invoice_date' => $p['invoice_date'], 'completion_deadline' => $p['completion_deadline'], 'finished_at' => $p['finished_at'],
         'archived' => (int)$p['archived'] === 1, 'url' => mcp_project_url($pdo, (string)$p['id']),
     ];
     if (isset($p['_linked_by'])) $row['linked_by'] = $p['_linked_by'];
@@ -678,7 +703,7 @@ function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
     if (in_array('projects', $types, true) && mcp_can('projects')) {
         [$w, $p] = mcp_token_where(['p.name', 'l.name', 'c.name'], $tokens, 'p.name', $query);
         $stmt = $pdo->prepare(
-            "SELECT p.id, p.name, p.status, p.value, p.budget, p.deadline, p.lead_id, p.client_id, COALESCE(c.name, l.name) AS client_name
+            "SELECT p.id, p.name, p.status, p.value, p.budget, p.invoice_date, p.completion_deadline, p.lead_id, p.client_id, COALESCE(c.name, l.name) AS client_name
              FROM projects p
              LEFT JOIN leads l ON l.id = p.lead_id
              LEFT JOIN leads c ON c.id = p.client_id
@@ -717,7 +742,7 @@ function mcp_ext_intel_tool_definitions(): array {
     return [
         [
             'name' => 'get_client_dossier',
-            'description' => 'Everything about one client in a single call: profile (contacts, IČO/DIČ/IČ DPH, source, owner, notes), every project (active and past, with value, status and deadline), a financial summary (contracted, invoiced, paid, outstanding, still billable), open tasks and milestones, upcoming meetings and the last 5 timeline entries. Sections the key may not see are left out.',
+            'description' => 'Everything about one client in a single call: profile (contacts, IČO/DIČ/IČ DPH, source, owner, notes), every project (active and past, with value, status, invoice date and deadline), a financial summary (contracted, invoiced, paid, outstanding, still billable), open tasks and milestones, upcoming meetings and the last 5 timeline entries. Sections the key may not see are left out.',
             'inputSchema' => ['type' => 'object', 'properties' => ['identifier' => $client], 'required' => ['identifier']],
         ],
         [
@@ -764,7 +789,7 @@ function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args
             $rows = mcp_project_milestones($pdo, $user, $p);
             if (!empty($args['open_only'])) $rows = array_values(array_filter($rows, fn($m) => !$m['done']));
             return [
-                'project' => ['id' => $p['id'], 'name' => $p['name'], 'status' => $p['status'], 'deadline' => $p['deadline'], 'url' => mcp_project_url($pdo, (string)$p['id'])],
+                'project' => ['id' => $p['id'], 'name' => $p['name'], 'status' => $p['status'], 'invoice_date' => $p['invoice_date'], 'completion_deadline' => $p['completion_deadline'], 'url' => mcp_project_url($pdo, (string)$p['id'])],
                 'milestones' => $rows,
             ];
         }

@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
 import test from "node:test";
 import type { RolePermission, UserProfile } from "../types";
 import {
   ALL_PERMISSION_KEYS,
+  EMPLOYEE_ROLE_NAME,
   PERMISSION_DEFS,
   PERMISSION_SECTIONS,
+  PROTECTED_ROLE_NAMES,
   buildAccess,
+  employeeRolePermissions,
   findRole,
   firstAllowedRoute,
+  isProtectedRoleName,
   isSectionFullyDenied,
   isSectionFullyGranted,
   newRolePermissions,
@@ -171,7 +176,168 @@ test("routes map to their guarding key", () => {
   assert.equal(permissionKeyForRoute("projects?id=1"), "projects");
   assert.equal(permissionKeyForRoute("projects/123"), "projects");
   assert.equal(permissionKeyForRoute("project-123"), "projects");
+  assert.equal(permissionKeyForRoute("my-employment"), "my-employment");
   assert.equal(permissionKeyForRoute("personal-settings"), null);
   assert.equal(permissionKeyForRoute(""), "tasks");
   assert.equal(permissionKeyForRoute("something-else"), "tasks");
+});
+
+test("legacy role keeps today's effective access and resolves new keys' legacy defaults", () => {
+  const resolved = resolveRolePermissions(legacyPm);
+  // Existing keys keep access
+  assert.equal(resolved.employees, "edit");
+  assert.equal(resolved["employees.salaries"], "edit");
+  // New employee toggles default to edit for legacy roles so HR isn't locked out
+  assert.equal(resolved["employees.vacations"], "edit");
+  assert.equal(resolved["employees.files"], "edit");
+  assert.equal(resolved["employees.personal"], "edit");
+  // Self-service keys default to nothing, except self.account which is edit
+  assert.equal(resolved["self.account"], "edit");
+  assert.equal(resolved["self.profile"], "nothing");
+  assert.equal(resolved["self.payroll"], "nothing");
+  assert.equal(resolved["self.vacations"], "nothing");
+  assert.equal(resolved["self.files"], "nothing");
+  assert.equal(resolved["self.hours"], "nothing");
+});
+
+test("Employee defaults match prompt specification key-by-key", () => {
+  const defs = employeeRolePermissions();
+  assert.deepEqual(Object.keys(defs).sort(), [...ALL_PERMISSION_KEYS].sort());
+  // Tasks
+  assert.equal(defs.tasks, "edit");
+  assert.equal(defs["tasks.delete"], "nothing");
+  assert.equal(defs["tasks.view_all"], "nothing");
+  // No company data
+  assert.equal(defs.dashboard, "nothing");
+  assert.equal(defs["dashboard.custom"], "nothing");
+  assert.equal(defs.leads, "nothing");
+  assert.equal(defs.clients, "nothing");
+  assert.equal(defs.projects, "nothing");
+  assert.equal(defs.invoices, "nothing");
+  assert.equal(defs.warehouse, "nothing");
+  assert.equal(defs.financial, "nothing");
+  assert.equal(defs.employees, "nothing");
+  assert.equal(defs["employees.delete"], "nothing");
+  assert.equal(defs["employees.salaries"], "nothing");
+  assert.equal(defs["employees.vacations"], "nothing");
+  assert.equal(defs["employees.files"], "nothing");
+  assert.equal(defs["employees.personal"], "nothing");
+  assert.equal(defs.meetings, "nothing");
+  assert.equal(defs.files, "nothing");
+  assert.equal(defs.email, "nothing");
+  assert.equal(defs.unified_entries, "nothing");
+  assert.equal(defs.automation, "nothing");
+  assert.equal(defs.social_media, "nothing");
+  assert.equal(defs.overview, "nothing");
+  assert.equal(defs.updates, "edit");
+  assert.equal(defs.rag_ai, "nothing");
+  assert.equal(defs.general_config, "nothing");
+  assert.equal(defs.pm_managers, "nothing");
+  // Self service
+  assert.equal(defs["self.account"], "nothing");
+  assert.equal(defs["self.profile"], "view");
+  assert.equal(defs["self.payroll"], "edit");
+  assert.equal(defs["self.vacations"], "edit");
+  assert.equal(defs["self.files"], "edit");
+  assert.equal(defs["self.hours"], "edit");
+});
+
+test("buildAccess for Employee role grants only allowed self and task abilities", () => {
+  const empRole: RolePermission = { name: EMPLOYEE_ROLE_NAME, permissions: employeeRolePermissions() };
+  const a = buildAccess(user("Employee"), [empRole]);
+  assert.equal(a.isAdmin, false);
+  assert.equal(a.hasKnownRole, true);
+  // Tasks
+  assert.equal(a.can("tasks"), true);
+  assert.equal(a.canEdit("tasks"), true);
+  assert.equal(a.can("tasks.delete"), false);
+  assert.equal(a.can("tasks.view_all"), false);
+  assert.deepEqual(a.module("tasks"), { view: true, edit: true, delete: false });
+  // Employees module company-wide is locked
+  assert.equal(a.can("employees"), false);
+  assert.equal(a.can("employees.salaries"), false);
+  assert.equal(a.can("employees.vacations"), false);
+  assert.equal(a.can("employees.files"), false);
+  assert.equal(a.can("employees.personal"), false);
+  assert.deepEqual(a.module("employees"), { view: false, edit: false, delete: false });
+  // Self service
+  assert.equal(a.can("self.profile"), true);
+  assert.equal(a.canEdit("self.profile"), false);
+  assert.equal(a.can("self.payroll"), true);
+  assert.equal(a.can("self.vacations"), true);
+  assert.equal(a.canEdit("self.vacations"), true);
+  assert.equal(a.can("self.files"), true);
+  assert.equal(a.can("self.hours"), true);
+  assert.equal(a.can("self.account"), false);
+  // Routes
+  assert.equal(a.canOpenRoute("my-employment"), true);
+  assert.equal(a.canOpenRoute("tasks"), true);
+  assert.equal(a.canOpenRoute("employees"), false);
+  assert.equal(a.canOpenRoute("leads"), false);
+  assert.equal(firstAllowedRoute(a), "tasks");
+});
+
+test("canOpenRoute('my-employment') works for each self.* combination", () => {
+  const selfKeys = ["self.profile", "self.payroll", "self.vacations", "self.files", "self.hours"] as const;
+  for (const k of selfKeys) {
+    const role: RolePermission = {
+      name: "SingleKey",
+      permissions: { ...newRolePermissions(), [k]: k === "self.profile" ? "view" : "edit" },
+    };
+    const a = buildAccess(user("SingleKey"), [role]);
+    assert.equal(a.canOpenRoute("my-employment"), true, `should open with ${k}`);
+  }
+
+  // With none of the 5 self keys
+  const roleNone: RolePermission = {
+    name: "NoSelf",
+    permissions: { ...newRolePermissions(), "self.account": "edit" },
+  };
+  const aNone = buildAccess(user("NoSelf"), [roleNone]);
+  assert.equal(aNone.canOpenRoute("my-employment"), false);
+});
+
+test("Employee is a protected role and cannot be deleted", () => {
+  assert.ok(PROTECTED_ROLE_NAMES.includes("Employee"));
+  assert.equal(isProtectedRoleName("Employee"), true);
+  assert.equal(isProtectedRoleName("employee"), true);
+  assert.equal(isProtectedRoleName("EMPLOYEE"), true);
+  assert.equal(isProtectedRoleName("Admin"), true);
+  assert.equal(isProtectedRoleName("Project Manager"), true);
+  assert.equal(isProtectedRoleName("Viewer"), false);
+});
+
+test("P1: PHP registry equals TS registry", () => {
+  const phpOutput = execSync(
+    'php -r "require \'public/api/permissions.php\'; echo json_encode([\'sections\' => ccrm_permission_sections(), \'employee\' => ccrm_employee_role_permissions()]);"',
+    { encoding: "utf8" }
+  );
+  const php = JSON.parse(phpOutput);
+
+  // Compare sections structure: keys, kinds, defaults, requires
+  const tsSections = PERMISSION_SECTIONS.map((s) => ({
+    id: s.id,
+    permissions: s.permissions.map((p) => ({
+      key: p.key,
+      kind: p.kind,
+      legacyDefault: p.legacyDefault,
+      newRoleDefault: p.newRoleDefault,
+      requires: p.requires ?? null,
+      legacyKeys: p.legacyKeys ?? null,
+      legacyEdit: p.legacyEdit ?? null,
+    })),
+  }));
+
+  assert.deepEqual(php.sections, tsSections, "PHP permission sections match TS");
+  assert.deepEqual(php.employee, employeeRolePermissions(), "PHP Employee permissions match TS");
+});
+
+
+test("SAI follows leads: a role with no sales access is not offered it, and it is not open to everyone", () => {
+  assert.equal(permissionKeyForRoute("sai"), "leads");
+  const employee = buildAccess({ id: "u", name: "U", email: "u@x", role: "Employee" } as any, [
+    { name: "Employee", permissions: employeeRolePermissions() } as any,
+  ]);
+  assert.equal(employee.canOpenRoute("sai"), false);
+  assert.equal(employee.canOpenRoute("tasks"), true);
 });

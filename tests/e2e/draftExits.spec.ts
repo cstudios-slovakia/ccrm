@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { holdToConfirm } from './helpers/hold';
 import { buildSyncPayload } from './helpers/fixture';
 
 /**
@@ -115,7 +116,8 @@ test.describe('Drafts survive their exits', () => {
     const titleInput = page.getByText(/^(Task Title|Názov|Cím)$/).locator('xpath=following::input[1]');
     await titleInput.fill('Zavolať klientke Silvii — upravené');
     // The drawer's own full-width button, not the card's icon of the same name.
-    await page.getByRole('button').filter({ hasText: /^(Archive Task|Archivovať úlohu|Feladat archiválása)$/ }).click();
+    // Archiving is a hold now; the drawer's button is the last one named for this task.
+    await holdToConfirm(page.getByRole('button', { name: /^(Archivovať|Archive|Archiválás): .*(podržte pre potvrdenie|hold to confirm|tartsa lenyomva a megerősítéshez)$/ }).last());
 
     await expect.poll(() => {
       const task = [...pushed.values()].find((tk) => String(tk.title).startsWith('Zavolať klientke Silvii'));

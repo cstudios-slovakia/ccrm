@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   Calculator,
-  ChevronDown,
   RotateCcw,
   XCircle,
   Layers,
@@ -10,18 +9,17 @@ import {
   Receipt,
   Plus,
   Equal,
-  Eye,
-  EyeOff,
+  Hash,
   Info,
   Search,
   X,
   ExternalLink,
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
-import { readableOn } from "../utils/accentColor";
+import { deepenForWhite } from "../utils/accentColor";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
-import { WidgetCard } from "./dashboard/widgetKit";
+import { BigNumber, CardFooter, SegmentBar, SegmentedToggle, WidgetCard } from "./dashboard/widgetKit";
 
 export interface StatusStatDetailRow {
   id: string;
@@ -69,6 +67,8 @@ export interface StatusStatGroup {
   extraHighlight?: ExtraHighlightMetric;
 }
 
+export type GroupedEquationView = "detail" | "summary";
+
 export interface GroupedStatusValueEquationStatsProps {
   groups: StatusStatGroup[];
   currency?: string | null;
@@ -87,7 +87,25 @@ export interface GroupedStatusValueEquationStatsProps {
     title: string;
     icon: React.ComponentType<{ className?: string }>;
     accent: string;
+    /** "detail" draws the status pills, "summary" the total and a line per group. */
+    view?: GroupedEquationView;
+    /** The card's own toggle; without it the view is kept in the component. */
+    onView?: (view: GroupedEquationView) => void;
+    /** The "Remaining invoicable" line on a group. Shown unless false. */
+    showRemaining?: boolean;
+    /** How many records each status and group holds. Shown unless false. */
+    showCounts?: boolean;
   };
+
+  /** Controlled view. With `onViewChange` the caller owns it; otherwise it is kept here. */
+  view?: GroupedEquationView;
+  onViewChange?: (view: GroupedEquationView) => void;
+  /** Controlled "how many records" switch. The toggle is only drawn when `onShowCountsChange` is given or when not embedded. */
+  showCounts?: boolean;
+  onShowCountsChange?: (show: boolean) => void;
+  /** Controlled list of status keys left out of the total (${groupId}:${itemKey}). */
+  excludedKeys?: string[];
+  onExcludedKeysChange?: (keys: string[]) => void;
 }
 
 interface DrawerData {
@@ -102,46 +120,89 @@ interface DrawerData {
   rows: StatusStatDetailRow[];
 }
 
+const readStored = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStored = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore storage errors
+  }
+};
+
 export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquationStatsProps> = ({
   groups,
   currency,
   language = "sk",
   title,
   subtitle,
-  storageKey = "ccrm_dashboard_equation_stats",
+  storageKey,
   defaultExpanded = true,
   embedded,
+  view: controlledView,
+  onViewChange,
+  showCounts: controlledShowCounts,
+  onShowCountsChange,
+  excludedKeys,
+  onExcludedKeysChange,
 }) => {
   const resolvedCurrency = currency || "EUR";
 
-  // Read initial expanded state from localStorage
-  const [isExpanded, setIsExpanded] = useState<boolean>(() => {
+  // Uncontrolled fallbacks. They only matter when the caller does not own the
+  // value, and they only touch localStorage when a storageKey was given.
+  const [localExpanded, setLocalExpanded] = useState<boolean>(() => {
     if (storageKey) {
-      try {
-        const saved = localStorage.getItem(`${storageKey}_expanded`);
-        if (saved !== null) return saved === "true";
-      } catch {
-        // ignore storage errors
-      }
+      const saved = readStored(`${storageKey}_expanded`);
+      if (saved !== null) return saved === "true";
     }
     return defaultExpanded;
   });
 
-  // Read initial disabled keys from localStorage (scoped as `${groupId}:${itemKey}`)
-  const [disabledKeys, setDisabledKeys] = useState<Set<string>>(() => {
+  const [localDisabled, setLocalDisabled] = useState<Set<string>>(() => {
     if (storageKey) {
       try {
-        const saved = localStorage.getItem(`${storageKey}_disabled`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return new Set(parsed);
-        }
+        const saved = readStored(`${storageKey}_disabled`);
+        const parsed = saved ? JSON.parse(saved) : null;
+        if (Array.isArray(parsed)) return new Set(parsed);
       } catch {
         // ignore storage errors
       }
     }
     return new Set();
   });
+
+  const [localShowCounts, setLocalShowCounts] = useState(true);
+
+  const view: GroupedEquationView =
+    controlledView ?? embedded?.view ?? (localExpanded ? "detail" : "summary");
+  const showCounts =
+    controlledShowCounts ?? (embedded?.showCounts !== undefined ? embedded.showCounts : localShowCounts);
+  const disabledKeys = useMemo(
+    () => (excludedKeys ? new Set(excludedKeys) : localDisabled),
+    [excludedKeys, localDisabled]
+  );
+
+  const setView = (next: GroupedEquationView) => {
+    if (onViewChange) onViewChange(next);
+    else if (embedded?.onView) embedded.onView(next);
+    else setLocalExpanded(next === "detail");
+  };
+
+  const setDisabled = (next: Set<string>) => {
+    if (onExcludedKeysChange) onExcludedKeysChange(Array.from(next));
+    else setLocalDisabled(next);
+  };
+
+  const setShowCounts = (next: boolean) => {
+    if (onShowCountsChange) onShowCountsChange(next);
+    else setLocalShowCounts(next);
+  };
 
   // Slideout drawer state
   const [drawerData, setDrawerData] = useState<DrawerData | null>(null);
@@ -162,47 +223,28 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
     };
   }, [drawerData]);
 
-  // Persist expanded state
+  // Persist the uncontrolled state
   useEffect(() => {
-    if (storageKey) {
-      try {
-        localStorage.setItem(`${storageKey}_expanded`, String(isExpanded));
-      } catch {
-        // ignore storage errors
-      }
+    if (storageKey && controlledView === undefined && !embedded?.onView) {
+      writeStored(`${storageKey}_expanded`, String(localExpanded));
     }
-  }, [isExpanded, storageKey]);
+  }, [localExpanded, storageKey, controlledView, embedded]);
 
-  // Persist disabled keys
   useEffect(() => {
-    if (storageKey) {
-      try {
-        localStorage.setItem(
-          `${storageKey}_disabled`,
-          JSON.stringify(Array.from(disabledKeys))
-        );
-      } catch {
-        // ignore storage errors
-      }
+    if (storageKey && !excludedKeys) {
+      writeStored(`${storageKey}_disabled`, JSON.stringify(Array.from(localDisabled)));
     }
-  }, [disabledKeys, storageKey]);
+  }, [localDisabled, storageKey, excludedKeys]);
 
   const toggleStatus = (groupId: string, itemKey: string) => {
     const fullKey = `${groupId}:${itemKey}`;
-    setDisabledKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(fullKey)) {
-        next.delete(fullKey);
-      } else {
-        next.add(fullKey);
-      }
-      return next;
-    });
+    const next = new Set(disabledKeys);
+    if (next.has(fullKey)) next.delete(fullKey);
+    else next.add(fullKey);
+    setDisabled(next);
   };
 
-  const enableAll = () => {
-    setDisabledKeys(new Set());
-  };
+  const enableAll = () => setDisabled(new Set());
 
   const disableAll = () => {
     const allKeys = new Set<string>();
@@ -211,91 +253,13 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
         allKeys.add(`${g.id}:${item.key}`);
       });
     });
-    setDisabledKeys(allKeys);
+    setDisabled(allKeys);
   };
 
   const t = (en: string, sk: string, hu: string) => {
     if (language === "hu") return hu;
     if (language === "sk") return sk;
     return en;
-  };
-
-  // Group theme configurations
-  const groupThemes: Record<
-    string,
-    {
-      containerBg: string;
-      containerBorder: string;
-      headerBg: string;
-      headerText: string;
-      iconBg: string;
-      iconText: string;
-      subtotalBadge: string;
-    }
-  > = {
-    blue: {
-      containerBg: "bg-gradient-to-br from-blue-50/70 via-white/80 to-sky-50/50",
-      containerBorder: "border-blue-200/80 shadow-xs",
-      headerBg: "bg-blue-100/70",
-      headerText: "text-blue-900",
-      iconBg: "bg-blue-600 text-white shadow-blue-600/25",
-      iconText: "text-blue-600",
-      subtotalBadge: "bg-blue-600 text-white shadow-blue-600/20",
-    },
-    purple: {
-      containerBg: "bg-gradient-to-br from-purple-50/70 via-white/80 to-indigo-50/50",
-      containerBorder: "border-purple-200/80 shadow-xs",
-      headerBg: "bg-purple-100/70",
-      headerText: "text-purple-900",
-      iconBg: "bg-purple-600 text-white shadow-purple-600/25",
-      iconText: "text-purple-600",
-      subtotalBadge: "bg-purple-600 text-white shadow-purple-600/20",
-    },
-    indigo: {
-      containerBg: "bg-gradient-to-br from-indigo-50/70 via-white/80 to-slate-50/50",
-      containerBorder: "border-indigo-200/80 shadow-xs",
-      headerBg: "bg-indigo-100/70",
-      headerText: "text-indigo-900",
-      iconBg: "bg-indigo-600 text-white shadow-indigo-600/25",
-      iconText: "text-indigo-600",
-      subtotalBadge: "bg-indigo-600 text-white shadow-indigo-600/20",
-    },
-    emerald: {
-      containerBg: "bg-gradient-to-br from-emerald-50/70 via-white/80 to-teal-50/50",
-      containerBorder: "border-emerald-200/80 shadow-xs",
-      headerBg: "bg-emerald-100/70",
-      headerText: "text-emerald-900",
-      iconBg: "bg-emerald-600 text-white shadow-emerald-600/25",
-      iconText: "text-emerald-600",
-      subtotalBadge: "bg-emerald-600 text-white shadow-emerald-600/20",
-    },
-    amber: {
-      containerBg: "bg-gradient-to-br from-amber-50/70 via-white/80 to-yellow-50/50",
-      containerBorder: "border-amber-200/80 shadow-xs",
-      headerBg: "bg-amber-100/70",
-      headerText: "text-amber-900",
-      iconBg: "bg-amber-600 text-white shadow-amber-600/25",
-      iconText: "text-amber-600",
-      subtotalBadge: "bg-amber-600 text-white shadow-amber-600/20",
-    },
-    yellow: {
-      containerBg: "bg-gradient-to-br from-yellow-50/70 via-white/80 to-amber-50/50",
-      containerBorder: "border-yellow-200/80 shadow-xs",
-      headerBg: "bg-yellow-100/70",
-      headerText: "text-yellow-900",
-      iconBg: "bg-amber-500 text-white shadow-amber-500/25",
-      iconText: "text-amber-600",
-      subtotalBadge: "bg-amber-500 text-white shadow-amber-500/20",
-    },
-    cyan: {
-      containerBg: "bg-gradient-to-br from-cyan-50/70 via-white/80 to-blue-50/50",
-      containerBorder: "border-cyan-200/80 shadow-xs",
-      headerBg: "bg-cyan-100/70",
-      headerText: "text-cyan-900",
-      iconBg: "bg-cyan-600 text-white shadow-cyan-600/25",
-      iconText: "text-cyan-600",
-      subtotalBadge: "bg-cyan-600 text-white shadow-cyan-600/20",
-    },
   };
 
   // Group calculations
@@ -335,7 +299,6 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
     });
   }, [groups, disabledKeys]);
 
-  // Grand total calculation across all groups
   const grandTotalValue = useMemo(() => {
     return calculatedGroups.reduce((sum, g) => sum + g.subtotalValue, 0);
   }, [calculatedGroups]);
@@ -347,6 +310,10 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
   const totalPossibleItemsCount = useMemo(() => {
     return groups.reduce((sum, g) => sum + g.items.length, 0);
   }, [groups]);
+
+  const enabledStatusesCount = useMemo(() => {
+    return calculatedGroups.reduce((sum, g) => sum + g.enabledItems.length, 0);
+  }, [calculatedGroups]);
 
   const filteredDrawerRows = useMemo(() => {
     if (!drawerData || !drawerData.rows) return [];
@@ -362,7 +329,6 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
   }, [drawerData, drawerSearch]);
 
   const hasAnyItems = totalPossibleItemsCount > 0;
-  // A panel with nothing in it is left out; a widget the user placed says so.
   if (!hasAnyItems && !embedded) return null;
 
   const hasDisabledAnywhere = disabledKeys.size > 0;
@@ -378,412 +344,301 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
     "Interaktív számlázható értékösszesítő részletes tételes áttekintéssel"
   );
 
-  const collapsedChips = (
-    <div className="flex items-center gap-2 flex-wrap">
-      {calculatedGroups.map((g) => {
-        const theme = groupThemes[g.colorTheme || "blue"] || groupThemes.blue;
-        return (
-          <div
-            key={g.id}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl ${theme.headerBg} border ${theme.containerBorder} shadow-2xs`}
-          >
-            <span className="type-overline text-slate-600">
-              {g.name}:
-            </span>
-            <span className="text-ui font-bold text-slate-900 tabular-nums">
-              {formatMoney(g.subtotalValue, resolvedCurrency, language, {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2,
-              })}
-            </span>
-          </div>
-        );
-      })}
+  const money = (value: number) =>
+    formatMoney(value, resolvedCurrency, language, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const showRemaining = embedded?.showRemaining !== false;
 
-      {/* Remaining Invoicable teaser badge */}
-      {calculatedGroups.map((g) =>
-        g.extraHighlight ? (
-          <div
-            key={`teaser-${g.id}`}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 shadow-2xs"
-          >
-            <Receipt className="h-3 w-3 text-amber-600" />
-            <span className="type-overline">
-              {t("Remaining:", "Zostáva:", "Hátralévő:")}
-            </span>
-            <span className="text-ui font-bold text-amber-950 tabular-nums">
-              {formatMoney(g.extraHighlight.value, resolvedCurrency, language, {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2,
-              })}
-            </span>
-          </div>
-        ) : null
-      )}
+  const ghostButton =
+    "flex items-center gap-1 h-7 px-2 rounded-lg text-ui font-bold whitespace-nowrap transition-colors cursor-pointer";
 
-      {/* Grand Total pill */}
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-sm shadow-emerald-600/20">
-        <span className="type-overline text-emerald-100">
-          {t("Total Invoicable:", "Spolu na fakturáciu:", "Összes számlázható:")}
+  const openDrawer = (group: (typeof calculatedGroups)[number], item: StatusStatItem) => {
+    setDrawerSearch("");
+    setDrawerData({
+      groupName: group.name,
+      groupColor: group.colorTheme || "blue",
+      itemName: item.name,
+      itemColor: item.color || "#3b82f6",
+      itemValue: item.value,
+      itemCount: item.count,
+      totalBudget: item.totalBudget,
+      invoiced: item.invoiced,
+      rows: item.rows || [],
+    });
+  };
+
+  const groupChip = (group: (typeof calculatedGroups)[number]) => {
+    const Icon = group.icon || (group.id === "leads" ? Layers : Briefcase);
+    return (
+      <span className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+        <Icon className="h-4 w-4" />
+      </span>
+    );
+  };
+
+  const remainingRow = (group: (typeof calculatedGroups)[number]) =>
+    showRemaining && group.extraHighlight ? (
+      <div className="flex items-center justify-between gap-3 h-11 border-t border-slate-100">
+        <span className="flex items-center gap-2.5 min-w-0">
+          <Receipt className="h-4 w-4 text-amber-600 shrink-0" strokeWidth={2.25} />
+          <span className="flex flex-col min-w-0">
+            <span className="text-ui font-semibold text-slate-700 truncate">{group.extraHighlight.label}</span>
+            {group.extraHighlight.subtext && (
+              <span className="text-caption font-semibold text-slate-400 truncate">
+                {group.extraHighlight.subtext}
+              </span>
+            )}
+          </span>
         </span>
-        <span className="text-ui font-bold text-white tabular-nums">
-          {formatMoney(grandTotalValue, resolvedCurrency, language, {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-          })}
+        <span className="text-title-sm font-bold text-slate-900 tabular-nums shrink-0">
+          {money(group.extraHighlight.value)}
         </span>
       </div>
-    </div>
-  );
+    ) : null;
 
-  const toggleButton = (
-    <button
-      type="button"
-      className="h-8 px-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all type-overline flex items-center gap-1 shadow-2xs cursor-pointer"
-      onClick={(e) => {
-        e.stopPropagation();
-        setIsExpanded((prev) => !prev);
-      }}
-    >
-      <span>{isExpanded ? t("Collapse", "Zbaliť", "Összecsukás") : t("Expand", "Rozbaliť", "Kibontás")}</span>
-      <ChevronDown
-        className={`h-3.5 w-3.5 transition-transform duration-300 ${
-          isExpanded ? "rotate-180" : ""
+  const statusPill = (group: (typeof calculatedGroups)[number], item: StatusStatItem) => {
+    const fullKey = `${group.id}:${item.key}`;
+    const on = !disabledKeys.has(fullKey);
+    const fill = deepenForWhite(item.color || "#3b82f6");
+    const toggle = () => toggleStatus(group.id, item.key);
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={on}
+        data-status-key={fullKey}
+        onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        title={`${item.name}: ${money(item.value)} (${item.count}) — ${
+          on
+            ? t("Click to leave out", "Kliknutím vylúčite", "Kattintson a kizáráshoz")
+            : t("Click to count", "Kliknutím zahrniete", "Kattintson a beszámításhoz")
         }`}
+        className={cn(
+          "inline-flex items-center gap-2 h-8 pl-2.5 pr-1 rounded-lg border whitespace-nowrap transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40",
+          on
+            ? "text-white hover:brightness-110"
+            : "bg-white border-dashed border-slate-300 text-slate-500 hover:text-slate-700"
+        )}
+        style={on ? { backgroundColor: fill, borderColor: fill } : undefined}
+      >
+        <span className={cn("type-overline", !on && "line-through")}>{item.name}</span>
+        <span className={cn("text-ui font-bold tabular-nums", !on && "line-through")}>{money(item.value)}</span>
+        {showCounts && (
+          <span
+            className={cn(
+              "text-caption font-bold px-1.5 rounded-md",
+              on ? "bg-black/20" : "bg-slate-100 text-slate-500"
+            )}
+          >
+            {item.count}
+          </span>
+        )}
+        <button
+          type="button"
+          aria-label={t(
+            "Inspect calculated leads / projects",
+            "Zobraziť zoznam kalkulovaných obchodov/projektov",
+            "Kalkulált tételek részletes megtekintése"
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            openDrawer(group, item);
+          }}
+          className={cn(
+            "flex items-center justify-center w-6 h-6 rounded-md transition-colors cursor-pointer",
+            on ? "hover:bg-black/20" : "hover:bg-slate-100"
+          )}
+        >
+          <Info className="h-3.5 w-3.5" strokeWidth={2.25} />
+        </button>
+      </div>
+    );
+  };
+
+  const widgetActions = (
+    <>
+      {hasDisabledAnywhere && (
+        <button
+          type="button"
+          onClick={enableAll}
+          className={cn(ghostButton, "text-indigo-600 hover:bg-indigo-50")}
+        >
+          <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.25} />
+          {t("Select all", "Vybrať všetko", "Összes kijelölése")}
+        </button>
+      )}
+      {(onShowCountsChange || !embedded) && (
+        <button
+          type="button"
+          aria-pressed={showCounts}
+          onClick={() => setShowCounts(!showCounts)}
+          title={
+            showCounts
+              ? t("Hide record counts", "Skryť počty záznamov", "Darabszámok elrejtése")
+              : t("Show record counts", "Zobraziť počty záznamov", "Darabszámok megjelenítése")
+          }
+          className={cn(
+            ghostButton,
+            showCounts
+              ? "text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+          )}
+        >
+          <Hash className="h-3.5 w-3.5" strokeWidth={2.25} />
+          {t("Counts", "Počty", "Darabszám")}
+        </button>
+      )}
+      <SegmentedToggle
+        value={view}
+        onChange={(next) => setView(next as GroupedEquationView)}
+        options={[
+          { value: "detail", label: t("Detail", "Detail", "Részletes") },
+          { value: "summary", label: t("Summary", "Prehľad", "Összegzés") },
+        ]}
       />
-    </button>
+    </>
   );
 
-  const expandedBody = (
-    <div
-      className={embedded ? "space-y-4 animate-fade-in" : "p-5 space-y-5 animate-fade-in bg-slate-50/40"}
-    >
-        {/* Quick Toolbar: Select All / Deselect All / Reset */}
-        <div className="flex items-center justify-between gap-3 flex-wrap text-ui">
-          <div className="flex items-center gap-2">
-            <span className="type-overline text-slate-500">
-              {t(
-                "Interactive status toggles:",
-                "Interaktívne prepínače stavov:",
-                "Interaktív állapotkapcsolók:"
-              )}
-            </span>
-            <span className="text-micro font-semibold text-slate-400">
-              ({t("click Eye icon or badge to include/exclude; click (i) to inspect calculated items", "kliknutím na Oko/odznak zahrniete/vylúčite; kliknutím na (i) zobrazíte položky", "Kattintson a Szemre/jelvényre a ki/bekapcsoláshoz; kattintson az (i)-re a tételekhez")})
-            </span>
+  const widgetBody = (
+    <>
+      <div className="flex flex-col gap-3" title={subtitle || defaultSubtitle}>
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <BigNumber>{money(grandTotalValue)}</BigNumber>
+          <span className="text-ui font-semibold text-slate-500">
+            {t("invoicable in total", "na fakturovanie spolu", "számlázható összesen")}
+            {showCounts && ` · ${grandTotalCount} ${t("items", "položiek", "tétel")}`}
+            {hasDisabledAnywhere &&
+              ` · ${enabledStatusesCount} ${t("of", "zo", "/")} ${totalPossibleItemsCount} ${t("statuses", "stavov", "állapot")}`}
+          </span>
+        </div>
+        <SegmentBar
+          thickness={12}
+          segments={calculatedGroups.flatMap((group) =>
+            group.enabledItems.map((item) => ({
+              key: `${group.id}:${item.key}`,
+              value: Number(item.value) || 0,
+              color: item.color || "#3b82f6",
+              label: `${group.name} · ${item.name}: ${money(item.value)}`,
+            }))
+          )}
+        />
+      </div>
+
+      {view === "summary" ? (
+        <div className="flex flex-col">
+          {calculatedGroups.map((group) => (
+            <React.Fragment key={group.id}>
+              <div className="flex items-center justify-between gap-3 h-11 border-t border-slate-100">
+                <span className="flex items-center gap-2.5 min-w-0">
+                  {groupChip(group)}
+                  <span className="text-ui font-bold text-slate-800 truncate">{group.name}</span>
+                </span>
+                <span className="flex items-baseline gap-2 shrink-0">
+                  <span className="text-title-sm font-bold text-slate-900 tabular-nums">
+                    {money(group.subtotalValue)}
+                  </span>
+                  {showCounts && (
+                    <span className="text-ui font-semibold text-slate-400 tabular-nums">
+                      {group.subtotalCount} {group.unitLabel || t("items", "pol.", "db")}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {remainingRow(group)}
+            </React.Fragment>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-x-8 gap-y-5 @3xl/eq:grid-cols-2">
+            {calculatedGroups.map((group) => (
+              <section key={group.id} className="flex flex-col gap-3 min-w-0 border-t border-slate-100 pt-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    {groupChip(group)}
+                    <span className="flex flex-col min-w-0">
+                      <span className="text-ui font-bold text-slate-800 truncate">{group.name}</span>
+                      <span className="text-caption font-semibold text-slate-500 truncate">
+                        {group.enabledItems.length} {t("of", "zo", "/")} {group.items.length}{" "}
+                        {group.unitLabel || t("statuses", "stavov", "állapot")}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="flex items-baseline gap-2 shrink-0">
+                    <span className="text-title-sm font-bold text-slate-900 tabular-nums">
+                      {money(group.subtotalValue)}
+                    </span>
+                    {showCounts && (
+                      <span className="text-ui font-semibold text-slate-400 tabular-nums">
+                        {group.subtotalCount} {group.unitLabel || t("items", "pol.", "db")}
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+                  {group.items.map((item, index) => (
+                    <React.Fragment key={item.key}>
+                      {index > 0 && <span className="text-ui font-bold text-slate-300">+</span>}
+                      {statusPill(group, item)}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                {remainingRow(group)}
+              </section>
+            ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            {hasDisabledAnywhere && (
-              <button
-                type="button"
-                onClick={enableAll}
-                className="px-2.5 py-1 rounded-lg type-overline text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
-                title={t("Include all statuses", "Zahrnúť všetky stavy", "Összes állapot bekapcsolása")}
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>{t("Select all", "Vybrať všetko", "Összes kijelölése")}</span>
-              </button>
-            )}
+          <CardFooter>
+            <span className="flex items-center gap-1.5 flex-wrap text-ui font-semibold text-slate-500 min-w-0">
+              {calculatedGroups.map((group, index) => (
+                <React.Fragment key={group.id}>
+                  {index > 0 && <Plus className="h-3 w-3 text-slate-400 shrink-0" strokeWidth={3} />}
+                  <span className="whitespace-nowrap">
+                    {group.name}{" "}
+                    <span className="font-bold text-slate-700 tabular-nums">{money(group.subtotalValue)}</span>
+                  </span>
+                </React.Fragment>
+              ))}
+              <Equal className="h-3 w-3 text-slate-400 shrink-0" strokeWidth={3} />
+              <span className="font-bold text-slate-700 tabular-nums whitespace-nowrap">
+                {money(grandTotalValue)}
+              </span>
+            </span>
             <button
               type="button"
               onClick={disableAll}
-              className="px-2.5 py-1 rounded-lg type-overline text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
-              title={t("Exclude all statuses", "Vylúčiť všetky stavy", "Összes kizárása")}
+              className={cn(ghostButton, "text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0")}
             >
-              <XCircle className="h-3 w-3" />
-              <span>{t("Clear all", "Zrušiť všetko", "Minden törlése")}</span>
+              <XCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
+              {t("Clear all", "Zrušiť všetko", "Minden törlése")}
             </button>
-          </div>
-        </div>
-
-        {/* Group Containers Grid */}
-        <div
-        className={cn(
-          "grid grid-cols-1 gap-4",
-          embedded ? "@3xl/eq:grid-cols-2" : "ws-xl:grid-cols-2"
-        )}
-      >
-          {calculatedGroups.map((group) => {
-            const theme = groupThemes[group.colorTheme || "blue"] || groupThemes.blue;
-            const GroupIcon = group.icon || (group.id === "leads" ? Layers : Briefcase);
-
-            return (
-              <div
-                key={group.id}
-                className={`rounded-2xl border ${theme.containerBorder} ${theme.containerBg} p-4.5 flex flex-col justify-between gap-4 transition-all`}
-              >
-                {/* Group Header */}
-                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={`h-8 w-8 rounded-xl ${theme.iconBg} flex items-center justify-center shadow-xs shrink-0`}
-                    >
-                      <GroupIcon className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-ui font-heading font-bold text-slate-900">
-                          {group.name}
-                        </h3>
-                        <span className="px-1.5 py-0.5 rounded-md text-micro font-bold bg-white/90 border border-slate-200/80 text-slate-600">
-                          {group.items.length} {group.unitLabel || t("statuses", "stavov", "állapot")}
-                        </span>
-                      </div>
-                      {group.subtitle && (
-                        <p className="text-micro font-semibold text-slate-500">
-                          {group.subtitle}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Group Subtotal Badge */}
-                  <div className="flex flex-col items-end">
-                    <span className="type-overline text-slate-400">
-                      {t("Group Invoicable", "Medzisúčet na fakturáciu", "Részösszeg számlázható")}
-                    </span>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-body font-heading font-bold text-slate-900 tabular-nums">
-                        {formatMoney(group.subtotalValue, resolvedCurrency, language, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                      <span className="text-micro font-extrabold px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 shadow-2xs">
-                        {group.subtotalCount} {t("items", "pol.", "db")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Status Pills with Equation Operators */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {group.items.map((item, itemIdx) => {
-                    const isDisabled = disabledKeys.has(`${group.id}:${item.key}`);
-                    const isEnabled = !isDisabled;
-                    const pillBgColor = item.color || "#3b82f6";
-                    const pillTextColor = readableOn(pillBgColor);
-
-                    return (
-                      <React.Fragment key={item.key}>
-                        {itemIdx > 0 && (
-                          <span
-                            className={`text-ui font-bold transition-opacity ${
-                              isEnabled ? "text-slate-400" : "text-slate-300 opacity-40"
-                            }`}
-                          >
-                            +
-                          </span>
-                        )}
-
-                        <div
-                          onClick={() => toggleStatus(group.id, item.key)}
-                          className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border font-bold text-ui shadow-2xs transition-all duration-200 cursor-pointer active:scale-98 ${
-                            isEnabled
-                              ? "shadow-sm hover:brightness-105"
-                              : "bg-slate-100 text-slate-400 border-slate-200 opacity-40 hover:opacity-60 line-through"
-                          }`}
-                          style={
-                            isEnabled
-                              ? {
-                                  backgroundColor: pillBgColor,
-                                  borderColor: pillBgColor,
-                                  color: pillTextColor,
-                                }
-                              : undefined
-                          }
-                          title={`${item.name}: ${formatMoney(
-                            item.value,
-                            resolvedCurrency,
-                            language
-                          )} (${item.count}) — ${
-                            isEnabled
-                              ? t("Click to exclude / hide", "Kliknutím skryjete / vylúčite", "Kattintson az elrejtéshez")
-                              : t("Click to include / show", "Kliknutím zobrazíte / zahrniete", "Kattintson a megjelenítéshez")
-                          }`}
-                        >
-                          {/* 1. Show/Hide Eye Icon */}
-                          <span
-                            className="flex items-center justify-center p-0.5 rounded-md hover:bg-black/15 transition-colors"
-                            title={
-                              isEnabled
-                                ? t("Click to hide / exclude", "Kliknutím skryjete / vylúčite", "Kattintson az elrejtéshez")
-                                : t("Click to show / include", "Kliknutím zobrazíte / zahrniete", "Kattintson a megjelenítéshez")
-                            }
-                          >
-                            {isEnabled ? (
-                              <Eye className="h-3.5 w-3.5 stroke-[2.5]" />
-                            ) : (
-                              <EyeOff className="h-3.5 w-3.5 stroke-[2.5]" />
-                            )}
-                          </span>
-
-                          {/* Status Name */}
-                          <span className="font-heading type-overline">
-                            {item.name}
-                          </span>
-
-                          {/* Invoicable Amount */}
-                          <span
-                            className="font-extrabold tabular-nums text-caption"
-                            style={isEnabled ? { color: pillTextColor } : undefined}
-                          >
-                            {formatMoney(item.value, resolvedCurrency, language, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-
-                          {/* Count badge */}
-                          <span
-                            className={`text-micro font-bold px-1.5 py-0.5 rounded-md ${
-                              isEnabled
-                                ? "bg-black/20 text-white"
-                                : "bg-slate-200 text-slate-500"
-                            }`}
-                          >
-                            {item.count}
-                          </span>
-
-                          {/* 2. Info Icon Button (Opens Right Slideout) */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDrawerSearch("");
-                              setDrawerData({
-                                groupName: group.name,
-                                groupColor: group.colorTheme || "blue",
-                                itemName: item.name,
-                                itemColor: pillBgColor,
-                                itemValue: item.value,
-                                itemCount: item.count,
-                                totalBudget: item.totalBudget,
-                                invoiced: item.invoiced,
-                                rows: item.rows || [],
-                              });
-                            }}
-                            className="ml-0.5 flex items-center justify-center h-5 w-5 rounded-full hover:bg-black/25 active:scale-90 transition-all cursor-pointer"
-                            title={t(
-                              "Inspect calculated leads / projects",
-                              "Zobraziť zoznam kalkulovaných obchodov/projektov",
-                              "Kalkulált tételek részletes megtekintése"
-                            )}
-                          >
-                            <Info className="h-3.5 w-3.5 stroke-[2.5]" />
-                          </button>
-                        </div>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-
-                {/* Optional Extra Highlight Card (Always show Remaining Invoicable on Projects) */}
-                {group.extraHighlight && (
-                  <div className="mt-1 pt-3 border-t border-slate-200/60 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 bg-white/80 rounded-xl p-3 border border-amber-200/80 shadow-2xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="h-8 w-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
-                        <Receipt className="h-4 w-4 stroke-[2.5]" />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="type-overline text-amber-900 flex items-center gap-1.5">
-                          {group.extraHighlight.label}
-                          <span className="px-1.5 py-0.2 rounded-full type-overline bg-amber-100 text-amber-800">
-                            {t("Active Scope", "Aktívny rozsah", "Aktív hatókör")}
-                          </span>
-                        </span>
-                        {group.extraHighlight.subtext && (
-                          <p className="text-micro font-semibold text-slate-500 truncate mt-0.5">
-                            {group.extraHighlight.subtext}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-baseline gap-1.5 shrink-0 self-end ws-sm:self-auto">
-                      <span className="text-title-sm font-heading font-bold text-amber-950 tabular-nums">
-                        {formatMoney(group.extraHighlight.value, resolvedCurrency, language, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 3. Grand Equation Total Bar */}
-        <div
-        className={cn(
-          "glass-panel p-4 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center justify-between gap-4",
-          embedded ? "flex-col @3xl/eq:flex-row" : "flex-col ws-lg:flex-row"
-        )}
-      >
-          {/* Equation formula visualization */}
-          <div className="flex items-center gap-2 ws-sm:gap-3 flex-wrap justify-center ws-lg:justify-start">
-            <span className="text-ui font-bold text-slate-400">
-              {t("Total Invoicable Equation:", "Súčet rovnice na fakturáciu:", "Összesítő számlázási egyenlet:")}
-            </span>
-
-            {calculatedGroups.map((g, idx) => (
-              <React.Fragment key={`eq-${g.id}`}>
-                {idx > 0 && <Plus className="h-4 w-4 text-slate-400 stroke-[3]" />}
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200">
-                  <span className="type-overline text-slate-600">
-                    {g.name}:
-                  </span>
-                  <span className="text-ui font-bold text-slate-900 tabular-nums">
-                    {formatMoney(g.subtotalValue, resolvedCurrency, language, {
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              </React.Fragment>
-            ))}
-
-            <Equal className="h-4 w-4 text-slate-400 stroke-[3]" />
-          </div>
-
-          {/* Grand Total Highlight Badge */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25">
-              <div className="flex flex-col">
-                <span className="type-overline text-emerald-200 leading-none">
-                  {t("Total Invoicable Active Value", "Celková aktívna hodnota na fakturovanie", "Teljes aktív számlázható összeg")}
-                </span>
-                <span className="text-title font-heading font-bold text-white tabular-nums mt-0.5">
-                  {formatMoney(grandTotalValue, resolvedCurrency, language, {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              <span className="text-micro font-extrabold px-2 py-1 rounded-xl bg-white/20 text-white shadow-inner">
-                {grandTotalCount} {t("active items", "aktívnych položiek", "aktív tétel")}
-              </span>
-            </div>
-          </div>
-        </div>
-    </div>
+          </CardFooter>
+        </>
+      )}
+    </>
   );
 
   return (
     <>
-      {embedded ? (
+      <div data-status-equation className={embedded ? "h-full" : undefined}>
         <WidgetCard
-          icon={embedded.icon}
-          accent={embedded.accent}
-          title={embedded.title}
-          actions={toggleButton}
-          className="@container/eq"
+          icon={embedded?.icon || Calculator}
+          accent={embedded?.accent || "#4f46e5"}
+          title={embedded?.title || title || defaultTitle}
+          titleTooltip={subtitle || defaultSubtitle}
+          actions={hasAnyItems ? widgetActions : undefined}
+          className={cn("@container/eq select-none", embedded && "h-full")}
         >
           {hasAnyItems ? (
-            isExpanded ? expandedBody : collapsedChips
+            widgetBody
           ) : (
             <div className="flex-1 flex items-center justify-center py-6 text-ui text-slate-400 font-semibold text-center">
               {t(
@@ -794,309 +649,274 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
             </div>
           )}
         </WidgetCard>
-      ) : (
-      <div className="glass-panel rounded-[26px] border border-slate-200/90 bg-white/90 shadow-glass transition-all duration-300 overflow-hidden select-none">
-        {/* 1. Header Bar / Quick Expand-Collapse Toggle */}
-        <div
-          onClick={() => setIsExpanded((prev) => !prev)}
-          className="px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:bg-white/60 transition-colors border-b border-slate-100"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0">
-              <Calculator className="h-4.5 w-4.5 stroke-[2.5]" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-ui font-heading font-bold text-slate-900">
-                  {title || defaultTitle}
-                </span>
-                <span className="px-2 py-0.5 rounded-full type-overline bg-slate-100 border border-slate-200 text-slate-700 shadow-2xs">
-                  {groups.length} {t("groups", "skupiny", "csoport")} · {totalPossibleItemsCount}{" "}
-                  {t("statuses", "stavov", "állapot")}
-                </span>
-              </div>
-              <span className="text-micro font-semibold text-slate-400 mt-0.5 truncate max-w-xl hidden ws-sm:block">
-                {subtitle || defaultSubtitle}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0 flex-wrap">
-            {!isExpanded && collapsedChips}
-            {toggleButton}
-          </div>
-        </div>
-        {isExpanded && expandedBody}
       </div>
-      )}
 
-      {/* 4. Right Slideout Drawer for Inspected Items. Portalled: inside a
-          dashboard card a transformed ancestor (the card's fade-in, a drag)
-          would become the containing block of this fixed overlay. */}
-      {drawerData && createPortal(
-        <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex justify-end animate-fade-in"
-          onClick={() => setDrawerData(null)}
-        >
+      {/* Slideout Drawer for Inspected Items */}
+      {drawerData &&
+        createPortal(
           <div
-            className="w-full max-w-lg ws-sm:max-w-xl bg-white h-full shadow-2xl flex flex-col z-[10000] animate-in slide-in-from-right duration-300 overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex justify-end animate-fade-in"
+            onClick={() => setDrawerData(null)}
           >
-            {/* Drawer Header */}
-            <div className="p-5 border-b border-slate-100 bg-slate-50/80 flex items-start justify-between gap-4 shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div
-                  className="h-10 w-10 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 font-heading font-bold text-body"
-                  style={{ backgroundColor: drawerData.itemColor }}
-                >
-                  {drawerData.itemCount}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="type-overline text-slate-400">
-                      {drawerData.groupName}
-                    </span>
-                    <span
-                      className="px-2 py-0.5 rounded-full type-overline text-white shadow-2xs"
-                      style={{ backgroundColor: drawerData.itemColor }}
-                    >
-                      {drawerData.itemName}
-                    </span>
+            <div
+              className="w-full max-w-lg ws-sm:max-w-xl bg-white h-full shadow-2xl flex flex-col z-[10000] animate-in slide-in-from-right duration-300 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drawer Header */}
+              <div className="p-5 border-b border-slate-100 bg-slate-50/80 flex items-start justify-between gap-4 shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className="h-10 w-10 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 font-heading font-bold text-body"
+                    style={{ backgroundColor: deepenForWhite(drawerData.itemColor) }}
+                  >
+                    {drawerData.itemCount}
                   </div>
-                  <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
-                    {t("Calculated Items Breakdown", "Prehľad kalkulovaných položiek", "Kalkulált tételek részletei")}
-                  </h3>
-                  <p className="text-ui font-semibold text-slate-500 mt-0.5">
-                    {t("Invoicable in this status:", "Hodnota na fakturovanie v tomto stave:", "Számlázható összeg:")}{" "}
-                    <span className="font-bold text-emerald-700 font-heading">
-                      {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="type-overline text-slate-400">
+                        {drawerData.groupName}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded-full type-overline text-white shadow-2xs"
+                        style={{ backgroundColor: deepenForWhite(drawerData.itemColor) }}
+                      >
+                        {drawerData.itemName}
+                      </span>
+                    </div>
+                    <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
+                      {t("Calculated Items Breakdown", "Prehľad kalkulovaných položiek", "Kalkulált tételek részletei")}
+                    </h3>
+                    <p className="text-ui font-semibold text-slate-500 mt-0.5">
+                      {t("Invoicable in this status:", "Hodnota na fakturovanie v tomto stave:", "Számlázható összeg:")}{" "}
+                      <span className="font-bold text-emerald-700 font-heading">
+                        {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </p>
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setDrawerData(null)}
+                  className="h-8 w-8 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer shadow-2xs shrink-0"
+                >
+                  <X className="h-4 w-4 stroke-[2.5]" />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setDrawerData(null)}
-                className="h-8 w-8 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer shadow-2xs shrink-0"
-              >
-                <X className="h-4 w-4 stroke-[2.5]" />
-              </button>
-            </div>
-
-            {/* Budget Breakdown Strip if available */}
-            {drawerData.totalBudget !== undefined && drawerData.totalBudget > 0 && (
-              <div className="px-5 py-3 bg-amber-50/70 border-b border-amber-200/60 flex items-center justify-between gap-3 text-ui shrink-0">
-                <div className="flex items-center gap-4 flex-wrap">
-                  <div>
-                    <span className="type-overline text-slate-400 block">
-                      {t("Total Budget", "Celkový rozpočet", "Teljes büdzsé")}
-                    </span>
-                    <span className="font-bold text-slate-900 tabular-nums">
-                      {formatMoney(drawerData.totalBudget, resolvedCurrency, language, {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      })}
-                    </span>
-                  </div>
-                  {drawerData.invoiced !== undefined && (
+              {/* Budget Breakdown Strip if available */}
+              {drawerData.totalBudget !== undefined && drawerData.totalBudget > 0 && (
+                <div className="px-5 py-3 bg-amber-50/70 border-b border-amber-200/60 flex items-center justify-between gap-3 text-ui shrink-0">
+                  <div className="flex items-center gap-4 flex-wrap">
                     <div>
                       <span className="type-overline text-slate-400 block">
-                        {t("Invoiced so far", "Vyfakturované", "Számlázva")}
+                        {t("Total Budget", "Celkový rozpočet", "Teljes büdzsé")}
                       </span>
-                      <span className="font-bold text-indigo-700 tabular-nums">
-                        {formatMoney(drawerData.invoiced, resolvedCurrency, language, {
+                      <span className="font-bold text-slate-900 tabular-nums">
+                        {formatMoney(drawerData.totalBudget, resolvedCurrency, language, {
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
                         })}
                       </span>
                     </div>
-                  )}
-                  <div>
-                    <span className="type-overline text-amber-700 block">
-                      {t("Remaining Invoicable", "Zostáva vyfakturovať", "Hátralévő számlázható")}
-                    </span>
-                    <span className="font-heading font-bold text-amber-950 tabular-nums">
-                      {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Search Filter Bar */}
-            <div className="p-3.5 border-b border-slate-100 bg-white shrink-0">
-              <div className="relative">
-                <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={drawerSearch}
-                  onChange={(e) => setDrawerSearch(e.target.value)}
-                  placeholder={t(
-                    "Filter by name, client, manager, division...",
-                    "Filtrovať podľa názvu, klienta, manažéra, divízie...",
-                    "Szűrés név, ügyfél, felelős, divízió szerint..."
-                  )}
-                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
-                />
-                {drawerSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setDrawerSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Items List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
-              {filteredDrawerRows.length === 0 ? (
-                <div className="text-center py-16 text-slate-400">
-                  <p className="text-ui font-semibold">
-                    {drawerSearch
-                      ? t(
-                          "No items matching search query.",
-                          "Žiadne položky nezodpovedajú vyhľadávaniu.",
-                          "Nincs a keresésnek megfelelő tétel."
-                        )
-                      : t(
-                          "No individual records found in this status.",
-                          "V tomto stave sa nenašli žiadne položky.",
-                          "Nincsenek tételek ebben az állapotban."
-                        )}
-                  </p>
-                </div>
-              ) : (
-                filteredDrawerRows.map((row) => (
-                  <div
-                    key={row.id}
-                    className="p-3.5 rounded-2xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:shadow-md transition-all flex flex-col gap-2 group"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                          <span
-                            className={`px-2 py-0.5 rounded-full type-overline ${
-                              row.type === "project"
-                                ? "bg-purple-100 text-purple-800"
-                                : "bg-blue-100 text-blue-800"
-                            }`}
-                          >
-                            {row.type === "project"
-                              ? t("Project", "Projekt", "Projekt")
-                              : t("Lead", "Lead", "Lead")}
-                          </span>
-                          {row.division && (
-                            <span className="px-2 py-0.5 rounded-full text-micro font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                              {row.division}
-                            </span>
-                          )}
-                          {row.date && (
-                            <span className="text-micro font-semibold text-slate-400">
-                              {row.date}
-                            </span>
-                          )}
-                        </div>
-
-                        <a
-                          href={row.url || "#"}
-                          onClick={() => setDrawerData(null)}
-                          className="text-body font-heading font-bold text-slate-900 hover:text-indigo-600 transition-colors line-clamp-1 block"
-                        >
-                          {row.name}
-                        </a>
-
-                        {row.clientName && (
-                          <p className="text-ui font-semibold text-slate-500 truncate mt-0.5">
-                            {row.clientName}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Invoicable Value Badge */}
-                      <div className="text-right shrink-0">
+                    {drawerData.invoiced !== undefined && (
+                      <div>
                         <span className="type-overline text-slate-400 block">
-                          {t("Invoicable", "Na fakturovanie", "Számlázható")}
+                          {t("Invoiced so far", "Vyfakturované", "Számlázva")}
                         </span>
-                        <span className="text-body font-heading font-bold text-emerald-600 tabular-nums">
-                          {formatMoney(row.invoicable, resolvedCurrency, language, {
+                        <span className="font-bold text-indigo-700 tabular-nums">
+                          {formatMoney(drawerData.invoiced, resolvedCurrency, language, {
                             minimumFractionDigits: 0,
-                            maximumFractionDigits: 2,
+                            maximumFractionDigits: 0,
                           })}
                         </span>
                       </div>
-                    </div>
-
-                    {/* Financial Details for Projects with Invoiced vs Budget */}
-                    {row.type === "project" && row.totalBudget !== undefined && row.totalBudget > 0 && (
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-micro text-slate-500">
-                        <span>
-                          {t("Budget:", "Rozpočet:", "Büdzsé:")}{" "}
-                          <b className="text-slate-700 font-bold">
-                            {formatMoney(row.totalBudget, resolvedCurrency, language, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })}
-                          </b>
-                        </span>
-                        <span>
-                          {t("Invoiced:", "Vyfakturované:", "Számlázva:")}{" "}
-                          <b className="text-indigo-600 font-bold">
-                            {formatMoney(row.invoiced || 0, resolvedCurrency, language, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 0,
-                            })}
-                          </b>
-                        </span>
-                        {row.manager && (
-                          <span className="text-slate-400 truncate max-w-30">
-                            PM: {row.manager}
-                          </span>
-                        )}
-                      </div>
                     )}
-
-                    <div className="flex justify-end pt-1">
-                      <a
-                        href={row.url || "#"}
-                        onClick={() => setDrawerData(null)}
-                        className="text-micro font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
-                      >
-                        <span>{t("Open in CRM", "Otvoriť v CRM", "Megnyitás a CRM-ben")}</span>
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
+                    <div>
+                      <span className="type-overline text-amber-700 block">
+                        {t("Remaining Invoicable", "Zostáva vyfakturovať", "Hátralévő számlázható")}
+                      </span>
+                      <span className="font-heading font-bold text-amber-950 tabular-nums">
+                        {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        })}
+                      </span>
                     </div>
                   </div>
-                ))
+                </div>
               )}
-            </div>
 
-            {/* Drawer Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-ui text-slate-500 shrink-0">
-              <span className="font-semibold text-caption">
-                {filteredDrawerRows.length} {t("items calculated", "kalkulovaných položiek", "tétel számolva")}
-              </span>
-              <button
-                type="button"
-                onClick={() => setDrawerData(null)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-ui hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                {t("Close", "Zavrieť", "Bezárás")}
-              </button>
+              {/* Search Filter Bar */}
+              <div className="p-3.5 border-b border-slate-100 bg-white shrink-0">
+                <div className="relative">
+                  <Search className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={drawerSearch}
+                    onChange={(e) => setDrawerSearch(e.target.value)}
+                    placeholder={t(
+                      "Filter by name, client, manager, division...",
+                      "Filtrovať podľa názvu, klienta, manažéra, divízie...",
+                      "Szűrés név, ügyfél, felelős, divízió szerint..."
+                    )}
+                    className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
+                  />
+                  {drawerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setDrawerSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+                {filteredDrawerRows.length === 0 ? (
+                  <div className="text-center py-16 text-slate-400">
+                    <p className="text-ui font-semibold">
+                      {drawerSearch
+                        ? t(
+                            "No items matching search query.",
+                            "Žiadne položky nezodpovedajú vyhľadávaniu.",
+                            "Nincs a keresésnek megfelelő tétel."
+                          )
+                        : t(
+                            "No individual records found in this status.",
+                            "V tomto stave sa nenašli žiadne položky.",
+                            "Nincsenek tételek ebben az állapotban."
+                          )}
+                    </p>
+                  </div>
+                ) : (
+                  filteredDrawerRows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="p-3.5 rounded-2xl border border-slate-200/90 bg-white hover:border-indigo-300 hover:shadow-md transition-all flex flex-col gap-2 group"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            <span
+                              className={`px-2 py-0.5 rounded-full type-overline ${
+                                row.type === "project"
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}
+                            >
+                              {row.type === "project"
+                                ? t("Project", "Projekt", "Projekt")
+                                : t("Lead", "Lead", "Lead")}
+                            </span>
+                            {row.division && (
+                              <span className="px-2 py-0.5 rounded-full text-micro font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                {row.division}
+                              </span>
+                            )}
+                            {row.date && (
+                              <span className="text-micro font-semibold text-slate-400">
+                                {row.date}
+                              </span>
+                            )}
+                          </div>
+
+                          <a
+                            href={row.url || "#"}
+                            onClick={() => setDrawerData(null)}
+                            className="text-body font-heading font-bold text-slate-900 hover:text-indigo-600 transition-colors line-clamp-1 block"
+                          >
+                            {row.name}
+                          </a>
+
+                          {row.clientName && (
+                            <p className="text-ui font-semibold text-slate-500 truncate mt-0.5">
+                              {row.clientName}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Invoicable Value Badge */}
+                        <div className="text-right shrink-0">
+                          <span className="type-overline text-slate-400 block">
+                            {t("Invoicable", "Na fakturovanie", "Számlázható")}
+                          </span>
+                          <span className="text-body font-heading font-bold text-emerald-600 tabular-nums">
+                            {formatMoney(row.invoicable, resolvedCurrency, language, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Financial Details for Projects with Invoiced vs Budget */}
+                      {row.type === "project" && row.totalBudget !== undefined && row.totalBudget > 0 && (
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-micro text-slate-500">
+                          <span>
+                            {t("Budget:", "Rozpočet:", "Büdzsé:")}{" "}
+                            <b className="text-slate-700 font-bold">
+                              {formatMoney(row.totalBudget, resolvedCurrency, language, {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              })}
+                            </b>
+                          </span>
+                          <span>
+                            {t("Invoiced:", "Vyfakturované:", "Számlázva:")}{" "}
+                            <b className="text-indigo-600 font-bold">
+                              {formatMoney(row.invoiced || 0, resolvedCurrency, language, {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              })}
+                            </b>
+                          </span>
+                          {row.manager && (
+                            <span className="text-slate-400 truncate max-w-30">
+                              PM: {row.manager}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex justify-end pt-1">
+                        <a
+                          href={row.url || "#"}
+                          onClick={() => setDrawerData(null)}
+                          className="text-micro font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
+                        >
+                          <span>{t("Open in CRM", "Otvoriť v CRM", "Megnyitás a CRM-ben")}</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-ui text-slate-500 shrink-0">
+                <span className="font-semibold text-caption">
+                  {filteredDrawerRows.length} {t("items calculated", "kalkulovaných položiek", "tétel számolva")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDrawerData(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-ui hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  {t("Close", "Zavrieť", "Bezárás")}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 };

@@ -290,6 +290,10 @@ function mcp_rec_charges(array $rule, string $startIso, string $endIso): array {
 
 /** A financial_records row, shaped like the app's FinancialRecord (camelCase, decoded JSON). */
 function mcp_fin_record(array $r): array {
+    // A salary row never carries the employee's name for a key owner without employees.salaries.
+    if (!mcp_can('employees.salaries') && ccrm_is_salary_finance_row($r)) {
+        $r = ccrm_anonymise_salary_finance_row($r);
+    }
     $cfg = json_decode((string)($r['recurring_config_json'] ?? ''), true);
     $hist = json_decode((string)($r['recurring_amount_history_json'] ?? ''), true);
     $skip = json_decode((string)($r['recurring_skipped_dates_json'] ?? ''), true);

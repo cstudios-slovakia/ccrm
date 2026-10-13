@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // SECURITY: Authenticated users only
-ccrm_require_auth();
+$sessionUser = ccrm_require_auth();
 
 require_once __DIR__ . '/agent_utils.php';
 
@@ -43,6 +43,33 @@ $input = file_get_contents('php://input');
 $payload = json_decode($input, true) ?: [];
 
 $action = $payload['action'] ?? 'create_session';
+
+// The voice assistant is part of the AI assistant: it needs rag_ai, and what it reads is
+// limited to what the caller's role may read (see the `scope` option of the context
+// builder). Its tools WRITE, so each one also needs the edit right of the module it
+// writes to — the assistant must never do what the app would refuse.
+$ccrmVoiceScope = ccrm_require_perm($pdo, $sessionUser, 'rag_ai', 'view');
+$ccrmVoiceWrites = [
+    'create_task' => ['tasks', 'edit'],
+    'create_lead' => ['leads', 'edit'],
+    'create_project' => ['projects', 'edit'],
+    'update_project' => ['projects', 'edit'],
+    'add_project_task' => ['tasks', 'edit'],
+    'add_project_financial' => ['financial', 'edit'],
+    'add_project_milestone' => ['projects', 'edit'],
+    'delete_project' => ['projects', 'delete'],
+];
+if (isset($ccrmVoiceWrites[$action])) {
+    [$needModule, $needLevel] = $ccrmVoiceWrites[$action];
+    $allowed = $needLevel === 'delete'
+        ? !empty(ccrm_perm_module($ccrmVoiceScope['permissions'] ?? [], $needModule)['delete'])
+        : ccrm_can($ccrmVoiceScope, $needModule, 'edit');
+    if (!$allowed) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Forbidden']);
+        exit;
+    }
+}
 
 // 2.1. WebRTC SDP Exchange Proxy Action (bypasses browser CORS & preflight blocks)
 if ($action === 'exchange_sdp') {
@@ -101,7 +128,7 @@ if ($action === 'query_rag') {
     }
 
     try {
-        $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $query, $systemLanguage, $agentId, ['limit' => 20]);
+        $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $query, $systemLanguage, $agentId, ['limit' => 20, 'scope' => $ccrmVoiceScope]);
         $resultText = !empty($ragData['raw_context']) ? $ragData['raw_context'] : $ragData['sanitized_context'];
         if (empty(trim($resultText))) {
             $resultText = "No specific CRM records found matching query: " . $query;
@@ -179,7 +206,7 @@ function ccrm_resolve_project_type_id(\PDO $pdo, ?string $typeName = null): stri
     if ($typeId) return (string)$typeId;
 
     $defId = 'pt_general';
-    $ins = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `has_timeline`, `has_gantt`, `has_deadline`, `created_at`) VALUES (?, 'General Projects', 'Standard project workflow', 'Briefcase', '#6366f1', 1, 1, 1, NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`)");
+    $ins = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `has_timeline`, `has_gantt`, `has_deadline`, `has_invoice_date`, `created_at`) VALUES (?, 'General Projects', 'Standard project workflow', 'Briefcase', '#6366f1', 1, 1, 1, 1, NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`)");
     $ins->execute([$defId]);
     return $defId;
 }
@@ -326,9 +353,18 @@ if ($action === 'add_client_note') {
     $sessionUser = $_SESSION['user'] ?? [];
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
 
-    $stmt = $pdo->prepare("SELECT `id`, `name` FROM `leads` WHERE `name` LIKE ? LIMIT 1");
+    // First match the caller may both see and edit (a lead needs leads, a client needs
+    // clients), so a note can never be filed on a record the app would not open for them.
+    $stmt = $pdo->prepare("SELECT `id`, `name`, `adjustment` FROM `leads` WHERE `name` LIKE ? LIMIT 25");
     $stmt->execute(['%' . $clientName . '%']);
-    $lead = $stmt->fetch(PDO::FETCH_ASSOC);
+    $lead = null;
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $candidate) {
+        $candidateKey = ccrm_is_client_record($candidate) ? 'clients' : 'leads';
+        if (ccrm_lead_row_visible($candidate, $ccrmVoiceScope) && ccrm_can_edit($ccrmVoiceScope, $candidateKey)) {
+            $lead = $candidate;
+            break;
+        }
+    }
 
     if (!$lead) {
         echo json_encode(['success' => false, 'message' => "Client '{$clientName}' not found in CRM."]);
@@ -374,13 +410,14 @@ if ($action === 'create_project') {
     $status = in_array($payload['status'] ?? '', ccrm_project_statuses($pdo), true) ? $payload['status'] : ccrm_default_project_status($pdo);
     $rating = (isset($payload['rating']) && is_numeric($payload['rating'])) ? max(1, min(5, (int)$payload['rating'])) : null;
     $budget = (isset($payload['budget']) && is_numeric($payload['budget']) && (float)$payload['budget'] > 0) ? (float)$payload['budget'] : null;
-    $deadline = !empty($payload['deadline']) && preg_match('/^\d{4}-\d{2}-\d{2}/', $payload['deadline']) ? substr($payload['deadline'], 0, 10) : null;
+    $invoiceDate = !empty($payload['invoice_date']) && preg_match('/^\d{4}-\d{2}-\d{2}/', $payload['invoice_date']) ? substr($payload['invoice_date'], 0, 10) : null;
+    $completionDeadline = !empty($payload['completion_deadline']) && preg_match('/^\d{4}-\d{2}-\d{2}/', $payload['completion_deadline']) ? substr($payload['completion_deadline'], 0, 10) : null;
     $startDate = date('Y-m-d');
     $delayReason = !empty($payload['delay_reason']) ? trim($payload['delay_reason']) : null;
 
     try {
-        $ins = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `rating`, `deadline`, `delay_reason`, `start_date`, `budget`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        $ins->execute([$projId, $projectTypeId, $name, $leadId, $clientId, $status, $rating, $deadline, $delayReason, $startDate, $budget]);
+        $ins = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `budget`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+        $ins->execute([$projId, $projectTypeId, $name, $leadId, $clientId, $status, $rating, $invoiceDate, $completionDeadline, $delayReason, $startDate, $budget]);
 
         ccrm_ensure_project_data_table($pdo, $projectTypeId);
         $insData = $pdo->prepare("INSERT INTO `proj_data_" . preg_replace('/[^a-z0-9_]/', '', strtolower($projectTypeId)) . "` (`id`, `project_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `project_id` = VALUES(`project_id`)");
@@ -434,10 +471,15 @@ if ($action === 'update_project') {
         $updates[] = "`budget` = ?";
         $params[] = is_numeric($payload['budget']) ? (float)$payload['budget'] : null;
     }
-    if (isset($payload['deadline'])) {
-        $dl = !empty($payload['deadline']) && preg_match('/^\d{4}-\d{2}-\d{2}/', $payload['deadline']) ? substr($payload['deadline'], 0, 10) : null;
-        $updates[] = "`deadline` = ?";
+    if (isset($payload['invoice_date'])) {
+        $dl = !empty($payload['invoice_date']) && preg_match('/^\d{4}-\d{2}-\d{2}/', $payload['invoice_date']) ? substr($payload['invoice_date'], 0, 10) : null;
+        $updates[] = "`invoice_date` = ?";
         $params[] = $dl;
+    }
+    if (isset($payload['completion_deadline'])) {
+        $cd = !empty($payload['completion_deadline']) && preg_match('/^\d{4}-\d{2}-\d{2}/', $payload['completion_deadline']) ? substr($payload['completion_deadline'], 0, 10) : null;
+        $updates[] = "`completion_deadline` = ?";
+        $params[] = $cd;
     }
     if (isset($payload['delay_reason'])) {
         $updates[] = "`delay_reason` = ?";
@@ -501,7 +543,7 @@ if ($action === 'add_project_task') {
     $taskId = 'task_' . time() . '_' . substr(md5(uniqid()), 0, 6);
     $description = trim($payload['description'] ?? '');
     $priority = in_array($payload['priority'] ?? '', ['low', 'medium', 'high']) ? $payload['priority'] : 'medium';
-    $deadline = !empty($payload['due_date']) ? $payload['due_date'] : (!empty($proj['deadline']) ? $proj['deadline'] : date('Y-m-d', strtotime('+3 days')));
+    $deadline = !empty($payload['due_date']) ? $payload['due_date'] : (!empty($proj['completion_deadline']) ? $proj['completion_deadline'] : date('Y-m-d', strtotime('+3 days')));
     $owner = trim($payload['assigned_to'] ?? $creator);
 
     try {
@@ -593,7 +635,7 @@ if ($action === 'add_project_milestone') {
     $ganttId = 'gantt_' . time() . '_' . substr(md5(uniqid()), 0, 6);
 
     $startDate = !empty($payload['start_date']) ? substr($payload['start_date'], 0, 10) : date('Y-m-d');
-    $endDate = !empty($payload['end_date']) ? substr($payload['end_date'], 0, 10) : (!empty($proj['deadline']) ? $proj['deadline'] : date('Y-m-d', strtotime('+14 days')));
+    $endDate = !empty($payload['end_date']) ? substr($payload['end_date'], 0, 10) : (!empty($proj['completion_deadline']) ? $proj['completion_deadline'] : date('Y-m-d', strtotime('+14 days')));
     $progress = isset($payload['progress']) && is_numeric($payload['progress']) ? max(0, min(100, (int)$payload['progress'])) : 0;
 
     try {
@@ -727,7 +769,7 @@ if (empty($skillInstructions)) {
 
 // 4. Gather live CRM context across all 16 domains via comprehensive RAG engine
 try {
-    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, '', $systemLanguage, $agentId, ['limit' => 32]);
+    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, '', $systemLanguage, $agentId, ['limit' => 32, 'scope' => $ccrmVoiceScope]);
     $crmContext = !empty($ragData['raw_context']) ? $ragData['raw_context'] : $ragData['sanitized_context'];
 } catch (\Exception $e) {
     $crmContext = "";
@@ -763,9 +805,9 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "3. VOICE PROJECT MANAGEMENT CAPABILITIES (FULL CONTROL):\n"
     . "   - You can completely manage and update all project operations via voice!\n"
     . "   - Creating Projects ('hozz létre egy új projektet...', 'vytvor nový projekt...', 'create project...'):\n"
-    . "     * Call 'create_project' with name, client_name, project_type, budget, deadline, managers, status, rating.\n"
+    . "     * Call 'create_project' with name, client_name, project_type, budget, invoice_date, completion_deadline, managers, status, rating.\n"
     . "   - Updating Projects ('módosítsd a projektet...', 'uprav projekt...', 'állítsd át a státuszt...', 'költségvetés legyen...'):\n"
-    . "     * Call 'update_project' with project_identifier and the updated fields (status, budget, deadline, delay_reason, rating, managers, client_name).\n"
+    . "     * Call 'update_project' with project_identifier and the updated fields (status, budget, invoice_date, completion_deadline, delay_reason, rating, managers, client_name).\n"
     . "   - Adding Tasks to a Project ('adj hozzá egy feladatot a projekthez...', 'pridaj úlohu k projektu...'):\n"
     . "     * Call 'add_project_task' with project_identifier, title, priority, due_date, assigned_to.\n"
     . "   - Recording Direct Costs / Incomes on a Project ('írj fel egy költséget a projekthez...', 'zaeviduj náklad k projektu...', 'bevétel a projekthez...'):\n"
@@ -834,7 +876,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'create_project',
-        'description' => 'Creates and registers a new project in CCRM with client pairing, budget, deadline, managers, and status.',
+        'description' => 'Creates and registers a new project in CCRM with client pairing, budget, invoice date, deadline, managers, and status.',
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -854,9 +896,13 @@ $realtimeTools = [
                     'type' => 'number',
                     'description' => 'Total allocated budget for the project in EUR.'
                 ],
-                'deadline' => [
+                'invoice_date' => [
                     'type' => 'string',
-                    'description' => 'Project completion deadline in YYYY-MM-DD format.'
+                    'description' => 'Project invoice date ("Termin fakturacie") in YYYY-MM-DD format.'
+                ],
+                'completion_deadline' => [
+                    'type' => 'string',
+                    'description' => 'Project completion deadline ("Deadline" / "Termin dokoncenia") in YYYY-MM-DD format.'
                 ],
                 'status' => [
                     'type' => 'string',
@@ -879,7 +925,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'update_project',
-        'description' => 'Updates an existing project\'s status, budget, deadline, delay reason, rating, managers, or name.',
+        'description' => 'Updates an existing project\'s status, budget, invoice date, deadline, delay reason, rating, managers, or name.',
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -900,13 +946,17 @@ $realtimeTools = [
                     'type' => 'number',
                     'description' => 'Updated total budget in EUR.'
                 ],
-                'deadline' => [
+                'invoice_date' => [
                     'type' => 'string',
-                    'description' => 'Updated deadline in YYYY-MM-DD format.'
+                    'description' => 'Updated invoice date ("Termin fakturacie") in YYYY-MM-DD format.'
+                ],
+                'completion_deadline' => [
+                    'type' => 'string',
+                    'description' => 'Updated completion deadline ("Deadline" / "Termin dokoncenia") in YYYY-MM-DD format.'
                 ],
                 'delay_reason' => [
                     'type' => 'string',
-                    'description' => 'Explanation of why the project is delayed past deadline.'
+                    'description' => 'Explanation of why the project is delayed past its deadline.'
                 ],
                 'rating' => [
                     'type' => 'number',

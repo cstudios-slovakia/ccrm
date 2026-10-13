@@ -60,7 +60,7 @@ and committed to `dist/`, then published to the docroot by `php ccrm update`.
 ### First-time install on a new server
 
 1. Prerequisites: SSH access to the host; a MySQL/MariaDB database + user
-   already created; PHP ≥ 8.0 (8.2+ recommended) with the `pdo_mysql`,
+   already created; PHP ≥ 8.2 (8.5 recommended) with the `pdo_mysql`,
    `imap`, `zip` and `curl` extensions enabled; `git` and `composer`
    available over SSH.
 2. SSH in and clone directly into the (empty) docroot — this folder **is**

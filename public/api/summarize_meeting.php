@@ -3,6 +3,7 @@
  * AI Meeting Note Summarization Endpoint.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -13,8 +14,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// SECURITY: Authenticated users only
-ccrm_require_auth();
+// SECURITY: Authenticated users only, and only with a view of the meetings module.
+$sessionUser = ccrm_require_auth();
+ccrm_gate($sessionUser, 'meetings');
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {

@@ -24,14 +24,17 @@ const LEAD_PHASE = 'NEW';
 const card = (page: Page): Locator => page.locator(`[data-flip="${WIDGET}"]`);
 const pill = (page: Page, name: string): Locator => card(page).getByText(name, { exact: true });
 
+const drawer = (page: Page): Locator =>
+  page.getByRole('complementary', { name: /Nastavenia modulu|Widget settings|Modul beállításai/ });
+
 /** The status chips in the settings drawer, by the label they carry. */
 const chip = (page: Page, name: string): Locator =>
-  page.getByRole('complementary').getByRole('button', { name, exact: true });
+  drawer(page).getByRole('button', { name, exact: true });
 
 async function openSettings(page: Page) {
   await page.getByRole('button', { name: EDIT, exact: true }).click();
   await card(page).click();
-  await expect(page.getByRole('complementary')).toBeVisible();
+  await expect(drawer(page)).toBeVisible();
 }
 
 test.describe('Invoicable value by status widget', () => {

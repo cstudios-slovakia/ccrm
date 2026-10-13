@@ -47,6 +47,10 @@ docker-compose.override.yml
 chyby na opravu.txt
 design-system
 CRM Application Design System.zip
+Claude outputs/
+presentation-client/
+*-prompt.md
+biometric-login-prompt.md
 
 # Secrets / runtime-generated files — never commit real credentials.
 config.php

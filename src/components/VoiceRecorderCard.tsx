@@ -10,6 +10,7 @@ import {
     Check,
 } from "lucide-react";
 import { cn } from "../utils/cn";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 
 export type VoiceRecordingState =
     | "idle"
@@ -376,10 +377,12 @@ export const VoiceRecorderCard: React.FC<VoiceRecorderCardProps> = ({
                                 {formatDuration(Math.floor(currentTime))} /{" "}
                                 {formatDuration(Math.floor(audioDuration))}
                             </span>
-                            <button
-                                type="button"
-                                onClick={onRemove}
-                                className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors p-1.5 rounded-lg cursor-pointer shrink-0"
+                            <HoldToConfirmButton
+                                tone="danger"
+                                lang={systemLanguage}
+                                what={t("recording", "nahrávku", "felvételt")}
+                                onConfirm={onRemove}
+                                className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors p-1.5 rounded-lg shrink-0"
                                 title={t(
                                     "Delete audio",
                                     "Odstrániť nahrávku",
@@ -387,7 +390,7 @@ export const VoiceRecorderCard: React.FC<VoiceRecorderCardProps> = ({
                                 )}
                             >
                                 <Trash2 className="h-4 w-4" />
-                            </button>
+                            </HoldToConfirmButton>
                         </div>
                     )}
                 </div>

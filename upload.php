@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/api/auth.php';
+require_once __DIR__ . '/api/read_scope.php';
+require_once __DIR__ . '/api/employee_files.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -30,10 +32,20 @@ if (php_sapi_name() !== 'cli') {
     }
     $perms = ccrm_user_permissions($pdo, $sessionUser);
     $uploadOk = false;
-    foreach (['files', 'leads', 'clients', 'projects', 'meetings', 'invoices', 'warehouse', 'unified_entries', 'tasks', 'email', 'employees'] as $mod) {
-        if (ccrm_perm_can_edit($perms, $mod)) {
-            $uploadOk = true;
-            break;
+    // Employee documents (contracts) are private: they need employees = edit AND the
+    // employees.files toggle, and they are stored out of public reach (below). The
+    // `employees` module is deliberately NOT in the generic list, or any HR role could
+    // use this endpoint to drop a file into the public uploads directory.
+    $isEmployeeDoc = (isset($_POST['module']) && (string)$_POST['module'] === 'employees');
+    if ($isEmployeeDoc) {
+        $uploadScope = ccrm_read_scope($pdo, $sessionUser);
+        $uploadOk = ccrm_can_edit($uploadScope, 'employees') && ccrm_can($uploadScope, 'employees.files');
+    } else {
+        foreach (['files', 'leads', 'clients', 'projects', 'meetings', 'invoices', 'warehouse', 'unified_entries', 'tasks', 'email'] as $mod) {
+            if (ccrm_perm_can_edit($perms, $mod)) {
+                $uploadOk = true;
+                break;
+            }
         }
     }
     if (!$uploadOk) {
@@ -74,10 +86,16 @@ if (php_sapi_name() !== 'cli') {
         exit;
     }
 
-    $uploadDir = ccrm_uploads_dir();
-
-    // Prefix file name with eventId to keep it unique
-    $targetPath = $uploadDir . $eventId . '_' . $fileName;
+    // Prefix file name with eventId to keep it unique. An employee document gets a
+    // random name in the private directory instead; the original name travels back in
+    // `fileName` and is kept only in the employee's record.
+    if ($isEmployeeDoc) {
+        $privateName = ccrm_employee_private_new_name($fileName);
+        $targetPath = ccrm_employee_private_dir() . $privateName;
+    } else {
+        $uploadDir = ccrm_uploads_dir();
+        $targetPath = $uploadDir . $eventId . '_' . $fileName;
+    }
 
     if (move_uploaded_file($file['tmp_name'], $targetPath)) {
         // Bytes that do not carry their format's magic number were truncated or
@@ -92,6 +110,21 @@ if (php_sapi_name() !== 'cli') {
                 'error' => 'The uploaded file is damaged or incomplete (it is not a valid ' .
                     strtoupper(pathinfo($fileName, PATHINFO_EXTENSION)) . ' file). Please try attaching it again.'
             ]);
+            exit;
+        }
+
+        if ($isEmployeeDoc) {
+            // No text extraction for HR documents: nothing indexes them, and the text
+            // would only travel through places that are not access controlled.
+            echo json_encode([
+                'success' => true,
+                'fileName' => $fileName,
+                // The storage key, not a URL: the client stores it in the file record and
+                // downloads through api/employee_file.php.
+                'filePath' => ccrm_employee_private_prefix() . $privateName,
+                'private' => true,
+                'extractedText' => ''
+            ], JSON_INVALID_UTF8_SUBSTITUTE);
             exit;
         }
 

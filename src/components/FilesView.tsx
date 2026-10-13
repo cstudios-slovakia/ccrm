@@ -3,7 +3,7 @@ import {
   FolderOpen, FileText, Search, Clock, User, Euro, 
   ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye, Lock, Briefcase
 } from "lucide-react";
-import type { Lead, Project, ProjectType } from "../types";
+import type { Lead, Project, ProjectType, TimelineEvent } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -13,12 +13,17 @@ import { formatBytes } from "../utils/formatBytes";
 import { formatMoney } from "../utils/currency";
 import { nowLocalStamp, formatTimestampLocalized } from "../utils/localTime";
 import {
+  asUploadedFiles,
   collectProjectRegistryFiles,
   removeProjectUploadedFile,
+  restoreProjectUploadedFile,
   uploadDiskName,
   type RegistryFileType,
 } from "../utils/projectDocuments";
 import { PageHeader } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 interface QueuedFile {
   id: string;
@@ -375,68 +380,69 @@ export const FilesView: React.FC<FilesViewProps> = ({
     }
   };
 
-  const handleDeleteFile = async (file: RegistryRow) => {
+  // Strategy C: the reference leaves the project / client at once, the file on the
+  // server is deleted only when the undo window closes. If the server refuses,
+  // the reference comes back with the server's message.
+  const handleDeleteFile = (file: RegistryRow) => {
     if (!canDelete) return;
-    const confirmMsg = systemLanguage === "sk"
-      ? `Naozaj chcete vymazať súbor "${file.fileName}"?`
-      : systemLanguage === "hu"
-        ? `Biztosan törölni szeretné a(z) "${file.fileName}" fájlt?`
-        : `Are you sure you want to delete the file "${file.fileName}"?`;
-        
-    if (!window.confirm(confirmMsg)) return;
+    const isProjectFile = file.source === "project" && file.projectId && file.slotId && setProjects;
+    const matches = (f: { path?: string; name?: string }) =>
+      file.filePath ? String(f.path ?? "") === file.filePath : String(f.name ?? "") === file.fileName;
 
-    try {
-      const diskName = uploadDiskName(file.filePath || `${file.id}_${file.fileName}`);
-      const res = await fetch("/api/delete_file.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: diskName })
+    let apply: () => void;
+    let revert: () => void;
+    if (isProjectFile) {
+      const project = projects.find(p => p.id === file.projectId);
+      const slotFiles: any[] = file.slotCustom
+        ? (project?.customFileFields || []).find(slot => slot.id === file.slotId)?.files || []
+        : asUploadedFiles(project?.data?.[file.slotId!]);
+      const index = slotFiles.findIndex(matches);
+      const removedFile = slotFiles[index];
+      apply = () => setProjects!(prev => prev.map(p => p.id !== file.projectId ? p
+        : removeProjectUploadedFile(p, file.slotId!, Boolean(file.slotCustom), file.filePath, file.fileName)));
+      revert = () => {
+        if (!removedFile) return;
+        setProjects!(prev => prev.map(p => p.id !== file.projectId ? p
+          : restoreProjectUploadedFile(p, file.slotId!, Boolean(file.slotCustom), removedFile, index)));
+      };
+    } else {
+      // Where the event sat on each lead, so Undo puts it back in the same place.
+      const removed = new Map<string, { event: TimelineEvent; index: number }>();
+      leads.forEach(lead => {
+        const index = (lead.timeline || []).findIndex(event => event.id === file.id);
+        if (index >= 0) removed.set(lead.id, { event: (lead.timeline || [])[index], index });
       });
-      
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || "Failed to delete file from server");
-      }
-
-      if (file.source === "project" && file.projectId && file.slotId && setProjects) {
-        setProjects(prev => prev.map(project => {
-          if (project.id !== file.projectId) return project;
-          return removeProjectUploadedFile(
-            project,
-            file.slotId!,
-            Boolean(file.slotCustom),
-            file.filePath,
-            file.fileName,
-          );
-        }));
-      } else {
-        setLeads((prevLeads: Lead[]) => {
-          return prevLeads.map(lead => {
-            if (!lead.timeline) return lead;
-            const updatedTimeline = lead.timeline.filter(event => event.id !== file.id);
-            return {
-              ...lead,
-              timeline: updatedTimeline
-            };
-          });
-        });
-      }
-
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(
-          systemLanguage === "sk"
-            ? "Súbor bol úspešne vymazaný"
-            : systemLanguage === "hu"
-              ? "A fájl sikeresen törölve"
-              : "File deleted successfully"
-        );
-      }
-    } catch (err: any) {
-      console.error(err);
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(err.message || t("Failed to delete file.", "Vymazanie súboru zlyhalo.", "A fájl törlése sikertelen."));
-      }
+      apply = () => setLeads((prevLeads: Lead[]) => prevLeads.map(lead =>
+        lead.timeline ? { ...lead, timeline: lead.timeline.filter(event => event.id !== file.id) } : lead
+      ));
+      revert = () => setLeads((prevLeads: Lead[]) => prevLeads.map(lead => {
+        const hit = removed.get(lead.id);
+        if (!hit || (lead.timeline || []).some(event => event.id === file.id)) return lead;
+        const next = [...(lead.timeline || [])];
+        next.splice(Math.min(hit.index, next.length), 0, hit.event);
+        return { ...lead, timeline: next };
+      }));
     }
+
+    runUndoable({
+      message: singleMessage(systemLanguage, "file", "delete", file.fileName),
+      undoLabel: undoLabel(systemLanguage),
+      apply,
+      revert,
+      failureMessage: t("Failed to delete file.", "Vymazanie súboru zlyhalo.", "A fájl törlése sikertelen."),
+      onCommit: async () => {
+        const diskName = uploadDiskName(file.filePath || `${file.id}_${file.fileName}`);
+        const res = await fetch("/api/delete_file.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: diskName })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || "Failed to delete file from server");
+        }
+      },
+    });
   };
 
   // Dynamic files aggregator: scan client timelines and every project file slot
@@ -761,7 +767,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-6 text-right">
+                      <td className="py-3.5 px-6 text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 transition-colors group-hover:bg-amber-50">
                         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           {!(
                             file.clientName === "Unassigned Documents" ||
@@ -809,13 +815,16 @@ export const FilesView: React.FC<FilesViewProps> = ({
                             <span>{systemLanguage === "sk" ? "Stiahnuť" : systemLanguage === "hu" ? "Letöltés" : "Download"}</span>
                           </a>
                           {canDelete && (
-                            <button
-                              onClick={() => handleDeleteFile(file)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-150 cursor-pointer active:scale-95"
-                              title={t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
+                            <HoldToConfirmButton
+                                tone="danger"
+                                lang={systemLanguage}
+                                what={file.fileName}
+                                onConfirm={() => handleDeleteFile(file)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-150 active:scale-95"
+                                title={t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
                             >
                               <Trash className="h-4 w-4 stroke-[2.2]" />
-                            </button>
+                            </HoldToConfirmButton>
                           )}
                         </div>
                       </td>

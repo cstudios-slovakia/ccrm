@@ -3,6 +3,7 @@
  * Handles uploading meeting audio recordings.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -13,8 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// SECURITY: Only authenticated users can upload recordings
-ccrm_require_auth();
+// SECURITY: Only authenticated users can upload recordings, and only editors of a module that
+// records audio: a meeting note, or a voice note on a lead's or client's timeline.
+$sessionUser = ccrm_require_auth();
+ccrm_gate_any($sessionUser, ['meetings', 'leads', 'clients'], 'edit');
 
 if (!isset($_FILES['audio']) || !isset($_POST['meetingId'])) {
     http_response_code(400);

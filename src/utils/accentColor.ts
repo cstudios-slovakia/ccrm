@@ -70,6 +70,29 @@ export const readableOn = (background: string | undefined | null, fallback = PAP
   return onInk > onPaper ? INK : PAPER;
 };
 
+/**
+ * The same hue, darkened just far enough that a white label reads on it.
+ *
+ * For a solid fill that always carries white text (a status pill in the
+ * equation widget): a light configured colour such as a #facc15 yellow would
+ * otherwise force a dark label. The colour is scaled towards black in small
+ * steps, so the hue survives and a colour that already passes is returned as is.
+ */
+export const deepenForWhite = (color: string | undefined | null, minContrast = 4.5): string => {
+  const rgb = parseCssColor(color);
+  if (!rgb) return color || "";
+  const paper = relativeLuminance(parseCssColor(PAPER)!);
+  let [r, g, b] = rgb;
+  let steps = 0;
+  while (steps < 60 && contrastRatio(relativeLuminance([r, g, b]), paper) < minContrast) {
+    r = Math.round(r * 0.95);
+    g = Math.round(g * 0.95);
+    b = Math.round(b * 0.95);
+    steps++;
+  }
+  return steps === 0 ? (color as string) : `rgb(${r}, ${g}, ${b})`;
+};
+
 /** `#rgb`, `#rrggbb`, `#rrggbbaa` and `rgb()/rgba()`. Anything else gives null. */
 const parseCssColor = (color: string | undefined | null): [number, number, number] | null => {
   if (!color) return null;

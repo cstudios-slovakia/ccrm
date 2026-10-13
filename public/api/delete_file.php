@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/employee_files.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -34,6 +36,21 @@ if (php_sapi_name() !== 'cli') {
 
     // SECURITY: only authenticated users may delete files.
     $sessionUser = ccrm_require_auth();
+
+    // ...and only with the right to delete in the Files module, which is the only place
+    // that calls this endpoint. Being signed in used to be enough to remove any upload.
+    $gatePdo = ccrm_auth_pdo();
+    if ($gatePdo === null) {
+        http_response_code(503);
+        echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
+        exit;
+    }
+    $gateScope = ccrm_read_scope($gatePdo, $sessionUser);
+    if (!ccrm_can_edit($gateScope, 'files') || !ccrm_perm_module($gateScope['permissions'] ?? [], 'files')['delete']) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'You do not have permission to delete files.']);
+        exit;
+    }
 }
 
 $input = file_get_contents('php://input');
@@ -58,6 +75,17 @@ if ($fileName === '' || $fileName === '.' || $fileName === '..') {
 
 $uploadDir = ccrm_uploads_dir();
 $filePath = $uploadDir . $fileName;
+
+// Employee documents are private (see employee_files.php) and live outside the
+// directory this endpoint can reach. A legacy public contract that the migration has
+// not moved yet is protected by the same rule instead of by its location.
+if (strncmp($fileName, 'emp_contract_', 13) === 0 && $sessionUser !== null) {
+    if (!ccrm_can_edit($gateScope, 'employees') || !ccrm_can($gateScope, 'employees.files')) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'You do not have permission to delete this file.']);
+        exit;
+    }
+}
 
 // Never delete the directory's own guard file — it is what keeps uploads/ from
 // executing what it stores.

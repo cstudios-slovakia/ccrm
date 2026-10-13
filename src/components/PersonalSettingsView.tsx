@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon, Bot, Key, Copy, Check, Eye, EyeOff, Sparkles, Terminal, Code2, Trash2, Bell, Volume2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
+import { PasskeySettings } from "./PasskeySettings";
 import type { UserProfile } from "../types";
-import type { Language } from "../utils/translations";
+import { getTranslation, type Language } from "../utils/translations";
 import type { Appearance, ThemeMode } from "../utils/theme";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ThemeSettings } from "./ThemeSettings";
@@ -17,6 +18,10 @@ import {
   type NotificationPermissionState,
 } from "../utils/browserNotifications";
 import { PageHeader } from "./layout";
+import { PwaInstallCard } from "./PwaInstallCard";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { clearErrorLogsWithUndo } from "../utils/errorLogs";
+import { asLang } from "../utils/undoMessages";
 
 interface PersonalSettingsViewProps {
   currentUser: UserProfile;
@@ -35,6 +40,11 @@ interface PersonalSettingsViewProps {
   setErrorSidebarEnabled: (enabled: boolean) => void;
   /** Tab to open on, from the route (`personal-settings/email`). */
   initialSubTab?: string;
+  /**
+   * self.account: may this person change their own login name and e-mail? Off locks both fields (the
+   * server ignores the change too). Password and preferences are never locked.
+   */
+  canChangeAccount?: boolean;
 }
 
 const SUB_TABS = ["profile", "email", "mcp", "errors"] as const;
@@ -55,7 +65,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   onSync,
   errorSidebarEnabled,
   setErrorSidebarEnabled,
-  initialSubTab
+  initialSubTab,
+  canChangeAccount = true
 }) => {
   const activeLang = userLanguage || systemLanguage;
   const t = (en: string, sk: string, hu: string) => activeLang === "sk" ? sk : activeLang === "hu" ? hu : en;
@@ -117,20 +128,10 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
     }
   };
 
-  const clearErrorLogs = async () => {
-    if (!confirm(t("Are you sure you want to clear all error logs?", "Naozaj chcete vymazať všetky chybové záznamy?", "Biztosan törölni szeretné az összes hibanaplót?"))) {
-      return;
-    }
-    try {
-      const response = await fetch("/api/error_logs.php", { method: "DELETE" });
-      const data = await response.json();
-      if (data.success) {
-        setErrorLogs([]);
-        (window as any).showToast(t("Error logs cleared.", "Chybové záznamy boli vymazané.", "A hibanaplók törölve."));
-      }
-    } catch (e) {
-      console.error("Failed to clear error logs", e);
-    }
+  // The hold on the button is the confirmation; the logs are deleted on the server
+  // when the undo window closes (utils/errorLogs).
+  const clearErrorLogs = () => {
+    clearErrorLogsWithUndo({ logs: errorLogs, setLogs: setErrorLogs, lang: asLang(activeLang) });
   };
 
   const handleClearCacheAndReload = async () => {
@@ -367,8 +368,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
       if (u.email === currentUser.email) {
         const updated = {
           ...u,
-          name: name.trim(),
-          email: email.trim(),
+          // Locked by the role (self.account): keep the stored login name and e-mail.
+          name: canChangeAccount ? name.trim() : u.name,
+          email: canChangeAccount ? email.trim() : u.email,
           password: password.trim()
         };
         // Update session storage current user in real-time
@@ -547,14 +549,23 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                 <User className="h-4.5 w-4.5 text-indigo-500" /> {t("Personal Information", "Osobné Údaje", "Személyes adatok")}
               </h3>
 
+              {!canChangeAccount && (
+                <p className="type-meta text-slate-500 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2" data-testid="personal-account-locked">
+                  {getTranslation(systemLanguage, "personal.account_locked")}
+                </p>
+              )}
+
               <div className="space-y-1.5">
                 <label className="type-overline text-slate-600">{t("Display Name", "Meno a priezvisko", "Megjelenítendő név")}</label>
                 <input
                   type="text"
                   required
                   value={name}
+                  readOnly={!canChangeAccount}
+                  aria-readonly={!canChangeAccount}
+                  data-testid="personal-name"
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className={`w-full px-4 py-2.5 rounded-xl ${canChangeAccount ? "bg-white" : "bg-slate-50 text-slate-500 cursor-not-allowed"} border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500`}
                 />
               </div>
 
@@ -564,8 +575,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   type="email"
                   required
                   value={email}
+                  readOnly={!canChangeAccount}
+                  aria-readonly={!canChangeAccount}
+                  data-testid="personal-email"
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className={`w-full px-4 py-2.5 rounded-xl ${canChangeAccount ? "bg-white" : "bg-slate-50 text-slate-500 cursor-not-allowed"} border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500`}
                 />
               </div>
 
@@ -578,6 +592,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
+
+              <PasskeySettings systemLanguage={activeLang} />
 
               <div className="space-y-1.5">
                 <label className="type-overline text-slate-600">{t("Display Language", "Jazyk rozhrania", "Megjelenítési nyelv")}</label>
@@ -657,6 +673,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              <PwaInstallCard systemLanguage={activeLang} userKey={currentUser.email || currentUser.name || "anon"} />
 
               <div className="flex justify-end pt-2">
                 <button
@@ -1454,13 +1472,15 @@ You are operating on behalf of ${currentUser.name} (${currentUser.email}, Role: 
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
                   </button>
-                  <button
-                    type="button"
-                    onClick={clearErrorLogs}
-                    className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl type-overline flex items-center gap-1 cursor-pointer"
+                  <HoldToConfirmButton
+                      tone="danger"
+                      lang={asLang(activeLang)}
+                      what={t("error logs", "chybové záznamy", "hibanaplók")}
+                      onConfirm={clearErrorLogs}
+                      className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl type-overline flex items-center gap-1"
                   >
                     {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
-                  </button>
+                  </HoldToConfirmButton>
                 </div>
               </div>
 
@@ -1475,12 +1495,12 @@ You are operating on behalf of ${currentUser.name} (${currentUser.email}, Role: 
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-ui border-collapse">
-                    <thead>
+                    <thead className="sticky top-0 z-20 bg-slate-50">
                       <tr className="border-b border-slate-200 text-slate-500 type-overline">
-                        <th className="py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
-                        <th className="py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
-                        <th className="py-3 px-4">URI</th>
-                        <th className="py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">URI</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
                       </tr>
                     </thead>
                     <tbody>

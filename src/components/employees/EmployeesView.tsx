@@ -14,9 +14,11 @@ import type {
   EmployeeSettings,
   EmployeeVacation,
   FinancialCategory,
-  UserProfile as AuthUser
+  UserProfile as AuthUser,
+  RolePermission
 } from "../../types";
 import type { ModuleAccess } from "../../utils/permissions";
+import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import {
   DEFAULT_MOCK_EMPLOYEES,
   generateDefaultMockSalaries,
@@ -28,9 +30,10 @@ import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
 import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
-import { useConfirmDialog } from "../ui/ConfirmDialog";
 import { PageHeader, Tabs } from "../layout";
 import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
+import { deleteRecordsWithUndo } from "../../utils/recordActions";
+import { asLang } from "../../utils/undoMessages";
 
 interface EmployeesViewProps {
   access: ModuleAccess;
@@ -48,6 +51,12 @@ interface EmployeesViewProps {
   financialCategories: FinancialCategory[];
   /** Sample staff is demo data: only a demo install may load or auto-seed it. */
   isDemoMode?: boolean;
+  /** What this person may see and change, field group by field group (see utils/employeeRights). */
+  rights?: EmployeeRights;
+  /** Logins, for the "linked user account" picker. */
+  users?: AuthUser[];
+  /** Role registry, to warn when a linked login can open this whole module. */
+  roles?: RolePermission[];
 }
 
 // Helper to resolve an employee by ID, case-insensitive ID, name, or name slug
@@ -179,15 +188,25 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   employeeSettings,
   setEmployeeSettings,
   financialCategories = [],
-  isDemoMode = false
+  isDemoMode = false,
+  rights = FULL_EMPLOYEE_RIGHTS,
+  users = [],
+  roles = []
 }) => {
   // Navigation state derived from URL hash
   const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
-  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
+  const [requestedView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
+  // A typed or bookmarked address never opens a screen this person has no right to: the pay
+  // matrix needs the pay toggle, create / edit needs employees = edit, settings needs general_config.
+  const currentView: "list" | "detail" | "matrix" | "form" | "settings" =
+    (requestedView === "matrix" && !rights.salaries) ||
+    (requestedView === "form" && !rights.edit) ||
+    (requestedView === "settings" && !rights.canConfigure)
+      ? "list"
+      : requestedView;
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(initialUrlState.employeeId);
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(initialUrlState.editEmployee);
   const [isEditMode, setIsEditMode] = useState<boolean>(!!initialUrlState.isEditMode);
-  const [confirmAction, confirmDialog] = useConfirmDialog();
 
   // Navigation helpers that update URL hash
   const navigateToTab = (tab: "list" | "matrix" | "settings") => {
@@ -280,25 +299,23 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     });
   };
 
-  // Handle Delete Employee
-  const handleDeleteEmployee = async (empId: string) => {
-    const ok = await confirmAction({
-      title: t("Delete Employee", "Zmazať zamestnanca", "Alkalmazott törlése"),
-      message: t(
-        "Are you sure you want to delete this employee? Their profile and records will be removed.",
-        "Naozaj chcete zmazať tohto zamestnanca? Jeho profil a záznamy budú odstránené.",
-        "Biztosan törölni szeretné ezt az alkalmazottat?"
-      ),
-      confirmLabel: t("Delete", "Zmazať", "Törlés"),
-      cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
-      danger: true
+  // Handle Delete Employee — the hold on the button is the confirmation; the
+  // server delete waits for the undo window (utils/recordActions).
+  const handleDeleteEmployee = (empId: string) => {
+    const target = employees.find((e) => e.id === empId);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "employees",
+      allRecords: employees,
+      targets: [target],
+      setRecords: setEmployees,
+      lang: asLang(systemLanguage),
+      entity: "employee",
+      titleOf: (e) => e.name,
+      applyExtra: () => {
+        if (selectedEmployeeId === empId) navigateToTab("list");
+      },
     });
-    if (ok) {
-      setEmployees((prev) => prev.filter((e) => e.id !== empId));
-      if (selectedEmployeeId === empId) {
-        navigateToTab("list");
-      }
-    }
   };
 
   // Handle Save Salary
@@ -329,7 +346,17 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   // Handle Delete Vacation
   const handleDeleteVacation = (vacId: string) => {
-    setVacations((prev) => prev.filter((v) => v.id !== vacId));
+    const target = vacations.find((v) => v.id === vacId);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "employeeVacations",
+      allRecords: vacations,
+      targets: [target],
+      setRecords: setVacations,
+      lang: asLang(systemLanguage),
+      entity: "record",
+      titleOf: () => employees.find((e) => e.id === target.employeeId)?.name,
+    });
   };
 
   // Handle Save Settings
@@ -352,7 +379,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
           actions={
             currentView === "list" ? (
               <>
-                {isDemoMode && employees.length === 0 && (
+                {isDemoMode && rights.edit && employees.length === 0 && (
                   <button
                     type="button"
                     onClick={handleSeedMockData}
@@ -362,6 +389,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                     <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
                   </button>
                 )}
+                {rights.edit && (
                 <button
                   type="button"
                   onClick={() => navigateToAddEmployee()}
@@ -370,6 +398,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                   <Plus className="size-4" />
                   <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
                 </button>
+                )}
               </>
             ) : undefined
           }
@@ -386,8 +415,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               onChange={navigateToTab}
               items={[
                 { key: "list", icon: <Users className="w-3.5 h-3.5" />, label: t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete") },
-                { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix") },
-                { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások") },
+                { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix"), hidden: !rights.salaries },
+                { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások"), hidden: !rights.canConfigure },
               ]}
             />
 
@@ -434,6 +463,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onSeedMockData={isDemoMode ? handleSeedMockData : undefined}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
           />
         )}
 
@@ -454,6 +484,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onDeleteVacation={handleDeleteVacation}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
+            users={users}
+            roles={roles}
           />
         )}
 
@@ -514,6 +547,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             financialCategories={financialCategories}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
+            employees={employees}
+            users={users}
+            roles={roles}
             onSave={(emp) => {
               handleSaveEmployee(emp);
               navigateToEmployeeDetail(emp.id);
@@ -544,7 +581,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
       </div>
 
       {/* Delete Confirmation Dialog */}
-      {confirmDialog}
     </div>
   );
 };

@@ -1,12 +1,18 @@
 {
+  "id": "/",
   "name": "CCRM",
   "short_name": "CCRM",
   "description": "Client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f3f6ff",
   "theme_color": "#4f46e5",
   "orientation": "any",
+  "categories": ["business", "productivity"],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
   "icons": [
     {
       "src": "/icon_192.png",
@@ -25,6 +31,61 @@
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My tasks",
+      "short_name": "My tasks",
+      "description": "Missed, today and upcoming tasks",
+      "url": "/#tasks",
+      "icons": [{ "src": "/icon_192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "New voice task",
+      "short_name": "Voice task",
+      "description": "Record a task by voice",
+      "url": "/#tasks?voice=1",
+      "icons": [{ "src": "/icon_192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "New task",
+      "short_name": "New task",
+      "description": "Create a task",
+      "url": "/#tasks?newTask=",
+      "icons": [{ "src": "/icon_192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "title": "ccrm_share_title",
+      "text": "ccrm_share_text",
+      "url": "ccrm_share_url"
+    }
+  },
+  "screenshots": [
+    {
+      "src": "/update-screenshots/v1-8-start-menu.png",
+      "sizes": "1424x769",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Start menu with every module"
+    },
+    {
+      "src": "/update-screenshots/v1-8-financial-management.png",
+      "sizes": "1424x769",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Financial management"
+    },
+    {
+      "src": "/update-screenshots/v1-8-warehouse-overview.png",
+      "sizes": "1424x769",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Warehouse overview"
     }
   ]
 }

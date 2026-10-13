@@ -4,6 +4,7 @@
  * Transcribes audio via Whisper and generates automated meeting minutes via GPT.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -14,8 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// SECURITY: Authenticated users only
-ccrm_require_auth();
+// SECURITY: Authenticated users only, and only with a view of a module that records audio:
+// meetings, or the leads / clients whose timelines carry voice notes.
+$sessionUser = ccrm_require_auth();
+ccrm_gate_any($sessionUser, ['meetings', 'leads', 'clients']);
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {

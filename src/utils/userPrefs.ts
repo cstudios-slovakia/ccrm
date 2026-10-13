@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import type { StartMenuLayout } from "./startMenuLayout";
 import type { ProjectListColumn, FavoriteItem } from "../types";
+import type { StoredLeadColumn, LeadSort } from "./leadColumns";
 
 /**
  * Per-user interface preferences.
@@ -82,11 +83,50 @@ export interface UserPrefs {
    * which is not the same as "none selected" — it falls back to every open state.
    */
   leadsVisibleStates: string[] | null;
+  /** Leads screen: column sorting key and direction. */
+  leadsSortSettings: LeadSort | null;
+  /** Leads screen: configured list columns. */
+  leadsListColumns: StoredLeadColumn[] | null;
+  /** Leads screen: whether collapsible filters bar is shown. */
+  leadsShowFilters: boolean;
   /**
    * Projects screen: which project statuses are shown. `null` means "never chosen",
    * which falls back to every active (non-closed) status.
    */
   projectsVisibleStatuses: string[] | null;
+  /**
+   * Projects screen, "Active Projects Budget Breakdown" panel: the figure with
+   * its status pills ("detail") or the figure alone ("summary"). Loosely typed
+   * on read — the panel treats anything but "summary" as detail. Replaces the
+   * `ccrm_projects_equation_stats_expanded` localStorage flag, which was dropped
+   * rather than migrated: it only ever said "open" or "closed", and open is the
+   * default.
+   */
+  projectsEquationView: "detail" | "summary";
+  /** Same panel: show how many projects each status and the total hold. */
+  projectsEquationCounts: boolean;
+  /**
+   * Same panel: status keys the user switched off, so they stay out of the
+   * total on the next visit. Keys of statuses that no longer exist are ignored.
+   * Replaces `ccrm_projects_equation_stats_disabled` (dropped, not migrated: it
+   * was per browser, and a total should not silently shrink on the first load
+   * after an upgrade).
+   */
+  projectsEquationExcluded: string[];
+  /**
+   * Performance Dashboard, "Combined Pipeline & Projects Invoicable Breakdown" panel:
+   * the figure with its status pills ("detail") or the figure alone ("summary").
+   * Replaces `ccrm_overview_equation_stats_expanded` localStorage flag (dropped, not migrated).
+   */
+  dashboardEquationView: "detail" | "summary";
+  /** Same panel: show how many records each status and group holds. */
+  dashboardEquationCounts: boolean;
+  /**
+   * Same panel: status keys the user switched off (${groupId}:${itemKey}), so they stay
+   * out of the total on the next visit. Replaces `ccrm_overview_equation_stats_disabled`
+   * (dropped, not migrated).
+   */
+  dashboardEquationExcluded: string[];
   /**
    * Finance trend chart: weekly net cash flow, or the running bank balance.
    *
@@ -151,6 +191,15 @@ export interface UserPrefs {
   sidebarGroups: Array<{ id: string; title: string; items: string[] }> | null;
   /** Default startup screen / landing page route id. */
   defaultPage: string | null;
+  /**
+   * Project detail view: the right-hand tab it opens on ("timeline" | "tasks" |
+   * "gantt" | "finances" | "files"). `null` means "never chosen" — the view then
+   * picks the first tab the project's type has. A stored tab the project's type
+   * does not offer (a Gantt tab on a type without one) is ignored, not an error.
+   */
+  projectDefaultTab: string | null;
+  /** Lead detail view: the tab it opens on ("timeline" | "tasks"). `null` = timeline. */
+  leadDefaultTab: string | null;
   /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
   favorites: FavoriteItem[];
   /**
@@ -173,7 +222,16 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
+  leadsSortSettings: null,
+  leadsListColumns: null,
+  leadsShowFilters: true,
   projectsVisibleStatuses: null,
+  projectsEquationView: "detail",
+  projectsEquationCounts: true,
+  projectsEquationExcluded: [],
+  dashboardEquationView: "detail",
+  dashboardEquationCounts: true,
+  dashboardEquationExcluded: [],
   financialTrendMode: "relative",
   financialProjectionMonths: 0,
   financialHistoryMonths: 3,
@@ -189,6 +247,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   sidebarUnpinnedStyle: "overlay",
   sidebarGroups: null,
   defaultPage: null,
+  projectDefaultTab: null,
+  leadDefaultTab: null,
   favorites: [],
   recentClientIds: [],
 };

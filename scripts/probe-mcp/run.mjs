@@ -87,6 +87,9 @@ const role = (name, level) => ({
     ...Object.fromEntries(MODULES.map((m) => [m, level])),
     ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, 'nothing'])),
     'tasks.view_all': 'nothing', 'employees.salaries': 'nothing', 'dashboard.custom': 'nothing', 'overview': 'nothing',
+    // HR field groups, written out so nothing falls back to the legacy "edit" default: personal data and
+    // documents are off; leave is on for the editor only (the leave tools need it).
+    'employees.personal': 'nothing', 'employees.files': 'nothing', 'employees.vacations': level === 'edit' ? 'edit' : 'nothing',
     'leads.delete': 'nothing', 'clients.delete': 'nothing', 'projects.delete': 'nothing', 'invoices.delete': 'nothing',
     'warehouse.delete': 'nothing', 'financial.delete': 'nothing', 'employees.delete': 'nothing', 'meetings.delete': 'nothing',
     'files.delete': 'nothing', 'unified_entries.delete': 'nothing', 'tasks.delete': 'nothing',
@@ -179,9 +182,14 @@ async function authorizationChecks() {
 
   // Field stripping.
   const emps = await call(TOKENS.editor, 'list_employees', {});
-  check('list_employees hides pin and salary fields without the toggle', Array.isArray(emps) && emps.length > 0 && emps.every((e) => !('pin' in e) && !('salary_amount' in e) && !('salary_type' in e)), JSON.stringify(emps).slice(0, 200));
+  check('list_employees hides pin, contact and salary fields without their toggles', Array.isArray(emps) && emps.length > 0 && emps.every((e) => !('pin' in e) && !('phone' in e) && !('address_street' in e) && !('salary_amount' in e) && !('salary_type' in e)), JSON.stringify(emps).slice(0, 200));
   const emp = await call(TOKENS.editor, 'get_employee', { id: 'pe-1' });
-  check('get_employee hides salaries and sensitive columns', emp && !('salaries' in emp) && !('pin' in emp) && !('salary_amount' in emp) && !('files_json' in emp), JSON.stringify(emp).slice(0, 200));
+  check('get_employee hides salaries and sensitive columns', emp && !('salaries' in emp) && !('pin' in emp) && !('phone' in emp) && !('salary_amount' in emp) && !('files_json' in emp), JSON.stringify(emp).slice(0, 200));
+  check('get_employee keeps the leave list for a role with employees.vacations', emp && Array.isArray(emp.vacations) && 'vacation_allowances_json' in emp, JSON.stringify(emp).slice(0, 200));
+  const byPin = await call(TOKENS.editor, 'list_employees', { search: '900101' });
+  check('list_employees cannot be searched by a PIN the role may not read', Array.isArray(byPin) && byPin.length === 0, JSON.stringify(byPin).slice(0, 200));
+  const viewerTools2 = await listTools(TOKENS.viewer);
+  check('a role without employees.vacations gets no leave tools', !viewerTools2.includes('list_vacations') && !viewerTools2.includes('record_vacation') && !viewerTools2.includes('get_vacation_balance'), '');
   check('update_employee refuses salary fields without the toggle', isErr(await call(TOKENS.editor, 'update_employee', { id: 'pe-1', salary_amount: 99999 }), /employees\.salaries/), '');
   const adminEmps = await call(TOKENS.admin, 'list_employees', {});
   check('Admin still sees salary fields', adminEmps.some((e) => e.salary_amount !== undefined && e.pin), '');
@@ -429,7 +437,7 @@ async function writeChecks() {
 
   // vacations
   r = await call(A, 'record_vacation', { employee_id: 'pe-1', start_date: '2027-03-01', end_date: '2027-03-05', days_count: 5 });
-  check('a vacation is logged as requested by default', r.success && r.status === 'requested', JSON.stringify(r));
+  check('a vacation is logged as pending by default (v1.11.158)', r.success && r.status === 'pending', JSON.stringify(r));
   check('overlapping leave is refused', isErr(await call(A, 'record_vacation', { employee_id: 'pe-1', start_date: '2027-03-04', end_date: '2027-03-08' }), /Overlaps/), '');
   check('reversed dates are refused', isErr(await call(A, 'record_vacation', { employee_id: 'pe-1', start_date: '2027-05-05', end_date: '2027-05-01' }), /cannot be before/), '');
   check('an unknown vacation type is refused', isErr(await call(A, 'record_vacation', { employee_id: 'pe-1', start_date: '2027-06-01', end_date: '2027-06-02', vacation_type_id: 'bogus' }), /Unknown vacation_type_id/), '');
@@ -482,7 +490,7 @@ async function writeChecks() {
   if (Array.isArray(ues) && ues.length) check('get_unified_entry_rows responds for a registry', Array.isArray(await call(A, 'get_unified_entry_rows', { registry_id: ues[0].id })), '');
   check('get_unified_entry_rows refuses an unknown registry', isErr(await call(A, 'get_unified_entry_rows', { registry_id: 'nope' }), /not found/), '');
   check('list_files on a project responds', Array.isArray(await call(A, 'list_files', { source: 'project', id: 'p1' })), '');
-  check('employee files need the salaries toggle', isErr(await call(TOKENS.editor, 'list_files', { source: 'employee', id: 'pe-1' }), /salaries/), '');
+  check('employee files need the employees.files toggle', isErr(await call(TOKENS.editor, 'list_files', { source: 'employee', id: 'pe-1' }), /employees\.files/), '');
   r = await call(A, 'set_financial_mode', { mode: 'simplified' });
   const overviewSimple = await call(A, 'get_financial_overview', {});
   check('get_financial_overview points simplified workspaces to the simplified table', overviewSimple.mode === 'simplified', JSON.stringify(overviewSimple));

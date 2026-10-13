@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, OPTIONS');
@@ -15,7 +16,7 @@ if (php_sapi_name() !== 'cli') {
         echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
         exit;
     }
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
 }
 
 $query = trim($_GET['query'] ?? '');
@@ -130,15 +131,26 @@ function get_excerpt($text, $query, $maxLen = 80) {
     return trim($excerpt);
 }
 
+// Each source is searched only when the caller may read that module (the command-line
+// run has no user and searches everything), and a lead or client only if it is one the
+// caller would be sent.
+$scope = isset($sessionUser) ? ccrm_read_scope($pdo, $sessionUser) : null;
+$allow = function (string $key) use ($scope): bool {
+    return $scope === null || ccrm_can($scope, $key);
+};
+
 $candidates = [];
 // Sources that failed this request. Search stays best-effort across the four
 // sources, but a failure is now recorded rather than swallowed silently.
 $searchErrors = [];
 
 // 1. LEADS & CLIENTS
-try {
-    $stmt = $pdo->query("SELECT `id`, `name`, `status`, `city`, `client_type`, `value`, `email`, `phone`, `contact_person`, `ai_summary` FROM `leads` WHERE `archived` = 0");
+if ($allow('leads') || $allow('clients')) try {
+    $stmt = $pdo->query("SELECT `id`, `name`, `status`, `city`, `client_type`, `value`, `email`, `phone`, `contact_person`, `ai_summary`, `adjustment` FROM `leads` WHERE `archived` = 0");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        if ($scope !== null && !ccrm_lead_row_visible($row, $scope)) {
+            continue;
+        }
         $isClient = $row['status'] === 'accepted';
         $type = $isClient ? 'client' : 'lead';
         
@@ -190,14 +202,19 @@ try {
 }
 
 // 2. EMAILS
-try {
+if ($allow('email')) try {
     $stmt = $pdo->query("
-        SELECT te.`id`, te.`lead_id`, te.`title`, te.`content`, te.`timestamp`, l.`name` as `lead_name`
+        SELECT te.`id`, te.`lead_id`, te.`title`, te.`content`, te.`timestamp`, l.`name` as `lead_name`, l.`adjustment` as `lead_adjustment`
         FROM `timeline_events` te
         LEFT JOIN `leads` l ON te.`lead_id` = l.`id`
         WHERE te.`type` = 'email' AND (l.`id` IS NULL OR l.`archived` = 0)
     ");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        // A mail on a lead or client the caller may not open stays out of their results.
+        if ($scope !== null && $row['lead_name'] !== null
+            && !ccrm_lead_row_visible(['id' => $row['lead_id'], 'adjustment' => $row['lead_adjustment']], $scope)) {
+            continue;
+        }
         $fieldsToMatch = [
             $row['title'],
             $row['content'] ?? '',
@@ -254,7 +271,7 @@ function get_meeting_notes_plain_text($notes) {
     return $notes;
 }
 
-try {
+if ($allow('meetings')) try {
     $stmt = $pdo->query("
         SELECT `id`, `title`, `date`, `notes`, `lead_name`, `ai_summary_json`
         FROM `meeting_notes`
@@ -308,7 +325,7 @@ try {
 }
 
 // 4. UNIFIED ENTRIES
-try {
+if ($allow('unified_entries')) try {
     $registriesStmt = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0");
     $registries = $registriesStmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -372,7 +389,7 @@ try {
 }
 
 // 5. WAREHOUSE PRODUCTS & INVENTORY
-try {
+if ($allow('warehouse')) try {
     $stmt = $pdo->query("
         SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`default_location`, wi.`description`
         FROM `warehouse_items` wi

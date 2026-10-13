@@ -20,6 +20,9 @@ import {
   type ClientCategoryDropPosition,
   type ClientCategoryDropTarget,
 } from "../utils/clientCategoryTree";
+import { HoldToConfirmButton, readUiLanguage } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { singleMessage } from "../utils/undoMessages";
 
 type Translate = (en: string, sk: string, hu: string) => string;
 
@@ -133,7 +136,8 @@ export const ClientCategoryManager: React.FC<{
   categories: ClientCategory[];
   setCategories: (updater: (prev: ClientCategory[]) => ClientCategory[]) => void;
   /** Every id a delete removed, so the caller can take clients out of those categories. */
-  onCategoriesDeleted?: (ids: Set<string>) => void;
+  /** Called when categories are removed. May return the function that undoes its own side effects. */
+  onCategoriesDeleted?: (ids: Set<string>) => void | (() => void);
   /** Clients filed directly under each category id. */
   clientCounts: Record<string, number>;
   t: Translate;
@@ -214,23 +218,26 @@ export const ClientCategoryManager: React.FC<{
     if (!deletable) return;
     const ids = clientCategoryDescendantIds(categories, cat.id);
     ids.add(cat.id);
-    const affected = [...ids].reduce((sum, id) => sum + (clientCounts[id] || 0), 0);
-    const question =
-      affected > 0
-        ? t(
-            `Delete "${cat.name}" and its subcategories? ${affected} client(s) will be left without a category.`,
-            `Vymazať „${cat.name}“ a všetky jej podkategórie? ${affected} klient(ov) zostane bez kategórie.`,
-            `Törli a(z) „${cat.name}” kategóriát és alkategóriáit? ${affected} ügyfél kategória nélkül marad.`
-          )
-        : t(
-            `Delete "${cat.name}" and its subcategories?`,
-            `Vymazať „${cat.name}“ a všetky jej podkategórie?`,
-            `Törli a(z) „${cat.name}” kategóriát és alkategóriáit?`
-          );
-    if (!window.confirm(question)) return;
-    setCategories((prev) => prev.filter((c) => !ids.has(c.id)));
-    onCategoriesDeleted?.(ids);
-    toast(t("Category removed", "Kategória odstránená", "Kategória eltávolítva"));
+    let undoSideEffects: void | (() => void);
+    // The hold on the button is the confirmation. The clients filed under the
+    // category are left without one now and are filed back by Undo; the server
+    // delete of the categories waits for the undo window.
+    deleteRecordsWithUndo({
+      collection: "clientCategories",
+      allRecords: categories,
+      targets: categories.filter((c) => ids.has(c.id)),
+      setRecords: setCategories,
+      lang: readUiLanguage(),
+      entity: "category",
+      titleOf: () => cat.name,
+      message: singleMessage(readUiLanguage(), "category", "delete", cat.name),
+      applyExtra: () => {
+        undoSideEffects = onCategoriesDeleted?.(ids);
+      },
+      revertExtra: () => {
+        if (typeof undoSideEffects === "function") undoSideEffects();
+      },
+    });
   };
 
   // --- rename ---
@@ -439,14 +446,16 @@ export const ClientCategoryManager: React.FC<{
               <PencilLine className={styles.icon} />
             </button>
             {deletable && (
-              <button
-                type="button"
-                onClick={() => handleDelete(cat)}
-                className="p-1 text-slate-400 hover:text-rose-600 active:scale-90 transition-all duration-150 cursor-pointer"
-                title={t("Delete category", "Vymazať", "Törlés")}
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={readUiLanguage()}
+                  what={cat.name}
+                  onConfirm={() => handleDelete(cat)}
+                  className="p-1 text-slate-400 hover:text-rose-600 active:scale-90 transition-all duration-150"
+                  title={t("Delete category", "Vymazať", "Törlés")}
               >
                 <Trash2 className={styles.icon} />
-              </button>
+              </HoldToConfirmButton>
             )}
           </div>
         )}

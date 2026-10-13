@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpDown, Flame, FolderKanban, Lock, Minus, Plus, X } from "lucide-react";
 import type { Lead, Project, Task, UserProfile } from "../types";
@@ -7,6 +7,8 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { DeadlineTimePicker, taskProjectOptions } from "./TaskEditDrawer";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
+import { TaskConclusionToggle } from "./TaskConclusionToggle";
+import { useTaskSettings } from "../hooks/useTaskSettings";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
@@ -43,6 +45,12 @@ interface QuickTaskModalProps {
     leadStateParents?: Record<string, string>;
     /** Pre-filled deadline (the calendar's "+" on a day); defaults to today. */
     initialDeadline?: string;
+    /**
+     * Text arriving from outside (a shortcut, the share target, the bookmarklet).
+     * Fills the title on open; a new `id` while the form is already open adds the
+     * text as another line, so a half-typed task is never overwritten.
+     */
+    incomingTitle?: { id: number; text: string };
     /** Receives the new tasks (one per title line); persisting them is the caller's job. */
     onCreate: (tasks: Task[]) => void;
     onClose: () => void;
@@ -67,6 +75,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     leadStageGroups,
     leadStateParents,
     initialDeadline,
+    incomingTitle,
     onCreate,
     onClose,
     inline = false,
@@ -74,13 +83,23 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
-    const [title, setTitle] = useState("");
+    const [title, setTitle] = useState(() => incomingTitle?.text ?? "");
+    // StrictMode runs effects twice; remember which delivery was applied already.
+    const appliedIncomingRef = useRef<number | null>(incomingTitle?.id ?? null);
+    useEffect(() => {
+        if (!incomingTitle || appliedIncomingRef.current === incomingTitle.id) return;
+        appliedIncomingRef.current = incomingTitle.id;
+        if (!incomingTitle.text) return;
+        setTitle((prev) => (prev.trim() ? prev.replace(/\s+$/, "") + "\n" + incomingTitle.text : incomingTitle.text));
+    }, [incomingTitle]);
     const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
     const [deadline, setDeadline] = useState(() => initialDeadline || toLocalDateStr(new Date()));
     const [deadlineTime, setDeadlineTime] = useState("16:00");
     const [relatedLeadId, setRelatedLeadId] = useState("");
     const [relatedProjectId, setRelatedProjectId] = useState("");
     const [isLocking, setIsLocking] = useState(false);
+    const { offerConclusion, defaultRequiresConclusion } = useTaskSettings();
+    const [requiresConclusion, setRequiresConclusion] = useState(() => Boolean(defaultRequiresConclusion));
     const [emailReminders, setEmailReminders] = useState<Task["emailReminders"]>(undefined);
     const [assignedUser, setAssignedUser] = useState(currentUserName || users[0]?.name || "");
 
@@ -166,6 +185,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             relatedProjectId: relatedProjectId || undefined,
             isLocking: relatedLeadId ? isLocking : false,
             emailReminders,
+            // Only while the setting offers it: a stale tick must not outlive the setting.
+            requiresConclusion: offerConclusion && requiresConclusion ? true : undefined,
         }));
 
         onCreate(created);
@@ -191,6 +212,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         } else {
             // Keep the popup open for the next task: clear the title and refocus.
             setTitle("");
+            setRequiresConclusion(Boolean(defaultRequiresConclusion));
             setTimeout(() => {
                 document.querySelector<HTMLTextAreaElement>("[data-quick-task-form] textarea")?.focus();
             }, 50);
@@ -285,6 +307,15 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                             className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-ui font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-12.5"
                         />
                     </div>
+
+                    {offerConclusion && (
+                        <TaskConclusionToggle
+                            compact
+                            checked={requiresConclusion}
+                            onChange={setRequiresConclusion}
+                            t={t}
+                        />
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <div className="space-y-1">

@@ -206,3 +206,42 @@ export const removeProjectUploadedFile = (
     },
   };
 };
+
+/**
+ * Puts a file removed by {@link removeProjectUploadedFile} back into its slot at
+ * its old position — the Undo of a file delete. A file already in the slot (an
+ * Undo pressed twice) is not duplicated.
+ */
+export const restoreProjectUploadedFile = (
+  project: Project,
+  slotId: string,
+  slotCustom: boolean,
+  file: ProjectUploadedFile,
+  index: number,
+): Project => {
+  const same = (other: ProjectUploadedFile) =>
+    String(other.path ?? "") === String(file.path ?? "") && String(other.name ?? "") === String(file.name ?? "");
+  const insert = (list: ProjectUploadedFile[]) => {
+    if (list.some(same)) return list;
+    const next = [...list];
+    next.splice(Math.min(index, next.length), 0, file);
+    return next;
+  };
+
+  if (slotCustom) {
+    return {
+      ...project,
+      customFileFields: (project.customFileFields || []).map(slot =>
+        slot.id === slotId ? { ...slot, files: insert(slot.files || []) } : slot,
+      ),
+    };
+  }
+
+  return {
+    ...project,
+    data: {
+      ...(project.data || {}),
+      [slotId]: insert(asUploadedFiles(project.data?.[slotId])),
+    },
+  };
+};
