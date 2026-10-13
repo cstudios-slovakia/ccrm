@@ -2195,16 +2195,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               )}
             </div>
           ) : viewMode === "list" || isStructure ? (
-            <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
-              <div className="overflow-x-auto scrollbar-thin">
+            <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6">
+              <div className="overflow-x-auto scrollbar-thin rounded-3xl">
                 <table className="w-full text-left border-collapse min-w-0 ws-lg:min-w-210">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a
                       column is, and whether it is here at all, is decided in one
                       place. See utils/projectColumns.ts. */}
-                  <thead className="hidden ws-lg:table-header-group">
-                    <tr className="border-b border-slate-200 bg-slate-50/70">
-                      <th className="px-3 py-3 w-10 text-center">
+                  <thead className="hidden ws-lg:table-header-group sticky top-0 z-20">
+                    <tr className="border-b border-slate-200 bg-slate-50/95 backdrop-blur-xs">
+                      <th className="sticky top-0 left-0 z-20 bg-slate-50/95 backdrop-blur-xs px-3 py-3 w-10 text-center rounded-tl-3xl border-b border-slate-200">
                         <button
                           type="button"
                           onClick={handleSelectAllVisible}
@@ -2230,7 +2230,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           return (
                             <th
                               key={col.key}
-                              className="px-4 py-3 type-overline text-slate-400 whitespace-nowrap"
+                              className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
                             >
                               {columnLabel(col)}
                             </th>
@@ -2240,7 +2240,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           <th
                             key={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
-                            className="px-4 py-3 type-overline text-slate-400 whitespace-nowrap"
+                            className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
                           >
                             <button
                               type="button"
@@ -2259,7 +2259,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           </th>
                         );
                       })}
-                      <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-200/50" />
+                      <th className="sticky top-0 right-0 bg-slate-50/95 backdrop-blur-xs z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-slate-200 rounded-tr-3xl" />
                     </tr>
                   </thead>
                   <tbody>

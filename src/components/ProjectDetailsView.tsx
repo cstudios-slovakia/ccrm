@@ -409,6 +409,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }, 250);
   };
 
+  const [isFinModalOpen, setIsFinModalOpen] = useState(false);
   useEffect(() => {
     if (layoutMode !== "sidebar") return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -425,7 +426,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // Project Financial Modal & Form
-  const [isFinModalOpen, setIsFinModalOpen] = useState(false);
   const [finEditingRecord, setFinEditingRecord] = useState<FinancialRecord | null>(null);
   const [finFormType, setFinFormType] = useState<FinancialType>("income");
   const [finFormTitle, setFinFormTitle] = useState("");
@@ -1665,13 +1665,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const isSidebar = layoutMode === "sidebar";
-
-  const openTasksCount = (tasks || []).filter(tk =>
-    tk.relatedProjectId === project.id &&
-    !tk.archived &&
-    !isDoneTaskState(tk.status, taskStates) &&
-    (taskAccess.viewAll || isOnPersonalDashboard(tk, currentUser?.name || ""))
-  ).length;
 
   const renderSidebarHeader = () => (
     <div className="shrink-0 bg-white border-b border-slate-200 px-5 py-4 select-none space-y-3">
@@ -3124,7 +3117,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               currentUser={currentUser}
               mailConfigured={mailConfigured}
             />
-          ))}
+          )}
 
           {/* TAB CONTENT: Timeline */}
           {(isSidebar || activeRightTab === "timeline") && projectType.hasTimeline && wrapSection(
@@ -3947,8 +3940,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </button>
                 </div>
               </div>
-            );
-          })()}
+            </div>
+          )}
 
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
           {(isSidebar || activeRightTab === "files") && wrapSection(
@@ -4488,14 +4481,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-ui">
-                      <thead className="text-slate-400 border-b border-slate-200">
+                      <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>
-                          <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
-                          <th className="py-2 px-3 font-semibold">{t("Invoice # & Title", "Číslo FA a popis", "Számlaszám és tétel")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Real (€)", "Uhradené (€)", "Fizetett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Invoice # & Title", "Číslo FA a popis", "Számlaszám és tétel")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Uhradené (€)", "Fizetett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">
@@ -4578,14 +4571,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-ui">
-                      <thead className="text-slate-400 border-b border-slate-200">
+                      <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>
-                          <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
-                          <th className="py-2 px-3 font-semibold">{t("Expense Title & Category", "Názov a kategória", "Megnevezés és kategória")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Real (€)", "Zaplatené (€)", "Kifizetett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Expense Title & Category", "Názov a kategória", "Megnevezés és kategória")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Zaplatené (€)", "Kifizetett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">

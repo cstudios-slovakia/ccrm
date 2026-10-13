@@ -6,13 +6,14 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
-import type { Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
+import type { Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
+import { TaskSettingsPanel } from "./TaskSettingsPanel";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import type { ProjectStatusDef } from "../utils/projects";
@@ -51,6 +52,12 @@ import {
 } from "../utils/permissions";
 import type { PermissionDef, PermissionSection, PermissionValue } from "../utils/permissions";
 import { PageHeader } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo, archiveRecordsWithUndo } from "../utils/recordActions";
+import { runUndoable } from "../utils/undoable";
+import { reinsertAt } from "../utils/undoableList";
+import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
+import { clearErrorLogsWithUndo } from "../utils/errorLogs";
 
 const LeadAssignmentCard: React.FC<{
   users: UserProfile[];
@@ -502,6 +509,9 @@ interface SettingsViewProps {
   setTaskStates: React.Dispatch<React.SetStateAction<string[]>>;
   taskStateColors: Record<string, string>;
   setTaskStateColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  /** Settings → Tasks: whether the "Requires conclusion" checkbox is offered. */
+  taskSettings?: TaskSettings;
+  setTaskSettings?: React.Dispatch<React.SetStateAction<TaskSettings>>;
 
   unifiedEntries?: UnifiedEntryRegistry[];
   setUnifiedEntries?: (
@@ -564,6 +574,7 @@ const SETTINGS_TABS = [
   { id: "license", permKey: "general_config" },
   { id: "invoicing", permKey: "general_config" },
   { id: "projects", permKey: "general_config" },
+  { id: "tasks", permKey: "general_config" },
   { id: "finance", permKey: "financial" },
   { id: "unified", permKey: "general_config" },
   { id: "sources", permKey: "traffic_sources" },
@@ -634,6 +645,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTaskStates,
   taskStateColors,
   setTaskStateColors,
+  taskSettings,
+  setTaskSettings,
   unifiedEntries = [],
   setUnifiedEntries,
   unifiedEntriesData = {},
@@ -984,20 +997,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
-    if (confirm(
-      userLanguage === "sk" 
-        ? `Naozaj chcete odstrániť divíziu "${div}"?` 
-        : userLanguage === "hu" 
-          ? `Biztosan el szeretné távolítani a(z) "${div}" divíziót?` 
-          : `Are you sure you want to remove the division "${div}"?`
-    )) {
+    const divIndex = divisions.indexOf(div);
+    const divColor = divisionColors?.[div];
+    runUndoable({
+      message: singleMessage(userLanguage, "division", "delete", div),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
       setDivisions(divisions.filter((d) => d !== div));
       setDivisionColors?.(prev => {
         const next = { ...prev };
         delete next[div];
         return next;
       });
-    }
+      },
+      revert: () => {
+        setDivisions(prev => (prev.includes(div) ? prev : reinsertAt(prev, [{ item: div, index: divIndex }], d => d)));
+        if (divColor !== undefined) setDivisionColors?.(prev => ({ ...prev, [div]: divColor }));
+      },
+    });
   };
 
   const handleMoveStatusToIndex = (statusName: string, targetIdx: number) => {
@@ -1058,9 +1075,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newManager, setNewManager] = React.useState("");
   const [newUserEmail, setNewUserEmail] = React.useState("");
   const [newUserPassword, setNewUserPassword] = React.useState("");
-  // The role a freshly provisioned user gets: the first non-admin role in the
-  // registry, else the first role at all. Never a hardcoded name — a workspace
-  // may have renamed or removed "Project Manager".
+  // The role a freshly provisioned user gets: the native Employee role when the workspace has one
+  // (least privilege: a new login sees only their own tasks and data until someone widens it), else
+  // the first non-admin role in the registry, else the first role at all. Never a hardcoded fallback
+  // name — a workspace may have renamed or removed "Project Manager".
   const defaultNewUserRole = (list: RolePermission[]): string =>
     (findRole(list, EMPLOYEE_ROLE_NAME) ?? list.find(r => !isAdminRoleName(r.name)) ?? list[0])?.name ?? "";
   const [newUserRole, setNewUserRole] = React.useState(() => defaultNewUserRole(roles));
@@ -1071,7 +1089,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects" | "tasks">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -1281,20 +1299,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const clearErrorLogs = async () => {
-    if (!confirm(t("Are you sure you want to clear all error logs?", "Naozaj chcete vymazať všetky chybové záznamy?", "Biztosan törölni szeretné az összes hibanaplót?"))) {
-      return;
-    }
-    try {
-      const response = await fetch("/api/error_logs.php", { method: "DELETE" });
-      const data = await response.json();
-      if (data.success) {
-        setErrorLogs([]);
-        (window as any).showToast(t("Error logs cleared.", "Chybové záznamy boli vymazané.", "A hibanaplók törölve."));
-      }
-    } catch (e) {
-      console.error("Failed to clear error logs", e);
-    }
+  // The hold on the button is the confirmation; the logs are deleted on the server
+  // when the undo window closes (utils/errorLogs).
+  const clearErrorLogs = () => {
+    clearErrorLogsWithUndo({ logs: errorLogs, setLogs: setErrorLogs, lang: asLang(userLanguage) });
   };
 
   // Invoicing & Company Billing Settings State.
@@ -2364,13 +2372,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
-    if (confirm(
-      userLanguage === "sk" 
-        ? `Naozaj chcete odstrániť stav "${state}"? Existujúce leady si tento stav ponechajú, kým nebudú manuálne aktualizované.` 
-        : userLanguage === "hu" 
-          ? `Biztosan el szeretné távolítani a(z) "${state}" állapotot? A meglévő leadek megtartják ezt az állapotot a manuális frissítésig.` 
-          : `Are you sure you want to remove the state "${state}"? Existing leads will keep this state until manually updated.`
-    )) {
+    const stateKey = state.toLowerCase();
+    const stateIndex = leadStates.indexOf(state);
+    const stateGroup = leadStageGroups[stateKey];
+    const stateColor = leadStateColors[stateKey];
+    const stateParent = leadStateParents[stateKey];
+    // Children promoted to major states when this one goes: they get their parent back.
+    const stateChildren = Object.entries(leadStateParents).filter(([, parent]) => parent === stateKey).map(([child]) => child);
+    runUndoable({
+      message: singleMessage(userLanguage, "status", "delete", state),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
       setLeadStates(leadStates.filter((s) => s !== state));
       setLeadStageGroups(prev => {
         const next = { ...prev };
@@ -2393,7 +2405,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         delete next[state.toLowerCase()];
         return next;
       });
-    }
+      },
+      revert: () => {
+        setLeadStates(prev => (prev.includes(state) ? prev : reinsertAt(prev, [{ item: state, index: stateIndex }], s => s)));
+        if (stateGroup !== undefined) setLeadStageGroups(prev => ({ ...prev, [stateKey]: stateGroup }));
+        if (stateColor !== undefined) setLeadStateColors(prev => ({ ...prev, [stateKey]: stateColor }));
+        setLeadStateParents(prev => {
+          const next = { ...prev };
+          if (stateParent !== undefined) next[stateKey] = stateParent;
+          stateChildren.forEach(child => { next[child] = stateKey; });
+          return next;
+        });
+      },
+    });
   };
 
    const handleAddSource = (e: React.FormEvent) => {
@@ -2434,13 +2458,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
-    if (confirm(
-      userLanguage === "sk" 
-        ? `Naozaj chcete odstrániť zdroj "${source}"?` 
-        : userLanguage === "hu" 
-          ? `Biztosan el szeretné távolítani a(z) "${source}" forrást?` 
-          : `Are you sure you want to remove the source "${source}"?`
-    )) {
+    const sourceIndex = leadSources.indexOf(source);
+    const sourceColor = leadSourceColors[source.toLowerCase()];
+    runUndoable({
+      message: singleMessage(userLanguage, "source", "delete", source),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
       setLeadSources(leadSources.filter((s) => s !== source));
       // leadSourceIds is deliberately left alone. The entry stays behind as a
       // tombstone so its number can never be re-issued to a different source —
@@ -2451,7 +2474,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         delete next[source.toLowerCase()];
         return next;
       });
-    }
+      },
+      revert: () => {
+        setLeadSources(prev => (prev.includes(source) ? prev : reinsertAt(prev, [{ item: source, index: sourceIndex }], s => s)));
+        if (sourceColor !== undefined) setLeadSourceColors(prev => ({ ...prev, [source.toLowerCase()]: sourceColor }));
+      },
+    });
   };
 
   const handleAddCategory = (e: React.FormEvent) => {
@@ -2491,13 +2519,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
-    if (confirm(
-      userLanguage === "sk" 
-        ? `Naozaj chcete odstrániť kategóriu "${cat}"?` 
-        : userLanguage === "hu" 
-          ? `Biztosan el szeretné távolítani a(z) "${cat}" kategóriát?` 
-          : `Are you sure you want to remove the category "${cat}"?`
-    )) {
+    const catIndex = leadCategories.indexOf(cat);
+    const catColor = leadCategoryColors[cat];
+    let catRule: string | undefined;
+    runUndoable({
+      message: singleMessage(userLanguage, "category", "delete", cat),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
       setLeadCategories(leadCategories.filter((c) => c !== cat));
       // Left out of leadCategoryIds on purpose — see handleRemoveSource.
       setLeadCategoryColors(prev => {
@@ -2508,12 +2536,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       // A rule pointing at a category nobody can pick any more would sit in the
       // settings blob forever, invisible in the UI that edits it.
       setProjectAutoCreate?.(prev => {
+        catRule = prev.categoryTypes[cat];
         if (!(cat in prev.categoryTypes)) return prev;
         const categoryTypes = { ...prev.categoryTypes };
         delete categoryTypes[cat];
         return { ...prev, categoryTypes };
       });
-    }
+      },
+      revert: () => {
+        setLeadCategories(prev => (prev.includes(cat) ? prev : reinsertAt(prev, [{ item: cat, index: catIndex }], x => x)));
+        if (catColor !== undefined) setLeadCategoryColors(prev => ({ ...prev, [cat]: catColor }));
+        const rule = catRule;
+        if (rule !== undefined) {
+          setProjectAutoCreate?.(prev => ({ ...prev, categoryTypes: { ...prev.categoryTypes, [cat]: rule } }));
+        }
+      },
+    });
   };
 
 
@@ -2609,18 +2647,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
-    if (confirm(
-      userLanguage === "sk" 
-        ? `Naozaj chcete vymazať používateľa "${name}"?` 
-        : userLanguage === "hu" 
-          ? `Biztosan törölni szeretné a(z) "${name}" felhasználót?` 
-          : `Are you sure you want to delete user "${name}"?`
-    )) {
-      setUsers(users.filter((u) => u.name !== name));
-      if (selectedUser && selectedUser.name === name) {
-        setSelectedUser(null);
-      }
-    }
+    const userTarget = users.find((u) => u.name === name);
+    if (!userTarget) return;
+    deleteRecordsWithUndo({
+      collection: "users",
+      allRecords: users,
+      targets: [userTarget],
+      setRecords: setUsers,
+      lang: userLanguage,
+      entity: "user",
+      titleOf: (u) => u.name,
+      applyExtra: () => {
+        if (selectedUser && selectedUser.name === name) setSelectedUser(null);
+      },
+    });
   };
 
   const handleUpdateUser = (updated: UserProfile) => {
@@ -2679,15 +2719,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       );
       return;
     }
-    if (confirm(
-      userLanguage === "sk" 
-        ? `Naozaj chcete odstrániť vlastnú rolu "${roleName}"?` 
-        : userLanguage === "hu" 
-          ? `Biztosan el szeretné távolítani a(z) "${roleName}" egyéni szerepkört?` 
-          : `Are you sure you want to remove the custom role "${roleName}"?`
-    )) {
+    const roleIndex = roles.findIndex(r => r.name === roleName);
+    const removedRole = roles[roleIndex];
+    runUndoable({
+      message: singleMessage(userLanguage, "role", "delete", roleName),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
       setRoles(roles.filter(r => r.name !== roleName));
-    }
+      },
+      revert: () => {
+        if (removedRole) setRoles(prev => (prev.some(r => r.name === roleName) ? prev : reinsertAt(prev, [{ item: removedRole, index: roleIndex }], r => r.name)));
+      },
+    });
   };
 
   // The server saves the role registry for Admin only, so the reset is Admin-only as well.
@@ -2802,24 +2845,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
 
   const handleArchiveUnifiedEntry = (ueId: string) => {
-    if (getPermission("general_config") !== "edit") return;
-    if (confirm(
-      userLanguage === "sk"
-        ? "Naozaj chcete archivovať tento unifikovaný záznam? Všetky údaje v tabuľke zostanú zachované."
-        : userLanguage === "hu"
-          ? "Biztosan archiválni szeretné ezt az egységes bejegyzést? Az adatok megmaradnak."
-          : "Are you sure you want to archive this unified entry? The database table and all its data will remain intact."
-    )) {
-      if (setUnifiedEntries) {
-        const updated = unifiedEntries.map(ue => {
-          if (ue.id === ueId) {
-            return { ...ue, archived: true };
-          }
-          return ue;
-        });
-        setUnifiedEntries(updated);
-      }
-    }
+    if (getPermission("general_config") !== "edit" || !setUnifiedEntries) return;
+    const target = unifiedEntries.find(ue => ue.id === ueId);
+    if (!target) return;
+    // The table and all its data stay either way; only the registry flag moves.
+    archiveRecordsWithUndo({
+      targets: [target],
+      setRecords: (updater) => setUnifiedEntries(typeof updater === "function" ? updater(unifiedEntries) : updater),
+      lang: userLanguage,
+      entity: "record",
+      titleOf: (ue) => ue.name,
+      fields: ["archived"],
+      change: (ue) => ({ ...ue, archived: true }),
+    });
   };
 
   const getIconComponent = (iconName: string, className?: string) => {
@@ -3245,15 +3283,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <Pencil className="h-3 w-3" />
                                   {t("Edit", "Upraviť", "Szerkesztés")}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleArchiveUnifiedEntry(ue.id)}
-                                  className="px-2.5 py-1.5 type-overline text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                                  title={t("Archive entry schema", "Archivovať schému záznamu", "Bejegyzéséma archiválása")}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                  {t("Archive", "Archivovať", "Archiválás")}
-                                </button>
+                                <HoldToConfirmButton
+                                    tone="archive"
+                                    lang={userLanguage}
+                                    what={ue.name}
+                                    onConfirm={() => handleArchiveUnifiedEntry(ue.id)}
+                                    className="px-2.5 py-1.5 type-overline text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1"
+                                    title={t("Archive entry schema", "Archivovať schému záznamu", "Bejegyzéséma archiválása")}
+                                    icon={<Trash2 className="h-3 w-3" />}
+                                >{t("Archive", "Archivovať", "Archiválás")}
+                                </HoldToConfirmButton>
                               </div>
                             </div>
                           ))}
@@ -3980,19 +4019,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <div className="font-bold text-ui text-slate-900">{template.name}</div>
                           <div className="text-caption text-slate-500">{template.description || "AI vygenerovaná šablóna"}</div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(t("Delete this template?", "Zmazať túto šablónu?", "Törli ezt a sablont?"))) {
-                              if (setAiCustomTemplates) {
-                                setAiCustomTemplates(prev => prev.filter(t => t.id !== template.id));
-                              }
-                            }
+                        <HoldToConfirmButton
+                            tone="danger"
+                            lang={userLanguage}
+                            what={template.name}
+                            onConfirm={() => {
+                            if (!setAiCustomTemplates) return;
+                            deleteRecordsWithUndo({
+                              collection: "aiCustomTemplates",
+                              allRecords: aiCustomTemplates,
+                              targets: [template],
+                              setRecords: setAiCustomTemplates,
+                              lang: userLanguage,
+                              entity: "template",
+                              titleOf: (x) => x.name,
+                            });
                           }}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded-md cursor-pointer"
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded-md"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        </HoldToConfirmButton>
                       </div>
 
                       <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
@@ -4061,6 +4107,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 setStatuses={setProjectStatuses}
                 projects={projects}
                 setProjects={setProjects}
+                userLanguage={userLanguage}
+                canEdit={getPermission("general_config") === "edit"}
+              />
+            )}
+          </div>
+        )}
+
+        {/* TAB: Tasks — task behaviour switches */}
+        {activeSubTab === "tasks" && getPermission("general_config") !== "nothing" && (
+          <div className="ws-lg:col-span-12 space-y-6">
+            {renderReadOnlyBanner("general_config")}
+            {taskSettings && setTaskSettings && (
+              <TaskSettingsPanel
+                settings={taskSettings}
+                setSettings={setTaskSettings}
                 userLanguage={userLanguage}
                 canEdit={getPermission("general_config") === "edit"}
               />
@@ -4258,13 +4319,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {/* Users Responsive Table */}
                 <div className="overflow-x-auto rounded-2xl border border-slate-200">
                   <table className="w-full text-left border-collapse text-ui">
-                    <thead>
+                    <thead className="sticky top-0 z-20 bg-slate-50">
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 type-overline">
-                        <th className="py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_user")}</th>
-                        <th className="py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_email")}</th>
-                        <th className="py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_role")}</th>
-                        <th className="py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_color")}</th>
-                        <th className="py-3 px-4 text-right">{getTranslation(userLanguage, "settings.managers.th_actions")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_user")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_email")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_role")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_color")}</th>
+                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{getTranslation(userLanguage, "settings.managers.th_actions")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -4338,14 +4399,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
                               </button>
                               {getPermission("pm_managers") === "edit" && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveUser(u.name)}
-                                  className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-100 transition-colors"
-                                  title={userLanguage === "sk" ? `Vymazať účet používateľa ${u.name}` : userLanguage === "hu" ? `Felhasználói fiók törlése ${u.name}` : `Delete user account ${u.name}`}
+                                <HoldToConfirmButton
+                                    tone="danger"
+                                    lang={userLanguage}
+                                    what={u.name}
+                                    onConfirm={() => handleRemoveUser(u.name)}
+                                    className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-100 transition-colors"
+                                    title={userLanguage === "sk" ? `Vymazať účet používateľa ${u.name}` : userLanguage === "hu" ? `Felhasználói fiók törlése ${u.name}` : `Delete user account ${u.name}`}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                </HoldToConfirmButton>
                               )}
                             </div>
                           </td>
@@ -4730,13 +4793,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {/* RBAC Matrix Table (Flipped: columns are roles, rows are functions) */}
               <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
                 <table className="w-full text-left border-collapse bg-white">
-                  <thead>
+                  <thead className="sticky top-0 z-20 bg-slate-50">
                     <tr className="bg-slate-50 border-b border-slate-200 type-overline text-slate-600">
-                      <th className="py-4 px-5 min-w-50">{getTranslation(userLanguage, "settings.rbac.th_permission")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-50 py-4 px-5 min-w-50">{getTranslation(userLanguage, "settings.rbac.th_permission")}</th>
                       {roles.map((role) => {
                         const isAdmin = isAdminRoleName(role.name);
                         return (
-                          <th key={role.name} className="py-4 px-5 text-center min-w-35">
+                          <th key={role.name} className="sticky top-0 z-10 bg-slate-50 py-4 px-5 text-center min-w-35">
                             <div className="flex flex-col items-center justify-center gap-1.5">
                               <div className="flex items-center gap-1.5 justify-center">
                                 <span 
@@ -4757,14 +4820,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {/* Delete action for custom roles */}
                               {!isAdmin && !isProtectedRoleName(role.name) && (
                                 getPermission("pm_managers") === "edit" ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveRole(role.name)}
-                                    className="text-rose-500 hover:text-rose-700 transition-colors py-0.5 px-2 hover:bg-rose-50 rounded-lg type-overline flex items-center gap-0.5 border border-rose-200"
-                                  >
-                                    <Trash2 className="h-2.5 w-2.5" />
-                                    {getTranslation(userLanguage, "common.delete")}
-                                  </button>
+                                  <HoldToConfirmButton
+                                      tone="danger"
+                                      lang={userLanguage}
+                                      what={role.name}
+                                      onConfirm={() => handleRemoveRole(role.name)}
+                                      className="text-rose-500 hover:text-rose-700 transition-colors py-0.5 px-2 hover:bg-rose-50 rounded-lg type-overline flex items-center gap-0.5 border border-rose-200"
+                                      icon={<Trash2 className="h-2.5 w-2.5" />}
+                                  >{getTranslation(userLanguage, "common.delete")}
+                                  </HoldToConfirmButton>
                                 ) : (
                                   <span className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.rbac.locked")}</span>
                                 )
@@ -5236,14 +5300,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {/* 5. DELETE BUTTON */}
                             <td className="py-3 px-4 text-center align-middle">
                               {getPermission("pipeline_stages") === "edit" ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveState(state)}
-                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
-                                  title={getTranslation(userLanguage, "settings.states.remove_title")}
+                                <HoldToConfirmButton
+                                    tone="danger"
+                                    lang={userLanguage}
+                                    what={state}
+                                    onConfirm={() => handleRemoveState(state)}
+                                    className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                    title={getTranslation(userLanguage, "settings.states.remove_title")}
                                 >
                                   <X className="h-3.5 w-3.5" />
-                                </button>
+                                </HoldToConfirmButton>
                               ) : (
                                 <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
                               )}
@@ -5424,14 +5490,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {/* 4. DELETE BUTTON */}
                           <td className="py-3 px-4 text-center align-middle">
                             {getPermission("traffic_sources") === "edit" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSource(source)}
-                                className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
-                                title={userLanguage === "sk" ? "Odstrániť zdroj" : userLanguage === "hu" ? "Forrás törlése" : "Remove source"}
+                              <HoldToConfirmButton
+                                  tone="danger"
+                                  lang={userLanguage}
+                                  what={source}
+                                  onConfirm={() => handleRemoveSource(source)}
+                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                  title={userLanguage === "sk" ? "Odstrániť zdroj" : userLanguage === "hu" ? "Forrás törlése" : "Remove source"}
                               >
                                 <X className="h-3.5 w-3.5" />
-                              </button>
+                              </HoldToConfirmButton>
                             ) : (
                               <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
                             )}
@@ -5581,14 +5649,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {/* 4. DELETE BUTTON */}
                           <td className="py-3 px-4 text-center align-middle">
                             {getPermission("traffic_sources") === "edit" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveCategory(cat)}
-                                className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
-                                title={userLanguage === "sk" ? "Odstrániť kategóriu" : userLanguage === "hu" ? "Kategória törlése" : "Remove category"}
+                              <HoldToConfirmButton
+                                  tone="danger"
+                                  lang={userLanguage}
+                                  what={cat}
+                                  onConfirm={() => handleRemoveCategory(cat)}
+                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                  title={userLanguage === "sk" ? "Odstrániť kategóriu" : userLanguage === "hu" ? "Kategória törlése" : "Remove category"}
                               >
                                 <X className="h-3.5 w-3.5" />
-                              </button>
+                              </HoldToConfirmButton>
                             ) : (
                               <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
                             )}
@@ -5729,14 +5799,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {/* 4. DELETE BUTTON */}
                           <td className="py-3 px-4 text-center align-middle">
                             {getPermission("traffic_sources") === "edit" && divisions.length > 1 ? (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveDivision(div)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                title={t("Delete division", "Odstrániť divíziu", "Divízió törlése")}
+                              <HoldToConfirmButton
+                                  tone="danger"
+                                  lang={userLanguage}
+                                  what={div}
+                                  onConfirm={() => handleRemoveDivision(div)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                  title={t("Delete division", "Odstrániť divíziu", "Divízió törlése")}
                               >
                                 <Trash2 className="h-4 w-4" />
-                              </button>
+                              </HoldToConfirmButton>
                             ) : (
                               <span className="text-micro text-slate-300">—</span>
                             )}
@@ -5825,9 +5897,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {/* ACTIONS */}
                           <td className="py-3 px-4 text-center align-middle">
                             {getPermission("traffic_sources") === "edit" ? (
-                              <button
-                                type="button"
-                                onClick={() => {
+                              <HoldToConfirmButton
+                                  tone="danger"
+                                  lang={userLanguage}
+                                  what={state}
+                                  onConfirm={() => {
                                   if (taskStates.length <= 1) {
                                     (window as any).showToast(
                                       userLanguage === "sk" 
@@ -5836,23 +5910,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     );
                                     return;
                                   }
-                                  if (confirm(
-                                    userLanguage === "sk" 
-                                      ? `Naozaj chcete odstrániť stav "${state}"?` 
-                                      : `Are you sure you want to remove the state "${state}"?`
-                                  )) {
-                                    setTaskStates(taskStates.filter(s => s !== state));
-                                    setTaskStateColors(prev => {
-                                      const next = { ...prev };
-                                      delete next[state];
-                                      return next;
-                                    });
-                                  }
+                                  const taskStateIndex = taskStates.indexOf(state);
+                                  const taskStateColor = taskStateColors[state];
+                                  runUndoable({
+                                    message: singleMessage(userLanguage, "status", "delete", state),
+                                    undoLabel: undoLabel(userLanguage),
+                                    apply: () => {
+                                      setTaskStates(taskStates.filter(s => s !== state));
+                                      setTaskStateColors(prev => {
+                                        const next = { ...prev };
+                                        delete next[state];
+                                        return next;
+                                      });
+                                    },
+                                    revert: () => {
+                                      setTaskStates(prev => (prev.includes(state) ? prev : reinsertAt(prev, [{ item: state, index: taskStateIndex }], s => s)));
+                                      if (taskStateColor !== undefined) setTaskStateColors(prev => ({ ...prev, [state]: taskStateColor }));
+                                    },
+                                  });
                                 }}
-                                className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1"
                               >
                                 <Trash2 className="h-4.5 w-4.5" />
-                              </button>
+                              </HoldToConfirmButton>
                             ) : (
                               <Lock className="h-4 w-4 text-slate-300 inline-block" />
                             )}
@@ -7545,13 +7625,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   >
                     <Icons.RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
                   </button>
-                  <button
-                    type="button"
-                    onClick={clearErrorLogs}
-                    className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl type-overline flex items-center gap-1 cursor-pointer"
+                  <HoldToConfirmButton
+                      tone="danger"
+                      lang={asLang(userLanguage)}
+                      what={t("error logs", "chybové záznamy", "hibanaplók")}
+                      onConfirm={clearErrorLogs}
+                      className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl type-overline flex items-center gap-1"
                   >
                     {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
-                  </button>
+                  </HoldToConfirmButton>
                 </div>
               </div>
 

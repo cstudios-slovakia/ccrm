@@ -33,6 +33,8 @@ import { applyManualOrder, newestFirst } from "../../utils/projectSort";
 import { moveRelative, type DropPosition } from "../../utils/reorder";
 import { useDragReorder } from "../../hooks/useDragReorder";
 import { useDragAutoScroll } from "../../hooks/useDragAutoScroll";
+import { HoldToConfirmButton } from "../ui/HoldToConfirm";
+import { asLang } from "../../utils/undoMessages";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 
 interface EmployeeListViewProps {
@@ -378,15 +380,15 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-ui border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200/80 bg-slate-50/75 text-slate-500 type-overline">
-                  <th className="py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
-                  <th className="py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
-                  {rights.salaries && <th className="py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
-                  <th className="py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
-                  {rights.files && <th className="py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
-                  <th className="py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
-                  <th className="py-3.5 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+              <thead className="sticky top-0 z-20 bg-slate-50">
+                <tr className="border-b border-slate-200/80 bg-slate-50 text-slate-500 type-overline">
+                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
+                  {rights.salaries && <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
+                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
+                  {rights.files && <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
+                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                  <th className="sticky top-0 right-0 z-30 py-3.5 px-4 text-right bg-slate-50 border-l border-slate-200/80">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -519,7 +521,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-right">
+                      <td className="py-3.5 px-4 text-right sticky right-0 z-10 bg-white group-hover:bg-slate-50 border-l border-slate-100/80 transition-colors">
                         <div
                           className="flex items-center justify-end gap-1.5"
                           onClick={(e) => e.stopPropagation()}
@@ -535,14 +537,16 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                           </button>
                           )}
                           {rights.delete && (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteEmployee(emp.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                            title={t("Delete", "Zmazať", "Törlés")}
+                          <HoldToConfirmButton
+                              tone="danger"
+                              lang={asLang(systemLanguage)}
+                              what={emp.name}
+                              onConfirm={() => onDeleteEmployee(emp.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                              title={t("Delete", "Zmazať", "Törlés")}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </HoldToConfirmButton>
                           )}
                           <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 transition ml-1" />
                         </div>
@@ -658,14 +662,16 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>
                     )}
-                    {rights.delete && <button
-                      type="button"
-                      onClick={() => onDeleteEmployee(emp.id)}
-                      className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition cursor-pointer"
-                      title={t("Delete", "Zmazať", "Törlés")}
+                    {rights.delete && <HoldToConfirmButton
+                        tone="danger"
+                        lang={asLang(systemLanguage)}
+                        what={emp.name}
+                        onConfirm={() => onDeleteEmployee(emp.id)}
+                        className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition"
+                        title={t("Delete", "Zmazať", "Törlés")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>}
+                    </HoldToConfirmButton>}
                   </div>
                 </div>
               </div>

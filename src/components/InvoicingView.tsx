@@ -27,6 +27,8 @@ import { cn } from "../utils/cn";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { PageHeader, StatGrid, StatTile } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
 
 interface InvoicingViewProps {
   invoicesOffers: InvoiceOffer[];
@@ -915,18 +917,19 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
     );
   };
 
+  // The hold on the button is the confirmation. The document's linked ledger
+  // movement stays until the undo window closes (see App.updateInvoicesOffersAndSync).
   const handleDelete = (offer: InvoiceOffer) => {
     if (!canDelete) return;
-    const ok = window.confirm(
-      t(
-        `Delete document ${offer.documentNumber}? This cannot be undone.`,
-        `Naozaj zmazať doklad ${offer.documentNumber}? Túto akciu nie je možné vrátiť.`,
-        `Törli a(z) ${offer.documentNumber} bizonylatot? A művelet nem vonható vissza.`
-      )
-    );
-    if (!ok) return;
-    setInvoicesOffers(prev => prev.filter(o => o.id !== offer.id));
-    toast(t("Document deleted.", "Doklad bol zmazaný.", "A bizonylat törölve."));
+    deleteRecordsWithUndo({
+      collection: "invoicesOffers",
+      allRecords: invoicesOffers,
+      targets: [offer],
+      setRecords: setInvoicesOffers,
+      lang,
+      entity: "invoice",
+      titleOf: (o) => o.documentNumber || o.title,
+    });
   };
 
   /**
@@ -1134,24 +1137,24 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       </div>
 
       {/* 5. DOCUMENTS TABLE */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm">
+        <div className="overflow-x-auto rounded-3xl">
           <table className="w-full text-left text-ui border-collapse min-w-195">
-            <thead>
+            <thead className="sticky top-0 z-20">
               <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
-                <th className="p-4">{t("Document no.", "Číslo dokladu", "Bizonylatszám")}</th>
-                <th className="p-4">{t("Type & template", "Typ a šablóna", "Típus és sablon")}</th>
-                <th className="p-4">{t("Client / lead", "Klient / Lead", "Ügyfél / Lead")}</th>
-                <th className="p-4">{t("Issued", "Vystavené", "Kiállítva")}</th>
-                <th className="p-4 text-right">{t("Amount", "Suma", "Összeg")}</th>
-                <th className="p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
-                <th className="p-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-4 rounded-tl-3xl">{t("Document no.", "Číslo dokladu", "Bizonylatszám")}</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-4">{t("Type & template", "Typ a šablóna", "Típus és sablon")}</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-4">{t("Client / lead", "Klient / Lead", "Ügyfél / Lead")}</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-4">{t("Issued", "Vystavené", "Kiállítva")}</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-4 text-right">{t("Amount", "Suma", "Összeg")}</th>
+                <th className="sticky top-0 z-10 bg-slate-50 p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                <th className="sticky top-0 right-0 z-30 bg-slate-50 p-4 text-right border-l border-slate-200/60 rounded-tr-3xl">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredOffers.length > 0 ? (
                 filteredOffers.map(offer => (
-                  <tr key={offer.id} className="hover:bg-slate-50/80 transition-colors">
+                  <tr key={offer.id} className="group hover:bg-slate-50/80 transition-colors">
                     <td className="p-4 align-top font-mono font-bold text-slate-900 whitespace-nowrap">
                       {offer.documentNumber}
                       {offer.externalId && (
@@ -1213,7 +1216,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                         </span>
                       )}
                     </td>
-                    <td className="p-4 align-top text-right">
+                    <td className="p-4 align-top text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 transition-colors group-hover:bg-slate-50">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setPreviewOffer(offer)}
@@ -1232,13 +1235,16 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           </button>
                         )}
                         {canDelete && (
-                          <button
-                            onClick={() => handleDelete(offer)}
-                            title={t("Delete", "Odstrániť", "Törlés")}
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                          <HoldToConfirmButton
+                              tone="danger"
+                              lang={lang}
+                              what={offer.documentNumber}
+                              onConfirm={() => handleDelete(offer)}
+                              title={t("Delete", "Odstrániť", "Törlés")}
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </HoldToConfirmButton>
                         )}
                       </div>
                     </td>

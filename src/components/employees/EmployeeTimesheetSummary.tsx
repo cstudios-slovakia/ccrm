@@ -538,31 +538,31 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
       {/* 3. VIEW 1: TIMESHEET CALENDAR MATRIX (Adapted to CCRM Brand Theme) */}
       {viewMode === "matrix" && (
-        <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/95 dark:bg-[#12161f]/95 shadow-glass overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/95 dark:bg-[#12161f]/95 shadow-glass">
+          <div className="overflow-x-auto rounded-3xl">
             <table className="w-full min-w-190 border-collapse text-left">
               {/* Table Header */}
-              <thead>
+              <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-[#161b26]">
                 <tr className="bg-slate-50/90 dark:bg-black/40 border-b border-slate-200/90 dark:border-white/10 text-ui font-bold text-slate-600 dark:text-slate-300">
-                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("MON", "PO", "HÉ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("TUE", "UT", "KE")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("WED", "ST", "SZE")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("THU", "ŠT", "CSÜ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("FRI", "PI", "PÉ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/50 dark:bg-black/25 w-[11.5%]">
+                  <th className="sticky top-0 z-10 py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/80 dark:bg-black/35 w-[11.5%]">
                     {t("SAT", "SO", "SZO")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/50 dark:bg-black/25 w-[11.5%]">
+                  <th className="sticky top-0 z-10 py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/80 dark:bg-black/35 w-[11.5%]">
                     {t("SUN", "NE", "VAS")}
                   </th>
                   <th className="py-3.5 px-4 text-center bg-gradient-to-r from-slate-100/90 to-[#c29b62]/10 dark:from-black/40 dark:to-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] border-l border-slate-200/90 dark:border-white/10 w-[19.5%]">
@@ -859,14 +859,14 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-[#161b26]">
                 <tr className="border-b border-slate-200/80 dark:border-slate-800 type-overline text-slate-500">
-                  <th className="py-2.5 px-3">{t("Date", "Dátum", "Dátum")}</th>
-                  <th className="py-2.5 px-3">{t("Weekday", "Deň", "Nap")}</th>
-                  <th className="py-2.5 px-3">{t("Status", "Stav", "Állapot")}</th>
-                  <th className="py-2.5 px-3 text-right">{t("Hours Worked", "Odpracované", "Ledolgozva")}</th>
-                  <th className="py-2.5 px-3 text-right">{t("8h Days", "8h Dni", "8h Napok")}</th>
-                  <th className="py-2.5 px-3">{t("Projects & Tasks", "Projekty a úlohy", "Projektek & Feladatok")}</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3">{t("Date", "Dátum", "Dátum")}</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3">{t("Weekday", "Deň", "Nap")}</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3">{t("Status", "Stav", "Állapot")}</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3 text-right">{t("Hours Worked", "Odpracované", "Ledolgozva")}</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3 text-right">{t("8h Days", "8h Dni", "8h Napok")}</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3">{t("Projects & Tasks", "Projekty a úlohy", "Projektek & Feladatok")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-ui">
