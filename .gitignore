@@ -75,6 +75,7 @@ scripts/verify_migration.php
 
 
 # Editor directories and files
+.vscode
 .vscode/*
 !.vscode/extensions.json
 .idea
