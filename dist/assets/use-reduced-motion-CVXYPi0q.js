@@ -1,0 +1,1 @@
+import{Cr as e,Dc as t,Ec as n,Sr as r,xr as i}from"./index--S4A4dS5.js";var a=t(n(),1);function o(){!r.current&&i();let[t]=(0,a.useState)(e.current);return t}export{o as t};

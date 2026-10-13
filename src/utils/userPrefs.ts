@@ -87,7 +87,7 @@ export interface UserPrefs {
   leadsSortSettings: LeadSort | null;
   /** Leads screen: configured list columns. */
   leadsListColumns: StoredLeadColumn[] | null;
-  /** Leads screen: whether collapsible filters bar is shown. */
+  /** Leads screen: extra filters (type, division, rating, archive, city, source, offer date) are open. */
   leadsShowFilters: boolean;
   /**
    * Projects screen: which project statuses are shown. `null` means "never chosen",
@@ -224,7 +224,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsVisibleStates: null,
   leadsSortSettings: null,
   leadsListColumns: null,
-  leadsShowFilters: true,
+  leadsShowFilters: false,
   projectsVisibleStatuses: null,
   projectsEquationView: "detail",
   projectsEquationCounts: true,

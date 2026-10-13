@@ -56,6 +56,8 @@ interface CustomSelectProps {
   addNewIcon?: React.ReactNode;
   /** Inline style applied to the trigger button — for dynamic per-instance colors (e.g. status pipeline colors) that can't be expressed as Tailwind classes. */
   style?: React.CSSProperties;
+  /** Size the trigger to its label. The closed control shows the whole label. */
+  fitLabel?: boolean;
 }
 
 function normalizeOptions(options: RawOption[]): DropdownOption[] {
@@ -177,6 +179,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   addNewLabel,
   addNewIcon,
   style,
+  fitLabel = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -238,7 +241,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     // is allowed the room a label needs; either way it stops at the viewport.
     const roomToEdge =
       right !== undefined ? window.innerWidth - right - margin : window.innerWidth - (left ?? margin) - margin;
-    const maxWidth = Math.min(Math.max(width, 320), Math.max(roomToEdge, 160));
+    const maxWidth = fitLabel
+      ? Math.max(roomToEdge, 160)
+      : Math.min(Math.max(width, 320), Math.max(roomToEdge, 160));
     setCoords({
       top: openUp ? undefined : rect.bottom + 4,
       bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
@@ -395,7 +400,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         className={
           unstyled
             ? `flex items-center transition-all duration-150 cursor-pointer ${disabled ? "opacity-50 cursor-not-allowed" : "active:scale-[0.98]"} ${className}`
-            : `w-full flex items-center justify-between rounded-xl border font-semibold text-left transition-all duration-150 cursor-pointer ${sizeClasses} ${
+            : `${fitLabel ? "w-max max-w-none whitespace-nowrap" : "w-full"} flex items-center justify-between rounded-xl border font-semibold text-left transition-all duration-150 cursor-pointer ${sizeClasses} ${
                 disabled
                   ? "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-400"
                   : isOpen
@@ -404,9 +409,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               } ${className}`
         }
       >
-        <span className="flex items-center gap-1.5 min-w-0 truncate">
+        <span className={`flex items-center gap-1.5 ${fitLabel ? "whitespace-nowrap" : "min-w-0 truncate"}`}>
           {icon}
-          <span className={`truncate ${!selected ? "text-slate-400 font-medium" : ""}`}>
+          <span className={`${fitLabel ? "whitespace-nowrap" : "truncate"} ${!selected ? "text-slate-400 font-medium" : ""}`}>
             {selected ? selected.label : placeholder}
           </span>
         </span>
@@ -498,7 +503,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         }`}
                       >
                         {opt.icon}
-                        <span className="flex-1 truncate">{opt.label}</span>
+                        <span className={`flex-1 ${fitLabel ? "whitespace-nowrap" : "truncate"}`}>{opt.label}</span>
                         {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
                       </button>
                     );
