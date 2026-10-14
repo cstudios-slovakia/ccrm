@@ -5,10 +5,13 @@ import {
   DEFAULT_TICKET_SETTINGS,
   DEFAULT_TICKET_STATUS_DEFS,
   evaluateTicketSla,
+  formatDurationMinutes,
   getTicketStatusLabel,
   nextTicketNumber,
   normalizeTicketSettings,
   normalizeTicketStatuses,
+  parseDurationColonInput,
+  sanitizeColonTimeDraft,
 } from "./tickets.ts";
 import type { Ticket } from "../types/index.ts";
 
@@ -99,4 +102,18 @@ test("computeTicketSlaDueDates returns future due timestamps", () => {
   assert.ok(due.firstResponseDueAt.length === 19);
   assert.ok(due.resolutionDueAt.length === 19);
 });
+
+test("formatDurationMinutes and parseDurationColonInput use H:MM colon format", () => {
+  assert.equal(formatDurationMinutes(0), "0:00");
+  assert.equal(formatDurationMinutes(30), "0:30");
+  assert.equal(formatDurationMinutes(90), "1:30");
+  assert.equal(formatDurationMinutes(125), "2:05");
+  assert.equal(parseDurationColonInput("1:30"), 90);
+  assert.equal(parseDurationColonInput("0:45"), 45);
+  assert.equal(parseDurationColonInput(":15"), 15);
+  assert.equal(parseDurationColonInput("2:"), 120);
+  assert.equal(sanitizeColonTimeDraft(""), ":");
+  assert.equal(sanitizeColonTimeDraft("1:30"), "1:30");
+});
+
 

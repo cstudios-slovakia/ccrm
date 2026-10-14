@@ -2040,6 +2040,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                         'minutes' => (int)($te['minutes'] ?? 0),
                         'billable' => (int)($te['billable'] ?? 1) === 1,
                         'note' => $te['note'] ?? null,
+                        'description' => $te['note'] ?? null,
                         'loggedAt' => $te['logged_at'],
                         'createdAt' => $te['created_at'],
                     ];
@@ -5658,6 +5659,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $teId = (string)($te['id'] ?? '');
                                 if ($teId === '') continue;
                                 $teLogged = !empty($te['loggedAt']) ? substr(str_replace('T', ' ', (string)$te['loggedAt']), 0, 19) : date('Y-m-d H:i:s');
+                                $teNote = isset($te['note']) && $te['note'] !== ''
+                                    ? (string)$te['note']
+                                    : (isset($te['description']) && $te['description'] !== '' ? (string)$te['description'] : null);
                                 $upsertTimeEntry->execute([
                                     $teId,
                                     $tckId,
@@ -5665,7 +5669,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     (string)($te['userName'] ?? ''),
                                     (int)($te['minutes'] ?? 0),
                                     !isset($te['billable']) || $te['billable'] ? 1 : 0,
-                                    isset($te['note']) ? (string)$te['note'] : null,
+                                    $teNote,
                                     $teLogged,
                                 ]);
                                 $keepTeIds[] = $teId;

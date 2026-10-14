@@ -77,6 +77,8 @@ import {
   computeSlaDueDates,
   generateTicketNumber,
   formatDurationMinutes,
+  parseDurationColonInput,
+  sanitizeColonTimeDraft,
 } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { projectDisplayName } from "../utils/projects";
@@ -97,6 +99,78 @@ import {
   isImageAttachment,
   isRichTextEmpty,
 } from "./ui/TicketRichHtmlEditor";
+
+/** Single time input in H:MM format (e.g. 1:30 for 90 minutes) with a permanent preset ":" */
+const ColonTimeInput: React.FC<{
+  value: string;
+  onChange: (next: string) => void;
+  className?: string;
+  title?: string;
+  autoFocus?: boolean;
+}> = ({ value, onChange, className = "", title, autoFocus }) => {
+  const displayVal = value.includes(":") ? value : sanitizeColonTimeDraft(value);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const pos = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? pos;
+    const colonIdx = displayVal.indexOf(":");
+
+    if (e.key === ":" || e.key === ";" || e.key === "." || e.key === ",") {
+      e.preventDefault();
+      if (colonIdx >= 0) {
+        requestAnimationFrame(() => {
+          input.setSelectionRange(colonIdx + 1, displayVal.length);
+        });
+      }
+      return;
+    }
+
+    if (e.key === "Backspace" && pos === end && colonIdx >= 0 && pos === colonIdx + 1) {
+      e.preventDefault();
+      if (colonIdx > 0) {
+        const nextLeft = displayVal.slice(0, colonIdx - 1);
+        const nextRight = displayVal.slice(colonIdx + 1);
+        const nextVal = `${nextLeft}:${nextRight}`;
+        onChange(nextVal);
+        const newCursor = Math.max(0, colonIdx - 1);
+        requestAnimationFrame(() => {
+          input.setSelectionRange(newCursor, newCursor);
+        });
+      } else {
+        requestAnimationFrame(() => {
+          input.setSelectionRange(0, 0);
+        });
+      }
+      return;
+    }
+
+    if (e.key === "Delete" && pos === end && colonIdx >= 0 && pos === colonIdx) {
+      e.preventDefault();
+      requestAnimationFrame(() => {
+        input.setSelectionRange(colonIdx + 1, colonIdx + 1);
+      });
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      autoFocus={autoFocus}
+      value={displayVal}
+      title={title}
+      onChange={(e) => onChange(sanitizeColonTimeDraft(e.target.value))}
+      onKeyDown={handleKeyDown}
+      onBlur={() => {
+        const mins = parseDurationColonInput(displayVal);
+        onChange(formatDurationMinutes(mins));
+      }}
+      placeholder="0:00"
+      className={className}
+    />
+  );
+};
 
 interface TicketsViewProps {
   initialSelectedTicketId?: string;
@@ -353,10 +427,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [newTaskDeadline, setNewTaskDeadline] = useState(() => todayLocalPlusDays(3));
   const [showTaskForm, setShowTaskForm] = useState(false);
 
-  // Time entry form state
-  const [logMinutes, setLogMinutes] = useState<string>("30");
+  // Time entry form & admin edit state
+  const [logMinutes, setLogMinutes] = useState<string>("0:30");
   const [logDesc, setLogDesc] = useState<string>("");
   const [logBillable] = useState<boolean>(true);
+  const [isEditingTotalTime, setIsEditingTotalTime] = useState<boolean>(false);
+  const [editingTotalTimeDraft, setEditingTotalTimeDraft] = useState<string>("0:00");
+  const [editingTimeEntryId, setEditingTimeEntryId] = useState<string | null>(null);
+  const [editingTimeEntryDuration, setEditingTimeEntryDuration] = useState<string>("0:30");
+  const [editingTimeEntryNote, setEditingTimeEntryNote] = useState<string>("");
+  const isAdminUser =
+    (currentUser?.role || "").toLowerCase() === "admin" || canEdit;
 
   // Email polling state
   const [isPollingImap, setIsPollingImap] = useState(false);
@@ -910,22 +991,28 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const handleLogTime = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTicket || !canEdit) return;
-    const mins = parseInt(logMinutes, 10);
+    const mins = parseDurationColonInput(logMinutes);
     if (!mins || mins <= 0) return;
     const now = nowLocalStamp();
+    const noteText =
+      logDesc.trim() || t("Support work", "Podpora", "Támogatási munka");
     const entry = {
       id: `tte-${Date.now()}`,
       ticketId: selectedTicket.id,
       userName: currentUser?.name || "Agent",
       minutes: mins,
       billable: logBillable,
-      description:
-        logDesc.trim() || t("Support work", "Podpora", "Támogatási munka"),
+      note: noteText,
+      description: noteText,
       loggedAt: now,
     };
 
+    const nextEntries = [...(selectedTicket.timeEntries || []), entry];
+    const nextTotal = nextEntries.reduce((acc, item) => acc + (item.minutes || 0), 0);
+
     updateSelectedTicket({
-      timeEntries: [...(selectedTicket.timeEntries || []), entry],
+      timeEntries: nextEntries,
+      loggedMinutes: nextTotal,
     });
 
     if (logBillable && selectedTicket.contractId) {
@@ -945,8 +1032,128 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     }
 
     setLogDesc("");
+    setLogMinutes("0:30");
     (window as any).showToast?.(
       t("Time entry logged.", "Čas bol zaznamenaný.", "Időbejegyzés rögzítve."),
+    );
+  };
+
+  const handleSaveTotalLoggedTime = () => {
+    if (!selectedTicket || !isAdminUser) return;
+    const targetMins = Math.max(0, parseDurationColonInput(editingTotalTimeDraft));
+    const now = nowLocalStamp();
+    const existing = selectedTicket.timeEntries || [];
+    let nextEntries = existing;
+
+    if (targetMins === 0) {
+      nextEntries = [];
+    } else if (existing.length === 0) {
+      const noteText = t(
+        "Time logged (Admin)",
+        "Zaznamenaný čas (Admin)",
+        "Rögzített idő (Admin)",
+      );
+      nextEntries = [
+        {
+          id: `tte-${Date.now()}`,
+          ticketId: selectedTicket.id,
+          userName: currentUser?.name || "Admin",
+          minutes: targetMins,
+          billable: true,
+          note: noteText,
+          description: noteText,
+          loggedAt: now,
+        },
+      ];
+    } else if (existing.length === 1) {
+      nextEntries = [{ ...existing[0], minutes: targetMins }];
+    } else {
+      const othersSum = existing
+        .slice(1)
+        .reduce((acc, item) => acc + (item.minutes || 0), 0);
+      if (targetMins > othersSum) {
+        nextEntries = [
+          { ...existing[0], minutes: targetMins - othersSum },
+          ...existing.slice(1),
+        ];
+      } else {
+        const noteText =
+          existing[0].description ||
+          existing[0].note ||
+          t("Support work", "Podpora", "Támogatási munka");
+        nextEntries = [
+          {
+            ...existing[0],
+            minutes: targetMins,
+            note: noteText,
+            description: noteText,
+          },
+        ];
+      }
+    }
+
+    updateSelectedTicket({
+      timeEntries: nextEntries,
+      loggedMinutes: targetMins,
+    });
+    setIsEditingTotalTime(false);
+    (window as any).showToast?.(
+      t(
+        "Time logged updated.",
+        "Zaznamenaný čas bol upravený.",
+        "Rögzített idő frissítve.",
+      ),
+    );
+  };
+
+  const handleSaveTimeEntry = (entryId: string) => {
+    if (!selectedTicket || !isAdminUser) return;
+    const mins = Math.max(1, parseDurationColonInput(editingTimeEntryDuration));
+    const noteText =
+      editingTimeEntryNote.trim() ||
+      t("Support work", "Podpora", "Támogatási munka");
+    const nextEntries = (selectedTicket.timeEntries || []).map((te) =>
+      te.id === entryId
+        ? {
+            ...te,
+            minutes: mins,
+            note: noteText,
+            description: noteText,
+          }
+        : te,
+    );
+    const nextTotal = nextEntries.reduce((acc, item) => acc + (item.minutes || 0), 0);
+    updateSelectedTicket({
+      timeEntries: nextEntries,
+      loggedMinutes: nextTotal,
+    });
+    setEditingTimeEntryId(null);
+    (window as any).showToast?.(
+      t(
+        "Time entry updated.",
+        "Časový záznam bol upravený.",
+        "Időbejegyzés frissítve.",
+      ),
+    );
+  };
+
+  const handleDeleteTimeEntry = (entryId: string) => {
+    if (!selectedTicket || !isAdminUser) return;
+    const nextEntries = (selectedTicket.timeEntries || []).filter(
+      (te) => te.id !== entryId,
+    );
+    const nextTotal = nextEntries.reduce((acc, item) => acc + (item.minutes || 0), 0);
+    updateSelectedTicket({
+      timeEntries: nextEntries,
+      loggedMinutes: nextTotal,
+    });
+    if (editingTimeEntryId === entryId) setEditingTimeEntryId(null);
+    (window as any).showToast?.(
+      t(
+        "Time entry removed.",
+        "Časový záznam bol odstránený.",
+        "Időbejegyzés törölve.",
+      ),
     );
   };
 
@@ -1734,35 +1941,92 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   )}
                 </div>
 
-                {/* Time Tracking */}
+                {/* Time Tracking (H:MM format with preset ":" and Admin Edit) */}
                 <div className="pt-3 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="type-overline text-slate-500 flex items-center gap-1">
-                      <Timer className="w-3.5 h-3.5 text-emerald-600" />
-                      {t("Time Logged", "Zaznamenaný čas", "Rögzített idő")}
-                    </span>
-                    <span className="text-micro font-bold text-slate-700">
-                      {formatDurationMinutes(
-                        (selectedTicket.timeEntries || []).reduce(
-                          (acc, e) => acc + e.minutes,
-                          0,
-                        ),
-                      )}
-                    </span>
-                  </div>
+                  {(() => {
+                    const totalLoggedMins = (selectedTicket.timeEntries || []).reduce(
+                      (acc, e) => acc + (e.minutes || 0),
+                      0,
+                    );
+                    const formattedTotal = formatDurationMinutes(totalLoggedMins);
+
+                    return (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="type-overline text-slate-500 flex items-center gap-1">
+                          <Timer className="w-3.5 h-3.5 text-emerald-600" />
+                          {t("Time Logged", "Zaznamenaný čas", "Rögzített idő")}
+                        </span>
+
+                        {isEditingTotalTime && isAdminUser ? (
+                          <div className="flex items-center gap-1">
+                            <ColonTimeInput
+                              autoFocus
+                              value={editingTotalTimeDraft}
+                              onChange={setEditingTotalTimeDraft}
+                              title={t(
+                                "Total time in H:MM format (e.g. 1:30 for 90 min)",
+                                "Celkový čas vo formáte H:MM (napr. 1:30 pre 90 min)",
+                                "Összes idő Ó:PP formátumban (pl. 1:30 = 90 perc)",
+                              )}
+                              className="w-16 px-2 py-0.5 rounded-lg border border-emerald-400 bg-white text-micro font-mono font-bold text-slate-800 text-center"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSaveTotalLoggedTime}
+                              className="p-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                              title={t("Save", "Uložiť", "Mentés")}
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingTotalTime(false)}
+                              className="p-1 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 cursor-pointer"
+                              title={t("Cancel", "Zrušiť", "Mégse")}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : isAdminUser ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTotalTimeDraft(formattedTotal);
+                              setIsEditingTotalTime(true);
+                            }}
+                            title={t(
+                              "Click to edit total time logged (H:MM)",
+                              "Kliknutím upravíte celkový zaznamenaný čas (H:MM)",
+                              "Kattintson az összes rögzített idő szerkesztéséhez (Ó:PP)",
+                            )}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/80 text-micro font-mono font-bold text-emerald-800 transition-colors cursor-pointer"
+                          >
+                            <span>{formattedTotal}</span>
+                            <Edit3 className="w-2.5 h-2.5 text-emerald-600" />
+                          </button>
+                        ) : (
+                          <span className="text-micro font-mono font-bold text-slate-700">
+                            {formattedTotal}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {canEdit && (
                     <form
                       onSubmit={handleLogTime}
                       className="flex items-center gap-1.5"
                     >
-                      <input
-                        type="number"
-                        min={1}
+                      <ColonTimeInput
                         value={logMinutes}
-                        onChange={(e) => setLogMinutes(e.target.value)}
-                        className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-micro font-bold"
-                        placeholder="min"
+                        onChange={setLogMinutes}
+                        title={t(
+                          "Hours:Minutes (e.g. 1:30 for 90 minutes)",
+                          "Hodiny:Minúty (napr. 1:30 pre 90 minút)",
+                          "Óra:Perc (pl. 1:30 = 90 perc)",
+                        )}
+                        className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-micro font-mono font-bold text-slate-800 text-center"
                       />
                       <input
                         type="text"
@@ -1777,7 +2041,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       />
                       <button
                         type="submit"
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-micro font-bold cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-micro font-bold cursor-pointer"
+                        title={t(
+                          "Add time entry",
+                          "Pridať časový záznam",
+                          "Időbejegyzés hozzáadása",
+                        )}
                       >
                         +
                       </button>
@@ -1785,27 +2054,111 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   )}
 
                   {(selectedTicket.timeEntries || []).length > 0 && (
-                    <div className="space-y-1 max-h-28 overflow-y-auto">
-                      {(selectedTicket.timeEntries || []).map((te) => (
-                        <div
-                          key={te.id}
-                          className="flex items-center justify-between text-micro text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100"
-                        >
-                          <span className="truncate">
-                            <strong>{formatDurationMinutes(te.minutes)}</strong>{" "}
-                            • {te.userName}{" "}
-                            {te.description || te.note
-                              ? `— ${te.description || te.note}`
-                              : ""}
-                          </span>
-                          <span className="text-slate-400 shrink-0">
-                            {String(te.loggedAt || te.createdAt || "").slice(
-                              5,
-                              10,
+                    <div className="space-y-1 max-h-36 overflow-y-auto">
+                      {(selectedTicket.timeEntries || []).map((te) => {
+                        const isEditingTe = editingTimeEntryId === te.id;
+                        const entryNote = te.description || te.note || "";
+
+                        return (
+                          <div
+                            key={te.id}
+                            className="flex items-center justify-between gap-1.5 text-micro text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 group"
+                          >
+                            {isEditingTe && isAdminUser ? (
+                              <div className="flex items-center gap-1.5 w-full">
+                                <ColonTimeInput
+                                  autoFocus
+                                  value={editingTimeEntryDuration}
+                                  onChange={setEditingTimeEntryDuration}
+                                  className="w-14 px-1.5 py-0.5 rounded border border-emerald-400 bg-white text-micro font-mono font-bold text-center"
+                                />
+                                <input
+                                  type="text"
+                                  value={editingTimeEntryNote}
+                                  onChange={(e) =>
+                                    setEditingTimeEntryNote(e.target.value)
+                                  }
+                                  placeholder={t(
+                                    "Note...",
+                                    "Poznámka...",
+                                    "Megjegyzés...",
+                                  )}
+                                  className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-micro"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveTimeEntry(te.id)}
+                                  className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer shrink-0"
+                                  title={t("Save", "Uložiť", "Mentés")}
+                                >
+                                  <Check className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingTimeEntryId(null)}
+                                  className="p-1 rounded border border-slate-200 text-slate-500 hover:text-slate-700 cursor-pointer shrink-0"
+                                  title={t("Cancel", "Zrušiť", "Mégse")}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="truncate min-w-0 flex-1">
+                                  <strong className="font-mono text-slate-800">
+                                    {formatDurationMinutes(te.minutes)}
+                                  </strong>{" "}
+                                  • {te.userName}{" "}
+                                  {entryNote ? `— ${entryNote}` : ""}
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className="text-slate-400">
+                                    {String(
+                                      te.loggedAt || te.createdAt || "",
+                                    ).slice(5, 10)}
+                                  </span>
+                                  {isAdminUser && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingTimeEntryId(te.id);
+                                          setEditingTimeEntryDuration(
+                                            formatDurationMinutes(te.minutes),
+                                          );
+                                          setEditingTimeEntryNote(entryNote);
+                                        }}
+                                        className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                        title={t(
+                                          "Edit time entry",
+                                          "Upraviť časový záznam",
+                                          "Időbejegyzés szerkesztése",
+                                        )}
+                                      >
+                                        <Edit3 className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDeleteTimeEntry(te.id)
+                                        }
+                                        className="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                        title={t(
+                                          "Delete time entry",
+                                          "Odstrániť časový záznam",
+                                          "Időbejegyzés törlése",
+                                        )}
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </>
                             )}
-                          </span>
-                        </div>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

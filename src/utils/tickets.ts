@@ -407,9 +407,38 @@ export const formatDurationMinutes = (mins: number): string => {
   const total = Math.max(0, Math.round(Number(mins) || 0));
   const h = Math.floor(total / 60);
   const m = total % 60;
-  if (h > 0 && m > 0) return `${h}h ${m}m`;
-  if (h > 0) return `${h}h`;
-  return `${m}m`;
+  return `${h}:${String(m).padStart(2, "0")}`;
+};
+
+export const parseDurationColonInput = (raw: string): number => {
+  const s = String(raw || "").trim();
+  if (!s) return 0;
+  if (s.includes(":")) {
+    const [hStr = "0", mStr = "0"] = s.split(":");
+    const h = parseInt(hStr.replace(/\D/g, "") || "0", 10);
+    const m = parseInt(mStr.replace(/\D/g, "") || "0", 10);
+    return (Number.isNaN(h) ? 0 : h) * 60 + (Number.isNaN(m) ? 0 : m);
+  }
+  const n = parseInt(s.replace(/\D/g, "") || "0", 10);
+  return Number.isNaN(n) ? 0 : n;
+};
+
+export const sanitizeColonTimeDraft = (raw: string): string => {
+  const str = String(raw ?? "");
+  if (str.includes(":")) {
+    const [left = "", right = ""] = str.split(":");
+    const h = left.replace(/\D/g, "").slice(0, 3);
+    const m = right.replace(/\D/g, "").slice(0, 2);
+    return `${h}:${m}`;
+  }
+  const digits = str.replace(/\D/g, "");
+  if (!digits) return ":";
+  if (digits.length <= 2) {
+    return `${digits}:00`;
+  }
+  const h = digits.slice(0, -2).slice(0, 3);
+  const m = digits.slice(-2);
+  return `${h}:${m}`;
 };
 
 export interface TicketSlaState {
