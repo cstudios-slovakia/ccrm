@@ -13,6 +13,15 @@ import {
   ShieldCheck,
   MessageSquare,
   AlertCircle,
+  ArrowDown,
+  ArrowUp,
+  Minus,
+  Flame,
+  Bug,
+  HelpCircle,
+  Sparkles,
+  AlertTriangle,
+  CreditCard,
 } from "lucide-react";
 import type {
   Project,
@@ -32,6 +41,7 @@ import {
   getTicketStatusLabel,
   nextTicketNumber,
 } from "./../utils/tickets";
+import { CustomSelect } from "./ui/CustomSelect";
 import { TicketRichHtmlEditor, isImageAttachment } from "./ui/TicketRichHtmlEditor";
 
 interface ProjectTicketsPanelProps {
@@ -303,28 +313,63 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
               placeholder={tr("Predmet tiketu *", "Ticket Subject *", "Jegy tárgya *")}
               className="md:col-span-2 px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
             />
-            <select
+            <CustomSelect
               value={newType}
-              onChange={(e) => setNewType(e.target.value as TicketType)}
-              className="px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-            >
-              <option value="bug">{tr("Chyba / Bug", "Bug", "Hiba / Bug")}</option>
-              <option value="question">{tr("Otázka", "Question", "Kérdés")}</option>
-              <option value="feature_request">
-                {tr("Požiadavka na funkciu", "Feature Request", "Fejlesztési kérés")}
-              </option>
-              <option value="incident">{tr("Výpadok / Incident", "Incident", "Incidens")}</option>
-            </select>
-            <select
+              onChange={(v) => setNewType(v as TicketType)}
+              options={[
+                {
+                  value: "bug",
+                  label: tr("Chyba / Bug", "Bug / Error", "Hiba / Bug"),
+                  icon: <Bug className="h-3.5 w-3.5 text-rose-500 shrink-0" />,
+                },
+                {
+                  value: "question",
+                  label: tr("Otázka", "Question", "Kérdés"),
+                  icon: <HelpCircle className="h-3.5 w-3.5 text-sky-500 shrink-0" />,
+                },
+                {
+                  value: "feature_request",
+                  label: tr("Požiadavka na funkciu", "Feature Request", "Fejlesztési kérés"),
+                  icon: <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0" />,
+                },
+                {
+                  value: "incident",
+                  label: tr("Výpadok / Incident", "Incident", "Incidens"),
+                  icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />,
+                },
+                {
+                  value: "billing",
+                  label: tr("Fakturácia", "Billing", "Számlázás"),
+                  icon: <CreditCard className="h-3.5 w-3.5 text-emerald-500 shrink-0" />,
+                },
+              ]}
+            />
+            <CustomSelect
               value={newPriority}
-              onChange={(e) => setNewPriority(e.target.value as TicketPriority)}
-              className="px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-            >
-              <option value="low">{tr("Nízka priorita", "Low Priority", "Alacsony")}</option>
-              <option value="normal">{tr("Normálna priorita", "Normal Priority", "Normál")}</option>
-              <option value="high">{tr("Vysoká priorita", "High Priority", "Magas")}</option>
-              <option value="critical">{tr("Kritická priorita", "Critical Priority", "Kritikus")}</option>
-            </select>
+              onChange={(v) => setNewPriority(v as TicketPriority)}
+              options={[
+                {
+                  value: "low",
+                  label: tr("Nízka priorita", "Low Priority", "Alacsony"),
+                  icon: <ArrowDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />,
+                },
+                {
+                  value: "normal",
+                  label: tr("Normálna priorita", "Normal Priority", "Normál"),
+                  icon: <Minus className="h-3.5 w-3.5 text-sky-500 shrink-0" />,
+                },
+                {
+                  value: "high",
+                  label: tr("Vysoká priorita", "High Priority", "Magas"),
+                  icon: <ArrowUp className="h-3.5 w-3.5 text-amber-500 shrink-0" />,
+                },
+                {
+                  value: "critical",
+                  label: tr("Kritická priorita", "Critical Priority", "Kritikus"),
+                  icon: <Flame className="h-3.5 w-3.5 text-rose-600 shrink-0" />,
+                },
+              ]}
+            />
           </div>
           <div>
             <label className="block type-overline text-slate-500 mb-1">

@@ -37,6 +37,14 @@ import {
   PencilLine,
   Calendar,
   FileText,
+  ArrowDown,
+  ArrowUp,
+  Minus,
+  Flame,
+  Bug,
+  HelpCircle,
+  Sparkles,
+  CreditCard,
 } from "lucide-react";
 import type {
   Ticket,
@@ -175,6 +183,63 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
         (a, b) => (a.sortOrder ?? a.order ?? 0) - (b.sortOrder ?? b.order ?? 0),
       ),
     [ticketStatuses],
+  );
+
+  const priorityOptions = useMemo(
+    () => [
+      {
+        value: "low" as TicketPriority,
+        label: t("Low", "Nízka", "Alacsony"),
+        icon: <ArrowDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />,
+      },
+      {
+        value: "normal" as TicketPriority,
+        label: t("Normal", "Normálna", "Normál"),
+        icon: <Minus className="h-3.5 w-3.5 text-sky-500 shrink-0" />,
+      },
+      {
+        value: "high" as TicketPriority,
+        label: t("High", "Vysoká", "Magas"),
+        icon: <ArrowUp className="h-3.5 w-3.5 text-amber-500 shrink-0" />,
+      },
+      {
+        value: "critical" as TicketPriority,
+        label: t("Critical", "Kritická", "Kritikus"),
+        icon: <Flame className="h-3.5 w-3.5 text-rose-600 shrink-0" />,
+      },
+    ],
+    [userLanguage],
+  );
+
+  const ticketTypeOptions = useMemo(
+    () => [
+      {
+        value: "bug" as TicketType,
+        label: t("Bug / Error", "Chyba / Bug", "Hiba / Bug"),
+        icon: <Bug className="h-3.5 w-3.5 text-rose-500 shrink-0" />,
+      },
+      {
+        value: "question" as TicketType,
+        label: t("Question", "Otázka", "Kérdés"),
+        icon: <HelpCircle className="h-3.5 w-3.5 text-sky-500 shrink-0" />,
+      },
+      {
+        value: "feature_request" as TicketType,
+        label: t("Feature Request", "Požiadavka", "Fejlesztési kérés"),
+        icon: <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0" />,
+      },
+      {
+        value: "incident" as TicketType,
+        label: t("Incident", "Incident", "Incidens"),
+        icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />,
+      },
+      {
+        value: "billing" as TicketType,
+        label: t("Billing", "Fakturácia", "Számlázás"),
+        icon: <CreditCard className="h-3.5 w-3.5 text-emerald-500 shrink-0" />,
+      },
+    ],
+    [userLanguage],
   );
 
   // Filters & view state
@@ -1291,12 +1356,19 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     }
                     options={orderedStatuses.map((s) => {
                       const sKey = s.key || s.id;
+                      const dotColor = s.color || ticketStatusColor(sKey, ticketStatuses);
                       return {
                         value: sKey,
                         label: ticketStatusLabel(
                           sKey,
                           userLanguage,
                           ticketStatuses,
+                        ),
+                        icon: (
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0 inline-block"
+                            style={{ backgroundColor: dotColor }}
+                          />
                         ),
                       };
                     })}
@@ -1315,18 +1387,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       onChange={(v) =>
                         updateSelectedTicket({ priority: v as TicketPriority })
                       }
-                      options={[
-                        { value: "low", label: t("Low", "Nízka", "Alacsony") },
-                        {
-                          value: "normal",
-                          label: t("Normal", "Normálna", "Normál"),
-                        },
-                        { value: "high", label: t("High", "Vysoká", "Magas") },
-                        {
-                          value: "critical",
-                          label: t("Critical", "Kritická", "Kritikus"),
-                        },
-                      ]}
+                      options={priorityOptions}
                     />
                   </div>
                   <div>
@@ -1339,32 +1400,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       onChange={(v) =>
                         updateSelectedTicket({ type: v as TicketType })
                       }
-                      options={[
-                        {
-                          value: "bug",
-                          label: t("Bug / Error", "Chyba / Bug", "Hiba / Bug"),
-                        },
-                        {
-                          value: "question",
-                          label: t("Question", "Otázka", "Kérdés"),
-                        },
-                        {
-                          value: "feature_request",
-                          label: t(
-                            "Feature Request",
-                            "Požiadavka",
-                            "Fejlesztési kérés",
-                          ),
-                        },
-                        {
-                          value: "incident",
-                          label: t("Incident", "Incident", "Incidens"),
-                        },
-                        {
-                          value: "billing",
-                          label: t("Billing", "Fakturácia", "Számlázás"),
-                        },
-                      ]}
+                      options={ticketTypeOptions}
                     />
                   </div>
                 </div>
@@ -3436,14 +3472,24 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 value: "all",
                 label: t("All Statuses", "Všetky stavy", "Minden állapot"),
               },
-              ...orderedStatuses.map((s) => ({
-                value: s.key || s.id,
-                label: ticketStatusLabel(
-                  s.key || s.id,
-                  userLanguage,
-                  ticketStatuses,
-                ),
-              })),
+              ...orderedStatuses.map((s) => {
+                const sKey = s.key || s.id;
+                const dotColor = s.color || ticketStatusColor(sKey, ticketStatuses);
+                return {
+                  value: sKey,
+                  label: ticketStatusLabel(
+                    sKey,
+                    userLanguage,
+                    ticketStatuses,
+                  ),
+                  icon: (
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0 inline-block"
+                      style={{ backgroundColor: dotColor }}
+                    />
+                  ),
+                };
+              }),
             ]}
           />
         </div>
@@ -3461,13 +3507,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   "Minden prioritás",
                 ),
               },
-              {
-                value: "critical",
-                label: t("Critical", "Kritická", "Kritikus"),
-              },
-              { value: "high", label: t("High", "Vysoká", "Magas") },
-              { value: "normal", label: t("Normal", "Normálna", "Normál") },
-              { value: "low", label: t("Low", "Nízka", "Alacsony") },
+              ...[...priorityOptions].reverse(),
             ]}
           />
         </div>
@@ -3958,42 +3998,21 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   <label className="block type-overline text-slate-400 mb-1">
                     {t("Priority", "Priorita", "Prioritás")}
                   </label>
-                  <select
+                  <CustomSelect
                     value={newPriority}
-                    onChange={(e) =>
-                      setNewPriority(e.target.value as TicketPriority)
-                    }
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-caption font-semibold bg-white"
-                  >
-                    <option value="low">
-                      {t("Low", "Nízka", "Alacsony")}
-                    </option>
-                    <option value="normal">
-                      {t("Normal", "Normálna", "Normál")}
-                    </option>
-                    <option value="high">
-                      {t("High", "Vysoká", "Magas")}
-                    </option>
-                    <option value="critical">
-                      {t("Critical", "Kritická", "Kritikus")}
-                    </option>
-                  </select>
+                    onChange={(v) => setNewPriority(v as TicketPriority)}
+                    options={priorityOptions}
+                  />
                 </div>
                 <div>
                   <label className="block type-overline text-slate-400 mb-1">
                     {t("Type", "Typ", "Típus")}
                   </label>
-                  <select
+                  <CustomSelect
                     value={newType}
-                    onChange={(e) => setNewType(e.target.value as TicketType)}
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 text-caption font-semibold bg-white"
-                  >
-                    <option value="bug">Bug</option>
-                    <option value="question">Question</option>
-                    <option value="feature_request">Feature Request</option>
-                    <option value="incident">Incident</option>
-                    <option value="billing">Billing</option>
-                  </select>
+                    onChange={(v) => setNewType(v as TicketType)}
+                    options={ticketTypeOptions}
+                  />
                 </div>
                 <div>
                   <label className="block type-overline text-slate-400 mb-1">

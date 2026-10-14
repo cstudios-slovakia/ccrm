@@ -35,3 +35,8 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 
 - **Managed Exclusively via Craft CMS**: All news, release notes, and product update entries must be managed exclusively through Craft CMS (via GraphQL API `entries(section: "updateNotes", site: "*")`).
 - **No Hardcoded or Local DB Entries**: News and update entries must NEVER be hardcoded in client source code or stored in the application's local database.
+
+### 4. Audio Notification When Prompt Is Done
+
+- **Play Sound on Completion**: Whenever a user prompt/task is finished, play an audible macOS notification sound (e.g. `afplay /System/Library/Sounds/Glass.aiff`) so the user knows the work is done.
+
