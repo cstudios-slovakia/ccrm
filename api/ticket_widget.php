@@ -469,6 +469,14 @@ $configJson = json_encode([
   const style = document.createElement('style');
   style.textContent = `
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    @keyframes ktwLauncherIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.85); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes ktwBodyFade {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .ktw-launcher {
       position: fixed;
       bottom: 20px;
@@ -486,9 +494,23 @@ $configJson = json_encode([
       align-items: center;
       gap: 8px;
       box-shadow: 0 10px 25px -5px rgba(0,0,0,0.35);
-      transition: transform 0.15s ease, opacity 0.15s ease;
+      animation: ktwLauncherIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+      transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, opacity 0.2s ease;
     }
-    .ktw-launcher:hover { transform: translateY(-2px); }
+    .ktw-launcher:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 14px 30px -5px rgba(0,0,0,0.45);
+    }
+    .ktw-launcher:active {
+      transform: translateY(0) scale(0.96);
+    }
+    .ktw-launcher-icon {
+      display: inline-block;
+      transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .ktw-launcher.open .ktw-launcher-icon {
+      transform: rotate(-12deg) scale(1.1);
+    }
     .ktw-badge {
       background: #ef4444;
       color: #fff;
@@ -511,11 +533,26 @@ $configJson = json_encode([
       border-radius: 16px;
       box-shadow: 0 20px 45px -10px rgba(0,0,0,0.55);
       z-index: 2147483647;
-      display: none;
+      display: flex;
       flex-direction: column;
       overflow: hidden;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateY(20px) scale(0.93);
+      transform-origin: ${posRight ? 'bottom right' : 'bottom left'};
+      transition:
+        opacity 0.26s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+        visibility 0.26s;
+      will-change: transform, opacity;
     }
-    .ktw-panel.open { display: flex; }
+    .ktw-panel.open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
     .ktw-header {
       padding: 14px 16px;
       background: #1e293b;
@@ -534,8 +571,9 @@ $configJson = json_encode([
       font-size: 18px;
       padding: 4px 8px;
       border-radius: 6px;
+      transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
     }
-    .ktw-close:hover { background: #334155; color: #fff; }
+    .ktw-close:hover { background: #334155; color: #fff; transform: rotate(90deg); }
     .ktw-tabs {
       display: flex;
       background: #0f172a;
@@ -551,6 +589,7 @@ $configJson = json_encode([
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
+      transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
     }
     .ktw-tab.active {
       color: #fff;
@@ -561,6 +600,7 @@ $configJson = json_encode([
       flex: 1;
       overflow-y: auto;
       padding: 14px 16px;
+      animation: ktwBodyFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .ktw-field { margin-bottom: 10px; }
     .ktw-label { display: block; font-size: 11px; font-weight: 600; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -573,8 +613,9 @@ $configJson = json_encode([
       padding: 8px 10px;
       font-size: 13px;
       outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .ktw-input:focus, .ktw-select:focus, .ktw-textarea:focus { border-color: ${primary}; }
+    .ktw-input:focus, .ktw-select:focus, .ktw-textarea:focus { border-color: ${primary}; box-shadow: 0 0 0 2px ${primary}33; }
     .ktw-textarea { min-height: 76px; resize: vertical; }
     .ktw-row { display: flex; gap: 8px; }
     .ktw-row > * { flex: 1; }
@@ -588,7 +629,10 @@ $configJson = json_encode([
       font-weight: 600;
       cursor: pointer;
       width: 100%;
+      transition: transform 0.15s ease, filter 0.15s ease;
     }
+    .ktw-btn:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
+    .ktw-btn:active:not(:disabled) { transform: translateY(0) scale(0.98); }
     .ktw-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .ktw-btn-secondary {
       background: #1e293b;
@@ -599,6 +643,7 @@ $configJson = json_encode([
       font-size: 12px;
       font-weight: 500;
       cursor: pointer;
+      transition: background 0.15s ease, transform 0.15s ease;
     }
     .ktw-btn-secondary:hover { background: #334155; }
     .ktw-footer {
@@ -619,15 +664,16 @@ $configJson = json_encode([
       padding: 10px 12px;
       margin-bottom: 8px;
       cursor: pointer;
-      transition: border-color 0.15s ease;
+      transition: border-color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .ktw-ticket-card:hover { border-color: ${primary}; }
+    .ktw-ticket-card:hover { border-color: ${primary}; transform: translateY(-1px); }
     .ktw-msg {
       padding: 8px 10px;
       border-radius: 8px;
       margin-bottom: 8px;
       font-size: 12px;
       line-height: 1.45;
+      animation: ktwBodyFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .ktw-msg.client { background: #1e293b; border: 1px solid #334155; }
     .ktw-msg.agent { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); }
@@ -644,6 +690,7 @@ $configJson = json_encode([
       border-radius: 8px;
       font-size: 12px;
       margin-bottom: 10px;
+      animation: ktwBodyFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .ktw-alert.ok { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; }
     .ktw-alert.err { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; }
@@ -651,6 +698,7 @@ $configJson = json_encode([
       margin-top: 6px;
       position: relative;
       display: inline-block;
+      animation: ktwBodyFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .ktw-shot-preview img {
       max-width: 100%;
@@ -658,13 +706,78 @@ $configJson = json_encode([
       border-radius: 6px;
       border: 1px solid #334155;
     }
+    @keyframes ktwSuccessPop {
+      0% { opacity: 0; transform: scale(0.5); }
+      65% { transform: scale(1.08); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .ktw-success-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 410px;
+      padding: 18px 8px;
+      animation: ktwBodyFade 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .ktw-success-icon {
+      width: 68px;
+      height: 68px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, 0.16);
+      border: 2px solid rgba(16, 185, 129, 0.45);
+      color: #34d399;
+      font-size: 32px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      box-shadow: 0 12px 30px -6px rgba(16, 185, 129, 0.35);
+      animation: ktwSuccessPop 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .ktw-success-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #f8fafc;
+      margin: 0 0 6px 0;
+    }
+    .ktw-success-sub {
+      font-size: 12.5px;
+      color: #94a3b8;
+      margin: 0 0 16px 0;
+      max-width: 300px;
+      line-height: 1.45;
+    }
+    .ktw-success-card {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 18px;
+      text-align: left;
+    }
+    .ktw-success-num {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: ${primary}22;
+      border: 1px solid ${primary}55;
+      color: ${primary};
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
   `;
   shadow.appendChild(style);
 
   const container = document.createElement('div');
   container.innerHTML = `
     <button class="ktw-launcher" id="ktw-launcher" type="button">
-      <span>💬</span>
+      <span class="ktw-launcher-icon" id="ktw-launcher-icon">💬</span>
       <span>${CFG.buttonLabel || 'Support'}</span>
       <span class="ktw-badge" id="ktw-err-badge">0</span>
     </button>
@@ -681,60 +794,63 @@ $configJson = json_encode([
         <button class="ktw-tab" data-tab="list" type="button">Existujúce tikety / Follow-up</button>
       </div>
       <div class="ktw-body" id="ktw-body-new">
-        <div id="ktw-new-feedback"></div>
-        <div class="ktw-row">
-          <div class="ktw-field">
-            <label class="ktw-label">Meno / Name</label>
-            <input class="ktw-input" id="ktw-name" placeholder="Vaše meno" />
-          </div>
-          <div class="ktw-field">
-            <label class="ktw-label">E-mail ${CFG.requireEmail ? '*' : ''}</label>
-            <input class="ktw-input" id="ktw-email" type="email" placeholder="vas@email.sk" />
-          </div>
-        </div>
-        <div class="ktw-field">
-          <label class="ktw-label">Predmet / Subject *</label>
-          <input class="ktw-input" id="ktw-subject" placeholder="Stručný popis problému..." />
-        </div>
-        <div class="ktw-row">
-          <div class="ktw-field">
-            <label class="ktw-label">Typ / Type</label>
-            <select class="ktw-select" id="ktw-type">
-              <option value="bug">Chyba / Bug</option>
-              <option value="question">Otázka / Question</option>
-              <option value="feature_request">Požiadavka / Feature</option>
-              <option value="incident">Výpadok / Incident</option>
-            </select>
-          </div>
-          <div class="ktw-field">
-            <label class="ktw-label">Priorita / Priority</label>
-            <select class="ktw-select" id="ktw-priority">
-              <option value="normal">Normálna / Normal</option>
-              <option value="low">Nízka / Low</option>
-              <option value="high">Vysoká / High</option>
-              <option value="critical">Kritická / Critical</option>
-            </select>
-          </div>
-        </div>
-        <div class="ktw-field">
-          <label class="ktw-label">Popis / Description</label>
-          <textarea class="ktw-textarea" id="ktw-desc" placeholder="Popíšte čo sa stalo... (Môžete tiež vložiť screenshot cez Ctrl+V)"></textarea>
-        </div>
-        <div class="ktw-field">
+        <div id="ktw-new-form-view">
+          <div id="ktw-new-feedback"></div>
           <div class="ktw-row">
-            <button class="ktw-btn-secondary" id="ktw-capture-btn" type="button">📸 Zachytiť obrazovku</button>
-            <label class="ktw-btn-secondary" style="text-align:center;margin:0;">
-              📎 Nahrať obrázok
-              <input type="file" id="ktw-file-input" accept="image/*" style="display:none;" />
-            </label>
+            <div class="ktw-field">
+              <label class="ktw-label">Meno / Name</label>
+              <input class="ktw-input" id="ktw-name" placeholder="Vaše meno" />
+            </div>
+            <div class="ktw-field">
+              <label class="ktw-label">E-mail ${CFG.requireEmail ? '*' : ''}</label>
+              <input class="ktw-input" id="ktw-email" type="email" placeholder="vas@email.sk" />
+            </div>
           </div>
-          <div id="ktw-shot-holder"></div>
+          <div class="ktw-field">
+            <label class="ktw-label">Predmet / Subject *</label>
+            <input class="ktw-input" id="ktw-subject" placeholder="Stručný popis problému..." />
+          </div>
+          <div class="ktw-row">
+            <div class="ktw-field">
+              <label class="ktw-label">Typ / Type</label>
+              <select class="ktw-select" id="ktw-type">
+                <option value="bug">Chyba / Bug</option>
+                <option value="question">Otázka / Question</option>
+                <option value="feature_request">Požiadavka / Feature</option>
+                <option value="incident">Výpadok / Incident</option>
+              </select>
+            </div>
+            <div class="ktw-field">
+              <label class="ktw-label">Priorita / Priority</label>
+              <select class="ktw-select" id="ktw-priority">
+                <option value="normal">Normálna / Normal</option>
+                <option value="low">Nízka / Low</option>
+                <option value="high">Vysoká / High</option>
+                <option value="critical">Kritická / Critical</option>
+              </select>
+            </div>
+          </div>
+          <div class="ktw-field">
+            <label class="ktw-label">Popis / Description</label>
+            <textarea class="ktw-textarea" id="ktw-desc" placeholder="Popíšte čo sa stalo... (Môžete tiež vložiť screenshot cez Ctrl+V)"></textarea>
+          </div>
+          <div class="ktw-field">
+            <div class="ktw-row">
+              <button class="ktw-btn-secondary" id="ktw-capture-btn" type="button">📸 Zachytiť obrazovku</button>
+              <label class="ktw-btn-secondary" style="text-align:center;margin:0;">
+                📎 Nahrať obrázok
+                <input type="file" id="ktw-file-input" accept="image/*" style="display:none;" />
+              </label>
+            </div>
+            <div id="ktw-shot-holder"></div>
+          </div>
+          <div class="ktw-field" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;">
+            <input type="checkbox" id="ktw-attach-logs" checked />
+            <label for="ktw-attach-logs" id="ktw-logs-label">Priložiť technické info a chyby konzoly (0)</label>
+          </div>
+          <button class="ktw-btn" id="ktw-submit-btn" type="button">Odoslať tiket</button>
         </div>
-        <div class="ktw-field" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;">
-          <input type="checkbox" id="ktw-attach-logs" checked />
-          <label for="ktw-attach-logs" id="ktw-logs-label">Priložiť technické info a chyby konzoly (0)</label>
-        </div>
-        <button class="ktw-btn" id="ktw-submit-btn" type="button">Odoslať tiket</button>
+        <div class="ktw-success-screen" id="ktw-new-success-view"></div>
       </div>
       <div class="ktw-body" id="ktw-body-list" style="display:none;">
         <div id="ktw-list-container">Načítavam tikety...</div>
@@ -792,11 +908,27 @@ $configJson = json_encode([
     };
   }
 
+  function setPanelOpen(isOpen) {
+    const panel = $('ktw-panel');
+    const launcher = $('ktw-launcher');
+    const icon = $('ktw-launcher-icon');
+    if (isOpen) {
+      panel.classList.add('open');
+      launcher.classList.add('open');
+      if (icon) icon.textContent = '✕';
+    } else {
+      panel.classList.remove('open');
+      launcher.classList.remove('open');
+      if (icon) icon.textContent = '💬';
+    }
+  }
+
   $('ktw-launcher').onclick = function() {
-    $('ktw-panel').classList.toggle('open');
+    const isOpen = !$('ktw-panel').classList.contains('open');
+    setPanelOpen(isOpen);
   };
   $('ktw-close').onclick = function() {
-    $('ktw-panel').classList.remove('open');
+    setPanelOpen(false);
   };
 
   const tabs = shadow.querySelectorAll('.ktw-tab');
@@ -840,7 +972,7 @@ $configJson = json_encode([
       renderScreenshotPreview();
     } catch (err) {
     } finally {
-      $('ktw-panel').style.opacity = '1';
+      $('ktw-panel').style.opacity = '';
     }
   };
 
@@ -873,6 +1005,46 @@ $configJson = json_encode([
       }
     }
   });
+
+  function showCreatedScreen(ticket, fallbackSubject) {
+    const formView = $('ktw-new-form-view');
+    const successView = $('ktw-new-success-view');
+    formView.style.display = 'none';
+    successView.style.display = 'flex';
+    const tNum = escapeHtml(ticket.ticketNumber || 'TCK-NEW');
+    const tSubj = escapeHtml(ticket.subject || ticket.title || fallbackSubject || '');
+    const tPrio = escapeHtml((ticket.priority || 'normal').toUpperCase());
+    successView.innerHTML = `
+      <div class="ktw-success-icon">✓</div>
+      <h4 class="ktw-success-title">Tiket bol vytvorený!</h4>
+      <p class="ktw-success-sub">Vaša požiadavka bola úspešne zaznamenaná. Stav riešenia môžete kedykoľvek sledovať alebo doplniť.</p>
+      <div class="ktw-success-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+          <span class="ktw-success-num">${tNum}</span>
+          <span class="ktw-status-pill" style="background:rgba(16,185,129,0.16);color:#34d399;border:1px solid rgba(16,185,129,0.35);">PRIJATÉ • ${tPrio}</span>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:#f8fafc;line-height:1.35;">${tSubj}</div>
+      </div>
+      <button type="button" class="ktw-btn" id="ktw-view-created-btn" style="margin-bottom:8px;">Zobraziť tiket a komunikáciu →</button>
+      <button type="button" class="ktw-btn-secondary" id="ktw-create-another-btn" style="width:100%;padding:9px 14px;">+ Vytvoriť ďalší tiket</button>
+    `;
+
+    $('ktw-create-another-btn').onclick = function() {
+      successView.style.display = 'none';
+      formView.style.display = 'block';
+    };
+    $('ktw-view-created-btn').onclick = async function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      if (tabs[1]) tabs[1].classList.add('active');
+      $('ktw-body-new').style.display = 'none';
+      $('ktw-body-list').style.display = 'block';
+      await fetchExistingTickets();
+      if (ticket && ticket.id) {
+        selectedTicketId = ticket.id;
+        renderTicketsView();
+      }
+    };
+  }
 
   // Submit new ticket
   $('ktw-submit-btn').onclick = async function() {
@@ -934,11 +1106,11 @@ $configJson = json_encode([
       if (!data.success) {
         fb.innerHTML = '<div class="ktw-alert err">' + (data.message || 'Chyba pri odosielaní.') + '</div>';
       } else {
-        fb.innerHTML = '<div class="ktw-alert ok">Tiket <strong>' + data.ticket.ticketNumber + '</strong> bol úspešne vytvorený!</div>';
         $('ktw-subject').value = '';
         $('ktw-desc').value = '';
         currentScreenshot = null;
         renderScreenshotPreview();
+        showCreatedScreen(data.ticket || {}, subject);
       }
     } catch (err) {
       fb.innerHTML = '<div class="ktw-alert err">Nepodarilo sa spojiť so serverom podpory.</div>';
