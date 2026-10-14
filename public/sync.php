@@ -1946,13 +1946,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         if ($pdo->query("SHOW TABLES LIKE 'support_contracts'")->rowCount() > 0) {
             $scStmt = $pdo->query("SELECT * FROM `support_contracts` ORDER BY `created_at` DESC");
             while ($row = $scStmt->fetch(PDO::FETCH_ASSOC)) {
+                $clientId = $row['client_id'] ?? null;
                 $supportContracts[] = [
                     'id' => $row['id'],
-                    'clientId' => $row['client_id'] ?? null,
+                    'clientId' => $clientId,
+                    'leadId' => $clientId,
                     'projectId' => $row['project_id'] ?? null,
+                    'name' => !empty($row['notes']) ? $row['notes'] : 'Support Contract',
                     'tier' => $row['tier'] ?? 'basic',
                     'monthlyHours' => (float)($row['monthly_hours'] ?? 0),
+                    'usedHours' => 0.0,
                     'hourlyRate' => (float)($row['hourly_rate'] ?? 0),
+                    'hourlyOverageRate' => (float)($row['hourly_rate'] ?? 0),
                     'slaResponseCriticalHours' => (float)($row['sla_response_critical_hours'] ?? 1),
                     'slaResponseHighHours' => (float)($row['sla_response_high_hours'] ?? 4),
                     'slaResponseNormalHours' => (float)($row['sla_response_normal_hours'] ?? 8),
@@ -1963,6 +1968,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'slaResolveLowHours' => (float)($row['sla_resolve_low_hours'] ?? 120),
                     'validFrom' => $row['valid_from'] ?? null,
                     'validUntil' => $row['valid_until'] ?? null,
+                    'periodStart' => $row['valid_from'] ?? '',
+                    'periodEnd' => $row['valid_until'] ?? '',
+                    'isActive' => true,
                     'notes' => $row['notes'] ?? null,
                     'createdAt' => $row['created_at'],
                     'updatedAt' => $row['updated_at'],
@@ -1975,6 +1983,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             if ($pdo->query("SHOW TABLES LIKE 'ticket_messages'")->rowCount() > 0) {
                 $tmStmt = $pdo->query("SELECT * FROM `ticket_messages` ORDER BY `created_at` ASC");
                 while ($m = $tmStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $isInternal = (int)($m['is_internal'] ?? 0) === 1;
+                    $eventType = !empty($m['event_type']) ? $m['event_type'] : ($isInternal ? 'internal_note' : 'public_reply');
                     $msgsByTicket[$m['ticket_id']][] = [
                         'id' => $m['id'],
                         'ticketId' => $m['ticket_id'],
@@ -1982,7 +1992,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                         'authorUserId' => $m['author_user_id'] ?? null,
                         'authorName' => $m['author_name'] ?? '',
                         'authorEmail' => $m['author_email'] ?? null,
-                        'isInternal' => (int)($m['is_internal'] ?? 0) === 1,
+                        'isInternal' => $isInternal,
+                        'eventType' => $eventType,
                         'body' => $m['body'] ?? '',
                         'attachments' => (!empty($m['attachments_json'])) ? (json_decode($m['attachments_json'], true) ?: []) : [],
                         'emailMessageId' => $m['email_message_id'] ?? null,
@@ -1996,6 +2007,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $tlStmt = $pdo->query("SELECT * FROM `ticket_task_links`");
                 while ($l = $tlStmt->fetch(PDO::FETCH_ASSOC)) {
                     $linksByTicket[$l['ticket_id']][] = [
+                        'id' => $l['ticket_id'] . ':' . $l['task_id'],
                         'ticketId' => $l['ticket_id'],
                         'taskId' => $l['task_id'],
                         'syncMode' => $l['sync_mode'] ?? 'auto_resolve',
@@ -2025,42 +2037,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $tStmt = $pdo->query("SELECT * FROM `tickets` ORDER BY `created_at` DESC, `id` DESC");
             while ($row = $tStmt->fetch(PDO::FETCH_ASSOC)) {
                 $tid = $row['id'];
+                $watchers = (!empty($row['watchers_json'])) ? (json_decode($row['watchers_json'], true) ?: []) : [];
+                $assigneeName = $row['assignee_name'] ?? null;
+                $assigneeId = $row['assignee_id'] ?? null;
+                $assignedUser = $assigneeName ?: $assigneeId;
+                $assignedUsers = !empty($watchers) ? $watchers : ($assignedUser ? [$assignedUser] : []);
+                $tEntries = $timeByTicket[$tid] ?? [];
+                $loggedMins = 0;
+                foreach ($tEntries as $teItem) {
+                    $loggedMins += (int)($teItem['minutes'] ?? 0);
+                }
+                $isArch = (int)($row['archived'] ?? 0) === 1;
                 $tickets[] = [
                     'id' => $tid,
                     'ticketNumber' => $row['ticket_number'],
-                    'title' => $row['title'],
+                    'subject' => $row['title'] ?? '',
+                    'title' => $row['title'] ?? '',
                     'description' => $row['description'] ?? '',
                     'status' => $row['status'] ?? 'new',
                     'priority' => $row['priority'] ?? 'normal',
-                    'type' => $row['type'] ?? 'question',
+                    'type' => $row['type'] ?? 'support',
+                    'channel' => $row['source'] ?? 'manual',
                     'source' => $row['source'] ?? 'manual',
                     'projectId' => $row['project_id'] ?? null,
+                    'leadId' => $row['client_id'] ?? null,
                     'clientId' => $row['client_id'] ?? null,
                     'reporterName' => $row['reporter_name'] ?? null,
                     'reporterEmail' => $row['reporter_email'] ?? null,
                     'reporterPhone' => $row['reporter_phone'] ?? null,
-                    'assigneeId' => $row['assignee_id'] ?? null,
-                    'assigneeName' => $row['assignee_name'] ?? null,
-                    'watchers' => (!empty($row['watchers_json'])) ? (json_decode($row['watchers_json'], true) ?: []) : [],
+                    'assignedUser' => $assignedUser,
+                    'assignedUsers' => $assignedUsers,
+                    'assigneeId' => $assigneeId,
+                    'assigneeName' => $assigneeName,
+                    'watchers' => $watchers,
                     'tags' => (!empty($row['tags_json'])) ? (json_decode($row['tags_json'], true) ?: []) : [],
                     'metadata' => (!empty($row['metadata_json'])) ? (json_decode($row['metadata_json'], true) ?: null) : null,
                     'attachments' => (!empty($row['attachments_json'])) ? (json_decode($row['attachments_json'], true) ?: []) : [],
                     'emailMessageId' => $row['email_message_id'] ?? null,
+                    'slaFirstResponseDueAt' => $row['first_response_due_at'] ?? null,
                     'firstResponseDueAt' => $row['first_response_due_at'] ?? null,
+                    'slaFirstRespondedAt' => $row['first_responded_at'] ?? null,
                     'firstRespondedAt' => $row['first_responded_at'] ?? null,
+                    'slaResolutionDueAt' => $row['resolve_due_at'] ?? null,
                     'resolveDueAt' => $row['resolve_due_at'] ?? null,
                     'slaPausedAt' => $row['sla_paused_at'] ?? null,
+                    'slaPausedTotalSeconds' => (int)($row['sla_paused_seconds'] ?? 0),
                     'slaPausedSeconds' => (int)($row['sla_paused_seconds'] ?? 0),
+                    'billable' => true,
+                    'loggedMinutes' => $loggedMins,
                     'resolvedAt' => $row['resolved_at'] ?? null,
                     'closedAt' => $row['closed_at'] ?? null,
                     'satisfactionScore' => isset($row['satisfaction_score']) && $row['satisfaction_score'] !== null ? (int)$row['satisfaction_score'] : null,
                     'satisfactionComment' => $row['satisfaction_comment'] ?? null,
-                    'archived' => (int)($row['archived'] ?? 0) === 1,
+                    'isArchived' => $isArch,
+                    'archived' => $isArch,
                     'createdAt' => $row['created_at'],
                     'updatedAt' => $row['updated_at'],
                     'messages' => $msgsByTicket[$tid] ?? [],
                     'taskLinks' => $linksByTicket[$tid] ?? [],
-                    'timeEntries' => $timeByTicket[$tid] ?? [],
+                    'timeEntries' => $tEntries,
                 ];
             }
         }
@@ -2320,6 +2355,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
             'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
             'aiCustomTemplates', 'clientCategories', 'employees', 'employeeSalaries', 'employeeVacations',
+            'orders', 'supportContracts', 'tickets',
         ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
                 $payload[$entity] = [];
@@ -5317,58 +5353,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 19. Support Contracts
-        if ($syncSection('supportContracts')) {
+        if (isset($payload['supportContracts']) && is_array($payload['supportContracts']) && !$ccrm_skip_writes('tickets', 'supportContracts')) {
             try {
-                $existingContractIds = $pdo->query("SELECT `id` FROM `support_contracts`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
-                $processedContractIds = [];
+                if ($pdo->query("SHOW TABLES LIKE 'support_contracts'")->rowCount() > 0) {
+                    $existingContractIds = $pdo->query("SELECT `id` FROM `support_contracts`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                    $processedContractIds = [];
 
-                $upsertContract = $pdo->prepare("
-                    INSERT INTO `support_contracts` (
-                        `id`, `lead_id`, `project_id`, `name`, `tier`, `monthly_hours`, `used_hours`,
-                        `hourly_overage_rate`, `sla_first_response_mins`, `sla_resolution_mins`,
-                        `period_start`, `period_end`, `is_active`
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        `lead_id` = VALUES(`lead_id`),
-                        `project_id` = VALUES(`project_id`),
-                        `name` = VALUES(`name`),
-                        `tier` = VALUES(`tier`),
-                        `monthly_hours` = VALUES(`monthly_hours`),
-                        `used_hours` = VALUES(`used_hours`),
-                        `hourly_overage_rate` = VALUES(`hourly_overage_rate`),
-                        `sla_first_response_mins` = VALUES(`sla_first_response_mins`),
-                        `sla_resolution_mins` = VALUES(`sla_resolution_mins`),
-                        `period_start` = VALUES(`period_start`),
-                        `period_end` = VALUES(`period_end`),
-                        `is_active` = VALUES(`is_active`)
-                ");
+                    $upsertContract = $pdo->prepare("
+                        INSERT INTO `support_contracts` (
+                            `id`, `client_id`, `project_id`, `tier`, `monthly_hours`, `hourly_rate`,
+                            `sla_response_critical_hours`, `sla_response_high_hours`, `sla_response_normal_hours`, `sla_response_low_hours`,
+                            `sla_resolve_critical_hours`, `sla_resolve_high_hours`, `sla_resolve_normal_hours`, `sla_resolve_low_hours`,
+                            `valid_from`, `valid_until`, `notes`
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            `client_id` = VALUES(`client_id`),
+                            `project_id` = VALUES(`project_id`),
+                            `tier` = VALUES(`tier`),
+                            `monthly_hours` = VALUES(`monthly_hours`),
+                            `hourly_rate` = VALUES(`hourly_rate`),
+                            `sla_response_critical_hours` = VALUES(`sla_response_critical_hours`),
+                            `sla_response_high_hours` = VALUES(`sla_response_high_hours`),
+                            `sla_response_normal_hours` = VALUES(`sla_response_normal_hours`),
+                            `sla_response_low_hours` = VALUES(`sla_response_low_hours`),
+                            `sla_resolve_critical_hours` = VALUES(`sla_resolve_critical_hours`),
+                            `sla_resolve_high_hours` = VALUES(`sla_resolve_high_hours`),
+                            `sla_resolve_normal_hours` = VALUES(`sla_resolve_normal_hours`),
+                            `sla_resolve_low_hours` = VALUES(`sla_resolve_low_hours`),
+                            `valid_from` = VALUES(`valid_from`),
+                            `valid_until` = VALUES(`valid_until`),
+                            `notes` = VALUES(`notes`),
+                            `updated_at` = NOW()
+                    ");
 
-                if (isset($data['supportContracts']) && is_array($data['supportContracts'])) {
-                    foreach ($data['supportContracts'] as $sc) {
+                    foreach ($payload['supportContracts'] as $sc) {
                         $scId = (string)($sc['id'] ?? '');
                         if ($scId === '') continue;
+                        $rawTier = strtolower((string)($sc['tier'] ?? 'basic'));
+                        if ($rawTier === 'standard') $rawTier = 'basic';
+                        elseif ($rawTier === 'premium') $rawTier = 'pro';
+                        elseif (!in_array($rawTier, ['basic', 'pro', 'enterprise', 'project_only'], true)) $rawTier = 'basic';
+
+                        $clientId = !empty($sc['clientId']) ? (string)$sc['clientId'] : (!empty($sc['leadId']) ? (string)$sc['leadId'] : null);
+                        $hourlyRate = isset($sc['hourlyRate']) && $sc['hourlyRate'] !== '' ? (float)$sc['hourlyRate'] : (isset($sc['hourlyOverageRate']) && $sc['hourlyOverageRate'] !== '' ? (float)$sc['hourlyOverageRate'] : 0.0);
+                        $validFrom = !empty($sc['validFrom']) ? substr((string)$sc['validFrom'], 0, 10) : (!empty($sc['periodStart']) ? substr((string)$sc['periodStart'], 0, 10) : null);
+                        $validUntil = !empty($sc['validUntil']) ? substr((string)$sc['validUntil'], 0, 10) : (!empty($sc['periodEnd']) ? substr((string)$sc['periodEnd'], 0, 10) : null);
+                        $notes = isset($sc['notes']) && $sc['notes'] !== '' ? (string)$sc['notes'] : (isset($sc['name']) ? (string)$sc['name'] : null);
+
                         $upsertContract->execute([
                             $scId,
-                            !empty($sc['leadId']) ? (string)$sc['leadId'] : null,
+                            $clientId,
                             !empty($sc['projectId']) ? (string)$sc['projectId'] : null,
-                            (string)($sc['name'] ?? 'Support Contract'),
-                            (string)($sc['tier'] ?? 'standard'),
+                            $rawTier,
                             (float)($sc['monthlyHours'] ?? 10.0),
-                            (float)($sc['usedHours'] ?? 0.0),
-                            isset($sc['hourlyOverageRate']) && $sc['hourlyOverageRate'] !== '' ? (float)$sc['hourlyOverageRate'] : null,
-                            isset($sc['slaFirstResponseMins']) && $sc['slaFirstResponseMins'] !== '' ? (int)$sc['slaFirstResponseMins'] : null,
-                            isset($sc['slaResolutionMins']) && $sc['slaResolutionMins'] !== '' ? (int)$sc['slaResolutionMins'] : null,
-                            !empty($sc['periodStart']) ? substr((string)$sc['periodStart'], 0, 10) : null,
-                            !empty($sc['periodEnd']) ? substr((string)$sc['periodEnd'], 0, 10) : null,
-                            !empty($sc['isActive']) ? 1 : 0,
+                            $hourlyRate,
+                            (float)($sc['slaResponseCriticalHours'] ?? 1),
+                            (float)($sc['slaResponseHighHours'] ?? 4),
+                            (float)($sc['slaResponseNormalHours'] ?? 8),
+                            (float)($sc['slaResponseLowHours'] ?? 24),
+                            (float)($sc['slaResolveCriticalHours'] ?? 4),
+                            (float)($sc['slaResolveHighHours'] ?? 16),
+                            (float)($sc['slaResolveNormalHours'] ?? 40),
+                            (float)($sc['slaResolveLowHours'] ?? 120),
+                            $validFrom,
+                            $validUntil,
+                            $notes,
                         ]);
                         $processedContractIds[] = $scId;
                     }
-                }
 
-                $contractsToDelete = $isDeltaSync ? $deletionsFor('supportContracts', $existingContractIds) : array_diff($existingContractIds, $processedContractIds);
-                if (!empty($contractsToDelete)) {
-                    ccrm_delete_omitted($pdo, 'support_contracts', $contractsToDelete, null, [], false, $isDeltaSync);
+                    $contractsToDelete = $isDeltaSync ? $deletionsFor('supportContracts', $existingContractIds) : array_diff($existingContractIds, $processedContractIds);
+                    if (!empty($contractsToDelete)) {
+                        ccrm_delete_omitted($pdo, 'support_contracts', $contractsToDelete, null, [], false, $isDeltaSync);
+                    }
                 }
             } catch (\Throwable $e) {
                 error_log('[ccrm sync] support_contracts sync error: ' . $e->getMessage());
@@ -5376,82 +5433,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 20. Tickets (with nested messages, taskLinks, timeEntries)
-        if ($syncSection('tickets')) {
+        if (isset($payload['tickets']) && is_array($payload['tickets']) && !$ccrm_skip_writes('tickets', 'tickets')) {
             try {
-                $existingTicketIds = $pdo->query("SELECT `id` FROM `tickets`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
-                $processedTicketIds = [];
+                if ($pdo->query("SHOW TABLES LIKE 'tickets'")->rowCount() > 0) {
+                    $existingTicketIds = $pdo->query("SELECT `id` FROM `tickets`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                    $processedTicketIds = [];
 
-                $upsertTicket = $pdo->prepare("
-                    INSERT INTO `tickets` (
-                        `id`, `ticket_number`, `subject`, `description`, `status`, `priority`, `type`, `channel`,
-                        `project_id`, `lead_id`, `contract_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
-                        `assigned_user`, `assigned_users_json`, `tags_json`, `sla_first_response_due_at`, `sla_first_responded_at`,
-                        `sla_resolution_due_at`, `sla_paused_at`, `sla_paused_total_seconds`, `billable`, `logged_minutes`,
-                        `metadata_json`, `attachments_json`, `public_token`, `email_message_id`, `is_archived`,
-                        `created_at`, `updated_at`, `resolved_at`, `closed_at`
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        `ticket_number` = VALUES(`ticket_number`),
-                        `subject` = VALUES(`subject`),
-                        `description` = VALUES(`description`),
-                        `status` = VALUES(`status`),
-                        `priority` = VALUES(`priority`),
-                        `type` = VALUES(`type`),
-                        `channel` = VALUES(`channel`),
-                        `project_id` = VALUES(`project_id`),
-                        `lead_id` = VALUES(`lead_id`),
-                        `contract_id` = VALUES(`contract_id`),
-                        `reporter_name` = VALUES(`reporter_name`),
-                        `reporter_email` = VALUES(`reporter_email`),
-                        `reporter_phone` = VALUES(`reporter_phone`),
-                        `assigned_user` = VALUES(`assigned_user`),
-                        `assigned_users_json` = VALUES(`assigned_users_json`),
-                        `tags_json` = VALUES(`tags_json`),
-                        `sla_first_response_due_at` = VALUES(`sla_first_response_due_at`),
-                        `sla_first_responded_at` = VALUES(`sla_first_responded_at`),
-                        `sla_resolution_due_at` = VALUES(`sla_resolution_due_at`),
-                        `sla_paused_at` = VALUES(`sla_paused_at`),
-                        `sla_paused_total_seconds` = VALUES(`sla_paused_total_seconds`),
-                        `billable` = VALUES(`billable`),
-                        `logged_minutes` = VALUES(`logged_minutes`),
-                        `metadata_json` = VALUES(`metadata_json`),
-                        `attachments_json` = VALUES(`attachments_json`),
-                        `public_token` = COALESCE(`tickets`.`public_token`, VALUES(`public_token`)),
-                        `email_message_id` = COALESCE(`tickets`.`email_message_id`, VALUES(`email_message_id`)),
-                        `is_archived` = VALUES(`is_archived`),
-                        `updated_at` = NOW(),
-                        `resolved_at` = VALUES(`resolved_at`),
-                        `closed_at` = VALUES(`closed_at`)
-                ");
+                    $upsertTicket = $pdo->prepare("
+                        INSERT INTO `tickets` (
+                            `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
+                            `project_id`, `client_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
+                            `assignee_id`, `assignee_name`, `watchers_json`, `tags_json`,
+                            `metadata_json`, `attachments_json`, `email_message_id`,
+                            `first_response_due_at`, `first_responded_at`, `resolve_due_at`, `sla_paused_at`, `sla_paused_seconds`,
+                            `resolved_at`, `closed_at`, `satisfaction_score`, `satisfaction_comment`, `archived`,
+                            `created_at`, `updated_at`
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            `ticket_number` = VALUES(`ticket_number`),
+                            `title` = VALUES(`title`),
+                            `description` = VALUES(`description`),
+                            `status` = VALUES(`status`),
+                            `priority` = VALUES(`priority`),
+                            `type` = VALUES(`type`),
+                            `source` = VALUES(`source`),
+                            `project_id` = VALUES(`project_id`),
+                            `client_id` = VALUES(`client_id`),
+                            `reporter_name` = VALUES(`reporter_name`),
+                            `reporter_email` = VALUES(`reporter_email`),
+                            `reporter_phone` = VALUES(`reporter_phone`),
+                            `assignee_id` = VALUES(`assignee_id`),
+                            `assignee_name` = VALUES(`assignee_name`),
+                            `watchers_json` = VALUES(`watchers_json`),
+                            `tags_json` = VALUES(`tags_json`),
+                            `metadata_json` = VALUES(`metadata_json`),
+                            `attachments_json` = VALUES(`attachments_json`),
+                            `email_message_id` = COALESCE(`tickets`.`email_message_id`, VALUES(`email_message_id`)),
+                            `first_response_due_at` = VALUES(`first_response_due_at`),
+                            `first_responded_at` = VALUES(`first_responded_at`),
+                            `resolve_due_at` = VALUES(`resolve_due_at`),
+                            `sla_paused_at` = VALUES(`sla_paused_at`),
+                            `sla_paused_seconds` = VALUES(`sla_paused_seconds`),
+                            `resolved_at` = VALUES(`resolved_at`),
+                            `closed_at` = VALUES(`closed_at`),
+                            `satisfaction_score` = VALUES(`satisfaction_score`),
+                            `satisfaction_comment` = VALUES(`satisfaction_comment`),
+                            `archived` = VALUES(`archived`),
+                            `updated_at` = NOW()
+                    ");
 
-                $upsertMsg = $pdo->prepare("
-                    INSERT INTO `ticket_messages` (
-                        `id`, `ticket_id`, `author_type`, `author_name`, `author_email`, `is_internal`,
-                        `body`, `attachments_json`, `email_message_id`, `created_at`
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        `body` = VALUES(`body`),
-                        `is_internal` = VALUES(`is_internal`),
-                        `attachments_json` = VALUES(`attachments_json`)
-                ");
+                    $upsertMsg = $pdo->prepare("
+                        INSERT INTO `ticket_messages` (
+                            `id`, `ticket_id`, `author_type`, `author_user_id`, `author_name`, `author_email`,
+                            `is_internal`, `event_type`, `body`, `attachments_json`, `email_message_id`, `created_at`
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            `author_name` = VALUES(`author_name`),
+                            `is_internal` = VALUES(`is_internal`),
+                            `event_type` = VALUES(`event_type`),
+                            `body` = VALUES(`body`),
+                            `attachments_json` = VALUES(`attachments_json`),
+                            `created_at` = VALUES(`created_at`)
+                    ");
 
-                $upsertTaskLink = $pdo->prepare("
-                    INSERT INTO `ticket_task_links` (`id`, `ticket_id`, `task_id`, `sync_mode`, `created_at`)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE `sync_mode` = VALUES(`sync_mode`)
-                ");
+                    $upsertTaskLink = $pdo->prepare("
+                        INSERT INTO `ticket_task_links` (`ticket_id`, `task_id`, `sync_mode`, `created_at`)
+                        VALUES (?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE `sync_mode` = VALUES(`sync_mode`)
+                    ");
 
-                $upsertTimeEntry = $pdo->prepare("
-                    INSERT INTO `ticket_time_entries` (`id`, `ticket_id`, `user_name`, `minutes`, `billable`, `note`, `logged_at`)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        `minutes` = VALUES(`minutes`),
-                        `billable` = VALUES(`billable`),
-                        `note` = VALUES(`note`)
-                ");
+                    $upsertTimeEntry = $pdo->prepare("
+                        INSERT INTO `ticket_time_entries` (`id`, `ticket_id`, `user_id`, `user_name`, `minutes`, `billable`, `note`, `logged_at`)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            `minutes` = VALUES(`minutes`),
+                            `billable` = VALUES(`billable`),
+                            `note` = VALUES(`note`),
+                            `logged_at` = VALUES(`logged_at`)
+                    ");
 
-                if (isset($data['tickets']) && is_array($data['tickets'])) {
-                    foreach ($data['tickets'] as $tck) {
+                    foreach ($payload['tickets'] as $tck) {
                         $tckId = (string)($tck['id'] ?? '');
                         if ($tckId === '') continue;
                         if ($isDeltaSync && ccrm_write_would_clobber($pdo, 'tickets', $tckId, $baseSyncedAt)) {
@@ -5459,93 +5520,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $processedTicketIds[] = $tckId;
                             continue;
                         }
-                        $pubToken = !empty($tck['publicToken']) ? (string)$tck['publicToken'] : bin2hex(random_bytes(16));
                         $tckNum = !empty($tck['ticketNumber']) ? (string)$tck['ticketNumber'] : ('TCK-' . strtoupper(substr($tckId, -4)));
                         $createdAt = !empty($tck['createdAt']) ? substr(str_replace('T', ' ', (string)$tck['createdAt']), 0, 19) : date('Y-m-d H:i:s');
                         $updatedAt = !empty($tck['updatedAt']) ? substr(str_replace('T', ' ', (string)$tck['updatedAt']), 0, 19) : date('Y-m-d H:i:s');
 
+                        $titleVal = !empty($tck['subject']) ? (string)$tck['subject'] : (string)($tck['title'] ?? '');
+                        $sourceVal = !empty($tck['channel']) ? (string)$tck['channel'] : (string)($tck['source'] ?? 'manual');
+                        $clientIdVal = !empty($tck['leadId']) ? (string)$tck['leadId'] : (!empty($tck['clientId']) ? (string)$tck['clientId'] : null);
+                        $assigneeNameVal = !empty($tck['assignedUser']) ? (string)$tck['assignedUser'] : (!empty($tck['assigneeName']) ? (string)$tck['assigneeName'] : null);
+                        $assigneeIdVal = !empty($tck['assigneeId']) ? (string)$tck['assigneeId'] : $assigneeNameVal;
+                        $watchersArr = isset($tck['assignedUsers']) && is_array($tck['assignedUsers'])
+                            ? array_values($tck['assignedUsers'])
+                            : (isset($tck['watchers']) && is_array($tck['watchers']) ? array_values($tck['watchers']) : ($assigneeNameVal ? [$assigneeNameVal] : []));
+
+                        $firstRespDue = !empty($tck['slaFirstResponseDueAt']) ? $tck['slaFirstResponseDueAt'] : ($tck['firstResponseDueAt'] ?? null);
+                        $firstRespAt = !empty($tck['slaFirstRespondedAt']) ? $tck['slaFirstRespondedAt'] : ($tck['firstRespondedAt'] ?? null);
+                        $resolveDue = !empty($tck['slaResolutionDueAt']) ? $tck['slaResolutionDueAt'] : ($tck['resolveDueAt'] ?? null);
+                        $pausedSecs = isset($tck['slaPausedTotalSeconds']) ? (int)$tck['slaPausedTotalSeconds'] : (int)($tck['slaPausedSeconds'] ?? 0);
+                        $isArchivedVal = (!empty($tck['isArchived']) || !empty($tck['archived'])) ? 1 : 0;
+
                         $upsertTicket->execute([
                             $tckId,
                             $tckNum,
-                            (string)($tck['subject'] ?? ''),
+                            $titleVal,
                             isset($tck['description']) ? (string)$tck['description'] : null,
                             (string)($tck['status'] ?? 'new'),
                             (string)($tck['priority'] ?? 'normal'),
-                            (string)($tck['type'] ?? 'bug'),
-                            (string)($tck['channel'] ?? 'manual'),
+                            (string)($tck['type'] ?? 'support'),
+                            $sourceVal,
                             !empty($tck['projectId']) ? (string)$tck['projectId'] : null,
-                            !empty($tck['leadId']) ? (string)$tck['leadId'] : null,
-                            !empty($tck['contractId']) ? (string)$tck['contractId'] : null,
+                            $clientIdVal,
                             isset($tck['reporterName']) ? (string)$tck['reporterName'] : null,
                             isset($tck['reporterEmail']) ? (string)$tck['reporterEmail'] : null,
                             isset($tck['reporterPhone']) ? (string)$tck['reporterPhone'] : null,
-                            !empty($tck['assignedUser']) ? (string)$tck['assignedUser'] : null,
-                            isset($tck['assignedUsers']) && is_array($tck['assignedUsers']) ? json_encode(array_values($tck['assignedUsers'])) : '[]',
-                            isset($tck['tags']) && is_array($tck['tags']) ? json_encode(array_values($tck['tags'])) : '[]',
-                            !empty($tck['slaFirstResponseDueAt']) ? substr(str_replace('T', ' ', (string)$tck['slaFirstResponseDueAt']), 0, 19) : null,
-                            !empty($tck['slaFirstRespondedAt']) ? substr(str_replace('T', ' ', (string)$tck['slaFirstRespondedAt']), 0, 19) : null,
-                            !empty($tck['slaResolutionDueAt']) ? substr(str_replace('T', ' ', (string)$tck['slaResolutionDueAt']), 0, 19) : null,
-                            !empty($tck['slaPausedAt']) ? substr(str_replace('T', ' ', (string)$tck['slaPausedAt']), 0, 19) : null,
-                            (int)($tck['slaPausedTotalSeconds'] ?? 0),
-                            !isset($tck['billable']) || $tck['billable'] ? 1 : 0,
-                            (int)($tck['loggedMinutes'] ?? 0),
-                            isset($tck['metadata']) && is_array($tck['metadata']) ? json_encode($tck['metadata']) : null,
-                            isset($tck['attachments']) && is_array($tck['attachments']) ? json_encode($tck['attachments']) : '[]',
-                            $pubToken,
+                            $assigneeIdVal,
+                            $assigneeNameVal,
+                            json_encode($watchersArr, JSON_UNESCAPED_UNICODE),
+                            isset($tck['tags']) && is_array($tck['tags']) ? json_encode(array_values($tck['tags']), JSON_UNESCAPED_UNICODE) : '[]',
+                            isset($tck['metadata']) && is_array($tck['metadata']) ? json_encode($tck['metadata'], JSON_UNESCAPED_UNICODE) : null,
+                            isset($tck['attachments']) && is_array($tck['attachments']) ? json_encode($tck['attachments'], JSON_UNESCAPED_UNICODE) : '[]',
                             !empty($tck['emailMessageId']) ? (string)$tck['emailMessageId'] : null,
-                            !empty($tck['isArchived']) ? 1 : 0,
-                            $createdAt,
-                            $updatedAt,
+                            !empty($firstRespDue) ? substr(str_replace('T', ' ', (string)$firstRespDue), 0, 19) : null,
+                            !empty($firstRespAt) ? substr(str_replace('T', ' ', (string)$firstRespAt), 0, 19) : null,
+                            !empty($resolveDue) ? substr(str_replace('T', ' ', (string)$resolveDue), 0, 19) : null,
+                            !empty($tck['slaPausedAt']) ? substr(str_replace('T', ' ', (string)$tck['slaPausedAt']), 0, 19) : null,
+                            $pausedSecs,
                             !empty($tck['resolvedAt']) ? substr(str_replace('T', ' ', (string)$tck['resolvedAt']), 0, 19) : null,
                             !empty($tck['closedAt']) ? substr(str_replace('T', ' ', (string)$tck['closedAt']), 0, 19) : null,
+                            isset($tck['satisfactionScore']) && $tck['satisfactionScore'] !== null && $tck['satisfactionScore'] !== '' ? (int)$tck['satisfactionScore'] : null,
+                            isset($tck['satisfactionComment']) ? (string)$tck['satisfactionComment'] : null,
+                            $isArchivedVal,
+                            $createdAt,
+                            $updatedAt,
                         ]);
                         $processedTicketIds[] = $tckId;
 
                         if (isset($tck['messages']) && is_array($tck['messages'])) {
+                            $keepMsgIds = [];
                             foreach ($tck['messages'] as $msg) {
                                 $mId = (string)($msg['id'] ?? '');
                                 if ($mId === '') continue;
                                 $mCreated = !empty($msg['createdAt']) ? substr(str_replace('T', ' ', (string)$msg['createdAt']), 0, 19) : date('Y-m-d H:i:s');
+                                $isInt = !empty($msg['isInternal']) ? 1 : 0;
+                                $evType = !empty($msg['eventType']) ? (string)$msg['eventType'] : ($isInt ? 'internal_note' : 'public_reply');
                                 $upsertMsg->execute([
                                     $mId,
                                     $tckId,
                                     (string)($msg['authorType'] ?? 'agent'),
+                                    !empty($msg['authorUserId']) ? (string)$msg['authorUserId'] : null,
                                     isset($msg['authorName']) ? (string)$msg['authorName'] : null,
                                     isset($msg['authorEmail']) ? (string)$msg['authorEmail'] : null,
-                                    !empty($msg['isInternal']) ? 1 : 0,
+                                    $isInt,
+                                    $evType,
                                     (string)($msg['body'] ?? ''),
-                                    isset($msg['attachments']) && is_array($msg['attachments']) ? json_encode($msg['attachments']) : '[]',
+                                    isset($msg['attachments']) && is_array($msg['attachments']) ? json_encode($msg['attachments'], JSON_UNESCAPED_UNICODE) : '[]',
                                     !empty($msg['emailMessageId']) ? (string)$msg['emailMessageId'] : null,
                                     $mCreated,
                                 ]);
+                                $keepMsgIds[] = $mId;
+                            }
+                            if (empty($keepMsgIds)) {
+                                $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ?")->execute([$tckId]);
+                            } else {
+                                $ph = implode(',', array_fill(0, count($keepMsgIds), '?'));
+                                $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepMsgIds));
                             }
                         }
 
                         if (isset($tck['taskLinks']) && is_array($tck['taskLinks'])) {
-                            $keepLinkIds = [];
+                            $keepTaskIds = [];
                             foreach ($tck['taskLinks'] as $lnk) {
-                                $lId = (string)($lnk['id'] ?? '');
                                 $lTaskId = (string)($lnk['taskId'] ?? '');
-                                if ($lId === '' || $lTaskId === '') continue;
+                                if ($lTaskId === '') continue;
                                 $lCreated = !empty($lnk['createdAt']) ? substr(str_replace('T', ' ', (string)$lnk['createdAt']), 0, 19) : date('Y-m-d H:i:s');
                                 $upsertTaskLink->execute([
-                                    $lId,
                                     $tckId,
                                     $lTaskId,
                                     (string)($lnk['syncMode'] ?? 'auto_resolve'),
                                     $lCreated,
                                 ]);
-                                $keepLinkIds[] = $lId;
+                                $keepTaskIds[] = $lTaskId;
                             }
-                            if (empty($keepLinkIds)) {
+                            if (empty($keepTaskIds)) {
                                 $pdo->prepare("DELETE FROM `ticket_task_links` WHERE `ticket_id` = ?")->execute([$tckId]);
                             } else {
-                                $ph = implode(',', array_fill(0, count($keepLinkIds), '?'));
-                                $pdo->prepare("DELETE FROM `ticket_task_links` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepLinkIds));
+                                $ph = implode(',', array_fill(0, count($keepTaskIds), '?'));
+                                $pdo->prepare("DELETE FROM `ticket_task_links` WHERE `ticket_id` = ? AND `task_id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepTaskIds));
                             }
                         }
 
                         if (isset($tck['timeEntries']) && is_array($tck['timeEntries'])) {
+                            $keepTeIds = [];
                             foreach ($tck['timeEntries'] as $te) {
                                 $teId = (string)($te['id'] ?? '');
                                 if ($teId === '') continue;
@@ -5553,25 +5638,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $upsertTimeEntry->execute([
                                     $teId,
                                     $tckId,
+                                    !empty($te['userId']) ? (string)$te['userId'] : null,
                                     (string)($te['userName'] ?? ''),
                                     (int)($te['minutes'] ?? 0),
                                     !isset($te['billable']) || $te['billable'] ? 1 : 0,
                                     isset($te['note']) ? (string)$te['note'] : null,
                                     $teLogged,
                                 ]);
+                                $keepTeIds[] = $teId;
+                            }
+                            if (empty($keepTeIds)) {
+                                $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` = ?")->execute([$tckId]);
+                            } else {
+                                $ph = implode(',', array_fill(0, count($keepTeIds), '?'));
+                                $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepTeIds));
                             }
                         }
                     }
-                }
 
-                $ticketsToDelete = $isDeltaSync ? $deletionsFor('tickets', $existingTicketIds) : array_diff($existingTicketIds, $processedTicketIds);
-                if (!empty($ticketsToDelete)) {
-                    $delPh = implode(',', array_fill(0, count($ticketsToDelete), '?'));
-                    $delVals = array_values($ticketsToDelete);
-                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` IN ($delPh)")->execute($delVals);
-                    $pdo->prepare("DELETE FROM `ticket_task_links` WHERE `ticket_id` IN ($delPh)")->execute($delVals);
-                    $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` IN ($delPh)")->execute($delVals);
-                    ccrm_delete_omitted($pdo, 'tickets', $ticketsToDelete, null, [], false, $isDeltaSync);
+                    $ticketsToDelete = $isDeltaSync ? $deletionsFor('tickets', $existingTicketIds) : array_diff($existingTicketIds, $processedTicketIds);
+                    if (!empty($ticketsToDelete)) {
+                        $delPh = implode(',', array_fill(0, count($ticketsToDelete), '?'));
+                        $delVals = array_values($ticketsToDelete);
+                        $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` IN ($delPh)")->execute($delVals);
+                        $pdo->prepare("DELETE FROM `ticket_task_links` WHERE `ticket_id` IN ($delPh)")->execute($delVals);
+                        $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` IN ($delPh)")->execute($delVals);
+                        ccrm_delete_omitted($pdo, 'tickets', $ticketsToDelete, null, [], false, $isDeltaSync);
+                    }
                 }
             } catch (\Throwable $e) {
                 error_log('[ccrm sync] tickets sync error: ' . $e->getMessage());

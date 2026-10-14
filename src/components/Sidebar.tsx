@@ -825,7 +825,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [sidebarPinned, setSidebarPinned] = useUserPref("sidebarPinned");
   const [sidebarCompactness] = useUserPref("sidebarCompactness");
   const [sidebarUnpinnedStyle] = useUserPref("sidebarUnpinnedStyle");
-  const [storedSidebarGroups, setStoredSidebarGroups] = useUserPref("sidebarGroups");
+  const [storedSidebarGroups] = useUserPref("sidebarGroups");
 
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isStartMenuOpen, setIsStartMenuOpen] = useState(false);
@@ -1104,12 +1104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       newHidden = currentHidden.filter((id: string) => id !== itemId);
     }
 
-    let updatedGroups: SidebarGroup[] | undefined;
-    if (storedSidebarGroups) {
-      updatedGroups = normalizeSidebarGroups(storedSidebarGroups, newActive);
-      setStoredSidebarGroups(updatedGroups);
-    }
-
+    const updatedGroups = normalizeSidebarGroups(storedSidebarGroups, newActive);
     onSaveUserLayout(newActive, newHidden, updatedGroups);
   };
 
@@ -1127,7 +1122,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const nextGroups = currentGroups.map((g) => (g.id === groupId ? { ...g, items: nextItems } : g));
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
     onSaveUserLayout(newActiveLayout, undefined, nextGroups);
   };
 
@@ -1143,7 +1137,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       target.items.push(itemId);
     }
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
     onSaveUserLayout(newActiveLayout, undefined, nextGroups);
   };
 
@@ -1163,8 +1156,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       nextGroups[0].items.push(itemId);
     }
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
-    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
+    const newHidden = currentHidden.filter((id: string) => id !== itemId);
+    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
     setAddModuleGroupId(null);
   };
 
@@ -1180,7 +1174,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [moved] = nextGroups.splice(idx, 1);
     nextGroups.splice(newIdx, 0, moved);
 
-    setStoredSidebarGroups(nextGroups);
     const newActiveLayout = flattenSidebarGroups(nextGroups);
     onSaveUserLayout(newActiveLayout, undefined, nextGroups);
   };
@@ -1246,8 +1239,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
-    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
+    const newHidden = currentHidden.filter((id: string) => id !== droppedId);
+    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
 
     setDraggedItemId(null);
     (window as any).__draggedModuleId = null;
@@ -1318,7 +1312,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: []
     };
     const nextGroups = [...current, newGroup];
-    setStoredSidebarGroups(nextGroups);
     setEditingGroupId(newId);
     setEditingGroupTitle(title);
     onSaveUserLayout(activeVisibleLayout, undefined, nextGroups);
@@ -1333,7 +1326,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const nextGroups = current.map((g) =>
       g.id === groupId ? { ...g, title: newTitle.trim() } : g
     );
-    setStoredSidebarGroups(nextGroups);
     setEditingGroupId(null);
     setEditingGroupTitle("");
     onSaveUserLayout(activeVisibleLayout, undefined, nextGroups);
@@ -1347,7 +1339,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (toDelete && toDelete.items.length > 0 && remaining.length > 0) {
       remaining[0].items = Array.from(new Set([...remaining[0].items, ...toDelete.items]));
     }
-    setStoredSidebarGroups(remaining);
     const newActiveLayout = flattenSidebarGroups(remaining);
     onSaveUserLayout(newActiveLayout, undefined, remaining);
   };

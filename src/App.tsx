@@ -1954,21 +1954,19 @@ ${log.payload || ''}
   };
 
   const updateUsersAndSync = (newUsers: UserProfile[] | ((prev: UserProfile[]) => UserProfile[])) => {
-    setUsers(prev => {
-      const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
-      usersRef.current = nextUsers;
-      pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
-      // Keep the logged-in profile in step, but hand out a new object only when
-      // its own row actually changed — an unrelated user's edit must not reset
-      // everything that keys off the currentUser identity.
-      setCurrentUser(me => {
-        if (!me) return me;
-        const updatedMe = nextUsers.find(u => u.email === me.email);
-        if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
-        return updatedMe;
-      });
-      return nextUsers;
+    const nextUsers = typeof newUsers === "function" ? newUsers(usersRef.current) : newUsers;
+    usersRef.current = nextUsers;
+    setUsers(nextUsers);
+    // Keep the logged-in profile in step, but hand out a new object only when
+    // its own row actually changed — an unrelated user's edit must not reset
+    // everything that keys off the currentUser identity.
+    setCurrentUser(me => {
+      if (!me) return me;
+      const updatedMe = nextUsers.find(u => u.email === me.email);
+      if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
+      return updatedMe;
     });
+    pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
   };
 
   // ---------------------------------------------------------------------------
@@ -3352,6 +3350,7 @@ ${log.payload || ''}
             setTasks={updateTasksAndSync}
             taskStates={taskStates}
             users={users}
+            employees={employees}
             currentUser={activeUser}
             userLanguage={userLanguage}
             access={access.module("tickets")}

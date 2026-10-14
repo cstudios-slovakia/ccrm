@@ -34,11 +34,15 @@ import {
   MessageSquare,
   CloudCheck,
   Check,
+  PencilLine,
+  Calendar,
+  FileText,
 } from "lucide-react";
 import type {
   Ticket,
   TicketAttachment,
   TicketMessage,
+  TicketTimelineEventType,
   TicketPriority,
   TicketType,
   TicketStatusDefinition,
@@ -49,6 +53,7 @@ import type {
   Lead,
   Task,
   UserProfile,
+  Employee,
 } from "../types";
 import { getTranslation, type Language } from "../utils/translations";
 import type { ModuleAccess } from "../utils/permissions";
@@ -69,10 +74,11 @@ import { isDoneTaskState } from "../utils/projectTasks";
 import { projectDisplayName } from "../utils/projects";
 import {
   nowLocalStamp,
+  todayLocal,
   todayLocalPlusDays,
   formatTimestampLocalized,
 } from "../utils/localTime";
-import { EntityHeader, PageHeader } from "./layout";
+import { EntityHeader, PageHeader, Tabs } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip, type PipelineStripSegment } from "./ui/PipelineStrip";
@@ -99,6 +105,7 @@ interface TicketsViewProps {
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   taskStates: string[];
   users: UserProfile[];
+  employees?: Employee[];
   currentUser?: UserProfile | null;
   userLanguage: Language;
   access?: ModuleAccess;
@@ -122,6 +129,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   setTasks,
   taskStates,
   users,
+  employees = [],
   currentUser,
   userLanguage,
   access = FULL_MODULE_ACCESS,
@@ -133,6 +141,33 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
   const canEdit = access.edit;
   const canDelete = access.edit && access.delete;
+
+  // Unified employee + user list for assigning tickets and linked tasks
+  const assigneeOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string; badge?: string }>();
+    for (const emp of employees) {
+      if (emp.isActive === false) continue;
+      const name = (emp.name || "").trim();
+      if (!name) continue;
+      map.set(name.toLowerCase(), {
+        value: name,
+        label: emp.role ? `${name} (${emp.role})` : name,
+        badge: emp.role || t("Employee", "Zamestnanec", "Alkalmazott"),
+      });
+    }
+    for (const u of users) {
+      const name = (u.name || "").trim();
+      if (!name) continue;
+      if (!map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), {
+          value: name,
+          label: name,
+          badge: u.role || t("User", "Používateľ", "Felhasználó"),
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [employees, users, userLanguage]);
 
   const orderedStatuses = useMemo(
     () =>
@@ -183,20 +218,38 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [pickingProject, setPickingProject] = useState(false);
   const [pickingClient, setPickingClient] = useState(false);
 
+  // Right column active tab & timeline event logger state (matches Leads timeline)
+  const [detailRightTab, setDetailRightTab] = useState<"timeline" | "tasks">("timeline");
+  const [timelineEventType, setTimelineEventType] =
+    useState<TicketTimelineEventType>("public_reply");
+  const [timelineEventDate, setTimelineEventDate] = useState<string>(() =>
+    todayLocal(),
+  );
+  const [timelineEventTime, setTimelineEventTime] = useState<string>(() =>
+    nowLocalStamp().slice(11, 16),
+  );
+  const [replyBody, setReplyBody] = useState("");
+  const [sendViaEmail, setSendViaEmail] = useState(true);
+  const [replyAttachments, setReplyAttachments] = useState<TicketAttachment[]>([]);
+  const [isSendingReply, setIsSendingReply] = useState(false);
+
+  // Inline timeline event editing state
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editingMsgBody, setEditingMsgBody] = useState<string>("");
+  const [editingMsgAttachments, setEditingMsgAttachments] = useState<
+    TicketAttachment[]
+  >([]);
+
   // Reset detail-local edit modes when switching tickets
   useEffect(() => {
     setIsEditingSubject(false);
     setIsEditingDescription(false);
     setPickingProject(false);
     setPickingClient(false);
+    setEditingMsgId(null);
+    setTimelineEventDate(todayLocal());
+    setTimelineEventTime(nowLocalStamp().slice(11, 16));
   }, [selectedTicketId]);
-
-  // Reply composer state
-  const [replyTab, setReplyTab] = useState<"public" | "internal">("public");
-  const [replyBody, setReplyBody] = useState("");
-  const [sendViaEmail, setSendViaEmail] = useState(true);
-  const [replyAttachments, setReplyAttachments] = useState<TicketAttachment[]>([]);
-  const [isSendingReply, setIsSendingReply] = useState(false);
 
   // Create Ticket Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -224,6 +277,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   // Task creation from ticket state
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState(currentUser?.name || "");
+  const [newTaskDeadline, setNewTaskDeadline] = useState(() => todayLocalPlusDays(3));
   const [showTaskForm, setShowTaskForm] = useState(false);
 
   // Time entry form state
@@ -501,6 +555,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               authorEmail: currentUser?.email || "",
               body: newDescription.trim() || newSubject.trim(),
               isInternal: false,
+              eventType: "public_reply",
               attachments: newTicketAttachments,
               createdAt: now,
             },
@@ -527,6 +582,21 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     );
   };
 
+  const applyTemplatePlaceholders = (rawBody: string, tk: Ticket): string => {
+    const client = getClientForTicket(tk);
+    const clientName =
+      tk.reporterName || client?.name || t("Client", "Klient", "Ügyfél");
+    const agentName = currentUser?.name || "Support";
+    const replaced = rawBody
+      .replace(/\{\{\s*client_name\s*\}\}/gi, clientName)
+      .replace(/\{\{\s*ticket_number\s*\}\}/gi, tk.ticketNumber)
+      .replace(/\{\{\s*ticket_title\s*\}\}/gi, tk.subject || tk.title || "")
+      .replace(/\{\{\s*agent_name\s*\}\}/gi, agentName);
+    return /<[a-z][\s\S]*>/i.test(replaced)
+      ? replaced
+      : replaced.replace(/\n/g, "<br/>");
+  };
+
   const handleSendReply = async (nextStatusOverride?: string) => {
     if (
       !selectedTicket ||
@@ -536,26 +606,38 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       return;
     setIsSendingReply(true);
     const now = nowLocalStamp();
-    const isInternal = replyTab === "internal";
+    const isPublicReply = timelineEventType === "public_reply";
+    const isInternal = !isPublicReply;
+
+    const currentDatePart = now.slice(0, 10);
+    const currentTimePart = now.slice(11, 16);
+    const eventCreatedAt =
+      !timelineEventDate ||
+      (timelineEventDate === currentDatePart &&
+        (!timelineEventTime || timelineEventTime === currentTimePart))
+        ? now
+        : `${timelineEventDate} ${timelineEventTime || "12:00"}:${now.slice(17, 19) || "00"}`;
 
     const newMsg: TicketMessage = {
       id: `tmsg-${Date.now()}`,
       ticketId: selectedTicket.id,
       authorType: "agent",
+      authorUserId: currentUser?.id || null,
       authorName: currentUser?.name || "Support Agent",
       authorEmail: currentUser?.email || "",
       body: replyBody.trim(),
       isInternal,
+      eventType: timelineEventType,
       attachments: replyAttachments,
-      createdAt: now,
+      createdAt: eventCreatedAt,
     };
 
     const nextStatus = nextStatusOverride || selectedTicket.status;
     const isFirstAgentPublicReply =
-      !isInternal && !selectedTicket.firstRespondedAt;
+      isPublicReply && !selectedTicket.firstRespondedAt;
 
-    // Optional outbound email dispatch
-    if (!isInternal && sendViaEmail && selectedTicket.reporterEmail) {
+    // Optional outbound email dispatch when posting a public reply
+    if (isPublicReply && sendViaEmail && selectedTicket.reporterEmail) {
       try {
         await fetch("./api/tickets.php?action=send_email_reply", {
           method: "POST",
@@ -593,15 +675,100 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
     setReplyBody("");
     setReplyAttachments([]);
+    setTimelineEventDate(todayLocal());
+    setTimelineEventTime(nowLocalStamp().slice(11, 16));
     setIsSendingReply(false);
     (window as any).showToast?.(
-      isInternal
+      isPublicReply
         ? t(
-            "Internal note added.",
-            "Interná poznámka pridaná.",
-            "Belső jegyzet hozzáadva.",
+            "Public reply logged to timeline.",
+            "Verejná odpoveď zaznamenaná na časovú os.",
+            "Nyilvános válasz rögzítve az idővonalon.",
           )
-        : t("Reply posted.", "Odpoveď bola odoslaná.", "Válasz elküldve."),
+        : t(
+            "Timeline event logged.",
+            "Udalosť bola zaznamenaná na časovú os.",
+            "Esemény rögzítve az idővonalon.",
+          ),
+    );
+  };
+
+  const handleUpdateTimelineMessage = (msgId: string) => {
+    if (!selectedTicket || !canEdit) return;
+    const now = nowLocalStamp();
+    updateSelectedTicket({
+      messages: (selectedTicket.messages || []).map((m) =>
+        m.id === msgId
+          ? {
+              ...m,
+              body: editingMsgBody.trim(),
+              attachments: editingMsgAttachments,
+            }
+          : m,
+      ),
+      updatedAt: now,
+    });
+    setEditingMsgId(null);
+    (window as any).showToast?.(
+      t(
+        "Timeline event updated.",
+        "Záznam časovej osi upravený.",
+        "Idővonal bejegyzés frissítve.",
+      ),
+    );
+  };
+
+  const handleDeleteTimelineMessage = (msgId: string) => {
+    if (!selectedTicket || !canEdit) return;
+    updateSelectedTicket({
+      messages: (selectedTicket.messages || []).filter((m) => m.id !== msgId),
+    });
+    if (editingMsgId === msgId) setEditingMsgId(null);
+    (window as any).showToast?.(
+      t(
+        "Timeline event removed.",
+        "Záznam bol odstránený z časovej osi.",
+        "Idővonal bejegyzés eltávolítva.",
+      ),
+    );
+  };
+
+  const handleAssignTaskEmployee = (taskId: string, assigneeName: string) => {
+    if (!canEdit) return;
+    setTasks((prev) =>
+      prev.map((tsk) =>
+        tsk.id === taskId
+          ? {
+              ...tsk,
+              owner: assigneeName,
+              assignedUsers: assigneeName ? [assigneeName] : [],
+            }
+          : tsk,
+      ),
+    );
+    (window as any).showToast?.(
+      assigneeName
+        ? `${t("Assigned to", "Priradené:", "Felelős:")} ${assigneeName}`
+        : t("Task unassigned.", "Priradenie zrušené.", "Felelős eltávolítva."),
+    );
+  };
+
+  const handleToggleTaskDone = (tsk: Task) => {
+    if (!canEdit) return;
+    const done = isDoneTaskState(tsk.status, taskStates);
+    const doneState =
+      taskStates.find((s) => isDoneTaskState(s, taskStates)) ||
+      taskStates[taskStates.length - 1] ||
+      "Done";
+    const openState =
+      taskStates.find((s) => !isDoneTaskState(s, taskStates)) ||
+      taskStates[0] ||
+      "New";
+    const nextTaskStatus = done ? openState : doneState;
+    setTasks((prev) =>
+      prev.map((item) =>
+        item.id === tsk.id ? { ...item, status: nextTaskStatus } : item,
+      ),
     );
   };
 
@@ -614,9 +781,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       .replace(/<[^>]*>/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+    const chosenAssignee = newTaskAssignee || currentUser?.name || "";
     const newTask: Task = {
       id: taskId,
-      title: `[${selectedTicket.ticketNumber}] ${newTaskTitle.trim()}`,
+      title: newTaskTitle.trim().startsWith(`[${selectedTicket.ticketNumber}]`)
+        ? newTaskTitle.trim()
+        : `[${selectedTicket.ticketNumber}] ${newTaskTitle.trim()}`,
       description: `${selectedTicket.subject}\n\n${plainDesc}`.trim(),
       status: taskStates[0] || "New",
       priority:
@@ -626,10 +796,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           : selectedTicket.priority === "low"
             ? "low"
             : "medium",
-      deadline: todayLocalPlusDays(3),
-      owner: newTaskAssignee || currentUser?.name || "",
+      deadline: newTaskDeadline || todayLocalPlusDays(3),
+      owner: chosenAssignee,
       createdBy: currentUser?.name || "",
-      assignedUsers: newTaskAssignee ? [newTaskAssignee] : [],
+      assignedUsers: chosenAssignee ? [chosenAssignee] : [],
       relatedProjectId: selectedTicket.projectId || undefined,
       relatedLeadId:
         selectedTicket.leadId || selectedTicket.clientId || undefined,
@@ -638,7 +808,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     setTasks((prev) => [newTask, ...prev]);
 
     const newLink = {
-      id: `ttl-${Date.now()}`,
+      id: `${selectedTicket.id}:${taskId}`,
       ticketId: selectedTicket.id,
       taskId,
       syncMode: "auto_resolve" as const,
@@ -646,10 +816,6 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     };
 
     updateSelectedTicket({
-      status:
-        selectedTicket.status === "new" || selectedTicket.status === "open"
-          ? "waiting_dev"
-          : selectedTicket.status,
       taskLinks: [...(selectedTicket.taskLinks || []), newLink],
     });
 
@@ -657,9 +823,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     setShowTaskForm(false);
     (window as any).showToast?.(
       t(
-        "CRM Task created & linked (auto-resolves ticket when Done).",
-        "Úloha vytvorená a prepojená (po dokončení automaticky vyrieši tiket).",
-        "CRM feladat létrehozva és összekapcsolva (befejezéskor automatikusan megoldja a jegyet).",
+        "CRM Task created & linked to employee.",
+        "Úloha vytvorená a priradená riešiteľovi.",
+        "CRM feladat létrehozva és hozzárendelve.",
       ),
     );
   };
@@ -1180,7 +1346,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         value: "",
                         label: t("Unassigned", "Nepriradené", "Nincs felelős"),
                       },
-                      ...users.map((u) => ({ value: u.name, label: u.name })),
+                      ...assigneeOptions.map((opt) => ({
+                        value: opt.value,
+                        label: opt.label,
+                      })),
                     ]}
                   />
                 </div>
@@ -1325,6 +1494,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         type="button"
                         onClick={() => {
                           setNewTaskTitle(selectedTicket.subject);
+                          setNewTaskAssignee(
+                            selectedTicket.assignedUsers?.[0] ||
+                              currentUser?.name ||
+                              assigneeOptions[0]?.value ||
+                              "",
+                          );
                           setShowTaskForm((v) => !v);
                         }}
                         className="text-micro font-bold text-indigo-600 hover:underline cursor-pointer"
@@ -1355,24 +1530,40 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         )}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-caption font-semibold"
                       />
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={newTaskAssignee}
-                          onChange={(e) => setNewTaskAssignee(e.target.value)}
-                          className="flex-1 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-micro font-semibold"
-                        >
-                          {users.map((u) => (
-                            <option key={u.id} value={u.name}>
-                              {u.name}
+                      <div className="space-y-1">
+                        <label className="block type-overline text-slate-400">
+                          {t(
+                            "Assign Employee",
+                            "Priradiť zamestnanca",
+                            "Alkalmazott hozzárendelése",
+                          )}
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={newTaskAssignee}
+                            onChange={(e) => setNewTaskAssignee(e.target.value)}
+                            className="flex-1 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-micro font-semibold text-slate-700"
+                          >
+                            <option value="">
+                              {t(
+                                "— Select Employee —",
+                                "— Vybrať zamestnanca —",
+                                "— Alkalmazott kiválasztása —",
+                              )}
                             </option>
-                          ))}
-                        </select>
-                        <button
-                          type="submit"
-                          className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-micro font-bold cursor-pointer"
-                        >
-                          {t("Create", "Vytvoriť", "Létrehozás")}
-                        </button>
+                            {assigneeOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-micro font-bold cursor-pointer shrink-0"
+                          >
+                            {t("Create", "Vytvoriť", "Létrehozás")}
+                          </button>
+                        </div>
                       </div>
                     </form>
                   )}
@@ -1386,7 +1577,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {(selectedTicket.taskLinks || []).map((link) => {
                         const tsk = tasks.find(
                           (tItem) => tItem.id === link.taskId,
@@ -1394,32 +1585,70 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         const done = tsk
                           ? isDoneTaskState(tsk.status, taskStates)
                           : false;
+                        const currentAssignee = tsk
+                          ? tsk.assignedUsers?.[0] || tsk.owner || ""
+                          : "";
                         return (
                           <div
-                            key={link.id}
-                            onClick={() => {
-                              window.location.hash = "tasks";
-                            }}
-                            className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-micro cursor-pointer hover:border-indigo-300"
+                            key={link.id || `${link.ticketId}:${link.taskId}`}
+                            className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-micro hover:border-indigo-300 transition-colors"
                           >
-                            <span
-                              className={`font-bold truncate ${
-                                done
-                                  ? "line-through text-slate-400"
-                                  : "text-slate-700"
-                              }`}
-                            >
-                              {tsk ? tsk.title : link.taskId}
-                            </span>
-                            <span
-                              className={`px-1.5 py-0.5 rounded font-bold shrink-0 ${
-                                done
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-indigo-50 text-indigo-700"
-                              }`}
-                            >
-                              {tsk ? tsk.status : "Linked"}
-                            </span>
+                            <div className="flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  window.location.hash = "tasks";
+                                }}
+                                className={`font-bold truncate text-left cursor-pointer hover:underline ${
+                                  done
+                                    ? "line-through text-slate-400"
+                                    : "text-slate-700"
+                                }`}
+                              >
+                                {tsk ? tsk.title : link.taskId}
+                              </button>
+                              <span
+                                className={`px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                                  done
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-indigo-50 text-indigo-700"
+                                }`}
+                              >
+                                {tsk ? tsk.status : "Linked"}
+                              </span>
+                            </div>
+                            {tsk && (
+                              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+                                <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
+                                  <User className="w-3 h-3 text-indigo-500" />
+                                  {t("Employee:", "Riešiteľ:", "Felelős:")}
+                                </span>
+                                <select
+                                  value={currentAssignee}
+                                  disabled={!canEdit}
+                                  onChange={(e) =>
+                                    handleAssignTaskEmployee(
+                                      tsk.id,
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="flex-1 max-w-44 px-2 py-1 rounded-lg border border-slate-200 bg-white text-micro font-bold text-slate-700 cursor-pointer"
+                                >
+                                  <option value="">
+                                    {t(
+                                      "Unassigned",
+                                      "Nepriradené",
+                                      "Nincs felelős",
+                                    )}
+                                  </option>
+                                  {assigneeOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1979,395 +2208,942 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             })()}
           </div>
 
-          {/* RIGHT COLUMN (8 cols): Ticket Timeline */}
-          <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-5 shadow-sm text-left">
-            {/* Timeline Header Bar */}
-            <div className="flex items-center justify-between gap-3 pb-3 mb-4 border-b border-slate-100 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
-                  <Clock className="w-4 h-4" />
-                </span>
-                <div>
-                  <h4 className="font-heading font-bold text-ui text-slate-900">
-                    {t(
-                      "Ticket Timeline & Conversation",
-                      "Časová os a komunikácia tiketu",
-                      "Jegy idővonal és kommunikáció",
-                    )}
-                  </h4>
-                  <p className="text-micro text-slate-400">
-                    {t(
-                      "Chronological thread of client messages, agent replies, internal notes, and diagnostics",
-                      "Chronologické vlákno správ klienta, odpovedí agentov, interných poznámok a diagnostiky",
-                      "Ügyfélüzenetek, válaszok, belső jegyzetek és diagnosztika időrendi folyamata",
-                    )}
-                  </p>
-                </div>
-              </div>
-              <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-micro font-bold">
-                {(selectedTicket.messages || []).length}{" "}
-                {t("entries", "záznamov", "bejegyzés")}
-              </span>
+          {/* RIGHT COLUMN (8 cols): Leads-Style History & Timeline + Tasks */}
+          <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-6 shadow-sm text-left">
+            {/* Top Tabs (matches Leads Right Panel) */}
+            <div className="mb-4 shrink-0">
+              <Tabs
+                value={detailRightTab}
+                onChange={setDetailRightTab}
+                items={[
+                  {
+                    key: "timeline",
+                    label: t(
+                      "History & Timeline",
+                      "História a časová os",
+                      "Előzmények és idővonal",
+                    ),
+                    count: (selectedTicket.messages || []).length,
+                    icon: <Clock className="h-3.5 w-3.5" />,
+                  },
+                  {
+                    key: "tasks",
+                    label: t("Tasks", "Úlohy", "Feladatok"),
+                    count: (selectedTicket.taskLinks || []).length,
+                    icon: <CheckSquare className="h-3.5 w-3.5" />,
+                  },
+                ]}
+              />
             </div>
 
-            <div className="flex-1 ws-lg:overflow-hidden flex flex-col ws-lg:flex-row gap-6 min-h-0">
-              {/* Left of Timeline: Reply / Internal Note Composer */}
-              {canEdit && (
-                <div className="ws-lg:w-5/12 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit space-y-3">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-1 p-1 rounded-xl bg-white border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setReplyTab("public")}
-                        className={`px-3 py-1 rounded-lg text-micro font-bold cursor-pointer ${
-                          replyTab === "public"
-                            ? "bg-indigo-600 text-white shadow-2xs"
-                            : "text-slate-500 hover:text-slate-800"
-                        }`}
-                      >
+            {detailRightTab === "timeline" ? (
+              <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-hidden">
+                {/* ACTIONS / EVENT LOGGER OVER THE TIMELINE (matches Leads Event Logger) */}
+                {canEdit && (
+                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 mb-5 shrink-0 space-y-3">
+                    {/* Top Row: Title + Template Selector + Date & Time Inputs */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="type-overline text-slate-600 flex items-center gap-1.5">
+                        <PencilLine className="h-3.5 w-3.5 text-indigo-600" />
                         {t(
-                          "Public Reply",
-                          "Verejná odpoveď",
-                          "Nyilvános válasz",
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReplyTab("internal")}
-                        className={`px-3 py-1 rounded-lg text-micro font-bold flex items-center gap-1 cursor-pointer ${
-                          replyTab === "internal"
-                            ? "bg-amber-500 text-white shadow-2xs"
-                            : "text-slate-500 hover:text-slate-800"
-                        }`}
-                      >
-                        <Lock className="w-3 h-3" />
-                        <span>
-                          {t(
-                            "Internal Note",
-                            "Interná poznámka",
-                            "Belső jegyzet",
-                          )}
-                        </span>
-                      </button>
-                    </div>
-
-                    {cannedTemplates.length > 0 && (
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          const tpl = cannedTemplates.find(
-                            (c) => c.id === e.target.value,
-                          );
-                          if (tpl) {
-                            setReplyBody((prev) =>
-                              prev ? `${prev}<br/><br/>${tpl.body}` : tpl.body,
-                            );
-                          }
-                        }}
-                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-micro font-bold text-slate-600"
-                      >
-                        <option value="">
-                          {t(
-                            "+ Template...",
-                            "+ Šablóna...",
-                            "+ Sablon...",
-                          )}
-                        </option>
-                        {cannedTemplates.map((tpl) => (
-                          <option key={tpl.id} value={tpl.id}>
-                            {tpl.title}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-
-                  <TicketRichHtmlEditor
-                    value={replyBody}
-                    onChange={setReplyBody}
-                    attachments={replyAttachments}
-                    onAttachmentsChange={setReplyAttachments}
-                    userLanguage={userLanguage}
-                    tone={replyTab === "internal" ? "internal" : "default"}
-                    minRows={4}
-                    placeholder={
-                      replyTab === "internal"
-                        ? t(
-                            "Write an internal note visible only to team members...",
-                            "Napíšte internú poznámku viditeľnú iba pre tím...",
-                            "Írjon csak a csapat számára látható belső jegyzetet...",
-                          )
-                        : t(
-                            "Write a formatted reply to the client (paste images or attach files)...",
-                            "Napíšte formátovanú odpoveď klientovi (môžete vložiť obrázky a súbory)...",
-                            "Írjon formázott választ az ügyfélnek (képek és fájlok csatolhatók)...",
-                          )
-                    }
-                  />
-
-                  {replyTab === "public" && selectedTicket.reporterEmail && (
-                    <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-slate-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={sendViaEmail}
-                        onChange={(e) => setSendViaEmail(e.target.checked)}
-                        className="rounded border-slate-300 text-indigo-600"
-                      />
-                      <Mail className="w-3.5 h-3.5 text-slate-400" />
-                      <span>
-                        {t(
-                          "Send via email to reporter",
-                          "Odoslať aj e-mailom hlásateľovi",
-                          "Küldés e-mailben a bejelentőnek",
+                          "Log Event to Timeline",
+                          "Zaznamenať udalosť na časovú os",
+                          "Esemény rögzítése az idővonalra",
                         )}
                       </span>
-                    </label>
-                  )}
 
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    {replyTab === "public" && (
-                      <button
-                        type="button"
-                        disabled={
-                          isSendingReply ||
-                          (isRichTextEmpty(replyBody) &&
-                            replyAttachments.length === 0)
-                        }
-                        onClick={() => handleSendReply("resolved")}
-                        className="px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
-                      >
-                        {t(
-                          "Send & Resolve",
-                          "Odoslať a vyriešiť",
-                          "Küldés és megoldás",
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {cannedTemplates.length > 0 && (
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              const tpl = cannedTemplates.find(
+                                (c) => c.id === e.target.value,
+                              );
+                              if (tpl) {
+                                const rendered = applyTemplatePlaceholders(
+                                  tpl.body,
+                                  selectedTicket,
+                                );
+                                setReplyBody((prev) =>
+                                  prev && !isRichTextEmpty(prev)
+                                    ? `${prev}<br/><br/>${rendered}`
+                                    : rendered,
+                                );
+                              }
+                            }}
+                            className="h-8 px-2.5 rounded-xl border border-slate-200 bg-white text-micro font-bold text-slate-700 cursor-pointer hover:border-indigo-300"
+                          >
+                            <option value="">
+                              {t(
+                                "+ Template...",
+                                "+ Šablóna...",
+                                "+ Sablon...",
+                              )}
+                            </option>
+                            {cannedTemplates.map((tpl) => (
+                              <option key={tpl.id} value={tpl.id}>
+                                {tpl.title || tpl.name || tpl.shortcut || tpl.id}
+                              </option>
+                            ))}
+                          </select>
                         )}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={
-                        isSendingReply ||
-                        (isRichTextEmpty(replyBody) &&
-                          replyAttachments.length === 0)
-                      }
-                      onClick={() => handleSendReply()}
-                      className={`px-4 py-2 rounded-xl text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 ${
-                        replyTab === "internal"
-                          ? "bg-amber-600 hover:bg-amber-700"
-                          : "bg-indigo-600 hover:bg-indigo-700"
-                      }`}
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>
-                        {replyTab === "internal"
-                          ? t(
-                              "Save Note",
-                              "Uložiť poznámku",
-                              "Jegyzet mentése",
-                            )
-                          : t(
-                              "Send Reply",
-                              "Odoslať odpoveď",
-                              "Válasz küldése",
-                            )}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Right of Timeline: Chronological Feed */}
-              <div className="flex-1 ws-lg:overflow-y-auto ws-lg:pr-2 space-y-4 scrollbar-thin">
-                {/* Widget Diagnostics & Screenshot Card */}
-                {(widgetMeta || selectedTicket.screenshotPath) && (
-                  <div className="p-3.5 rounded-2xl bg-slate-900 text-slate-100 space-y-2.5 text-micro">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
-                        <Terminal className="w-3.5 h-3.5" />
-                        {t(
-                          "Captured Widget Diagnostics",
-                          "Diagnostika zachytená widgetom",
-                          "Widget által rögzített diagnosztika",
-                        )}
-                      </span>
-                      {widgetMeta?.viewport && (
-                        <span className="font-mono text-slate-400">
-                          {widgetMeta.viewport}
-                        </span>
-                      )}
-                    </div>
-                    {widgetMeta?.url && (
-                      <div className="font-mono text-slate-300 truncate">
-                        URL:{" "}
-                        <a
-                          href={widgetMeta.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-indigo-300 underline"
-                        >
-                          {widgetMeta.url}
-                        </a>
-                      </div>
-                    )}
-                    {widgetMeta?.consoleErrors &&
-                      widgetMeta.consoleErrors.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-rose-400 font-bold">
-                            {t(
-                              "Console / Runtime Errors:",
-                              "Chyby v konzole:",
-                              "Konzol / futási hibák:",
-                            )}{" "}
-                            ({widgetMeta.consoleErrors.length})
-                          </span>
-                          <pre className="p-2 rounded-lg bg-black/50 text-rose-200 font-mono text-micro overflow-x-auto max-h-32">
-                            {widgetMeta.consoleErrors.join("\n")}
-                          </pre>
-                        </div>
-                      )}
-                    {selectedTicket.screenshotPath && (
-                      <div className="pt-1">
-                        <a
-                          href={selectedTicket.screenshotPath}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 text-indigo-300 hover:text-indigo-200 font-bold"
-                        >
-                          <ImageIcon className="w-3.5 h-3.5" />
-                          <span>
-                            {t(
-                              "Open Attached Screenshot",
-                              "Otvoriť priložený screenshot",
-                              "Csatolt képernyőkép megnyitása",
-                            )}
-                          </span>
-                        </a>
-                        <img
-                          src={selectedTicket.screenshotPath}
-                          alt="Ticket screenshot"
-                          className="mt-1.5 rounded-xl border border-slate-700 max-h-44 object-contain bg-black/40"
+                        <input
+                          type="date"
+                          value={timelineEventDate}
+                          onChange={(e) => setTimelineEventDate(e.target.value)}
+                          className="h-8 px-2.5 text-micro font-bold rounded-xl border border-slate-200/80 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                        />
+                        <input
+                          type="time"
+                          value={timelineEventTime}
+                          onChange={(e) => setTimelineEventTime(e.target.value)}
+                          className="h-8 w-24 px-2 text-micro font-bold rounded-xl border border-slate-200/80 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
                       </div>
-                    )}
+                    </div>
+
+                    {/* Event Type Segmented Bar (Public Reply + Internal Note + Call + Email + Appointment) */}
+                    <div>
+                      <span className="block type-overline text-slate-400 mb-1">
+                        {t("Event Type", "Typ udalosti", "Esemény típusa")}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1 bg-slate-200/75 p-1 rounded-xl border border-slate-200/60 shadow-inner">
+                        {(
+                          [
+                            {
+                              id: "public_reply" as const,
+                              label: t(
+                                "Public Reply",
+                                "Verejná odpoveď",
+                                "Nyilvános válasz",
+                              ),
+                              icon: Send,
+                              activeIconClass: "text-indigo-600",
+                            },
+                            {
+                              id: "internal_note" as const,
+                              label: t(
+                                "Internal Note",
+                                "Interná poznámka",
+                                "Belső jegyzet",
+                              ),
+                              icon: Lock,
+                              activeIconClass: "text-amber-600",
+                            },
+                            {
+                              id: "call" as const,
+                              label: t(
+                                "Phone Call",
+                                "Telefonát",
+                                "Telefonhívás",
+                              ),
+                              icon: Phone,
+                              activeIconClass: "text-emerald-600",
+                            },
+                            {
+                              id: "email" as const,
+                              label: t("Email", "E-mail", "E-mail"),
+                              icon: Mail,
+                              activeIconClass: "text-blue-600",
+                            },
+                            {
+                              id: "appointment" as const,
+                              label: t(
+                                "Appointment",
+                                "Stretnutie",
+                                "Találkozó",
+                              ),
+                              icon: Calendar,
+                              activeIconClass: "text-purple-600",
+                            },
+                          ] as const
+                        ).map((item) => {
+                          const Icon = item.icon;
+                          const isActive = timelineEventType === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setTimelineEventType(item.id)}
+                              className={`flex-1 min-w-28 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-micro font-bold transition-all cursor-pointer select-none ${
+                                isActive
+                                  ? "bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5"
+                                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                              }`}
+                            >
+                              <Icon
+                                className={`h-3.5 w-3.5 shrink-0 ${
+                                  isActive
+                                    ? item.activeIconClass
+                                    : "text-slate-400"
+                                }`}
+                              />
+                              <span className="truncate">{item.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Rich HTML Editor + Image & File Upload */}
+                    <TicketRichHtmlEditor
+                      value={replyBody}
+                      onChange={setReplyBody}
+                      attachments={replyAttachments}
+                      onAttachmentsChange={setReplyAttachments}
+                      userLanguage={userLanguage}
+                      tone={
+                        timelineEventType === "internal_note"
+                          ? "internal"
+                          : "default"
+                      }
+                      minRows={3}
+                      placeholder={
+                        timelineEventType === "public_reply"
+                          ? t(
+                              "Write a public reply to the client (paste screenshots or attach files)...",
+                              "Napíšte verejnú odpoveď klientovi (prilepte obrázky alebo priložte súbory)...",
+                              "Írjon nyilvános választ az ügyfélnek (képek és fájlok csatolhatók)...",
+                            )
+                          : timelineEventType === "internal_note"
+                            ? t(
+                                "Write an internal note visible only to your team...",
+                                "Napíšte internú poznámku viditeľnú iba pre tím...",
+                                "Írjon csak a csapat számára látható belső jegyzetet...",
+                              )
+                            : t(
+                                "Enter event summary, call notes, or meeting details...",
+                                "Zadajte zhrnutie telefonátu, e-mailu alebo stretnutia...",
+                                "Adja meg a hívás, e-mail vagy találkozó részleteit...",
+                              )
+                      }
+                    />
+
+                    {/* Bottom Action Row */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <div>
+                        {timelineEventType === "public_reply" &&
+                          selectedTicket.reporterEmail && (
+                            <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={sendViaEmail}
+                                onChange={(e) =>
+                                  setSendViaEmail(e.target.checked)
+                                }
+                                className="rounded border-slate-300 text-indigo-600"
+                              />
+                              <Mail className="w-3.5 h-3.5 text-slate-400" />
+                              <span>
+                                {t(
+                                  "Send via email to reporter",
+                                  "Odoslať aj e-mailom hlásateľovi",
+                                  "Küldés e-mailben a bejelentőnek",
+                                )}{" "}
+                                ({selectedTicket.reporterEmail})
+                              </span>
+                            </label>
+                          )}
+                      </div>
+
+                      <div className="flex items-center gap-2 ml-auto">
+                        {timelineEventType === "public_reply" && (
+                          <button
+                            type="button"
+                            disabled={
+                              isSendingReply ||
+                              (isRichTextEmpty(replyBody) &&
+                                replyAttachments.length === 0)
+                            }
+                            onClick={() => handleSendReply("resolved")}
+                            className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40 transition-colors"
+                          >
+                            {t(
+                              "Send & Resolve",
+                              "Odoslať a vyriešiť",
+                              "Küldés és megoldás",
+                            )}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={
+                            isSendingReply ||
+                            (isRichTextEmpty(replyBody) &&
+                              replyAttachments.length === 0)
+                          }
+                          onClick={() => handleSendReply()}
+                          className={`px-4 py-2 rounded-xl text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95 disabled:opacity-40 ${
+                            timelineEventType === "internal_note"
+                              ? "bg-amber-600 hover:bg-amber-700"
+                              : timelineEventType === "public_reply"
+                                ? "bg-indigo-600 hover:bg-indigo-700"
+                                : "bg-slate-900 hover:bg-slate-800"
+                          }`}
+                        >
+                          {timelineEventType === "public_reply" ? (
+                            <Send className="w-3.5 h-3.5" />
+                          ) : (
+                            <Plus className="w-3.5 h-3.5" />
+                          )}
+                          <span>
+                            {timelineEventType === "public_reply"
+                              ? t(
+                                  "Send Public Reply",
+                                  "Odoslať verejnú odpoveď",
+                                  "Nyilvános válasz küldése",
+                                )
+                              : timelineEventType === "internal_note"
+                                ? t(
+                                    "+ Log Internal Note",
+                                    "+ Zaznamenať poznámku",
+                                    "+ Belső jegyzet rögzítése",
+                                  )
+                                : t(
+                                    "+ Log Event",
+                                    "+ Zaznamenať udalosť",
+                                    "+ Esemény rögzítése",
+                                  )}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Timeline Thread */}
-                <div className="relative border-l-2 border-slate-100 pl-5 space-y-4">
-                  {(selectedTicket.messages || []).length === 0 && (
-                    <div className="relative">
-                      <span className="absolute -left-7.5 top-1 h-5 w-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-2xs">
-                        <TicketIcon className="w-3 h-3" />
-                      </span>
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between text-micro">
-                          <span className="font-bold text-slate-800">
-                            {selectedTicket.reporterName || "Client"}
+                {/* CHRONOLOGICAL TIMELINE BELOW (LATEST ON TOP — matches Leads Timeline) */}
+                <div className="flex-1 ws-lg:overflow-y-auto ws-lg:pr-2 space-y-0 scrollbar-thin">
+                  {/* Widget Diagnostics & Screenshot Card */}
+                  {(widgetMeta || selectedTicket.screenshotPath) && (
+                    <div className="p-3.5 mb-4 rounded-2xl bg-slate-900 text-slate-100 space-y-2.5 text-micro">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                          <Terminal className="w-3.5 h-3.5" />
+                          {t(
+                            "Captured Widget Diagnostics",
+                            "Diagnostika zachytená widgetom",
+                            "Widget által rögzített diagnosztika",
+                          )}
+                        </span>
+                        {widgetMeta?.viewport && (
+                          <span className="font-mono text-slate-400">
+                            {widgetMeta.viewport}
                           </span>
-                          <span className="text-slate-400">
-                            {formatTimestampLocalized(
-                              selectedTicket.createdAt,
-                              userLanguage,
-                            )}
-                          </span>
-                        </div>
-                        {selectedTicket.description ? (
-                          <TicketHtmlContent
-                            content={selectedTicket.description}
-                            className="text-slate-700"
-                          />
-                        ) : (
-                          <p className="text-caption text-slate-400 italic">
-                            {t(
-                              "Ticket created without message body.",
-                              "Tiket vytvorený bez správy.",
-                              "Jegy létrehozva üzenettörzs nélkül.",
-                            )}
-                          </p>
                         )}
-                        <TicketAttachmentsList
-                          attachments={selectedTicket.attachments}
-                        />
                       </div>
+                      {widgetMeta?.url && (
+                        <div className="font-mono text-slate-300 truncate">
+                          URL:{" "}
+                          <a
+                            href={widgetMeta.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-300 underline"
+                          >
+                            {widgetMeta.url}
+                          </a>
+                        </div>
+                      )}
+                      {widgetMeta?.consoleErrors &&
+                        widgetMeta.consoleErrors.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-rose-400 font-bold">
+                              {t(
+                                "Console / Runtime Errors:",
+                                "Chyby v konzole:",
+                                "Konzol / futási hibák:",
+                              )}{" "}
+                              ({widgetMeta.consoleErrors.length})
+                            </span>
+                            <pre className="p-2 rounded-lg bg-black/50 text-rose-200 font-mono text-micro overflow-x-auto max-h-32">
+                              {widgetMeta.consoleErrors.join("\n")}
+                            </pre>
+                          </div>
+                        )}
+                      {selectedTicket.screenshotPath && (
+                        <div className="pt-1">
+                          <a
+                            href={selectedTicket.screenshotPath}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-indigo-300 hover:text-indigo-200 font-bold"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5" />
+                            <span>
+                              {t(
+                                "Open Attached Screenshot",
+                                "Otvoriť priložený screenshot",
+                                "Csatolt képernyőkép megnyitása",
+                              )}
+                            </span>
+                          </a>
+                          <img
+                            src={selectedTicket.screenshotPath}
+                            alt="Ticket screenshot"
+                            className="mt-1.5 rounded-xl border border-slate-700 max-h-44 object-contain bg-black/40"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {(selectedTicket.messages || []).map((msg) => {
-                    const isInternal = msg.isInternal;
-                    const isClient = msg.authorType === "client";
-                    const dotClass = isInternal
-                      ? "bg-amber-500 text-white"
-                      : isClient
-                        ? "bg-emerald-600 text-white"
-                        : "bg-indigo-600 text-white";
+                  {(() => {
+                    const rawMsgs = selectedTicket.messages || [];
+                    const hasInitialMsg =
+                      rawMsgs.length > 0 &&
+                      rawMsgs.some(
+                        (m) =>
+                          m.createdAt === selectedTicket.createdAt ||
+                          (selectedTicket.description &&
+                            m.body.trim() ===
+                              selectedTicket.description.trim()),
+                      );
+                    const syntheticCreatedMsg: TicketMessage | null =
+                      !hasInitialMsg
+                        ? {
+                            id: `__created_${selectedTicket.id}`,
+                            ticketId: selectedTicket.id,
+                            authorType: "system",
+                            authorName:
+                              selectedTicket.reporterName ||
+                              currentUser?.name ||
+                              "Client",
+                            body:
+                              selectedTicket.description ||
+                              selectedTicket.subject,
+                            isInternal: false,
+                            eventType: "ticket_created",
+                            attachments: selectedTicket.attachments || [],
+                            createdAt: selectedTicket.createdAt,
+                          }
+                        : null;
 
-                    return (
-                      <div key={msg.id} className="relative">
-                        <span
-                          className={`absolute -left-7.5 top-1.5 h-5 w-5 rounded-full flex items-center justify-center shadow-2xs ${dotClass}`}
+                    const allEvents: TicketMessage[] = [
+                      ...rawMsgs,
+                      ...(syntheticCreatedMsg ? [syntheticCreatedMsg] : []),
+                    ].sort((a, b) => {
+                      const cmp = String(b.createdAt || "").localeCompare(
+                        String(a.createdAt || ""),
+                      );
+                      if (cmp !== 0) return cmp;
+                      return String(b.id || "").localeCompare(
+                        String(a.id || ""),
+                      );
+                    });
+
+                    return allEvents.map((msg, idx) => {
+                      const isSynthetic = msg.id.startsWith("__created_");
+                      const isClient = msg.authorType === "client";
+                      const evType = (
+                        msg.eventType ||
+                        (msg.isInternal
+                          ? "internal_note"
+                          : isClient
+                            ? "client_reply"
+                            : "public_reply")
+                      ) as TicketTimelineEventType;
+
+                      const stamp = String(msg.createdAt || "").replace(
+                        "T",
+                        " ",
+                      );
+                      const datePart = stamp.slice(0, 10) || "—";
+                      const timePart = stamp.slice(11, 16) || "";
+
+                      let iconNode = <Send className="h-4 w-4" />;
+                      let iconBadgeClass =
+                        "border-indigo-200 text-indigo-600 bg-indigo-50/40";
+                      let cardToneClass =
+                        "bg-white border-slate-200/90 hover:border-indigo-200";
+                      let badgeLabel = t(
+                        "Public Reply",
+                        "Verejná odpoveď",
+                        "Nyilvános válasz",
+                      );
+                      let badgePillClass =
+                        "bg-indigo-50 text-indigo-700 border-indigo-200";
+                      let eventTitle = t(
+                        "Public Reply to Client",
+                        "Verejná odpoveď klientovi",
+                        "Nyilvános válasz az ügyfélnek",
+                      );
+
+                      if (evType === "internal_note" || msg.isInternal) {
+                        if (evType === "call") {
+                          iconNode = <Phone className="h-4 w-4" />;
+                          iconBadgeClass =
+                            "border-emerald-200 text-emerald-600 bg-emerald-50/40";
+                          badgeLabel = t(
+                            "Phone Call",
+                            "Telefonát",
+                            "Telefonhívás",
+                          );
+                          badgePillClass =
+                            "bg-emerald-50 text-emerald-700 border-emerald-200";
+                          eventTitle = t(
+                            "Phone Call Logged",
+                            "Zaznamenaný telefonát",
+                            "Rögzített telefonhívás",
+                          );
+                        } else if (evType === "email") {
+                          iconNode = <Mail className="h-4 w-4" />;
+                          iconBadgeClass =
+                            "border-blue-200 text-blue-600 bg-blue-50/40";
+                          badgeLabel = t("Email", "E-mail", "E-mail");
+                          badgePillClass =
+                            "bg-blue-50 text-blue-700 border-blue-200";
+                          eventTitle = t(
+                            "Email Communication",
+                            "E-mailová komunikácia",
+                            "E-mail kommunikáció",
+                          );
+                        } else if (evType === "appointment") {
+                          iconNode = <Calendar className="h-4 w-4" />;
+                          iconBadgeClass =
+                            "border-purple-200 text-purple-600 bg-purple-50/40";
+                          badgeLabel = t(
+                            "Appointment",
+                            "Stretnutie",
+                            "Találkozó",
+                          );
+                          badgePillClass =
+                            "bg-purple-50 text-purple-700 border-purple-200";
+                          eventTitle = t(
+                            "Meeting / Appointment",
+                            "Stretnutie / Termín",
+                            "Találkozó / Időpont",
+                          );
+                        } else {
+                          iconNode = <Lock className="h-4 w-4" />;
+                          iconBadgeClass =
+                            "border-amber-300 text-amber-600 bg-amber-50";
+                          cardToneClass =
+                            "bg-amber-50/40 border-amber-200/90 hover:border-amber-300";
+                          badgeLabel = t(
+                            "Internal Note",
+                            "Interná poznámka",
+                            "Belső jegyzet",
+                          );
+                          badgePillClass =
+                            "bg-amber-100 text-amber-800 border-amber-300";
+                          eventTitle = t(
+                            "Internal Team Note",
+                            "Interná tímová poznámka",
+                            "Belső csapatjegyzet",
+                          );
+                        }
+                      } else if (isClient || evType === "client_reply") {
+                        iconNode = <MessageSquare className="h-4 w-4" />;
+                        iconBadgeClass =
+                          "border-teal-200 text-teal-600 bg-teal-50/40";
+                        badgeLabel = t(
+                          "Client Message",
+                          "Správa klienta",
+                          "Ügyfél üzenete",
+                        );
+                        badgePillClass =
+                          "bg-teal-50 text-teal-700 border-teal-200";
+                        eventTitle = t(
+                          "Inbound Client Message",
+                          "Príchodzia správa od klienta",
+                          "Beérkező ügyfélüzenet",
+                        );
+                      } else if (evType === "ticket_created" || isSynthetic) {
+                        iconNode = <FileText className="h-4 w-4" />;
+                        iconBadgeClass =
+                          "border-slate-300 text-slate-600 bg-slate-50";
+                        badgeLabel = t(
+                          "Ticket Created",
+                          "Tiket vytvorený",
+                          "Jegy létrehozva",
+                        );
+                        badgePillClass =
+                          "bg-slate-100 text-slate-700 border-slate-200";
+                        eventTitle = t(
+                          "Initial Ticket Description",
+                          "Pôvodný popis tiketu",
+                          "Jegy eredeti leírása",
+                        );
+                      }
+
+                      const isEditingThis = editingMsgId === msg.id;
+
+                      return (
+                        <div
+                          key={msg.id}
+                          className="relative flex items-stretch gap-3 ws-sm:gap-4 group"
                         >
-                          {isInternal ? (
-                            <Lock className="w-2.5 h-2.5" />
-                          ) : isClient ? (
-                            <User className="w-2.5 h-2.5" />
-                          ) : (
-                            <MessageSquare className="w-2.5 h-2.5" />
+                          {/* 1. Left Column: Date & Time (Matches Leads Timeline) */}
+                          <div className="hidden ws-sm:flex flex-col items-end w-28 shrink-0 pt-2.5 text-right select-none">
+                            <span className="text-micro font-black text-slate-800 tracking-tight">
+                              {datePart}
+                            </span>
+                            {timePart && (
+                              <span className="text-micro font-bold text-slate-400 mt-0.5">
+                                {timePart}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* 2. Middle Column: Vertical Line & Event Icon Node */}
+                          <div className="relative flex flex-col items-center shrink-0">
+                            <div
+                              className={`w-0.5 bg-slate-200 ${
+                                idx === 0 ? "h-3 opacity-0" : "h-3"
+                              }`}
+                            />
+                            <div
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-2xs border-2 z-10 transition-transform group-hover:scale-105 ${iconBadgeClass}`}
+                            >
+                              {iconNode}
+                            </div>
+                            <div
+                              className={`w-0.5 bg-slate-200 flex-1 ${
+                                idx === allEvents.length - 1 ? "opacity-0" : ""
+                              }`}
+                            />
+                          </div>
+
+                          {/* 3. Right Column: Event Card */}
+                          <div className="flex-1 min-w-0 pb-4 pt-1">
+                            <div
+                              className={`rounded-2xl border p-4 shadow-2xs transition-all space-y-2.5 ${cardToneClass}`}
+                            >
+                              <div className="flex items-start justify-between gap-2 flex-wrap border-b border-slate-100 pb-2">
+                                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                  <span className="font-heading font-bold text-caption text-slate-900">
+                                    {msg.title || eventTitle}
+                                  </span>
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border type-overline ${badgePillClass}`}
+                                  >
+                                    {badgeLabel}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  <span className="ws-sm:hidden text-micro font-bold text-slate-400">
+                                    {formatTimestampLocalized(
+                                      msg.createdAt,
+                                      userLanguage,
+                                    )}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200/80 text-micro font-bold">
+                                    <User className="h-3 w-3 text-slate-500" />
+                                    {msg.authorName ||
+                                      (isClient ? "Client" : "Support")}
+                                  </span>
+                                  {canEdit && !isSynthetic && !isEditingThis && (
+                                    <div className="flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingMsgId(msg.id);
+                                          setEditingMsgBody(msg.body || "");
+                                          setEditingMsgAttachments(
+                                            msg.attachments || [],
+                                          );
+                                        }}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                        title={t(
+                                          "Edit event",
+                                          "Upraviť záznam",
+                                          "Bejegyzés szerkesztése",
+                                        )}
+                                      >
+                                        <Edit3 className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleDeleteTimelineMessage(msg.id)
+                                        }
+                                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                        title={t(
+                                          "Delete event",
+                                          "Odstrániť záznam",
+                                          "Bejegyzés törlése",
+                                        )}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isEditingThis ? (
+                                <div className="space-y-2 pt-1">
+                                  <TicketRichHtmlEditor
+                                    value={editingMsgBody}
+                                    onChange={setEditingMsgBody}
+                                    attachments={editingMsgAttachments}
+                                    onAttachmentsChange={
+                                      setEditingMsgAttachments
+                                    }
+                                    userLanguage={userLanguage}
+                                    minRows={3}
+                                  />
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingMsgId(null)}
+                                      className="px-3 py-1.5 rounded-xl border border-slate-200 text-micro font-bold text-slate-600 cursor-pointer"
+                                    >
+                                      {t("Cancel", "Zrušiť", "Mégse")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleUpdateTimelineMessage(msg.id)
+                                      }
+                                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>
+                                        {t("Save", "Uložiť", "Mentés")}
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {msg.body ? (
+                                    <TicketHtmlContent
+                                      content={msg.body}
+                                      className="text-slate-700"
+                                    />
+                                  ) : (
+                                    <p className="text-caption text-slate-400 italic">
+                                      {t(
+                                        "No message text.",
+                                        "Bez textu správy.",
+                                        "Nincs üzenetszöveg.",
+                                      )}
+                                    </p>
+                                  )}
+                                  <TicketAttachmentsList
+                                    attachments={msg.attachments}
+                                  />
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            ) : (
+              /* TASKS TAB (Create & Assign Employee to Ticket Tasks) */
+              <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
+                {canEdit && (
+                  <form
+                    onSubmit={handleCreateTaskFromTicket}
+                    className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-3 shrink-0"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="type-overline text-slate-600 flex items-center gap-1.5">
+                        <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                        {t(
+                          "Create & Assign Task for Ticket",
+                          "Vytvoriť a priradiť úlohu k tiketu",
+                          "Feladat létrehozása és hozzárendelése a jegyhez",
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-2.5">
+                      <div className="ws-sm:col-span-5">
+                        <label className="block type-overline text-slate-400 mb-1">
+                          {t("Task Title", "Názov úlohy", "Feladat címe")}
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          placeholder={
+                            selectedTicket.subject ||
+                            t(
+                              "Enter task title...",
+                              "Zadajte názov úlohy...",
+                              "Adja meg a feladat címét...",
+                            )
+                          }
+                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-800"
+                        />
+                      </div>
+
+                      <div className="ws-sm:col-span-4">
+                        <label className="block type-overline text-slate-400 mb-1">
+                          {t(
+                            "Assigned Employee",
+                            "Priradený zamestnanec",
+                            "Felelős alkalmazott",
+                          )}
+                        </label>
+                        <select
+                          value={newTaskAssignee}
+                          onChange={(e) => setNewTaskAssignee(e.target.value)}
+                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-700 cursor-pointer"
+                        >
+                          <option value="">
+                            {t(
+                              "— Select Employee —",
+                              "— Vybrať zamestnanca —",
+                              "— Alkalmazott kiválasztása —",
+                            )}
+                          </option>
+                          {assigneeOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="ws-sm:col-span-3">
+                        <label className="block type-overline text-slate-400 mb-1">
+                          {t("Deadline", "Termín", "Határidő")}
+                        </label>
+                        <input
+                          type="date"
+                          value={newTaskDeadline}
+                          onChange={(e) => setNewTaskDeadline(e.target.value)}
+                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>
+                          {t(
+                            "Create & Assign Task",
+                            "Vytvoriť a priradiť úlohu",
+                            "Feladat létrehozása és hozzárendelése",
                           )}
                         </span>
+                      </button>
+                    </div>
+                  </form>
+                )}
 
+                {(selectedTicket.taskLinks || []).length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
+                    <CheckSquare className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-caption font-bold text-slate-500">
+                      {t(
+                        "No CRM tasks linked to this ticket yet.",
+                        "K tomuto tiketu zatiaľ nie sú priradené žiadne úlohy.",
+                        "Ehhez a jegyhez még nincs kapcsolt feladat.",
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {(selectedTicket.taskLinks || []).map((link) => {
+                      const tsk = tasks.find(
+                        (tItem) => tItem.id === link.taskId,
+                      );
+                      const done = tsk
+                        ? isDoneTaskState(tsk.status, taskStates)
+                        : false;
+                      const currentAssignee = tsk
+                        ? tsk.assignedUsers?.[0] || tsk.owner || ""
+                        : "";
+                      return (
                         <div
-                          className={`p-3.5 rounded-2xl border space-y-2 ${
-                            isInternal
-                              ? "bg-amber-50/90 border-amber-300 text-amber-950"
-                              : isClient
-                                ? "bg-slate-50 border-slate-200 text-slate-800"
-                                : "bg-indigo-50/40 border-indigo-200 text-slate-800"
-                          }`}
+                          key={link.id || `${link.ticketId}:${link.taskId}`}
+                          className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 hover:border-indigo-300 transition-colors"
                         >
-                          <div className="flex items-center justify-between gap-2 text-micro border-b border-slate-200/50 pb-1.5">
-                            <div className="flex items-center gap-1.5 flex-wrap font-bold">
-                              <span>
-                                {msg.authorName ||
-                                  (isClient ? "Client" : "Support Agent")}
-                              </span>
-                              {isInternal ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 type-overline">
-                                  <Lock className="w-2.5 h-2.5" />
-                                  {t(
-                                    "Internal Note",
-                                    "Interná poznámka",
-                                    "Belső jegyzet",
-                                  )}
-                                </span>
-                              ) : isClient ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 type-overline">
-                                  {t("Client", "Klient", "Ügyfél")}
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 type-overline">
-                                  {t("Support", "Podpora", "Támogatás")}
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            {tsk && canEdit && (
+                              <input
+                                type="checkbox"
+                                checked={done}
+                                onChange={() => handleToggleTaskDone(tsk)}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 cursor-pointer shrink-0"
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  window.location.hash = "tasks";
+                                }}
+                                className={`font-heading font-bold text-caption text-left hover:underline cursor-pointer block truncate ${
+                                  done
+                                    ? "line-through text-slate-400"
+                                    : "text-slate-900"
+                                }`}
+                              >
+                                {tsk ? tsk.title : link.taskId}
+                              </button>
+                              {tsk?.deadline && (
+                                <span className="text-micro text-slate-400 font-semibold">
+                                  {t("Due:", "Termín:", "Határidő:")}{" "}
+                                  {tsk.deadline}
                                 </span>
                               )}
                             </div>
-                            <span className="text-slate-400 font-semibold">
-                              {formatTimestampLocalized(
-                                msg.createdAt,
-                                userLanguage,
-                              )}
-                            </span>
                           </div>
 
-                          <TicketHtmlContent content={msg.body} />
-                          <TicketAttachmentsList
-                            attachments={msg.attachments}
-                          />
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            {tsk && (
+                              <div className="flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <select
+                                  value={currentAssignee}
+                                  disabled={!canEdit}
+                                  onChange={(e) =>
+                                    handleAssignTaskEmployee(
+                                      tsk.id,
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-micro font-bold text-slate-700 cursor-pointer"
+                                >
+                                  <option value="">
+                                    {t(
+                                      "Unassigned",
+                                      "Nepriradené",
+                                      "Nincs felelős",
+                                    )}
+                                  </option>
+                                  {assigneeOptions.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-micro font-bold ${
+                                done
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-indigo-50 text-indigo-700"
+                              }`}
+                            >
+                              {tsk ? tsk.status : "Linked"}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -3128,9 +3904,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     <option value="">
                       {t("Unassigned", "Nepriradené", "Nincs felelős")}
                     </option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.name}>
-                        {u.name}
+                    {assigneeOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
                       </option>
                     ))}
                   </select>

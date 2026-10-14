@@ -1414,13 +1414,27 @@ export interface TicketMetadata {
   [key: string]: any;
 }
 
+export type TicketTimelineEventType =
+  | "public_reply"
+  | "internal_note"
+  | "note"
+  | "call"
+  | "phone"
+  | "email"
+  | "appointment"
+  | "client_reply"
+  | "ticket_created";
+
 export interface TicketMessage {
   id: string;
   ticketId?: string;
   authorType: "client" | "agent" | "system";
+  authorUserId?: string | null;
   authorName?: string | null;
   authorEmail?: string | null;
   isInternal: boolean;
+  eventType?: TicketTimelineEventType | string;
+  title?: string | null;
   body: string;
   attachments?: TicketAttachment[];
   emailMessageId?: string | null;
@@ -1452,6 +1466,7 @@ export interface Ticket {
   id: string;
   ticketNumber: string;
   subject: string;
+  title?: string;
   description?: string | null;
   status: string;
   priority: TicketPriority;
@@ -1525,6 +1540,8 @@ export interface SupportContract {
 export interface TicketReplyTemplate {
   id: string;
   title: string;
+  name?: string;
+  subject?: string;
   shortcut?: string;
   body: string;
 }

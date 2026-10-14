@@ -1022,8 +1022,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `description` LONGTEXT NULL,
               `status` VARCHAR(50) NOT NULL DEFAULT 'new' COMMENT 'Customizable status key from TICKET_STATUSES setting',
               `priority` ENUM('critical', 'high', 'normal', 'low') NOT NULL DEFAULT 'normal',
-              `type` ENUM('bug', 'question', 'request', 'incident', 'billing') NOT NULL DEFAULT 'question',
-              `source` ENUM('email', 'widget', 'manual', 'phone') NOT NULL DEFAULT 'manual',
+              `type` VARCHAR(50) NOT NULL DEFAULT 'question',
+              `source` VARCHAR(50) NOT NULL DEFAULT 'manual',
               `project_id` VARCHAR(50) NULL COMMENT 'References projects.id',
               `client_id` VARCHAR(50) NULL COMMENT 'References leads.id (auto-inherited from project if project has lead_id/client_id)',
               `reporter_name` VARCHAR(200) NULL,
@@ -1064,6 +1064,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `author_name` VARCHAR(200) NULL,
               `author_email` VARCHAR(255) NULL,
               `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = private team note, 0 = public reply',
+              `event_type` VARCHAR(50) NULL DEFAULT NULL,
               `body` LONGTEXT NOT NULL,
               `attachments_json` LONGTEXT NULL COMMENT 'JSON array of {name, size, path, type}',
               `email_message_id` VARCHAR(255) NULL,
@@ -3461,6 +3462,19 @@ if (!function_exists('ccrm_schema_statements')) {
                 }
             }
 
+            // Ensure event_type column on ticket_messages and VARCHAR(50) on tickets.type / tickets.source
+            $hasEventTypeCol = (int)$pdo->query(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ticket_messages' AND COLUMN_NAME = 'event_type'"
+            )->fetchColumn() > 0;
+            if (!$hasEventTypeCol) {
+                try {
+                    $pdo->exec("ALTER TABLE `ticket_messages` ADD COLUMN `event_type` VARCHAR(50) NULL AFTER `is_internal`");
+                } catch (\Throwable $e) {}
+            }
+            try {
+                $pdo->exec("ALTER TABLE `tickets` MODIFY COLUMN `type` VARCHAR(50) DEFAULT 'support', MODIFY COLUMN `source` VARCHAR(50) DEFAULT 'manual'");
+            } catch (\Throwable $e) {}
+
             // Seed default TICKET_STATUSES and TICKET_SETTINGS if absent
             $hasSettingsTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'system_settings'")->fetchColumn();
             if ($hasSettingsTable > 0) {
@@ -3506,18 +3520,21 @@ if (!function_exists('ccrm_schema_statements')) {
                         'replyTemplates' => [
                             [
                                 'id' => 'tpl-ack',
+                                'title' => 'Potvrdenie prijatia / Acknowledged',
                                 'name' => 'Potvrdenie prijatia / Acknowledged',
                                 'subject' => 'Re: {{ticket_number}} - {{ticket_title}}',
                                 'body' => "Dobrý deň {{client_name}},\n\nďakujeme za nahlásenie požiadavky ({{ticket_number}}). Náš tím sa jej už venuje a čoskoro Vás budeme informovať o postupe.\n\nS pozdravom,\n{{agent_name}}"
                             ],
                             [
                                 'id' => 'tpl-need-info',
+                                'title' => 'Doplnenie informácií / Need More Info',
                                 'name' => 'Doplnenie informácií / Need More Info',
                                 'subject' => 'Re: {{ticket_number}} - Prosba o doplnenie',
                                 'body' => "Dobrý deň {{client_name}},\n\npre doriešenie požiadavky {{ticket_number}} by sme potrebovali doplniť nasledovné podrobnosti:\n- \n\nĎakujeme,\n{{agent_name}}"
                             ],
                             [
                                 'id' => 'tpl-resolved',
+                                'title' => 'Vyriešené / Resolved',
                                 'name' => 'Vyriešené / Resolved',
                                 'subject' => 'Re: {{ticket_number}} - Vyriešené',
                                 'body' => "Dobrý deň {{client_name}},\n\npožiadavka {{ticket_number}} bola vyriešená. Prosím skontrolujte výsledok a v prípade otázok odpovedzte na túto správu.\n\nS pozdravom,\n{{agent_name}}"
@@ -3526,6 +3543,22 @@ if (!function_exists('ccrm_schema_statements')) {
                     ], JSON_UNESCAPED_UNICODE);
                     $ins = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('TICKET_SETTINGS', ?)");
                     $ins->execute([$defaultSettings]);
+                } else {
+                    $decodedSettings = json_decode((string)$tSettings, true);
+                    if (is_array($decodedSettings) && isset($decodedSettings['replyTemplates']) && is_array($decodedSettings['replyTemplates'])) {
+                        $changed = false;
+                        foreach ($decodedSettings['replyTemplates'] as &$tpl) {
+                            if (is_array($tpl) && empty($tpl['title']) && !empty($tpl['name'])) {
+                                $tpl['title'] = $tpl['name'];
+                                $changed = true;
+                            }
+                        }
+                        unset($tpl);
+                        if ($changed) {
+                            $upd = $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'TICKET_SETTINGS'");
+                            $upd->execute([json_encode($decodedSettings, JSON_UNESCAPED_UNICODE)]);
+                        }
+                    }
                 }
             }
         } catch (\Throwable $e) {

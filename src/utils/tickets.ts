@@ -277,6 +277,11 @@ export const normalizeTicketSettings = (
   raw: Partial<TicketSettingsConfig> | null | undefined,
 ): TicketSettingsConfig => {
   if (!raw || typeof raw !== "object") return DEFAULT_TICKET_SETTINGS;
+  const rawTemplates = Array.isArray(raw.replyTemplates)
+    ? raw.replyTemplates
+    : Array.isArray(raw.cannedResponses)
+      ? raw.cannedResponses
+      : DEFAULT_TICKET_SETTINGS.replyTemplates;
   return {
     ...DEFAULT_TICKET_SETTINGS,
     ...raw,
@@ -288,9 +293,13 @@ export const normalizeTicketSettings = (
       ...DEFAULT_TICKET_SETTINGS.slaTargets,
       ...(raw.slaTargets || {}),
     },
-    replyTemplates: Array.isArray(raw.replyTemplates)
-      ? raw.replyTemplates
-      : DEFAULT_TICKET_SETTINGS.replyTemplates,
+    replyTemplates: rawTemplates.map((tpl: any, idx: number) => ({
+      ...tpl,
+      id: String(tpl?.id || `tpl_${idx + 1}`),
+      title: String(tpl?.title || tpl?.name || tpl?.shortcut || `Template #${idx + 1}`),
+      name: String(tpl?.name || tpl?.title || `Template #${idx + 1}`),
+      body: String(tpl?.body || ""),
+    })),
   };
 };
 
