@@ -18,6 +18,7 @@ import type {
   Project,
   ProjectType,
   Ticket,
+  TicketAttachment,
   TicketPriority,
   TicketStatusDef,
   TicketType,
@@ -31,6 +32,7 @@ import {
   getTicketStatusLabel,
   nextTicketNumber,
 } from "./../utils/tickets";
+import { TicketRichHtmlEditor, isImageAttachment } from "./ui/TicketRichHtmlEditor";
 
 interface ProjectTicketsPanelProps {
   project: Project;
@@ -73,11 +75,12 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
   const [showNewModal, setShowNewModal] = useState(false);
   const [newSubject, setNewSubject] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [newAttachments, setNewAttachments] = useState<TicketAttachment[]>([]);
   const [newPriority, setNewPriority] = useState<TicketPriority>("normal");
   const [newType, setNewType] = useState<TicketType>("bug");
 
   const projectTickets = tickets.filter(
-    (t) => t.projectId === project.id && !t.isArchived,
+    (t) => t.projectId === project.id && !t.isArchived && !t.archived,
   );
 
   const allowedDomains = project.ticketAllowedDomains || [];
@@ -165,6 +168,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
     const tckNum = nextTicketNumber(tickets);
     const sla = computeTicketSlaDueDates(newPriority, ticketSettings);
     const tckId = `tck-${Date.now().toString(36)}`;
+    const firstImg = newAttachments.find(isImageAttachment);
     const newTicket: Ticket = {
       id: tckId,
       ticketNumber: tckNum,
@@ -174,16 +178,22 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
       priority: newPriority,
       type: newType,
       channel: "manual",
+      source: "manual",
       projectId: project.id,
       leadId: project.leadId || project.clientId || null,
+      clientId: project.leadId || project.clientId || null,
       assignedUser: currentUserName,
       assignedUsers: [currentUserName],
       tags: [],
       slaFirstResponseDueAt: sla.firstResponseDueAt,
+      firstResponseDueAt: sla.firstResponseDueAt,
       slaResolutionDueAt: sla.resolutionDueAt,
+      resolutionDueAt: sla.resolutionDueAt,
       slaPausedTotalSeconds: 0,
       billable: true,
       loggedMinutes: 0,
+      screenshotPath: firstImg ? firstImg.path || firstImg.url || firstImg.dataUrl || null : null,
+      attachments: newAttachments,
       createdAt: nowStr,
       updatedAt: nowStr,
       messages: [
@@ -194,6 +204,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
           authorName: currentUserName,
           isInternal: false,
           body: newDesc.trim() || newSubject.trim(),
+          attachments: newAttachments,
           createdAt: nowStr,
         },
       ],
@@ -203,6 +214,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
     setTickets((prev) => [newTicket, ...prev]);
     setNewSubject("");
     setNewDesc("");
+    setNewAttachments([]);
     setShowNewModal(false);
   };
 
@@ -314,13 +326,24 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
               <option value="critical">{tr("Kritická priorita", "Critical Priority", "Kritikus")}</option>
             </select>
           </div>
-          <textarea
-            value={newDesc}
-            onChange={(e) => setNewDesc(e.target.value)}
-            rows={2}
-            placeholder={tr("Podrobný popis...", "Detailed description...", "Részletes leírás...")}
-            className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-          />
+          <div>
+            <label className="block type-overline text-slate-500 mb-1">
+              {tr("Popis (HTML formátovanie, obrázky a súbory)", "Description (HTML formatting, images & files)", "Leírás (HTML formázás, képek és fájlok)")}
+            </label>
+            <TicketRichHtmlEditor
+              value={newDesc}
+              onChange={setNewDesc}
+              attachments={newAttachments}
+              onAttachmentsChange={setNewAttachments}
+              userLanguage={userLanguage}
+              placeholder={tr(
+                "Podrobný popis problému (môžete prilepiť aj screenshot zo schránky)...",
+                "Detailed description (you can also paste screenshots or drop files)...",
+                "Részletes leírás (képernyőképet is beilleszthet vagy fájlokat csatolhat)...",
+              )}
+              minRows={3}
+            />
+          </div>
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -361,7 +384,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             </div>
           ) : (
             projectTickets.map((tck) => {
-              const stDef = ticketStatuses.find((s) => s.id === tck.status);
+              const stDef = ticketStatuses.find((s) => s.id === tck.status || s.key === tck.status);
               const sla = evaluateTicketSla(tck, ticketStatuses);
               return (
                 <div
@@ -370,7 +393,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                     if (onOpenTicket) {
                       onOpenTicket(tck.id);
                     } else {
-                      window.location.hash = `tickets?ticket=${encodeURIComponent(tck.id)}`;
+                      window.location.hash = `tickets/${encodeURIComponent(tck.id)}`;
                     }
                   }}
                   className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-orange-500/50 cursor-pointer transition-all"
