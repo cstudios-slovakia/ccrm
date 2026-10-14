@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  Ticket as TicketIcon,
   Plus,
   Trash2,
   Mail,
@@ -10,11 +9,13 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
-  ArrowUp,
-  ArrowDown,
-  RotateCcw,
+  GripVertical,
+  Lock,
+  Tag,
+  X,
 } from "lucide-react";
 import type {
+  Ticket,
   TicketPriority,
   TicketSettingsConfig,
   TicketStatusCategory,
@@ -24,44 +25,71 @@ import type {
 import type { Language } from "../utils/translations";
 import {
   DEFAULT_TICKET_SETTINGS,
-  DEFAULT_TICKET_STATUS_DEFS,
+  NEW_TICKET_STATUS_COLOR,
+  TICKET_STATUS_GROUPS,
+  defaultTicketStatus,
+  getTicketStatusLabel,
+  ticketStatusKeyFor,
+  ticketStatusLabel,
 } from "../utils/tickets";
+import { ColorPicker } from "./ui/ColorPicker";
+import { CustomSelect } from "./ui/CustomSelect";
+import { InlineRenameName } from "./ui/InlineRenameName";
 
 interface TicketSettingsProps {
   ticketStatuses: TicketStatusDef[];
   setTicketStatuses: React.Dispatch<React.SetStateAction<TicketStatusDef[]>>;
   ticketSettings: TicketSettingsConfig;
   setTicketSettings: React.Dispatch<React.SetStateAction<TicketSettingsConfig>>;
+  tickets?: Ticket[];
+  setTickets?: (updater: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void;
   userLanguage?: Language;
   canEdit?: boolean;
   onTicketsPolled?: () => void;
 }
 
-const STATUS_CATEGORIES: { id: TicketStatusCategory; labelSk: string; labelEn: string; labelHu: string }[] = [
-  { id: "new", labelSk: "Nový (New)", labelEn: "New", labelHu: "Új (New)" },
-  { id: "open", labelSk: "V riešení (Open)", labelEn: "In Progress (Open)", labelHu: "Folyamatban (Open)" },
-  { id: "waiting", labelSk: "Čaká sa (Waiting)", labelEn: "Waiting", labelHu: "Várakozik (Waiting)" },
-  { id: "resolved", labelSk: "Vyriešený (Resolved)", labelEn: "Resolved", labelHu: "Megoldva (Resolved)" },
-  { id: "closed", labelSk: "Uzavretý (Closed)", labelEn: "Closed", labelHu: "Lezárva (Closed)" },
-];
+type Row =
+  | { type: "divider"; group: TicketStatusCategory }
+  | { type: "status"; def: TicketStatusDef };
+
+const isOpenGroup = (g: TicketStatusCategory) =>
+  g === "new" || g === "open" || g === "waiting";
+
+const applyGroupFlags = (
+  def: TicketStatusDef,
+  group: TicketStatusCategory,
+  sortOrder: number,
+): TicketStatusDef => ({
+  ...def,
+  category: group,
+  group,
+  pausesSla: group === "waiting" || group === "resolved" || group === "closed",
+  isTerminal: group === "resolved" || group === "closed",
+  sortOrder,
+});
 
 export const TicketSettings: React.FC<TicketSettingsProps> = ({
   ticketStatuses,
   setTicketStatuses,
   ticketSettings,
   setTicketSettings,
+  tickets = [],
+  setTickets,
   userLanguage = "sk",
   canEdit = true,
   onTicketsPolled,
 }) => {
   const tr = (sk: string, en: string, hu: string) =>
     userLanguage === "en" ? en : userLanguage === "hu" ? hu : sk;
+  const t = (en: string, sk: string, hu: string) =>
+    userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const toast = (msg: string) =>
+    (window as unknown as { showToast?: (m: string) => void }).showToast?.(msg);
 
-  const [newStatusLabelSk, setNewStatusLabelSk] = useState("");
-  const [newStatusLabelEn, setNewStatusLabelEn] = useState("");
-  const [newStatusLabelHu, setNewStatusLabelHu] = useState("");
-  const [newStatusCategory, setNewStatusCategory] = useState<TicketStatusCategory>("open");
-  const [newStatusColor, setNewStatusColor] = useState("#3b82f6");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newGroup, setNewGroup] = useState<TicketStatusCategory>("open");
 
   const [imapTestStatus, setImapTestStatus] = useState<{
     loading: boolean;
@@ -79,67 +107,254 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
   const [newTplShortcut, setNewTplShortcut] = useState("");
   const [newTplBody, setNewTplBody] = useState("");
 
-  const handleAddStatus = () => {
-    if (!canEdit || !newStatusLabelSk.trim()) return;
-    const slug = newStatusLabelSk
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "") || `status_${Date.now()}`;
-    const uniqueId = ticketStatuses.some((s) => s.id === slug)
-      ? `${slug}_${Date.now().toString().slice(-4)}`
-      : slug;
-    const nextOrder =
-      ticketStatuses.reduce((max, s) => Math.max(max, s.sortOrder || 0), 0) + 1;
-    const isWaitingOrDone =
-      newStatusCategory === "waiting" ||
-      newStatusCategory === "resolved" ||
-      newStatusCategory === "closed";
-    const isTerminal =
-      newStatusCategory === "resolved" || newStatusCategory === "closed";
+  const labelOf = (def: TicketStatusDef) =>
+    getTicketStatusLabel(def, userLanguage, def.id);
 
-    const created: TicketStatusDef = {
-      id: uniqueId,
-      category: newStatusCategory,
-      labelSk: newStatusLabelSk.trim(),
-      labelEn: (newStatusLabelEn || newStatusLabelSk).trim(),
-      labelHu: (newStatusLabelHu || newStatusLabelSk).trim(),
-      color: newStatusColor,
-      pausesSla: isWaitingOrDone,
-      isTerminal,
-      sortOrder: nextOrder,
-    };
-    setTicketStatuses((prev) => [...prev, created]);
-    setNewStatusLabelSk("");
-    setNewStatusLabelEn("");
-    setNewStatusLabelHu("");
+  const groupInfo = (
+    g: TicketStatusCategory,
+  ): { name: string; desc: string; chip: string } => {
+    switch (g) {
+      case "new":
+        return {
+          name: t("New", "Nové", "Új"),
+          desc: t(
+            "Where every new ticket starts",
+            "Tu začína každý nový tiket",
+            "Itt indul minden új jegy",
+          ),
+          chip: "bg-blue-50 text-blue-700 border-blue-200",
+        };
+      case "open":
+        return {
+          name: t("In progress", "Prebiehajúce", "Folyamatban"),
+          desc: t(
+            "The ticket is being worked on",
+            "Na tikete sa pracuje",
+            "A jegyen dolgoznak",
+          ),
+          chip: "bg-indigo-50 text-indigo-700 border-indigo-200",
+        };
+      case "waiting":
+        return {
+          name: t("Waiting", "Čaká sa", "Várakozik"),
+          desc: t(
+            "Waiting on client or third party — pauses the SLA timer",
+            "Čaká sa na klienta alebo tretiu stranu — pozastaví SLA časovač",
+            "Ügyfélre vagy harmadik félre vár — szünetelteti az SLA időzítőt",
+          ),
+          chip: "bg-purple-50 text-purple-700 border-purple-200",
+        };
+      case "resolved":
+        return {
+          name: t("Resolved", "Vyriešené", "Megoldva"),
+          desc: t(
+            "Solved and done — stops the SLA timer",
+            "Vyriešené a hotové — zastaví SLA časovač",
+            "Megoldva és kész — leállítja az SLA időzítőt",
+          ),
+          chip: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        };
+      case "closed":
+        return {
+          name: t("Closed", "Uzavreté", "Lezárva"),
+          desc: t(
+            "Closed without further action — stops the SLA timer",
+            "Uzavreté bez ďalších krokov — zastaví SLA časovač",
+            "További teendő nélkül lezárva — leállítja az SLA időzítőt",
+          ),
+          chip: "bg-slate-100 text-slate-700 border-slate-200",
+        };
+    }
   };
 
-  const handleUpdateStatus = (id: string, patch: Partial<TicketStatusDef>) => {
+  const usage = useMemo(() => {
+    const counts: Record<string, number> = {};
+    tickets.forEach((tk) => {
+      if (tk.status) counts[tk.status] = (counts[tk.status] || 0) + 1;
+    });
+    return counts;
+  }, [tickets]);
+
+  const sortedStatuses = useMemo(
+    () =>
+      [...ticketStatuses].sort(
+        (a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99),
+      ),
+    [ticketStatuses],
+  );
+
+  const rows: Row[] = TICKET_STATUS_GROUPS.flatMap((group) => [
+    { type: "divider" as const, group },
+    ...sortedStatuses
+      .filter((d) => (d.category || d.group || "open") === group)
+      .map((def) => ({ type: "status" as const, def })),
+  ]);
+
+  const nameTaken = (name: string, exceptId?: string) =>
+    ticketStatuses.some(
+      (d) =>
+        d.id !== exceptId &&
+        labelOf(d).toLowerCase() === name.trim().toLowerCase(),
+    );
+
+  const openCountWithout = (id: string) =>
+    ticketStatuses.filter(
+      (d) => d.id !== id && isOpenGroup(d.category || d.group || "open"),
+    ).length;
+
+  const handleMoveToIndex = (id: string, targetIdx: number) => {
     if (!canEdit) return;
+    const items = [...rows];
+    const from = items.findIndex((r) => r.type === "status" && r.def.id === id);
+    if (from === -1) return;
+    const [dragged] = items.splice(from, 1);
+    items.splice(targetIdx, 0, dragged);
+
+    const next: TicketStatusDef[] = [];
+    let group: TicketStatusCategory = "new";
+    items.forEach((r) => {
+      if (r.type === "divider") {
+        group = r.group;
+      } else {
+        next.push(applyGroupFlags(r.def, group, next.length + 1));
+      }
+    });
+
+    if (!next.some((d) => isOpenGroup(d.category))) {
+      toast(
+        t(
+          "At least one status must stay open (New, In progress, or Waiting) — that is where tickets start.",
+          "Aspoň jeden stav musí zostať otvorený (Nové, Prebiehajúce alebo Čaká sa) — tam tikety začínajú.",
+          "Legalább egy állapotnak nyitottnak kell maradnia (Új, Folyamatban vagy Várakozik) — ott indulnak a jegyek.",
+        ),
+      );
+      return;
+    }
+
+    const ordered = TICKET_STATUS_GROUPS.flatMap((g) =>
+      next.filter((d) => d.category === g),
+    ).map((d, idx) => ({ ...d, sortOrder: idx + 1 }));
+    setTicketStatuses(ordered);
+  };
+
+  const handleRename = (id: string, raw: string) => {
+    if (!canEdit) return;
+    const label = raw.trim();
+    const target = ticketStatuses.find((d) => d.id === id);
+    if (!target || !label || label === labelOf(target)) return;
+    if (nameTaken(label, id)) {
+      toast(
+        t(
+          "This name already exists!",
+          "Tento názov už existuje!",
+          "Ez a név már létezik!",
+        ),
+      );
+      return;
+    }
     setTicketStatuses((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+      prev.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              label,
+              labelSk: userLanguage === "sk" ? label : d.labelSk || label,
+              labelEn: userLanguage === "en" ? label : d.labelEn || label,
+              labelHu: userLanguage === "hu" ? label : d.labelHu || label,
+            }
+          : d,
+      ),
     );
   };
 
-  const handleMoveStatus = (index: number, delta: number) => {
+  const handleColor = (id: string, color: string) => {
     if (!canEdit) return;
-    setTicketStatuses((prev) => {
-      const sorted = [...prev].sort((a, b) => a.sortOrder - b.sortOrder);
-      const target = index + delta;
-      if (target < 0 || target >= sorted.length) return prev;
-      const tmp = sorted[index];
-      sorted[index] = sorted[target];
-      sorted[target] = tmp;
-      return sorted.map((s, idx) => ({ ...s, sortOrder: idx + 1 }));
-    });
+    setTicketStatuses((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, color } : d)),
+    );
   };
 
-  const handleDeleteStatus = (id: string) => {
-    if (!canEdit || ticketStatuses.length <= 1) return;
-    setTicketStatuses((prev) => prev.filter((s) => s.id !== id));
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEdit) return;
+    const label = newName.trim();
+    if (!label) return;
+    if (nameTaken(label)) {
+      toast(
+        t(
+          "This ticket status already exists!",
+          "Tento stav tiketu už existuje!",
+          "Ez a jegyállapot már létezik!",
+        ),
+      );
+      return;
+    }
+    const taken = [...ticketStatuses.map((d) => d.id), ...Object.keys(usage)];
+    const key = ticketStatusKeyFor(label, taken);
+    const created: TicketStatusDef = applyGroupFlags(
+      {
+        id: key,
+        category: newGroup,
+        group: newGroup,
+        label,
+        labelSk: label,
+        labelEn: label,
+        labelHu: label,
+        color: NEW_TICKET_STATUS_COLOR,
+        pausesSla: false,
+        isTerminal: false,
+        sortOrder: ticketStatuses.length + 1,
+      },
+      newGroup,
+      ticketStatuses.length + 1,
+    );
+    setTicketStatuses((prev) =>
+      TICKET_STATUS_GROUPS.flatMap((g) =>
+        [...prev, created].filter((d) => (d.category || d.group) === g),
+      ).map((d, idx) => ({ ...d, sortOrder: idx + 1 })),
+    );
+    setNewName("");
+  };
+
+  const handleRemove = (def: TicketStatusDef) => {
+    if (!canEdit) return;
+    const group = def.category || def.group || "open";
+    if (isOpenGroup(group) && openCountWithout(def.id) === 0) {
+      toast(
+        t(
+          "At least one open status (New, In progress, or Waiting) is required — that is where tickets start.",
+          "Je potrebný aspoň jeden otvorený stav (Nové, Prebiehajúce alebo Čaká sa) — tam tikety začínajú.",
+          "Legalább egy nyitott állapot (Új, Folyamatban vagy Várakozik) szükséges — ott indulnak a jegyek.",
+        ),
+      );
+      return;
+    }
+    const remaining = ticketStatuses
+      .filter((d) => d.id !== def.id)
+      .map((d, idx) => ({ ...d, sortOrder: idx + 1 }));
+    const fallback = defaultTicketStatus(remaining);
+    const inUse = usage[def.id] || 0;
+    const name = labelOf(def);
+    const fallbackName = ticketStatusLabel(fallback, userLanguage, remaining);
+    const question =
+      inUse > 0
+        ? t(
+            `Remove the status "${name}"? ${inUse} ticket(s) in it will be moved to "${fallbackName}".`,
+            `Odstrániť stav "${name}"? ${inUse} tiket(ov) v ňom sa presunie do stavu "${fallbackName}".`,
+            `Eltávolítja a(z) "${name}" állapotot? A benne lévő ${inUse} jegy a(z) "${fallbackName}" állapotba kerül.`,
+          )
+        : t(
+            `Remove the status "${name}"?`,
+            `Odstrániť stav "${name}"?`,
+            `Eltávolítja a(z) "${name}" állapotot?`,
+          );
+    if (!confirm(question)) return;
+    setTicketStatuses(remaining);
+    if (inUse > 0 && setTickets) {
+      setTickets((prev) =>
+        prev.map((tk) => (tk.status === def.id ? { ...tk, status: fallback } : tk)),
+      );
+    }
   };
 
   const handleTestImap = async () => {
@@ -226,249 +441,266 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
     setNewTplBody("");
   };
 
-  const sortedStatuses = [...ticketStatuses].sort(
-    (a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99),
-  );
-
   return (
     <div className="space-y-6">
-      {/* 1. Customizable Ticket Statuses */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs">
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-500/10 text-orange-500 flex items-center justify-center">
-              <TicketIcon className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-body font-bold text-slate-900 dark:text-white">
-                {tr(
-                  "Vlastné stavy tiketov",
-                  "Customizable Ticket Statuses",
-                  "Egyéni jegyállapotok",
-                )}
-              </h3>
-              <p className="text-caption text-slate-500 dark:text-slate-400">
-                {tr(
-                  "Prispôsobte si stavy tiketov, ich farby, kategórie a správanie SLA časovača.",
-                  "Customize ticket statuses, colors, categories, and SLA timer pause/terminal rules.",
-                  "Szabja testre a jegyállapotokat, színeket, kategóriákat és az SLA szabályokat.",
-                )}
-              </p>
-            </div>
-          </div>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={() => setTicketStatuses(DEFAULT_TICKET_STATUS_DEFS)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-medium border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              {tr("Predvolené", "Reset Defaults", "Alaphelyzet")}
-            </button>
+      {/* 1. Ticket Statuses (ProjectStatusSettings style) */}
+      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
+        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
+          <Tag className="h-4.5 w-4.5 text-indigo-500" />
+          {t("Ticket statuses", "Stavy tiketov", "Jegyállapotok")}
+        </h3>
+
+        <p className="type-overline text-slate-400">
+          {t(
+            "Drag statuses up or down relative to the group dividers to reorder them and change their group. Click a status's colour dot to change its colour.",
+            "Presunutím stavov nahor alebo nadol vzhľadom na oddeľovače skupín zmeníte ich poradie aj skupinu. Kliknutím na farebný bod zmeníte farbu stavu.",
+            "Húzza az állapotokat a csoportelválasztókhoz képest fel vagy le a sorrend és a csoport módosításához. A színes pontra kattintva módosíthatja a színt.",
           )}
-        </div>
+        </p>
 
-        <div className="space-y-2 mb-4">
-          {sortedStatuses.map((st, idx) => (
-            <div
-              key={st.id}
-              className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40"
-            >
-              <div className="md:col-span-1 flex items-center gap-1.5">
-                <input
-                  type="color"
-                  value={st.color || "#3b82f6"}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    handleUpdateStatus(st.id, { color: e.target.value })
+        <div className="border border-slate-200/80 rounded-2xl overflow-x-auto shadow-inner bg-white/50">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
+                <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">
+                  {t("Drag", "Ťahať", "Húzás")}
+                </th>
+                <th className="py-3 px-4 type-overline text-slate-500 w-44">
+                  {t("Colour", "Farba", "Szín")}
+                </th>
+                <th className="py-3 px-4 type-overline text-slate-500">
+                  {t("Status name", "Názov stavu", "Állapot neve")}
+                </th>
+                <th className="py-3 px-4 type-overline text-slate-500 w-36">
+                  {t("Group", "Skupina", "Csoport")}
+                </th>
+                <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">
+                  {t("Tickets", "Tikety", "Jegyek")}
+                </th>
+                <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">
+                  {t("Delete", "Zmazať", "Törlés")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => {
+                const isDragOver = dragOverIndex === idx;
+                const onDragOver = (e: React.DragEvent) => {
+                  e.preventDefault();
+                  if (
+                    canEdit &&
+                    draggedId &&
+                    (row.type === "divider" || row.def.id !== draggedId)
+                  ) {
+                    setDragOverIndex(idx);
                   }
-                  className="w-7 h-7 rounded cursor-pointer border-0 bg-transparent"
-                />
-                <div className="flex flex-col">
-                  <button
-                    type="button"
-                    disabled={!canEdit || idx === 0}
-                    onClick={() => handleMoveStatus(idx, -1)}
-                    className="text-slate-400 hover:text-slate-700 dark:hover:text-white disabled:opacity-30"
+                };
+                const onDrop = (e: React.DragEvent) => {
+                  e.preventDefault();
+                  setDragOverIndex(null);
+                  if (draggedId) {
+                    handleMoveToIndex(draggedId, idx);
+                    setDraggedId(null);
+                  }
+                };
+
+                if (row.type === "divider") {
+                  const info = groupInfo(row.group);
+                  return (
+                    <tr
+                      key={`div-${row.group}`}
+                      data-testid={`ticket-status-divider-${row.group}`}
+                      onDragOver={onDragOver}
+                      onDragLeave={() => setDragOverIndex(null)}
+                      onDrop={onDrop}
+                      className={`transition-all border-b border-slate-200/60 duration-200 ${
+                        isDragOver
+                          ? "bg-indigo-50/60 scale-[0.99] border-2 border-dashed border-indigo-300"
+                          : "bg-slate-100/70"
+                      }`}
+                    >
+                      <td colSpan={6} className="py-3 px-4 select-none">
+                        <div className="flex items-center gap-2">
+                          <span className="type-overline text-slate-900">
+                            {info.name}
+                          </span>
+                          <span className="text-micro text-slate-400 font-bold ml-1">
+                            {info.desc}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                const { def } = row;
+                const label = labelOf(def);
+                const group = def.category || def.group || "open";
+                const info = groupInfo(group);
+                const count = usage[def.id] || 0;
+
+                return (
+                  <tr
+                    key={`status-${def.id}`}
+                    data-testid={`ticket-status-row-${def.id}`}
+                    draggable={canEdit}
+                    onDragStart={() => canEdit && setDraggedId(def.id)}
+                    onDragEnd={() => {
+                      setDraggedId(null);
+                      setDragOverIndex(null);
+                    }}
+                    onDragOver={onDragOver}
+                    onDragLeave={() => setDragOverIndex(null)}
+                    onDrop={onDrop}
+                    className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
+                      isDragOver
+                        ? "bg-indigo-50/55 scale-[0.99] border-y-2 border-dashed border-indigo-300"
+                        : ""
+                    }`}
                   >
-                    <ArrowUp className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!canEdit || idx === sortedStatuses.length - 1}
-                    onClick={() => handleMoveStatus(idx, 1)}
-                    className="text-slate-400 hover:text-slate-700 dark:hover:text-white disabled:opacity-30"
-                  >
-                    <ArrowDown className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
+                    <td className="py-3 px-4 text-center align-middle">
+                      {canEdit ? (
+                        <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
+                      ) : (
+                        <Lock className="h-3 w-3 text-slate-300 inline-block" />
+                      )}
+                    </td>
 
-              <div className="md:col-span-2">
-                <input
-                  type="text"
-                  value={st.labelSk}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    handleUpdateStatus(st.id, { labelSk: e.target.value })
-                  }
-                  placeholder="SK názov"
-                  className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                />
-              </div>
+                    <td className="py-3 px-4 align-middle">
+                      <div className="flex items-center gap-2">
+                        {canEdit ? (
+                          <ColorPicker
+                            variant="ring"
+                            value={def.color}
+                            onChange={(next) => handleColor(def.id, next)}
+                            title={t(
+                              "Click to edit color",
+                              "Kliknutím upravíte farbu",
+                              "Kattintson a szín szerkesztéséhez",
+                            )}
+                          />
+                        ) : (
+                          <span
+                            className="h-3 w-3 rounded-full border border-slate-200 inline-block"
+                            style={{ backgroundColor: def.color }}
+                          />
+                        )}
+                        <span className="type-overline text-slate-400">
+                          {def.color}
+                        </span>
+                      </div>
+                    </td>
 
-              <div className="md:col-span-2">
-                <input
-                  type="text"
-                  value={st.labelEn}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    handleUpdateStatus(st.id, { labelEn: e.target.value })
-                  }
-                  placeholder="EN label"
-                  className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                />
-              </div>
+                    <td className="py-3 px-4 align-middle">
+                      <InlineRenameName
+                        value={label}
+                        canEdit={canEdit}
+                        onCommit={(next) => handleRename(def.id, next)}
+                        renameTitle={t("Rename", "Premenovať", "Átnevezés")}
+                      >
+                        <span
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
+                          style={{
+                            backgroundColor: `${def.color}12`,
+                            color: def.color,
+                            borderColor: `${def.color}35`,
+                          }}
+                        >
+                          {label}
+                        </span>
+                      </InlineRenameName>
+                    </td>
 
-              <div className="md:col-span-2">
-                <input
-                  type="text"
-                  value={st.labelHu}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    handleUpdateStatus(st.id, { labelHu: e.target.value })
-                  }
-                  placeholder="HU név"
-                  className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                />
-              </div>
+                    <td className="py-3 px-4 align-middle select-none">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full type-overline border ${info.chip}`}
+                      >
+                        {info.name}
+                      </span>
+                    </td>
 
-              <div className="md:col-span-2">
-                <select
-                  value={st.category}
-                  disabled={!canEdit}
-                  onChange={(e) =>
-                    handleUpdateStatus(st.id, {
-                      category: e.target.value as TicketStatusCategory,
-                    })
-                  }
-                  className="w-full px-2 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-                >
-                  {STATUS_CATEGORIES.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {userLanguage === "en"
-                        ? c.labelEn
-                        : userLanguage === "hu"
-                          ? c.labelHu
-                          : c.labelSk}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                    <td className="py-3 px-4 text-center align-middle select-none">
+                      <span
+                        className={`text-ui font-bold ${
+                          count ? "text-slate-700" : "text-slate-300"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </td>
 
-              <div className="md:col-span-2 flex items-center gap-3 text-caption text-slate-600 dark:text-slate-300">
-                <label className="inline-flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(st.pausesSla)}
-                    disabled={!canEdit}
-                    onChange={(e) =>
-                      handleUpdateStatus(st.id, { pausesSla: e.target.checked })
-                    }
-                  />
-                  <span>{tr("Pauza SLA", "Pause SLA", "SLA szünet")}</span>
-                </label>
-                <label className="inline-flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(st.isTerminal)}
-                    disabled={!canEdit}
-                    onChange={(e) =>
-                      handleUpdateStatus(st.id, { isTerminal: e.target.checked })
-                    }
-                  />
-                  <span>{tr("Ukončený", "Done", "Lezárt")}</span>
-                </label>
-              </div>
-
-              <div className="md:col-span-1 flex justify-end">
-                <button
-                  type="button"
-                  disabled={!canEdit || sortedStatuses.length <= 1}
-                  onClick={() => handleDeleteStatus(st.id)}
-                  className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-30"
-                  title={tr("Odstrániť stav", "Delete status", "Állapot törlése")}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+                    <td className="py-3 px-4 text-center align-middle">
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(def)}
+                          className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block cursor-pointer"
+                          title={t(
+                            "Remove status",
+                            "Odstrániť stav",
+                            "Állapot eltávolítása",
+                          )}
+                          aria-label={t(
+                            "Remove status",
+                            "Odstrániť stav",
+                            "Állapot eltávolítása",
+                          )}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : (
+                        <span className="type-overline text-slate-300 block select-none">
+                          {t("Locked", "Zamknuté", "Zárolt")}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         {canEdit && (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center pt-3 border-t border-slate-200 dark:border-slate-800">
-            <div className="md:col-span-1">
-              <input
-                type="color"
-                value={newStatusColor}
-                onChange={(e) => setNewStatusColor(e.target.value)}
-                className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
+          <form
+            onSubmit={handleAdd}
+            className="flex flex-wrap gap-2 max-w-lg pt-2 items-center"
+          >
+            <input
+              type="text"
+              required
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t(
+                "Add new ticket status...",
+                "Pridať nový stav tiketu...",
+                "Új jegyállapot hozzáadása...",
+              )}
+              aria-label={t(
+                "New ticket status",
+                "Nový stav tiketu",
+                "Új jegyállapot",
+              )}
+              className="flex-1 min-w-37.5 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+            />
+            <div className="w-40">
+              <CustomSelect
+                value={newGroup}
+                onChange={(v) => setNewGroup(v as TicketStatusCategory)}
+                options={TICKET_STATUS_GROUPS.map((g) => ({
+                  value: g,
+                  label: groupInfo(g).name,
+                }))}
               />
             </div>
-            <div className="md:col-span-3">
-              <input
-                type="text"
-                value={newStatusLabelSk}
-                onChange={(e) => setNewStatusLabelSk(e.target.value)}
-                placeholder={tr("Nový stav (SK) *", "New status (SK) *", "Új állapot (SK) *")}
-                className="w-full px-3 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <input
-                type="text"
-                value={newStatusLabelEn}
-                onChange={(e) => setNewStatusLabelEn(e.target.value)}
-                placeholder="EN label"
-                className="w-full px-3 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <input
-                type="text"
-                value={newStatusLabelHu}
-                onChange={(e) => setNewStatusLabelHu(e.target.value)}
-                placeholder="HU név"
-                className="w-full px-3 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <select
-                value={newStatusCategory}
-                onChange={(e) =>
-                  setNewStatusCategory(e.target.value as TicketStatusCategory)
-                }
-                className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
-              >
-                {STATUS_CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.labelSk}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <button
-                type="button"
-                onClick={handleAddStatus}
-                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-semibold bg-orange-500 hover:bg-orange-600 text-white"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                {tr("Pridať stav", "Add Status", "Állapot hozzáadása")}
-              </button>
-            </div>
-          </div>
+            <button
+              type="submit"
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
+            >
+              <Plus className="h-3.5 w-3.5" />{" "}
+              {t("Add status", "Pridať stav", "Állapot hozzáadása")}
+            </button>
+          </form>
         )}
       </div>
 

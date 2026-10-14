@@ -3302,6 +3302,8 @@ ${log.payload || ''}
           setTicketStatuses={setTicketStatuses}
           ticketSettings={ticketSettings}
           setTicketSettings={setTicketSettings}
+          tickets={tickets}
+          setTickets={updateTicketsAndSync}
           financialCategories={financialCategories}
           setFinancialCategories={updateFinancialCategoriesAndSync}
           setFinancialRecords={updateFinancialRecordsAndSync}

@@ -1362,7 +1362,9 @@ export type TicketStatusCategory = "new" | "open" | "waiting" | "resolved" | "cl
 export interface TicketStatusDef {
   id: string;
   key?: string;
+  label?: string;
   category: TicketStatusCategory;
+  group?: TicketStatusCategory;
   labelSk: string;
   labelEn: string;
   labelHu: string;

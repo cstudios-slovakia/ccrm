@@ -2,15 +2,54 @@ import type {
   Ticket,
   TicketPriority,
   TicketSettingsConfig,
+  TicketStatusCategory,
   TicketStatusDef,
   SupportContract,
 } from "../types";
+
+export const TICKET_STATUS_GROUPS: readonly TicketStatusCategory[] = [
+  "new",
+  "open",
+  "waiting",
+  "resolved",
+  "closed",
+];
+
+export const NEW_TICKET_STATUS_COLOR = "#6366f1";
+
+const NAMED_COLOR_HEX: Record<string, string> = {
+  blue: "#0ea5e9",
+  sky: "#0ea5e9",
+  indigo: "#a855f7",
+  amber: "#f59e0b",
+  orange: "#f97316",
+  purple: "#8b5cf6",
+  violet: "#6366f1",
+  emerald: "#10b981",
+  green: "#10b981",
+  slate: "#64748b",
+  gray: "#64748b",
+  rose: "#f43f5e",
+  red: "#ef4444",
+};
+
+const BUILTIN_TICKET_STATUS_LABELS: Record<string, [string, string, string]> = {
+  new: ["New", "Nový", "Új"],
+  open: ["In Progress", "V riešení", "Folyamatban"],
+  in_progress: ["In Progress", "V riešení", "Folyamatban"],
+  waiting: ["Waiting on Client", "Čaká na klienta", "Ügyfélre vár"],
+  waiting_client: ["Waiting on Client", "Čaká na klienta", "Ügyfélre vár"],
+  waiting_internal: ["Waiting Internal", "Čaká interne", "Belső várakozás"],
+  resolved: ["Resolved", "Vyriešený", "Megoldva"],
+  closed: ["Closed", "Uzavretý", "Lezárva"],
+};
 
 export const DEFAULT_TICKET_STATUS_DEFS: TicketStatusDef[] = [
   {
     id: "new",
     key: "new",
     category: "new",
+    group: "new",
     labelSk: "Nový",
     labelEn: "New",
     labelHu: "Új",
@@ -24,6 +63,7 @@ export const DEFAULT_TICKET_STATUS_DEFS: TicketStatusDef[] = [
     id: "open",
     key: "open",
     category: "open",
+    group: "open",
     labelSk: "V riešení",
     labelEn: "In Progress",
     labelHu: "Folyamatban",
@@ -37,6 +77,7 @@ export const DEFAULT_TICKET_STATUS_DEFS: TicketStatusDef[] = [
     id: "waiting",
     key: "waiting",
     category: "waiting",
+    group: "waiting",
     labelSk: "Čaká na klienta",
     labelEn: "Waiting on Client",
     labelHu: "Ügyfélre vár",
@@ -50,6 +91,7 @@ export const DEFAULT_TICKET_STATUS_DEFS: TicketStatusDef[] = [
     id: "resolved",
     key: "resolved",
     category: "resolved",
+    group: "resolved",
     labelSk: "Vyriešený",
     labelEn: "Resolved",
     labelHu: "Megoldva",
@@ -63,6 +105,7 @@ export const DEFAULT_TICKET_STATUS_DEFS: TicketStatusDef[] = [
     id: "closed",
     key: "closed",
     category: "closed",
+    group: "closed",
     labelSk: "Uzavretý",
     labelEn: "Closed",
     labelHu: "Lezárva",
@@ -134,22 +177,101 @@ export const DEFAULT_TICKET_SETTINGS: TicketSettingsConfig = {
   ],
 };
 
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
 export const normalizeTicketStatuses = (
   raw: TicketStatusDef[] | null | undefined,
 ): TicketStatusDef[] => {
   if (!Array.isArray(raw) || raw.length === 0) {
-    return DEFAULT_TICKET_STATUS_DEFS;
+    return DEFAULT_TICKET_STATUS_DEFS.map((d) => ({ ...d }));
   }
-  return [...raw]
-    .map((s, idx) => ({
+  const mapped = raw.map((s, idx) => {
+    const rec = s as unknown as Record<string, any>;
+    const key = String(s.id || s.key || `status_${idx + 1}`).trim();
+    const builtin = DEFAULT_TICKET_STATUS_DEFS.find((d) => d.id === key || d.key === key);
+    const builtinLabels = BUILTIN_TICKET_STATUS_LABELS[key];
+    const rawCat = String(s.category || rec.group || builtin?.category || "open").trim();
+    const category: TicketStatusCategory = (TICKET_STATUS_GROUPS as readonly string[]).includes(rawCat)
+      ? (rawCat as TicketStatusCategory)
+      : "open";
+    const rawColor = String(s.color || "").trim().toLowerCase();
+    const color = HEX_COLOR_RE.test(rawColor)
+      ? rawColor
+      : NAMED_COLOR_HEX[rawColor] || builtin?.color || NEW_TICKET_STATUS_COLOR;
+    const customLabel = typeof s.label === "string" && s.label.trim() ? s.label.trim() : undefined;
+    const labelsObj = rec.labels && typeof rec.labels === "object" ? rec.labels : null;
+    const labelEn =
+      customLabel ||
+      s.labelEn ||
+      labelsObj?.en ||
+      builtinLabels?.[0] ||
+      builtin?.labelEn ||
+      key;
+    const labelSk =
+      customLabel ||
+      s.labelSk ||
+      labelsObj?.sk ||
+      builtinLabels?.[1] ||
+      builtin?.labelSk ||
+      labelEn;
+    const labelHu =
+      customLabel ||
+      s.labelHu ||
+      labelsObj?.hu ||
+      builtinLabels?.[2] ||
+      builtin?.labelHu ||
+      labelEn;
+    const pausesSla =
+      typeof s.pausesSla === "boolean"
+        ? s.pausesSla
+        : category === "waiting" || category === "resolved" || category === "closed";
+    const isTerminal =
+      typeof s.isTerminal === "boolean"
+        ? s.isTerminal
+        : category === "resolved" || category === "closed";
+    const sortOrder = s.sortOrder ?? s.order ?? idx + 1;
+    return {
       ...s,
-      id: s.id || s.key || `status-${idx}`,
-      key: s.key || s.id || `status-${idx}`,
-      sortOrder: s.sortOrder ?? s.order ?? idx + 1,
-      order: s.order ?? s.sortOrder ?? idx + 1,
-    }))
-    .sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
+      id: key,
+      key,
+      ...(customLabel ? { label: customLabel } : {}),
+      category,
+      group: category,
+      labelSk,
+      labelEn,
+      labelHu,
+      color,
+      pausesSla,
+      isTerminal,
+      sortOrder,
+      order: sortOrder,
+    };
+  });
+  return [...mapped].sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
 };
+
+export const ticketStatusKeyFor = (name: string, taken: readonly string[]): string => {
+  const base =
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 46) || "status";
+  if (!taken.includes(base)) return base;
+  let i = 2;
+  while (taken.includes(`${base}_${i}`)) i++;
+  return `${base}_${i}`;
+};
+
+export const defaultTicketStatus = (
+  statuses: readonly TicketStatusDef[] = DEFAULT_TICKET_STATUS_DEFS,
+): string =>
+  statuses.find((d) => (d.category || d.group) === "new")?.id ??
+  statuses.find((d) => (d.category || d.group) === "open")?.id ??
+  statuses[0]?.id ??
+  "new";
 
 export const normalizeTicketSettings = (
   raw: Partial<TicketSettingsConfig> | null | undefined,
@@ -178,9 +300,12 @@ export const getTicketStatusLabel = (
   fallbackId = "",
 ): string => {
   if (!statusDef) return fallbackId;
-  if (lang === "hu") return statusDef.labelHu || statusDef.labelEn || statusDef.labelSk || statusDef.id;
-  if (lang === "en") return statusDef.labelEn || statusDef.labelSk || statusDef.id;
-  return statusDef.labelSk || statusDef.labelEn || statusDef.id;
+  if (statusDef.label) return statusDef.label;
+  const key = statusDef.id || statusDef.key || fallbackId;
+  const builtin = BUILTIN_TICKET_STATUS_LABELS[key];
+  if (lang === "hu") return statusDef.labelHu || builtin?.[2] || statusDef.labelEn || statusDef.labelSk || key;
+  if (lang === "en") return statusDef.labelEn || builtin?.[0] || statusDef.labelSk || key;
+  return statusDef.labelSk || builtin?.[1] || statusDef.labelEn || key;
 };
 
 export const ticketStatusColor = (

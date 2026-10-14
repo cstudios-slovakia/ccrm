@@ -24,7 +24,7 @@ import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
-import type { Order, TicketStatusDef, TicketSettingsConfig } from "../types";
+import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig } from "../types";
 import { VisibleModulesSettings } from "./VisibleModulesSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -560,6 +560,8 @@ interface SettingsViewProps {
   setTicketStatuses?: React.Dispatch<React.SetStateAction<TicketStatusDef[]>>;
   ticketSettings?: TicketSettingsConfig;
   setTicketSettings?: React.Dispatch<React.SetStateAction<TicketSettingsConfig>>;
+  tickets?: Ticket[];
+  setTickets?: (updater: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void;
   onTicketsPolled?: () => void;
 }
 
@@ -688,6 +690,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTicketStatuses,
   ticketSettings,
   setTicketSettings,
+  tickets = [],
+  setTickets,
   onTicketsPolled
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -4292,6 +4296,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 setTicketStatuses={setTicketStatuses}
                 ticketSettings={ticketSettings}
                 setTicketSettings={setTicketSettings}
+                tickets={tickets}
+                setTickets={setTickets}
                 userLanguage={userLanguage}
                 canEdit={getPermission("general_config") === "edit"}
                 onTicketsPolled={onTicketsPolled}
