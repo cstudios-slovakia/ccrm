@@ -95,7 +95,7 @@
  * it. `:where()` still contributes no specificity, so the override beats only
  * the rule it is nested in, on source order.
  */
-const DARK_SCOPE = '&:where(html[data-theme="dark"], html[data-theme="dark"] *)';
+const DARK_SCOPE = '&:where(html[data-theme="dark"], html[data-theme="dark"] *, html[data-theme="retro"], html[data-theme="retro"] *)';
 
 /** Properties that paint a surface. */
 const SURFACE_PROPS = new Set([
@@ -155,11 +155,17 @@ const LIGHT_ISLAND = '.force-light';
 const isDefinitionSelector = (selector) =>
   selector.includes(':root') || selector.includes(':host') || selector.startsWith('*');
 
-/** The `[data-theme="dark"]` block itself, as opposed to something *inside* a
- *  dark page — `[data-theme="dark"] .from-[#e8efff]` sets a variable too, but
+/** Theme root blocks (`[data-theme="..."]`), as opposed to something *inside* a
+ *  themed page — `[data-theme="dark"] .from-[#e8efff]` sets a variable too, but
  *  it is a utility override and has no business in the island. */
+const THEME_ROOT_SELECTORS = new Set([
+  '[data-theme="dark"]',
+  '[data-theme="paper"]',
+  '[data-theme="minimalist"]',
+  '[data-theme="retro"]',
+]);
 const isDarkRootSelector = (selector) =>
-  selector.split(',').some((part) => part.trim() === '[data-theme="dark"]');
+  selector.split(',').some((part) => THEME_ROOT_SELECTORS.has(part.trim()));
 
 /**
  * The original values, read out of the `:root` blocks — Tailwind's own `@theme`
@@ -181,8 +187,8 @@ const collectOriginalPalette = (root) => {
 };
 
 /**
- * `.force-light`: every custom property the dark theme root redefines, set back
- * to its light value. Returns null when there is no dark root to undo.
+ * `.force-light`: every custom property the theme roots redefine, set back
+ * to its light value. Returns null when there is no theme root to undo.
  */
 const buildLightIsland = (root, palette, Rule) => {
   const darkProps = new Set();
@@ -193,7 +199,9 @@ const buildLightIsland = (root, palette, Rule) => {
   if (!darkProps.size) return null;
 
   const white = palette.get('--color-white') || '#fff';
-  const island = new Rule({ selector: `:where(html[data-theme="dark"]) ${LIGHT_ISLAND}` });
+  const island = new Rule({
+    selector: `:where(html[data-theme="dark"], html[data-theme="paper"], html[data-theme="minimalist"], html[data-theme="retro"]) ${LIGHT_ISLAND}`,
+  });
 
   // Form controls, scrollbars and the default canvas inside the island.
   island.append({ prop: 'color-scheme', value: 'light' });

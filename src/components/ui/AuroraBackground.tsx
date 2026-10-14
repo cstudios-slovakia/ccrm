@@ -121,6 +121,16 @@ const TAB_COLOR_MAP: Record<string, ThemeColors> = {
     secondary: "rgba(234, 88, 12, 0.20)", // Orange
     accent: "rgba(139, 92, 246, 0.18)", // Purple
   },
+  orders: {
+    primary: "rgba(13, 148, 136, 0.26)", // Teal
+    secondary: "rgba(5, 150, 105, 0.20)", // Emerald
+    accent: "rgba(6, 182, 212, 0.18)", // Cyan
+  },
+  tickets: {
+    primary: "rgba(225, 29, 72, 0.26)", // Rose
+    secondary: "rgba(249, 115, 22, 0.20)", // Orange
+    accent: "rgba(99, 102, 241, 0.18)", // Indigo
+  },
   settings: {
     primary: "rgba(100, 116, 139, 0.22)", // Slate
     secondary: "rgba(79, 70, 229, 0.18)", // Indigo
@@ -146,6 +156,11 @@ function hexToRgba(hex: string, alpha: number): string {
   const g = (num >> 8) & 255;
   const b = num & 255;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** Extract opaque rgb(r, g, b) from an rgba(r, g, b, a) string for --entity-accent */
+function toSolidRgb(rgba: string): string {
+  return rgba.replace(/^rgba\(/, "rgb(").replace(/,\s*[\d.]+\)$/, ")");
 }
 
 export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
@@ -212,6 +227,9 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   const prevColorsRef = useRef<ThemeColors>(targetColors);
 
   useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.style.setProperty("--entity-accent", toSolidRgb(targetColors.primary));
+    }
     const prev = prevColorsRef.current;
     if (
       prev.primary === targetColors.primary &&
@@ -242,7 +260,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   const renderBlobLayer = (colors: ThemeColors, opacity: number, key: string) => (
     <div
       key={key}
-      className="absolute inset-0 pointer-events-none will-change-opacity"
+      className="aurora-blob-layer absolute inset-0 pointer-events-none will-change-opacity"
       style={{
         opacity,
         transition: `opacity ${transitionDurationMs}ms ease-in-out`,
@@ -250,7 +268,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
     >
       {/* Aurora Ambient Blob 1 (Top Left / Upper Canvas) */}
       <div
-        className="absolute -top-[12%] -left-[10%] w-145 h-145 md:w-200 md:h-200 rounded-full blur-[110px] md:blur-[140px] opacity-90 will-change-transform animate-aurora-pulse-1"
+        className="aurora-blob absolute -top-[12%] -left-[10%] w-145 h-145 md:w-200 md:h-200 rounded-full blur-[110px] md:blur-[140px] opacity-90 will-change-transform animate-aurora-pulse-1"
         style={{
           background: `radial-gradient(circle at center, ${colors.primary} 0%, ${colors.secondary} 45%, transparent 75%)`,
         }}
@@ -258,7 +276,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 2 (Top Right / Middle Right Canvas) */}
       <div
-        className="absolute top-[8%] -right-[12%] w-125 h-125 md:w-180 md:h-180 rounded-full blur-[110px] md:blur-[140px] opacity-80 will-change-transform animate-aurora-pulse-2"
+        className="aurora-blob absolute top-[8%] -right-[12%] w-125 h-125 md:w-180 md:h-180 rounded-full blur-[110px] md:blur-[140px] opacity-80 will-change-transform animate-aurora-pulse-2"
         style={{
           background: `radial-gradient(circle at center, ${colors.secondary} 0%, ${colors.accent} 50%, transparent 75%)`,
         }}
@@ -266,7 +284,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 3 (Bottom Center / Left subtle glow) */}
       <div
-        className="absolute -bottom-[15%] left-[20%] w-112.5 h-112.5 md:w-162.5 md:h-162.5 rounded-full blur-[120px] md:blur-[150px] opacity-70 will-change-transform animate-aurora-pulse-3"
+        className="aurora-blob absolute -bottom-[15%] left-[20%] w-112.5 h-112.5 md:w-162.5 md:h-162.5 rounded-full blur-[120px] md:blur-[150px] opacity-70 will-change-transform animate-aurora-pulse-3"
         style={{
           background: `radial-gradient(circle at center, ${colors.accent} 0%, ${colors.primary} 45%, transparent 75%)`,
         }}
@@ -276,7 +294,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
   return (
     <div
-      className={`pointer-events-none fixed inset-0 overflow-hidden select-none z-0 ${className}`}
+      className={`aurora-bg pointer-events-none fixed inset-0 overflow-hidden select-none z-0 ${className}`}
       aria-hidden="true"
     >
       {renderBlobLayer(layers.layerA.colors, layers.layerA.opacity, "layer-a")}
