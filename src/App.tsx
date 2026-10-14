@@ -3852,6 +3852,7 @@ ${log.payload || ''}
             setTasks={updateTasksAndSync}
             leads={leads}
             projects={projects}
+            tickets={tickets}
             users={users}
             systemLanguage={userLanguage}
             currentUser={activeUser}

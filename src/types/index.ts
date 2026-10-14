@@ -296,6 +296,8 @@ export interface Task {
    * project's own Tasks tab.
    */
   relatedProjectId?: string;
+  /** The support ticket this task was created from or linked to, if any. */
+  relatedTicketId?: string;
   isLocking?: boolean; // if true, it blocks related lead from transitioning stages until done
   completedBy?: string; // name of user who completed the task
   completedAt?: string; // timestamp (YYYY-MM-DD HH:MM) when completed

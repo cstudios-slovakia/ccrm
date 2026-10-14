@@ -915,11 +915,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     } catch (\Throwable $e) {}
 
+    $ticketByTask = [];
+    try {
+        $ttStmt = $pdo->query("SELECT `task_id`, `ticket_id` FROM `ticket_task_links`");
+        while ($ttRow = $ttStmt->fetch(PDO::FETCH_ASSOC)) {
+            $ticketByTask[$ttRow['task_id']] = $ttRow['ticket_id'];
+        }
+    } catch (\Throwable $e) {}
+
     $tasksStmt = $pdo->query("SELECT * FROM `tasks` ORDER BY `created_at` DESC");
     $tasks = [];
     while ($row = $tasksStmt->fetch()) {
         $taskId = $row['id'];
         $assignedUsers = $assigneesByTask[$taskId] ?? [];
+        $relTicketId = !empty($row['related_ticket_id'])
+            ? $row['related_ticket_id']
+            : ($ticketByTask[$taskId] ?? null);
 
         $tasks[] = [
             'id' => $taskId,
@@ -935,6 +946,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'createdAt' => $row['created_at'] ?? null,
             'relatedLeadId' => $row['related_lead_id'] ?? null,
             'relatedProjectId' => $row['related_project_id'] ?? null,
+            'relatedTicketId' => $relTicketId,
             'isLocking' => intval($row['is_locking']) === 1,
             'archived' => intval($row['archived'] ?? 0) === 1,
             'completedBy' => $row['completed_by'] ?? null,
@@ -3872,7 +3884,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync — but
@@ -3907,6 +3919,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+                $relTicketIdVal = (isset($t['relatedTicketId']) && $t['relatedTicketId'] !== '') ? $t['relatedTicketId'] : null;
+
                 $insTask->execute([
                     $taskId,
                     $t['title'],
@@ -3920,12 +3934,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sessionUserName !== '' ? $sessionUserName : null,
                     $t['relatedLeadId'] ?? null,
                     (isset($t['relatedProjectId']) && $t['relatedProjectId'] !== '') ? $t['relatedProjectId'] : null,
+                    $relTicketIdVal,
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
                     (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null,
                     ccrm_encode_task_reminders($t['emailReminders'] ?? null)
                 ]);
+                if ($relTicketIdVal !== null) {
+                    try {
+                        $pdo->prepare("INSERT IGNORE INTO `ticket_task_links` (`ticket_id`, `task_id`, `sync_mode`, `created_at`) VALUES (?, ?, 'auto_resolve', NOW())")->execute([$relTicketIdVal, $taskId]);
+                    } catch (\Throwable $e) {}
+                }
                 $processedTaskIds[] = $taskId;
 
                 // Workflow Triggers & Task Email/Push Notifications
@@ -5619,6 +5639,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     (string)($lnk['syncMode'] ?? 'auto_resolve'),
                                     $lCreated,
                                 ]);
+                                try {
+                                    $pdo->prepare("UPDATE `tasks` SET `related_ticket_id` = ? WHERE `id` = ? AND (`related_ticket_id` IS NULL OR `related_ticket_id` = '')")->execute([$tckId, $lTaskId]);
+                                } catch (\Throwable $e) {}
                                 $keepTaskIds[] = $lTaskId;
                             }
                             if (empty($keepTaskIds)) {

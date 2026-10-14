@@ -1156,6 +1156,10 @@ if (!function_exists('ccrm_schema_statements')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_project_id` VARCHAR(50) NULL AFTER `related_lead_id`");
             $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_project (`related_project_id`)");
         }
+        if (!ccrm_column_exists($pdo, 'tasks', 'related_ticket_id')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_ticket_id` VARCHAR(64) NULL AFTER `related_project_id`");
+            $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_ticket (`related_ticket_id`)");
+        }
         if (!ccrm_column_exists($pdo, 'meeting_tasks', 'start_date')) {
             $pdo->exec("ALTER TABLE `meeting_tasks` ADD COLUMN `start_date` DATE NULL AFTER `description`");
         }
@@ -3473,6 +3477,18 @@ if (!function_exists('ccrm_schema_statements')) {
             }
             try {
                 $pdo->exec("ALTER TABLE `tickets` MODIFY COLUMN `type` VARCHAR(50) DEFAULT 'support', MODIFY COLUMN `source` VARCHAR(50) DEFAULT 'manual'");
+            } catch (\Throwable $e) {}
+            $hasRelatedTicketCol = (int)$pdo->query(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'related_ticket_id'"
+            )->fetchColumn() > 0;
+            if (!$hasRelatedTicketCol) {
+                try {
+                    $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_ticket_id` VARCHAR(64) NULL AFTER `related_project_id`");
+                    $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_ticket (`related_ticket_id`)");
+                } catch (\Throwable $e) {}
+            }
+            try {
+                $pdo->exec("UPDATE `tasks` t INNER JOIN `ticket_task_links` tt ON tt.task_id = t.id SET t.related_ticket_id = tt.ticket_id WHERE t.related_ticket_id IS NULL OR t.related_ticket_id = ''");
             } catch (\Throwable $e) {}
 
             // Seed default TICKET_STATUSES and TICKET_SETTINGS if absent

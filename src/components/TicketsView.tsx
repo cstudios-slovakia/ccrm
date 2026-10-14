@@ -198,10 +198,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     setSelectedTicketId(initialSelectedTicketId || null);
   }, [initialSelectedTicketId]);
 
-  const selectedTicket = useMemo(
-    () => tickets.find((tk) => tk.id === selectedTicketId) || null,
-    [tickets, selectedTicketId],
-  );
+  const selectedTicket = useMemo(() => {
+    if (!selectedTicketId) return null;
+    const lower = selectedTicketId.toLowerCase();
+    return (
+      tickets.find(
+        (tk) =>
+          tk.id === selectedTicketId ||
+          (tk.ticketNumber || "").toLowerCase() === lower,
+      ) || null
+    );
+  }, [tickets, selectedTicketId]);
 
   // In-place subject editing in EntityHeader
   const [isEditingSubject, setIsEditingSubject] = useState(false);
@@ -221,7 +228,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   // Right column active tab & timeline event logger state (matches Leads timeline)
   const [detailRightTab, setDetailRightTab] = useState<"timeline" | "tasks">("timeline");
   const [timelineEventType, setTimelineEventType] =
-    useState<TicketTimelineEventType>("public_reply");
+    useState<TicketTimelineEventType | null>(null);
   const [timelineEventDate, setTimelineEventDate] = useState<string>(() =>
     todayLocal(),
   );
@@ -247,6 +254,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     setPickingProject(false);
     setPickingClient(false);
     setEditingMsgId(null);
+    setTimelineEventType(null);
     setTimelineEventDate(todayLocal());
     setTimelineEventTime(nowLocalStamp().slice(11, 16));
   }, [selectedTicketId]);
@@ -606,7 +614,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       return;
     setIsSendingReply(true);
     const now = nowLocalStamp();
-    const isPublicReply = timelineEventType === "public_reply";
+    const activeEventType: TicketTimelineEventType =
+      timelineEventType || "public_reply";
+    const isPublicReply = activeEventType === "public_reply";
     const isInternal = !isPublicReply;
 
     const currentDatePart = now.slice(0, 10);
@@ -627,7 +637,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       authorEmail: currentUser?.email || "",
       body: replyBody.trim(),
       isInternal,
-      eventType: timelineEventType,
+      eventType: activeEventType,
       attachments: replyAttachments,
       createdAt: eventCreatedAt,
     };
@@ -675,6 +685,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
     setReplyBody("");
     setReplyAttachments([]);
+    setTimelineEventType(null);
     setTimelineEventDate(todayLocal());
     setTimelineEventTime(nowLocalStamp().slice(11, 16));
     setIsSendingReply(false);
@@ -803,6 +814,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       relatedProjectId: selectedTicket.projectId || undefined,
       relatedLeadId:
         selectedTicket.leadId || selectedTicket.clientId || undefined,
+      relatedTicketId: selectedTicket.id,
     };
 
     setTasks((prev) => [newTask, ...prev]);
@@ -968,6 +980,36 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       ticketSettings.cannedResponses || ticketSettings.replyTemplates || [];
     const widgetMeta =
       selectedTicket.widgetMetadata || selectedTicket.metadata || null;
+
+    const mergedTicketTaskLinks = (() => {
+      const base = [...(selectedTicket.taskLinks || [])];
+      const seenTaskIds = new Set(base.map((l) => String(l.taskId)));
+      const tckNumPrefix = selectedTicket.ticketNumber
+        ? `[${selectedTicket.ticketNumber.toLowerCase()}]`
+        : "";
+      for (const tsk of tasks) {
+        if (seenTaskIds.has(String(tsk.id))) continue;
+        const matchesById =
+          tsk.relatedTicketId &&
+          (String(tsk.relatedTicketId) === String(selectedTicket.id) ||
+            (selectedTicket.ticketNumber &&
+              String(tsk.relatedTicketId).toLowerCase() ===
+                selectedTicket.ticketNumber.toLowerCase()));
+        const matchesByTitle =
+          tckNumPrefix && (tsk.title || "").toLowerCase().includes(tckNumPrefix);
+        if (matchesById || matchesByTitle) {
+          seenTaskIds.add(String(tsk.id));
+          base.push({
+            id: `${selectedTicket.id}:${tsk.id}`,
+            ticketId: selectedTicket.id,
+            taskId: tsk.id,
+            syncMode: "auto_resolve",
+            createdAt: tsk.createdAt || selectedTicket.createdAt,
+          });
+        }
+      }
+      return base;
+    })();
 
     const commitSubject = () => {
       if (subjectDraft.trim() && subjectDraft.trim() !== selectedTicket.subject) {
@@ -1568,7 +1610,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     </form>
                   )}
 
-                  {(selectedTicket.taskLinks || []).length === 0 ? (
+                  {mergedTicketTaskLinks.length === 0 ? (
                     <div className="text-micro text-slate-400">
                       {t(
                         "No linked tasks yet.",
@@ -1578,7 +1620,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {(selectedTicket.taskLinks || []).map((link) => {
+                      {mergedTicketTaskLinks.map((link) => {
                         const tsk = tasks.find(
                           (tItem) => tItem.id === link.taskId,
                         );
@@ -2229,7 +2271,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   {
                     key: "tasks",
                     label: t("Tasks", "Úlohy", "Feladatok"),
-                    count: (selectedTicket.taskLinks || []).length,
+                    count: mergedTicketTaskLinks.length,
                     icon: <CheckSquare className="h-3.5 w-3.5" />,
                   },
                 ]}
@@ -2238,11 +2280,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
             {detailRightTab === "timeline" ? (
               <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-hidden">
-                {/* ACTIONS / EVENT LOGGER OVER THE TIMELINE (matches Leads Event Logger) */}
+                {/* ACTIONS / EVENT LOGGER OVER THE TIMELINE (matches Leads Event Logger — closable) */}
                 {canEdit && (
-                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 mb-5 shrink-0 space-y-3">
-                    {/* Top Row: Title + Template Selector + Date & Time Inputs */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 mb-5 shrink-0">
+                    {/* Header Row: Title + Close button when expanded */}
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
                       <span className="type-overline text-slate-600 flex items-center gap-1.5">
                         <PencilLine className="h-3.5 w-3.5 text-indigo-600" />
                         {t(
@@ -2252,55 +2294,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         )}
                       </span>
 
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {cannedTemplates.length > 0 && (
-                          <select
-                            value=""
-                            onChange={(e) => {
-                              const tpl = cannedTemplates.find(
-                                (c) => c.id === e.target.value,
-                              );
-                              if (tpl) {
-                                const rendered = applyTemplatePlaceholders(
-                                  tpl.body,
-                                  selectedTicket,
-                                );
-                                setReplyBody((prev) =>
-                                  prev && !isRichTextEmpty(prev)
-                                    ? `${prev}<br/><br/>${rendered}`
-                                    : rendered,
-                                );
-                              }
-                            }}
-                            className="h-8 px-2.5 rounded-xl border border-slate-200 bg-white text-micro font-bold text-slate-700 cursor-pointer hover:border-indigo-300"
-                          >
-                            <option value="">
-                              {t(
-                                "+ Template...",
-                                "+ Šablóna...",
-                                "+ Sablon...",
-                              )}
-                            </option>
-                            {cannedTemplates.map((tpl) => (
-                              <option key={tpl.id} value={tpl.id}>
-                                {tpl.title || tpl.name || tpl.shortcut || tpl.id}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        <input
-                          type="date"
-                          value={timelineEventDate}
-                          onChange={(e) => setTimelineEventDate(e.target.value)}
-                          className="h-8 px-2.5 text-micro font-bold rounded-xl border border-slate-200/80 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                        />
-                        <input
-                          type="time"
-                          value={timelineEventTime}
-                          onChange={(e) => setTimelineEventTime(e.target.value)}
-                          className="h-8 w-24 px-2 text-micro font-bold rounded-xl border border-slate-200/80 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                        />
-                      </div>
+                      {timelineEventType && (
+                        <button
+                          type="button"
+                          onClick={() => setTimelineEventType(null)}
+                          title={t("Close", "Zavrieť", "Bezárás")}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-micro font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          <span>{t("Close", "Zavrieť", "Bezárás")}</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Event Type Segmented Bar (Public Reply + Internal Note + Call + Email + Appointment) */}
@@ -2365,7 +2369,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             <button
                               key={item.id}
                               type="button"
-                              onClick={() => setTimelineEventType(item.id)}
+                              onClick={() => {
+                                if (isActive) {
+                                  setTimelineEventType(null);
+                                } else {
+                                  setTimelineEventType(item.id);
+                                  setTimelineEventDate(todayLocal());
+                                  setTimelineEventTime(
+                                    nowLocalStamp().slice(11, 16),
+                                  );
+                                }
+                              }}
                               className={`flex-1 min-w-28 flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-micro font-bold transition-all cursor-pointer select-none ${
                                 isActive
                                   ? "bg-white text-slate-900 shadow-xs ring-1 ring-slate-900/5"
@@ -2386,127 +2400,216 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Rich HTML Editor + Image & File Upload */}
-                    <TicketRichHtmlEditor
-                      value={replyBody}
-                      onChange={setReplyBody}
-                      attachments={replyAttachments}
-                      onAttachmentsChange={setReplyAttachments}
-                      userLanguage={userLanguage}
-                      tone={
-                        timelineEventType === "internal_note"
-                          ? "internal"
-                          : "default"
-                      }
-                      minRows={3}
-                      placeholder={
-                        timelineEventType === "public_reply"
-                          ? t(
-                              "Write a public reply to the client (paste screenshots or attach files)...",
-                              "Napíšte verejnú odpoveď klientovi (prilepte obrázky alebo priložte súbory)...",
-                              "Írjon nyilvános választ az ügyfélnek (képek és fájlok csatolhatók)...",
-                            )
-                          : timelineEventType === "internal_note"
-                            ? t(
-                                "Write an internal note visible only to your team...",
-                                "Napíšte internú poznámku viditeľnú iba pre tím...",
-                                "Írjon csak a csapat számára látható belső jegyzetet...",
-                              )
-                            : t(
-                                "Enter event summary, call notes, or meeting details...",
-                                "Zadajte zhrnutie telefonátu, e-mailu alebo stretnutia...",
-                                "Adja meg a hívás, e-mail vagy találkozó részleteit...",
-                              )
-                      }
-                    />
-
-                    {/* Bottom Action Row */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      <div>
-                        {timelineEventType === "public_reply" &&
-                          selectedTicket.reporterEmail && (
-                            <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-slate-600 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={sendViaEmail}
-                                onChange={(e) =>
-                                  setSendViaEmail(e.target.checked)
-                                }
-                                className="rounded border-slate-300 text-indigo-600"
-                              />
-                              <Mail className="w-3.5 h-3.5 text-slate-400" />
-                              <span>
-                                {t(
-                                  "Send via email to reporter",
-                                  "Odoslať aj e-mailom hlásateľovi",
-                                  "Küldés e-mailben a bejelentőnek",
-                                )}{" "}
-                                ({selectedTicket.reporterEmail})
+                    {/* Collapsible Editor & Action Area (expands when an Event Type is selected) */}
+                    <div
+                      className={`grid transition-all duration-300 ease-in-out ${
+                        timelineEventType
+                          ? "grid-rows-[1fr] opacity-100 mt-3.5 border-t border-slate-200/80 pt-3.5"
+                          : "grid-rows-[0fr] opacity-0 overflow-hidden"
+                      }`}
+                    >
+                      <div className="overflow-hidden space-y-3">
+                        {/* Event Date, Time & Canned Template Row */}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="type-overline text-slate-400">
+                                {t("Date", "Dátum", "Dátum")}
                               </span>
-                            </label>
-                          )}
-                      </div>
+                              <input
+                                type="date"
+                                value={timelineEventDate}
+                                onChange={(e) =>
+                                  setTimelineEventDate(e.target.value)
+                                }
+                                className="h-8 px-2.5 text-micro font-bold rounded-xl border border-slate-200/80 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="type-overline text-slate-400">
+                                {t("Time", "Čas", "Idő")}
+                              </span>
+                              <input
+                                type="time"
+                                value={timelineEventTime}
+                                onChange={(e) =>
+                                  setTimelineEventTime(e.target.value)
+                                }
+                                className="h-8 w-24 px-2 text-micro font-bold rounded-xl border border-slate-200/80 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                              />
+                            </div>
+                          </div>
 
-                      <div className="flex items-center gap-2 ml-auto">
-                        {timelineEventType === "public_reply" && (
-                          <button
-                            type="button"
-                            disabled={
-                              isSendingReply ||
-                              (isRichTextEmpty(replyBody) &&
-                                replyAttachments.length === 0)
-                            }
-                            onClick={() => handleSendReply("resolved")}
-                            className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40 transition-colors"
-                          >
-                            {t(
-                              "Send & Resolve",
-                              "Odoslať a vyriešiť",
-                              "Küldés és megoldás",
-                            )}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          disabled={
-                            isSendingReply ||
-                            (isRichTextEmpty(replyBody) &&
-                              replyAttachments.length === 0)
-                          }
-                          onClick={() => handleSendReply()}
-                          className={`px-4 py-2 rounded-xl text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95 disabled:opacity-40 ${
-                            timelineEventType === "internal_note"
-                              ? "bg-amber-600 hover:bg-amber-700"
-                              : timelineEventType === "public_reply"
-                                ? "bg-indigo-600 hover:bg-indigo-700"
-                                : "bg-slate-900 hover:bg-slate-800"
-                          }`}
-                        >
-                          {timelineEventType === "public_reply" ? (
-                            <Send className="w-3.5 h-3.5" />
-                          ) : (
-                            <Plus className="w-3.5 h-3.5" />
+                          {cannedTemplates.length > 0 && (
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                const tpl = cannedTemplates.find(
+                                  (c) => c.id === e.target.value,
+                                );
+                                if (tpl) {
+                                  const rendered = applyTemplatePlaceholders(
+                                    tpl.body,
+                                    selectedTicket,
+                                  );
+                                  setReplyBody((prev) =>
+                                    prev && !isRichTextEmpty(prev)
+                                      ? `${prev}<br/><br/>${rendered}`
+                                      : rendered,
+                                  );
+                                }
+                              }}
+                              className="h-8 px-2.5 rounded-xl border border-slate-200 bg-white text-micro font-bold text-slate-700 cursor-pointer hover:border-indigo-300"
+                            >
+                              <option value="">
+                                {t(
+                                  "+ Template...",
+                                  "+ Šablóna...",
+                                  "+ Sablon...",
+                                )}
+                              </option>
+                              {cannedTemplates.map((tpl) => (
+                                <option key={tpl.id} value={tpl.id}>
+                                  {tpl.title ||
+                                    tpl.name ||
+                                    tpl.shortcut ||
+                                    tpl.id}
+                                </option>
+                              ))}
+                            </select>
                           )}
-                          <span>
-                            {timelineEventType === "public_reply"
+                        </div>
+
+                        {/* Rich HTML Editor + Image & File Upload */}
+                        <TicketRichHtmlEditor
+                          value={replyBody}
+                          onChange={setReplyBody}
+                          attachments={replyAttachments}
+                          onAttachmentsChange={setReplyAttachments}
+                          userLanguage={userLanguage}
+                          tone={
+                            timelineEventType === "internal_note"
+                              ? "internal"
+                              : "default"
+                          }
+                          minRows={3}
+                          placeholder={
+                            timelineEventType === "public_reply"
                               ? t(
-                                  "Send Public Reply",
-                                  "Odoslať verejnú odpoveď",
-                                  "Nyilvános válasz küldése",
+                                  "Write a public reply to the client (paste screenshots or attach files)...",
+                                  "Napíšte verejnú odpoveď klientovi (prilepte obrázky alebo priložte súbory)...",
+                                  "Írjon nyilvános választ az ügyfélnek (képek és fájlok csatolhatók)...",
                                 )
                               : timelineEventType === "internal_note"
                                 ? t(
-                                    "+ Log Internal Note",
-                                    "+ Zaznamenať poznámku",
-                                    "+ Belső jegyzet rögzítése",
+                                    "Write an internal note visible only to your team...",
+                                    "Napíšte internú poznámku viditeľnú iba pre tím...",
+                                    "Írjon csak a csapat számára látható belső jegyzetet...",
                                   )
                                 : t(
-                                    "+ Log Event",
-                                    "+ Zaznamenať udalosť",
-                                    "+ Esemény rögzítése",
-                                  )}
-                          </span>
-                        </button>
+                                    "Enter event summary, call notes, or meeting details...",
+                                    "Zadajte zhrnutie telefonátu, e-mailu alebo stretnutia...",
+                                    "Adja meg a hívás, e-mail vagy találkozó részleteit...",
+                                  )
+                          }
+                        />
+
+                        {/* Bottom Action Row */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <div>
+                            {timelineEventType === "public_reply" &&
+                              selectedTicket.reporterEmail && (
+                                <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-slate-600 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={sendViaEmail}
+                                    onChange={(e) =>
+                                      setSendViaEmail(e.target.checked)
+                                    }
+                                    className="rounded border-slate-300 text-indigo-600"
+                                  />
+                                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                                  <span>
+                                    {t(
+                                      "Send via email to reporter",
+                                      "Odoslať aj e-mailom hlásateľovi",
+                                      "Küldés e-mailben a bejelentőnek",
+                                    )}{" "}
+                                    ({selectedTicket.reporterEmail})
+                                  </span>
+                                </label>
+                              )}
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => setTimelineEventType(null)}
+                              className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-micro font-bold cursor-pointer transition-colors"
+                            >
+                              {t("Close", "Zavrieť", "Bezárás")}
+                            </button>
+                            {timelineEventType === "public_reply" && (
+                              <button
+                                type="button"
+                                disabled={
+                                  isSendingReply ||
+                                  (isRichTextEmpty(replyBody) &&
+                                    replyAttachments.length === 0)
+                                }
+                                onClick={() => handleSendReply("resolved")}
+                                className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40 transition-colors"
+                              >
+                                {t(
+                                  "Send & Resolve",
+                                  "Odoslať a vyriešiť",
+                                  "Küldés és megoldás",
+                                )}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={
+                                isSendingReply ||
+                                (isRichTextEmpty(replyBody) &&
+                                  replyAttachments.length === 0)
+                              }
+                              onClick={() => handleSendReply()}
+                              className={`px-4 py-2 rounded-xl text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95 disabled:opacity-40 ${
+                                timelineEventType === "internal_note"
+                                  ? "bg-amber-600 hover:bg-amber-700"
+                                  : timelineEventType === "public_reply"
+                                    ? "bg-indigo-600 hover:bg-indigo-700"
+                                    : "bg-slate-900 hover:bg-slate-800"
+                              }`}
+                            >
+                              {timelineEventType === "public_reply" ? (
+                                <Send className="w-3.5 h-3.5" />
+                              ) : (
+                                <Plus className="w-3.5 h-3.5" />
+                              )}
+                              <span>
+                                {timelineEventType === "public_reply"
+                                  ? t(
+                                      "Send Public Reply",
+                                      "Odoslať verejnú odpoveď",
+                                      "Nyilvános válasz küldése",
+                                    )
+                                  : timelineEventType === "internal_note"
+                                    ? t(
+                                        "+ Log Internal Note",
+                                        "+ Zaznamenať poznámku",
+                                        "+ Belső jegyzet rögzítése",
+                                      )
+                                    : t(
+                                        "+ Log Event",
+                                        "+ Zaznamenať udalosť",
+                                        "+ Esemény rögzítése",
+                                      )}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3036,7 +3139,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   </form>
                 )}
 
-                {(selectedTicket.taskLinks || []).length === 0 ? (
+                {mergedTicketTaskLinks.length === 0 ? (
                   <div className="p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
                     <CheckSquare className="w-8 h-8 text-slate-300 mx-auto" />
                     <p className="text-caption font-bold text-slate-500">
@@ -3049,7 +3152,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {(selectedTicket.taskLinks || []).map((link) => {
+                    {mergedTicketTaskLinks.map((link) => {
                       const tsk = tasks.find(
                         (tItem) => tItem.id === link.taskId,
                       );

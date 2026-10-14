@@ -29,8 +29,9 @@ import {
     Search,
     ArrowUpDown,
     Hash,
+    Ticket as TicketIcon,
 } from "lucide-react";
-import type { Task, UserProfile, Lead, Project } from "../types";
+import type { Task, UserProfile, Lead, Project, Ticket } from "../types";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -313,6 +314,8 @@ interface TaskDashboardViewProps {
     leads: Lead[];
     /** For the task drawers' "Project" field and the project badge on a card. */
     projects?: Project[];
+    /** Support tickets so tasks created from a ticket link directly to it. */
+    tickets?: Ticket[];
     users?: UserProfile[]; // made optional to avoid TS errors if not passed
     systemLanguage: Language;
     currentUser?: UserProfile;
@@ -436,6 +439,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     setTasks,
     leads,
     projects = [],
+    tickets = [],
     users = [],
     systemLanguage,
     currentUser,
@@ -2443,6 +2447,69 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // Resolve the support ticket linked to a task (by relatedTicketId, ticket.taskLinks, or [TCK-...] prefix).
+    const ticketForTask = (task: Task): Ticket | null => {
+        if (task.relatedTicketId) {
+            const lower = String(task.relatedTicketId).toLowerCase();
+            const direct = tickets.find(
+                (tk) =>
+                    String(tk.id) === String(task.relatedTicketId) ||
+                    (tk.ticketNumber || "").toLowerCase() === lower,
+            );
+            if (direct) return direct;
+        }
+        const byLink = tickets.find((tk) =>
+            (tk.taskLinks || []).some((l) => String(l.taskId) === String(task.id)),
+        );
+        if (byLink) return byLink;
+        const m = (task.title || "").match(/\[(TCK-[A-Za-z0-9_-]+)\]/i);
+        if (m) {
+            const num = m[1].toLowerCase();
+            const byNum = tickets.find(
+                (tk) => (tk.ticketNumber || "").toLowerCase() === num,
+            );
+            if (byNum) return byNum;
+        }
+        return null;
+    };
+
+    const renderTicketBadge = (task: Task, maxWidth: string) => {
+        const matchedTicket = ticketForTask(task);
+        const titleMatch = (task.title || "").match(/\[(TCK-[A-Za-z0-9_-]+)\]/i);
+        const fallbackNumber = titleMatch ? titleMatch[1].toUpperCase() : null;
+        if (!matchedTicket && !task.relatedTicketId && !fallbackNumber) return null;
+        const targetId =
+            matchedTicket?.id || task.relatedTicketId || fallbackNumber || "";
+        const ticketNum =
+            matchedTicket?.ticketNumber ||
+            fallbackNumber ||
+            task.relatedTicketId ||
+            "Ticket";
+        const ticketSubject = matchedTicket?.subject || matchedTicket?.title || "";
+        return (
+            <a
+                href={`#tickets/${encodeURIComponent(targetId)}`}
+                onClick={(e) => e.stopPropagation()}
+                data-testid="task-ticket-link"
+                title={
+                    ticketSubject
+                        ? `${t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}: ${ticketNum} — ${ticketSubject}`
+                        : `${t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}: ${ticketNum}`
+                }
+                className={`group/ticket text-micro font-bold text-indigo-700 flex items-center gap-1 bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 rounded-md ${maxWidth} hover:bg-indigo-100 hover:text-indigo-900 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer shrink-0`}
+            >
+                <TicketIcon className="h-2.5 w-2.5 shrink-0 text-indigo-600" />
+                <span className="font-mono font-extrabold shrink-0">{ticketNum}</span>
+                {ticketSubject && (
+                    <span className="truncate text-indigo-600/90 font-semibold">
+                        · {ticketSubject}
+                    </span>
+                )}
+                <ArrowUpRight className="h-2.5 w-2.5 shrink-0 transition-transform group-hover/ticket:translate-x-px group-hover/ticket:-translate-y-px" />
+            </a>
+        );
+    };
+
     const renderPriorityIcon = (priority: Task["priority"], className: string = "h-3.5 w-3.5") => {
         if (priority === "high") {
             return (
@@ -2663,6 +2730,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </span>
                         )}
 
+                        {renderTicketBadge(task, "max-w-45")}
+
                         {renderLeadBadge(task, "max-w-35")}
 
                         {projectNameFor(task) && (
@@ -2824,6 +2893,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     knownEntities={mentionEntities}
                                 />
                             </span>
+                            {renderTicketBadge(task, "max-w-45")}
                             {renderLeadBadge(task, "max-w-35")}
                             {projectNameFor(task) && (
                                 <span className="text-micro font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35">
@@ -4073,7 +4143,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             </span>
                                                         )}
 
-                                                        {/* Lead & Project Badges */}
+                                                        {/* Ticket, Lead & Project Badges */}
+                                                        {renderTicketBadge(ev.task, "max-w-45")}
                                                         {renderLeadBadge(ev.task, "max-w-35")}
                                                         {ev.task.relatedProjectId && projectNameFor(ev.task) && (
                                                             <span className="text-micro font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-35">
@@ -4656,6 +4727,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     task={editingTask}
                     leads={leads}
                     projects={projects}
+                    tickets={tickets}
                     users={users}
                     taskStates={taskStates}
                     systemLanguage={systemLanguage}
