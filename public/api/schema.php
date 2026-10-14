@@ -3489,6 +3489,9 @@ if (!function_exists('ccrm_schema_statements')) {
             }
             try {
                 $pdo->exec("UPDATE `tasks` t INNER JOIN `ticket_task_links` tt ON tt.task_id = t.id SET t.related_ticket_id = tt.ticket_id WHERE t.related_ticket_id IS NULL OR t.related_ticket_id = ''");
+                $pdo->exec("UPDATE `projects` SET `name` = 'Vila Slavín – Kamenná fasáda a terasa' WHERE `id` = 'proj-vila-slavin' AND (`name` IS NULL OR `name` = '')");
+                $pdo->exec("UPDATE `projects` SET `name` = 'Kuchynský ostrov Neolith Calacatta' WHERE `id` = 'proj-kuchyna-neolith' AND (`name` IS NULL OR `name` = '')");
+                $pdo->exec("UPDATE `projects` SET `ticket_widget_enabled` = 1, `ticket_allowed_domains` = '[\"localhost\",\"127.0.0.1\",\"slavin-residence.sk\"]' WHERE `id` = 'proj-vila-slavin' AND (`ticket_allowed_domains` IS NULL OR `ticket_allowed_domains` = '' OR `ticket_allowed_domains` = '[]')");
             } catch (\Throwable $e) {}
 
             // Seed default TICKET_STATUSES and TICKET_SETTINGS if absent

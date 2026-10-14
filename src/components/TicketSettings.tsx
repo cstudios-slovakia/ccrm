@@ -705,21 +705,21 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
       </div>
 
       {/* 2. Support Email IMAP Polling & OpenAI Project Routing */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs space-y-5">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
               <Mail className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-body font-bold text-slate-900 dark:text-white">
+              <h3 className="text-body font-bold text-slate-900">
                 {tr(
                   "Support E-mail (IMAP Polling & SMTP) + OpenAI priradenie projektu",
                   "Support Email (IMAP Polling & SMTP) + OpenAI Project Routing",
                   "Támogatási E-mail (IMAP & SMTP) + OpenAI projekt-hozzárendelés",
                 )}
               </h3>
-              <p className="text-caption text-slate-500 dark:text-slate-400">
+              <p className="text-caption text-slate-500">
                 {tr(
                   "Automatické sťahovanie e-mailov zo support schránky. Ak je nastavený OpenAI kľúč, AI automaticky vyberie prislúchajúci projekt.",
                   "Automatically poll support inbox via IMAP. When an OpenAI key is configured, AI automatically selects the matching project.",
@@ -729,7 +729,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
             </div>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-ui font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+          <label className="inline-flex items-center gap-2 text-ui font-semibold text-slate-700 cursor-pointer">
             <input
               type="checkbox"
               checked={Boolean(ticketSettings.imapEnabled)}
@@ -750,7 +750,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-caption font-semibold text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-caption font-semibold text-slate-500 mb-1">
               IMAP Host
             </label>
             <input
@@ -761,12 +761,12 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 setTicketSettings((prev) => ({ ...prev, imapHost: e.target.value }))
               }
               placeholder="imap.vasadomena.sk"
-              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-caption font-semibold text-slate-500 dark:text-slate-400 mb-1">
+              <label className="block text-caption font-semibold text-slate-500 mb-1">
                 IMAP Port
               </label>
               <input
@@ -779,11 +779,11 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                     imapPort: parseInt(e.target.value || "993", 10),
                   }))
                 }
-                className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
               />
             </div>
             <div>
-              <label className="block text-caption font-semibold text-slate-500 dark:text-slate-400 mb-1">
+              <label className="block text-caption font-semibold text-slate-500 mb-1">
                 {tr("Šifrovanie", "Encryption", "Titkosítás")}
               </label>
               <select
@@ -795,7 +795,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                     imapEncryption: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
               >
                 <option value="ssl">SSL / TLS</option>
                 <option value="tls">STARTTLS</option>
@@ -804,7 +804,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
             </div>
           </div>
           <div>
-            <label className="block text-caption font-semibold text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-caption font-semibold text-slate-500 mb-1">
               {tr("Priečinok", "IMAP Folder", "IMAP Mappa")}
             </label>
             <input
@@ -818,11 +818,11 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 }))
               }
               placeholder="INBOX"
-              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
           </div>
           <div>
-            <label className="block text-caption font-semibold text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-caption font-semibold text-slate-500 mb-1">
               {tr("IMAP Prihlasovacie meno", "IMAP Username / Email", "IMAP Felhasználónév")}
             </label>
             <input
@@ -833,11 +833,11 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 setTicketSettings((prev) => ({ ...prev, imapUser: e.target.value }))
               }
               placeholder="support@firma.sk"
-              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
           </div>
           <div>
-            <label className="block text-caption font-semibold text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-caption font-semibold text-slate-500 mb-1">
               {tr("IMAP Heslo", "IMAP Password", "IMAP Jelszó")}
             </label>
             <input
@@ -851,7 +851,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 }))
               }
               placeholder="••••••••"
-              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="w-full px-3 py-2 text-ui rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
           </div>
           <div className="flex items-end gap-2">
@@ -859,7 +859,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
               type="button"
               onClick={handleTestImap}
               disabled={imapTestStatus.loading}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-caption font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-caption font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-500" />
               {imapTestStatus.loading
@@ -886,8 +886,8 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
               <div
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-caption font-medium ${
                   imapTestStatus.ok
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                    : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                    ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                    : "bg-red-500/10 text-red-600 border border-red-500/20"
                 }`}
               >
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -898,8 +898,8 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
               <div
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-caption font-medium ${
                   pollStatus.ok
-                    ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                    : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                    ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                    : "bg-red-500/10 text-red-600 border border-red-500/20"
                 }`}
               >
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -910,7 +910,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
         )}
 
         {/* SMTP Outbound Support Replies */}
-        <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="pt-4 border-t border-slate-200">
           <h4 className="text-caption font-bold uppercase tracking-wider text-slate-400 mb-3">
             {tr(
               "Odchádzajúce odpovede (SMTP pre tikety)",
@@ -927,7 +927,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 setTicketSettings((prev) => ({ ...prev, smtpHost: e.target.value }))
               }
               placeholder="SMTP Host (smtp.firma.sk)"
-              className="px-3 py-2 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="px-3 py-2 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
             <input
               type="number"
@@ -940,7 +940,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 }))
               }
               placeholder="SMTP Port (465)"
-              className="px-3 py-2 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="px-3 py-2 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
             <input
               type="text"
@@ -950,7 +950,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 setTicketSettings((prev) => ({ ...prev, smtpUser: e.target.value }))
               }
               placeholder="SMTP User"
-              className="px-3 py-2 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="px-3 py-2 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
             <input
               type="password"
@@ -963,20 +963,20 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 }))
               }
               placeholder="SMTP Password"
-              className="px-3 py-2 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="px-3 py-2 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
           </div>
         </div>
 
         {/* OpenAI Project Routing */}
-        <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="pt-4 border-t border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center shrink-0 mt-0.5">
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-ui font-bold text-slate-900 dark:text-white">
+                <span className="text-ui font-bold text-slate-900">
                   {tr(
                     "AI priradenie projektu cez OpenAI",
                     "OpenAI Automatic Project Routing",
@@ -996,7 +996,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                   className="w-4 h-4 rounded accent-purple-500"
                 />
               </div>
-              <p className="text-caption text-slate-500 dark:text-slate-400">
+              <p className="text-caption text-slate-500">
                 {tr(
                   "Ak je v systéme alebo nižšie nastavený OpenAI API kľúč, prichádzajúci e-mail sa automaticky priradí k správnemu projektu a určí sa jeho priorita. Ak má projekt/klient prázdny whitelist e-mailov, tikety sa príjmu bez obmedzenia.",
                   "If an OpenAI API key is set (globally or below), incoming emails are automatically routed to the matching project and prioritized. If a project/client has an empty email whitelist, tickets are accepted verbatim.",
@@ -1021,23 +1021,23 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 "Optional OpenAI API Key override",
                 "Opcionális OpenAI API kulcs",
               )}
-              className="w-full px-3 py-2 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+              className="w-full px-3 py-2 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
             />
           </div>
         </div>
       </div>
 
       {/* 3. SLA Targets per Priority */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-body font-bold text-slate-900 dark:text-white">
+            <h3 className="text-body font-bold text-slate-900">
               {tr("SLA Limity podľa priority", "SLA Targets by Priority", "SLA célértékek prioritás szerint")}
             </h3>
-            <p className="text-caption text-slate-500 dark:text-slate-400">
+            <p className="text-caption text-slate-500">
               {tr(
                 "Maximálny čas prvej odpovede a vyriešenia v minútach.",
                 "Maximum first response and resolution time in minutes.",
@@ -1056,9 +1056,9 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
               return (
                 <div
                   key={prio}
-                  className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-2.5"
+                  className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5"
                 >
-                  <div className="text-caption font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                  <div className="text-caption font-bold uppercase tracking-wider text-slate-700">
                     {prio}
                   </div>
                   <div>
@@ -1083,7 +1083,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                           },
                         }));
                       }}
-                      className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 bg-white text-slate-900"
                     />
                   </div>
                   <div>
@@ -1108,7 +1108,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                           },
                         }));
                       }}
-                      className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      className="w-full px-2.5 py-1.5 text-caption rounded-lg border border-slate-200 bg-white text-slate-900"
                     />
                   </div>
                 </div>
@@ -1119,16 +1119,16 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
       </div>
 
       {/* 4. Canned Reply Templates */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xs">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
             <MessageSquare className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-body font-bold text-slate-900 dark:text-white">
+            <h3 className="text-body font-bold text-slate-900">
               {tr("Šablóny rýchlych odpovedí", "Canned Reply Templates", "Sablon válaszok")}
             </h3>
-            <p className="text-caption text-slate-500 dark:text-slate-400">
+            <p className="text-caption text-slate-500">
               {tr(
                 "Predpripravené odpovede pre rýchlu komunikáciu v detaile tiketu.",
                 "Pre-written replies for one-click insertion in the ticket composer.",
@@ -1142,20 +1142,20 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
           {(ticketSettings.replyTemplates || []).map((tpl) => (
             <div
               key={tpl.id}
-              className="flex items-start justify-between gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
+              className="flex items-start justify-between gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50/70"
             >
               <div className="space-y-1 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-caption font-bold text-slate-900 dark:text-white">
+                  <span className="text-caption font-bold text-slate-900">
                     {tpl.title}
                   </span>
                   {tpl.shortcut && (
-                    <span className="px-1.5 py-0.5 text-micro font-mono rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                    <span className="px-1.5 py-0.5 text-micro font-mono rounded bg-slate-200 text-slate-700">
                       {tpl.shortcut}
                     </span>
                   )}
                 </div>
-                <p className="text-caption text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+                <p className="text-caption text-slate-600 whitespace-pre-wrap">
                   {tpl.body}
                 </p>
               </div>
@@ -1180,21 +1180,21 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
         </div>
 
         {canEdit && (
-          <div className="space-y-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <div className="space-y-2 pt-3 border-t border-slate-200">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <input
                 type="text"
                 value={newTplTitle}
                 onChange={(e) => setNewTplTitle(e.target.value)}
                 placeholder={tr("Názov šablóny", "Template Title", "Sablon címe")}
-                className="md:col-span-2 px-3 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                className="md:col-span-2 px-3 py-1.5 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
               />
               <input
                 type="text"
                 value={newTplShortcut}
                 onChange={(e) => setNewTplShortcut(e.target.value)}
                 placeholder={tr("Skratka (napr. /ack)", "Shortcut (e.g. /ack)", "Gyorsbillentyű (/ack)")}
-                className="px-3 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                className="px-3 py-1.5 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
               />
             </div>
             <div className="flex gap-2">
@@ -1203,7 +1203,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
                 onChange={(e) => setNewTplBody(e.target.value)}
                 placeholder={tr("Text šablóny odpovede...", "Reply template text...", "Sablon szövege...")}
                 rows={2}
-                className="flex-1 px-3 py-1.5 text-caption rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                className="flex-1 px-3 py-1.5 text-caption rounded-lg border border-slate-200 bg-slate-50 text-slate-900"
               />
               <button
                 type="button"

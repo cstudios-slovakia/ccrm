@@ -22,7 +22,8 @@ try {
  */
 function ccrm_extract_host_from_url(string $url): string {
     $url = trim($url);
-    if ($url === '') return '';
+    if ($url === '' || strtolower($url) === 'null') return '';
+    if (stripos($url, 'file://') === 0) return 'localhost';
     if (strpos($url, '://') === false) {
         $url = 'http://' . $url;
     }
@@ -32,16 +33,21 @@ function ccrm_extract_host_from_url(string $url): string {
 
 /**
  * Strictly verify that $requestHost is in $allowedDomains.
- * The widget is NEVER public: if $allowedDomains is empty or $requestHost is empty, returns false.
+ * The widget is NEVER public: if $allowedDomains is empty, returns false.
+ * When testing locally from a file:// URL (where browsers omit Referer and send Origin: null or empty),
+ * allow if 'localhost', '127.0.0.1', 'file', or 'file://' is explicitly in $allowedDomains.
  */
 function ccrm_widget_domain_matches(string $requestHost, array $allowedDomains): bool {
     $requestHost = strtolower(trim($requestHost));
-    if ($requestHost === '') return false;
 
     $cleanDomains = [];
     foreach ($allowedDomains as $d) {
         $raw = strtolower(trim((string)$d));
         if ($raw === '') continue;
+        if ($raw === 'file://' || $raw === 'file') {
+            $cleanDomains[] = 'localhost';
+            continue;
+        }
         // Strip scheme/path if admin pasted a full URL
         if (strpos($raw, '://') !== false) {
             $parsedHost = parse_url($raw, PHP_URL_HOST);
@@ -55,6 +61,11 @@ function ccrm_widget_domain_matches(string $requestHost, array $allowedDomains):
 
     if (empty($cleanDomains)) {
         return false;
+    }
+
+    // If opened from local file:// (empty host / 'null' origin), allow if localhost or 127.0.0.1 is whitelisted
+    if ($requestHost === '' || $requestHost === 'null') {
+        return in_array('localhost', $cleanDomains, true) || in_array('127.0.0.1', $cleanDomains, true);
     }
 
     foreach ($cleanDomains as $pattern) {
@@ -76,13 +87,12 @@ if ($requestHost === '') {
     $requestHost = ccrm_extract_host_from_url($refererHeader);
 }
 
-// Handle CORS headers if Origin is present
-if ($originHeader !== '') {
-    header('Access-Control-Allow-Origin: ' . $originHeader);
-    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type');
-    header('Vary: Origin');
-}
+// Handle CORS & Cross-Origin-Resource-Policy headers so external & file:// pages can load the widget
+header('Access-Control-Allow-Origin: ' . ($originHeader !== '' ? $originHeader : '*'));
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+header('Cross-Origin-Resource-Policy: cross-origin');
+header('Vary: Origin');
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
@@ -101,7 +111,7 @@ if ($projectId === '') {
     exit;
 }
 
-$pStmt = $pdo->prepare("SELECT * FROM `projects` WHERE `id` = ? AND `is_archived` = 0 LIMIT 1");
+$pStmt = $pdo->prepare("SELECT * FROM `projects` WHERE `id` = ? AND `archived` = 0 LIMIT 1");
 $pStmt->execute([$projectId]);
 $project = $pStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -143,9 +153,10 @@ if ($publicHash === '') {
 $getCombinedEmailWhitelist = function () use ($pdo, $project): array {
     $projEmails = json_decode($project['ticket_allowed_emails'] ?? '[]', true) ?: [];
     $leadEmails = [];
-    if (!empty($project['lead_id'])) {
+    $leadId = !empty($project['lead_id']) ? $project['lead_id'] : ($project['client_id'] ?? '');
+    if ($leadId !== '') {
         $lStmt = $pdo->prepare("SELECT `ticket_allowed_emails` FROM `leads` WHERE `id` = ? LIMIT 1");
-        $lStmt->execute([$project['lead_id']]);
+        $lStmt->execute([$leadId]);
         $rawLeadEmails = $lStmt->fetchColumn();
         if ($rawLeadEmails) {
             $leadEmails = json_decode((string)$rawLeadEmails, true) ?: [];
@@ -158,10 +169,10 @@ $getCombinedEmailWhitelist = function () use ($pdo, $project): array {
 if ($action === 'list') {
     header('Content-Type: application/json');
     $tStmt = $pdo->prepare("
-        SELECT `id`, `ticket_number`, `subject`, `description`, `status`, `priority`, `type`,
+        SELECT `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`,
                `reporter_name`, `created_at`, `updated_at`, `resolved_at`
         FROM `tickets`
-        WHERE `project_id` = ? AND `is_archived` = 0
+        WHERE `project_id` = ? AND `archived` = 0
         ORDER BY `updated_at` DESC
         LIMIT 50
     ");
@@ -192,7 +203,8 @@ if ($action === 'list') {
         $tickets[] = [
             'id' => $r['id'],
             'ticketNumber' => $r['ticket_number'],
-            'subject' => $r['subject'],
+            'title' => $r['title'],
+            'subject' => $r['title'],
             'description' => $r['description'],
             'status' => $r['status'],
             'priority' => $r['priority'],
@@ -216,7 +228,7 @@ if ($action === 'list') {
 // Action: submit new ticket from widget
 if ($action === 'submit') {
     header('Content-Type: application/json');
-    $subject = trim((string)($input['subject'] ?? ''));
+    $subject = trim((string)($input['subject'] ?? ($input['title'] ?? '')));
     $description = trim((string)($input['description'] ?? ''));
     $reporterName = trim((string)($input['reporterName'] ?? ''));
     $reporterEmail = strtolower(trim((string)($input['reporterEmail'] ?? '')));
@@ -238,26 +250,25 @@ if ($action === 'submit') {
         exit;
     }
 
-    $leadId = !empty($project['lead_id']) ? (string)$project['lead_id'] : null;
+    $leadId = !empty($project['lead_id']) ? (string)$project['lead_id'] : (!empty($project['client_id']) ? (string)$project['client_id'] : null);
     $contractId = null;
     if ($projectId || $leadId) {
-        $cStmt = $pdo->prepare("SELECT `id` FROM `support_contracts` WHERE `is_active` = 1 AND (`project_id` = ? OR `lead_id` = ?) LIMIT 1");
+        $cStmt = $pdo->prepare("SELECT `id` FROM `support_contracts` WHERE `project_id` = ? OR `client_id` = ? LIMIT 1");
         $cStmt->execute([$projectId, $leadId]);
         $contractId = $cStmt->fetchColumn() ?: null;
     }
 
     $tckId = 'tck-' . bin2hex(random_bytes(6));
     $tckNumber = ccrm_next_ticket_number($pdo);
-    $publicToken = bin2hex(random_bytes(16));
     $sla = ccrm_compute_ticket_sla($pdo, $priority, $contractId);
 
     $pdo->prepare("
         INSERT INTO `tickets` (
-            `id`, `ticket_number`, `subject`, `description`, `status`, `priority`, `type`, `channel`,
-            `project_id`, `lead_id`, `contract_id`, `reporter_name`, `reporter_email`,
-            `sla_first_response_due_at`, `sla_resolution_due_at`, `billable`, `logged_minutes`,
-            `metadata_json`, `attachments_json`, `public_token`, `is_archived`, `created_at`, `updated_at`
-        ) VALUES (?, ?, ?, ?, 'new', ?, ?, 'widget', ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, 0, NOW(), NOW())
+            `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
+            `project_id`, `client_id`, `reporter_name`, `reporter_email`,
+            `first_response_due_at`, `resolve_due_at`,
+            `metadata_json`, `attachments_json`, `archived`, `created_at`, `updated_at`
+        ) VALUES (?, ?, ?, ?, 'new', ?, ?, 'widget', ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
     ")->execute([
         $tckId,
         $tckNumber,
@@ -267,14 +278,12 @@ if ($action === 'submit') {
         $type,
         $projectId,
         $leadId,
-        $contractId,
         $reporterName ?: ($reporterEmail ?: 'Widget User'),
         $reporterEmail ?: null,
         $sla['firstResponseDueAt'],
         $sla['resolutionDueAt'],
         json_encode($metadata),
         json_encode($attachments),
-        $publicToken,
     ]);
 
     $msgId = 'tmsg-' . bin2hex(random_bytes(6));
@@ -295,6 +304,7 @@ if ($action === 'submit') {
         'ticket' => [
             'id' => $tckId,
             'ticketNumber' => $tckNumber,
+            'title' => $subject,
             'subject' => $subject,
             'status' => 'new',
             'priority' => $priority,
@@ -326,7 +336,7 @@ if ($action === 'followup') {
         exit;
     }
 
-    $tStmt = $pdo->prepare("SELECT `id`, `status` FROM `tickets` WHERE `id` = ? AND `project_id` = ? AND `is_archived` = 0 LIMIT 1");
+    $tStmt = $pdo->prepare("SELECT `id`, `status` FROM `tickets` WHERE `id` = ? AND `project_id` = ? AND `archived` = 0 LIMIT 1");
     $tStmt->execute([$ticketId, $projectId]);
     $ticketRow = $tStmt->fetch(PDO::FETCH_ASSOC);
     if (!$ticketRow) {
@@ -350,7 +360,7 @@ if ($action === 'followup') {
         $createdAt,
     ]);
 
-    $newStatus = in_array($ticketRow['status'], ['waiting', 'resolved'], true) ? 'open' : $ticketRow['status'];
+    $newStatus = in_array($ticketRow['status'], ['waiting', 'waiting_client', 'resolved'], true) ? 'open' : $ticketRow['status'];
     $pdo->prepare("UPDATE `tickets` SET `status` = ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $ticketId]);
 
     echo json_encode([
@@ -379,12 +389,13 @@ $crmBaseUrl = $scheme . '://' . $crmHost . ($scriptDir ? $scriptDir : '');
 $endpointUrl = $crmBaseUrl . '/api/ticket_widget.php';
 $publicStatusUrl = $crmBaseUrl . '/#public-tickets/' . rawurlencode($publicHash);
 
+$projectDisplayName = !empty($project['name']) ? $project['name'] : ($projectId === 'proj-vila-slavin' ? 'Vila Slavín' : $projectId);
 $rawWidgetConfig = !empty($project['ticket_widget_config_json']) ? (json_decode($project['ticket_widget_config_json'], true) ?: []) : [];
 $widgetConfig = array_merge([
     'primaryColor' => '#f97316',
     'position' => 'bottom-right',
     'buttonLabel' => 'Podpora / Support',
-    'title' => $project['name'] . ' — Support',
+    'title' => $projectDisplayName . ' — Support',
     'subtitle' => 'Nahláste problém alebo odpovedzte na existujúci tiket.',
     'requireEmail' => !empty($getCombinedEmailWhitelist()),
     'captureErrors' => true,
@@ -394,7 +405,7 @@ $widgetConfig = array_merge([
 
 $configJson = json_encode([
     'projectId' => $projectId,
-    'projectName' => $project['name'],
+    'projectName' => $projectDisplayName,
     'endpointUrl' => $endpointUrl,
     'publicStatusUrl' => $publicStatusUrl,
     'config' => $widgetConfig,
@@ -443,7 +454,13 @@ $configJson = json_encode([
 
   const hostEl = document.createElement('div');
   hostEl.id = 'koperniq-ticket-widget-host';
-  document.body.appendChild(hostEl);
+  if (document.body) {
+    document.body.appendChild(hostEl);
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      document.body.appendChild(hostEl);
+    });
+  }
   const shadow = hostEl.attachShadow({ mode: 'open' });
 
   const primary = CFG.primaryColor || '#f97316';

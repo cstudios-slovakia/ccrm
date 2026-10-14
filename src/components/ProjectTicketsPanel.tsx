@@ -231,7 +231,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
   return (
     <div className="space-y-5">
       {/* Sub-navigation between Project Tickets and Widget Settings */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -239,7 +239,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors ${
               subView === "tickets"
                 ? "bg-orange-500 text-white shadow-xs"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
             <TicketIcon className="w-4 h-4" />
@@ -254,7 +254,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors ${
               subView === "widget"
                 ? "bg-orange-500 text-white shadow-xs"
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
             <Code2 className="w-4 h-4" />
@@ -273,7 +273,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             href={publicStatusUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-caption font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-caption font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
           >
             <ExternalLink className="w-3.5 h-3.5 text-orange-500" />
             {tr("Verejný stav tiketov", "Public Status Board", "Nyilvános státusz oldal")}
@@ -295,9 +295,9 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
       {showNewModal && (
         <form
           onSubmit={handleCreateQuickTicket}
-          className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-3"
+          className="p-4 rounded-2xl border border-indigo-500/30 bg-indigo-500/5 space-y-3"
         >
-          <div className="text-caption font-bold text-indigo-900 dark:text-indigo-200">
+          <div className="text-caption font-bold text-slate-900">
             {tr(
               "Vytvoriť tiket pre tento projekt",
               "Create Ticket for this Project",
@@ -311,7 +311,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
               placeholder={tr("Predmet tiketu *", "Ticket Subject *", "Jegy tárgya *")}
-              className="md:col-span-2 px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+              className="md:col-span-2 px-3 py-2 text-caption rounded-xl border border-slate-200 bg-white text-slate-900"
             />
             <CustomSelect
               value={newType}
@@ -393,7 +393,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             <button
               type="button"
               onClick={() => setShowNewModal(false)}
-              className="px-3 py-1.5 rounded-xl text-caption font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+              className="px-3 py-1.5 rounded-xl text-caption font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
             >
               {tr("Zrušiť", "Cancel", "Mégse")}
             </button>
@@ -410,9 +410,9 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
       {subView === "tickets" ? (
         <div className="space-y-2.5">
           {projectTickets.length === 0 ? (
-            <div className="p-8 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2">
+            <div className="p-8 rounded-2xl border border-dashed border-slate-200 bg-white/50 text-center space-y-2">
               <TicketIcon className="w-8 h-8 text-slate-400 mx-auto" />
-              <div className="text-ui font-semibold text-slate-700 dark:text-slate-200">
+              <div className="text-ui font-semibold text-slate-700">
                 {tr(
                   "Zatiaľ žiadne tikety pre tento projekt",
                   "No tickets for this project yet",
@@ -441,20 +441,20 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                       window.location.hash = `tickets/${encodeURIComponent(tck.id)}`;
                     }
                   }}
-                  className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-orange-500/50 cursor-pointer transition-all"
+                  className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl border border-slate-200 bg-white hover:border-orange-500/50 cursor-pointer transition-all"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="px-2 py-1 rounded-lg text-micro font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                    <span className="px-2 py-1 rounded-lg text-micro font-mono font-bold bg-slate-100 text-slate-700">
                       {tck.ticketNumber}
                     </span>
                     <div className="min-w-0">
-                      <div className="text-ui font-bold text-slate-900 dark:text-white truncate">
-                        {tck.subject}
+                      <div className="text-ui font-bold text-slate-900 truncate">
+                        {tck.subject || tck.title}
                       </div>
                       <div className="flex items-center gap-2 text-micro text-slate-500">
                         <span>{tck.reporterName || tck.reporterEmail || "—"}</span>
                         <span>•</span>
-                        <span className="uppercase">{tck.channel}</span>
+                        <span className="uppercase">{tck.channel || tck.source}</span>
                         <span>•</span>
                         <span className="inline-flex items-center gap-1">
                           <MessageSquare className="w-3 h-3" />
@@ -471,7 +471,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                           ? "bg-red-500/15 text-red-600"
                           : tck.priority === "high"
                             ? "bg-orange-500/15 text-orange-600"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                            : "bg-slate-100 text-slate-600"
                       }`}
                     >
                       {tck.priority}
@@ -505,20 +505,20 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
       ) : (
         <div className="space-y-5">
           {/* Enable Widget Banner */}
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap items-center justify-between gap-4">
+          <div className="p-4 rounded-2xl border border-slate-200 bg-white flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-ui font-bold text-slate-900 dark:text-white">
+                <h4 className="text-ui font-bold text-slate-900">
                   {tr(
                     "Plávajúci HTML Support Widget (Privátny na povolených doménach)",
                     "Floating HTML Support Widget (Private to Whitelisted Domains)",
                     "Lebegő HTML Támogatási Widget (Csak engedélyezett domaineken)",
                   )}
                 </h4>
-                <p className="text-caption text-slate-500 dark:text-slate-400 max-w-2xl">
+                <p className="text-caption text-slate-500 max-w-2xl">
                   {tr(
                     "Widget nikdy nie je verejný — načíta sa a umožní odosielať tikety či odpovede na existujúce tikety výhradne na doménach uvedených vo whiteliste nižšie.",
                     "The widget is never public — it renders and allows submitting issues or following up on existing tickets strictly on the whitelisted domains below.",
@@ -528,7 +528,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
               </div>
             </div>
 
-            <label className="inline-flex items-center gap-2 text-caption font-bold text-slate-800 dark:text-slate-100 cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-caption font-bold text-slate-800 cursor-pointer">
               <input
                 type="checkbox"
                 checked={Boolean(project.ticketWidgetEnabled)}
@@ -550,10 +550,10 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
           {/* Domain Whitelist & Email Whitelist Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Domain Whitelist */}
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+            <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
               <div className="flex items-center gap-2">
                 <Globe className="w-4 h-4 text-blue-500" />
-                <span className="text-caption font-bold text-slate-900 dark:text-white">
+                <span className="text-caption font-bold text-slate-900">
                   {tr(
                     "Povolené domény pre HTML widget (Povinné)",
                     "Whitelisted Domains for HTML Widget (Required)",
@@ -582,7 +582,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                   allowedDomains.map((dom) => (
                     <span
                       key={dom}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-caption font-mono font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-caption font-mono font-semibold bg-blue-500/10 text-blue-600 border border-blue-500/20"
                     >
                       <span>{dom}</span>
                       {canEdit && (
@@ -611,7 +611,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                       }
                     }}
                     placeholder="app.klient.sk, *.klient.sk, localhost"
-                    className="flex-1 px-3 py-1.5 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                    className="flex-1 px-3 py-1.5 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900"
                   />
                   <button
                     type="button"
@@ -625,10 +625,10 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             </div>
 
             {/* Email Whitelist */}
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+            <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-emerald-500" />
-                <span className="text-caption font-bold text-slate-900 dark:text-white">
+                <span className="text-caption font-bold text-slate-900">
                   {tr(
                     "Povolené e-maily projektu (Whitelist odosielateľov)",
                     "Project Allowed Sender Emails (Optional Whitelist)",
@@ -656,7 +656,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                   allowedEmails.map((em) => (
                     <span
                       key={em}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-caption font-mono font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-caption font-mono font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                     >
                       <span>{em}</span>
                       {canEdit && (
@@ -685,7 +685,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                       }
                     }}
                     placeholder="klient@firma.sk alebo @firma.sk"
-                    className="flex-1 px-3 py-1.5 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                    className="flex-1 px-3 py-1.5 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900"
                   />
                   <button
                     type="button"
@@ -700,8 +700,8 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
           </div>
 
           {/* Widget Customization */}
-          <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
-            <div className="text-caption font-bold text-slate-900 dark:text-white">
+          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
+            <div className="text-caption font-bold text-slate-900">
               {tr("Vzhľad a správanie widgetu", "Widget Appearance & Behavior", "Widget megjelenése és működése")}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -721,7 +721,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                       },
                     })
                   }
-                  className="w-full h-9 rounded-lg cursor-pointer border border-slate-200 dark:border-slate-700 bg-transparent"
+                  className="w-full h-9 rounded-lg cursor-pointer border border-slate-200 bg-transparent"
                 />
               </div>
               <div>
@@ -739,7 +739,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                       },
                     })
                   }
-                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900"
                 >
                   <option value="bottom-right">
                     {tr("Vpravo dole", "Bottom Right", "Jobb alul")}
@@ -766,7 +766,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                     })
                   }
                   placeholder="Podpora / Support"
-                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900"
                 />
               </div>
               <div>
@@ -786,7 +786,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                     })
                   }
                   placeholder={`${project.name || "Project"} — Support`}
-                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900"
                 />
               </div>
             </div>
@@ -794,9 +794,9 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
 
           {/* HTML Embed Code & Public Hashed Status Link */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
+            <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-caption font-bold text-slate-900 dark:text-white">
+                <span className="text-caption font-bold text-slate-900">
                   {tr(
                     "HTML Kód pre vloženie na web (Embed Code)",
                     "HTML Embed Snippet",
@@ -810,7 +810,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                     setCopiedEmbed(true);
                     setTimeout(() => setCopiedEmbed(false), 2000);
                   }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-caption font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-caption font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
                 >
                   {copiedEmbed ? (
                     <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -824,14 +824,14 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                   </span>
                 </button>
               </div>
-              <pre className="p-3 rounded-xl bg-slate-950 text-slate-200 text-micro font-mono overflow-x-auto">
+              <pre className="p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 text-micro font-mono overflow-x-auto">
                 {embedCode}
               </pre>
             </div>
 
-            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
+            <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-caption font-bold text-slate-900 dark:text-white">
+                <span className="text-caption font-bold text-slate-900">
                   {tr(
                     "Verejná (zahashovaná) URL stavov tiketov projektu",
                     "Public (Hashed) Project Ticket Status URL",
@@ -844,7 +844,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                       type="button"
                       onClick={handleRegenerateHash}
                       title={tr("Pregenerovať hash", "Regenerate hash", "Hash újragenerálása")}
-                      className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                     </button>
@@ -856,7 +856,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                       setCopiedPublicUrl(true);
                       setTimeout(() => setCopiedPublicUrl(false), 2000);
                     }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-caption font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-caption font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
                   >
                     {copiedPublicUrl ? (
                       <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -871,7 +871,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                   </button>
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-300 text-micro font-mono break-all">
+              <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-micro font-mono break-all">
                 {publicStatusUrl}
               </div>
               <p className="text-micro text-slate-500">

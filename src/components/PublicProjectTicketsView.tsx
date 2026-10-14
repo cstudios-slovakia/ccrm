@@ -34,12 +34,14 @@ interface PublicTicketItem {
 }
 
 interface PublicStatusDef {
+  id?: string;
   key: string;
   labelEn: string;
   labelSk: string;
   labelHu: string;
   color: string;
-  isClosed: boolean;
+  isClosed?: boolean;
+  isTerminal?: boolean;
   sortOrder: number;
 }
 
@@ -63,7 +65,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
       );
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data.error || "Invalid or expired public ticket status link.");
+        setError(data.message || data.error || "Invalid or expired public ticket status link.");
       } else {
         setProjectName(data.project?.name || "Project");
         setClientName(data.project?.clientName || null);
@@ -83,7 +85,10 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
 
   const statusMap = useMemo(() => {
     const m = new Map<string, PublicStatusDef>();
-    statuses.forEach((s) => m.set(s.key, s));
+    statuses.forEach((s) => {
+      if (s.key) m.set(s.key, s);
+      if (s.id) m.set(s.id, s);
+    });
     return m;
   }, [statuses]);
 
@@ -92,7 +97,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
     let resolved = 0;
     tickets.forEach((tk) => {
       const st = statusMap.get(tk.status);
-      if (st?.isClosed || tk.status === "resolved" || tk.status === "closed") {
+      if (st?.isClosed || st?.isTerminal || tk.status === "resolved" || tk.status === "closed") {
         resolved++;
       } else {
         open++;

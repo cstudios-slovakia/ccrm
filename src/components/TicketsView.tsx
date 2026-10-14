@@ -91,7 +91,6 @@ import {
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
-import { PipelineStrip, type PipelineStripSegment } from "./ui/PipelineStrip";
 import {
   TicketRichHtmlEditor,
   TicketHtmlContent,
@@ -365,7 +364,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [pickingClient, setPickingClient] = useState(false);
 
   // Right column active tab & timeline event logger state (matches Leads timeline)
-  const [detailRightTab, setDetailRightTab] = useState<"timeline" | "tasks">("timeline");
+  const [detailRightTab, setDetailRightTab] = useState<
+    "timeline" | "tasks" | "time"
+  >("timeline");
   const [timelineEventType, setTimelineEventType] =
     useState<TicketTimelineEventType | null>(null);
   const [timelineEventDate, setTimelineEventDate] = useState<string>(() =>
@@ -709,7 +710,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               authorEmail: currentUser?.email || "",
               body: newDescription.trim() || newSubject.trim(),
               isInternal: false,
-              eventType: "public_reply",
+              eventType: "ticket_created",
               attachments: newTicketAttachments,
               createdAt: now,
             },
@@ -988,12 +989,26 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     );
   };
 
-  const handleLogTime = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogTime = (
+    e?: React.FormEvent,
+    useTimelineTimestamp = false,
+  ) => {
+    if (e) e.preventDefault();
     if (!selectedTicket || !canEdit) return;
     const mins = parseDurationColonInput(logMinutes);
     if (!mins || mins <= 0) return;
     const now = nowLocalStamp();
+    const currentDatePart = now.slice(0, 10);
+    const currentTimePart = now.slice(11, 16);
+    const loggedAtStamp =
+      useTimelineTimestamp &&
+      timelineEventDate &&
+      !(
+        timelineEventDate === currentDatePart &&
+        (!timelineEventTime || timelineEventTime === currentTimePart)
+      )
+        ? `${timelineEventDate} ${timelineEventTime || "12:00"}:${now.slice(17, 19) || "00"}`
+        : now;
     const noteText =
       logDesc.trim() || t("Support work", "Podpora", "Támogatási munka");
     const entry = {
@@ -1004,7 +1019,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       billable: logBillable,
       note: noteText,
       description: noteText,
-      loggedAt: now,
+      loggedAt: loggedAtStamp,
     };
 
     const nextEntries = [...(selectedTicket.timeEntries || []), entry];
@@ -1033,6 +1048,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
     setLogDesc("");
     setLogMinutes("0:30");
+    if (timelineEventType === "time_logged") {
+      setTimelineEventType(null);
+    }
     (window as any).showToast?.(
       t("Time entry logged.", "Čas bol zaznamenaný.", "Időbejegyzés rögzítve."),
     );
@@ -1211,32 +1229,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     );
   };
 
-  // Build pipeline strip segments for a ticket status
-  const buildTicketPipelineSegments = (
-    currentStatus: string,
-  ): PipelineStripSegment[] => {
-    const activeIdx = orderedStatuses.findIndex(
-      (s) => (s.key || s.id) === currentStatus,
-    );
-    return orderedStatuses.map((s, idx) => {
-      const stKey = s.key || s.id;
-      const label = ticketStatusLabel(stKey, userLanguage, ticketStatuses);
-      return {
-        key: stKey,
-        title: label,
-        tooltip: label,
-        filled: activeIdx >= 0 ? idx <= activeIdx : idx === 0,
-        colorClass: "bg-indigo-600",
-        color: s.color || "#6366f1",
-      };
-    });
-  };
-
   /* ═══════════════════════════════════════════════════════════════════════════
      FULL-PAGE TICKET DETAIL VIEW (matches ProjectDetailsView & rest of views)
      Left column: 1. Ticket Card (top), 2. Project Card (with View all tickets),
                   3. Client Relationship Card (bottom)
-     Right column: Ticket Timeline (Composer + Chronological Feed)
+     Right column: Ticket Timeline (Composer + Chronological Feed), Tasks, Time Logged
      ═══════════════════════════════════════════════════════════════════════════ */
   if (selectedTicket) {
     const sla = evaluateTicketSla(selectedTicket, ticketStatuses);
@@ -1252,6 +1249,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       ticketSettings.cannedResponses || ticketSettings.replyTemplates || [];
     const widgetMeta =
       selectedTicket.widgetMetadata || selectedTicket.metadata || null;
+
+    const effectiveDescription =
+      selectedTicket.description ||
+      selectedTicket.messages?.find((m) => m.eventType === "ticket_created")
+        ?.body ||
+      selectedTicket.messages?.[0]?.body ||
+      "";
 
     const mergedTicketTaskLinks = (() => {
       const base = [...(selectedTicket.taskLinks || [])];
@@ -1520,7 +1524,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           <div className="ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left">
             {/* 1. TICKET CARD DETAILS (TOP) */}
             <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-2 pb-3">
+              <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-4">
                 <h4 className="text-ui font-heading font-bold text-slate-900">
                   {t(
                     "Ticket Card Details",
@@ -1528,27 +1532,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     "Jegy részletei",
                   )}
                 </h4>
-                <span className="text-micro font-mono text-slate-400">
-                  {String(selectedTicket.createdAt || "").slice(0, 16)}
-                </span>
-              </div>
-
-              {/* Status Pipeline Strip */}
-              <PipelineStrip
-                segments={buildTicketPipelineSegments(selectedTicket.status)}
-                className="-mx-5 mb-4"
-              />
-
-              <div className="space-y-4">
-                {/* Status */}
-                <div>
-                  <label className="block type-overline text-slate-400 mb-1">
-                    {t("Status", "Stav", "Állapot")}
-                  </label>
+                <div className="w-40">
                   <CustomSelect
                     value={selectedTicket.status}
                     disabled={!canEdit}
                     onChange={(v) => updateSelectedTicket({ status: v })}
+                    size="sm"
                     className="!font-black"
                     style={{
                       backgroundColor: `${stColor}15`,
@@ -1563,7 +1552,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     }
                     options={orderedStatuses.map((s) => {
                       const sKey = s.key || s.id;
-                      const dotColor = s.color || ticketStatusColor(sKey, ticketStatuses);
+                      const dotColor =
+                        s.color || ticketStatusColor(sKey, ticketStatuses);
                       return {
                         value: sKey,
                         label: ticketStatusLabel(
@@ -1581,41 +1571,239 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     })}
                   />
                 </div>
+              </div>
 
-                {/* Priority & Type */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block type-overline text-slate-400 mb-1">
-                      {t("Priority", "Priorita", "Prioritás")}
-                    </label>
-                    <CustomSelect
-                      value={selectedTicket.priority}
-                      disabled={!canEdit}
-                      onChange={(v) =>
-                        updateSelectedTicket({ priority: v as TicketPriority })
-                      }
-                      options={priorityOptions}
-                    />
-                  </div>
-                  <div>
-                    <label className="block type-overline text-slate-400 mb-1">
-                      {t("Ticket Type", "Typ tiketu", "Jegy típusa")}
-                    </label>
-                    <CustomSelect
-                      value={selectedTicket.type || "bug"}
-                      disabled={!canEdit}
-                      onChange={(v) =>
-                        updateSelectedTicket({ type: v as TicketType })
-                      }
-                      options={ticketTypeOptions}
-                    />
+              <div className="space-y-4">
+                {/* 1. Ticket Creation Date */}
+                <div>
+                  <label className="type-overline text-slate-400 mb-1 flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                    <span>
+                      {t(
+                        "Ticket Creation Date",
+                        "Dátum vytvorenia tiketu",
+                        "Jegy létrehozásának dátuma",
+                      )}
+                    </span>
+                  </label>
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50/80 border border-slate-200/80">
+                    <span className="text-caption font-bold text-slate-800 font-mono">
+                      {formatTimestampLocalized(
+                        selectedTicket.createdAt,
+                        userLanguage,
+                      ) ||
+                        String(selectedTicket.createdAt || "").replace(
+                          "T",
+                          " ",
+                        ).slice(0, 16) ||
+                        "—"}
+                    </span>
+                    {canEdit && (
+                      <input
+                        type="date"
+                        value={String(selectedTicket.createdAt || "").slice(
+                          0,
+                          10,
+                        )}
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          const timePart =
+                            String(selectedTicket.createdAt || "")
+                              .replace("T", " ")
+                              .slice(11, 19) || "09:00:00";
+                          updateSelectedTicket({
+                            createdAt: `${e.target.value} ${timePart}`,
+                          });
+                        }}
+                        title={t(
+                          "Change ticket creation date",
+                          "Zmeniť dátum vytvorenia tiketu",
+                          "Jegy létrehozási dátumának módosítása",
+                        )}
+                        className="px-2 py-0.5 rounded-lg border border-slate-200 bg-white text-micro font-bold text-slate-600 cursor-pointer"
+                      />
+                    )}
                   </div>
                 </div>
 
-                {/* Assigned Agents */}
+                {/* 2. Description & Files (HTML Formatted + Editable + Addable) */}
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="type-overline text-slate-400">
+                      {t(
+                        "Description & Files",
+                        "Popis a súbory",
+                        "Leírás és fájlok",
+                      )}
+                    </span>
+                    {canEdit && !isEditingDescription && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDescriptionDraft(effectiveDescription);
+                          setDescriptionAttachmentsDraft(
+                            selectedTicket.attachments || [],
+                          );
+                          setIsEditingDescription(true);
+                        }}
+                        className="text-micro font-bold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        {effectiveDescription ? (
+                          <>
+                            <Edit3 className="w-3 h-3" />
+                            <span>
+                              {t(
+                                "Edit Description / Files",
+                                "Upraviť popis / súbory",
+                                "Leírás / fájlok szerkesztése",
+                              )}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3 h-3" />
+                            <span>
+                              {t(
+                                "+ Add Description",
+                                "+ Pridať popis",
+                                "+ Leírás hozzáadása",
+                              )}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {isEditingDescription ? (
+                    <div className="space-y-2">
+                      {effectiveDescription && (
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+                          <span className="block type-overline text-slate-400">
+                            {t(
+                              "Current Description",
+                              "Pôvodný popis",
+                              "Jelenlegi leírás",
+                            )}
+                          </span>
+                          <TicketHtmlContent
+                            content={effectiveDescription}
+                            className="text-slate-600"
+                          />
+                        </div>
+                      )}
+                      <TicketRichHtmlEditor
+                        value={descriptionDraft}
+                        onChange={setDescriptionDraft}
+                        attachments={descriptionAttachmentsDraft}
+                        onAttachmentsChange={setDescriptionAttachmentsDraft}
+                        userLanguage={userLanguage}
+                        placeholder={t(
+                          "Format description with HTML, paste images, or attach files...",
+                          "Naformátujte popis, prilepte obrázky alebo priložte súbory...",
+                          "Formázza a leírást, illesszen be képeket vagy csatoljon fájlokat...",
+                        )}
+                        minRows={4}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingDescription(false)}
+                          className="px-3 py-1.5 rounded-xl border border-slate-200 text-micro font-bold text-slate-600 cursor-pointer"
+                        >
+                          {t("Cancel", "Zrušiť", "Mégse")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={commitDescription}
+                          className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{t("Save", "Uložiť", "Mentés")}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : effectiveDescription ||
+                    (selectedTicket.attachments &&
+                      selectedTicket.attachments.length > 0) ? (
+                    <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                      {effectiveDescription && (
+                        <TicketHtmlContent
+                          content={effectiveDescription}
+                          className="text-slate-700"
+                        />
+                      )}
+                      <TicketAttachmentsList
+                        attachments={selectedTicket.attachments}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() => {
+                        if (!canEdit) return;
+                        setDescriptionDraft("");
+                        setDescriptionAttachmentsDraft(
+                          selectedTicket.attachments || [],
+                        );
+                        setIsEditingDescription(true);
+                      }}
+                      className="w-full p-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 hover:bg-indigo-50/40 hover:border-indigo-300 text-left flex items-center justify-between gap-2 transition-colors cursor-pointer disabled:cursor-default"
+                    >
+                      <span className="text-micro italic text-slate-400">
+                        {t(
+                          "No description provided. Click to add description...",
+                          "Bez popisu. Kliknutím pridáte popis...",
+                          "Nincs megadva leírás. Kattintson a leírás hozzáadásához...",
+                        )}
+                      </span>
+                      {canEdit && (
+                        <span className="inline-flex items-center gap-1 text-micro font-bold text-indigo-600 shrink-0">
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>
+                            {t("Add", "Pridať", "Hozzáadás")}
+                          </span>
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {/* 3. Priority */}
+                <div className="pt-3 border-t border-slate-100">
+                  <label className="block type-overline text-slate-400 mb-1">
+                    {t("Priority", "Priorita", "Prioritás")}
+                  </label>
+                  <CustomSelect
+                    value={selectedTicket.priority}
+                    disabled={!canEdit}
+                    onChange={(v) =>
+                      updateSelectedTicket({ priority: v as TicketPriority })
+                    }
+                    options={priorityOptions}
+                  />
+                </div>
+
+                {/* 4. Ticket Type */}
                 <div>
                   <label className="block type-overline text-slate-400 mb-1">
-                    {t("Assigned Agent", "Priradený riešiteľ", "Felelős")}
+                    {t("Ticket Type", "Typ tiketu", "Jegy típusa")}
+                  </label>
+                  <CustomSelect
+                    value={selectedTicket.type || "bug"}
+                    disabled={!canEdit}
+                    onChange={(v) =>
+                      updateSelectedTicket({ type: v as TicketType })
+                    }
+                    options={ticketTypeOptions}
+                  />
+                </div>
+
+                {/* 5. Assignee */}
+                <div>
+                  <label className="block type-overline text-slate-400 mb-1">
+                    {t("Assignee", "Priradený riešiteľ", "Felelős")}
                   </label>
                   <CustomSelect
                     value={selectedTicket.assignedUsers?.[0] || ""}
@@ -1639,131 +1827,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   />
                 </div>
 
-                {/* Reporter Name & Email */}
-                <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-100">
-                  <div>
-                    <label className="block type-overline text-slate-400 mb-1">
-                      {t("Reporter Name", "Meno hlásateľa", "Bejelentő neve")}
-                    </label>
-                    <input
-                      type="text"
-                      disabled={!canEdit}
-                      value={selectedTicket.reporterName || ""}
-                      onChange={(e) =>
-                        updateSelectedTicket({ reporterName: e.target.value })
-                      }
-                      placeholder={t("Client name", "Meno klienta", "Ügyfél neve")}
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white text-caption font-semibold text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block type-overline text-slate-400 mb-1">
-                      {t("Reporter Email", "E-mail hlásateľa", "Bejelentő e-mail")}
-                    </label>
-                    <input
-                      type="email"
-                      disabled={!canEdit}
-                      value={selectedTicket.reporterEmail || ""}
-                      onChange={(e) =>
-                        updateSelectedTicket({ reporterEmail: e.target.value })
-                      }
-                      placeholder="client@domain.com"
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white text-caption font-semibold text-slate-800"
-                    />
-                  </div>
-                </div>
-
-                {/* Ticket Description & Attachments (HTML Formatted + Editable) */}
-                <div className="pt-3 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="type-overline text-slate-400">
-                      {t(
-                        "Description & Files",
-                        "Popis a súbory",
-                        "Leírás és fájlok",
-                      )}
-                    </span>
-                    {canEdit && !isEditingDescription && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDescriptionDraft(selectedTicket.description || "");
-                          setDescriptionAttachmentsDraft(
-                            selectedTicket.attachments || [],
-                          );
-                          setIsEditingDescription(true);
-                        }}
-                        className="text-micro font-bold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        <span>
-                          {t(
-                            "Edit Description / Files",
-                            "Upraviť popis / súbory",
-                            "Leírás / fájlok szerkesztése",
-                          )}
-                        </span>
-                      </button>
-                    )}
-                  </div>
-
-                  {isEditingDescription ? (
-                    <div className="space-y-2">
-                      <TicketRichHtmlEditor
-                        value={descriptionDraft}
-                        onChange={setDescriptionDraft}
-                        attachments={descriptionAttachmentsDraft}
-                        onAttachmentsChange={setDescriptionAttachmentsDraft}
-                        userLanguage={userLanguage}
-                        placeholder={t(
-                          "Format description with HTML, paste images, or attach files...",
-                          "Naformátujte popis, prilepte obrázky alebo priložte súbory...",
-                          "Formázza a leírást, illesszen be képeket vagy csatoljon fájlokat...",
-                        )}
-                        minRows={3}
-                      />
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setIsEditingDescription(false)}
-                          className="px-3 py-1.5 rounded-xl border border-slate-200 text-micro font-bold text-slate-600 cursor-pointer"
-                        >
-                          {t("Cancel", "Zrušiť", "Mégse")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={commitDescription}
-                          className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>{t("Save", "Uložiť", "Mentés")}</span>
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
-                      {selectedTicket.description ? (
-                        <TicketHtmlContent
-                          content={selectedTicket.description}
-                          className="text-slate-700"
-                        />
-                      ) : (
-                        <p className="text-micro italic text-slate-400">
-                          {t(
-                            "No description provided.",
-                            "Bez popisu.",
-                            "Nincs megadva leírás.",
-                          )}
-                        </p>
-                      )}
-                      <TicketAttachmentsList
-                        attachments={selectedTicket.attachments}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Linked CRM Tasks (Dev Escalation) */}
+                {/* 6. Linked CRM Tasks */}
                 <div className="pt-3 border-t border-slate-100 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="type-overline text-slate-500 flex items-center gap-1">
@@ -1933,228 +1997,6 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                   ))}
                                 </select>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Time Tracking (H:MM format with preset ":" and Admin Edit) */}
-                <div className="pt-3 border-t border-slate-100 space-y-2">
-                  {(() => {
-                    const totalLoggedMins = (selectedTicket.timeEntries || []).reduce(
-                      (acc, e) => acc + (e.minutes || 0),
-                      0,
-                    );
-                    const formattedTotal = formatDurationMinutes(totalLoggedMins);
-
-                    return (
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="type-overline text-slate-500 flex items-center gap-1">
-                          <Timer className="w-3.5 h-3.5 text-emerald-600" />
-                          {t("Time Logged", "Zaznamenaný čas", "Rögzített idő")}
-                        </span>
-
-                        {isEditingTotalTime && isAdminUser ? (
-                          <div className="flex items-center gap-1">
-                            <ColonTimeInput
-                              autoFocus
-                              value={editingTotalTimeDraft}
-                              onChange={setEditingTotalTimeDraft}
-                              title={t(
-                                "Total time in H:MM format (e.g. 1:30 for 90 min)",
-                                "Celkový čas vo formáte H:MM (napr. 1:30 pre 90 min)",
-                                "Összes idő Ó:PP formátumban (pl. 1:30 = 90 perc)",
-                              )}
-                              className="w-16 px-2 py-0.5 rounded-lg border border-emerald-400 bg-white text-micro font-mono font-bold text-slate-800 text-center"
-                            />
-                            <button
-                              type="button"
-                              onClick={handleSaveTotalLoggedTime}
-                              className="p-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                              title={t("Save", "Uložiť", "Mentés")}
-                            >
-                              <Check className="w-3 h-3" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setIsEditingTotalTime(false)}
-                              className="p-1 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 cursor-pointer"
-                              title={t("Cancel", "Zrušiť", "Mégse")}
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : isAdminUser ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingTotalTimeDraft(formattedTotal);
-                              setIsEditingTotalTime(true);
-                            }}
-                            title={t(
-                              "Click to edit total time logged (H:MM)",
-                              "Kliknutím upravíte celkový zaznamenaný čas (H:MM)",
-                              "Kattintson az összes rögzített idő szerkesztéséhez (Ó:PP)",
-                            )}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/80 text-micro font-mono font-bold text-emerald-800 transition-colors cursor-pointer"
-                          >
-                            <span>{formattedTotal}</span>
-                            <Edit3 className="w-2.5 h-2.5 text-emerald-600" />
-                          </button>
-                        ) : (
-                          <span className="text-micro font-mono font-bold text-slate-700">
-                            {formattedTotal}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {canEdit && (
-                    <form
-                      onSubmit={handleLogTime}
-                      className="flex items-center gap-1.5"
-                    >
-                      <ColonTimeInput
-                        value={logMinutes}
-                        onChange={setLogMinutes}
-                        title={t(
-                          "Hours:Minutes (e.g. 1:30 for 90 minutes)",
-                          "Hodiny:Minúty (napr. 1:30 pre 90 minút)",
-                          "Óra:Perc (pl. 1:30 = 90 perc)",
-                        )}
-                        className="w-16 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-micro font-mono font-bold text-slate-800 text-center"
-                      />
-                      <input
-                        type="text"
-                        value={logDesc}
-                        onChange={(e) => setLogDesc(e.target.value)}
-                        placeholder={t(
-                          "Work note...",
-                          "Poznámka...",
-                          "Megjegyzés...",
-                        )}
-                        className="flex-1 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-micro"
-                      />
-                      <button
-                        type="submit"
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-micro font-bold cursor-pointer"
-                        title={t(
-                          "Add time entry",
-                          "Pridať časový záznam",
-                          "Időbejegyzés hozzáadása",
-                        )}
-                      >
-                        +
-                      </button>
-                    </form>
-                  )}
-
-                  {(selectedTicket.timeEntries || []).length > 0 && (
-                    <div className="space-y-1 max-h-36 overflow-y-auto">
-                      {(selectedTicket.timeEntries || []).map((te) => {
-                        const isEditingTe = editingTimeEntryId === te.id;
-                        const entryNote = te.description || te.note || "";
-
-                        return (
-                          <div
-                            key={te.id}
-                            className="flex items-center justify-between gap-1.5 text-micro text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 group"
-                          >
-                            {isEditingTe && isAdminUser ? (
-                              <div className="flex items-center gap-1.5 w-full">
-                                <ColonTimeInput
-                                  autoFocus
-                                  value={editingTimeEntryDuration}
-                                  onChange={setEditingTimeEntryDuration}
-                                  className="w-14 px-1.5 py-0.5 rounded border border-emerald-400 bg-white text-micro font-mono font-bold text-center"
-                                />
-                                <input
-                                  type="text"
-                                  value={editingTimeEntryNote}
-                                  onChange={(e) =>
-                                    setEditingTimeEntryNote(e.target.value)
-                                  }
-                                  placeholder={t(
-                                    "Note...",
-                                    "Poznámka...",
-                                    "Megjegyzés...",
-                                  )}
-                                  className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-slate-200 bg-white text-micro"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveTimeEntry(te.id)}
-                                  className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer shrink-0"
-                                  title={t("Save", "Uložiť", "Mentés")}
-                                >
-                                  <Check className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingTimeEntryId(null)}
-                                  className="p-1 rounded border border-slate-200 text-slate-500 hover:text-slate-700 cursor-pointer shrink-0"
-                                  title={t("Cancel", "Zrušiť", "Mégse")}
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <span className="truncate min-w-0 flex-1">
-                                  <strong className="font-mono text-slate-800">
-                                    {formatDurationMinutes(te.minutes)}
-                                  </strong>{" "}
-                                  • {te.userName}{" "}
-                                  {entryNote ? `— ${entryNote}` : ""}
-                                </span>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <span className="text-slate-400">
-                                    {String(
-                                      te.loggedAt || te.createdAt || "",
-                                    ).slice(5, 10)}
-                                  </span>
-                                  {isAdminUser && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setEditingTimeEntryId(te.id);
-                                          setEditingTimeEntryDuration(
-                                            formatDurationMinutes(te.minutes),
-                                          );
-                                          setEditingTimeEntryNote(entryNote);
-                                        }}
-                                        className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                                        title={t(
-                                          "Edit time entry",
-                                          "Upraviť časový záznam",
-                                          "Időbejegyzés szerkesztése",
-                                        )}
-                                      >
-                                        <Edit3 className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleDeleteTimeEntry(te.id)
-                                        }
-                                        className="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                        title={t(
-                                          "Delete time entry",
-                                          "Odstrániť časový záznam",
-                                          "Időbejegyzés törlése",
-                                        )}
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </>
                             )}
                           </div>
                         );
@@ -2639,9 +2481,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             })()}
           </div>
 
-          {/* RIGHT COLUMN (8 cols): Leads-Style History & Timeline + Tasks */}
+          {/* RIGHT COLUMN (8 cols): Leads-Style History & Timeline + Tasks + Time Logged */}
           <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-6 shadow-sm text-left">
-            {/* Top Tabs (matches Leads Right Panel) */}
+            {/* Top Tabs (matches Leads Right Panel + Time Logged tab) */}
             <div className="mb-4 shrink-0">
               <Tabs
                 value={detailRightTab}
@@ -2654,7 +2496,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       "História a časová os",
                       "Előzmények és idővonal",
                     ),
-                    count: (selectedTicket.messages || []).length,
+                    count:
+                      (selectedTicket.messages || []).length +
+                      (selectedTicket.timeEntries || []).length,
                     icon: <Clock className="h-3.5 w-3.5" />,
                   },
                   {
@@ -2662,6 +2506,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     label: t("Tasks", "Úlohy", "Feladatok"),
                     count: mergedTicketTaskLinks.length,
                     icon: <CheckSquare className="h-3.5 w-3.5" />,
+                  },
+                  {
+                    key: "time",
+                    label: t(
+                      "Time Logged",
+                      "Zaznamenaný čas",
+                      "Rögzített idő",
+                    ),
+                    count: (selectedTicket.timeEntries || []).length,
+                    icon: <Timer className="h-3.5 w-3.5" />,
                   },
                 ]}
               />
@@ -2696,7 +2550,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       )}
                     </div>
 
-                    {/* Event Type Segmented Bar (Public Reply + Internal Note + Call + Email + Appointment) */}
+                    {/* Event Type Segmented Bar (Public Reply + Internal Note + Call + Email + Appointment + Time Logged) */}
                     <div>
                       <span className="block type-overline text-slate-400 mb-1">
                         {t("Event Type", "Typ udalosti", "Esemény típusa")}
@@ -2749,6 +2603,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               ),
                               icon: Calendar,
                               activeIconClass: "text-purple-600",
+                            },
+                            {
+                              id: "time_logged" as const,
+                              label: t(
+                                "Time Logged",
+                                "Zaznamenaný čas",
+                                "Rögzített idő",
+                              ),
+                              icon: Timer,
+                              activeIconClass: "text-emerald-600",
                             },
                           ] as const
                         ).map((item) => {
@@ -2829,176 +2693,250 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             </div>
                           </div>
 
-                          {cannedTemplates.length > 0 && (
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                const tpl = cannedTemplates.find(
-                                  (c) => c.id === e.target.value,
-                                );
-                                if (tpl) {
-                                  const rendered = applyTemplatePlaceholders(
-                                    tpl.body,
-                                    selectedTicket,
+                          {timelineEventType !== "time_logged" &&
+                            cannedTemplates.length > 0 && (
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  const tpl = cannedTemplates.find(
+                                    (c) => c.id === e.target.value,
                                   );
-                                  setReplyBody((prev) =>
-                                    prev && !isRichTextEmpty(prev)
-                                      ? `${prev}<br/><br/>${rendered}`
-                                      : rendered,
-                                  );
-                                }
-                              }}
-                              className="h-8 px-2.5 rounded-xl border border-slate-200 bg-white text-micro font-bold text-slate-700 cursor-pointer hover:border-indigo-300"
-                            >
-                              <option value="">
-                                {t(
-                                  "+ Template...",
-                                  "+ Šablóna...",
-                                  "+ Sablon...",
-                                )}
-                              </option>
-                              {cannedTemplates.map((tpl) => (
-                                <option key={tpl.id} value={tpl.id}>
-                                  {tpl.title ||
-                                    tpl.name ||
-                                    tpl.shortcut ||
-                                    tpl.id}
+                                  if (tpl) {
+                                    const rendered = applyTemplatePlaceholders(
+                                      tpl.body,
+                                      selectedTicket,
+                                    );
+                                    setReplyBody((prev) =>
+                                      prev && !isRichTextEmpty(prev)
+                                        ? `${prev}<br/><br/>${rendered}`
+                                        : rendered,
+                                    );
+                                  }
+                                }}
+                                className="h-8 px-2.5 rounded-xl border border-slate-200 bg-white text-micro font-bold text-slate-700 cursor-pointer hover:border-indigo-300"
+                              >
+                                <option value="">
+                                  {t(
+                                    "+ Template...",
+                                    "+ Šablóna...",
+                                    "+ Sablon...",
+                                  )}
                                 </option>
-                              ))}
-                            </select>
-                          )}
+                                {cannedTemplates.map((tpl) => (
+                                  <option key={tpl.id} value={tpl.id}>
+                                    {tpl.title ||
+                                      tpl.name ||
+                                      tpl.shortcut ||
+                                      tpl.id}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                         </div>
 
-                        {/* Rich HTML Editor + Image & File Upload */}
-                        <TicketRichHtmlEditor
-                          value={replyBody}
-                          onChange={setReplyBody}
-                          attachments={replyAttachments}
-                          onAttachmentsChange={setReplyAttachments}
-                          userLanguage={userLanguage}
-                          tone={
-                            timelineEventType === "internal_note"
-                              ? "internal"
-                              : "default"
-                          }
-                          minRows={3}
-                          placeholder={
-                            timelineEventType === "public_reply"
-                              ? t(
-                                  "Write a public reply to the client (paste screenshots or attach files)...",
-                                  "Napíšte verejnú odpoveď klientovi (prilepte obrázky alebo priložte súbory)...",
-                                  "Írjon nyilvános választ az ügyfélnek (képek és fájlok csatolhatók)...",
-                                )
-                              : timelineEventType === "internal_note"
-                                ? t(
-                                    "Write an internal note visible only to your team...",
-                                    "Napíšte internú poznámku viditeľnú iba pre tím...",
-                                    "Írjon csak a csapat számára látható belső jegyzetet...",
-                                  )
-                                : t(
-                                    "Enter event summary, call notes, or meeting details...",
-                                    "Zadajte zhrnutie telefonátu, e-mailu alebo stretnutia...",
-                                    "Adja meg a hívás, e-mail vagy találkozó részleteit...",
-                                  )
-                          }
-                        />
-
-                        {/* Bottom Action Row */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                          <div>
-                            {timelineEventType === "public_reply" &&
-                              selectedTicket.reporterEmail && (
-                                <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-slate-600 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={sendViaEmail}
-                                    onChange={(e) =>
-                                      setSendViaEmail(e.target.checked)
-                                    }
-                                    className="rounded border-slate-300 text-indigo-600"
-                                  />
-                                  <Mail className="w-3.5 h-3.5 text-slate-400" />
-                                  <span>
-                                    {t(
-                                      "Send via email to reporter",
-                                      "Odoslať aj e-mailom hlásateľovi",
-                                      "Küldés e-mailben a bejelentőnek",
-                                    )}{" "}
-                                    ({selectedTicket.reporterEmail})
-                                  </span>
+                        {timelineEventType === "time_logged" ? (
+                          <form
+                            onSubmit={(e) => handleLogTime(e, true)}
+                            className="space-y-3"
+                          >
+                            <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-2.5">
+                              <div className="ws-sm:col-span-3">
+                                <label className="block type-overline text-slate-400 mb-1">
+                                  {t(
+                                    "Duration (H:MM)",
+                                    "Trvanie (H:MM)",
+                                    "Időtartam (Ó:PP)",
+                                  )}
                                 </label>
-                              )}
-                          </div>
-
-                          <div className="flex items-center gap-2 ml-auto">
-                            <button
-                              type="button"
-                              onClick={() => setTimelineEventType(null)}
-                              className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-micro font-bold cursor-pointer transition-colors"
-                            >
-                              {t("Close", "Zavrieť", "Bezárás")}
-                            </button>
-                            {timelineEventType === "public_reply" && (
+                                <ColonTimeInput
+                                  value={logMinutes}
+                                  onChange={setLogMinutes}
+                                  title={t(
+                                    "Hours:Minutes (e.g. 1:30 for 90 minutes)",
+                                    "Hodiny:Minúty (napr. 1:30 pre 90 minút)",
+                                    "Óra:Perc (pl. 1:30 = 90 perc)",
+                                  )}
+                                  className="w-full h-10 px-3 rounded-xl border border-emerald-300 bg-white text-caption font-mono font-bold text-slate-800 text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                />
+                              </div>
+                              <div className="ws-sm:col-span-9">
+                                <label className="block type-overline text-slate-400 mb-1">
+                                  {t(
+                                    "Work Description / Note",
+                                    "Popis práce / Poznámka",
+                                    "Munka leírása / Megjegyzés",
+                                  )}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={logDesc}
+                                  onChange={(e) => setLogDesc(e.target.value)}
+                                  placeholder={t(
+                                    "Describe the work performed...",
+                                    "Popíšte vykonanú prácu...",
+                                    "Írja le az elvégzett munkát...",
+                                  )}
+                                  className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-800"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-end gap-2 pt-1">
                               <button
                                 type="button"
-                                disabled={
-                                  isSendingReply ||
-                                  (isRichTextEmpty(replyBody) &&
-                                    replyAttachments.length === 0)
-                                }
-                                onClick={() => handleSendReply("resolved")}
-                                className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40 transition-colors"
+                                onClick={() => setTimelineEventType(null)}
+                                className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-micro font-bold cursor-pointer transition-colors"
                               >
-                                {t(
-                                  "Send & Resolve",
-                                  "Odoslať a vyriešiť",
-                                  "Küldés és megoldás",
-                                )}
+                                {t("Close", "Zavrieť", "Bezárás")}
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={
-                                isSendingReply ||
-                                (isRichTextEmpty(replyBody) &&
-                                  replyAttachments.length === 0)
-                              }
-                              onClick={() => handleSendReply()}
-                              className={`px-4 py-2 rounded-xl text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95 disabled:opacity-40 ${
+                              <button
+                                type="submit"
+                                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95"
+                              >
+                                <Timer className="w-3.5 h-3.5" />
+                                <span>
+                                  {t(
+                                    "+ Log Time",
+                                    "+ Zaznamenať čas",
+                                    "+ Idő rögzítése",
+                                  )}
+                                </span>
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <>
+                            {/* Rich HTML Editor + Image & File Upload */}
+                            <TicketRichHtmlEditor
+                              value={replyBody}
+                              onChange={setReplyBody}
+                              attachments={replyAttachments}
+                              onAttachmentsChange={setReplyAttachments}
+                              userLanguage={userLanguage}
+                              tone={
                                 timelineEventType === "internal_note"
-                                  ? "bg-amber-600 hover:bg-amber-700"
-                                  : timelineEventType === "public_reply"
-                                    ? "bg-indigo-600 hover:bg-indigo-700"
-                                    : "bg-slate-900 hover:bg-slate-800"
-                              }`}
-                            >
-                              {timelineEventType === "public_reply" ? (
-                                <Send className="w-3.5 h-3.5" />
-                              ) : (
-                                <Plus className="w-3.5 h-3.5" />
-                              )}
-                              <span>
-                                {timelineEventType === "public_reply"
+                                  ? "internal"
+                                  : "default"
+                              }
+                              minRows={3}
+                              placeholder={
+                                timelineEventType === "public_reply"
                                   ? t(
-                                      "Send Public Reply",
-                                      "Odoslať verejnú odpoveď",
-                                      "Nyilvános válasz küldése",
+                                      "Write a public reply to the client (paste screenshots or attach files)...",
+                                      "Napíšte verejnú odpoveď klientovi (prilepte obrázky alebo priložte súbory)...",
+                                      "Írjon nyilvános választ az ügyfélnek (képek és fájlok csatolhatók)...",
                                     )
                                   : timelineEventType === "internal_note"
                                     ? t(
-                                        "+ Log Internal Note",
-                                        "+ Zaznamenať poznámku",
-                                        "+ Belső jegyzet rögzítése",
+                                        "Write an internal note visible only to your team...",
+                                        "Napíšte internú poznámku viditeľnú iba pre tím...",
+                                        "Írjon csak a csapat számára látható belső jegyzetet...",
                                       )
                                     : t(
-                                        "+ Log Event",
-                                        "+ Zaznamenať udalosť",
-                                        "+ Esemény rögzítése",
-                                      )}
-                              </span>
-                            </button>
-                          </div>
-                        </div>
+                                        "Enter event summary, call notes, or meeting details...",
+                                        "Zadajte zhrnutie telefonátu, e-mailu alebo stretnutia...",
+                                        "Adja meg a hívás, e-mail vagy találkozó részleteit...",
+                                      )
+                              }
+                            />
+
+                            {/* Bottom Action Row */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                              <div>
+                                {timelineEventType === "public_reply" &&
+                                  selectedTicket.reporterEmail && (
+                                    <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-slate-600 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={sendViaEmail}
+                                        onChange={(e) =>
+                                          setSendViaEmail(e.target.checked)
+                                        }
+                                        className="rounded border-slate-300 text-indigo-600"
+                                      />
+                                      <Mail className="w-3.5 h-3.5 text-slate-400" />
+                                      <span>
+                                        {t(
+                                          "Send via email to reporter",
+                                          "Odoslať aj e-mailom hlásateľovi",
+                                          "Küldés e-mailben a bejelentőnek",
+                                        )}{" "}
+                                        ({selectedTicket.reporterEmail})
+                                      </span>
+                                    </label>
+                                  )}
+                              </div>
+
+                              <div className="flex items-center gap-2 ml-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => setTimelineEventType(null)}
+                                  className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 text-micro font-bold cursor-pointer transition-colors"
+                                >
+                                  {t("Close", "Zavrieť", "Bezárás")}
+                                </button>
+                                {timelineEventType === "public_reply" && (
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      isSendingReply ||
+                                      (isRichTextEmpty(replyBody) &&
+                                        replyAttachments.length === 0)
+                                    }
+                                    onClick={() => handleSendReply("resolved")}
+                                    className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40 transition-colors"
+                                  >
+                                    {t(
+                                      "Send & Resolve",
+                                      "Odoslať a vyriešiť",
+                                      "Küldés és megoldás",
+                                    )}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isSendingReply ||
+                                    (isRichTextEmpty(replyBody) &&
+                                      replyAttachments.length === 0)
+                                  }
+                                  onClick={() => handleSendReply()}
+                                  className={`px-4 py-2 rounded-xl text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95 disabled:opacity-40 ${
+                                    timelineEventType === "internal_note"
+                                      ? "bg-amber-600 hover:bg-amber-700"
+                                      : timelineEventType === "public_reply"
+                                        ? "bg-indigo-600 hover:bg-indigo-700"
+                                        : "bg-slate-900 hover:bg-slate-800"
+                                  }`}
+                                >
+                                  {timelineEventType === "public_reply" ? (
+                                    <Send className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <Plus className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>
+                                    {timelineEventType === "public_reply"
+                                      ? t(
+                                          "Send Public Reply",
+                                          "Odoslať verejnú odpoveď",
+                                          "Nyilvános válasz küldése",
+                                        )
+                                      : timelineEventType === "internal_note"
+                                        ? t(
+                                            "+ Log Internal Note",
+                                            "+ Zaznamenať poznámku",
+                                            "+ Belső jegyzet rögzítése",
+                                          )
+                                        : t(
+                                            "+ Log Event",
+                                            "+ Zaznamenať udalosť",
+                                            "+ Esemény rögzítése",
+                                          )}
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3081,18 +3019,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   )}
 
                   {(() => {
+                    type EnrichedTimelineItem = TicketMessage & {
+                      timeEntryId?: string;
+                      loggedMinutes?: number;
+                    };
                     const rawMsgs = selectedTicket.messages || [];
-                    const hasInitialMsg =
-                      rawMsgs.length > 0 &&
-                      rawMsgs.some(
-                        (m) =>
-                          m.createdAt === selectedTicket.createdAt ||
-                          (selectedTicket.description &&
-                            m.body.trim() ===
-                              selectedTicket.description.trim()),
-                      );
-                    const syntheticCreatedMsg: TicketMessage | null =
-                      !hasInitialMsg
+                    const hasExplicitCreatedMsg = rawMsgs.some(
+                      (m) => m.eventType === "ticket_created",
+                    );
+                    const syntheticCreatedMsg: EnrichedTimelineItem | null =
+                      !hasExplicitCreatedMsg
                         ? {
                             id: `__created_${selectedTicket.id}`,
                             ticketId: selectedTicket.id,
@@ -3102,8 +3038,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               currentUser?.name ||
                               "Client",
                             body:
-                              selectedTicket.description ||
-                              selectedTicket.subject,
+                              effectiveDescription || selectedTicket.subject,
                             isInternal: false,
                             eventType: "ticket_created",
                             attachments: selectedTicket.attachments || [],
@@ -3111,14 +3046,42 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           }
                         : null;
 
-                    const allEvents: TicketMessage[] = [
+                    const timeTimelineItems: EnrichedTimelineItem[] = (
+                      selectedTicket.timeEntries || []
+                    ).map((te) => {
+                      const durFormatted = formatDurationMinutes(
+                        te.minutes || 0,
+                      );
+                      const noteText = te.description || te.note || "";
+                      return {
+                        id: `__time_${te.id}`,
+                        ticketId: selectedTicket.id,
+                        authorType: "agent",
+                        authorName: te.userName || "Agent",
+                        title: `${t("Time Logged", "Zaznamenaný čas", "Rögzített idő")}: ${durFormatted}`,
+                        body: noteText,
+                        isInternal: true,
+                        eventType: "time_logged",
+                        createdAt:
+                          te.loggedAt ||
+                          te.createdAt ||
+                          selectedTicket.createdAt,
+                        timeEntryId: te.id,
+                        loggedMinutes: te.minutes || 0,
+                      };
+                    });
+
+                    const allEvents: EnrichedTimelineItem[] = [
                       ...rawMsgs,
+                      ...timeTimelineItems,
                       ...(syntheticCreatedMsg ? [syntheticCreatedMsg] : []),
                     ].sort((a, b) => {
                       const cmp = String(b.createdAt || "").localeCompare(
                         String(a.createdAt || ""),
                       );
                       if (cmp !== 0) return cmp;
+                      if (a.eventType === "ticket_created") return 1;
+                      if (b.eventType === "ticket_created") return -1;
                       return String(b.id || "").localeCompare(
                         String(a.id || ""),
                       );
@@ -3126,6 +3089,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
                     return allEvents.map((msg, idx) => {
                       const isSynthetic = msg.id.startsWith("__created_");
+                      const isTimeEntry =
+                        msg.eventType === "time_logged" ||
+                        Boolean(msg.timeEntryId);
                       const isClient = msg.authorType === "client";
                       const evType = (
                         msg.eventType ||
@@ -3161,7 +3127,36 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         "Nyilvános válasz az ügyfélnek",
                       );
 
-                      if (evType === "internal_note" || msg.isInternal) {
+                      if (isTimeEntry) {
+                        const durLabel = formatDurationMinutes(
+                          msg.loggedMinutes || 0,
+                        );
+                        iconNode = <Timer className="h-4 w-4" />;
+                        iconBadgeClass =
+                          "border-emerald-300 text-emerald-600 bg-emerald-50";
+                        cardToneClass =
+                          "bg-emerald-50/35 border-emerald-200/90 hover:border-emerald-300";
+                        badgeLabel = `${t("Time Logged", "Zaznamenaný čas", "Rögzített idő")} • ${durLabel}`;
+                        badgePillClass =
+                          "bg-emerald-100 text-emerald-800 border-emerald-300 font-mono";
+                        eventTitle = `${t("Time Logged", "Zaznamenaný čas", "Rögzített idő")} (${durLabel})`;
+                      } else if (evType === "ticket_created" || isSynthetic) {
+                        iconNode = <FileText className="h-4 w-4" />;
+                        iconBadgeClass =
+                          "border-slate-300 text-slate-600 bg-slate-50";
+                        badgeLabel = t(
+                          "Ticket Created",
+                          "Tiket vytvorený",
+                          "Jegy létrehozva",
+                        );
+                        badgePillClass =
+                          "bg-slate-100 text-slate-700 border-slate-200";
+                        eventTitle = t(
+                          "Ticket Created",
+                          "Tiket vytvorený",
+                          "Jegy létrehozva",
+                        );
+                      } else if (evType === "internal_note" || msg.isInternal) {
                         if (evType === "call") {
                           iconNode = <Phone className="h-4 w-4" />;
                           iconBadgeClass =
@@ -3241,25 +3236,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           "Príchodzia správa od klienta",
                           "Beérkező ügyfélüzenet",
                         );
-                      } else if (evType === "ticket_created" || isSynthetic) {
-                        iconNode = <FileText className="h-4 w-4" />;
-                        iconBadgeClass =
-                          "border-slate-300 text-slate-600 bg-slate-50";
-                        badgeLabel = t(
-                          "Ticket Created",
-                          "Tiket vytvorený",
-                          "Jegy létrehozva",
-                        );
-                        badgePillClass =
-                          "bg-slate-100 text-slate-700 border-slate-200";
-                        eventTitle = t(
-                          "Initial Ticket Description",
-                          "Pôvodný popis tiketu",
-                          "Jegy eredeti leírása",
-                        );
                       }
 
-                      const isEditingThis = editingMsgId === msg.id;
+                      const isEditingThis = isTimeEntry
+                        ? editingTimeEntryId === msg.timeEntryId
+                        : editingMsgId === msg.id;
 
                       return (
                         <div
@@ -3326,22 +3307,31 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                     {msg.authorName ||
                                       (isClient ? "Client" : "Support")}
                                   </span>
-                                  {canEdit && !isSynthetic && !isEditingThis && (
+                                  {isTimeEntry &&
+                                  msg.timeEntryId &&
+                                  isAdminUser &&
+                                  !isEditingThis ? (
                                     <div className="flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          setEditingMsgId(msg.id);
-                                          setEditingMsgBody(msg.body || "");
-                                          setEditingMsgAttachments(
-                                            msg.attachments || [],
+                                          setEditingTimeEntryId(
+                                            msg.timeEntryId!,
+                                          );
+                                          setEditingTimeEntryDuration(
+                                            formatDurationMinutes(
+                                              msg.loggedMinutes || 0,
+                                            ),
+                                          );
+                                          setEditingTimeEntryNote(
+                                            msg.body || "",
                                           );
                                         }}
                                         className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                                         title={t(
-                                          "Edit event",
-                                          "Upraviť záznam",
-                                          "Bejegyzés szerkesztése",
+                                          "Edit time entry",
+                                          "Upraviť časový záznam",
+                                          "Időbejegyzés szerkesztése",
                                         )}
                                       >
                                         <Edit3 className="h-3.5 w-3.5" />
@@ -3349,23 +3339,110 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                       <button
                                         type="button"
                                         onClick={() =>
-                                          handleDeleteTimelineMessage(msg.id)
+                                          handleDeleteTimeEntry(
+                                            msg.timeEntryId!,
+                                          )
                                         }
                                         className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                                         title={t(
-                                          "Delete event",
-                                          "Odstrániť záznam",
-                                          "Bejegyzés törlése",
+                                          "Delete time entry",
+                                          "Odstrániť časový záznam",
+                                          "Időbejegyzés törlése",
                                         )}
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </button>
                                     </div>
+                                  ) : (
+                                    canEdit &&
+                                    !isSynthetic &&
+                                    !isTimeEntry &&
+                                    !isEditingThis && (
+                                      <div className="flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingMsgId(msg.id);
+                                            setEditingMsgBody(msg.body || "");
+                                            setEditingMsgAttachments(
+                                              msg.attachments || [],
+                                            );
+                                          }}
+                                          className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                          title={t(
+                                            "Edit event",
+                                            "Upraviť záznam",
+                                            "Bejegyzés szerkesztése",
+                                          )}
+                                        >
+                                          <Edit3 className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleDeleteTimelineMessage(msg.id)
+                                          }
+                                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                          title={t(
+                                            "Delete event",
+                                            "Odstrániť záznam",
+                                            "Bejegyzés törlése",
+                                          )}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    )
                                   )}
                                 </div>
                               </div>
 
-                              {isEditingThis ? (
+                              {isEditingThis &&
+                              isTimeEntry &&
+                              msg.timeEntryId ? (
+                                <div className="flex flex-wrap items-center gap-2 pt-1">
+                                  <ColonTimeInput
+                                    autoFocus
+                                    value={editingTimeEntryDuration}
+                                    onChange={setEditingTimeEntryDuration}
+                                    className="w-20 px-2.5 py-1.5 rounded-xl border border-emerald-400 bg-white text-caption font-mono font-bold text-center"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={editingTimeEntryNote}
+                                    onChange={(e) =>
+                                      setEditingTimeEntryNote(e.target.value)
+                                    }
+                                    placeholder={t(
+                                      "Work note...",
+                                      "Poznámka...",
+                                      "Megjegyzés...",
+                                    )}
+                                    className="flex-1 min-w-44 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-caption"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditingTimeEntryId(null)
+                                    }
+                                    className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-micro font-bold text-slate-600 cursor-pointer"
+                                  >
+                                    {t("Cancel", "Zrušiť", "Mégse")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleSaveTimeEntry(msg.timeEntryId!)
+                                    }
+                                    className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>
+                                      {t("Save", "Uložiť", "Mentés")}
+                                    </span>
+                                  </button>
+                                </div>
+                              ) : isEditingThis ? (
                                 <div className="space-y-2 pt-1">
                                   <TicketRichHtmlEditor
                                     value={editingMsgBody}
@@ -3428,7 +3505,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   })()}
                 </div>
               </div>
-            ) : (
+            ) : detailRightTab === "tasks" ? (
               /* TASKS TAB (Create & Assign Employee to Ticket Tasks) */
               <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
                 {canEdit && (
@@ -3632,6 +3709,304 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* TIME LOGGED TAB (Total Time + Log Time Form + Chronological Time Entries) */
+              <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
+                {(() => {
+                  const totalLoggedMins = (
+                    selectedTicket.timeEntries || []
+                  ).reduce((acc, e) => acc + (e.minutes || 0), 0);
+                  const formattedTotal = formatDurationMinutes(totalLoggedMins);
+
+                  return (
+                    <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-200">
+                          <Timer className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <span className="block type-overline text-emerald-700/80">
+                            {t(
+                              "Total Time Logged",
+                              "Celkový zaznamenaný čas",
+                              "Összes rögzített idő",
+                            )}
+                          </span>
+                          <span className="text-micro text-slate-500">
+                            {t(
+                              "Hours:Minutes format (e.g. 1:30 = 90 min)",
+                              "Formát Hodiny:Minúty (napr. 1:30 = 90 min)",
+                              "Óra:Perc formátum (pl. 1:30 = 90 perc)",
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {isEditingTotalTime && isAdminUser ? (
+                          <div className="flex items-center gap-1.5">
+                            <ColonTimeInput
+                              autoFocus
+                              value={editingTotalTimeDraft}
+                              onChange={setEditingTotalTimeDraft}
+                              title={t(
+                                "Total time in H:MM format (e.g. 1:30 for 90 min)",
+                                "Celkový čas vo formáte H:MM (napr. 1:30 pre 90 min)",
+                                "Összes idő Ó:PP formátumban (pl. 1:30 = 90 perc)",
+                              )}
+                              className="w-20 px-2.5 py-1.5 rounded-xl border border-emerald-400 bg-white text-body font-mono font-extrabold text-slate-800 text-center"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSaveTotalLoggedTime}
+                              className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                              title={t("Save", "Uložiť", "Mentés")}
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingTotalTime(false)}
+                              className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-700 cursor-pointer"
+                              title={t("Cancel", "Zrušiť", "Mégse")}
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : isAdminUser ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTotalTimeDraft(formattedTotal);
+                              setIsEditingTotalTime(true);
+                            }}
+                            title={t(
+                              "Click to edit total time logged (H:MM)",
+                              "Kliknutím upravíte celkový zaznamenaný čas (H:MM)",
+                              "Kattintson az összes rögzített idő szerkesztéséhez (Ó:PP)",
+                            )}
+                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-100/70 border border-emerald-200 text-body font-mono font-extrabold text-emerald-800 transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <span>{formattedTotal}</span>
+                            <Edit3 className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+                        ) : (
+                          <span className="px-3.5 py-1.5 rounded-xl bg-white border border-emerald-200 text-body font-mono font-extrabold text-emerald-800">
+                            {formattedTotal}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {canEdit && (
+                  <form
+                    onSubmit={(e) => handleLogTime(e, false)}
+                    className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-3 shrink-0"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="type-overline text-slate-600 flex items-center gap-1.5">
+                        <Timer className="h-3.5 w-3.5 text-emerald-600" />
+                        {t(
+                          "Log Time Entry",
+                          "Zaznamenať čas",
+                          "Időbejegyzés rögzítése",
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-2.5">
+                      <div className="ws-sm:col-span-3">
+                        <label className="block type-overline text-slate-400 mb-1">
+                          {t(
+                            "Duration (H:MM)",
+                            "Trvanie (H:MM)",
+                            "Időtartam (Ó:PP)",
+                          )}
+                        </label>
+                        <ColonTimeInput
+                          value={logMinutes}
+                          onChange={setLogMinutes}
+                          title={t(
+                            "Hours:Minutes (e.g. 1:30 for 90 minutes)",
+                            "Hodiny:Minúty (napr. 1:30 pre 90 minút)",
+                            "Óra:Perc (pl. 1:30 = 90 perc)",
+                          )}
+                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-mono font-bold text-slate-800 text-center"
+                        />
+                      </div>
+
+                      <div className="ws-sm:col-span-6">
+                        <label className="block type-overline text-slate-400 mb-1">
+                          {t(
+                            "Work Description / Note",
+                            "Popis práce / Poznámka",
+                            "Munka leírása / Megjegyzés",
+                          )}
+                        </label>
+                        <input
+                          type="text"
+                          value={logDesc}
+                          onChange={(e) => setLogDesc(e.target.value)}
+                          placeholder={t(
+                            "Describe the work performed...",
+                            "Popíšte vykonanú prácu...",
+                            "Írja le az elvégzett munkát...",
+                          )}
+                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-800"
+                        />
+                      </div>
+
+                      <div className="ws-sm:col-span-3 flex items-end">
+                        <button
+                          type="submit"
+                          className="w-full h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>
+                            {t("Log Time", "Zaznamenať", "Rögzítés")}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+
+                {(selectedTicket.timeEntries || []).length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
+                    <Timer className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-caption font-bold text-slate-500">
+                      {t(
+                        "No time entries logged on this ticket yet.",
+                        "K tomuto tiketu zatiaľ nie je zaznamenaný žiadny čas.",
+                        "Ehhez a jegyhez még nincs rögzített idő.",
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {[...(selectedTicket.timeEntries || [])]
+                      .sort((a, b) =>
+                        String(b.loggedAt || b.createdAt || "").localeCompare(
+                          String(a.loggedAt || a.createdAt || ""),
+                        ),
+                      )
+                      .map((te) => {
+                        const isEditingTe = editingTimeEntryId === te.id;
+                        const entryNote = te.description || te.note || "";
+                        const stamp = String(
+                          te.loggedAt || te.createdAt || "",
+                        ).replace("T", " ");
+
+                        return (
+                          <div
+                            key={te.id}
+                            className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 hover:border-emerald-300 transition-colors"
+                          >
+                            {isEditingTe && isAdminUser ? (
+                              <div className="flex flex-wrap items-center gap-2 w-full">
+                                <ColonTimeInput
+                                  autoFocus
+                                  value={editingTimeEntryDuration}
+                                  onChange={setEditingTimeEntryDuration}
+                                  className="w-20 px-2.5 py-1.5 rounded-xl border border-emerald-400 bg-white text-caption font-mono font-bold text-center"
+                                />
+                                <input
+                                  type="text"
+                                  value={editingTimeEntryNote}
+                                  onChange={(e) =>
+                                    setEditingTimeEntryNote(e.target.value)
+                                  }
+                                  placeholder={t(
+                                    "Work note...",
+                                    "Poznámka...",
+                                    "Megjegyzés...",
+                                  )}
+                                  className="flex-1 min-w-44 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-caption"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingTimeEntryId(null)}
+                                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-micro font-bold text-slate-600 cursor-pointer"
+                                >
+                                  {t("Cancel", "Zrušiť", "Mégse")}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveTimeEntry(te.id)}
+                                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>{t("Save", "Uložiť", "Mentés")}</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-caption font-extrabold shrink-0">
+                                    {formatDurationMinutes(te.minutes)}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <p className="text-caption font-semibold text-slate-800 truncate">
+                                      {entryNote ||
+                                        t(
+                                          "Support work",
+                                          "Podpora",
+                                          "Támogatási munka",
+                                        )}
+                                    </p>
+                                    <span className="text-micro text-slate-400 font-semibold">
+                                      {te.userName || "Agent"} •{" "}
+                                      {stamp.slice(0, 16) || "—"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {isAdminUser && (
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingTimeEntryId(te.id);
+                                        setEditingTimeEntryDuration(
+                                          formatDurationMinutes(te.minutes),
+                                        );
+                                        setEditingTimeEntryNote(entryNote);
+                                      }}
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                      title={t(
+                                        "Edit time entry",
+                                        "Upraviť časový záznam",
+                                        "Időbejegyzés szerkesztése",
+                                      )}
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleDeleteTimeEntry(te.id)
+                                      }
+                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                      title={t(
+                                        "Delete time entry",
+                                        "Odstrániť časový záznam",
+                                        "Időbejegyzés törlése",
+                                      )}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 )}
               </div>

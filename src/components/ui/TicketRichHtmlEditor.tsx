@@ -147,9 +147,9 @@ export const TicketRichHtmlEditor: React.FC<TicketRichHtmlEditorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const lastEmittedRef = useRef<string>(value);
+  const lastEmittedRef = useRef<string | null>(null);
 
-  // Sync external value changes (e.g. reset after submit or template insertion)
+  // Sync initial and external value changes (e.g. opening edit mode, reset after submit, or template insertion)
   useEffect(() => {
     const el = editorRef.current;
     if (!el) return;

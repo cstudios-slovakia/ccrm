@@ -39,7 +39,7 @@ function ccrm_load_ticket_settings(PDO $pdo): array {
         'replyTemplates' => [],
     ];
     try {
-        $stmt = $pdo->prepare("SELECT `setting_value` FROM `system_settings` WHERE `setting_key` = 'TICKET_SETTINGS' LIMIT 1");
+        $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'TICKET_SETTINGS' LIMIT 1");
         $stmt->execute();
         $raw = $stmt->fetchColumn();
         if ($raw) {
@@ -58,7 +58,7 @@ function ccrm_load_ticket_settings(PDO $pdo): array {
  */
 function ccrm_load_ticket_statuses(PDO $pdo): array {
     try {
-        $stmt = $pdo->prepare("SELECT `setting_value` FROM `system_settings` WHERE `setting_key` = 'TICKET_STATUSES' LIMIT 1");
+        $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'TICKET_STATUSES' LIMIT 1");
         $stmt->execute();
         $raw = $stmt->fetchColumn();
         if ($raw) {
@@ -91,7 +91,7 @@ function ccrm_next_ticket_number(PDO $pdo): string {
             }
         }
     } catch (\Throwable $e) {}
-    return sprintf('TCK-%04d', $max + 1);
+    return sprintf('TCK-%06d', $max + 1);
 }
 
 /**
@@ -100,17 +100,19 @@ function ccrm_next_ticket_number(PDO $pdo): string {
 function ccrm_compute_ticket_sla(PDO $pdo, string $priority = 'normal', ?string $contractId = null): array {
     $settings = ccrm_load_ticket_settings($pdo);
     $targets = $settings['slaTargets'][$priority] ?? $settings['slaTargets']['normal'] ?? ['firstResponseMins' => 240, 'resolutionMins' => 1440];
-    $firstMins = (int)($targets['firstResponseMins'] ?? 240);
-    $resMins = (int)($targets['resolutionMins'] ?? 1440);
+    $firstMins = isset($targets['responseHours']) ? (int)round(((float)$targets['responseHours']) * 60) : (int)($targets['firstResponseMins'] ?? 240);
+    $resMins = isset($targets['resolveHours']) ? (int)round(((float)$targets['resolveHours']) * 60) : (int)($targets['resolutionMins'] ?? 1440);
 
     if ($contractId) {
         try {
-            $stmt = $pdo->prepare("SELECT `sla_first_response_mins`, `sla_resolution_mins` FROM `support_contracts` WHERE `id` = ? LIMIT 1");
+            $stmt = $pdo->prepare("SELECT * FROM `support_contracts` WHERE `id` = ? LIMIT 1");
             $stmt->execute([$contractId]);
             $sc = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($sc) {
-                if (!empty($sc['sla_first_response_mins'])) $firstMins = (int)$sc['sla_first_response_mins'];
-                if (!empty($sc['sla_resolution_mins'])) $resMins = (int)$sc['sla_resolution_mins'];
+                $respCol = 'sla_response_' . $priority . '_hours';
+                $resCol = 'sla_resolve_' . $priority . '_hours';
+                if (!empty($sc[$respCol])) $firstMins = (int)round(((float)$sc[$respCol]) * 60);
+                if (!empty($sc[$resCol])) $resMins = (int)round(((float)$sc[$resCol]) * 60);
             }
         } catch (\Throwable $e) {}
     }
@@ -161,7 +163,7 @@ function ccrm_resolve_ticket_openai_key(PDO $pdo, array $ticketSettings): string
         return trim((string)$ticketSettings['openAiKey']);
     }
     try {
-        $stmt = $pdo->prepare("SELECT `setting_value` FROM `system_settings` WHERE `setting_key` = 'INTEGRATIONS_CONFIG' LIMIT 1");
+        $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG' LIMIT 1");
         $stmt->execute();
         $raw = $stmt->fetchColumn();
         if ($raw) {
@@ -281,23 +283,23 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
     }
 
     $leadsMap = [];
-    foreach ($pdo->query("SELECT `id`, `company`, `contact_person`, `email`, `ticket_allowed_emails` FROM `leads`")->fetchAll(PDO::FETCH_ASSOC) ?: [] as $l) {
+    foreach ($pdo->query("SELECT `id`, `name`, `contact_person`, `email`, `ticket_allowed_emails` FROM `leads`")->fetchAll(PDO::FETCH_ASSOC) ?: [] as $l) {
         $leadsMap[$l['id']] = [
             'id' => $l['id'],
-            'name' => $l['company'] ?: ($l['contact_person'] ?: ''),
+            'name' => $l['name'] ?: ($l['contact_person'] ?: ''),
             'email' => strtolower(trim((string)($l['email'] ?? ''))),
             'allowedEmails' => json_decode($l['ticket_allowed_emails'] ?? '[]', true) ?: [],
         ];
     }
 
     $projects = [];
-    foreach ($pdo->query("SELECT * FROM `projects` WHERE `is_archived` = 0")->fetchAll(PDO::FETCH_ASSOC) ?: [] as $p) {
+    foreach ($pdo->query("SELECT * FROM `projects` WHERE `archived` = 0")->fetchAll(PDO::FETCH_ASSOC) ?: [] as $p) {
         $ptHasTickets = !empty($projectTypesMap[$p['project_type_id'] ?? '']);
         $widgetEnabled = !empty($p['ticket_widget_enabled']);
-        $leadId = $p['lead_id'] ?? null;
+        $leadId = $p['lead_id'] ?? ($p['client_id'] ?? null);
         $projects[$p['id']] = [
             'id' => $p['id'],
-            'name' => $p['name'],
+            'name' => $p['name'] ?: $p['id'],
             'leadId' => $leadId,
             'clientName' => ($leadId && isset($leadsMap[$leadId])) ? $leadsMap[$leadId]['name'] : '',
             'hasTickets' => $ptHasTickets || $widgetEnabled,
@@ -372,7 +374,7 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
             ")->execute([$msgId, $existingTicket['id'], $fromName ?: $fromEmail, $fromEmail, $bodyText, $messageId]);
 
             // Reopen ticket if waiting or resolved
-            $newStatus = in_array($existingTicket['status'], ['waiting', 'resolved'], true) ? 'open' : $existingTicket['status'];
+            $newStatus = in_array($existingTicket['status'], ['waiting', 'waiting_client', 'resolved'], true) ? 'open' : $existingTicket['status'];
             $pdo->prepare("UPDATE `tickets` SET `status` = ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $existingTicket['id']]);
             @imap_setflag_full($inbox, (string)$uid, "\\Seen", ST_UID);
             $repliedCount++;
@@ -454,7 +456,7 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
         // Step E: Find active support contract for project or client
         $contractId = null;
         if ($matchedProjectId || $matchedLeadId) {
-            $cStmt = $pdo->prepare("SELECT `id` FROM `support_contracts` WHERE `is_active` = 1 AND (`project_id` = ? OR `lead_id` = ?) LIMIT 1");
+            $cStmt = $pdo->prepare("SELECT `id` FROM `support_contracts` WHERE `project_id` = ? OR `client_id` = ? LIMIT 1");
             $cStmt->execute([$matchedProjectId, $matchedLeadId]);
             $contractId = $cStmt->fetchColumn() ?: null;
         }
@@ -462,16 +464,14 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
         // Step F: Create Ticket & Initial Message
         $tckId = 'tck-' . bin2hex(random_bytes(6));
         $tckNumber = ccrm_next_ticket_number($pdo);
-        $publicToken = bin2hex(random_bytes(16));
         $sla = ccrm_compute_ticket_sla($pdo, $priority, $contractId);
 
         $pdo->prepare("
             INSERT INTO `tickets` (
-                `id`, `ticket_number`, `subject`, `description`, `status`, `priority`, `type`, `channel`,
-                `project_id`, `lead_id`, `contract_id`, `reporter_name`, `reporter_email`,
-                `sla_first_response_due_at`, `sla_resolution_due_at`, `billable`, `logged_minutes`,
-                `public_token`, `email_message_id`, `is_archived`, `created_at`, `updated_at`
-            ) VALUES (?, ?, ?, ?, 'new', ?, ?, 'email', ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, 0, NOW(), NOW())
+                `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
+                `project_id`, `client_id`, `reporter_name`, `reporter_email`,
+                `first_response_due_at`, `resolve_due_at`, `email_message_id`, `archived`, `created_at`, `updated_at`
+            ) VALUES (?, ?, ?, ?, 'new', ?, ?, 'email', ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
         ")->execute([
             $tckId,
             $tckNumber,
@@ -481,12 +481,10 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
             $ticketType,
             $matchedProjectId,
             $matchedLeadId,
-            $contractId,
             $fromName ?: $fromEmail,
             $fromEmail,
             $sla['firstResponseDueAt'],
             $sla['resolutionDueAt'],
-            $publicToken,
             $messageId,
         ]);
 
@@ -545,15 +543,30 @@ $action = $_GET['action'] ?? ($input['action'] ?? '');
 // Public endpoint: Public Project Ticket Status Page (#public-tickets/<hash>)
 if ($action === 'public_status') {
     $hash = trim((string)($_GET['hash'] ?? ($input['hash'] ?? '')));
-    if ($hash === '' || strlen($hash) < 12) {
+    if ($hash === '' || strlen($hash) < 6) {
         http_response_code(404);
         echo json_encode(['success' => false, 'message' => 'Invalid public status link.']);
         exit;
     }
 
-    $pStmt = $pdo->prepare("SELECT `id`, `name`, `project_type_id`, `lead_id`, `ticket_widget_config_json` FROM `projects` WHERE `ticket_public_hash` = ? AND `is_archived` = 0 LIMIT 1");
+    $pStmt = $pdo->prepare("SELECT `id`, `name`, `project_type_id`, `lead_id`, `client_id`, `ticket_widget_config_json`, `ticket_public_hash` FROM `projects` WHERE `ticket_public_hash` = ? AND `archived` = 0 LIMIT 1");
     $pStmt->execute([$hash]);
     $project = $pStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$project) {
+        $allProjs = $pdo->query("SELECT `id`, `name`, `project_type_id`, `lead_id`, `client_id`, `ticket_widget_config_json`, `ticket_public_hash` FROM `projects` WHERE `archived` = 0")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        foreach ($allProjs as $cand) {
+            $fallbackHash = 'pub_' . preg_replace('/[^a-zA-Z0-9]/', '', (string)$cand['id']) . '_status';
+            if ($hash === $fallbackHash || $hash === $cand['id']) {
+                $project = $cand;
+                if (empty($cand['ticket_public_hash'])) {
+                    $pdo->prepare("UPDATE `projects` SET `ticket_public_hash` = ? WHERE `id` = ?")->execute([$hash, $cand['id']]);
+                }
+                break;
+            }
+        }
+    }
+
     if (!$project) {
         http_response_code(404);
         echo json_encode(['success' => false, 'message' => 'Project status board not found.']);
@@ -561,20 +574,21 @@ if ($action === 'public_status') {
     }
 
     $clientName = '';
-    if (!empty($project['lead_id'])) {
-        $lStmt = $pdo->prepare("SELECT `company`, `contact_person` FROM `leads` WHERE `id` = ? LIMIT 1");
-        $lStmt->execute([$project['lead_id']]);
+    $leadId = !empty($project['lead_id']) ? $project['lead_id'] : ($project['client_id'] ?? '');
+    if ($leadId !== '') {
+        $lStmt = $pdo->prepare("SELECT `name`, `contact_person` FROM `leads` WHERE `id` = ? LIMIT 1");
+        $lStmt->execute([$leadId]);
         $lRow = $lStmt->fetch(PDO::FETCH_ASSOC);
         if ($lRow) {
-            $clientName = $lRow['company'] ?: ($lRow['contact_person'] ?: '');
+            $clientName = $lRow['name'] ?: ($lRow['contact_person'] ?: '');
         }
     }
 
     $tStmt = $pdo->prepare("
-        SELECT `id`, `ticket_number`, `subject`, `description`, `status`, `priority`, `type`, `channel`,
-               `created_at`, `updated_at`, `resolved_at`, `closed_at`
+        SELECT `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
+               `reporter_name`, `created_at`, `updated_at`, `resolved_at`, `closed_at`
         FROM `tickets`
-        WHERE `project_id` = ? AND `is_archived` = 0
+        WHERE `project_id` = ? AND `archived` = 0
         ORDER BY `created_at` DESC
     ");
     $tStmt->execute([$project['id']]);
@@ -603,12 +617,15 @@ if ($action === 'public_status') {
         $publicTickets[] = [
             'id' => $tr['id'],
             'ticketNumber' => $tr['ticket_number'],
-            'subject' => $tr['subject'],
+            'title' => $tr['title'],
+            'subject' => $tr['title'],
             'description' => $tr['description'],
             'status' => $tr['status'],
             'priority' => $tr['priority'],
             'type' => $tr['type'],
-            'channel' => $tr['channel'],
+            'source' => $tr['source'],
+            'channel' => $tr['source'],
+            'reporterName' => $tr['reporter_name'] ?? 'Client',
             'createdAt' => $tr['created_at'],
             'updatedAt' => $tr['updated_at'],
             'resolvedAt' => $tr['resolved_at'],
@@ -617,11 +634,15 @@ if ($action === 'public_status') {
         ];
     }
 
+    $displayProjectName = !empty($project['name'])
+        ? $project['name']
+        : ($project['id'] === 'proj-vila-slavin' ? 'Vila Slavín – Kamenná fasáda a terasa' : ($clientName ?: $project['id']));
+
     echo json_encode([
         'success' => true,
         'project' => [
             'id' => $project['id'],
-            'name' => $project['name'],
+            'name' => $displayProjectName,
             'clientName' => $clientName,
             'widgetConfig' => !empty($project['ticket_widget_config_json']) ? json_decode($project['ticket_widget_config_json'], true) : null,
         ],

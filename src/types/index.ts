@@ -1424,6 +1424,7 @@ export type TicketTimelineEventType =
   | "phone"
   | "email"
   | "appointment"
+  | "time_logged"
   | "client_reply"
   | "ticket_created";
 
