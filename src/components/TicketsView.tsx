@@ -79,6 +79,7 @@ import {
   formatDurationMinutes,
   parseDurationColonInput,
   sanitizeColonTimeDraft,
+  computeProjectRetainerUsage,
 } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { projectDisplayName } from "../utils/projects";
@@ -2175,6 +2176,62 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     </div>
                   </div>
 
+                  {(() => {
+                    const projRetainer = computeProjectRetainerUsage(
+                      pairedProject,
+                      tickets,
+                      supportContracts,
+                    );
+                    if (!projRetainer.enabled) return null;
+                    return (
+                      <div className="bg-white/90 p-3 rounded-xl border border-indigo-200/60 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 text-micro">
+                          <span className="font-bold text-indigo-900 flex items-center gap-1">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>
+                              {projRetainer.name ||
+                                t(
+                                  "Monthly Retainer",
+                                  "Mesačný paušál",
+                                  "Havi átalány",
+                                )}
+                            </span>
+                          </span>
+                          <span className="font-mono font-extrabold text-slate-800">
+                            {formatDurationMinutes(projRetainer.usedMinutes)} /{" "}
+                            {formatDurationMinutes(projRetainer.monthlyMinutes)} h (
+                            {projRetainer.rawPercent}%)
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              projRetainer.rawPercent >= 90
+                                ? "bg-rose-500"
+                                : projRetainer.rawPercent >= 75
+                                  ? "bg-amber-500"
+                                  : "bg-emerald-500"
+                            }`}
+                            style={{ width: `${projRetainer.percent}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-micro text-slate-500">
+                          <span>
+                            {t(
+                              `Reset day: ${projRetainer.resetDay}.`,
+                              `Deň resetu: ${projRetainer.resetDay}.`,
+                              `Nullázás: ${projRetainer.resetDay}.`,
+                            )}
+                          </span>
+                          <span className="font-mono">
+                            {projRetainer.periodStart} →{" "}
+                            {projRetainer.nextResetDate}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
                     {canEdit && (
                       <div className="flex items-center gap-1">
@@ -4064,17 +4121,6 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               />
               <span className="hidden ws-sm:inline">
                 {t("Poll Email", "Načítať e-maily", "E-mail lekérdezés")}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowContractsModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-heading font-bold text-ui transition-all cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span className="hidden ws-sm:inline">
-                {t("Retainers", "Paušály", "Átalányok")} (
-                {supportContracts.length})
               </span>
             </button>
             {settingsAccess.view && (

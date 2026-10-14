@@ -35,7 +35,7 @@ import { ratingValue } from "../utils/rating";
 import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import { ProjectTicketsPanel } from "./ProjectTicketsPanel";
-import type { Task, Ticket, TicketStatusDefinition, TicketSettings } from "../types";
+import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
@@ -112,6 +112,8 @@ interface ProjectDetailsViewProps {
   setTickets?: React.Dispatch<React.SetStateAction<Ticket[]>>;
   ticketStatuses?: TicketStatusDefinition[];
   ticketSettings?: TicketSettings;
+  supportContracts?: SupportContract[];
+  setSupportContracts?: React.Dispatch<React.SetStateAction<SupportContract[]>>;
 }
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
@@ -148,6 +150,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   setTickets,
   ticketStatuses = DEFAULT_TICKET_STATUSES,
   ticketSettings = DEFAULT_TICKET_SETTINGS,
+  supportContracts = [],
+  setSupportContracts,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -2669,6 +2673,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 setTickets={setTickets}
                 ticketStatuses={ticketStatuses}
                 ticketSettings={ticketSettings}
+                supportContracts={supportContracts}
+                setSupportContracts={setSupportContracts}
+                currencyCode={currencyCode}
                 users={users}
                 currentUser={currentUser}
                 userLanguage={userLanguage}

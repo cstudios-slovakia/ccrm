@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X } from "lucide-react";
-import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings } from "../types";
+import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
@@ -160,6 +160,8 @@ interface ProjectsViewProps {
   setTickets?: React.Dispatch<React.SetStateAction<Ticket[]>>;
   ticketStatuses?: TicketStatusDefinition[];
   ticketSettings?: TicketSettings;
+  supportContracts?: SupportContract[];
+  setSupportContracts?: React.Dispatch<React.SetStateAction<SupportContract[]>>;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -196,6 +198,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   setTickets,
   ticketStatuses,
   ticketSettings,
+  supportContracts,
+  setSupportContracts,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -1597,6 +1601,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         setTickets={setTickets}
         ticketStatuses={ticketStatuses}
         ticketSettings={ticketSettings}
+        supportContracts={supportContracts}
+        setSupportContracts={setSupportContracts}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);

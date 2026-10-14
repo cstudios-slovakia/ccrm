@@ -22,10 +22,14 @@ import {
   Sparkles,
   AlertTriangle,
   CreditCard,
+  Clock,
+  CalendarClock,
 } from "lucide-react";
 import type {
   Project,
+  ProjectRetainerConfig,
   ProjectType,
+  SupportContract,
   Ticket,
   TicketAttachment,
   TicketPriority,
@@ -36,10 +40,14 @@ import type {
 } from "../types";
 import type { Language } from "../utils/translations";
 import {
+  clampRetainerResetDay,
+  computeProjectRetainerUsage,
   computeTicketSlaDueDates,
   evaluateTicketSla,
+  formatDurationMinutes,
   getTicketStatusLabel,
   nextTicketNumber,
+  resolveProjectRetainer,
 } from "./../utils/tickets";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TicketRichHtmlEditor, isImageAttachment } from "./ui/TicketRichHtmlEditor";
@@ -52,6 +60,9 @@ interface ProjectTicketsPanelProps {
   setTickets?: React.Dispatch<React.SetStateAction<Ticket[]>>;
   ticketStatuses: TicketStatusDef[];
   ticketSettings: TicketSettingsConfig;
+  supportContracts?: SupportContract[];
+  setSupportContracts?: React.Dispatch<React.SetStateAction<SupportContract[]>>;
+  currencyCode?: string | null;
   users?: UserProfile[];
   currentUser?: UserProfile | null;
   userLanguage?: Language;
@@ -67,6 +78,9 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
   setTickets,
   ticketStatuses,
   ticketSettings,
+  supportContracts = [],
+  setSupportContracts,
+  currencyCode = "EUR",
   userLanguage = "sk",
   canEdit = true,
   currentUserName = "Admin",
@@ -75,7 +89,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
   const tr = (sk: string, en: string, hu: string) =>
     userLanguage === "en" ? en : userLanguage === "hu" ? hu : sk;
 
-  const [subView, setSubView] = useState<"tickets" | "widget">("tickets");
+  const [subView, setSubView] = useState<"tickets" | "retainer" | "widget">("tickets");
   const [domainDraft, setDomainDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
   const [copiedEmbed, setCopiedEmbed] = useState(false);
@@ -96,6 +110,79 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
   const allowedDomains = project.ticketAllowedDomains || [];
   const allowedEmails = project.ticketAllowedEmails || [];
   const widgetCfg = project.ticketWidgetConfig || {};
+
+  const retainerCfg = resolveProjectRetainer(project, supportContracts);
+  const retainerUsage = computeProjectRetainerUsage(
+    project,
+    tickets,
+    supportContracts,
+  );
+
+  const handleUpdateRetainer = (patch: Partial<ProjectRetainerConfig>) => {
+    if (!canEdit) return;
+    const nextRetainer: ProjectRetainerConfig = {
+      ...retainerCfg,
+      ...patch,
+      monthlyHours: Math.max(
+        0,
+        Number(
+          patch.monthlyHours !== undefined
+            ? patch.monthlyHours
+            : retainerCfg.monthlyHours,
+        ) || 0,
+      ),
+      resetDay: clampRetainerResetDay(
+        patch.resetDay !== undefined ? patch.resetDay : retainerCfg.resetDay,
+      ),
+      currency: patch.currency || retainerCfg.currency || currencyCode || "EUR",
+    };
+
+    onUpdateProject({
+      ticketRetainer: nextRetainer,
+      ticketWidgetConfig: {
+        ...widgetCfg,
+        retainer: nextRetainer,
+      },
+    });
+
+    if (setSupportContracts) {
+      setSupportContracts((prev) => {
+        const existingIdx = prev.findIndex((c) => c.projectId === project.id);
+        if (!nextRetainer.enabled) {
+          return existingIdx >= 0
+            ? prev.filter((c) => c.projectId !== project.id)
+            : prev;
+        }
+        const contractName =
+          nextRetainer.name?.trim() ||
+          `${project.name || project.id} — ${tr("Mesačný paušál", "Monthly Retainer", "Havi átalány")}`;
+        const updatedContract: SupportContract = {
+          ...(existingIdx >= 0 ? prev[existingIdx] : { id: `sc-${project.id}` }),
+          projectId: project.id,
+          leadId: project.leadId || project.clientId || null,
+          clientId: project.leadId || project.clientId || null,
+          name: contractName,
+          monthlyHours: nextRetainer.monthlyHours,
+          monthlyHoursIncluded: nextRetainer.monthlyHours,
+          resetDay: nextRetainer.resetDay,
+          overageRate: nextRetainer.overageRate ?? 65,
+          hourlyOverageRate: nextRetainer.overageRate ?? 65,
+          hourlyRate: nextRetainer.overageRate ?? 65,
+          currency: nextRetainer.currency || currencyCode || "EUR",
+          slaTier: nextRetainer.slaTier || "standard",
+          tier: nextRetainer.slaTier || "standard",
+          active: true,
+          isActive: true,
+        };
+        if (existingIdx >= 0) {
+          const copy = [...prev];
+          copy[existingIdx] = updatedContract;
+          return copy;
+        }
+        return [updatedContract, ...prev];
+      });
+    }
+  };
 
   const publicHash =
     project.ticketPublicHash ||
@@ -230,13 +317,13 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Sub-navigation between Project Tickets and Widget Settings */}
+      {/* Sub-navigation between Project Tickets, Monthly Retainer, and Widget Settings */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSubView("tickets")}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors ${
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors cursor-pointer ${
               subView === "tickets"
                 ? "bg-orange-500 text-white shadow-xs"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -250,8 +337,42 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => setSubView("retainer")}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors cursor-pointer ${
+              subView === "retainer"
+                ? "bg-emerald-600 text-white shadow-xs"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>
+              {tr(
+                "Mesačný paušál (Retainer)",
+                "Monthly Retainer",
+                "Havi átalány (Retainer)",
+              )}
+            </span>
+            {retainerUsage.enabled && (
+              <span
+                className={`px-1.5 py-0.5 rounded-md text-micro font-mono font-bold ${
+                  subView === "retainer"
+                    ? "bg-white/20 text-white"
+                    : retainerUsage.rawPercent >= 90
+                      ? "bg-rose-500/15 text-rose-600"
+                      : retainerUsage.rawPercent >= 75
+                        ? "bg-amber-500/15 text-amber-600"
+                        : "bg-emerald-500/15 text-emerald-600"
+                }`}
+              >
+                {formatDurationMinutes(retainerUsage.usedMinutes)} /{" "}
+                {formatDurationMinutes(retainerUsage.monthlyMinutes)}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
             onClick={() => setSubView("widget")}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors ${
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors cursor-pointer ${
               subView === "widget"
                 ? "bg-orange-500 text-white shadow-xs"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -282,7 +403,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             <button
               type="button"
               onClick={() => setShowNewModal((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-caption font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-caption font-bold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               {tr("Nový tiket", "New Ticket", "Új jegy")}
@@ -408,7 +529,100 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
       )}
 
       {subView === "tickets" ? (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
+          {/* Project Monthly Retainer Status Strip */}
+          {retainerUsage.enabled ? (
+            <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-caption font-bold text-slate-900">
+                        {retainerUsage.name ||
+                          tr(
+                            "Mesačný servisný paušál",
+                            "Monthly Support Retainer",
+                            "Havi támogatási átalány",
+                          )}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-slate-100 text-slate-600 inline-flex items-center gap-1">
+                        <CalendarClock className="w-3 h-3 text-emerald-600" />
+                        {tr(
+                          `Reset: ${retainerUsage.resetDay}. deň v mesiaci (${retainerUsage.periodStart} → ${retainerUsage.nextResetDate})`,
+                          `Resets on day ${retainerUsage.resetDay} of month (${retainerUsage.periodStart} → ${retainerUsage.nextResetDate})`,
+                          `Nullázódás: hó ${retainerUsage.resetDay}. napján (${retainerUsage.periodStart} → ${retainerUsage.nextResetDate})`,
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-ui font-extrabold font-mono text-slate-900">
+                      {formatDurationMinutes(retainerUsage.usedMinutes)}
+                    </span>
+                    <span className="text-caption text-slate-500 font-mono">
+                      {" "}
+                      / {formatDurationMinutes(retainerUsage.monthlyMinutes)} h (
+                      {retainerUsage.rawPercent}%)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSubView("retainer")}
+                    className="px-2.5 py-1 rounded-lg text-micro font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  >
+                    {tr("Upraviť paušál", "Configure", "Beállítás")}
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-2 rounded-full bg-slate-200/70 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    retainerUsage.rawPercent >= 90
+                      ? "bg-rose-500"
+                      : retainerUsage.rawPercent >= 75
+                        ? "bg-amber-500"
+                        : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${retainerUsage.percent}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            canEdit && (
+              <div className="px-4 py-2.5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-caption text-slate-500">
+                  <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0" />
+                  <span>
+                    {tr(
+                      "Pre tento projekt zatiaľ nie je zapnutý mesačný paušál (Retainer).",
+                      "No monthly support retainer is configured for this project yet.",
+                      "Ehhez a projekthez még nincs beállítva havi támogatási átalány (Retainer).",
+                    )}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSubView("retainer")}
+                  className="px-3 py-1 rounded-xl text-micro font-bold bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 cursor-pointer"
+                >
+                  +{" "}
+                  {tr(
+                    "Nastaviť paušál",
+                    "Set Up Retainer",
+                    "Átalány beállítása",
+                  )}
+                </button>
+              </div>
+            )
+          )}
+
           {projectTickets.length === 0 ? (
             <div className="p-8 rounded-2xl border border-dashed border-slate-200 bg-white/50 text-center space-y-2">
               <TicketIcon className="w-8 h-8 text-slate-400 mx-auto" />
@@ -501,6 +715,280 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
               );
             })
           )}
+        </div>
+      ) : subView === "retainer" ? (
+        <div className="space-y-5">
+          {/* Enable Monthly Retainer Banner */}
+          <div className="p-4 rounded-2xl border border-slate-200 bg-white flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-ui font-bold text-slate-900">
+                  {tr(
+                    "Mesačný servisný paušál a podpora projektu (Monthly Retainer)",
+                    "Project Monthly Support Retainer & SLA Contract",
+                    "Projekt havi támogatási átalány (Monthly Retainer)",
+                  )}
+                </h4>
+                <p className="text-caption text-slate-500 max-w-2xl">
+                  {tr(
+                    "Nastavte počet predplatených hodín podpory mesačne a deň v mesiaci, kedy sa čerpanie paušálu automaticky vynuluje. Všetok zaznamenaný čas na tiketoch tohto projektu v aktuálnom období sa automaticky odpočítava z paušálu.",
+                    "Configure the monthly prepaid support hours and the monthly reset day for this project. All billable time logged on this project's tickets within the active cycle is automatically counted against the retainer.",
+                    "Állítsa be a projekt havi előre fizetett támogatási óráit és a havi nullázási napot. A projekt jegyein rögzített idő automatikusan levonódik az aktuális havi keretből.",
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <label className="inline-flex items-center gap-2 text-caption font-bold text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(retainerCfg.enabled)}
+                disabled={!canEdit}
+                onChange={(e) =>
+                  handleUpdateRetainer({ enabled: e.target.checked })
+                }
+                className="w-4 h-4 rounded accent-emerald-600"
+              />
+              <span>
+                {tr(
+                  "Mesačný paušál aktívny",
+                  "Monthly Retainer Enabled",
+                  "Havi átalány engedélyezve",
+                )}
+              </span>
+            </label>
+          </div>
+
+          {/* Retainer Settings Grid */}
+          <div className="p-5 rounded-2xl border border-slate-200 bg-white space-y-4">
+            <div className="text-caption font-bold text-slate-900 flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-emerald-600" />
+              <span>
+                {tr(
+                  "Parametre mesačného paušálu a deň resetovania",
+                  "Retainer Parameters & Monthly Reset Day",
+                  "Havi átalány paraméterei és nullázási napja",
+                )}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-micro font-semibold text-slate-500 mb-1">
+                  {tr(
+                    "Názov paušálu / Servisnej zmluvy",
+                    "Retainer / Contract Name",
+                    "Átalány / Szerződés megnevezése",
+                  )}
+                </label>
+                <input
+                  type="text"
+                  disabled={!canEdit}
+                  value={retainerCfg.name || ""}
+                  onChange={(e) =>
+                    handleUpdateRetainer({
+                      name: e.target.value,
+                      enabled: true,
+                    })
+                  }
+                  placeholder={tr(
+                    "Napr. Prioritná podpora SLA Pro",
+                    "E.g. Priority Web & SLA Care",
+                    "Pl. Kiemelt SLA támogatás",
+                  )}
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-micro font-semibold text-slate-500 mb-1">
+                  {tr(
+                    "Predplatené hodiny mesačne (h)",
+                    "Monthly Included Hours (h)",
+                    "Havi előre fizetett órák (óra)",
+                  )}
+                </label>
+                <input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  disabled={!canEdit}
+                  value={retainerCfg.monthlyHours}
+                  onChange={(e) =>
+                    handleUpdateRetainer({
+                      monthlyHours: Math.max(0, parseFloat(e.target.value) || 0),
+                      enabled: true,
+                    })
+                  }
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-bold tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label className="block text-micro font-semibold text-slate-500 mb-1">
+                  {tr(
+                    "Deň resetovania v mesiaci (1 – 31)",
+                    "Reset Day of Month (1 – 31)",
+                    "Havi nullázási nap (1 – 31)",
+                  )}
+                </label>
+                <select
+                  disabled={!canEdit}
+                  value={retainerCfg.resetDay}
+                  onChange={(e) =>
+                    handleUpdateRetainer({
+                      resetDay: clampRetainerResetDay(e.target.value),
+                      enabled: true,
+                    })
+                  }
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-bold"
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                    <option key={day} value={day}>
+                      {tr(
+                        `${day}. deň v mesiaci`,
+                        `Day ${day} of every month`,
+                        `Minden hónap ${day}. napja`,
+                      )}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-micro font-semibold text-slate-500 mb-1">
+                  {tr(
+                    `Sadzba nad rámec (${retainerUsage.currency}/h)`,
+                    `Overage Rate (${retainerUsage.currency}/h)`,
+                    `Túlóra díj (${retainerUsage.currency}/óra)`,
+                  )}
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  disabled={!canEdit}
+                  value={retainerCfg.overageRate ?? 65}
+                  onChange={(e) =>
+                    handleUpdateRetainer({
+                      overageRate: Math.max(0, parseFloat(e.target.value) || 0),
+                    })
+                  }
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-bold tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label className="block text-micro font-semibold text-slate-500 mb-1">
+                  {tr("Úroveň SLA", "SLA Tier", "SLA szint")}
+                </label>
+                <select
+                  disabled={!canEdit}
+                  value={retainerCfg.slaTier || "standard"}
+                  onChange={(e) =>
+                    handleUpdateRetainer({ slaTier: e.target.value })
+                  }
+                  className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold"
+                >
+                  <option value="standard">Standard</option>
+                  <option value="priority">Priority / Pro</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Current Cycle Live Usage Summary */}
+          <div className="p-5 rounded-2xl border border-slate-200 bg-white space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-indigo-600" />
+                <span className="text-caption font-bold text-slate-900">
+                  {tr(
+                    "Čerpanie v aktuálnom zúčtovacom období",
+                    "Current Retainer Cycle Usage",
+                    "Aktuális időszak felhasználása",
+                  )}
+                </span>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg text-micro font-mono font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+                {tr("Aktuálne obdobie", "Active Period", "Aktuális időszak")}:{" "}
+                {retainerUsage.periodStart} → {retainerUsage.nextResetDate}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70">
+                <span className="block text-micro text-slate-500">
+                  {tr("Vyčerpané v období", "Used in Period", "Felhasználva")}
+                </span>
+                <span className="text-title-sm font-extrabold font-mono text-slate-900">
+                  {formatDurationMinutes(retainerUsage.usedMinutes)} h
+                </span>
+              </div>
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70">
+                <span className="block text-micro text-slate-500">
+                  {tr("Mesačný limit", "Monthly Limit", "Havi keret")}
+                </span>
+                <span className="text-title-sm font-extrabold font-mono text-slate-900">
+                  {formatDurationMinutes(retainerUsage.monthlyMinutes)} h
+                </span>
+              </div>
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70">
+                <span className="block text-micro text-slate-500">
+                  {retainerUsage.overageMinutes > 0
+                    ? tr("Nad rámec paušálu", "Overage Time", "Kerettúllépés")
+                    : tr("Zostáva v paušále", "Remaining Time", "Hátralévő keret")}
+                </span>
+                <span
+                  className={`text-title-sm font-extrabold font-mono ${
+                    retainerUsage.overageMinutes > 0
+                      ? "text-rose-600"
+                      : "text-emerald-600"
+                  }`}
+                >
+                  {retainerUsage.overageMinutes > 0
+                    ? `+${formatDurationMinutes(retainerUsage.overageMinutes)} h`
+                    : `${formatDurationMinutes(retainerUsage.remainingMinutes)} h`}
+                </span>
+              </div>
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70">
+                <span className="block text-micro text-slate-500">
+                  {tr("Najbližší reset", "Next Reset Date", "Következő nullázás")}
+                </span>
+                <span className="text-ui font-extrabold font-mono text-slate-900 block mt-0.5">
+                  {retainerUsage.nextResetDate}{" "}
+                  <span className="text-micro font-semibold text-slate-500">
+                    ({retainerUsage.resetDay}.)
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-micro font-bold text-slate-600">
+                <span>
+                  {tr("Využitie kapacity paušálu", "Retainer Capacity Used", "Kapacitás kihasználtsága")}
+                </span>
+                <span>{retainerUsage.rawPercent}%</span>
+              </div>
+              <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    retainerUsage.rawPercent >= 90
+                      ? "bg-rose-500"
+                      : retainerUsage.rawPercent >= 75
+                        ? "bg-amber-500"
+                        : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${retainerUsage.percent}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-5">

@@ -1355,7 +1355,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'ticketAllowedDomains' => json_decode($pRow['ticket_allowed_domains'] ?? '[]', true) ?: [],
                 'ticketAllowedEmails' => json_decode($pRow['ticket_allowed_emails'] ?? '[]', true) ?: [],
                 'ticketPublicHash' => $pRow['ticket_public_hash'] ?? null,
-                'ticketWidgetConfig' => json_decode($pRow['ticket_widget_config_json'] ?? '{}', true) ?: (object)[],
+                'ticketWidgetConfig' => ($decodedWidgetCfg = json_decode($pRow['ticket_widget_config_json'] ?? '{}', true)) && is_array($decodedWidgetCfg) ? $decodedWidgetCfg : (object)[],
+                'ticketRetainer' => isset($decodedWidgetCfg['retainer']) && is_array($decodedWidgetCfg['retainer']) ? $decodedWidgetCfg['retainer'] : null,
                 'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
@@ -3263,8 +3264,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $projTicketPublicHash = !empty($p['ticketPublicHash'])
                     ? trim((string)$p['ticketPublicHash'])
                     : (!empty($existingProjMap[$projId]['ticket_public_hash']) ? $existingProjMap[$projId]['ticket_public_hash'] : bin2hex(random_bytes(16)));
-                $projTicketWidgetConfig = array_key_exists('ticketWidgetConfig', $p) && is_array($p['ticketWidgetConfig'])
-                    ? json_encode($p['ticketWidgetConfig'], JSON_UNESCAPED_UNICODE)
+                $rawWidgetCfg = array_key_exists('ticketWidgetConfig', $p) && is_array($p['ticketWidgetConfig'])
+                    ? $p['ticketWidgetConfig']
+                    : null;
+                if (array_key_exists('ticketRetainer', $p) && is_array($p['ticketRetainer'])) {
+                    if (!is_array($rawWidgetCfg)) $rawWidgetCfg = [];
+                    $rawWidgetCfg['retainer'] = $p['ticketRetainer'];
+                }
+                $projTicketWidgetConfig = is_array($rawWidgetCfg)
+                    ? json_encode($rawWidgetCfg, JSON_UNESCAPED_UNICODE)
                     : null;
 
                 // Archived state: column is NOT NULL DEFAULT 0, so never pass null into VALUES.

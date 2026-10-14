@@ -3444,6 +3444,9 @@ ${log.payload || ''}
             tickets={tickets}
             setTickets={updateTicketsAndSync}
             ticketStatuses={ticketStatuses}
+            ticketSettings={ticketSettings}
+            supportContracts={supportContracts}
+            setSupportContracts={updateSupportContractsAndSync}
           />
         );
       }

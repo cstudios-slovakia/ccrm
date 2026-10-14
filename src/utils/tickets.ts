@@ -1,4 +1,6 @@
 import type {
+  Project,
+  ProjectRetainerConfig,
   Ticket,
   TicketPriority,
   TicketSettingsConfig,
@@ -531,4 +533,219 @@ export const evaluateTicketSla = (
     label,
   };
 };
+
+export const clampRetainerResetDay = (raw: unknown): number => {
+  const num = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+  if (Number.isNaN(num) || !Number.isFinite(num)) return 1;
+  return Math.max(1, Math.min(31, Math.round(num)));
+};
+
+const daysInYearMonth = (year: number, month0: number): number =>
+  new Date(year, month0 + 1, 0).getDate();
+
+const formatIsoDateParts = (year: number, month0: number, day: number): string => {
+  const m = String(month0 + 1).padStart(2, "0");
+  const d = String(day).padStart(2, "0");
+  return `${year}-${m}-${d}`;
+};
+
+export interface RetainerPeriodWindow {
+  resetDay: number;
+  periodStart: string;
+  nextResetDate: string;
+}
+
+/**
+ * Computes the active monthly retainer cycle `[periodStart, nextResetDate)`
+ * anchored to `resetDay` (1..31). Months shorter than `resetDay` clamp to the
+ * last day of that month.
+ */
+export const computeRetainerPeriod = (
+  resetDayRaw: unknown,
+  referenceDate: Date = new Date(),
+): RetainerPeriodWindow => {
+  const resetDay = clampRetainerResetDay(resetDayRaw);
+  const year = referenceDate.getFullYear();
+  const month0 = referenceDate.getMonth();
+  const todayDay = referenceDate.getDate();
+
+  const thisMonthResetDay = Math.min(resetDay, daysInYearMonth(year, month0));
+
+  if (todayDay >= thisMonthResetDay) {
+    const periodStart = formatIsoDateParts(year, month0, thisMonthResetDay);
+    const nextYear = month0 === 11 ? year + 1 : year;
+    const nextMonth0 = month0 === 11 ? 0 : month0 + 1;
+    const nextMonthResetDay = Math.min(
+      resetDay,
+      daysInYearMonth(nextYear, nextMonth0),
+    );
+    const nextResetDate = formatIsoDateParts(
+      nextYear,
+      nextMonth0,
+      nextMonthResetDay,
+    );
+    return { resetDay, periodStart, nextResetDate };
+  }
+
+  const prevYear = month0 === 0 ? year - 1 : year;
+  const prevMonth0 = month0 === 0 ? 11 : month0 - 1;
+  const prevMonthResetDay = Math.min(
+    resetDay,
+    daysInYearMonth(prevYear, prevMonth0),
+  );
+  const periodStart = formatIsoDateParts(prevYear, prevMonth0, prevMonthResetDay);
+  const nextResetDate = formatIsoDateParts(year, month0, thisMonthResetDay);
+  return { resetDay, periodStart, nextResetDate };
+};
+
+export const resolveProjectRetainer = (
+  project: Project | null | undefined,
+  supportContracts: readonly SupportContract[] = [],
+): ProjectRetainerConfig => {
+  const raw =
+    project?.ticketRetainer ?? project?.ticketWidgetConfig?.retainer ?? null;
+  if (raw && typeof raw === "object") {
+    return {
+      enabled: Boolean(raw.enabled),
+      name: raw.name || "",
+      monthlyHours: Math.max(0, Number(raw.monthlyHours ?? 10) || 0),
+      resetDay: clampRetainerResetDay(raw.resetDay ?? 1),
+      overageRate:
+        raw.overageRate !== undefined && raw.overageRate !== null
+          ? Number(raw.overageRate)
+          : 65,
+      currency: raw.currency || "EUR",
+      slaTier: raw.slaTier || "standard",
+    };
+  }
+
+  if (project?.id) {
+    const matched = (supportContracts || []).find(
+      (c) =>
+        c.projectId === project.id &&
+        c.active !== false &&
+        c.isActive !== false,
+    );
+    if (matched) {
+      const hours =
+        matched.monthlyHoursIncluded ?? matched.monthlyHours ?? 10;
+      return {
+        enabled: hours > 0,
+        name: matched.name || "",
+        monthlyHours: Math.max(0, Number(hours) || 0),
+        resetDay: clampRetainerResetDay(matched.resetDay ?? 1),
+        overageRate:
+          matched.overageRate ??
+          matched.hourlyOverageRate ??
+          matched.hourlyRate ??
+          65,
+        currency: matched.currency || "EUR",
+        slaTier: matched.slaTier || matched.tier || "standard",
+      };
+    }
+  }
+
+  return {
+    enabled: false,
+    name: "",
+    monthlyHours: 10,
+    resetDay: 1,
+    overageRate: 65,
+    currency: "EUR",
+    slaTier: "standard",
+  };
+};
+
+export interface ProjectRetainerUsage {
+  enabled: boolean;
+  name: string;
+  monthlyHours: number;
+  monthlyMinutes: number;
+  usedMinutes: number;
+  usedHours: number;
+  remainingMinutes: number;
+  overageMinutes: number;
+  percent: number;
+  rawPercent: number;
+  resetDay: number;
+  periodStart: string;
+  nextResetDate: string;
+  overageRate: number;
+  currency: string;
+  slaTier: string;
+}
+
+/**
+ * Calculates how much of a project's monthly retainer has been consumed in the
+ * current cycle `[periodStart, nextResetDate)` based on time logged on the
+ * project's tickets.
+ */
+export const computeProjectRetainerUsage = (
+  project: Project | null | undefined,
+  tickets: readonly Ticket[] = [],
+  supportContracts: readonly SupportContract[] = [],
+  referenceDate: Date = new Date(),
+): ProjectRetainerUsage => {
+  const cfg = resolveProjectRetainer(project, supportContracts);
+  const period = computeRetainerPeriod(cfg.resetDay, referenceDate);
+  const monthlyMinutes = Math.max(0, Math.round((cfg.monthlyHours || 0) * 60));
+
+  let usedMinutes = 0;
+  if (project?.id) {
+    for (const tk of tickets || []) {
+      if (!tk || tk.archived || tk.isArchived) continue;
+      if (tk.projectId !== project.id) continue;
+
+      if (Array.isArray(tk.timeEntries) && tk.timeEntries.length > 0) {
+        for (const entry of tk.timeEntries) {
+          if (!entry || entry.billable === false) continue;
+          const stamp = String(
+            entry.loggedAt || entry.createdAt || tk.createdAt || "",
+          ).slice(0, 10);
+          if (
+            !stamp ||
+            (stamp >= period.periodStart && stamp < period.nextResetDate)
+          ) {
+            usedMinutes += Math.max(0, Number(entry.minutes || 0));
+          }
+        }
+      } else if ((tk.loggedMinutes || 0) > 0) {
+        const stamp = String(tk.updatedAt || tk.createdAt || "").slice(0, 10);
+        if (
+          !stamp ||
+          (stamp >= period.periodStart && stamp < period.nextResetDate)
+        ) {
+          usedMinutes += Math.max(0, Number(tk.loggedMinutes || 0));
+        }
+      }
+    }
+  }
+
+  const remainingMinutes = Math.max(0, monthlyMinutes - usedMinutes);
+  const overageMinutes = Math.max(0, usedMinutes - monthlyMinutes);
+  const usedHours = +(usedMinutes / 60).toFixed(2);
+  const rawPercent =
+    monthlyMinutes > 0 ? Math.round((usedMinutes / monthlyMinutes) * 100) : 0;
+  const percent = Math.min(100, rawPercent);
+
+  return {
+    enabled: cfg.enabled,
+    name: cfg.name || "",
+    monthlyHours: cfg.monthlyHours,
+    monthlyMinutes,
+    usedMinutes,
+    usedHours,
+    remainingMinutes,
+    overageMinutes,
+    percent,
+    rawPercent,
+    resetDay: period.resetDay,
+    periodStart: period.periodStart,
+    nextResetDate: period.nextResetDate,
+    overageRate: Number(cfg.overageRate ?? 65),
+    currency: cfg.currency || "EUR",
+    slaTier: cfg.slaTier || "standard",
+  };
+};
+
 

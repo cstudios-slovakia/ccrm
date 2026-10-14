@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  clampRetainerResetDay,
+  computeProjectRetainerUsage,
+  computeRetainerPeriod,
   computeTicketSlaDueDates,
   DEFAULT_TICKET_SETTINGS,
   DEFAULT_TICKET_STATUS_DEFS,
@@ -13,7 +16,7 @@ import {
   parseDurationColonInput,
   sanitizeColonTimeDraft,
 } from "./tickets.ts";
-import type { Ticket } from "../types/index.ts";
+import type { Project, Ticket } from "../types/index.ts";
 
 test("nextTicketNumber increments highest existing TCK-XXXX number", () => {
   assert.equal(nextTicketNumber([]), "TCK-0001");
@@ -115,5 +118,73 @@ test("formatDurationMinutes and parseDurationColonInput use H:MM colon format", 
   assert.equal(sanitizeColonTimeDraft(""), ":");
   assert.equal(sanitizeColonTimeDraft("1:30"), "1:30");
 });
+
+test("computeRetainerPeriod and computeProjectRetainerUsage respect resetDay", () => {
+  assert.equal(clampRetainerResetDay(0), 1);
+  assert.equal(clampRetainerResetDay(35), 31);
+  assert.equal(clampRetainerResetDay(15), 15);
+
+  const refBeforeReset = new Date(2026, 9, 14, 12, 0, 0); // Oct 14, 2026
+  const period15 = computeRetainerPeriod(15, refBeforeReset);
+  assert.equal(period15.periodStart, "2026-09-15");
+  assert.equal(period15.nextResetDate, "2026-10-15");
+
+  const period1 = computeRetainerPeriod(1, refBeforeReset);
+  assert.equal(period1.periodStart, "2026-10-01");
+  assert.equal(period1.nextResetDate, "2026-11-01");
+
+  const project: Project = {
+    id: "proj-1",
+    projectTypeId: "pt-1",
+    status: "active",
+    managers: [],
+    data: {},
+    ticketRetainer: {
+      enabled: true,
+      name: "Monthly Care",
+      monthlyHours: 10,
+      resetDay: 15,
+      overageRate: 65,
+    },
+  };
+
+  const sampleTickets: Ticket[] = [
+    {
+      id: "tck-1",
+      ticketNumber: "TCK-0001",
+      subject: "Current cycle work",
+      status: "open",
+      priority: "normal",
+      type: "bug",
+      projectId: "proj-1",
+      createdAt: "2026-09-20 10:00:00",
+      timeEntries: [
+        {
+          id: "te-1",
+          userName: "Alex",
+          minutes: 90,
+          billable: true,
+          loggedAt: "2026-09-20 11:00:00",
+        },
+        {
+          id: "te-old",
+          userName: "Alex",
+          minutes: 240,
+          billable: true,
+          loggedAt: "2026-09-10 11:00:00", // before Sep 15 reset -> ignored!
+        },
+      ],
+    },
+  ];
+
+  const usage = computeProjectRetainerUsage(project, sampleTickets, [], refBeforeReset);
+  assert.equal(usage.enabled, true);
+  assert.equal(usage.resetDay, 15);
+  assert.equal(usage.usedMinutes, 90);
+  assert.equal(usage.monthlyMinutes, 600);
+  assert.equal(usage.remainingMinutes, 510);
+  assert.equal(usage.percent, 15);
+});
+
 
 

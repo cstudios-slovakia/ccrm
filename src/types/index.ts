@@ -673,12 +673,13 @@ export interface Project {
   customFileFields?: ProjectCustomFileField[];
   archived?: boolean;
 
-  // Support Tickets & Floating Widget Configuration (stored on the project)
+  // Support Tickets, Floating Widget & Monthly Retainer Configuration (stored on the project)
   ticketWidgetEnabled?: boolean;
   ticketAllowedDomains?: string[];
   ticketAllowedEmails?: string[];
   ticketPublicHash?: string | null;
   ticketWidgetConfig?: TicketWidgetConfig | null;
+  ticketRetainer?: ProjectRetainerConfig | null;
 }
 
 // Warehouse & Inventory Management Types
@@ -1379,6 +1380,17 @@ export interface TicketStatusDef {
 
 export type TicketStatusDefinition = TicketStatusDef;
 
+export interface ProjectRetainerConfig {
+  enabled: boolean;
+  name?: string;
+  monthlyHours: number;
+  /** Day of the month (1..31) when the monthly retainer hour counter resets. */
+  resetDay: number;
+  overageRate?: number | null;
+  currency?: string;
+  slaTier?: "basic" | "standard" | "priority" | "premium" | "enterprise" | string;
+}
+
 export interface TicketWidgetConfig {
   primaryColor?: string;
   position?: "bottom-right" | "bottom-left";
@@ -1388,6 +1400,7 @@ export interface TicketWidgetConfig {
   captureErrors?: boolean;
   allowScreenshots?: boolean;
   allowFollowUp?: boolean;
+  retainer?: ProjectRetainerConfig | null;
 }
 
 export interface TicketAttachment {
@@ -1523,6 +1536,7 @@ export interface SupportContract {
   slaTier?: "basic" | "standard" | "priority" | "premium" | "enterprise" | string;
   monthlyHours?: number;
   monthlyHoursIncluded?: number;
+  resetDay?: number;
   usedHours?: number;
   hoursUsedThisMonth?: number;
   hourlyOverageRate?: number | null;
