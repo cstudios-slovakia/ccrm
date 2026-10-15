@@ -83,6 +83,7 @@ Main table representing potential deals, customers, and client accounts.
 * `district` VARCHAR(100)
 * `data_source` VARCHAR(100)
 * `ownership_type` VARCHAR(50)
+* `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
 
 ### `lead_categories`
 Junction table mapping leads to business categories.
@@ -202,6 +203,7 @@ Common blueprints / templates defining dynamic attributes and configurations.
 * `attributes_json` LONGTEXT (metadata for custom project fields)
 * `has_timeline` TINYINT
 * `has_gantt` TINYINT
+* `has_tickets` TINYINT(1) (Enables Tickets & Support Widget for projects of this type)
 * `timeline_event_types_json` LONGTEXT
 * `timeline_attributes_json` LONGTEXT
 * `created_at` TIMESTAMP
@@ -215,6 +217,11 @@ Individual instances of active project lifecycles.
 * `client_id` VARCHAR(50)
 * `division` VARCHAR(100) (assigned business division)
 * `status` VARCHAR(50) (active, completed, archived)
+* `ticket_widget_enabled` TINYINT(1)
+* `ticket_allowed_domains` TEXT [NULLable] (JSON array of whitelisted hostnames)
+* `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains)
+* `ticket_public_hash` VARCHAR(64) [UNIQUE] (Random token for public `#public-tickets/<hash>` status page)
+* `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
@@ -510,5 +517,97 @@ Employee leave and absence logs (holidays, doctor visits, sick leave, unpaid tim
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
+---
 
+## 11. Support & Ticket Management
 
+### `support_contracts`
+SLA tiers and monthly support hour allocations per client/project.
+* `id` VARCHAR(50) [PK]
+* `client_id` VARCHAR(50) [NULLable] (References `leads.id`)
+* `project_id` VARCHAR(50) [NULLable] (References `projects.id`)
+* `tier` ENUM('basic', 'pro', 'enterprise', 'project_only')
+* `monthly_hours` DECIMAL(6,2)
+* `hourly_rate` DECIMAL(10,2)
+* `sla_response_critical_hours` DECIMAL(5,2)
+* `sla_response_high_hours` DECIMAL(5,2)
+* `sla_response_normal_hours` DECIMAL(5,2)
+* `sla_response_low_hours` DECIMAL(5,2)
+* `sla_resolve_critical_hours` DECIMAL(6,2)
+* `sla_resolve_high_hours` DECIMAL(6,2)
+* `sla_resolve_normal_hours` DECIMAL(6,2)
+* `sla_resolve_low_hours` DECIMAL(6,2)
+* `valid_from` DATE [NULLable]
+* `valid_until` DATE [NULLable]
+* `notes` TEXT [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `tickets`
+Support tickets, bug reports, and client inquiries attached to projects and clients.
+* `id` VARCHAR(50) [PK]
+* `ticket_number` VARCHAR(30) [UNIQUE] (e.g. `TCK-000001`)
+* `title` VARCHAR(500)
+* `description` LONGTEXT [NULLable]
+* `status` VARCHAR(50) (Customizable status key from `TICKET_STATUSES` setting)
+* `priority` ENUM('critical', 'high', 'normal', 'low')
+* `type` ENUM('bug', 'question', 'request', 'incident', 'billing')
+* `source` ENUM('email', 'widget', 'manual', 'phone')
+* `project_id` VARCHAR(50) [NULLable] (References `projects.id`)
+* `client_id` VARCHAR(50) [NULLable] (References `leads.id`)
+* `reporter_name` VARCHAR(200) [NULLable]
+* `reporter_email` VARCHAR(255) [NULLable]
+* `reporter_phone` VARCHAR(50) [NULLable]
+* `assignee_id` VARCHAR(50) [NULLable]
+* `assignee_name` VARCHAR(100) [NULLable]
+* `watchers_json` TEXT [NULLable]
+* `tags_json` TEXT [NULLable]
+* `metadata_json` LONGTEXT [NULLable] (Widget runtime errors, console logs, URL, userAgent, viewport, AI triage info)
+* `attachments_json` LONGTEXT [NULLable]
+* `email_message_id` VARCHAR(255) [NULLable]
+* `first_response_due_at` DATETIME [NULLable]
+* `first_responded_at` DATETIME [NULLable]
+* `resolve_due_at` DATETIME [NULLable]
+* `sla_paused_at` DATETIME [NULLable]
+* `sla_paused_seconds` INT
+* `resolved_at` DATETIME [NULLable]
+* `closed_at` DATETIME [NULLable]
+* `satisfaction_score` TINYINT [NULLable]
+* `satisfaction_comment` TEXT [NULLable]
+* `archived` TINYINT(1)
+* `created_at` DATETIME
+* `updated_at` TIMESTAMP
+
+### `ticket_messages`
+Public replies, internal team notes, and system events on a ticket.
+* `id` VARCHAR(50) [PK]
+* `ticket_id` VARCHAR(50) (References `tickets.id` ON DELETE CASCADE)
+* `author_type` ENUM('client', 'agent', 'system')
+* `author_user_id` VARCHAR(50) [NULLable]
+* `author_name` VARCHAR(200) [NULLable]
+* `author_email` VARCHAR(255) [NULLable]
+* `is_internal` TINYINT(1) (1 = private team note, 0 = public reply)
+* `body` LONGTEXT
+* `attachments_json` LONGTEXT [NULLable]
+* `email_message_id` VARCHAR(255) [NULLable]
+* `created_at` DATETIME
+
+### `ticket_task_links`
+Bidirectional links between tickets and operational tasks.
+* `ticket_id` VARCHAR(50)
+* `task_id` VARCHAR(50)
+* `sync_mode` ENUM('auto_resolve', 'manual')
+* `created_at` TIMESTAMP
+* Primary Key: (`ticket_id`, `task_id`)
+
+### `ticket_time_entries`
+Logged support hours (billable and non-billable) against a ticket.
+* `id` VARCHAR(50) [PK]
+* `ticket_id` VARCHAR(50) (References `tickets.id` ON DELETE CASCADE)
+* `user_id` VARCHAR(50) [NULLable]
+* `user_name` VARCHAR(100)
+* `minutes` INT
+* `billable` TINYINT(1)
+* `note` VARCHAR(500) [NULLable]
+* `logged_at` DATE
+* `created_at` TIMESTAMP

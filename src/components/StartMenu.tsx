@@ -324,6 +324,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         defaultSection: "operations"
       },
       {
+        id: "tickets",
+        label: getTranslation(systemLanguage, "sidebar.tickets"),
+        description: t("Support tickets, SLA tracking, widget reports & email polling", "Tikety podpory, SLA, hlásenia z widgetu a e-maily", "Támogatási jegyek, SLA követés, widget jelentések és e-mail"),
+        icon: Icons.LifeBuoy || Icons.Ticket || Briefcase,
+        color: "#6366f1",
+        bgColor: "rgba(99, 102, 241, 0.12)",
+        defaultSection: "operations"
+      },
+      {
         id: "leads",
         label: getTranslation(systemLanguage, "sidebar.leads"),
         description: t("Pipeline stages, conversions & leads datagrid", "Fázy predaja, konverzie a datagrid leadov", "Értékesítési tölcsér és leadek"),
@@ -357,6 +366,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         icon: Icons.FileText || Coins,
         color: "var(--color-indigo-500)",
         bgColor: "rgba(99, 102, 241, 0.12)",
+        defaultSection: "operations"
+      },
+      {
+        id: "orders",
+        label: t("Orders", "Objednávky", "Rendelések"),
+        description: t("E-shop & commercial orders, guest checkout, deliveries & status pipeline", "E-shop a obchodné objednávky, nákup bez registrácie, doprava a stavy", "Webáruház és kereskedelmi rendelések, vendég vásárlás, szállítás"),
+        icon: Icons.ShoppingCart || Coins,
+        color: "#0284c7",
+        bgColor: "rgba(2, 132, 199, 0.12)",
         defaultSection: "operations"
       },
       {

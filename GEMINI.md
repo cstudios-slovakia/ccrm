@@ -22,9 +22,9 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
 - **One Build = One Version Bump**: Every significant change, new build, or release milestone requires bumping the application version.
-- **Version File**: Update `export const VERSION = "1.11.X-Lemon";` in [`src/utils/version.ts`](file:///Users/erik/Documents/vibe%20coding/crm/src/utils/version.ts).
-- **Changelog**: Add a structured entry in [`1.11-lemon-changelog.md`](file:///Users/erik/Documents/vibe%20coding/crm/1.11-lemon-changelog.md) with date and clear breakdown.
-- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.11.X-Lemon)` or `fix(...): description (v1.11.X-Lemon)`).
+- **Version File**: Update `export const VERSION = "1.12.X-Mango";` in [`src/utils/version.ts`](file:///Users/erik/Documents/vibe%20coding/crm/src/utils/version.ts).
+- **Changelog**: Add a structured entry in [`1.12-mango-changelog.md`](file:///Users/erik/Documents/vibe%20coding/crm/1.12-mango-changelog.md) with date and clear breakdown.
+- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.12.X-Mango)` or `fix(...): description (v1.12.X-Mango)`).
 
 ### 2. Verification & Build Cleanliness
 
@@ -42,3 +42,8 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 - **When you add a countable column or field** (an amount, quantity, hours, a count - anything where a total means something): add one line to `SUMMABLE_PROJECT_COLUMNS` saying how a project feeds it, and add a case to `src/utils/projectColumns.test.ts`. `ProjectsView.tsx` does not need to change.
 - Money is summed per currency, never across currencies. Do not register columns where a total is meaningless (dates, ratings, percentages, text).
 - Full rule: [`.agents/rules/project-totals.md`](.agents/rules/project-totals.md).
+
+### 5. Audio Notification When Prompt Is Done
+
+- **Play Sound on Completion**: Whenever a user prompt/task is finished, play an audible macOS notification sound (e.g. `afplay /System/Library/Sounds/Glass.aiff`) so the user knows the work is done.
+

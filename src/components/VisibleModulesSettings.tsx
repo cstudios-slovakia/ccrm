@@ -24,7 +24,8 @@ import {
   Brain,
   Workflow,
   Globe,
-  Sliders
+  Sliders,
+  ShoppingCart
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
@@ -93,6 +94,15 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         bgColor: "rgba(168, 85, 247, 0.12)"
       },
       {
+        id: "tickets",
+        category: "operations",
+        title: getTranslation(language, "sidebar.tickets"),
+        description: t("Support tickets, SLA tracking, widget reports & email polling", "Tikety podpory, SLA, hlásenia z widgetu a e-maily", "Támogatási jegyek, SLA követés, widget jelentések és e-mail"),
+        icon: Icons.LifeBuoy || Icons.Ticket || Briefcase,
+        color: "#6366f1",
+        bgColor: "rgba(99, 102, 241, 0.12)"
+      },
+      {
         id: "leads",
         category: "operations",
         title: getTranslation(language, "sidebar.leads"),
@@ -127,6 +137,15 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         icon: FileText,
         color: "#6366f1",
         bgColor: "rgba(99, 102, 241, 0.12)"
+      },
+      {
+        id: "orders",
+        category: "operations",
+        title: t("Orders", "Objednávky", "Rendelések"),
+        description: t("E-shop & commercial orders, guest checkout, deliveries & status pipeline", "E-shop a obchodné objednávky, nákup bez registrácie, doprava a stavy", "Webáruház és kereskedelmi rendelések, vendég vásárlás, szállítás"),
+        icon: ShoppingCart,
+        color: "#0284c7",
+        bgColor: "rgba(2, 132, 199, 0.12)"
       },
       {
         id: "financial",

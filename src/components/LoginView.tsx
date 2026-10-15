@@ -19,7 +19,7 @@ import { PasskeyLoginButton } from "./PasskeyLoginButton";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
-import { FeralGradientBackground } from "./FeralGradientBackground";
+import { ShanShuiBackground } from "./ShanShuiBackground";
 import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
 import { passwordRules, PASSWORD_MIN_LENGTH } from "../utils/passwordRules";
 import {
@@ -253,82 +253,45 @@ export const LoginView: React.FC<LoginViewProps> = ({
       className={
         isModal
           ? "w-full flex items-center justify-center bg-white border border-slate-200/50 rounded-[32px] shadow-2xl p-6 md:p-12 relative overflow-hidden select-none font-sans"
-          : `min-h-screen w-full flex items-center justify-center lg:justify-end p-6 md:p-12 lg:pr-24 xl:pr-32 relative overflow-hidden select-none font-sans transition-all duration-700 ${activeTheme.bgClass}`
+          : "min-h-screen w-full flex items-center justify-center lg:justify-end p-6 md:p-12 lg:pr-24 xl:pr-32 relative overflow-hidden select-none font-sans bg-[#f5f0e6]"
       }
-      style={{
-        background: isModal ? undefined : activeTheme.backgroundGradient
-      }}
     >
-      {/* Dynamic Animated Background: Universal Feral WebGL Gradient Shader with smooth real-time color morphing */}
-      {!isModal && <FeralGradientBackground phaseId={activeTheme.id} />}
+      {/* Procedural Chinese Landscape Painting Infinite Scrolling Background */}
+      {!isModal && <ShanShuiBackground />}
 
-      {/* LEFT AREA: Atmospheric Executive Time-of-Day Hero Panel.
-          It sits on the time-of-day shader, not an app surface, so its ink follows
-          activeTheme.isLight; `force-light` keeps the app's dark mode from
-          inverting the palette underneath it. */}
+      {/* LEFT AREA: Atmospheric Executive Time-of-Day Hero Panel */}
       {!isModal && (
         <div className="force-light flex-1 hidden lg:flex flex-col justify-center items-start relative z-10 pr-12 xl:pr-20 py-8 min-h-145 max-w-2xl animate-in fade-in duration-700 select-none">
-          {/* Middle Body: Digital Clock & Executive Localized Greeting.
-              The shader runs from pale sky to deep colour behind this block, so
-              bare text lost contrast somewhere in every phase; a soft glass pane
-              gives it one steady backdrop, matching the login card. */}
+          {/* Middle Body: Digital Clock & Executive Localized Greeting with Frosted Rice Paper Backdrop */}
           <div
-            className={`space-y-6 rounded-[32px] border backdrop-blur-md p-8 xl:p-10 shadow-xl transition-colors duration-700 ${
-              activeTheme.isLight
-                ? "bg-white/40 border-white/50 shadow-slate-900/5"
-                : "bg-slate-950/35 border-white/10 shadow-black/20"
-            }`}
+            className="space-y-6 rounded-[32px] border backdrop-blur-md p-8 xl:p-10 shadow-xl transition-colors duration-700 bg-white/75 border-stone-200/70 shadow-stone-900/5"
           >
             {/* Live Digital Clock */}
             <div className="space-y-1">
-              <div
-                className={`flex items-baseline font-mono font-bold tracking-tight ${
-                  activeTheme.isLight ? "text-slate-900 drop-shadow-sm" : "text-white/95 drop-shadow-md"
-                }`}
-              >
+              <div className="flex items-baseline font-mono font-bold tracking-tight text-stone-900 drop-shadow-sm">
                 <span className="text-5xl xl:text-7xl">{clock.hoursStr}</span>
-                <span
-                  className={`text-display xl:text-6xl mx-1 animate-pulse ${
-                    activeTheme.isLight ? "text-slate-900/45" : "text-white/40"
-                  }`}
-                >
+                <span className="text-display xl:text-6xl mx-1 animate-pulse text-stone-900/45">
                   :
                 </span>
                 <span className="text-5xl xl:text-7xl">{clock.minutesStr}</span>
-                <span
-                  className={`text-heading ml-2 font-semibold ${
-                    activeTheme.isLight ? "text-slate-600" : "text-white/45"
-                  }`}
-                >
+                <span className="text-heading ml-2 font-semibold text-stone-600">
                   .{clock.secondsStr}
                 </span>
               </div>
-              <p
-                className={`text-ui font-extrabold pl-1 ${
-                  activeTheme.isLight ? "text-slate-700 drop-shadow-none" : "text-white/60 drop-shadow"
-                }`}
-              >
+              <p className="text-ui font-extrabold pl-1 text-stone-700 drop-shadow-none">
                 {dateStr}
               </p>
             </div>
 
             {/* Dynamic Greeting & Brand Slogan */}
             <div className="space-y-2.5 max-w-lg">
-              <h1
-                className={`type-entity-title leading-tight ${
-                  activeTheme.isLight ? "text-slate-900 drop-shadow-sm" : "text-white drop-shadow-md"
-                }`}
-              >
+              <h1 className="type-entity-title leading-tight text-stone-900 drop-shadow-sm">
                 {phaseGreetingText}
               </h1>
               <p className={`text-title-sm font-bold bg-gradient-to-r ${activeTheme.accentGradient} bg-clip-text text-transparent leading-snug`}>
                 {phaseSubtitleText}
               </p>
-              <p
-                className={`text-ui font-medium leading-relaxed ${
-                  activeTheme.isLight ? "text-slate-800" : "text-white/65"
-                }`}
-              >
+              <p className="text-ui font-medium leading-relaxed text-stone-800">
                 {phaseQuoteText}
               </p>
             </div>

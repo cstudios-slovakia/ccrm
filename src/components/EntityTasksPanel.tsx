@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import {
   AlignLeft,
   Archive as ArchiveIcon,
+  ArrowUpRight,
   Calendar,
   Check,
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Ticket as TicketIcon,
   Trash2,
 } from "lucide-react";
 import type { Lead, Project, Task, UserProfile } from "../types";
@@ -450,6 +452,24 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 {formatDue(task)}
               </span>
             )}
+            {(() => {
+              const titleMatch = (task.title || "").match(/\[(TCK-[A-Za-z0-9_-]+)\]/i);
+              const tckId = task.relatedTicketId || (titleMatch ? titleMatch[1].toUpperCase() : "");
+              if (!tckId) return null;
+              const label = titleMatch ? titleMatch[1].toUpperCase() : tckId;
+              return (
+                <a
+                  href={`#tickets/${encodeURIComponent(tckId)}`}
+                  onClick={(e) => e.stopPropagation()}
+                  title={`${t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}: ${label}`}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 hover:bg-indigo-100 hover:text-indigo-900 font-mono font-extrabold transition-colors"
+                >
+                  <TicketIcon className="h-2.5 w-2.5 shrink-0 text-indigo-600" />
+                  <span>{label}</span>
+                  <ArrowUpRight className="h-2.5 w-2.5 shrink-0" />
+                </a>
+              );
+            })()}
             {task.assignedUsers?.length > 0 && (
               <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 truncate max-w-35">
                 {task.assignedUsers.join(", ")}

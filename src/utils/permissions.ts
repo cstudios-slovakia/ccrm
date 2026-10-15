@@ -121,8 +121,16 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     permissions: [access("projects"), deleteToggle("projects")],
   },
   {
+    id: "tickets",
+    permissions: [access("tickets"), deleteToggle("tickets")],
+  },
+  {
     id: "invoices",
     permissions: [access("invoices"), deleteToggle("invoices")],
+  },
+  {
+    id: "orders",
+    permissions: [access("orders"), deleteToggle("orders")],
   },
   {
     id: "warehouse",
@@ -300,6 +308,10 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   "projects.delete": "nothing",
   invoices: "nothing",
   "invoices.delete": "nothing",
+  orders: "nothing",
+  "orders.delete": "nothing",
+  tickets: "nothing",
+  "tickets.delete": "nothing",
   warehouse: "nothing",
   "warehouse.delete": "nothing",
   financial: "nothing",
@@ -424,6 +436,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   if (base.startsWith("lead-")) return "leads";
   if (base.startsWith("client-")) return "clients";
   if (base.startsWith("project-")) return "projects";
+  if (base.startsWith("ticket-")) return "tickets";
   if (base === "" || base === "tasks") return "tasks";
   if (PERMISSION_DEFS[base]) return base;
   return "tasks";
@@ -494,24 +507,6 @@ export const buildAccess = (user: UserProfile | null | undefined, roles: RolePer
 
 /** The first route the user may open, for a landing page or a denied redirect. */
 export const firstAllowedRoute = (accessResolver: AccessResolver): string | null => {
-  const candidates = [
-    "dashboard",
-    "tasks",
-    "leads",
-    "clients",
-    "projects",
-    "invoices",
-    "warehouse",
-    "financial",
-    "employees",
-    "meetings",
-    "files",
-    "email",
-    "automation",
-    "overview",
-    "updates",
-    "settings",
-    "personal-settings",
-  ];
+  const candidates = ["dashboard", "tasks", "leads", "clients", "projects", "tickets", "invoices", "orders", "warehouse", "financial", "employees", "meetings", "files", "email", "automation", "overview", "updates", "settings", "personal-settings"];
   return candidates.find((r) => accessResolver.canOpenRoute(r)) ?? null;
 };

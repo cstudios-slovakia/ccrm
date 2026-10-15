@@ -385,6 +385,12 @@ try {
             $insAssignee->execute($ta);
         }
 
+        // Demo employees, warehouses, items, stock, orders, projects, and invoices
+        ccrm_seed_default_employees($pdo);
+        ccrm_seed_default_warehouses_and_items($pdo, $systemLanguage);
+        ccrm_seed_default_orders($pdo, $systemLanguage);
+        ccrm_seed_default_invoices_and_projects($pdo, $systemLanguage);
+
     } else {
         // Fresh setup: a single administrator account with operator-supplied
         // credentials (falls back to a sensible default only if none provided).

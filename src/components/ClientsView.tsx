@@ -8,9 +8,16 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare
+  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink, Ticket as TicketIcon
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
+import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
+import { useOrderStatuses } from "../hooks/useOrderStatuses";
+import { orderStatusColor, orderStatusLabel, generateOrderNumber, calculateOrderTotals, defaultOrderStatus } from "../utils/orders";
+import { OrderDetailView } from "./OrderDetailView";
+import { getDefaultPaymentMethod } from "../utils/payment";
+import { getAvailableShippingMethods } from "../utils/shipping";
+import { getDefaultVatRate } from "../utils/vat";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
@@ -43,7 +50,7 @@ import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isSystemMailConfigured } from "../utils/taskReminders";
-import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { todayLocal, todayLocalPlusDays, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
 import { chartFonts, useViewSize } from "../utils/viewSize";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
@@ -84,6 +91,15 @@ interface ClientsViewProps {
   currencyCode?: string | null;
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  orders?: Order[];
+  setOrders?: (orders: Order[] | ((prev: Order[]) => Order[])) => void;
+  orderAccess?: ModuleAccess;
+  companyBillingSettings?: CompanyBillingSettings | null;
+  warehouseItems?: WarehouseItem[];
+  warehouses?: Warehouse[];
+  setWarehouseMovements?: (movements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => void;
+  invoicesOffers?: InvoiceOffer[];
+  setInvoicesOffers?: (invoices: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   /** Customer categories (the Categories panel of the client register). */
@@ -114,6 +130,8 @@ interface ClientsViewProps {
   users?: UserProfile[];
   projects?: Project[];
   taskStateColors?: Record<string, string>;
+  tickets?: Ticket[];
+  ticketStatuses?: TicketStatusDefinition[];
 }
 
 /** The "without a category" row of the category filter. Not a real category id. */
@@ -430,6 +448,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   currencyCode,
   financialRecords = [],
   setFinancialRecords,
+  orders = [],
+  setOrders,
+  orderAccess,
+  companyBillingSettings,
+  warehouseItems = [],
+  warehouses = [],
+  setWarehouseMovements,
+  invoicesOffers: _invoicesOffers = [],
+  setInvoicesOffers,
   financialCategories = [],
   clientCategories = [],
   setClientCategories,
@@ -440,6 +467,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   users = [],
   projects = [],
   taskStateColors = {},
+  tickets = [],
+  ticketStatuses = DEFAULT_TICKET_STATUSES,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   // Role gates. `view` is what let the user in; read-only users still search,
@@ -447,6 +476,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // open to a role that cannot edit, whatever the delete toggle says.
   const canEdit = access.edit;
   const canDelete = canEdit && access.delete;
+  const canEditOrders = orderAccess ? orderAccess.edit : canEdit;
+  const canDeleteOrders = orderAccess ? (orderAccess.edit && orderAccess.delete) : canDelete;
   // The invoice panel writes financialRecords, which the server gates on the
   // `financial` module, not `clients` — so it needs its own edit/delete
   // answer rather than inheriting canEdit/canDelete above.
@@ -992,6 +1023,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: string;
       timeline: TimelineEvent[];
       categories: string[];
+      ticketAllowedEmails: string[];
       clientCategoryId: string | null;
       archived: boolean;
       aiSummary?: string;
@@ -1042,6 +1074,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           district: lead.district || "",
           timeline: lead.timeline || [],
           categories: [],
+          ticketAllowedEmails: [],
           clientCategoryId: lead.clientCategoryId || null,
           archived: !!lead.archived,
           aiSummary: lead.aiSummary || "",
@@ -1081,6 +1114,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         lead.categories.forEach(cat => {
           if (!profilesMap[clientKey].categories.includes(cat)) {
             profilesMap[clientKey].categories.push(cat);
+          }
+        });
+      }
+
+      if (lead.ticketAllowedEmails && Array.isArray(lead.ticketAllowedEmails)) {
+        lead.ticketAllowedEmails.forEach(em => {
+          const clean = String(em || "").trim().toLowerCase();
+          if (clean && !profilesMap[clientKey].ticketAllowedEmails.includes(clean)) {
+            profilesMap[clientKey].ticketAllowedEmails.push(clean);
           }
         });
       }
@@ -1493,18 +1535,29 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
-  const getInitialDetailTab = (): "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices" => {
+  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "financial_status" | "files" | "tickets";
+
+  const getInitialDetailTab = (): DetailTabKey => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
     const tabParam = params.get("tab");
-    if (tabParam === "invoices" || tabParam === "files" || tabParam === "leads" || tabParam === "financial_status" || tabParam === "timeline" || tabParam === "tasks") {
-      return tabParam as "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices";
+    if (
+      tabParam === "invoices" ||
+      tabParam === "orders" ||
+      tabParam === "files" ||
+      tabParam === "leads" ||
+      tabParam === "financial_status" ||
+      tabParam === "timeline" ||
+      tabParam === "tasks" ||
+      tabParam === "tickets"
+    ) {
+      return tabParam as DetailTabKey;
     }
     return "timeline";
   };
 
-  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices">(getInitialDetailTab);
+  const [activeDetailTab, setActiveDetailTab] = useState<DetailTabKey>(getInitialDetailTab);
 
-  const handleDetailTabChange = (tab: "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices") => {
+  const handleDetailTabChange = (tab: DetailTabKey) => {
     setActiveDetailTab(tab);
     const hash = window.location.hash;
     const [base, query] = hash.split("?");
@@ -1536,6 +1589,394 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ((primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)))
     );
   }, [financialRecords, activeClient]);
+
+  const clientTickets = useMemo(() => {
+    if (!activeClient) return [];
+    const leadIds = new Set((activeClient.associatedLeads || []).map((l: any) => l.id));
+    const clientProjectIds = new Set(
+      projects
+        .filter((p) => (p.leadId && leadIds.has(p.leadId)) || (p.clientId && leadIds.has(p.clientId)))
+        .map((p) => p.id),
+    );
+    return tickets
+      .filter(
+        (tk) =>
+          !tk.archived &&
+          ((tk.leadId && leadIds.has(tk.leadId)) ||
+            (tk.clientId && leadIds.has(tk.clientId)) ||
+            (tk.projectId && clientProjectIds.has(tk.projectId))),
+      )
+      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  }, [tickets, projects, activeClient]);
+
+  const [newClientWhitelistEmail, setNewClientWhitelistEmail] = useState("");
+
+  const handleAddClientWhitelistEmail = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEdit || !activeClient) return;
+    const raw = newClientWhitelistEmail.trim().toLowerCase();
+    if (!raw) return;
+    const current = activeClient.ticketAllowedEmails || [];
+    if (current.includes(raw)) {
+      setNewClientWhitelistEmail("");
+      return;
+    }
+    const nextList = [...current, raw];
+    setLeads((prev) =>
+      prev.map((lead) =>
+        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+          ? { ...lead, ticketAllowedEmails: nextList }
+          : lead,
+      ),
+    );
+    setNewClientWhitelistEmail("");
+  };
+
+  const handleRemoveClientWhitelistEmail = (email: string) => {
+    if (!canEdit || !activeClient) return;
+    const nextList = (activeClient.ticketAllowedEmails || []).filter((em) => em !== email);
+    setLeads((prev) =>
+      prev.map((lead) =>
+        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+          ? { ...lead, ticketAllowedEmails: nextList }
+          : lead,
+      ),
+    );
+  };
+
+  const orderStatuses = useOrderStatuses();
+  const clientOrders = useMemo(() => {
+    if (!activeClient) return [];
+    const leadIds = (activeClient.associatedLeads || []).map((l: any) => l.id);
+    const primaryId = activeClient.associatedLeads?.[0]?.id;
+    return orders.filter((o) =>
+      (primaryId && o.clientId === primaryId) ||
+      (o.clientId && leadIds.includes(o.clientId)) ||
+      (o.billing?.name && activeClient.name && o.billing.name.toLowerCase() === activeClient.name.toLowerCase())
+    );
+  }, [orders, activeClient]);
+
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  const handleOpenCreateOrder = () => {
+    if (!activeClient) return;
+    const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) 
+      || activeClient.associatedLeads?.[0];
+    const targetLeadId = matchedLead?.id || activeClient.associatedLeads?.[0]?.id || "";
+
+    const recipientName = activeClient.contactPerson || matchedLead?.contactPerson || activeClient.name || "";
+    const billingName = activeClient.name || matchedLead?.name || "";
+    const street = activeClient.street || matchedLead?.address?.street || "";
+    const city = activeClient.city || matchedLead?.city || matchedLead?.address?.city || "";
+    const zip = activeClient.postalCode || matchedLead?.address?.postalCode || "";
+    const country = activeClient.country || matchedLead?.address?.country || "SK";
+    const phone = activeClient.phone || matchedLead?.phone || "";
+    const ico = activeClient.companyId || matchedLead?.companyId || (matchedLead as any)?.ico || "";
+    const dic = activeClient.taxId || matchedLead?.taxId || (matchedLead as any)?.dic || "";
+    const icDph = activeClient.vatId || matchedLead?.vatId || (matchedLead as any)?.icDph || "";
+
+    const availableShipping = getAvailableShippingMethods(companyBillingSettings);
+    const defaultShipping = availableShipping[0] || "Kuriér";
+    const defaultPayment = getDefaultPaymentMethod(companyBillingSettings);
+
+    const newOrd: Order = {
+      id: `ord_${Date.now()}`,
+      orderNumber: generateOrderNumber("OBJ", (orders?.length || 0) + 1),
+      type: "sales",
+      status: defaultOrderStatus(orderStatuses),
+      customerType: "client",
+      clientId: targetLeadId || null,
+      delivery: {
+        recipient: recipientName,
+        street,
+        city,
+        zip,
+        country,
+        phone
+      },
+      billing: {
+        name: billingName,
+        street,
+        city,
+        zip,
+        country,
+        ico,
+        dic,
+        icDph
+      },
+      shippingMethod: defaultShipping,
+      paymentMethod: defaultPayment,
+      paymentStatus: "unpaid",
+      currency: currencyCode || "EUR",
+      itemsNetAmount: 0,
+      servicesNetAmount: 0,
+      totalNetAmount: 0,
+      totalTaxAmount: 0,
+      totalGrossAmount: 0,
+      orderDate: todayLocal(),
+      items: []
+    };
+
+    setActiveDetailTab("orders");
+    setEditingOrder(newOrd);
+  };
+
+  const handleOpenEditOrder = (order: Order) => {
+    setEditingOrder(JSON.parse(JSON.stringify(order)));
+  };
+
+  const handleSaveOrder = async (orderToSave: Order) => {
+    const totals = calculateOrderTotals(orderToSave.items || []);
+    const completeOrder: Order = {
+      ...orderToSave,
+      ...totals
+    };
+
+    const isNew = !orders?.some(o => o.id === completeOrder.id);
+
+    setOrders?.(prev => {
+      const exists = prev.some(o => o.id === completeOrder.id);
+      if (exists) return prev.map(o => (o.id === completeOrder.id ? completeOrder : o));
+      return [completeOrder, ...prev];
+    });
+
+    if (isNew && activeClient) {
+      const newEvent: TimelineEvent = {
+        id: `event_ord_${Date.now()}`,
+        type: "note",
+        timestamp: nowLocalStamp(),
+        title: t(
+          `Order created: ${completeOrder.orderNumber}`,
+          `Vytvorená nová objednávka: ${completeOrder.orderNumber}`,
+          `Új rendelés létrehozva: ${completeOrder.orderNumber}`
+        ),
+        content: `${t("Total amount", "Celková suma", "Végösszeg")}: ${formatMoney(completeOrder.totalGrossAmount, completeOrder.currency || currencyCode || "EUR", systemLanguage)} (${(completeOrder.items || []).length} ${t("items", "položiek", "tétel")})`,
+        author: propCurrentUser?.name || "System"
+      };
+
+      setLeads(prev => prev.map(lead => {
+        if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
+          const currentTimeline = lead.timeline || [];
+          return {
+            ...lead,
+            timeline: [newEvent, ...currentTimeline]
+          };
+        }
+        return lead;
+      }));
+    }
+
+    setEditingOrder(null);
+
+    try {
+      await fetch("/api/orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(completeOrder)
+      });
+      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+      toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
+    } catch (e) {
+      console.error("Failed to save order to backend", e);
+    }
+  };
+
+  const handleDeleteOrder = async (orderToDelete: Order) => {
+    if (!window.confirm(t(
+      `Are you sure you want to delete order ${orderToDelete.orderNumber}?`,
+      `Naozaj chcete vymazať objednávku ${orderToDelete.orderNumber}?`,
+      `Biztosan törölni szeretné a(z) ${orderToDelete.orderNumber} számú rendelést?`
+    ))) {
+      return;
+    }
+
+    setOrders?.(prev => prev.filter(o => o.id !== orderToDelete.id));
+    setEditingOrder(null);
+
+    try {
+      await fetch(`/api/orders.php?id=${encodeURIComponent(orderToDelete.id)}`, {
+        method: "DELETE"
+      });
+      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+      toast?.(t("Order deleted successfully", "Objednávka bola úspešne vymazaná", "A rendelés sikeresen törölve"));
+    } catch (e) {
+      console.error("Failed to delete order from backend", e);
+    }
+  };
+
+  const handleFulfillWarehouse = (order: Order) => {
+    if (!canEditOrders || !setWarehouseMovements) return;
+    const physicalItems = (order.items || []).filter(i => i.itemType === "product" && i.quantity > 0);
+    if (physicalItems.length === 0) {
+      alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+      return;
+    }
+
+    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${physicalItems.length} products?`, `Vystaviť výdajku zo skladu pre ${physicalItems.length} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${physicalItems.length} termékre?`))) return;
+
+    const warehouseId = order.warehouseId || (warehouses?.[0]?.id ?? "wh-default");
+    const newMovement: WarehouseMovement = {
+      id: `mov_${Date.now()}`,
+      documentNumber: `VYD-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      type: "outward",
+      status: "confirmed",
+      warehouseId,
+      leadId: order.clientId || undefined,
+      totalCostValue: 0,
+      totalSellValue: order.itemsNetAmount,
+      totalProfitValue: 0,
+      createdBy: propCurrentUser?.name || "System",
+      note: `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`,
+      issuedAt: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
+      items: physicalItems.map(item => ({
+        id: `mov_item_${Date.now()}_${Math.random()}`,
+        itemId: item.itemId || item.id,
+        quantity: item.quantity,
+        unitPurchasePrice: 0,
+        unitSellPrice: item.unitPrice,
+        totalPrice: item.totalNetAmount,
+        note: item.name
+      }))
+    };
+
+    setWarehouseMovements(prev => [newMovement, ...prev]);
+    const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+    toast?.(t(`Delivery note ${newMovement.documentNumber} created!`, `Výdajka ${newMovement.documentNumber} bola úspešne vytvorená!`, `A(z) ${newMovement.documentNumber} kiadási bizonylat elkészült!`));
+  };
+
+  const handleCreateInvoice = async (order: Order) => {
+    if (!canEditOrders || !setInvoicesOffers) return;
+
+    if (order.invoiceNumber) {
+      const reconfirm = confirm(
+        t(
+          `Invoice ${order.invoiceNumber} was already created for order ${order.orderNumber}. Do you want to re-issue / create a new invoice?`,
+          `K objednávke ${order.orderNumber} už bola vytvorená faktúra ${order.invoiceNumber}. Želáte si vystaviť novú faktúru?`,
+          `A(z) ${order.orderNumber} rendeléshez már kiállították a(z) ${order.invoiceNumber} számlát. Új számlát kíván kiállítani?`
+        )
+      );
+      if (!reconfirm) return;
+    } else {
+      if (
+        !confirm(
+          t(
+            `Create invoice from order ${order.orderNumber}?`,
+            `Vystaviť faktúru z objednávky ${order.orderNumber}?`,
+            `Számla kiállítása a(z) ${order.orderNumber} rendelésből?`
+          )
+        )
+      ) {
+        return;
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const newInvoiceId = `inv_${Date.now()}`;
+    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
+      Math.floor(Math.random() * 9000) + 1000
+    )}`;
+
+    let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
+    if (!targetLead && order.billing?.ico) {
+      targetLead = leads.find(l => l.companyId && l.companyId === order.billing?.ico) || null;
+    }
+    if (!targetLead && order.guest?.email) {
+      targetLead = leads.find(
+        l => l.email && l.email.toLowerCase() === order.guest?.email?.toLowerCase()
+      ) || null;
+    }
+    if (!targetLead && order.billing?.name) {
+      targetLead = leads.find(
+        l => l.name && l.name.toLowerCase() === order.billing?.name?.toLowerCase()
+      ) || null;
+    }
+
+    const targetClientId = targetLead?.id || order.clientId || null;
+    const clientName =
+      targetLead?.name ||
+      order.billing?.name ||
+      order.guest?.company ||
+      order.guest?.name ||
+      "";
+
+    const invItems: InvoiceOfferItem[] = (order.items || []).map(i => ({
+      id: `inv_item_${Date.now()}_${Math.random()}`,
+      warehouseItemId: i.itemId || null,
+      sku: i.sku || null,
+      name: i.name + (i.variantTitle ? ` (${i.variantTitle})` : ""),
+      quantity: i.quantity,
+      unit: i.unit || "ks",
+      unitPrice: i.unitPrice,
+      vatRate: i.taxRate !== undefined ? i.taxRate : getDefaultVatRate(companyBillingSettings),
+      discountPct: i.discountPercent || 0,
+      totalPrice: i.totalGrossAmount
+    }));
+
+    const newInvoice: InvoiceOffer = {
+      id: newInvoiceId,
+      documentNumber: newInvoiceNumber,
+      title: `${t("Invoice", "Faktúra", "Számla")} ${newInvoiceNumber} — ${order.orderNumber}`,
+      subject: `${t("Order", "Objednávka", "Rendelés")} ${order.orderNumber}`,
+      type: "invoice",
+      mode: "default",
+      status: order.paymentStatus === "paid" ? "invoiced" : "sent",
+      clientId: targetClientId,
+      leadId: targetClientId || "",
+      clientName,
+      clientIco: order.billing?.ico || order.guest?.ico || targetLead?.companyId || undefined,
+      clientDic: order.billing?.dic || order.guest?.dic || targetLead?.taxId || undefined,
+      clientIcdph: order.billing?.icDph || order.guest?.icDph || targetLead?.vatId || undefined,
+      clientStreet: order.billing?.street || order.delivery?.street || targetLead?.address?.street || undefined,
+      clientCity: order.billing?.city || order.delivery?.city || targetLead?.city || undefined,
+      clientPostalCode: order.billing?.zip || order.delivery?.zip || targetLead?.address?.postalCode || undefined,
+      clientCountry: order.billing?.country || order.delivery?.country || "SK",
+      currency: order.currency || currencyCode || "EUR",
+      subtotal: order.totalNetAmount,
+      vatAmount: order.totalTaxAmount,
+      totalPrice: order.totalGrossAmount,
+      issuedAt: order.orderDate || todayLocal(),
+      dueDate: order.requestedDeliveryDate || todayLocalPlusDays(14),
+      items: invItems,
+      uspCards: [],
+      createdBy: propCurrentUser?.name || null,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    setInvoicesOffers?.(prev => [newInvoice, ...prev]);
+
+    const updatedOrder: Order = {
+      ...order,
+      clientId: targetClientId || order.clientId,
+      customerType: targetClientId ? "client" : order.customerType,
+      invoiceId: newInvoiceId,
+      invoiceNumber: newInvoiceNumber,
+      invoiceIssuedAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    setOrders?.(prev => prev.map(o => (o.id === updatedOrder.id ? updatedOrder : o)));
+    setEditingOrder(updatedOrder);
+
+    try {
+      await fetch("/api/orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedOrder)
+      });
+      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+      toast?.(
+        t(
+          `Invoice ${newInvoiceNumber} created for order!`,
+          `Faktúra ${newInvoiceNumber} bola úspešne vystavená!`,
+          `A(z) ${newInvoiceNumber} számla sikeresen kiállítva!`
+        )
+      );
+    } catch (e) {
+      console.error("Failed to update order with invoice", e);
+    }
+  };
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
     if (!canEdit) return;
@@ -2957,6 +3398,33 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       );
     }
 
+    if (editingOrder !== null) {
+      return (
+        <OrderDetailView
+          order={editingOrder}
+          onSave={handleSaveOrder}
+          onClose={() => setEditingOrder(null)}
+          onDelete={handleDeleteOrder}
+          onFulfillWarehouse={handleFulfillWarehouse}
+          onCreateInvoice={handleCreateInvoice}
+          leads={leads}
+          setLeads={setLeads}
+          warehouseItems={warehouseItems}
+          warehouses={warehouses}
+          orderStatuses={orderStatuses}
+          systemCurrency={currencyCode || "EUR"}
+          userLanguage={systemLanguage}
+          canEdit={canEditOrders}
+          canDelete={canDeleteOrders}
+          onOpenClient={() => {
+            setEditingOrder(null);
+          }}
+          backLabel={t("Back to Client", "Späť na klienta", "Vissza az ügyfélhez")}
+          companyBillingSettings={companyBillingSettings}
+        />
+      );
+    }
+
     return (
       <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
         {/* Entity header: back · avatar · title, badges and meta beneath, actions at the right */}
@@ -2998,6 +3466,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </span>
           }
           actions={<>
+          {canEditOrders && (
+            <button
+              type="button"
+              onClick={handleOpenCreateOrder}
+              className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+              title={t("Place new order for this client", "Vystaviť novú objednávku pre tohto klienta", "Új rendelés feladása")}
+            >
+              <ShoppingCart className="h-4 w-4 stroke-[2.5]" />
+              <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
+            </button>
+          )}
           {activeClient.archived ? (
             <button
               type="button"
@@ -3714,7 +4193,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 items={[
                   { key: "timeline", icon: <Clock className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.history_timeline") },
                   { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
-                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: activeClient.timeline.filter(e => e.fileName).length },
+                  { key: "orders", icon: <ShoppingCart className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
+                  { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
                   {
                     key: "leads",
                     icon: <Layers className="h-4.5 w-4.5" />,
@@ -3722,7 +4202,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     count: (activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length,
                   },
                   { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
-                  { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
+                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: activeClient.timeline.filter(e => e.fileName).length },
+                  { key: "tickets", icon: <TicketIcon className="h-4.5 w-4.5" />, label: t("Tickets", "Tikety", "Jegyek"), count: clientTickets.length || undefined },
                 ]}
               />
 
@@ -5097,6 +5578,351 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ORDERS TAB */}
+              {activeDetailTab === "orders" && (
+                <div className="space-y-5 text-left animate-in fade-in duration-150">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
+                        <ShoppingCart className="h-4.5 w-4.5 text-sky-600 stroke-[2.5]" />
+                        {t("Client Orders & E-Shop Purchases", "Objednávky a nákupy klienta", "Ügyfél rendelései és vásárlásai")}
+                      </h3>
+                      <p className="text-caption text-slate-500 mt-0.5">
+                        {t("History of all commercial and e-shop orders placed by this client.", "História všetkých obchodných a e-shopových objednávok tohto klienta.", "Az ügyfél összes rendelése.")}
+                      </p>
+                    </div>
+
+                    {canEditOrders && (
+                      <button
+                        type="button"
+                        onClick={handleOpenCreateOrder}
+                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-ui font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-500/20 active:scale-95 cursor-pointer shrink-0"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>{t("New Order", "Nová objednávka", "Új rendelés")}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {clientOrders.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption space-y-3">
+                      <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500">
+                        <ShoppingCart className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-600">
+                          {t("This client has no recorded orders yet.", "Tento klient zatiaľ nemá žiadne zaznamenané objednávky.", "Ennek az ügyfélnek még nincsenek rendelései.")}
+                        </p>
+                        <p className="text-micro text-slate-400 mt-0.5">
+                          {t("Create a commercial or e-shop order for this client directly.", "Vytvorte obchodnú alebo e-shopovú objednávku priamo pre tohto klienta.", "Hozzon létre rendelést közvetlenül ehhez az ügyfélhez.")}
+                        </p>
+                      </div>
+                      {canEditOrders && (
+                        <button
+                          type="button"
+                          onClick={handleOpenCreateOrder}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-caption font-bold transition-all inline-flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span>{t("Place Order", "Vystaviť objednávku", "Rendelés leadása")}</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {clientOrders.map(order => {
+                        const statusColor = orderStatusColor(order.status, orderStatuses);
+                        const statusName = orderStatusLabel(order.status, t, orderStatuses);
+                        return (
+                          <div
+                            key={order.id}
+                            className="p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs hover:shadow-sm hover:border-indigo-200 transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 group"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditOrder(order)}
+                                  className="font-mono font-bold text-caption text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
+                                  title={t("Open and edit order", "Otvoriť a upraviť objednávku", "Rendelés megnyitása és szerkesztése")}
+                                >
+                                  {order.orderNumber}
+                                </button>
+                                <span className="text-micro text-slate-400 font-mono">{order.orderDate}</span>
+                                <span
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold"
+                                  style={{ backgroundColor: `${statusColor}18`, color: statusColor }}
+                                >
+                                  {statusName}
+                                </span>
+                              </div>
+                              <div className="text-micro text-slate-500 flex items-center gap-2">
+                                <span>{(order.items || []).length} {t("items", "položiek", "tétel")}</span>
+                                {order.shippingMethod && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{order.shippingMethod}</span>
+                                  </>
+                                )}
+                                {order.shippingTrackingNumber && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="font-mono">{order.shippingTrackingNumber}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-4 justify-between ws-sm:justify-end">
+                              <div className="text-right">
+                                <div className="font-mono font-bold text-ui text-slate-900">
+                                  {order.totalGrossAmount.toFixed(2)} {order.currency || currencyCode || "EUR"}
+                                </div>
+                                <div className="flex items-center justify-end gap-1.5 mt-1 flex-wrap">
+                                  {order.invoiceNumber && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono"
+                                      title={t("Invoice created", "Faktúra vystavená", "Számla kiállítva")}
+                                    >
+                                      <FileCheck className="w-3 h-3 text-emerald-600" />
+                                      {order.invoiceNumber}
+                                    </span>
+                                  )}
+                                  <span className={`inline-block px-1.5 py-0.5 rounded text-micro font-bold ${
+                                    order.paymentStatus === "paid" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
+                                  }`}>
+                                    {order.paymentStatus === "paid" ? t("Paid", "Zaplatené", "Fizetve") : t("Unpaid", "Nezaplatené", "Fizetetlen")}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditOrder(order)}
+                                  className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer"
+                                  title={t("Edit order", "Upraviť objednávku", "Rendelés szerkesztése")}
+                                >
+                                  <PencilLine className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    window.location.hash = `orders/${encodeURIComponent(order.id)}`;
+                                  }}
+                                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
+                                  title={t("Open in Orders view", "Otvoriť v sekcii Objednávky", "Megnyitás a Rendelések nézetben")}
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TICKETS & EMAIL WHITELIST TAB */}
+              {activeDetailTab === "tickets" && (
+                <div className="space-y-6 text-left animate-in fade-in duration-150">
+                  {/* Client Support Email Whitelist */}
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="font-heading font-bold text-slate-800 text-ui flex items-center gap-1.5">
+                          <Mail className="w-4 h-4 text-emerald-600" />
+                          <span>
+                            {t(
+                              "Support Ticket Email Whitelist",
+                              "Povolené e-maily pre podporné tikety",
+                              "Engedélyezett e-mailek támogatási jegyekhez",
+                            )}
+                          </span>
+                        </h4>
+                        <p className="text-micro text-slate-500 mt-0.5">
+                          {t(
+                            "Allowed sender emails or @domains for support tickets on this client. Leave empty to accept support ticket requests from any email address verbatim.",
+                            "Povolené e-maily alebo @domény pre tikety tohto klienta. Ak necháte prázdne, systém prijme požiadavky na tikety z ľubovoľného e-mailu.",
+                            "Engedélyezett küldő e-mailek vagy @domainek az ügyfél jegyeihez. Ha üresen hagyja, bármely e-mail címről érkező jegyet elfogad.",
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {canEdit && (
+                      <form onSubmit={handleAddClientWhitelistEmail} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newClientWhitelistEmail}
+                          onChange={(e) => setNewClientWhitelistEmail(e.target.value)}
+                          placeholder={t("client@company.sk or @company.sk", "klient@firma.sk alebo @firma.sk", "ugyfel@ceg.hu vagy @ceg.hu")}
+                          className="flex-1 h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-mono"
+                        />
+                        <button
+                          type="submit"
+                          className="px-3.5 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-bold cursor-pointer"
+                        >
+                          {t("Add", "Pridať", "Hozzáadás")}
+                        </button>
+                      </form>
+                    )}
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {(activeClient.ticketAllowedEmails || []).length === 0 ? (
+                        <span className="text-micro text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                          {t(
+                            "No email whitelist set — accepting support ticket requests from any sender verbatim.",
+                            "Žiadny zoznam e-mailov — tikety sa prijímajú od akéhokoľvek odosielateľa.",
+                            "Nincs e-mail korlátozás — bármely feladótól érkező jegyet elfogad.",
+                          )}
+                        </span>
+                      ) : (
+                        (activeClient.ticketAllowedEmails || []).map((em) => (
+                          <span
+                            key={em}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-caption font-mono font-bold text-slate-700"
+                          >
+                            {em}
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveClientWhitelistEmail(em)}
+                                className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Client Tickets List */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b-2 border-slate-100 pb-2">
+                      <div>
+                        <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
+                          <TicketIcon className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" />
+                          {t("Client & Project Support Tickets", "Podporné tikety klienta a projektov", "Ügyfél és projekt támogatási jegyek")}
+                        </h3>
+                        <p className="text-caption text-slate-500 mt-0.5">
+                          {t(
+                            "Tickets directly linked to this client or attached to any of this client's projects.",
+                            "Tikety priamo priradené klientovi alebo k projektom tohto klienta.",
+                            "Közvetlenül az ügyfélhez vagy az ügyfél projektjeihez tartozó jegyek.",
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.location.hash = "tickets";
+                        }}
+                        className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-caption font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <span>{t("Open Tickets Module", "Otvoriť modul Tikety", "Jegyek modul megnyitása")}</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {clientTickets.length === 0 ? (
+                      <div className="py-10 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption">
+                        {t(
+                          "No support tickets recorded for this client or its projects yet.",
+                          "Pre tohto klienta ani jeho projekty zatiaľ neboli zaznamenané žiadne tikety.",
+                          "Még nincsenek támogatási jegyek ehhez az ügyfélhez vagy projektjeihez.",
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {clientTickets.map((tk) => {
+                          const stColor = ticketStatusColor(tk.status, ticketStatuses);
+                          const stLabel = ticketStatusLabel(tk.status, systemLanguage, ticketStatuses);
+                          const typeColor = ticketTypeColor(tk.type);
+                          const linkedProj = tk.projectId ? projects.find((p) => p.id === tk.projectId) : null;
+                          return (
+                            <div
+                              key={tk.id}
+                              onClick={() => {
+                                window.location.hash = `tickets/${tk.id}`;
+                              }}
+                              className="p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-indigo-300 shadow-2xs transition-all flex items-center justify-between gap-3 cursor-pointer"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    className="font-mono text-micro font-bold px-2 py-0.5 rounded-md border"
+                                    style={{
+                                      backgroundColor: `${typeColor}15`,
+                                      color: typeColor,
+                                      borderColor: `${typeColor}40`,
+                                    }}
+                                  >
+                                    {tk.ticketNumber}
+                                  </span>
+                                  <span className="font-bold text-ui text-slate-800 truncate">{tk.subject}</span>
+                                  {linkedProj && (
+                                    <span
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.location.hash = `projects/${linkedProj.id}?tab=tickets`;
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-micro font-bold hover:bg-purple-100"
+                                    >
+                                      <Briefcase className="w-3 h-3" />
+                                      <span>{linkedProj.name || linkedProj.id}</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-micro text-slate-400 mt-1">
+                                  <span>{tk.reporterEmail || tk.reporterName || "—"}</span>
+                                  <span>•</span>
+                                  <span>{String(tk.createdAt || "").slice(0, 16)}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                                  style={{
+                                    backgroundColor: `${typeColor}18`,
+                                    color: typeColor,
+                                  }}
+                                >
+                                  {ticketTypeLabel(tk.type, systemLanguage)}
+                                </span>
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                                  style={{
+                                    backgroundColor: `${PRIORITY_COLORS[tk.priority] || "#3b82f6"}18`,
+                                    color: PRIORITY_COLORS[tk.priority] || "#3b82f6",
+                                  }}
+                                >
+                                  {tk.priority}
+                                </span>
+                                <span
+                                  className="px-2.5 py-1 rounded-full text-micro font-bold border"
+                                  style={{
+                                    backgroundColor: `${stColor}15`,
+                                    color: stColor,
+                                    borderColor: `${stColor}40`,
+                                  }}
+                                >
+                                  {stLabel}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

@@ -1,0 +1,425 @@
+<title>Koperniq Ticket modul</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: specification document — sticky table of contents on the left (desktop), single reading column, tables in their own scroll containers */
+:root{
+  --bg:#f6f8fa; --surface:#ffffff; --fg:#17202b; --muted:#566273; --line:#dbe1e8;
+  --accent:#1d6f8f; --accent-soft:#e3f0f5; --code-bg:#eef2f6;
+  --ok:#2f7d4f; --warn:#a96b00; --crit:#b3362f;
+  --f-display:"Familjen Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",Roboto,Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f151c; --surface:#151d26; --fg:#e4e9ef; --muted:#97a3b2; --line:#2a3542;
+  --accent:#5fb6d6; --accent-soft:#17303b; --code-bg:#1b2530;
+  --ok:#6cc58f; --warn:#e2a94a; --crit:#ef7d74; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f151c; --surface:#151d26; --fg:#e4e9ef; --muted:#97a3b2; --line:#2a3542;
+  --accent:#5fb6d6; --accent-soft:#17303b; --code-bg:#1b2530;
+  --ok:#6cc58f; --warn:#e2a94a; --crit:#ef7d74; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15.5px;line-height:1.6;padding-inline:16px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:230px minmax(0,1fr);gap:48px;padding-block:40px 80px}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr);gap:24px;padding-block:24px 60px}}
+
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 24px);align-self:start;font-size:13.5px}
+nav.toc .lbl{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+nav.toc ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;counter-reset:t}
+nav.toc li{counter-increment:t}
+nav.toc a{display:block;padding:4px 10px;border-left:2px solid var(--line);color:var(--muted);text-decoration:none}
+nav.toc a::before{content:counter(t) ". ";font-family:var(--f-mono);font-size:12px}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--fg);border-left-color:var(--accent);outline:none}
+@media (max-width:900px){nav.toc{position:static;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:14px}
+  nav.toc ol{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}}
+
+main{min-width:0}
+header.doc{border-bottom:1px solid var(--line);padding-bottom:26px;margin-bottom:8px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(30px,4.4vw,44px);line-height:1.1;margin:8px 0 12px;text-wrap:balance;letter-spacing:-.01em}
+.lead{font-size:17px;color:var(--muted);max-width:68ch;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:18px;font-size:13px;color:var(--muted)}
+.meta b{color:var(--fg);font-weight:500}
+
+section{padding-top:40px;scroll-margin-top:20px}
+h2{font-family:var(--f-display);font-weight:600;font-size:25px;line-height:1.2;margin:0 0 6px;text-wrap:balance;display:flex;gap:12px;align-items:baseline}
+h2 .n{font-family:var(--f-mono);font-size:14px;color:var(--accent);font-weight:500}
+h3{font-family:var(--f-display);font-weight:600;font-size:18px;margin:26px 0 8px}
+p,li{max-width:72ch}
+p{margin:10px 0}
+ul,ol{padding-left:22px;margin:10px 0}
+li{margin:4px 0}
+code,.mono{font-family:var(--f-mono);font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+a{color:var(--accent)}
+
+.tbl{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:none}
+th{font-family:var(--f-mono);font-size:11.5px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--code-bg)}
+td.f{font-family:var(--f-mono);font-size:13px;white-space:nowrap}
+td.c{text-align:center}
+.num{font-variant-numeric:tabular-nums}
+
+.note{border:1px solid var(--line);background:var(--accent-soft);border-radius:8px;padding:12px 16px;margin:16px 0;max-width:72ch}
+.note b{font-weight:600}
+
+.pill{display:inline-block;font-family:var(--f-mono);font-size:11.5px;padding:1px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.p1{color:var(--crit)} .p2{color:var(--warn)} .p3{color:var(--accent)} .p4{color:var(--muted)}
+.yes{color:var(--ok);font-weight:600} .no{color:var(--muted)} .own{color:var(--warn);font-weight:500}
+
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0}
+.st{font-family:var(--f-mono);font-size:13px;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.st.start{border-color:var(--accent);color:var(--accent)}
+.st.end{background:var(--code-bg)}
+.arr{color:var(--muted);font-family:var(--f-mono)}
+
+.phases{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:16px 0}
+@media (max-width:760px){.phases{grid-template-columns:minmax(0,1fr)}}
+.ph{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:16px 18px;min-width:0}
+.ph .tag{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.ph h3{margin:4px 0 4px}
+.ph p{font-size:14px;color:var(--muted);margin:4px 0 8px}
+.ph ul{font-size:14px;padding-left:18px}
+
+pre.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;margin:16px 0}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Tartalom">
+  <div class="lbl">Tartalom</div>
+  <ol>
+    <li><a href="#cel">Cél és hatókör</a></li>
+    <li><a href="#fogalmak">Fogalmak</a></li>
+    <li><a href="#adatmodell">Adatmodell</a></li>
+    <li><a href="#statusz">Státuszgép</a></li>
+    <li><a href="#sla">Prioritás és SLA</a></li>
+    <li><a href="#jog">Jogosultságok</a></li>
+    <li><a href="#email">E-mail feldolgozás</a></li>
+    <li><a href="#kapcsolat">Kapcsolat a modulokkal</a></li>
+    <li><a href="#kepernyok">Képernyők</a></li>
+    <li><a href="#ertesites">Értesítések</a></li>
+    <li><a href="#riport">Riportok</a></li>
+    <li><a href="#fazisok">Fázisok és feladatok</a></li>
+    <li><a href="#kerdesek">Nyitott kérdések</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Fejlesztési specifikáció · Cstudios Software Solutions</div>
+  <h1>Koperniq Ticket modul</h1>
+  <p class="lead">Ügyfél-bejelentések és fejlesztési hibák kezelése a Koperniq CRM-en belül, a bejelentéstől a megoldáson és az időrögzítésen át a számlázásig.</p>
+  <div class="meta">
+    <span>Verzió: <b>0.1 – tervezet</b></span>
+    <span>Dátum: <b>2026. október 13.</b></span>
+    <span>Felhasználás: <b>belső, Cstudios Software Solutions</b></span>
+  </div>
+</header>
+
+<section id="cel">
+<h2><span class="n">1</span>Cél és hatókör</h2>
+<p>A modul célja, hogy minden ügyfélkérés egyetlen helyen, nyomon követhetően érkezzen be, és egyértelmű legyen, ki felel érte, mikorra kell megoldani, mennyi idő ment rá, és ki fizeti.</p>
+<h3>Mit old meg</h3>
+<ul>
+  <li>Az ügyfelek ne telefonon, WhatsAppon vagy a fejlesztők privát e-mailjén jelezzenek.</li>
+  <li>Minden bejelentésnek legyen felelőse, prioritása és határideje.</li>
+  <li>A support-keret fogyása és a kereten felüli, számlázható munka automatikusan látszódjon.</li>
+  <li>A vezetés lássa a terhelést, a késéseket és a visszatérő hibákat.</li>
+</ul>
+<h3>Hatókörön kívül (első körben)</h3>
+<ul>
+  <li>Telefonos ügyfélszolgálat és hívásrögzítés.</li>
+  <li>Élő chat a weboldalon.</li>
+  <li>Teljes körű tudásbázis-portál (3. fázisban egyszerűsítve jön).</li>
+</ul>
+<div class="note"><b>Belső használatra készül.</b> A modul a Cstudios Software Solutions saját support- és fejlesztési folyamatát szolgálja, ezért a típusok, státuszok és szabályok fixen a mi működésünkre vannak szabva. Többcéges (multi-tenant) működés, általános konfigurálhatóság és értékesítési szempontok nincsenek a hatókörben.</div>
+</section>
+
+<section id="fogalmak">
+<h2><span class="n">2</span>Fogalmak</h2>
+<div class="tbl"><table>
+<tr><th>Fogalom</th><th>Jelentés</th></tr>
+<tr><td><b>Ticket</b></td><td>Egy ügyfélbejelentés vagy belső hibajegy. Egyedi azonosítója <code>T-2026-0142</code> formájú.</td></tr>
+<tr><td><b>Üzenet</b></td><td>A ticket alatti bejegyzés. Lehet <b>nyilvános</b> (az ügyfél látja és e-mailben megkapja) vagy <b>belső megjegyzés</b> (csak a csapat látja).</td></tr>
+<tr><td><b>SLA</b></td><td>Vállalt reakció- és megoldási idő, prioritás és szerződés szerint.</td></tr>
+<tr><td><b>Support-keret</b></td><td>Havi óraszám vagy összeg, amit az ügyfél átalánydíjban megvásárolt.</td></tr>
+<tr><td><b>Kapcsolt feladat</b></td><td>A Koperniq meglévő feladata, amit a ticketből hoztunk létre a fejlesztési munkához.</td></tr>
+<tr><td><b>Munkaidő</b></td><td>Az órák, amelyek alatt az SLA-óra fut (alapértelmezés: H–P 8:00–16:30, Europe/Bratislava, ünnepnapok nélkül).</td></tr>
+</table></div>
+</section>
+
+<section id="adatmodell">
+<h2><span class="n">3</span>Adatmodell</h2>
+<p>Új táblák. A meglévő <code>clients</code>, <code>contacts</code>, <code>projects</code>, <code>tasks</code>, <code>users</code>, <code>time_entries</code> és <code>invoice_items</code> táblákra idegen kulccsal hivatkozunk.</p>
+
+<h3>tickets</h3>
+<div class="tbl"><table>
+<tr><th>Mező</th><th>Típus</th><th>Leírás</th></tr>
+<tr><td class="f">id</td><td>uuid</td><td>Belső azonosító</td></tr>
+<tr><td class="f">number</td><td>string, egyedi</td><td><code>T-ÉÉÉÉ-NNNN</code>, évente újrainduló sorszám</td></tr>
+<tr><td class="f">client_id</td><td>fk clients</td><td>Kötelező; ismeretlen feladónál ideiglenesen null, „Besorolásra vár” nézetbe kerül</td></tr>
+<tr><td class="f">contact_id</td><td>fk contacts</td><td>A bejelentő személy</td></tr>
+<tr><td class="f">project_id</td><td>fk projects, null</td><td>Érintett projekt / rendszer</td></tr>
+<tr><td class="f">subject</td><td>string(200)</td><td>Tárgy</td></tr>
+<tr><td class="f">type</td><td>enum</td><td><code>bug</code>, <code>request</code> (új igény), <code>question</code>, <code>incident</code> (leállás)</td></tr>
+<tr><td class="f">category_id</td><td>fk, null</td><td>Konfigurálható kategória (pl. Webshop, Admin, Szerver)</td></tr>
+<tr><td class="f">priority</td><td>enum</td><td><code>P1</code>–<code>P4</code>, lásd 5. pont</td></tr>
+<tr><td class="f">status</td><td>enum</td><td>Lásd 4. pont</td></tr>
+<tr><td class="f">source</td><td>enum</td><td><code>email</code>, <code>portal</code>, <code>internal</code>, <code>phone</code> (kézzel rögzítve)</td></tr>
+<tr><td class="f">environment</td><td>enum, null</td><td><code>production</code>, <code>staging</code></td></tr>
+<tr><td class="f">assignee_id</td><td>fk users, null</td><td>Felelős</td></tr>
+<tr><td class="f">contract_id</td><td>fk support_contracts, null</td><td>Melyik szerződés / keret alá tartozik; ügyfél alapján automatikusan</td></tr>
+<tr><td class="f">billable</td><td>enum</td><td><code>in_plan</code> (keretből), <code>billable</code> (külön számlázandó), <code>warranty</code> (garanciális), <code>internal</code></td></tr>
+<tr><td class="f">first_response_due_at</td><td>datetime</td><td>Reakció-határidő, SLA-ból számolva</td></tr>
+<tr><td class="f">resolution_due_at</td><td>datetime</td><td>Megoldási határidő</td></tr>
+<tr><td class="f">first_responded_at</td><td>datetime, null</td><td>Első nyilvános válasz ideje</td></tr>
+<tr><td class="f">resolved_at / closed_at</td><td>datetime, null</td><td>Kész és Lezárva állapotba kerülés</td></tr>
+<tr><td class="f">sla_paused_seconds</td><td>int</td><td>Összesített idő „Ügyfélre vár” állapotban</td></tr>
+<tr><td class="f">satisfaction</td><td>tinyint, null</td><td>1–5 értékelés lezáráskor</td></tr>
+<tr><td class="f">created_at / updated_at</td><td>datetime</td><td></td></tr>
+</table></div>
+
+<h3>További táblák</h3>
+<div class="tbl"><table>
+<tr><th>Tábla</th><th>Fő mezők</th><th>Megjegyzés</th></tr>
+<tr><td class="f">ticket_messages</td><td>ticket_id, author_type (user / contact / system), author_id, visibility (public / internal), body_html, body_text, email_message_id, created_at</td><td>Időrendi beszélgetés. A <code>email_message_id</code> a szálkezeléshez kell.</td></tr>
+<tr><td class="f">ticket_attachments</td><td>message_id, file_id, filename, mime, size</td><td>A meglévő fájltárolót használja. Max. 20 MB fájlonként.</td></tr>
+<tr><td class="f">ticket_events</td><td>ticket_id, actor_id, event (status_changed, assigned, priority_changed, merged…), old_value, new_value, created_at</td><td>Teljes napló. Ebből számoljuk az SLA-t és a riportokat.</td></tr>
+<tr><td class="f">ticket_task_links</td><td>ticket_id, task_id</td><td>Egy tickethez több feladat, egy feladathoz több ticket tartozhat.</td></tr>
+<tr><td class="f">ticket_watchers</td><td>ticket_id, user_id vagy contact_id</td><td>Másolatot kapók (CC az ügyfél oldalán is).</td></tr>
+<tr><td class="f">sla_policies</td><td>name, business_hours_id, P1–P4 reakció és megoldás percben</td><td>Alapértelmezett + szerződésenként felülírható.</td></tr>
+<tr><td class="f">support_contracts</td><td>client_id, sla_policy_id, monthly_hours, hourly_rate_over, valid_from, valid_to</td><td>A keret és a túlóra díja.</td></tr>
+<tr><td class="f">ticket_categories</td><td>name, default_assignee_id, active</td><td>Kategória szerinti automatikus kiosztáshoz.</td></tr>
+<tr><td class="f">reply_templates</td><td>name, body, language (hu / sk / en)</td><td>Sablonválaszok, változókkal (<code>{{ticket.number}}</code>, <code>{{contact.first_name}}</code>).</td></tr>
+</table></div>
+<p>Az időrögzítéshez a meglévő <code>time_entries</code> táblát bővítjük egy nullázható <code>ticket_id</code> mezővel, így nem kell külön időnyilvántartás.</p>
+</section>
+
+<section id="statusz">
+<h2><span class="n">4</span>Státuszgép</h2>
+<div class="flow" aria-label="Fő folyamat">
+  <span class="st start">Új</span><span class="arr">→</span>
+  <span class="st">Átvizsgálva</span><span class="arr">→</span>
+  <span class="st">Folyamatban</span><span class="arr">⇄</span>
+  <span class="st">Ügyfélre vár</span><span class="arr">→</span>
+  <span class="st">Kész</span><span class="arr">→</span>
+  <span class="st end">Lezárva</span>
+</div>
+
+<div class="tbl"><table>
+<tr><th>Állapot</th><th>Jelentés</th><th>SLA-óra</th><th>Innen hova léphet</th></tr>
+<tr><td><b>Új</b></td><td>Beérkezett, még senki nem nézte meg</td><td>Fut (reakció)</td><td>Átvizsgálva, Folyamatban, Lezárva (spam / duplikát)</td></tr>
+<tr><td><b>Átvizsgálva</b></td><td>Van felelős, prioritás, típus; az ügyfél visszaigazolást kapott</td><td>Fut (megoldás)</td><td>Folyamatban, Ügyfélre vár, Lezárva</td></tr>
+<tr><td><b>Folyamatban</b></td><td>Valaki dolgozik rajta</td><td>Fut</td><td>Ügyfélre vár, Kész</td></tr>
+<tr><td><b>Ügyfélre vár</b></td><td>Információ, jóváhagyás vagy tesztelés kell az ügyféltől</td><td><b>Megáll</b></td><td>Folyamatban (automatikusan, ha az ügyfél válaszol), Lezárva</td></tr>
+<tr><td><b>Kész</b></td><td>Megoldva, az ügyfél értesítve</td><td>Megáll</td><td>Folyamatban (újranyitás), Lezárva</td></tr>
+<tr><td><b>Lezárva</b></td><td>Végleges állapot</td><td>–</td><td>Új ticket jön létre hivatkozással, ha 14 nap után ír az ügyfél</td></tr>
+</table></div>
+
+<h3>Automatikus szabályok</h3>
+<ul>
+  <li>Ügyfél válaszol egy <b>Ügyfélre vár</b> ticketre → <b>Folyamatban</b>, a felelős értesítést kap.</li>
+  <li>Ügyfél válaszol egy <b>Kész</b> ticketre 14 napon belül → újranyitás <b>Folyamatban</b> állapotba.</li>
+  <li><b>Kész</b> állapotban 7 munkanap ügyfélválasz nélkül → automatikusan <b>Lezárva</b>, elégedettségi kérdés kiküldve.</li>
+  <li><b>Ügyfélre vár</b> 5 munkanapig válasz nélkül → emlékeztető e-mail; további 5 nap után <b>Lezárva</b>.</li>
+  <li>Az első nyilvános válasz kitölti a <code>first_responded_at</code> mezőt; ha a ticket még <b>Új</b>, átlép <b>Átvizsgálva</b> állapotba.</li>
+  <li><b>Kész</b> állapotba csak akkor léphet, ha minden kapcsolt feladat lezárt, vagy a felelős ezt kifejezetten felülbírálja (naplózva).</li>
+</ul>
+</section>
+
+<section id="sla">
+<h2><span class="n">5</span>Prioritás és SLA</h2>
+<p>Alapértelmezett értékek munkaidőben számolva. Szerződésenként felülírhatók.</p>
+<div class="tbl"><table>
+<tr><th>Prioritás</th><th>Mikor</th><th>Első reakció</th><th>Megoldás / kerülőmegoldás</th></tr>
+<tr><td><span class="pill p1">P1 Kritikus</span></td><td>Éles rendszer nem működik, pénzt veszít az ügyfél (pl. webshop nem rendel)</td><td class="num">1 óra</td><td class="num">8 munkaóra</td></tr>
+<tr><td><span class="pill p2">P2 Magas</span></td><td>Fontos funkció hibás, de van kerülőút</td><td class="num">4 munkaóra</td><td class="num">3 munkanap</td></tr>
+<tr><td><span class="pill p3">P3 Normál</span></td><td>Kisebb hiba, kérdés, apró módosítás</td><td class="num">1 munkanap</td><td class="num">10 munkanap</td></tr>
+<tr><td><span class="pill p4">P4 Alacsony</span></td><td>Új igény, ötlet, kozmetikai javítás</td><td class="num">2 munkanap</td><td>Ütemezés szerint, árajánlat alapján</td></tr>
+</table></div>
+<ul>
+  <li>P1 esetén a munkaidőn kívüli ügyelet szerződésben vállalható; ilyenkor az SLA 24/7 naptár szerint fut.</li>
+  <li>A prioritást az ügyfél javasolhatja, de a végleges értéket a csapat állítja be. Az eltérés naplózva marad.</li>
+  <li>Határidő előtt 25%-kal figyelmeztetés a felelősnek, lejáratkor a support vezetőnek is.</li>
+</ul>
+</section>
+
+<section id="jog">
+<h2><span class="n">6</span>Jogosultságok</h2>
+<div class="tbl"><table>
+<tr><th>Művelet</th><th>Admin</th><th>Support vezető</th><th>Fejlesztő</th><th>Ügyfél admin</th><th>Ügyfél kontakt</th></tr>
+<tr><td>Ticket létrehozása</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+<tr><td>Saját ticketek megtekintése</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td></tr>
+<tr><td>A cég összes ticketje</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c own">kiosztott + projekt</td><td class="c own">saját cég</td><td class="c no">–</td></tr>
+<tr><td>Belső megjegyzés látása / írása</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c no">–</td><td class="c no">–</td></tr>
+<tr><td>Kiosztás, prioritás módosítása</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c own">csak saját</td><td class="c no">–</td><td class="c no">–</td></tr>
+<tr><td>Számlázhatóság (billable) módosítása</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c no">–</td><td class="c no">–</td><td class="c no">–</td></tr>
+<tr><td>Időrögzítés tickethez</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c no">–</td><td class="c no">–</td></tr>
+<tr><td>Keret-felhasználás megtekintése</td><td class="c yes">✓</td><td class="c yes">✓</td><td class="c no">–</td><td class="c yes">✓</td><td class="c no">–</td></tr>
+<tr><td>SLA, kategóriák, sablonok beállítása</td><td class="c yes">✓</td><td class="c own">sablonok</td><td class="c no">–</td><td class="c no">–</td><td class="c no">–</td></tr>
+<tr><td>Ticketek összevonása, törlése</td><td class="c yes">✓</td><td class="c own">összevonás</td><td class="c no">–</td><td class="c no">–</td><td class="c no">–</td></tr>
+</table></div>
+<p>Törlés helyett alapból archiválás (soft delete) történik; végleges törlés csak adminnak, GDPR-kérés esetén.</p>
+</section>
+
+<section id="email">
+<h2><span class="n">7</span>E-mail feldolgozás</h2>
+<h3>Bejövő levelek</h3>
+<ol>
+  <li>Cégenként egy vagy több támogatási cím, pl. <code>support@cstudios.sk</code>. A levelek IMAP-on (vagy a szolgáltató webhookján) érkeznek, percenkénti lekérdezéssel.</li>
+  <li><b>Szálkezelés:</b> ha a tárgyban szerepel <code>[T-2026-0142]</code>, vagy az <code>In-Reply-To</code> / <code>References</code> fejléc egy ismert <code>email_message_id</code>-ra mutat, a levél új üzenetként a meglévő tickethez kerül. Egyébként új ticket jön létre.</li>
+  <li><b>Ügyfél-azonosítás:</b> feladó címe → kontakt → ügyfél. Ha nincs egyezés, a domain alapján javasolunk ügyfelet; ha az sincs, a ticket „Besorolásra vár” nézetbe kerül.</li>
+  <li>Az idézett előzményt (<code>&gt;</code> sorok, „On … wrote:”, „… napon … írta:”) levágjuk, az eredetit megőrizzük és kinyitható.</li>
+  <li>A csatolmányok és a beágyazott képek mentésre kerülnek. Vírusellenőrzés a feltöltéskor.</li>
+  <li>Automatikus válaszok és hurkok kiszűrése: <code>Auto-Submitted</code>, <code>X-Autoreply</code>, <code>Precedence: bulk</code> fejlécek, valamint feladónként max. 20 ticket/óra.</li>
+</ol>
+<h3>Kimenő levelek</h3>
+<ul>
+  <li>Minden nyilvános üzenet e-mailben megy a bejelentőnek és a figyelőknek, a támogatási címről, a tárgyban a ticketszámmal.</li>
+  <li>Automatikus visszaigazolás új ticketnél: szám, prioritás, várható reakcióidő, link a portálhoz (2. fázistól).</li>
+  <li>A sablonok nyelve a kontakt nyelvi beállítása szerint (HU / SK / EN).</li>
+  <li>A kimenő levelek SPF/DKIM-mel aláírt saját domainről mennek, hogy ne kerüljenek spambe.</li>
+</ul>
+</section>
+
+<section id="kapcsolat">
+<h2><span class="n">8</span>Kapcsolat a meglévő modulokkal</h2>
+<div class="tbl"><table>
+<tr><th>Modul</th><th>Kapcsolat</th></tr>
+<tr><td><b>Ügyfelek, kontaktok</b></td><td>Az ügyfél adatlapján új „Ticketek” fül: nyitott / lezárt, keret-felhasználás, átlagos megoldási idő.</td></tr>
+<tr><td><b>Projektek</b></td><td>A projekt oldalán a hozzá tartozó ticketek; a projekt átadása után a garanciális ticketek <code>warranty</code> jelölést kapnak.</td></tr>
+<tr><td><b>Feladatok</b></td><td>„Feladat létrehozása” gomb a ticketen: a tárgy, leírás, csatolmányok és projekt átmegy. A feladat lezárása megjelenik a ticket naplójában.</td></tr>
+<tr><td><b>Időrögzítés</b></td><td>Stopper vagy kézi rögzítés a ticketen; a feladaton rögzített idő is beszámít a tickethez, ha kapcsolva van.</td></tr>
+<tr><td><b>Számlázás</b></td><td>Havi zárás: a keretet meghaladó és a <code>billable</code> jelölésű órák számlatételként előkészítve (ticketszámmal és tárggyal), jóváhagyás után kerülnek a számlára.</td></tr>
+<tr><td><b>Kommunikáció</b></td><td>Az ügyfélnek küldött ticket-levelek megjelennek az ügyfél kommunikációs naplójában.</td></tr>
+<tr><td><b>Workflow-k</b></td><td>Új triggerek: ticket létrejött, státusz változott, SLA lejár, elégedettség érkezett.</td></tr>
+</table></div>
+</section>
+
+<section id="kepernyok">
+<h2><span class="n">9</span>Képernyők</h2>
+<h3>Belső felület</h3>
+<ul>
+  <li><b>Ticketlista:</b> táblázatos nézet, mentett szűrőkkel (Saját, Kiosztatlan, Lejáró SLA, Ügyfélre vár, Besorolásra vár). Oszlopok: szám, tárgy, ügyfél, prioritás, státusz, felelős, SLA-visszaszámláló, utolsó aktivitás.</li>
+  <li><b>Kanban nézet</b> státusz szerint, húzással áthelyezhető kártyákkal.</li>
+  <li><b>Ticket részletek:</b> bal oldalon a beszélgetés (nyilvános és belső üzenetek eltérő háttérrel), alul válaszmező sablonválasztóval és „Belső megjegyzés” kapcsolóval; jobb oldalon a mezők, SLA-állapot, kapcsolt feladatok, rögzített idő, napló.</li>
+  <li><b>Új ticket</b> (kézi rögzítéshez, pl. telefonos bejelentés).</li>
+  <li><b>Beállítások</b> (csak admin, egyszerű felület): támogatási címek, SLA-szabályok, munkaidő és ünnepnapok, kategóriák, sablonok, automatizálások.</li>
+</ul>
+<h3>Ügyfélportál (2. fázis)</h3>
+<ul>
+  <li>Bejelentkezés e-mailben küldött egyszeri linkkel (jelszó nélkül).</li>
+  <li>Saját ticketek listája és részletei, válaszadás, csatolmány feltöltése.</li>
+  <li>Új bejelentés űrlap: projekt, típus, javasolt prioritás, leírás, képernyőkép, környezet.</li>
+  <li>Ügyfél adminnak: a cég összes ticketje és a havi keret-felhasználás.</li>
+</ul>
+</section>
+
+<section id="ertesites">
+<h2><span class="n">10</span>Értesítések</h2>
+<div class="tbl"><table>
+<tr><th>Esemény</th><th>Ki kapja</th><th>Csatorna</th></tr>
+<tr><td>Új ticket</td><td>Kategória szerinti felelős, ennek hiányában support vezető</td><td>Alkalmazáson belül + e-mail</td></tr>
+<tr><td>Kiosztás</td><td>Új felelős</td><td>Alkalmazáson belül + e-mail</td></tr>
+<tr><td>Ügyfél válaszolt</td><td>Felelős, belső figyelők</td><td>Alkalmazáson belül + e-mail</td></tr>
+<tr><td>SLA 75%-on</td><td>Felelős</td><td>Alkalmazáson belül</td></tr>
+<tr><td>SLA lejárt</td><td>Felelős + support vezető</td><td>Alkalmazáson belül + e-mail</td></tr>
+<tr><td>P1 ticket létrejött</td><td>Support vezető + ügyeletes</td><td>E-mail + SMS / push (3. fázis)</td></tr>
+<tr><td>Státusz Kész lett</td><td>Bejelentő, ügyfél oldali figyelők</td><td>E-mail</td></tr>
+<tr><td>Keret 80% / 100%</td><td>Support vezető, ügyfél admin</td><td>E-mail</td></tr>
+</table></div>
+<p>Minden felhasználó saját maga állíthatja be, melyik eseményről kér e-mailt. Napi összefoglaló opcionálisan.</p>
+</section>
+
+<section id="riport">
+<h2><span class="n">11</span>Riportok</h2>
+<ul>
+  <li>Nyitott ticketek száma prioritás, ügyfél és felelős szerint.</li>
+  <li>SLA-teljesítés: hány százalékban teljesült a reakció és a megoldási határidő, havonta.</li>
+  <li>Átlagos és medián első reakcióidő, megoldási idő.</li>
+  <li>Beérkezett és lezárt ticketek trendje hetente.</li>
+  <li>Ügyfelenként: ticketszám, ráfordított óra, keret-felhasználás, számlázható órák.</li>
+  <li>Visszatérő hibák: kategória és projekt szerint a leggyakoribb témák.</li>
+  <li>Elégedettségi átlag felelősönként és ügyfelenként.</li>
+</ul>
+</section>
+
+<section id="fazisok">
+<h2><span class="n">12</span>Fázisok és feladatbontás</h2>
+<p>A méret relatív becslés (S: néhány nap, M: kb. egy hét, L: két hét vagy több), a pontos órabecslést a fejlesztő csapat adja meg.</p>
+<div class="phases">
+  <div class="ph">
+    <div class="tag">1. fázis · MVP</div>
+    <h3>Belső használat</h3>
+    <p>Cél: a Cstudios Software Solutions már ebben kezeli a support-kéréseket.</p>
+    <ul>
+      <li>Adatmodell, migrációk <span class="mono">M</span></li>
+      <li>Ticketlista szűrőkkel, részletező oldal <span class="mono">L</span></li>
+      <li>Státuszgép és napló <span class="mono">M</span></li>
+      <li>Bejövő e-mail, szálkezelés, ügyfél-azonosítás <span class="mono">L</span></li>
+      <li>Kimenő e-mail, alap sablonok <span class="mono">M</span></li>
+      <li>Ticketből feladat <span class="mono">S</span></li>
+      <li>Időrögzítés a ticketen <span class="mono">S</span></li>
+      <li>Belső értesítések <span class="mono">S</span></li>
+    </ul>
+  </div>
+  <div class="ph">
+    <div class="tag">2. fázis</div>
+    <h3>Ügyfél és SLA</h3>
+    <p>Cél: az ügyfelek közvetlenül is használják, a keret és a számlázás automatikus.</p>
+    <ul>
+      <li>SLA-szabályok, munkaidő, visszaszámláló <span class="mono">L</span></li>
+      <li>Támogatási szerződések és keret <span class="mono">M</span></li>
+      <li>Számlatételek előkészítése havi záráskor <span class="mono">M</span></li>
+      <li>Ügyfélportál, egyszeri linkes belépés <span class="mono">L</span></li>
+      <li>Automatikus státuszszabályok <span class="mono">M</span></li>
+      <li>Kanban nézet <span class="mono">S</span></li>
+      <li>Ügyfél adatlap „Ticketek” fül <span class="mono">S</span></li>
+    </ul>
+  </div>
+  <div class="ph">
+    <div class="tag">3. fázis</div>
+    <h3>Bővítések</h3>
+    <p>Cél: kényelmi és elemző funkciók, amikor az alapok már beváltak.</p>
+    <ul>
+      <li>Riportok és dashboard <span class="mono">L</span></li>
+      <li>Elégedettségi kérdés <span class="mono">S</span></li>
+      <li>Egyszerű tudásbázis <span class="mono">M</span></li>
+      <li>AI: kategória- és prioritás-javaslat, válaszvázlat, hasonló ticketek <span class="mono">L</span></li>
+      <li>P1 SMS / push ügyelet <span class="mono">M</span></li>
+      <li>Workflow-triggerek <span class="mono">S</span></li>
+    </ul>
+  </div>
+</div>
+<h3>Az MVP kész, ha</h3>
+<ul>
+  <li>A <code>support@</code> címre küldött levélből egy percen belül ticket lesz, a helyes ügyfélhez rendelve.</li>
+  <li>A ticketre adott válasz e-mailben megérkezik az ügyfélhez, és az ügyfél válasza ugyanabba a ticketbe kerül vissza.</li>
+  <li>Minden ticketnek van felelőse, és a státuszváltások naplózva vannak.</li>
+  <li>A ticketből létrehozott feladat és a rögzített idő a ticketen látszik.</li>
+  <li>A csapat két hétig kizárólag ebben kezeli a support-kéréseket, és a visszajelzések alapján javítások készültek.</li>
+</ul>
+</section>
+
+<section id="kerdesek">
+<h2><span class="n">13</span>Nyitott kérdések</h2>
+<ol>
+  <li>Melyik e-mail szolgáltatón fut a support cím (Websupport, Google Workspace, Microsoft 365)? Ettől függ, IMAP-pal vagy API-val olvassuk.</li>
+  <li>Hány ügyfélnek van ma havi support-kerete, és milyen formában (órakeret vagy fix díj)?</li>
+  <li>Vállalunk-e P1 ügyeletet munkaidőn kívül, és ha igen, kinek és milyen felárral?</li>
+  <li>Az ügyfélportál a Koperniq felületén belül fut, vagy saját címen (pl. <code>support.softwaresolutions.sk</code>)?</li>
+  <li>A meglévő ClickUp-feladatokat át kell-e hozni, vagy csak az új bejelentések indulnak a modulban?</li>
+  <li>Kell-e kétnyelvű (HU / SK) felület már az MVP-ben, vagy elég a sablonok kétnyelvűsége?</li>
+</ol>
+</section>
+
+<footer>Koperniq · Ticket modul specifikáció · v0.1 tervezet · Cstudios Software Solutions s.r.o.</footer>
+</main>
+</div>

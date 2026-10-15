@@ -196,6 +196,19 @@ export const getSidebarItemColors = (item: any, isActive: boolean) => {
       style: {},
       iconColor: item.color || "var(--color-indigo-500)"
     };
+  }  if (item.id === "orders") {
+    if (isActive) {
+      return {
+        className: "bg-sky-600 text-white font-bold shadow-lg shadow-sky-600/30 border border-sky-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-sky-700 hover:text-sky-800 hover:bg-sky-50/50",
+      style: {},
+      iconColor: item.color || "#0284c7"
+    };
   }
 
   if (item.isEmerald || item.id === "financial") {
@@ -826,7 +839,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [sidebarPinned, setSidebarPinned] = useUserPref("sidebarPinned");
   const [sidebarCompactness] = useUserPref("sidebarCompactness");
   const [sidebarUnpinnedStyle] = useUserPref("sidebarUnpinnedStyle");
-  const [storedSidebarGroups, setStoredSidebarGroups] = useUserPref("sidebarGroups");
+  const [storedSidebarGroups] = useUserPref("sidebarGroups");
 
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isStartMenuOpen, setIsStartMenuOpen] = useState(false);
@@ -906,11 +919,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "tasks",
       "overview",
       "projects",
+      "tickets",
       "rag_ai",
       "sai",
       "leads",
       "clients",
       "invoices",
+      "orders",
       "warehouse",
       "financial",
       "employees",
@@ -957,11 +972,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
       { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
+      { id: "tickets", label: getTranslation(systemLanguage, "sidebar.tickets"), icon: Icons.LifeBuoy || Icons.Ticket || LayoutDashboard, color: "#6366f1", isIndigo: true },
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
       { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6", isPurpleToGreen: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
       { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "orders", label: systemLanguage === "sk" ? "Objednávky" : systemLanguage === "hu" ? "Rendelések" : "Orders", icon: Icons.ShoppingCart || Coins, color: "#0284c7" },
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
       { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62", isSand: true },
@@ -1101,12 +1118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       newHidden = currentHidden.filter((id: string) => id !== itemId);
     }
 
-    let updatedGroups: SidebarGroup[] | undefined;
-    if (storedSidebarGroups) {
-      updatedGroups = normalizeSidebarGroups(storedSidebarGroups, newActive);
-      setStoredSidebarGroups(updatedGroups);
-    }
-
+    const updatedGroups = normalizeSidebarGroups(storedSidebarGroups, newActive);
     onSaveUserLayout(newActive, newHidden, updatedGroups);
   };
 
@@ -1124,7 +1136,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const nextGroups = currentGroups.map((g) => (g.id === groupId ? { ...g, items: nextItems } : g));
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
     onSaveUserLayout(newActiveLayout, undefined, nextGroups);
   };
 
@@ -1140,7 +1151,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       target.items.push(itemId);
     }
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
     onSaveUserLayout(newActiveLayout, undefined, nextGroups);
   };
 
@@ -1160,8 +1170,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       nextGroups[0].items.push(itemId);
     }
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
-    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
+    const newHidden = currentHidden.filter((id: string) => id !== itemId);
+    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
     setAddModuleGroupId(null);
   };
 
@@ -1177,7 +1188,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [moved] = nextGroups.splice(idx, 1);
     nextGroups.splice(newIdx, 0, moved);
 
-    setStoredSidebarGroups(nextGroups);
     const newActiveLayout = flattenSidebarGroups(nextGroups);
     onSaveUserLayout(newActiveLayout, undefined, nextGroups);
   };
@@ -1243,8 +1253,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     const newActiveLayout = flattenSidebarGroups(nextGroups);
-    setStoredSidebarGroups(nextGroups);
-    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
+    const newHidden = currentHidden.filter((id: string) => id !== droppedId);
+    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
 
     setDraggedItemId(null);
     (window as any).__draggedModuleId = null;
@@ -1315,7 +1326,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: []
     };
     const nextGroups = [...current, newGroup];
-    setStoredSidebarGroups(nextGroups);
     setEditingGroupId(newId);
     setEditingGroupTitle(title);
     onSaveUserLayout(activeVisibleLayout, undefined, nextGroups);
@@ -1330,7 +1340,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const nextGroups = current.map((g) =>
       g.id === groupId ? { ...g, title: newTitle.trim() } : g
     );
-    setStoredSidebarGroups(nextGroups);
     setEditingGroupId(null);
     setEditingGroupTitle("");
     onSaveUserLayout(activeVisibleLayout, undefined, nextGroups);
@@ -1350,7 +1359,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           : g
       );
     const write = (groups: typeof current) => {
-      setStoredSidebarGroups(groups);
       onSaveUserLayout(flattenSidebarGroups(groups), undefined, groups);
     };
     runUndoable({

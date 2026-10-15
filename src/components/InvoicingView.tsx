@@ -27,6 +27,7 @@ import { cn } from "../utils/cn";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { PageHeader, StatGrid, StatTile } from "./layout";
+import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 
@@ -131,6 +132,10 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 }) => {
   const lang = (systemLanguage === "sk" || systemLanguage === "hu" ? systemLanguage : "en") as Language;
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
+  const availableVatRates = useMemo(
+    () => getAvailableVatRates(companyBillingSettings),
+    [companyBillingSettings]
+  );
   // Role gates: a viewer can browse, filter and print, but never issue, change
   // or delete a document. Every mutating handler bails out on these as well,
   // so a hidden control cannot be resurrected through a stale reference.
@@ -263,7 +268,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
         quantity: 1,
         unit: whItem.unit || "ks",
         unitPrice,
-        vatRate: num(companyBillingSettings?.defaultVatRate) || 20,
+        vatRate: getDefaultVatRate(companyBillingSettings),
         discountPct: 0,
         totalPrice: unitPrice
       }
@@ -280,7 +285,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
         quantity: 1,
         unit: "ks",
         unitPrice: 0,
-        vatRate: num(companyBillingSettings?.defaultVatRate) || 20,
+        vatRate: getDefaultVatRate(companyBillingSettings),
         discountPct: 0,
         totalPrice: 0
       }
@@ -1851,14 +1856,13 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                               size="sm"
                               value={String(item.vatRate)}
                               onChange={v => handleUpdateItem(item.id, { vatRate: parseFloat(v) || 0 })}
-                              options={[
-                                { value: "23", label: "23 %" },
-                                { value: "20", label: "20 %" },
-                                { value: "19", label: "19 %" },
-                                { value: "10", label: "10 %" },
-                                { value: "5", label: "5 %" },
-                                { value: "0", label: "0 %" }
-                              ]}
+                              options={(() => {
+                                const itemRate = Number(item.vatRate) || 0;
+                                const allRates = availableVatRates.includes(itemRate)
+                                  ? availableVatRates
+                                  : [itemRate, ...availableVatRates].sort((a, b) => b - a);
+                                return allRates.map(r => ({ value: String(r), label: `${r} %` }));
+                              })()}
                             />
                           </div>
 

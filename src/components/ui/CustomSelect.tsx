@@ -410,7 +410,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         }
       >
         <span className={`flex items-center gap-1.5 ${fitLabel ? "whitespace-nowrap" : "min-w-0 truncate"}`}>
-          {icon}
+          {icon ?? selected?.icon}
           <span className={`${fitLabel ? "whitespace-nowrap" : "truncate"} ${!selected ? "text-slate-400 font-medium" : ""}`}>
             {selected ? selected.label : placeholder}
           </span>
