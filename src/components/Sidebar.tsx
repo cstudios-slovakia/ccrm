@@ -1541,7 +1541,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onDrop={(e) => handleDropOnSidebar(e)}
           className={cn(
             "flex-1 flex flex-col min-h-0 px-3 py-3",
-            isDockMode && !isExpanded ? "overflow-visible" : "overflow-y-auto scrollbar-thin",
+            // Dock: the nav must scroll, but a scroll container clips both axes, so it is
+            // widened past the sidebar edge (-mr/pr) to leave room for magnified icons.
+            // The extra strip is click-through; only the items themselves take pointer events.
+            isDockMode && !isExpanded
+              ? "overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mr-16 pr-[calc(0.75rem+4rem)] pointer-events-none [&>*]:pointer-events-auto"
+              : "overflow-y-auto scrollbar-thin",
             widthClasses.spacing
           )}
         >
@@ -2001,8 +2006,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          {/* Bottom Actions Footer (Pinned at the very bottom of sidebar via mt-auto) */}
-          <div className="p-3 -mx-3 -mb-3 flex flex-col gap-1.5 shrink-0 mt-auto border-t border-slate-100/80 bg-slate-50/40">
+        </nav>
+
+          {/* Bottom Actions Footer (sibling of the scrolling nav, so it is always visible) */}
+          <div className="p-3 flex flex-col gap-1.5 shrink-0 border-t border-slate-100/80 bg-slate-50 relative z-10">
             {/* Collapse/Expand Toggle Caret Button (in place of Pin) */}
             <button
               type="button"
@@ -2109,7 +2116,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </button>
           </div>
-        </nav>
       </aside>
 
       {/* MOBILE BOTTOM DOCK */}
