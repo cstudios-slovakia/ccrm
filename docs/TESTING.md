@@ -373,7 +373,12 @@ Groups of checks, about 190 in all:
 3. **M - migrations.** The Employee role is added once and an existing role of
    that name is left alone; `employees.user_id` is added with its unique index
    and foreign key, twice in a row.
-4. **P1 - parity.** TypeScript and PHP permission registries and the Employee
+4. **T - orders and tickets** (`T-R`, `T-W`, `T-X`, `T-E`). Four extra roles (`TicketsNothing`, `TicketsView`,
+   `TicketsEdit`, `TicketsFull`) against `orders` / `tickets`: what `sync.php` sends (and the raw body
+   leaks), what a forged POST can create, change or delete, the ticket data carried by tasks, projects, leads
+   and settings, `orders.php` / `tickets.php`, and that the public status board and widget still answer
+   without a session. The probe migrates the scratch copy first, because the dev database may predate Mango.
+5. **P1 - parity.** TypeScript and PHP permission registries and the Employee
    role map are identical (`src/utils/permissions.test.ts`).
 
 Run it after any change to `permissions.ts` / `permissions.php`,

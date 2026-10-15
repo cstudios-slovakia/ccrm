@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   USERS,
+  TK,
   EMPLOYEE_A,
   EMPLOYEE_B,
   PRIVATE_KEY_A,
@@ -96,7 +97,13 @@ function setup() {
   }
   docker('exec', WEB, 'chown', '-R', 'www-data:www-data', SCRATCH_DIR, BASE_DIR);
 
-  sql(fixtureSql());
+  // The dev database may predate Mango: bring the scratch copy up to date so the orders and
+  // ticket tables exist before the fixture seeds them.
+  docker('exec', '-u', 'www-data', WEB, 'php', '-r',
+    `require '${SCRATCH_DIR}/config.php'; require '${SCRATCH_DIR}/api/schema.php'; $pdo = function_exists('get_db_connection') ? get_db_connection() : null; ccrm_migrate_orders($pdo); ccrm_migrate_tickets($pdo); ccrm_apply_migrations($pdo);`);
+
+  // Through stdin: the seed outgrew the Windows command-line limit once the role registry grew.
+  run('docker', ['exec', '-i', DB, 'mysql', '-uroot', `-p${ROOT_PW}`, '--default-character-set=utf8mb4', SCRATCH_DB], fixtureSql());
 
   // Documents on disk: two private ones (already in their final form) and one legacy
   // contract in the PUBLIC uploads directory that the migration has to move.
@@ -263,7 +270,9 @@ async function main() {
     // --- R7: Admin and PM GET equal the pre-filtering sync.php ---
     section(`R7: Admin and Project Manager GET equals the pre-filtering baseline (${BASELINE_REF})`);
     const MASK = '********';
-    const VOLATILE = new Set(['createdAt', 'updatedAt', 'readScope', 'serverTime', 'timestamp']);
+    // dataVersion is a hash over the tables each sync.php knows about: the baseline predates the
+    // orders and ticket tables, which the scratch database now holds and seeds, so it cannot match.
+    const VOLATILE = new Set(['createdAt', 'updatedAt', 'readScope', 'serverTime', 'timestamp', 'dataVersion']);
     const normalise = (val, path = '') => {
       if (Array.isArray(val)) return val.map((v) => normalise(v, path));
       if (val && typeof val === 'object') {
@@ -688,6 +697,187 @@ echo json_encode(['text' => $r['raw_context']]);`;
     check('R5: a leads-only context has the lead but not the client', ctxLeads.includes('Alpha Lead') && !ctxLeads.includes('Beta Client'));
     const ctxAdmin = contextFor('admin');
     check('R5: Admin context has everything (control)', ctxAdmin.includes('Rate: €3,200') && ctxAdmin.includes('Alpha Lead'));
+
+    // ============================================================ orders + tickets (Mango)
+    // The two modules added after the RBAC work. nothing / view / edit / edit+delete, on the sync
+    // GET, the sync POST, and the standalone endpoints. Public widget and status board stay open.
+    section('T-R: orders & tickets read scope');
+    const TK_VALUES = [TK.orderNumber, TK.ticketTitle, TK.ticketBody, TK.publicHash, TK.leadEmail, TK.imapHost];
+    const leaked = (raw) => TK_VALUES.filter((v) => raw.includes(v)).join(', ');
+    for (const key of ['tk_none', 'employee_a']) {
+      const r = await syncGet(SESSIONS[key]);
+      const g = r.data || {};
+      const rs = g.readScope?.restricted || [];
+      check(`T-R: ${key} receives no orders, tickets or support contracts`,
+        ['orders', 'tickets', 'supportContracts'].every((c) => Array.isArray(g[c]) && g[c].length === 0), JSON.stringify([g.orders?.length, g.tickets?.length, g.supportContracts?.length]));
+      check(`T-R: ${key} readScope marks them withheld (not deleted)`, ['orders', 'tickets', 'supportContracts'].every((c) => rs.includes(c)), rs.join(','));
+      check(`T-R: ${key} body carries no order / ticket / widget / mailbox value`, leaked(r.raw) === '', leaked(r.raw));
+    }
+    {
+      const g = (await syncGet(SESSIONS.tk_none)).data || {};
+      check('T-R: nothing -> ticket statuses and settings travel as null', g.settings?.ticketStatuses === null && g.settings?.ticketSettings === null, JSON.stringify([g.settings?.ticketStatuses, g.settings?.ticketSettings]).slice(0, 120));
+      check('T-R: nothing -> a task keeps its row but loses the ticket link',
+        (g.tasks || []).some((t) => t.id === 'task-tk-1' && t.relatedTicketId === null));
+      const p = (g.projects || []).find((x) => x.id === 'proj-probe-1');
+      check('T-R: nothing -> the project is visible but its public-board hash and widget setup are not',
+        !!p && p.ticketPublicHash === null && p.ticketWidgetEnabled === false && (p.ticketAllowedDomains || []).length === 0, JSON.stringify(p)?.slice(0, 200));
+      const l = (g.leads || []).find((x) => x.id === 'lead-probe-1');
+      check('T-R: nothing -> a lead loses its ticket e-mail whitelist', !!l && (l.ticketAllowedEmails || []).length === 0);
+    }
+    for (const key of ['tk_view', 'tk_edit', 'tk_full', 'admin']) {
+      const r = await syncGet(SESSIONS[key]);
+      const g = r.data || {};
+      const rs = g.readScope?.restricted || [];
+      const tk = (g.tickets || []).find((t) => t.id === 'tck-probe-1');
+      check(`T-R: ${key} reads orders, tickets (with messages) and support contracts`,
+        (g.orders || []).some((o) => o.id === 'ord-probe-1' && (o.items || []).length === 1) && !!tk && (tk.messages || []).some((m) => m.body === TK.ticketBody) && (g.supportContracts || []).some((c) => c.id === 'sc-probe-1'),
+        JSON.stringify([g.orders?.length, g.tickets?.length, g.supportContracts?.length]));
+      check(`T-R: ${key} readScope does not mark them withheld`, !['orders', 'tickets', 'supportContracts'].some((c) => rs.includes(c)), rs.join(','));
+      const p = (g.projects || []).find((x) => x.id === 'proj-probe-1');
+      check(`T-R: ${key} sees the widget setup, ticket link, settings and lead whitelist`,
+        p?.ticketPublicHash === TK.publicHash && (g.tasks || []).some((t) => t.id === 'task-tk-1' && t.relatedTicketId === 'tck-probe-1') &&
+        g.settings?.ticketSettings?.imapHost === TK.imapHost && (g.leads || []).some((x) => x.id === 'lead-probe-1' && (x.ticketAllowedEmails || []).includes(TK.leadEmail)),
+        JSON.stringify([p?.ticketPublicHash, g.settings?.ticketSettings?.imapHost]));
+    }
+
+    section('T-W: orders & tickets write scope (sync.php POST)');
+    const tkCounts = () => val("SELECT CONCAT((SELECT COUNT(*) FROM orders),'/',(SELECT COUNT(*) FROM order_items),'/',(SELECT COUNT(*) FROM tickets),'/',(SELECT COUNT(*) FROM ticket_messages),'/',(SELECT COUNT(*) FROM support_contracts))");
+    const orderRow = (id, no, extra = {}) => ({ id, orderNumber: no, type: 'sales', status: 'new', customerType: 'client', clientId: 'client-probe-1', orderDate: '2026-02-01', guest: {}, delivery: {}, billing: {}, items: [], ...extra });
+    const ticketRow = (id, num, title, extra = {}) => ({ id, ticketNumber: num, title, status: 'new', priority: 'normal', type: 'support', source: 'manual', messages: [], taskLinks: [], timeEntries: [], ...extra });
+    const probeMsg = { id: 'tm-probe-1', ticketId: 'tck-probe-1', authorType: 'client', authorName: 'Probe Client', body: TK.ticketBody };
+    const probeLink = { ticketId: 'tck-probe-1', taskId: 'task-tk-1', syncMode: 'auto_resolve' };
+    const keepTicket = (title) => ticketRow('tck-probe-1', 'TCK-PROBE1', title, { messages: [probeMsg], taskLinks: [probeLink] });
+    const contractRow = (id) => ({ id, clientId: 'client-probe-1', leadId: 'client-probe-1', projectId: 'proj-probe-1', name: 'Probe contract ' + id });
+    const tkBefore = tkCounts();
+
+    for (const key of ['tk_none', 'tk_view']) {
+      await post(key, { orders: [orderRow('ord-w-1', 'OBJ-W-1'), orderRow('ord-probe-1', TK.orderNumber, { notes: 'pwned' })], tickets: [ticketRow('tck-w-1', 'TCK-W1', 'forged'), keepTicket('pwned title')], supportContracts: [contractRow('sc-w-1')] });
+      check(`T-W: ${key} cannot create or change orders, tickets or contracts`,
+        tkCounts() === tkBefore && val("SELECT title FROM tickets WHERE id='tck-probe-1'") === TK.ticketTitle && val("SELECT CONCAT('v:',COALESCE(notes,'')) FROM orders WHERE id='ord-probe-1'") === 'v:', tkCounts());
+      const rd = await post(key, { deleted: { orders: ['ord-probe-1'], tickets: ['tck-probe-1'], supportContracts: ['sc-probe-1'] } });
+      await postV1(key, { orders: [], tickets: [], supportContracts: [] });
+      check(`T-W: ${key} named deletes and empty v1 snapshots remove nothing`, tkCounts() === tkBefore, tkCounts());
+      check(`T-W: ${key} the refusal is reported back`, /orders|tickets/.test(skipped(rd)), skipped(rd));
+    }
+
+    // edit without the delete toggle: writes yes, deletes no
+    await post('tk_edit', { orders: [orderRow('ord-w-1', 'OBJ-W-1', { notes: 'edit-made', items: [{ id: 'oi-w-1', orderId: 'ord-w-1', name: 'W item', quantity: 1, unitPrice: 5 }] }), orderRow('ord-probe-1', TK.orderNumber, { notes: 'edited', items: [{ id: 'oi-probe-1', orderId: 'ord-probe-1', name: 'Probe item', quantity: 1, unitPrice: 100 }] })],
+      tickets: [ticketRow('tck-w-1', 'TCK-W1', 'created by edit'), keepTicket('Edited title')], supportContracts: [contractRow('sc-probe-1'), contractRow('sc-w-1')] });
+    check('T-W: edit creates and updates orders', val("SELECT COUNT(*) FROM orders WHERE id='ord-w-1'") === '1' && val("SELECT notes FROM orders WHERE id='ord-probe-1'") === 'edited');
+    check('T-W: edit creates and updates tickets', val("SELECT COUNT(*) FROM tickets WHERE id='tck-w-1'") === '1' && val("SELECT title FROM tickets WHERE id='tck-probe-1'") === 'Edited title');
+    check('T-W: edit creates support contracts', val("SELECT COUNT(*) FROM support_contracts WHERE id='sc-w-1'") === '1');
+    const afterEdit = tkCounts();
+    await post('tk_edit', { deleted: { orders: ['ord-w-1'], tickets: ['tck-w-1'], supportContracts: ['sc-w-1'] } });
+    await postV1('tk_edit', { orders: [orderRow('ord-probe-1', TK.orderNumber, { notes: 'edited', items: [{ id: 'oi-probe-1', orderId: 'ord-probe-1', name: 'Probe item', quantity: 1, unitPrice: 100 }] })], tickets: [keepTicket('Edited title')], supportContracts: [contractRow('sc-probe-1')] });
+    check('T-W: edit WITHOUT the delete toggle cannot delete (named or by omission)', tkCounts() === afterEdit, `${tkCounts()} vs ${afterEdit}`);
+    await post('tk_full', { deleted: { orders: ['ord-w-1'], tickets: ['tck-w-1'], supportContracts: ['sc-w-1'] } });
+    check('T-W: edit + delete toggle deletes orders, tickets and contracts',
+      val("SELECT COUNT(*) FROM orders WHERE id='ord-w-1'") === '0' && val("SELECT COUNT(*) FROM tickets WHERE id='tck-w-1'") === '0' && val("SELECT COUNT(*) FROM support_contracts WHERE id='sc-w-1'") === '0', tkCounts());
+    check('T-W: ... and only those', val("SELECT COUNT(*) FROM orders WHERE id='ord-probe-1'") === '1' && val("SELECT COUNT(*) FROM tickets WHERE id='tck-probe-1'") === '1');
+
+    section('T-X: ticket data carried by other modules (task link, widget setup, lead whitelist, ticket settings)');
+    const taskLink = (id) => val(`SELECT CONCAT('v:',COALESCE(related_ticket_id,'')) FROM tasks WHERE id='${id}'`).slice(2);
+    const linkRows = (id) => val(`SELECT COUNT(*) FROM ticket_task_links WHERE task_id='${id}'`);
+    const tkTask = (id, extra = {}) => ({ id, title: 'Retitled ' + id, deadline: '2026-12-31', owner: 'Probe Admin', status: 'New', assignedUsers: [], ...extra });
+    // A role that may edit tasks but holds no ticket right: the task saves, the link is untouched.
+    await post('tk_none', { tasks: [tkTask('task-tk-1', { relatedTicketId: null })] });
+    check('T-X: nothing + tasks edit -> the task saves', val("SELECT title FROM tasks WHERE id='task-tk-1'") === 'Retitled task-tk-1');
+    check('T-X: ... but the stored ticket link survives the null it was sent', taskLink('task-tk-1') === 'tck-probe-1' && linkRows('task-tk-1') === '1', taskLink('task-tk-1'));
+    for (const key of ['tk_none', 'tk_view']) {
+      await post(key, { tasks: [tkTask('task-b-own', { relatedTicketId: 'tck-probe-1' })] });
+      check(`T-X: ${key} cannot link a task to a ticket`, taskLink('task-b-own') === '' && linkRows('task-b-own') === '0', taskLink('task-b-own'));
+      await post(key, { tasks: [tkTask('task-tk-1', { relatedTicketId: 'tck-other' })] });
+      check(`T-X: ${key} cannot re-point an existing link`, taskLink('task-tk-1') === 'tck-probe-1');
+    }
+    await post('tk_edit', { tasks: [tkTask('task-b-own', { relatedTicketId: 'tck-probe-1' })] });
+    check('T-X: edit can link a task to a ticket', taskLink('task-b-own') === 'tck-probe-1' && linkRows('task-b-own') === '1');
+
+    const projOf = async (key) => ((await syncGet(SESSIONS[key])).data?.projects || []).find((x) => x.id === 'proj-probe-1');
+    const projDb = () => val("SELECT CONCAT(ticket_widget_enabled,'|',ticket_public_hash,'|',COALESCE(ticket_allowed_domains,'')) FROM projects WHERE id='proj-probe-1'");
+    const projBefore = projDb();
+    for (const key of ['tk_none', 'tk_view']) {
+      const pr = await projOf(key);
+      await post(key, { projects: [{ ...pr, ticketWidgetEnabled: false, ticketPublicHash: 'hijacked-hash', ticketAllowedDomains: ['evil.test'], ticketWidgetConfig: { greeting: 'x' } }] });
+      check(`T-X: ${key} saving a project cannot change its widget setup or public-board hash`, projDb() === projBefore, projDb());
+    }
+    {
+      const pr = await projOf('tk_none');
+      await post('tk_none', { projects: [{ ...pr, name: 'Renamed by tk_none' }] });
+      check('T-X: nothing + projects edit -> the project still saves, with its hash intact', val("SELECT name FROM projects WHERE id='proj-probe-1'") === 'Renamed by tk_none' && projDb() === projBefore, projDb());
+    }
+    {
+      const pr = await projOf('tk_edit');
+      await post('tk_edit', { projects: [{ ...pr, ticketAllowedDomains: ['edited.test'] }] });
+      check('T-X: edit can change the widget setup', projDb().includes('edited.test') && projDb().includes(TK.publicHash), projDb());
+    }
+
+    const leadWhitelist = () => val("SELECT COALESCE(ticket_allowed_emails,'') FROM leads WHERE id='lead-probe-1'");
+    for (const key of ['tk_none', 'tk_view']) {
+      await post(key, { leads: [leadRow('lead-probe-1', 'Alpha Lead', { ticketAllowedEmails: ['x@evil.test'] })] });
+      check(`T-X: ${key} cannot change a lead's ticket e-mail whitelist`, leadWhitelist().includes(TK.leadEmail) && !leadWhitelist().includes('evil.test'), leadWhitelist());
+    }
+    await post('tk_edit', { leads: [leadRow('lead-probe-1', 'Alpha Lead', { ticketAllowedEmails: ['edited@client.probe'] })] });
+    check('T-X: edit can change a lead whitelist', leadWhitelist().includes('edited@client.probe'), leadWhitelist());
+
+    const setVal = (k) => val(`SELECT COALESCE(value,'') FROM system_settings WHERE \`key\`='${k}'`);
+    const stBefore = [setVal('TICKET_STATUSES'), setVal('TICKET_SETTINGS')];
+    const newStatuses = [{ id: 'probe_status', key: 'probe_status', label: 'Probe status', category: 'new', group: 'new', color: '#000000', isDefault: true, sortOrder: 1 }];
+    for (const key of ['tk_none', 'tk_view']) {
+      const r = await post(key, { settings: { systemName: 'CCRM', ticketStatuses: newStatuses, ticketSettings: { imapHost: 'evil.host' } } });
+      check(`T-X: ${key} (general_config edit) cannot change ticket statuses or ticket settings`,
+        setVal('TICKET_STATUSES') === stBefore[0] && setVal('TICKET_SETTINGS') === stBefore[1], r.raw.slice(0, 160));
+    }
+    await post('tk_edit', { settings: { systemName: 'CCRM', ticketStatuses: newStatuses, ticketSettings: { imapHost: 'edited.host' } } });
+    check('T-X: edit (+ general_config) can change them', setVal('TICKET_STATUSES').includes('probe_status') && setVal('TICKET_SETTINGS').includes('edited.host'), setVal('TICKET_SETTINGS'));
+
+    section('T-E: standalone endpoints (orders.php, tickets.php) and the public paths');
+    const ordersN = () => val('SELECT COUNT(*) FROM orders');
+    for (const key of ['tk_none', 'employee_a']) {
+      const g = await api(SESSIONS[key], 'api/orders.php');
+      const g1 = await api(SESSIONS[key], 'api/orders.php', { query: '?id=ord-probe-1' });
+      check(`T-E: ${key} GET orders.php -> 403 and no order data`, g.status === 403 && g1.status === 403 && !g.raw.includes(TK.orderNumber) && !g1.raw.includes(TK.orderNumber), `${g.status}/${g1.status}`);
+    }
+    {
+      const g = await api(SESSIONS.tk_view, 'api/orders.php');
+      const g1 = await api(SESSIONS.tk_view, 'api/orders.php', { query: '?id=ord-probe-1' });
+      check('T-E: view GET orders.php lists and reads an order', g.status === 200 && g.raw.includes(TK.orderNumber) && g1.status === 200 && g1.raw.includes(TK.orderNumber), `${g.status}/${g1.status}`);
+      const n = ordersN();
+      const w = await api(SESSIONS.tk_view, 'api/orders.php', { method: 'POST', body: { id: 'ord-api-1', order_number: 'OBJ-API-1', order_date: '2026-03-01' } });
+      const d = await api(SESSIONS.tk_view, 'api/orders.php', { method: 'DELETE', query: '?id=ord-probe-1' });
+      check('T-E: view cannot POST or DELETE through orders.php', w.status === 403 && d.status === 403 && ordersN() === n, `${w.status}/${d.status}`);
+    }
+    {
+      const n = ordersN();
+      const w = await api(SESSIONS.tk_edit, 'api/orders.php', { method: 'POST', body: { id: 'ord-api-1', order_number: 'OBJ-API-1', order_date: '2026-03-01' } });
+      check('T-E: edit can POST an order through orders.php', w.status === 200 && ordersN() === String(Number(n) + 1), `${w.status} ${w.raw.slice(0, 160)}`);
+      const d = await api(SESSIONS.tk_edit, 'api/orders.php', { method: 'DELETE', query: '?id=ord-api-1' });
+      check('T-E: edit without the delete toggle cannot DELETE through orders.php', d.status === 403 && val("SELECT COUNT(*) FROM orders WHERE id='ord-api-1'") === '1', `${d.status}`);
+      sql(`INSERT INTO orders (id, order_number, type, status, customer_type, guest_name, guest_email, order_date) VALUES ('ord-guest-1', 'OBJ-GUEST-1', 'sales', 'new', 'guest', 'Guest G', 'g@guest.probe', '2026-03-02')`);
+      const cv = await api(SESSIONS.tk_edit, 'api/orders.php', { method: 'POST', query: '?action=convert_guest_to_client', body: { order_id: 'ord-guest-1' } });
+      check('T-E: converting a guest needs edit on clients too (it creates a lead row)', cv.status === 403 && val("SELECT customer_type FROM orders WHERE id='ord-guest-1'") === 'guest', `${cv.status}`);
+      const cv2 = await api(SESSIONS.tk_full, 'api/orders.php', { method: 'POST', query: '?action=convert_guest_to_client', body: { order_id: 'ord-guest-1' } });
+      check('T-E: ... and with it the request gets past the gate (the lead INSERT itself fails on the leads schema: separate, pre-existing)', cv2.status !== 403 && cv2.status !== 401, `${cv2.status} ${cv2.raw.slice(0, 160)}`);
+      const d2 = await api(SESSIONS.tk_full, 'api/orders.php', { method: 'DELETE', query: '?id=ord-api-1' });
+      check('T-E: edit + delete toggle can DELETE through orders.php', d2.status === 200 && val("SELECT COUNT(*) FROM orders WHERE id='ord-api-1'") === '0', `${d2.status}`);
+    }
+    for (const key of ['tk_none', 'tk_view']) {
+      for (const action of ['test_imap', 'poll_imap', 'send_email_reply']) {
+        const r = await api(SESSIONS[key], 'api/tickets.php', { method: 'POST', query: `?action=${action}`, body: { toEmail: 'a@b.probe', body: 'x', ticketId: 'tck-probe-1' } });
+        check(`T-E: ${key} tickets.php ${action} -> 403`, r.status === 403, `${r.status} ${r.raw.slice(0, 120)}`);
+      }
+    }
+    for (const action of ['test_imap', 'send_email_reply']) {
+      const r = await api(SESSIONS.tk_edit, 'api/tickets.php', { method: 'POST', query: `?action=${action}`, body: {} });
+      check(`T-E: edit tickets.php ${action} passes the gate`, r.status === 200 && r.data?.success === false && /Missing/.test(r.data?.message || ''), `${r.status} ${r.raw.slice(0, 160)}`);
+    }
+    {
+      const pub = await fetch(`${BASE}/rbacprobe/api/tickets.php?action=public_status&hash=${TK.publicHash}`);
+      const pj = await pub.json().catch(() => null);
+      check('T-E: the public status board still answers without a session', pub.status === 200 && pj?.success === true, `${pub.status} ${JSON.stringify(pj)?.slice(0, 160)}`);
+      const wd = await fetch(`${BASE}/rbacprobe/api/ticket_widget.php?action=script&project=proj-probe-1`, { headers: { Origin: 'https://edited.test', Referer: 'https://edited.test/' } });
+      const wt = await wd.text();
+      check('T-E: the public widget script still answers without a session', wd.status === 200 && /ktw|Koperniq|function/.test(wt), `${wd.status} ${wt.slice(0, 120)}`);
+    }
 
     // --- W7: protected roles survive an admin push (kept last: it rewrites the registry) ---
     section('W7: protected roles');

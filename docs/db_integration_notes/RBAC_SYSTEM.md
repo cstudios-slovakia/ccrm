@@ -146,6 +146,9 @@ lead or project a visible row points at, so task cards still show their client.
 | `users` | always | other users: id, name, e-mail, role, colour, avatar only; own row in full |
 | `roles` | always | all with `pm_managers` ≥ view, else the caller's own role |
 | `meetingNotes`, `unifiedEntries*`, `projects*`, `warehouse*`, `invoicesOffers`, `clientCategories` | their module ≥ view | — |
+| `orders` | `orders` ≥ view | — |
+| `tickets`, `supportContracts` | `tickets` ≥ view | — |
+| `settings.ticketStatuses`, `settings.ticketSettings` | `tickets` ≥ view | else `null` (the client falls back to its defaults); mailbox / OpenAI secrets always masked |
 | `financialRecords`, `financialTrend/Mode/SimplifiedTable` | `financial` ≥ view | salary rows read `Payroll (<period>)` without `employees.salaries` (amounts stay) |
 | `employees` | `employees` ≥ view | field groups above; a hidden field is **absent**, never `0` |
 | `employeeSalaries` / `employeeVacations` | `employees` ≥ view **and** the toggle | — |
@@ -166,6 +169,9 @@ lead or project a visible row points at, so task cards still show their client.
   Without `self.account` the own name and e-mail are ignored; with it a name another user holds
   (case-insensitive) and a taken e-mail are refused. Task visibility is matched by **name**, so this is
   what stops a rename from taking over a colleague's tasks. The password still updates.
+- **Orders and tickets** (`orders`, `tickets`): a collection is written only with edit on its module and
+  deleted only with the module's delete toggle (`orders.delete`, `tickets.delete`), named or by omission.
+  `view` is read-only. `supportContracts` follow `tickets`. See "Ticket data on other modules" below.
 - **Roles / settings:** the registry stays admin-only; the billing blobs are written back only by roles that
   are sent them.
 - Self-service writes never go through `sync.php`: they use `my_employment.php`, which writes to the audit log.
@@ -180,10 +186,34 @@ found by its id in the employee's `files_json`; a path from the client is never 
 upload list. An idempotent migration moves older public contracts into the private directory; a detached
 or removed document is deleted from disk only after the save commits and only if no record references it.
 
+### Ticket data on other modules
+
+Some ticket data is stored on rows that belong to another module and is saved by people who may hold no
+`tickets` right. The rule is one flag, `$canEditTickets` in `sync.php` POST (Admin, or `tickets` = edit);
+the matching read is `ccrm_can($scope, 'tickets')`.
+
+| Field | Without `tickets` view | `tickets` view | Needs `tickets` edit to change |
+| --- | --- | --- | --- |
+| task `relatedTicketId` | sent as `null` | sent | yes |
+| project `ticketWidgetEnabled`, `ticketAllowedDomains`, `ticketAllowedEmails`, `ticketPublicHash`, `ticketWidgetConfig`, `ticketRetainer` | withheld (`false` / `[]` / `null`); the hash is the key to the public board | sent | yes |
+| lead `ticketAllowedEmails` | `[]` | sent | yes |
+| `TICKET_STATUSES`, `TICKET_SETTINGS` | `null` | sent | yes, **and** `general_config` = edit |
+
+**Task link decision.** Someone who can edit tasks but not tickets still saves the task normally. The stored
+link is kept exactly as it is: the `null` they were sent never erases it, a link they type in is ignored, and
+no `ticket_task_links` row is created. The same holds for the project and lead fields (the stored value
+stays) and for the settings (the key is skipped without a "lost work" warning). Linking from the ticket
+side (`taskLinks` on a ticket) is a ticket edit. Completing a linked task still auto-resolves its ticket
+(`sync_mode = auto_resolve`): that is a system consequence of a link someone with `tickets` edit made, not a
+ticket write by the task editor.
+
 ## Other endpoints
 
 | Endpoint | Gate |
 | --- | --- |
+| `orders.php` | GET: `orders` ≥ view. POST / DELETE: `orders` = edit; DELETE also needs `orders.delete`; `convert_guest_to_client` also needs `clients` = edit (it creates a lead row). CLI is not gated |
+| `tickets.php` | `test_imap`, `poll_imap`, `send_email_reply`: `tickets` = edit. `public_status` is public by design (the unguessable project hash is the credential) |
+| `ticket_widget.php` | public by design: gated by the project's widget switch and allowed domains, not by a session |
 | `chat_rag.php`, `realtime_session.php` | `rag_ai`; agent management needs `rag_ai` edit; chat history is bound to the session e-mail; every voice write tool needs the owning module's edit (delete: its delete toggle); a client note needs a visible, editable lead / client row |
 | context builder (`agent_utils.php`) | built from the caller's read scope: one block per viewable module, HR groups by toggle, salary rows anonymised, mail = the caller's own mailbox, tasks block needs `tasks.view_all` |
 | `train_vector.php` | Admin (stricter than Admin / `ai_config`) |

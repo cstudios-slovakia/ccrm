@@ -42,6 +42,36 @@ ccrm_apply_migrations($pdo);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? null;
 
+// Permission gate (same rules as sync.php): reading needs `orders`, writing needs
+// edit on it, deleting needs the delete right on top. Turning a guest order into a
+// client also creates a lead row, so it needs edit on `clients` as well. The CLI
+// path (cron / maintenance) has no session and is not gated.
+if (php_sapi_name() !== 'cli') {
+    require_once __DIR__ . '/read_scope.php';
+    $ordersScope = ccrm_read_scope($pdo, $user);
+    $ordersDeny = function (string $message): void {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden', 'message' => $message]);
+        exit;
+    };
+    if ($method === 'GET') {
+        if (!ccrm_can($ordersScope, 'orders')) {
+            $ordersDeny("Permission 'orders' required.");
+        }
+    } elseif ($method === 'POST' || $method === 'DELETE') {
+        if (!ccrm_can($ordersScope, 'orders', 'edit')) {
+            $ordersDeny("Permission 'orders' at level 'edit' required.");
+        }
+        if ($method === 'DELETE' && empty($ordersScope['isAdmin'])
+            && empty(ccrm_perm_module($ordersScope['permissions'] ?? [], 'orders')['delete'])) {
+            $ordersDeny("Permission 'orders.delete' required.");
+        }
+        if ($method === 'POST' && $action === 'convert_guest_to_client' && !ccrm_can($ordersScope, 'clients', 'edit')) {
+            $ordersDeny("Permission 'clients' at level 'edit' required.");
+        }
+    }
+}
+
 switch ($method) {
     case 'GET':
         if (isset($_GET['id'])) {
