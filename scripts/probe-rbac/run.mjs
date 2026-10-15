@@ -856,7 +856,7 @@ echo json_encode(['text' => $r['raw_context']]);`;
       const cv = await api(SESSIONS.tk_edit, 'api/orders.php', { method: 'POST', query: '?action=convert_guest_to_client', body: { order_id: 'ord-guest-1' } });
       check('T-E: converting a guest needs edit on clients too (it creates a lead row)', cv.status === 403 && val("SELECT customer_type FROM orders WHERE id='ord-guest-1'") === 'guest', `${cv.status}`);
       const cv2 = await api(SESSIONS.tk_full, 'api/orders.php', { method: 'POST', query: '?action=convert_guest_to_client', body: { order_id: 'ord-guest-1' } });
-      check('T-E: ... and with it the request gets past the gate (the lead INSERT itself fails on the leads schema: separate, pre-existing)', cv2.status !== 403 && cv2.status !== 401, `${cv2.status} ${cv2.raw.slice(0, 160)}`);
+      check('T-E: ... and with it the conversion works and creates a client row', cv2.status === 200 && val("SELECT customer_type FROM orders WHERE id='ord-guest-1'") === 'client' && val("SELECT COUNT(*) FROM leads l JOIN orders o ON o.client_id = l.id WHERE o.id='ord-guest-1' AND l.name = 'Guest G'") === '1', `${cv2.status} ${cv2.raw.slice(0, 160)}`);
       const d2 = await api(SESSIONS.tk_full, 'api/orders.php', { method: 'DELETE', query: '?id=ord-api-1' });
       check('T-E: edit + delete toggle can DELETE through orders.php', d2.status === 200 && val("SELECT COUNT(*) FROM orders WHERE id='ord-api-1'") === '0', `${d2.status}`);
     }
