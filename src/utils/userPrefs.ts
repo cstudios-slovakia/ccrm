@@ -207,6 +207,21 @@ export interface UserPrefs {
    * first. Feeds the "Recently used" section — see utils/clientPickerGroups.ts.
    */
   recentClientIds: string[];
+  /**
+   * Set once, by the first-login preferences migration in App.tsx, for an admin
+   * who has never used the app: it is what makes the module setup wizard open
+   * on that first visit. It has to be a stored flag because the migration
+   * writes the `preferences` blob a moment after sign-in, so "has no blob" is
+   * already false by the time anything could ask — see utils/moduleWizard.ts.
+   */
+  moduleWizardPending: boolean;
+  /**
+   * When this user finished with the module setup wizard — Confirm and "Decide
+   * later" both count, so it never reopens by itself. Per user: which modules
+   * are visible is workspace data (`integrationsConfig.disabledModules`), but
+   * whether *this person* has been shown the wizard is theirs.
+   */
+  moduleWizardCompletedAt: string | null;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -251,6 +266,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadDefaultTab: null,
   favorites: [],
   recentClientIds: [],
+  moduleWizardPending: false,
+  moduleWizardCompletedAt: null,
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

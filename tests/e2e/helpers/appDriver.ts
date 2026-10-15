@@ -55,9 +55,12 @@ export function captureConsole(page: Page): ConsoleCapture {
   return capture;
 }
 
-export async function startSession(page: Page): Promise<ConsoleCapture> {
+export async function startSession(
+  page: Page,
+  options?: Parameters<typeof installBackendMocks>[1],
+): Promise<ConsoleCapture> {
   const capture = captureConsole(page);
-  await installBackendMocks(page);
+  await installBackendMocks(page, options);
   return capture;
 }
 

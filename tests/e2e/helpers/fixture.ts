@@ -42,6 +42,17 @@ export const TEST_USER = {
     leadTableViews: {},
     leadFilters: {},
     emailSettings: { isValidated: true },
+    // An existing install's admin: the preferences blob is there, and the module
+    // setup wizard has been dealt with. Without this the user would look
+    // brand-new (see utils/moduleWizard.ts) and the wizard would cover the
+    // screen in every test. moduleSetupWizard.spec.ts opts in to the new-admin
+    // case through installBackendMocks({ user }).
+    // `themeMode` and `theme` are what the first-login migration always writes
+    // alongside any other preference. Leaving them out would let the first
+    // preference the app saves (opening Updates stores `seenUpdateId`) fill in
+    // the defaults — themeMode "system" — and the theme adoption effect would
+    // then undo whatever appearance the test had forced.
+    preferences: { themeMode: 'system', theme: 'basic', moduleWizardCompletedAt: '2026-01-01T00:00:00.000Z' },
   }),
 };
 
@@ -876,12 +887,37 @@ export const DRILLDOWN_CLIENT = 'Silvia';
  *    arrangement would come back from the mock exactly as the dataset declared
  *    it and never as the test had just saved it.
  */
-export async function installBackendMocks(page: Page) {
+export async function installBackendMocks(
+  page: Page,
+  /**
+   * `user` is who is signed in. It defaults to the seeded admin; a spec passes a
+   * different one to be a brand-new admin (no preferences blob) or a non-admin.
+   */
+  options: {
+    user?: typeof TEST_USER | typeof SECOND_USER;
+    /**
+     * The appearance saved on the signed-in user's row. The app adopts the row's
+     * value over the browser's, so a spec that forces dark mode must say so here
+     * as well as in localStorage.
+     */
+    themeMode?: 'system' | 'light' | 'dark';
+  } = {},
+) {
+  const baseUser = options.user ?? TEST_USER;
+  const signedIn = options.themeMode
+    ? {
+        ...baseUser,
+        metadata_json: JSON.stringify({
+          ...JSON.parse(baseUser.metadata_json),
+          preferences: { ...(JSON.parse(baseUser.metadata_json).preferences ?? {}), themeMode: options.themeMode },
+        }),
+      }
+    : baseUser;
   await page.route('**/api/login.php', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, user: TEST_USER }),
+      body: JSON.stringify({ success: true, user: signedIn }),
     }),
   );
 
@@ -891,6 +927,13 @@ export async function installBackendMocks(page: Page) {
   const pushedListColumns = new Map<string, unknown>();
   /** dashboard id -> dashboard pushed by the app. */
   const pushedCustomDashboards = new Map<string, any>();
+  /**
+   * The workspace's integrationsConfig as the app last pushed it. Settings ->
+   * Visible Modules (and the module setup wizard) store `disabledModules` in
+   * it, and every navigation here is a real page load, so without this a saved
+   * choice would come straight back as the seed.
+   */
+  let pushedIntegrationsConfig: unknown;
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -901,9 +944,13 @@ export async function installBackendMocks(page: Page) {
         contentType: 'application/json',
         body: JSON.stringify({
           ...payload,
-          users: payload.users.map((u) =>
-            pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u,
-          ),
+          users: payload.users
+            .map((u) => (u.email === signedIn.email ? signedIn : u))
+            .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
+          settings:
+            pushedIntegrationsConfig === undefined
+              ? payload.settings
+              : { ...payload.settings, integrationsConfig: pushedIntegrationsConfig },
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
           ),
@@ -916,7 +963,11 @@ export async function installBackendMocks(page: Page) {
         users?: { email?: string; metadata_json?: unknown }[];
         projectTypes?: { id?: string; listColumns?: unknown }[];
         customDashboards?: { id?: string }[];
+        settings?: { integrationsConfig?: unknown };
       };
+      if (body?.settings?.integrationsConfig !== undefined) {
+        pushedIntegrationsConfig = body.settings.integrationsConfig;
+      }
       for (const u of body?.users ?? []) {
         if (u?.email && u.metadata_json !== undefined) pushedUserMeta.set(u.email, u.metadata_json);
       }
@@ -1306,5 +1357,5 @@ export async function installBackendMocks(page: Page) {
     } catch {
       /* sessionStorage unavailable — the login fallback in gotoView handles it. */
     }
-  }, JSON.stringify(TEST_USER));
+  }, JSON.stringify(signedIn));
 }

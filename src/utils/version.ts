@@ -1,4 +1,4 @@
-export const VERSION = "1.12.34-Mango";
+export const VERSION = "1.12.35-Mango";
 // Release codename ("Mango"), used to name the RAG assistant. Kept as its own
 // export because RagAiView reads it at module scope — dropping it silently named
 // the assistant `undefined`.

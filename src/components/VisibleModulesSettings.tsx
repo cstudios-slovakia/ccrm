@@ -1,39 +1,19 @@
 import React, { useState, useMemo } from "react";
-import * as Icons from "lucide-react";
 import {
   Eye,
   EyeOff,
   Search,
   Check,
   X,
-  Sparkles,
   CheckCheck,
   Filter,
-  ListTodo,
-  Briefcase,
-  TableProperties,
-  Users,
-  Package,
-  FileText,
-  Coins,
-  LayoutDashboard,
-  BarChart3,
-  PencilLine,
-  FolderOpen,
-  Mail,
-  Brain,
-  Workflow,
-  Globe,
-  Sliders,
-  ShoppingCart
+  WandSparkles
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
-import { EmployeeTieIcon } from "./icons/EmployeeTieIcon";
 import type { CustomDashboard, UnifiedEntryRegistry } from "../types";
-import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
-import { FlockIcon } from "./icons/FlockIcon";
-import { isHomeDashboard } from "../utils/dashboardWidgets";
+import { getModuleCategories, useModuleCatalog } from "../utils/moduleCatalog";
+import type { ModuleItemConfig } from "../utils/moduleCatalog";
 
 export interface VisibleModulesSettingsProps {
   language: Language;
@@ -42,18 +22,8 @@ export interface VisibleModulesSettingsProps {
   onChangeDisabledModules: (nextDisabled: string[]) => void;
   customDashboards?: CustomDashboard[];
   unifiedEntries?: UnifiedEntryRegistry[];
-}
-
-interface ModuleItemConfig {
-  id: string;
-  category: "operations" | "analytics" | "collaboration" | "system";
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  color: string;
-  bgColor?: string;
-  badge?: string;
-  isCustom?: boolean;
+  /** Opens the module setup wizard. When omitted, the launch button is not shown. */
+  onRunSetupWizard?: () => void;
 }
 
 export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
@@ -62,7 +32,8 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
   disabledModules = [],
   onChangeDisabledModules,
   customDashboards = [],
-  unifiedEntries = []
+  unifiedEntries = [],
+  onRunSetupWizard
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     language === "sk" ? sk : language === "hu" ? hu : en;
@@ -70,243 +41,8 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>("all");
 
-  // Build the list of all available modules in the CRM
-  const allModuleItems: ModuleItemConfig[] = useMemo(() => {
-    const list: ModuleItemConfig[] = [
-      // 1. OPERATIONS & CRM
-      {
-        id: "tasks",
-        category: "operations",
-        title: getTranslation(language, "sidebar.tasks"),
-        description: t("Kanban workflow, sprints & team tasks", "Kanban nástenka, šprinty a tímové úlohy", "Kanban tábla, sprintek és feladatok"),
-        icon: ListTodo,
-        color: "#ff5d00",
-        bgColor: "rgba(255, 93, 0, 0.12)",
-        badge: t("Core", "Hlavné", "Alap")
-      },
-      {
-        id: "projects",
-        category: "operations",
-        title: t("Projects", "Projekty", "Projektek"),
-        description: t("Project timelines, budget & milestones", "Časové osy, rozpočty a míľniky projektov", "Projekt ütemtervek, költségvetések"),
-        icon: Briefcase,
-        color: "#a855f7",
-        bgColor: "rgba(168, 85, 247, 0.12)"
-      },
-      {
-        id: "tickets",
-        category: "operations",
-        title: getTranslation(language, "sidebar.tickets"),
-        description: t("Support tickets, SLA tracking, widget reports & email polling", "Tikety podpory, SLA, hlásenia z widgetu a e-maily", "Támogatási jegyek, SLA követés, widget jelentések és e-mail"),
-        icon: Icons.LifeBuoy || Icons.Ticket || Briefcase,
-        color: "#6366f1",
-        bgColor: "rgba(99, 102, 241, 0.12)"
-      },
-      {
-        id: "leads",
-        category: "operations",
-        title: getTranslation(language, "sidebar.leads"),
-        description: t("Pipeline stages, conversions & leads datagrid", "Fázy predaja, konverzie a datagrid leadov", "Értékesítési tölcsér és leadek"),
-        icon: TableProperties,
-        color: "#2563eb",
-        bgColor: "rgba(37, 99, 235, 0.12)"
-      },
-      {
-        id: "clients",
-        category: "operations",
-        title: getTranslation(language, "sidebar.clients"),
-        description: t("Client profiles, address book & contract history", "Profily klientov, adresár a história zmlúv", "Ügyfélprofilok és előzmények"),
-        icon: Users,
-        color: "#059669",
-        bgColor: "rgba(5, 150, 105, 0.12)"
-      },
-      {
-        id: "warehouse",
-        category: "operations",
-        title: getTranslation(language, "sidebar.warehouse"),
-        description: t("Inventory stock, FEFO batches & material movements", "Skladové zásoby, FEFO šarže a pohyby materiálu", "Raktárkészlet, FEFO tételek és mozgások"),
-        icon: Package,
-        color: "#1e3a8a",
-        bgColor: "rgba(30, 58, 138, 0.12)"
-      },
-      {
-        id: "invoices",
-        category: "operations",
-        title: t("Invoices & Price Offers", "Cenové ponuky & Faktúry", "Ajánlatok és számlák"),
-        description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a fakturácia", "Árajánlatok, PDF sablonok és számlázás"),
-        icon: FileText,
-        color: "#6366f1",
-        bgColor: "rgba(99, 102, 241, 0.12)"
-      },
-      {
-        id: "orders",
-        category: "operations",
-        title: t("Orders", "Objednávky", "Rendelések"),
-        description: t("E-shop & commercial orders, guest checkout, deliveries & status pipeline", "E-shop a obchodné objednávky, nákup bez registrácie, doprava a stavy", "Webáruház és kereskedelmi rendelések, vendég vásárlás, szállítás"),
-        icon: ShoppingCart,
-        color: "#0284c7",
-        bgColor: "rgba(2, 132, 199, 0.12)"
-      },
-      {
-        id: "financial",
-        category: "operations",
-        title: getTranslation(language, "sidebar.financial"),
-        description: t("Cash flow trend, matrix table, ledger & recurring rules", "Trend cashflow, tabuľka, pohyby a trvalé príkazy", "Cashflow trend, mátrix tábla, mozgások"),
-        icon: Coins,
-        color: "#10b981",
-        bgColor: "rgba(16, 185, 129, 0.12)"
-      },
-      {
-        id: "employees",
-        category: "operations",
-        title: getTranslation(language, "sidebar.employees"),
-        description: t("Your employment, staff directory, payroll, time tracking & leave", "Vaše zamestnanie, zoznam zamestnancov, mzdy, meranie času a dovolenky", "Munkaviszonya, munkatársak, bérek, időkövetés és szabadságok"),
-        icon: EmployeeTieIcon,
-        color: "#c29b62",
-        bgColor: "rgba(194, 155, 98, 0.12)"
-      },
-
-      // 2. ANALYTICS & REGISTRIES
-      {
-        id: "dashboard",
-        category: "analytics",
-        title: getTranslation(language, "sidebar.dashboard"),
-        description: t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok"),
-        icon: LayoutDashboard,
-        color: "#4f46e5",
-        bgColor: "rgba(79, 70, 229, 0.12)",
-        badge: t("Start Screen", "Úvodná obrazovka", "Kezdőképernyő")
-      },
-      {
-        id: "overview",
-        category: "analytics",
-        title: getTranslation(language, "sidebar.analytics"),
-        description: t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
-        icon: BarChart3,
-        color: "#0891b2",
-        bgColor: "rgba(8, 145, 178, 0.12)"
-      },
-
-      // Dynamic custom dashboards
-      ...customDashboards
-        .filter((d) => !d.archived && !isHomeDashboard(d.id))
-        .map((d) => {
-          const IconComp = (Icons as any)[d.icon] || LayoutDashboard;
-          return {
-            id: `dash_${d.id}`,
-            category: "analytics" as const,
-            title: d.name,
-            description: t("Custom AI & Widget Dashboard", "Vlastná AI nástenka", "Egyéni AI irányítópult"),
-            icon: IconComp,
-            color: d.color || "#4f46e5",
-            bgColor: `${d.color || "#4f46e5"}1f`,
-            badge: "Custom",
-            isCustom: true
-          };
-        }),
-
-      // Dynamic unified entry custom database registries
-      ...unifiedEntries
-        .filter((ue) => !ue.archived)
-        .map((ue) => {
-          const IconComp = (Icons as any)[ue.icon] || FolderOpen;
-          return {
-            id: `ue_${ue.id}`,
-            category: "analytics" as const,
-            title: ue.name,
-            description: t("Custom Database Registry", "Vlastná databázová evidencia", "Egyéni adatbázis-nyilvántartás"),
-            icon: IconComp,
-            color: ue.color || "#6366f1",
-            bgColor: `${ue.color || "#6366f1"}1f`,
-            badge: "DB",
-            isCustom: true
-          };
-        }),
-
-      // 3. COLLABORATION & AI
-      {
-        id: "meetings",
-        category: "collaboration",
-        title: getTranslation(language, "sidebar.meetings"),
-        description: t("Voice recordings, AI notes & meeting minutes", "Hlasové nahrávky, AI poznámky a zápisy zo stretnutí", "Hangfelvételek, AI jegyzetek és memók"),
-        icon: PencilLine,
-        color: "#4f46e5",
-        bgColor: "rgba(79, 70, 229, 0.12)"
-      },
-      {
-        id: "files",
-        category: "collaboration",
-        title: getTranslation(language, "sidebar.files"),
-        description: t("Central cloud document repository & attachments", "Centrálne úložisko dokumentov a príloh", "Központi dokumentumtár és csatolmányok"),
-        icon: FolderOpen,
-        color: "#b45309",
-        bgColor: "rgba(180, 83, 9, 0.12)"
-      },
-      {
-        id: "email",
-        category: "collaboration",
-        title: t("Mail Client", "Pošta", "Levelezés"),
-        description: t("Integrated IMAP/SMTP corporate email client", "Integrovaná firemná pošta a schránka", "Integrált vállalati levelezőkliens"),
-        icon: Mail,
-        color: "#db2777",
-        bgColor: "rgba(219, 39, 119, 0.12)"
-      },
-      {
-        id: "rag_ai",
-        category: "collaboration",
-        title: t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens"),
-        description: t("Vector-indexed company knowledge AI chat", "Firemný znalostný AI asistent s vektorovou DB", "Vállalati tudásbázis AI asszisztens"),
-        icon: Brain,
-        color: "#8b5cf6",
-        bgColor: "rgba(139, 92, 246, 0.12)",
-        badge: "AI"
-      },
-      {
-        id: "sai",
-        category: "collaboration",
-        title: "SAI",
-        description: t("Swarm AI predictive market rehearsals & strategic simulation", "Prediktívna simulácia trhu a strategický nácvik so Swarm AI", "Prediktív szimuláció és stratégiai próba Swarm AI-val"),
-        icon: FlockIcon,
-        color: "#8b5cf6",
-        bgColor: "rgba(139, 92, 246, 0.12)",
-        badge: "Swarm AI"
-      },
-      {
-        id: "automation",
-        category: "collaboration",
-        title: t("Automation", "Automatizácia", "Automatizálás"),
-        description: t("Event triggers, webhook integrations & rule builder", "Udalosťové spúšťače, webhooky a automatické pravidlá", "Eseményvezérelt munkafolyamatok és webhookok"),
-        icon: Workflow,
-        color: "#6b21a8",
-        bgColor: "rgba(107, 33, 168, 0.12)"
-      }
-    ];
-
-    if (SOCIAL_MEDIA_ENABLED) {
-      list.push({
-        id: "social_media",
-        category: "collaboration",
-        title: t("Social Media", "Sociálne siete", "Közösségi média"),
-        description: t("Social post scheduling & cross-platform publishing", "Plánovanie príspevkov a publikovanie na sociálne siete", "Közösségi média bejegyzések időzítése"),
-        icon: Globe,
-        color: "#f43f5e",
-        bgColor: "rgba(244, 63, 94, 0.12)"
-      });
-    }
-
-    // 4. SYSTEM & TOOLS
-    list.push({
-      id: "updates",
-      category: "system",
-      title: t("Updates & What's New", "Novinky a verzie", "Újdonságok"),
-      description: t("System changelog, release notes & improvements", "História verzií, novinky a vylepšenia systému", "Verziótörténet és újdonságok"),
-      icon: Sparkles,
-      color: "#d97706",
-      bgColor: "rgba(217, 119, 6, 0.12)"
-    });
-
-    return list;
-  }, [language, customDashboards, unifiedEntries, t]);
+  // The same list the module setup wizard shows — see utils/moduleCatalog.ts.
+  const allModuleItems = useModuleCatalog(language, customDashboards, unifiedEntries);
 
   // Statistics
   const totalCount = allModuleItems.length;
@@ -388,42 +124,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
   }, [allModuleItems, activeCategoryFilter, searchQuery]);
 
   // Categories config
-  const categories: Array<{
-    id: ModuleItemConfig["category"];
-    title: string;
-    icon: React.ComponentType<{ className?: string }>;
-    color: string;
-    bgColor: string;
-  }> = [
-    {
-      id: "operations",
-      title: getTranslation(language, "settings.modules.cat.operations"),
-      icon: Briefcase,
-      color: "#6366f1",
-      bgColor: "bg-indigo-50/80 text-indigo-700 border-indigo-200"
-    },
-    {
-      id: "analytics",
-      title: getTranslation(language, "settings.modules.cat.analytics"),
-      icon: BarChart3,
-      color: "#0891b2",
-      bgColor: "bg-cyan-50/80 text-cyan-700 border-cyan-200"
-    },
-    {
-      id: "collaboration",
-      title: getTranslation(language, "settings.modules.cat.collaboration"),
-      icon: Brain,
-      color: "#8b5cf6",
-      bgColor: "bg-purple-50/80 text-purple-700 border-purple-200"
-    },
-    {
-      id: "system",
-      title: getTranslation(language, "settings.modules.cat.system"),
-      icon: Sliders,
-      color: "#475569",
-      bgColor: "bg-slate-100 text-slate-700 border-slate-200"
-    }
-  ];
+  const categories = useMemo(() => getModuleCategories(language), [language]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -489,6 +190,17 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 shrink-0">
+            {canEdit && onRunSetupWizard && (
+              <button
+                type="button"
+                data-testid="run-module-setup-wizard"
+                onClick={onRunSetupWizard}
+                className="px-3.5 py-2 rounded-xl text-ui font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-600/25 transition-all duration-200 flex items-center gap-1.5 cursor-pointer active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              >
+                <WandSparkles className="h-3.5 w-3.5" />
+                <span>{t("Run module setup wizard", "Spustiť sprievodcu modulmi", "Modulvarázsló indítása")}</span>
+              </button>
+            )}
             {hiddenCount > 0 && (
               <button
                 type="button"
