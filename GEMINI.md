@@ -42,3 +42,8 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 - **When you add a countable column or field** (an amount, quantity, hours, a count - anything where a total means something): add one line to `SUMMABLE_PROJECT_COLUMNS` saying how a project feeds it, and add a case to `src/utils/projectColumns.test.ts`. `ProjectsView.tsx` does not need to change.
 - Money is summed per currency, never across currencies. Do not register columns where a total is meaningless (dates, ratings, percentages, text).
 - Full rule: [`.agents/rules/project-totals.md`](.agents/rules/project-totals.md).
+
+### 5. Audio Notification When Prompt Is Done
+
+- **Play Sound on Completion**: Whenever a user prompt/task is finished, play an audible macOS notification sound (e.g. `afplay /System/Library/Sounds/Glass.aiff`) so the user knows the work is done.
+

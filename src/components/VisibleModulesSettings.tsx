@@ -94,6 +94,15 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         bgColor: "rgba(168, 85, 247, 0.12)"
       },
       {
+        id: "tickets",
+        category: "operations",
+        title: getTranslation(language, "sidebar.tickets"),
+        description: t("Support tickets, SLA tracking, widget reports & email polling", "Tikety podpory, SLA, hlásenia z widgetu a e-maily", "Támogatási jegyek, SLA követés, widget jelentések és e-mail"),
+        icon: Icons.LifeBuoy || Icons.Ticket || Briefcase,
+        color: "#6366f1",
+        bgColor: "rgba(99, 102, 241, 0.12)"
+      },
+      {
         id: "leads",
         category: "operations",
         title: getTranslation(language, "sidebar.leads"),

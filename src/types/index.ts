@@ -207,6 +207,10 @@ export interface Lead {
   // Archived from the client register: hidden from the client list until
   // restored. Like clientCategoryId, set on every lead of the profile.
   archived?: boolean;
+
+  // Whitelist of e-mail addresses (or @domain patterns) allowed to submit tickets
+  // for this client. Empty or absent means any sender is accepted verbatim.
+  ticketAllowedEmails?: string[];
 }
 
 /**
@@ -292,6 +296,8 @@ export interface Task {
    * project's own Tasks tab.
    */
   relatedProjectId?: string;
+  /** The support ticket this task was created from or linked to, if any. */
+  relatedTicketId?: string;
   isLocking?: boolean; // if true, it blocks related lead from transitioning stages until done
   completedBy?: string; // name of user who completed the task
   completedAt?: string; // timestamp (YYYY-MM-DD HH:MM) when completed
@@ -553,6 +559,11 @@ export interface ProjectType {
    * because an attribute column means nothing to a project of another type.
    */
   listColumns?: ProjectListColumn[];
+  /**
+   * Whether projects of this type have the Support Tickets & Floating HTML Widget
+   * module enabled by default. Optional opt-in toggle when creating/editing a project type.
+   */
+  hasTickets?: boolean;
 }
 
 /**
@@ -692,6 +703,14 @@ export interface Project {
    */
   customFileFields?: ProjectCustomFileField[];
   archived?: boolean;
+
+  // Support Tickets, Floating Widget & Monthly Retainer Configuration (stored on the project)
+  ticketWidgetEnabled?: boolean;
+  ticketAllowedDomains?: string[];
+  ticketAllowedEmails?: string[];
+  ticketPublicHash?: string | null;
+  ticketWidgetConfig?: TicketWidgetConfig | null;
+  ticketRetainer?: ProjectRetainerConfig | null;
 }
 
 // Warehouse & Inventory Management Types
@@ -1366,3 +1385,252 @@ export interface Order {
 
   items?: OrderItem[];
 }
+
+// ==========================================
+// Support & Ticket Management Types
+// ==========================================
+
+export type TicketPriority = "critical" | "high" | "normal" | "low";
+export type TicketType = "bug" | "question" | "feature_request" | "incident" | "billing";
+export type TicketChannel = "widget" | "email" | "portal" | "manual";
+export type TicketStatusCategory = "new" | "open" | "waiting" | "resolved" | "closed";
+
+export interface TicketStatusDef {
+  id: string;
+  key?: string;
+  label?: string;
+  category: TicketStatusCategory;
+  group?: TicketStatusCategory;
+  labelSk: string;
+  labelEn: string;
+  labelHu: string;
+  color: string;
+  pausesSla: boolean;
+  isTerminal: boolean;
+  sortOrder: number;
+  order?: number;
+}
+
+export type TicketStatusDefinition = TicketStatusDef;
+
+export interface ProjectRetainerConfig {
+  enabled: boolean;
+  name?: string;
+  monthlyHours: number;
+  /** Day of the month (1..31) when the monthly retainer hour counter resets. */
+  resetDay: number;
+  overageRate?: number | null;
+  currency?: string;
+  slaTier?: "basic" | "standard" | "priority" | "premium" | "enterprise" | string;
+}
+
+export interface TicketWidgetConfig {
+  primaryColor?: string;
+  position?: "bottom-right" | "bottom-left";
+  buttonLabel?: string;
+  title?: string;
+  subtitle?: string;
+  captureErrors?: boolean;
+  allowScreenshots?: boolean;
+  allowFollowUp?: boolean;
+  retainer?: ProjectRetainerConfig | null;
+}
+
+export interface TicketAttachment {
+  id?: string;
+  name: string;
+  type?: string;
+  size?: string;
+  url?: string;
+  path?: string;
+  dataUrl?: string;
+}
+
+export interface TicketCapturedError {
+  time: string;
+  type: string;
+  message: string;
+  detail?: string;
+}
+
+export interface TicketMetadata {
+  url?: string;
+  userAgent?: string;
+  viewport?: string;
+  errors?: TicketCapturedError[];
+  consoleErrors?: string[];
+  [key: string]: any;
+}
+
+export type TicketTimelineEventType =
+  | "public_reply"
+  | "internal_note"
+  | "note"
+  | "call"
+  | "phone"
+  | "email"
+  | "appointment"
+  | "time_logged"
+  | "client_reply"
+  | "ticket_created";
+
+export interface TicketMessage {
+  id: string;
+  ticketId?: string;
+  authorType: "client" | "agent" | "system";
+  authorUserId?: string | null;
+  authorName?: string | null;
+  authorEmail?: string | null;
+  isInternal: boolean;
+  eventType?: TicketTimelineEventType | string;
+  title?: string | null;
+  body: string;
+  attachments?: TicketAttachment[];
+  emailMessageId?: string | null;
+  createdAt: string;
+}
+
+export interface TicketTaskLink {
+  id: string;
+  ticketId?: string;
+  taskId: string;
+  taskTitle?: string;
+  syncMode: "auto_resolve" | "manual";
+  createdAt?: string;
+}
+
+export interface TicketTimeEntry {
+  id: string;
+  ticketId?: string;
+  userName: string;
+  minutes: number;
+  billable: boolean;
+  note?: string | null;
+  description?: string | null;
+  loggedAt?: string;
+  createdAt?: string;
+}
+
+export interface Ticket {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  title?: string;
+  description?: string | null;
+  status: string;
+  priority: TicketPriority;
+  type: TicketType;
+  channel?: TicketChannel;
+  source?: TicketChannel | string;
+  projectId?: string | null;
+  leadId?: string | null;
+  clientId?: string | null;
+  contractId?: string | null;
+  reporterName?: string | null;
+  reporterEmail?: string | null;
+  reporterPhone?: string | null;
+  assignedUser?: string | null;
+  assignedUsers?: string[];
+  tags?: string[];
+  slaFirstResponseDueAt?: string | null;
+  firstResponseDueAt?: string | null;
+  slaFirstRespondedAt?: string | null;
+  firstRespondedAt?: string | null;
+  slaResolutionDueAt?: string | null;
+  resolutionDueAt?: string | null;
+  slaPausedAt?: string | null;
+  slaPausedTotalSeconds?: number;
+  billable?: boolean;
+  loggedMinutes?: number;
+  metadata?: TicketMetadata | null;
+  widgetMetadata?: TicketMetadata | null;
+  screenshotPath?: string | null;
+  attachments?: TicketAttachment[];
+  publicToken?: string | null;
+  emailMessageId?: string | null;
+  isArchived?: boolean;
+  archived?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  messages?: TicketMessage[];
+  taskLinks?: TicketTaskLink[];
+  timeEntries?: TicketTimeEntry[];
+}
+
+export interface SupportContract {
+  id: string;
+  leadId?: string | null;
+  clientId?: string | null;
+  projectId?: string | null;
+  name: string;
+  tier?: "basic" | "standard" | "priority" | "premium" | "enterprise" | string;
+  slaTier?: "basic" | "standard" | "priority" | "premium" | "enterprise" | string;
+  monthlyHours?: number;
+  monthlyHoursIncluded?: number;
+  resetDay?: number;
+  usedHours?: number;
+  hoursUsedThisMonth?: number;
+  hourlyOverageRate?: number | null;
+  hourlyRate?: number | null;
+  overageRate?: number | null;
+  hourlyRateOverrun?: number | null;
+  currency?: string;
+  slaFirstResponseMins?: number | null;
+  slaResolutionMins?: number | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  isActive?: boolean;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TicketReplyTemplate {
+  id: string;
+  title: string;
+  name?: string;
+  subject?: string;
+  shortcut?: string;
+  body: string;
+}
+
+export interface TicketSettingsConfig {
+  imapEnabled: boolean;
+  imapHost: string;
+  imapPort: number;
+  imapEncryption: "ssl" | "tls" | "none" | string;
+  imapUser: string;
+  imapPassword?: string;
+  imapFolder: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpEncryption: "ssl" | "tls" | "none" | string;
+  smtpUser: string;
+  smtpPassword?: string;
+  fromName: string;
+  fromEmail: string;
+  aiRoutingEnabled: boolean;
+  openAiKey?: string;
+  businessHours: {
+    timezone: string;
+    workDays: number[];
+    startHour: string;
+    endHour: string;
+  };
+  slaTargets: Record<
+    TicketPriority,
+    {
+      firstResponseMins: number;
+      resolutionMins: number;
+    }
+  >;
+  replyTemplates: TicketReplyTemplate[];
+  cannedResponses?: TicketReplyTemplate[];
+}
+
+export type TicketSettings = TicketSettingsConfig;
+export type TicketSystemSettings = TicketSettingsConfig;
+
+

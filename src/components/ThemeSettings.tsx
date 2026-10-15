@@ -229,12 +229,12 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
         )}
       </AnimatePresence>
 
-      {/* -------------------------------------------------- Light palette */}
-      <div className="space-y-2 pt-3 border-t border-slate-200/80">
+      {/* -------------------------------------------------- Theme style & palette */}
+      <div className="space-y-2.5 pt-3 border-t border-slate-200/80">
         <div className="flex items-center justify-between">
           <label className="type-overline text-slate-600 flex items-center gap-1.5">
             <Palette className="h-3.5 w-3.5 text-amber-600" />
-            {t("Light palette (Herb Collection)", "Svetlá paleta (Bylinky)", "Világos paletta (Fűszernövények)")}
+            {t("Theme Style & Palette", "Štýl témy a paleta", "Téma stílusa és paletta")}
           </label>
           <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-micro font-bold text-amber-900 shadow-xs">
             <span>{currentThemeObj.icon}</span>
@@ -254,11 +254,95 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
           }))}
         />
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          {HERB_THEMES.map((theme) => {
+            const active = theme.id === currentThemeId;
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => {
+                  if (setUserTheme) setUserTheme(theme.id);
+                  else applyTheme(theme.id);
+                }}
+                className={`flex flex-col justify-between gap-2 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  active
+                    ? "bg-indigo-50/70 border-indigo-500 ring-1 ring-indigo-500/40 shadow-xs"
+                    : "bg-white hover:bg-slate-50 border-slate-200/90"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1.5 w-full">
+                  <span className="text-micro font-bold text-slate-800 truncate">
+                    {theme.icon} {(theme.name[systemLanguage] || theme.name.en).split(" (")[0]}
+                  </span>
+                  {active && (
+                    <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />
+                  )}
+                </div>
+                <div
+                  className="w-full h-6 flex items-center justify-between px-2 border"
+                  style={{
+                    backgroundColor: theme.preview.bg,
+                    borderColor: theme.preview.border,
+                    borderRadius:
+                      theme.id === "minimalist" || theme.id === "retro"
+                        ? "0px"
+                        : theme.id === "paper"
+                        ? "3px"
+                        : "8px",
+                  }}
+                >
+                  <span
+                    className="text-micro font-bold truncate"
+                    style={{
+                      color: theme.preview.text,
+                      fontFamily:
+                        theme.id === "paper"
+                          ? "Georgia, serif"
+                          : theme.id === "retro"
+                          ? "monospace"
+                          : "sans-serif",
+                    }}
+                  >
+                    Aa
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span
+                      className="w-2.5 h-2.5 border border-black/10"
+                      style={{
+                        backgroundColor: theme.preview.primary,
+                        borderRadius:
+                          theme.id === "minimalist" || theme.id === "retro"
+                            ? "0px"
+                            : theme.id === "paper"
+                            ? "2px"
+                            : "999px",
+                      }}
+                    />
+                    <span
+                      className="w-2.5 h-2.5 border border-black/10"
+                      style={{
+                        backgroundColor: theme.preview.secondary,
+                        borderRadius:
+                          theme.id === "minimalist" || theme.id === "retro"
+                            ? "0px"
+                            : theme.id === "paper"
+                            ? "2px"
+                            : "999px",
+                      }}
+                    />
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-ui">
           <p className="text-caption text-slate-600 font-medium leading-relaxed">
             {currentThemeObj.description[systemLanguage] || currentThemeObj.description.en}
           </p>
-          {isDark && (
+          {isDark && currentThemeObj.category !== "radical" && (
             <p className="text-micro text-slate-500 font-semibold leading-relaxed">
               {t(
                 "The palette above applies whenever the interface is light.",

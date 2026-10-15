@@ -278,6 +278,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [typeColor, setTypeColor] = useState("#a855f7"); // Default lavender
   const [hasTimeline, setHasTimeline] = useState(false);
   const [hasGantt, setHasGantt] = useState(false);
+  const [hasTickets, setHasTickets] = useState(false);
   const [hasDeadline, setHasDeadline] = useState(false);
   const [hasInvoiceDate, setHasInvoiceDate] = useState(false);
   const [deadlineWarningDays, setDeadlineWarningDays] = useState(DEFAULT_DEADLINE_WARNING_DAYS);
@@ -334,6 +335,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setTypeColor("#a855f7");
     setHasTimeline(false);
     setHasGantt(false);
+    setHasTickets(false);
     setHasDeadline(false);
     setHasInvoiceDate(false);
     setDeadlineWarningDays(DEFAULT_DEADLINE_WARNING_DAYS);
@@ -369,6 +371,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setTypeColor(type.color);
     setHasTimeline(type.hasTimeline);
     setHasGantt(type.hasGantt);
+    setHasTickets(!!type.hasTickets);
     setHasDeadline(!!type.hasDeadline);
     // A type saved before the switch was split off showed the date with its deadline.
     setHasInvoiceDate(projectTypeHasInvoiceDate(type));
@@ -706,6 +709,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       color: typeColor,
       hasTimeline,
       hasGantt,
+      hasTickets,
       hasDeadline,
       hasInvoiceDate,
       // Only meaningful while deadlines are on. Storing 0 for a type with them
@@ -832,7 +836,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     }, 600);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingTypeId, typeName, typeDesc, typeIcon, typeColor, hasTimeline, hasGantt, hasDeadline, hasInvoiceDate,
+  }, [editingTypeId, typeName, typeDesc, typeIcon, typeColor, hasTimeline, hasGantt, hasTickets, hasDeadline, hasInvoiceDate,
       deadlineWarningDays, deadlineRequired, fileFields, attributes, timelineEventTypes]);
 
   /** Something typed into the create form that Save would keep. */
@@ -1044,7 +1048,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             </div>
 
             {/* Optional Modules */}
-            <div className="space-y-2 pt-2">
+            <div className="space-y-3 pt-2">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1055,6 +1059,32 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 />
                 <span className="text-body font-semibold text-slate-700">
                   {t("Enable Gantt Chart (project roadmap)", "Povoliť Ganttov diagram", "Gantt diagram engedélyezése")}
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  disabled={!canEdit}
+                  checked={hasTickets}
+                  onChange={e => setHasTickets(e.target.checked)}
+                  className="h-4.5 w-4.5 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="flex flex-col">
+                  <span className="text-body font-semibold text-slate-700">
+                    {t(
+                      "Enable Support Tickets & Floating HTML Widget",
+                      "Povoliť support tikety a plávajúci HTML widget",
+                      "Támogatási jegyek és lebegő HTML widget engedélyezése"
+                    )}
+                  </span>
+                  <span className="text-caption font-medium text-slate-400">
+                    {t(
+                      "Projects of this type get a Tickets & Widget tab with an embeddable issue reporter, domain/email whitelists, and a public status URL.",
+                      "Projekty tohto typu dostanú kartu Tikety & Widget s HTML kódom na vloženie, whitelistom domén/e-mailov a verejnou status URL.",
+                      "Az ilyen típusú projektek Jegyek & Widget fület kapnak beágyazható HTML kóddal, domain/e-mail whitelisttel és nyilvános státusz URL-lel."
+                    )}
+                  </span>
                 </span>
               </label>
             </div>

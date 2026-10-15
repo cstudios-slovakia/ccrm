@@ -81,6 +81,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
               `client_category_id` VARCHAR(50) NULL COMMENT 'client_categories.id - not a foreign key, the app clears it when a category is deleted',
+              `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains for support tickets',
               `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -345,6 +346,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `deadline_warning_days` INT NOT NULL DEFAULT 0,
               `deadline_required` TINYINT(1) NOT NULL DEFAULT 0,
               `has_files` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_tickets` TINYINT(1) NOT NULL DEFAULT 0,
               `file_fields_json` LONGTEXT NULL,
               `timeline_event_types_json` LONGTEXT NULL,
               `timeline_attributes_json` LONGTEXT NULL,
@@ -371,6 +373,11 @@ if (!function_exists('ccrm_schema_statements')) {
               `budget` DECIMAL(14,2) NULL,
               `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable',
               `custom_files_json` LONGTEXT NULL,
+              `ticket_widget_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+              `ticket_allowed_domains` TEXT NULL COMMENT 'JSON array of whitelisted hostnames',
+              `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains',
+              `ticket_public_hash` VARCHAR(64) NULL UNIQUE COMMENT 'Cryptographically random unguessable token for public ticket status URL',
+              `ticket_widget_config_json` TEXT NULL COMMENT 'JSON config for floating widget color, position, greeting, language',
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -986,6 +993,118 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_order_items_item (`item_id`),
               INDEX idx_order_items_type (`item_type`),
               CONSTRAINT fk_order_items_order FOREIGN KEY (`order_id`) REFERENCES `orders` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Support Contracts (SLA Tiers & Monthly Support Hours)
+            "CREATE TABLE IF NOT EXISTS `support_contracts` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `client_id` VARCHAR(50) NULL COMMENT 'References leads.id',
+              `project_id` VARCHAR(50) NULL COMMENT 'References projects.id',
+              `tier` ENUM('basic', 'pro', 'enterprise', 'project_only') NOT NULL DEFAULT 'basic',
+              `monthly_hours` DECIMAL(6,2) NOT NULL DEFAULT 0.00,
+              `hourly_rate` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+              `sla_response_critical_hours` DECIMAL(5,2) NOT NULL DEFAULT 1.00,
+              `sla_response_high_hours` DECIMAL(5,2) NOT NULL DEFAULT 4.00,
+              `sla_response_normal_hours` DECIMAL(5,2) NOT NULL DEFAULT 8.00,
+              `sla_response_low_hours` DECIMAL(5,2) NOT NULL DEFAULT 24.00,
+              `sla_resolve_critical_hours` DECIMAL(6,2) NOT NULL DEFAULT 4.00,
+              `sla_resolve_high_hours` DECIMAL(6,2) NOT NULL DEFAULT 16.00,
+              `sla_resolve_normal_hours` DECIMAL(6,2) NOT NULL DEFAULT 40.00,
+              `sla_resolve_low_hours` DECIMAL(6,2) NOT NULL DEFAULT 120.00,
+              `valid_from` DATE NULL,
+              `valid_until` DATE NULL,
+              `notes` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_sc_client` (`client_id`),
+              INDEX `idx_sc_project` (`project_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Tickets (Support & Bug Tracking)
+            "CREATE TABLE IF NOT EXISTS `tickets` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `ticket_number` VARCHAR(30) NOT NULL UNIQUE COMMENT 'e.g. TCK-000142',
+              `title` VARCHAR(500) NOT NULL,
+              `description` LONGTEXT NULL,
+              `status` VARCHAR(50) NOT NULL DEFAULT 'new' COMMENT 'Customizable status key from TICKET_STATUSES setting',
+              `priority` ENUM('critical', 'high', 'normal', 'low') NOT NULL DEFAULT 'normal',
+              `type` VARCHAR(50) NOT NULL DEFAULT 'question',
+              `source` VARCHAR(50) NOT NULL DEFAULT 'manual',
+              `project_id` VARCHAR(50) NULL COMMENT 'References projects.id',
+              `client_id` VARCHAR(50) NULL COMMENT 'References leads.id (auto-inherited from project if project has lead_id/client_id)',
+              `reporter_name` VARCHAR(200) NULL,
+              `reporter_email` VARCHAR(255) NULL,
+              `reporter_phone` VARCHAR(50) NULL,
+              `assignee_id` VARCHAR(50) NULL COMMENT 'References users.id',
+              `assignee_name` VARCHAR(100) NULL COMMENT 'Assignee display name',
+              `watchers_json` TEXT NULL COMMENT 'JSON array of user IDs/names',
+              `tags_json` TEXT NULL COMMENT 'JSON array of tag strings',
+              `metadata_json` LONGTEXT NULL COMMENT 'JSON: widget runtime errors, console logs, URL, userAgent, viewport, AI triage info',
+              `attachments_json` LONGTEXT NULL COMMENT 'JSON array of {name, size, path, type}',
+              `email_message_id` VARCHAR(255) NULL COMMENT 'RFC Message-ID for email threading',
+              `first_response_due_at` DATETIME NULL,
+              `first_responded_at` DATETIME NULL,
+              `resolve_due_at` DATETIME NULL,
+              `sla_paused_at` DATETIME NULL,
+              `sla_paused_seconds` INT NOT NULL DEFAULT 0,
+              `resolved_at` DATETIME NULL,
+              `closed_at` DATETIME NULL,
+              `satisfaction_score` TINYINT NULL COMMENT '1-5 CSAT score',
+              `satisfaction_comment` TEXT NULL,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_tickets_project` (`project_id`),
+              INDEX `idx_tickets_client` (`client_id`),
+              INDEX `idx_tickets_status_prio` (`status`, `priority`),
+              INDEX `idx_tickets_assignee` (`assignee_id`),
+              INDEX `idx_tickets_email_msgid` (`email_message_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Ticket Messages (Public Replies, Internal Notes, System Events)
+            "CREATE TABLE IF NOT EXISTS `ticket_messages` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `ticket_id` VARCHAR(50) NOT NULL,
+              `author_type` ENUM('client', 'agent', 'system') NOT NULL DEFAULT 'agent',
+              `author_user_id` VARCHAR(50) NULL,
+              `author_name` VARCHAR(200) NULL,
+              `author_email` VARCHAR(255) NULL,
+              `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = private team note, 0 = public reply',
+              `event_type` VARCHAR(50) NULL DEFAULT NULL,
+              `body` LONGTEXT NOT NULL,
+              `attachments_json` LONGTEXT NULL COMMENT 'JSON array of {name, size, path, type}',
+              `email_message_id` VARCHAR(255) NULL,
+              `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_tm_ticket` (`ticket_id`, `created_at`),
+              CONSTRAINT `fk_tm_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Ticket <-> Task Links (Bidirectional synchronization)
+            "CREATE TABLE IF NOT EXISTS `ticket_task_links` (
+              `ticket_id` VARCHAR(50) NOT NULL,
+              `task_id` VARCHAR(50) NOT NULL,
+              `sync_mode` ENUM('auto_resolve', 'manual') NOT NULL DEFAULT 'auto_resolve',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`ticket_id`, `task_id`),
+              INDEX `idx_ttl_task` (`task_id`),
+              CONSTRAINT `fk_ttl_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE,
+              CONSTRAINT `fk_ttl_task` FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Ticket Time Entries (Billable & Non-billable support hours)
+            "CREATE TABLE IF NOT EXISTS `ticket_time_entries` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `ticket_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NULL,
+              `user_name` VARCHAR(100) NOT NULL,
+              `minutes` INT NOT NULL DEFAULT 0,
+              `billable` TINYINT(1) NOT NULL DEFAULT 1,
+              `note` VARCHAR(500) NULL,
+              `logged_at` DATE NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_tte_ticket` (`ticket_id`),
+              INDEX `idx_tte_logged` (`logged_at`),
+              CONSTRAINT `fk_tte_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -1042,6 +1161,10 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'tasks', 'related_project_id')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_project_id` VARCHAR(50) NULL AFTER `related_lead_id`");
             $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_project (`related_project_id`)");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'related_ticket_id')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_ticket_id` VARCHAR(64) NULL AFTER `related_project_id`");
+            $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_ticket (`related_ticket_id`)");
         }
         if (!ccrm_column_exists($pdo, 'meeting_tasks', 'start_date')) {
             $pdo->exec("ALTER TABLE `meeting_tasks` ADD COLUMN `start_date` DATE NULL AFTER `description`");
@@ -1400,6 +1523,8 @@ if (!function_exists('ccrm_schema_statements')) {
         } catch (\Throwable $e) {
             error_log('[ccrm schema] employee document migration skipped: ' . $e->getMessage());
         }
+        ccrm_migrate_tickets($pdo);
+        ccrm_seed_default_tickets($pdo);
     }
 
     /**
@@ -3448,7 +3573,7 @@ if (!function_exists('ccrm_schema_statements')) {
             if ($hasPtTable > 0) {
                 $ptCount = (int)$pdo->query("SELECT COUNT(*) FROM `project_types`")->fetchColumn();
                 if ($ptCount === 0) {
-                    $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`) VALUES (?, ?, ?, ?, ?, '[]', 1, 1, 1, 7, 0, 1)");
+                    $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `has_tickets`) VALUES (?, ?, ?, ?, ?, '[]', 1, 1, 1, 7, 0, 1, 1)");
                     $insPt->execute(['pt_luxury_stone', $t['pt_name'], $t['pt_desc'], 'Boxes', '#10b981']);
                 }
             }
@@ -3458,9 +3583,9 @@ if (!function_exists('ccrm_schema_statements')) {
             if ($hasProjTable > 0) {
                 $projCount = (int)$pdo->query("SELECT COUNT(*) FROM `projects`")->fetchColumn();
                 if ($projCount === 0) {
-                    $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `start_date`, `budget`, `value`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
-                    $insProj->execute(['proj-vila-slavin', 'pt_luxury_stone', $t['pr1_name'], 'lead-1', 'lead-1', 'active', 'Cstudios', 5, '2026-08-30', '2026-05-15', 6500.00, 12500.00]);
-                    $insProj->execute(['proj-kuchyna-neolith', 'pt_luxury_stone', $t['pr2_name'], 'lead-2', 'lead-2', 'active', 'Cstudios', 4, '2026-07-15', '2026-05-18', 4200.00, 8400.00]);
+                    $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `start_date`, `budget`, `value`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_public_hash`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)");
+                    $insProj->execute(['proj-vila-slavin', 'pt_luxury_stone', $t['pr1_name'], 'lead-1', 'lead-1', 'active', 'Cstudios', 5, '2026-08-30', '2026-05-15', 6500.00, 12500.00, json_encode(['localhost', '127.0.0.1', 'slavin-residence.sk']), bin2hex(random_bytes(16))]);
+                    $insProj->execute(['proj-kuchyna-neolith', 'pt_luxury_stone', $t['pr2_name'], 'lead-2', 'lead-2', 'active', 'Cstudios', 4, '2026-07-15', '2026-05-18', 4200.00, 8400.00, json_encode(['localhost', '127.0.0.1']), bin2hex(random_bytes(16))]);
 
                     // Project Managers
                     if ((int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_managers'")->fetchColumn() > 0) {
@@ -3575,6 +3700,299 @@ if (!function_exists('ccrm_schema_statements')) {
         } catch (\Throwable $e) {
             if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
             error_log('[ccrm schema] demo vacation repair skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Migrates ticket system tables and columns on leads, project_types, and projects.
+     */
+    function ccrm_migrate_tickets(PDO $pdo): void {
+        try {
+            if (!ccrm_column_exists($pdo, 'project_types', 'has_tickets')) {
+                try { $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_tickets` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_files`"); } catch (\Throwable $e) {}
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'ticket_allowed_emails')) {
+                try { $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains for support tickets' AFTER `client_category_id`"); } catch (\Throwable $e) {}
+            }
+            $projCols = [
+                'ticket_widget_enabled' => "ALTER TABLE `projects` ADD COLUMN `ticket_widget_enabled` TINYINT(1) NOT NULL DEFAULT 0 AFTER `custom_files_json`",
+                'ticket_allowed_domains' => "ALTER TABLE `projects` ADD COLUMN `ticket_allowed_domains` TEXT NULL COMMENT 'JSON array of whitelisted hostnames' AFTER `ticket_widget_enabled`",
+                'ticket_allowed_emails' => "ALTER TABLE `projects` ADD COLUMN `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains' AFTER `ticket_allowed_domains`",
+                'ticket_public_hash' => "ALTER TABLE `projects` ADD COLUMN `ticket_public_hash` VARCHAR(64) NULL UNIQUE COMMENT 'Cryptographically random unguessable token for public ticket status URL' AFTER `ticket_allowed_emails`",
+                'ticket_widget_config_json' => "ALTER TABLE `projects` ADD COLUMN `ticket_widget_config_json` TEXT NULL COMMENT 'JSON config for floating widget color, position, greeting, language' AFTER `ticket_public_hash`",
+            ];
+            foreach ($projCols as $col => $sql) {
+                if (!ccrm_column_exists($pdo, 'projects', $col)) {
+                    try { $pdo->exec($sql); } catch (\Throwable $e) {}
+                }
+            }
+
+            // Backfill ticket_public_hash on projects missing one
+            try {
+                $missingHashes = $pdo->query("SELECT `id` FROM `projects` WHERE `ticket_public_hash` IS NULL OR `ticket_public_hash` = ''")->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($missingHashes)) {
+                    $updHash = $pdo->prepare("UPDATE `projects` SET `ticket_public_hash` = ? WHERE `id` = ?");
+                    foreach ($missingHashes as $pid) {
+                        $updHash->execute([bin2hex(random_bytes(16)), $pid]);
+                    }
+                }
+            } catch (\Throwable $e) {}
+
+            // Ensure support_contracts, tickets, ticket_messages, ticket_task_links, ticket_time_entries exist
+            $ticketTables = ['support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries'];
+            $statements = ccrm_schema_statements();
+            foreach ($ticketTables as $tbl) {
+                $exists = (int)$pdo->query(
+                    "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = " . $pdo->quote($tbl)
+                )->fetchColumn() > 0;
+                if (!$exists) {
+                    foreach ($statements as $stmt) {
+                        if (strpos($stmt, "`{$tbl}`") !== false && strpos($stmt, "CREATE TABLE") !== false) {
+                            try { $pdo->exec($stmt); } catch (\Throwable $e) {}
+                        }
+                    }
+                }
+            }
+
+            // Ensure event_type column on ticket_messages and VARCHAR(50) on tickets.type / tickets.source
+            $hasEventTypeCol = (int)$pdo->query(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ticket_messages' AND COLUMN_NAME = 'event_type'"
+            )->fetchColumn() > 0;
+            if (!$hasEventTypeCol) {
+                try {
+                    $pdo->exec("ALTER TABLE `ticket_messages` ADD COLUMN `event_type` VARCHAR(50) NULL AFTER `is_internal`");
+                } catch (\Throwable $e) {}
+            }
+            try {
+                $pdo->exec("ALTER TABLE `tickets` MODIFY COLUMN `type` VARCHAR(50) DEFAULT 'support', MODIFY COLUMN `source` VARCHAR(50) DEFAULT 'manual'");
+            } catch (\Throwable $e) {}
+            $hasRelatedTicketCol = (int)$pdo->query(
+                "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'related_ticket_id'"
+            )->fetchColumn() > 0;
+            if (!$hasRelatedTicketCol) {
+                try {
+                    $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_ticket_id` VARCHAR(64) NULL AFTER `related_project_id`");
+                    $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_ticket (`related_ticket_id`)");
+                } catch (\Throwable $e) {}
+            }
+            try {
+                $pdo->exec("UPDATE `tasks` t INNER JOIN `ticket_task_links` tt ON tt.task_id = t.id SET t.related_ticket_id = tt.ticket_id WHERE t.related_ticket_id IS NULL OR t.related_ticket_id = ''");
+                $pdo->exec("UPDATE `projects` SET `name` = 'Vila Slavín – Kamenná fasáda a terasa' WHERE `id` = 'proj-vila-slavin' AND (`name` IS NULL OR `name` = '')");
+                $pdo->exec("UPDATE `projects` SET `name` = 'Kuchynský ostrov Neolith Calacatta' WHERE `id` = 'proj-kuchyna-neolith' AND (`name` IS NULL OR `name` = '')");
+                $pdo->exec("UPDATE `projects` SET `ticket_widget_enabled` = 1, `ticket_allowed_domains` = '[\"localhost\",\"127.0.0.1\",\"slavin-residence.sk\"]' WHERE `id` = 'proj-vila-slavin' AND (`ticket_allowed_domains` IS NULL OR `ticket_allowed_domains` = '' OR `ticket_allowed_domains` = '[]')");
+            } catch (\Throwable $e) {}
+
+            // Seed default TICKET_STATUSES and TICKET_SETTINGS if absent
+            $hasSettingsTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'system_settings'")->fetchColumn();
+            if ($hasSettingsTable > 0) {
+                $tStatuses = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TICKET_STATUSES'")->fetchColumn();
+                if ($tStatuses === false || $tStatuses === null) {
+                    $defaultStatuses = json_encode([
+                        ['id' => 'new', 'key' => 'new', 'category' => 'new', 'group' => 'new', 'color' => '#0ea5e9', 'isDefault' => true, 'pausesSla' => false, 'isTerminal' => false, 'sortOrder' => 1, 'labelSk' => 'Nový', 'labelEn' => 'New', 'labelHu' => 'Új'],
+                        ['id' => 'open', 'key' => 'open', 'category' => 'open', 'group' => 'open', 'color' => '#f59e0b', 'isDefault' => false, 'pausesSla' => false, 'isTerminal' => false, 'sortOrder' => 2, 'labelSk' => 'V riešení', 'labelEn' => 'In Progress', 'labelHu' => 'Folyamatban'],
+                        ['id' => 'waiting_client', 'key' => 'waiting_client', 'category' => 'waiting', 'group' => 'waiting', 'color' => '#a855f7', 'isDefault' => false, 'pausesSla' => true, 'isTerminal' => false, 'sortOrder' => 3, 'labelSk' => 'Čaká sa na klienta', 'labelEn' => 'Waiting on Client', 'labelHu' => 'Ügyfélre vár'],
+                        ['id' => 'waiting_third_party', 'key' => 'waiting_third_party', 'category' => 'waiting', 'group' => 'waiting', 'color' => '#8b5cf6', 'isDefault' => false, 'pausesSla' => true, 'isTerminal' => false, 'sortOrder' => 4, 'labelSk' => 'Čaká sa na 3. stranu', 'labelEn' => 'Waiting on 3rd Party', 'labelHu' => '3. félre vár'],
+                        ['id' => 'scheduled', 'key' => 'scheduled', 'category' => 'open', 'group' => 'open', 'color' => '#6366f1', 'isDefault' => false, 'pausesSla' => false, 'isTerminal' => false, 'sortOrder' => 5, 'labelSk' => 'Naplánované', 'labelEn' => 'Scheduled', 'labelHu' => 'Ütemezve'],
+                        ['id' => 'resolved', 'key' => 'resolved', 'category' => 'resolved', 'group' => 'resolved', 'color' => '#10b981', 'isDefault' => false, 'pausesSla' => true, 'isTerminal' => true, 'sortOrder' => 6, 'labelSk' => 'Vyriešený', 'labelEn' => 'Resolved', 'labelHu' => 'Megoldva'],
+                        ['id' => 'closed', 'key' => 'closed', 'category' => 'closed', 'group' => 'closed', 'color' => '#64748b', 'isDefault' => false, 'pausesSla' => true, 'isTerminal' => true, 'sortOrder' => 7, 'labelSk' => 'Uzavretý', 'labelEn' => 'Closed', 'labelHu' => 'Lezárva'],
+                    ], JSON_UNESCAPED_UNICODE);
+                    $ins = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('TICKET_STATUSES', ?)");
+                    $ins->execute([$defaultStatuses]);
+                }
+
+                $tSettings = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TICKET_SETTINGS'")->fetchColumn();
+                if ($tSettings === false || $tSettings === null) {
+                    $defaultSettings = json_encode([
+                        'imapEnabled' => false,
+                        'imapHost' => '',
+                        'imapPort' => 993,
+                        'imapEncryption' => 'ssl',
+                        'imapUsername' => '',
+                        'imapPassword' => '',
+                        'imapFolder' => 'INBOX',
+                        'supportEmailAddress' => 'support@company.com',
+                        'aiRoutingEnabled' => true,
+                        'openAiKey' => '',
+                        'autoReplyOnCreate' => false,
+                        'autoCloseResolvedDays' => 5,
+                        'businessHoursStart' => '09:00',
+                        'businessHoursEnd' => '17:00',
+                        'businessDays' => [1, 2, 3, 4, 5],
+                        'slaTargets' => [
+                            'critical' => ['responseHours' => 1, 'resolveHours' => 4],
+                            'high' => ['responseHours' => 4, 'resolveHours' => 16],
+                            'normal' => ['responseHours' => 8, 'resolveHours' => 40],
+                            'low' => ['responseHours' => 24, 'resolveHours' => 120],
+                        ],
+                        'replyTemplates' => [
+                            [
+                                'id' => 'tpl-ack',
+                                'title' => 'Potvrdenie prijatia / Acknowledged',
+                                'name' => 'Potvrdenie prijatia / Acknowledged',
+                                'subject' => 'Re: {{ticket_number}} - {{ticket_title}}',
+                                'body' => "Dobrý deň {{client_name}},\n\nďakujeme za nahlásenie požiadavky ({{ticket_number}}). Náš tím sa jej už venuje a čoskoro Vás budeme informovať o postupe.\n\nS pozdravom,\n{{agent_name}}"
+                            ],
+                            [
+                                'id' => 'tpl-need-info',
+                                'title' => 'Doplnenie informácií / Need More Info',
+                                'name' => 'Doplnenie informácií / Need More Info',
+                                'subject' => 'Re: {{ticket_number}} - Prosba o doplnenie',
+                                'body' => "Dobrý deň {{client_name}},\n\npre doriešenie požiadavky {{ticket_number}} by sme potrebovali doplniť nasledovné podrobnosti:\n- \n\nĎakujeme,\n{{agent_name}}"
+                            ],
+                            [
+                                'id' => 'tpl-resolved',
+                                'title' => 'Vyriešené / Resolved',
+                                'name' => 'Vyriešené / Resolved',
+                                'subject' => 'Re: {{ticket_number}} - Vyriešené',
+                                'body' => "Dobrý deň {{client_name}},\n\npožiadavka {{ticket_number}} bola vyriešená. Prosím skontrolujte výsledok a v prípade otázok odpovedzte na túto správu.\n\nS pozdravom,\n{{agent_name}}"
+                            ],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE);
+                    $ins = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('TICKET_SETTINGS', ?)");
+                    $ins->execute([$defaultSettings]);
+                } else {
+                    $decodedSettings = json_decode((string)$tSettings, true);
+                    if (is_array($decodedSettings) && isset($decodedSettings['replyTemplates']) && is_array($decodedSettings['replyTemplates'])) {
+                        $changed = false;
+                        foreach ($decodedSettings['replyTemplates'] as &$tpl) {
+                            if (is_array($tpl) && empty($tpl['title']) && !empty($tpl['name'])) {
+                                $tpl['title'] = $tpl['name'];
+                                $changed = true;
+                            }
+                        }
+                        unset($tpl);
+                        if ($changed) {
+                            $upd = $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'TICKET_SETTINGS'");
+                            $upd->execute([json_encode($decodedSettings, JSON_UNESCAPED_UNICODE)]);
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] ccrm_migrate_tickets: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Seeds realistic sample tickets, messages, time entries, and support contract on fresh/demo installs.
+     */
+    function ccrm_seed_default_tickets(PDO $pdo): void {
+        try {
+            $hasTicketsTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tickets'")->fetchColumn();
+            if ($hasTicketsTable === 0) return;
+
+            $ticketCount = (int)$pdo->query("SELECT COUNT(*) FROM `tickets`")->fetchColumn();
+            if ($ticketCount > 0) return;
+
+            // Ensure demo project type has tickets enabled
+            try {
+                $pdo->exec("UPDATE `project_types` SET `has_tickets` = 1 WHERE `id` = 'pt_luxury_stone'");
+                $pdo->exec("UPDATE `projects` SET `ticket_widget_enabled` = 1, `ticket_allowed_domains` = '[\"localhost\",\"127.0.0.1\",\"slavin-residence.sk\"]' WHERE `id` = 'proj-vila-slavin' AND (`ticket_allowed_domains` IS NULL OR `ticket_allowed_domains` = '')");
+            } catch (\Throwable $e) {}
+
+            $language = 'sk';
+            try {
+                $langRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
+                if (is_string($langRaw) && in_array($langRaw, ['sk', 'en', 'hu'], true)) {
+                    $language = $langRaw;
+                }
+            } catch (\Throwable $e) {}
+
+            $texts = [
+                'sk' => [
+                    't1_title' => 'Chyba pri odosielaní kontaktného formulára na podstránke cenníka',
+                    't1_desc' => 'Pri kliknutí na tlačidlo Odoslať dopyt na podstránke /cennik vyskočí v konzole chyba TypeError: Cannot read properties of null (reading \'value\') a formulár sa neodošle.',
+                    't1_msg1' => 'Dobrý deň, posielam screenshot a zachytenú chybu z prehliadača. Prosím o urgentnú opravu, beží nám kampaň.',
+                    't1_msg2' => 'Príčina identifikovaná v chýbajúcom poli #phone-prefix pri mobilnom zobrazení. Pripravujem opravu.',
+                    't2_title' => 'Úprava rozmerov výrezu pre varnú dosku v technickom výkrese',
+                    't2_desc' => 'Prosíme o úpravu šírky výrezu v technickej dokumentácii projektu z 560mm na 564mm podľa novej špecifikácie spotrebiča Bora.',
+                    't2_msg1' => 'Dobrý deň, v prílohe posielam aktualizovaný technický list spotrebiča. Prosím o potvrdenie zapracovania.',
+                    't2_msg2' => 'Dobrý deň pán Novák, výkres sme aktualizovali na 564mm a poslali do výroby.',
+                    'sc_notes' => 'Prioritná projektová a webová podpora SLA Pro',
+                ],
+                'en' => [
+                    't1_title' => 'Contact form submission error on pricing subpage',
+                    't1_desc' => 'Clicking Submit Inquiry on /pricing throws TypeError: Cannot read properties of null (reading \'value\') and fails to submit.',
+                    't1_msg1' => 'Hello, sending screenshot and captured console error from the widget. Please fix urgently as our campaign is live.',
+                    't1_msg2' => 'Root cause identified in missing #phone-prefix input on mobile viewport. Deploying fix.',
+                    't2_title' => 'Adjust cooktop cutout dimensions in technical drawing',
+                    't2_desc' => 'Please update the cutout width in the project CAD specification from 560mm to 564mm per the new Bora appliance sheet.',
+                    't2_msg1' => 'Hi team, please confirm once the CAD file is updated.',
+                    't2_msg2' => 'Hello Mr. Novák, we updated the CAD drawing to 564mm and forwarded it to CNC production.',
+                    'sc_notes' => 'Priority project & web support SLA Pro',
+                ],
+                'hu' => [
+                    't1_title' => 'Hiba a kapcsolatfelvételi űrlap beküldésekor az árlista aloldalon',
+                    't1_desc' => 'Az ajánlatkérés gombra kattintva a /arlista oldalon TypeError: Cannot read properties of null (reading \'value\') hiba jelentkezik.',
+                    't1_msg1' => 'Üdvözlöm, küldöm a képernyőképet és a konzolhibát. Kérem sürgősen javítsák, mert fut a kampányunk.',
+                    't1_msg2' => 'A hibát a mobil nézetben hiányzó #phone-prefix mező okozza. Javítás folyamatban.',
+                    't2_title' => 'Főzőlap kivágási méretének módosítása a műszaki rajzon',
+                    't2_desc' => 'Kérjük a kivágás szélességének módosítását 560mm-ről 564mm-re az új Bora specifikáció alapján.',
+                    't2_msg1' => 'Üdvözlöm, kérem jelezzenek vissza, amint frissült a műszaki rajz.',
+                    't2_msg2' => 'Tisztelt Novák Úr, a rajzot frissítettük 564mm-re és továbbítottuk a gyártásnak.',
+                    'sc_notes' => 'Kiemelt projekt és webes támogatás SLA Pro',
+                ],
+            ];
+            $tx = $texts[$language] ?? $texts['sk'];
+
+            // Seed support contract
+            $insSc = $pdo->prepare("INSERT INTO `support_contracts` (`id`, `client_id`, `project_id`, `tier`, `monthly_hours`, `hourly_rate`, `sla_response_critical_hours`, `sla_response_high_hours`, `sla_response_normal_hours`, `sla_response_low_hours`, `sla_resolve_critical_hours`, `sla_resolve_high_hours`, `sla_resolve_normal_hours`, `sla_resolve_low_hours`, `valid_from`, `valid_until`, `notes`) VALUES (?, ?, ?, 'pro', 10.00, 65.00, 1.00, 4.00, 8.00, 24.00, 4.00, 16.00, 40.00, 120.00, '2026-01-01', '2026-12-31', ?)");
+            $insSc->execute(['sc-demo-1', 'lead-1', 'proj-vila-slavin', $tx['sc_notes']]);
+
+            $now = date('Y-m-d H:i:s');
+            $respDue1 = date('Y-m-d H:i:s', strtotime('+2 hours'));
+            $resDue1 = date('Y-m-d H:i:s', strtotime('+12 hours'));
+            $created2 = date('Y-m-d H:i:s', strtotime('-1 day'));
+            $respAt2 = date('Y-m-d H:i:s', strtotime('-22 hours'));
+            $resAt2 = date('Y-m-d H:i:s', strtotime('-18 hours'));
+
+            $meta1 = json_encode([
+                'url' => 'https://slavin-residence.sk/cennik',
+                'userAgent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36',
+                'viewport' => '1440x900',
+                'origin' => 'https://slavin-residence.sk',
+                'errors' => [
+                    [
+                        'type' => 'onerror',
+                        'message' => "Uncaught TypeError: Cannot read properties of null (reading 'value')",
+                        'source' => 'https://slavin-residence.sk/assets/form.js:142:29',
+                        'timestamp' => date('c', strtotime('-15 minutes'))
+                    ]
+                ]
+            ], JSON_UNESCAPED_UNICODE);
+
+            $insT = $pdo->prepare("INSERT INTO `tickets` (
+                `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
+                `project_id`, `client_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
+                `assignee_id`, `assignee_name`, `watchers_json`, `tags_json`, `metadata_json`,
+                `first_response_due_at`, `first_responded_at`, `resolve_due_at`, `resolved_at`, `created_at`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+            $insT->execute([
+                'tck-demo-1', 'TCK-000001', $tx['t1_title'], $tx['t1_desc'], 'in_progress', 'high', 'bug', 'widget',
+                'proj-vila-slavin', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
+                'u-' . md5('alex@crm.com'), 'Alex', json_encode(['Sam']), json_encode(['widget', 'frontend', 'urgent']), $meta1,
+                $respDue1, $now, $resDue1, null, $now
+            ]);
+
+            $insT->execute([
+                'tck-demo-2', 'TCK-000002', $tx['t2_title'], $tx['t2_desc'], 'resolved', 'normal', 'request', 'email',
+                'proj-vila-slavin', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
+                'u-' . md5('sam@crm.com'), 'Sam', json_encode([]), json_encode(['cad', 'výroba']), null,
+                date('Y-m-d H:i:s', strtotime('-16 hours')), $respAt2, date('Y-m-d H:i:s', strtotime('+24 hours')), $resAt2, $created2
+            ]);
+
+            $insMsg = $pdo->prepare("INSERT INTO `ticket_messages` (`id`, `ticket_id`, `author_type`, `author_user_id`, `author_name`, `author_email`, `is_internal`, `body`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $insMsg->execute(['tmsg-demo-1', 'tck-demo-1', 'client', null, 'Ján Novák', 'novak@example.com', 0, $tx['t1_msg1'], $now]);
+            $insMsg->execute(['tmsg-demo-2', 'tck-demo-1', 'agent', 'u-' . md5('alex@crm.com'), 'Alex', 'alex@crm.com', 1, $tx['t1_msg2'], $now]);
+            $insMsg->execute(['tmsg-demo-3', 'tck-demo-2', 'client', null, 'Ján Novák', 'novak@example.com', 0, $tx['t2_msg1'], $created2]);
+            $insMsg->execute(['tmsg-demo-4', 'tck-demo-2', 'agent', 'u-' . md5('sam@crm.com'), 'Sam', 'sam@crm.com', 0, $tx['t2_msg2'], $resAt2]);
+
+            $insTime = $pdo->prepare("INSERT INTO `ticket_time_entries` (`id`, `ticket_id`, `user_id`, `user_name`, `minutes`, `billable`, `note`, `logged_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $insTime->execute(['ttime-demo-1', 'tck-demo-1', 'u-' . md5('alex@crm.com'), 'Alex', 45, 1, 'Diagnostika chyby formulára cez widget logy', date('Y-m-d')]);
+            $insTime->execute(['ttime-demo-2', 'tck-demo-2', 'u-' . md5('sam@crm.com'), 'Sam', 30, 1, 'Úprava CAD výkresu 564mm', date('Y-m-d', strtotime('-1 day'))]);
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] tickets seed skipped: ' . $e->getMessage());
         }
     }
 

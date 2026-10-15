@@ -18,13 +18,14 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
+import { TicketSettings } from "./TicketSettings";
 import { OrderStatusSettings } from "./OrderStatusSettings";
 import { ShippingMethodSettings } from "./ShippingMethodSettings";
 import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
-import type { Order } from "../types";
+import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig } from "../types";
 import { VisibleModulesSettings } from "./VisibleModulesSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -568,6 +569,15 @@ interface SettingsViewProps {
   licenseState?: LicenseState | null;
   onLicenseStateChange?: (next: LicenseState) => void;
   customDashboards?: CustomDashboard[];
+
+  /** Tickets tab: customizable statuses, IMAP polling, OpenAI project routing, SLA targets. */
+  ticketStatuses?: TicketStatusDef[];
+  setTicketStatuses?: React.Dispatch<React.SetStateAction<TicketStatusDef[]>>;
+  ticketSettings?: TicketSettingsConfig;
+  setTicketSettings?: React.Dispatch<React.SetStateAction<TicketSettingsConfig>>;
+  tickets?: Ticket[];
+  setTickets?: (updater: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void;
+  onTicketsPolled?: () => void;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -588,6 +598,7 @@ const SETTINGS_TABS = [
   { id: "license", permKey: "general_config" },
   { id: "invoicing", permKey: "general_config" },
   { id: "projects", permKey: "general_config" },
+  { id: "tickets", permKey: "general_config" },
   { id: "orders", permKey: "general_config" },
   { id: "tasks", permKey: "general_config" },
   { id: "finance", permKey: "financial" },
@@ -693,7 +704,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setAiCustomTemplates,
   licenseState = null,
   onLicenseStateChange,
-  customDashboards = []
+  customDashboards = [],
+  ticketStatuses = [],
+  setTicketStatuses,
+  ticketSettings,
+  setTicketSettings,
+  tickets = [],
+  setTickets,
+  onTicketsPolled
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -1108,7 +1126,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects" | "orders" | "tasks">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects" | "tickets" | "orders" | "tasks">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -4324,6 +4342,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 setProjects={setProjects}
                 userLanguage={userLanguage}
                 canEdit={getPermission("general_config") === "edit"}
+              />
+            )}
+          </div>
+        )}
+
+        {/* TAB: Tickets Configuration */}
+        {activeSubTab === "tickets" && getPermission("general_config") !== "nothing" && (
+          <div className="ws-lg:col-span-12 space-y-6">
+            {renderReadOnlyBanner("general_config")}
+            {setTicketStatuses && ticketSettings && setTicketSettings && (
+              <TicketSettings
+                ticketStatuses={ticketStatuses}
+                setTicketStatuses={setTicketStatuses}
+                ticketSettings={ticketSettings}
+                setTicketSettings={setTicketSettings}
+                tickets={tickets}
+                setTickets={setTickets}
+                userLanguage={userLanguage}
+                canEdit={getPermission("general_config") === "edit"}
+                onTicketsPolled={onTicketsPolled}
               />
             )}
           </div>

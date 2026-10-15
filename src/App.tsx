@@ -4,7 +4,7 @@ import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import { QuickTaskModal } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
@@ -13,6 +13,7 @@ import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
 import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
 import { TaskSettingsProvider } from "./hooks/useTaskSettings";
+import { normalizeTicketStatuses, normalizeTicketSettings } from "./utils/tickets";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -155,6 +156,8 @@ const FinancialManagementView = safeLazy(() => import("./components/FinancialMan
 const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
 const EmployeesView = safeLazy(() => import("./components/employees/EmployeesView").then(m => ({ default: m.EmployeesView })));
 const OrdersView = safeLazy(() => import("./components/OrdersView").then(m => ({ default: m.OrdersView })));
+const TicketsView = safeLazy(() => import("./components/TicketsView").then(m => ({ default: m.TicketsView })));
+const PublicProjectTicketsView = safeLazy(() => import("./components/PublicProjectTicketsView").then(m => ({ default: m.PublicProjectTicketsView })));
 
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
@@ -209,6 +212,8 @@ const computeSettingsSig = (s: any): string => {
     // nothing stored, and that must compare equal to the built-ins it is shown.
     normalizeProjectStatusDefs(s.projectStatuses),
     normalizeOrderStatusDefs(s.orderStatuses),
+    normalizeTicketStatuses(s.ticketStatuses),
+    normalizeTicketSettings(s.ticketSettings),
     s.integrationsConfig ?? null,
     s.companyBillingSettings ?? null,
     s.invoicingIntegrations ?? null,
@@ -232,6 +237,7 @@ const computePushSig = (p: {
   invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
   employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
   orders?: unknown;
+  tickets?: unknown; supportContracts?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
@@ -242,6 +248,7 @@ const computePushSig = (p: {
   p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
   p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
   p.orders,
+  p.tickets, p.supportContracts,
   computeSettingsSig(p.settings),
 ]);
 
@@ -300,6 +307,8 @@ function App() {
   const employeeSalariesRef = useRef<EmployeeSalary[]>([]);
   const employeeVacationsRef = useRef<EmployeeVacation[]>([]);
   const employeeSettingsRef = useRef<EmployeeSettings | null>(null);
+  const ticketsRef = useRef<Ticket[]>([]);
+  const supportContractsRef = useRef<SupportContract[]>([]);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -381,6 +390,9 @@ function App() {
       order: "orders",
       objednavky: "orders",
       rendelesek: "orders",
+      ticket: "tickets",
+      podpora: "tickets",
+      support: "tickets",
       employee: "employees",
       salaries: "employees",
       salary: "employees",
@@ -396,12 +408,12 @@ function App() {
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("tickets") || resolvedBase.startsWith("ticket-") || resolvedBase.startsWith("public-tickets") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -683,6 +695,10 @@ function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const ordersRef = useRef<Order[]>([]);
   const [orderStatuses, setOrderStatuses] = useState<OrderStatusDef[]>(() => normalizeOrderStatusDefs(null));
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [supportContracts, setSupportContracts] = useState<SupportContract[]>([]);
+  const [ticketStatuses, setTicketStatuses] = useState<TicketStatusDef[]>(() => normalizeTicketStatuses(null));
+  const [ticketSettings, setTicketSettings] = useState<TicketSystemSettings>(() => normalizeTicketSettings(null));
   const [cerpVersion, setCerpVersion] = useState<string | null>(() => {
     if (typeof window !== "undefined" && (window as unknown as { __CERP_VERSION__?: string }).__CERP_VERSION__) {
       return (window as unknown as { __CERP_VERSION__?: string }).__CERP_VERSION__ || null;
@@ -1118,6 +1134,9 @@ ${log.payload || ''}
         case "orders":
           viewName = t("Orders", "Objednávky", "Rendelések");
           break;
+        case "tickets":
+          viewName = getTranslation(userLanguage, "sidebar.tickets");
+          break;
         case "dashboard":
           viewName = getTranslation(userLanguage, "sidebar.dashboard");
           break;
@@ -1206,6 +1225,8 @@ ${log.payload || ''}
   employeeVacationsRef.current = employeeVacations;
   employeeSettingsRef.current = employeeSettings;
   ordersRef.current = orders;
+  ticketsRef.current = tickets;
+  supportContractsRef.current = supportContracts;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -1277,6 +1298,8 @@ ${log.payload || ''}
     const liveEmployeeVacations = employeeVacationsRef.current;
     const liveEmployeeSettings = employeeSettingsRef.current;
     const liveOrders = nextOrders ?? ordersRef.current;
+    const liveTickets = ticketsRef.current;
+    const liveSupportContracts = supportContractsRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -1306,6 +1329,8 @@ ${log.payload || ''}
       employeeVacations: liveEmployeeVacations,
       employeeSettings: liveEmployeeSettings,
       orders: liveOrders,
+      tickets: liveTickets,
+      supportContracts: liveSupportContracts,
       // Always sent whole: it is one small blob, and the server's contract is
       // "omitted means unchanged", so narrowing it would be indistinguishable
       // from a client that predates the key.
@@ -1337,6 +1362,8 @@ ${log.payload || ''}
         taskSettings,
         projectStatuses,
         orderStatuses,
+        ticketStatuses,
+        ticketSettings,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
         companyBillingSettings: companyBillingSettingsRef.current,
         invoicingIntegrations: invoicingIntegrationsRef.current,
@@ -1384,6 +1411,8 @@ ${log.payload || ''}
       narrow("employeeSalaries", liveEmployeeSalaries);
       narrow("employeeVacations", liveEmployeeVacations);
       narrow("orders", liveOrders);
+      narrow("tickets", liveTickets);
+      narrow("supportContracts", liveSupportContracts);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1489,6 +1518,7 @@ ${log.payload || ''}
               ai_custom_templates: "aiCustomTemplates",
               employees: "employees", employee_salaries: "employeeSalaries",
               employee_vacations: "employeeVacations",
+              tickets: "tickets", support_contracts: "supportContracts",
             };
             for (const [table, ids] of Object.entries(out.deleteBlocked as Record<string, unknown>)) {
               if (Array.isArray(ids) && ids.length && tableToKey[table]) {
@@ -1963,6 +1993,24 @@ ${log.payload || ''}
     });
   };
 
+  const updateTicketsAndSync = (newTickets: Ticket[] | ((prev: Ticket[]) => Ticket[])) => {
+    setTickets(prev => {
+      const next = typeof newTickets === "function" ? newTickets(prev) : newTickets;
+      ticketsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateSupportContractsAndSync = (newContracts: SupportContract[] | ((prev: SupportContract[]) => SupportContract[])) => {
+    setSupportContracts(prev => {
+      const next = typeof newContracts === "function" ? newContracts(prev) : newContracts;
+      supportContractsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
   const updateCompanyBillingSettingsAndSync = (newSettings: CompanyBillingSettings | null | ((prev: CompanyBillingSettings | null) => CompanyBillingSettings | null)) => {
     setCompanyBillingSettings(prev => {
       const next = typeof newSettings === "function" ? newSettings(prev) : newSettings;
@@ -1991,21 +2039,19 @@ ${log.payload || ''}
   };
 
   const updateUsersAndSync = (newUsers: UserProfile[] | ((prev: UserProfile[]) => UserProfile[])) => {
-    setUsers(prev => {
-      const nextUsers = typeof newUsers === "function" ? newUsers(prev) : newUsers;
-      usersRef.current = nextUsers;
-      pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
-      // Keep the logged-in profile in step, but hand out a new object only when
-      // its own row actually changed — an unrelated user's edit must not reset
-      // everything that keys off the currentUser identity.
-      setCurrentUser(me => {
-        if (!me) return me;
-        const updatedMe = nextUsers.find(u => u.email === me.email);
-        if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
-        return updatedMe;
-      });
-      return nextUsers;
+    const nextUsers = typeof newUsers === "function" ? newUsers(usersRef.current) : newUsers;
+    usersRef.current = nextUsers;
+    setUsers(nextUsers);
+    // Keep the logged-in profile in step, but hand out a new object only when
+    // its own row actually changed — an unrelated user's edit must not reset
+    // everything that keys off the currentUser identity.
+    setCurrentUser(me => {
+      if (!me) return me;
+      const updatedMe = nextUsers.find(u => u.email === me.email);
+      if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
+      return updatedMe;
     });
+    pushStateToServer(undefined, undefined, undefined, undefined, nextUsers);
   };
 
   // ---------------------------------------------------------------------------
@@ -2347,6 +2393,8 @@ ${log.payload || ''}
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
       projectStatuses,
       orderStatuses,
+      ticketStatuses,
+      ticketSettings,
       financialMode, financialSimplifiedTable,
     });
     // Before we have ever seen the server's settings, just record the current
@@ -2375,7 +2423,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, orderStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2644,6 +2692,12 @@ ${log.payload || ''}
       if (data.orders && Array.isArray(data.orders)) {
         setOrders(sameOr(data.orders));
       }
+      if (data.tickets && Array.isArray(data.tickets)) {
+        setTickets(sameOr(data.tickets));
+      }
+      if (data.supportContracts && Array.isArray(data.supportContracts)) {
+        setSupportContracts(sameOr(data.supportContracts));
+      }
       if (data.employeeSettings !== undefined) {
         // sameOr keeps the old reference when nothing changed. A fresh object on
         // every sync poll re-ran the employee form's init effect and blanked a
@@ -2727,6 +2781,14 @@ ${log.payload || ''}
           const next = normalizeOrderStatusDefs(s.orderStatuses);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
+        setTicketStatuses((prev) => {
+          const next = normalizeTicketStatuses(s.ticketStatuses);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setTicketSettings((prev: TicketSystemSettings) => {
+          const next = normalizeTicketSettings(s.ticketSettings);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
         serverSettingsAppliedRef.current = true;
         // Remember what the server just gave us. The settings-sync effect compares
@@ -2767,6 +2829,8 @@ ${log.payload || ''}
         employeeSalaries: baselineOf(rawData.employeeSalaries ?? employeeSalariesRef.current),
         employeeVacations: baselineOf(rawData.employeeVacations ?? employeeVacationsRef.current),
         orders: baselineOf(rawData.orders ?? ordersRef.current),
+        tickets: baselineOf(rawData.tickets ?? ticketsRef.current),
+        supportContracts: baselineOf(rawData.supportContracts ?? supportContractsRef.current),
       };
       const ueData = rawData.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -2805,6 +2869,8 @@ ${log.payload || ''}
         employeeVacations: data.employeeVacations ?? employeeVacationsRef.current,
         employeeSettings: data.employeeSettings ?? employeeSettingsRef.current,
         orders: data.orders ?? ordersRef.current,
+        tickets: data.tickets ?? ticketsRef.current,
+        supportContracts: data.supportContracts ?? supportContractsRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -3027,6 +3093,11 @@ ${log.payload || ''}
 
     const { route: activeRoute } = parseAppHash(activeTab);
 
+    if (activeRoute.startsWith("public-tickets/")) {
+      const publicHash = decodeURIComponent(activeRoute.slice("public-tickets/".length));
+      return <PublicProjectTicketsView hash={publicHash} language={userLanguage} />;
+    }
+
     // Route guard: the sidebar hides what the role may not open, but a typed
     // hash, an old bookmark or a permission revoked mid-session still lands
     // here. Unknown routes fall through to the tasks board below, and
@@ -3122,6 +3193,10 @@ ${log.payload || ''}
           setOrders={updateOrdersAndSync}
           projects={projects}
           setProjects={updateProjectsAndSync}
+          ticketStatuses={ticketStatuses}
+          setTicketStatuses={setTicketStatuses}
+          ticketSettings={ticketSettings}
+          setTicketSettings={setTicketSettings}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
           invoicingIntegrations={invoicingIntegrations}
@@ -3260,6 +3335,8 @@ ${log.payload || ''}
           users={users}
           projects={projects}
           taskStateColors={taskStateColors}
+          tickets={tickets}
+          ticketStatuses={ticketStatuses}
         />
       );
     }
@@ -3389,6 +3466,12 @@ ${log.payload || ''}
           setOrders={updateOrdersAndSync}
           projects={projects}
           setProjects={updateProjectsAndSync}
+          ticketStatuses={ticketStatuses}
+          setTicketStatuses={setTicketStatuses}
+          ticketSettings={ticketSettings}
+          setTicketSettings={setTicketSettings}
+          tickets={tickets}
+          setTickets={updateTicketsAndSync}
           financialCategories={financialCategories}
           setFinancialCategories={updateFinancialCategoriesAndSync}
           setFinancialRecords={updateFinancialRecordsAndSync}
@@ -3414,8 +3497,41 @@ ${log.payload || ''}
     }
 
     const rawBaseTab = activeRoute.split("/")[0];
-    const baseTab = rawBaseTab.startsWith("project-") ? "projects" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
+    const baseTab = rawBaseTab.startsWith("project-") ? "projects" : rawBaseTab.startsWith("ticket-") ? "tickets" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
     switch (baseTab) {
+      case "tickets": {
+        const subTicketId = (activeRoute.startsWith("tickets/") && activeRoute.length > "tickets/".length)
+          ? decodeURIComponent(activeRoute.slice("tickets/".length))
+          : (activeRoute.startsWith("ticket-") && activeRoute.length > "ticket-".length)
+          ? decodeURIComponent(activeRoute.slice("ticket-".length))
+          : undefined;
+        return (
+          <TicketsView
+            tickets={tickets}
+            setTickets={updateTicketsAndSync}
+            supportContracts={supportContracts}
+            setSupportContracts={updateSupportContractsAndSync}
+            ticketStatuses={ticketStatuses}
+            ticketSettings={ticketSettings}
+            projects={projects}
+            projectTypes={projectTypes}
+            leads={leads}
+            tasks={tasks}
+            setTasks={updateTasksAndSync}
+            taskStates={taskStates}
+            users={users}
+            employees={employees}
+            currentUser={activeUser}
+            userLanguage={userLanguage}
+            access={access.module("tickets")}
+            initialSelectedTicketId={subTicketId}
+            onNavigate={(route: string) => {
+              setActiveTab(route);
+              window.location.hash = route;
+            }}
+          />
+        );
+      }
       case "leads": {
         const subLeadId = (activeRoute.startsWith("leads/") && activeRoute.length > "leads/".length)
           ? decodeURIComponent(activeRoute.slice("leads/".length))
@@ -3495,6 +3611,12 @@ ${log.payload || ''}
             taskAccess={taskAccess}
             currentUser={activeUser}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
+            tickets={tickets}
+            setTickets={updateTicketsAndSync}
+            ticketStatuses={ticketStatuses}
+            ticketSettings={ticketSettings}
+            supportContracts={supportContracts}
+            setSupportContracts={updateSupportContractsAndSync}
           />
         );
       }
@@ -3540,6 +3662,8 @@ ${log.payload || ''}
             users={users}
             projects={projects}
             taskStateColors={taskStateColors}
+            tickets={tickets}
+            ticketStatuses={ticketStatuses}
           />
         );
       }
@@ -3908,6 +4032,7 @@ ${log.payload || ''}
             setTasks={updateTasksAndSync}
             leads={leads}
             projects={projects}
+            tickets={tickets}
             users={users}
             systemLanguage={userLanguage}
             currentUser={activeUser}
@@ -3921,6 +4046,15 @@ ${log.payload || ''}
         );
     }
   };
+
+  if (activeTab.startsWith("public-tickets/")) {
+    const publicHash = decodeURIComponent(activeTab.slice("public-tickets/".length));
+    return (
+      <Suspense fallback={<div className="w-full min-h-screen flex items-center justify-center bg-slate-50"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+        <PublicProjectTicketsView hash={publicHash} language={userLanguage} />
+      </Suspense>
+    );
+  }
 
   // Redirect to InstallerWizard if not configured
   if (!isInstalled) {
@@ -4011,9 +4145,9 @@ ${log.payload || ''}
                 // invoices/AI-template/orders slots were added the options object silently
                 // slid into payload arguments, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);

@@ -94,6 +94,7 @@
 :root {
   --accent-lift-color: #ffffff;
   --accent-lift-amount: 0%;
+  --entity-accent: #4f6edb;
 }
 
 :root,
@@ -838,6 +839,678 @@ dialog[open]::backdrop {
 }
 [data-theme="dark"] .prose.ck-content a:hover {
   color: #b5c4ff !important;
+}
+
+
+/* ===========================================================================
+   RADICAL THEME 1: PAPER (`[data-theme="paper"]`)
+   ===========================================================================
+   - 2px to 4px border radii everywhere
+   - Editorial serif typography
+   - Reading-optimized warm paper & desaturated ink-wash contrast
+   - SVG fractal-noise paper grain & subtle entity coloration on background
+   - Barely rounded, textured, darker-toned tactile buttons
+   - Inputs styled as a ruled line in the active entity's color
+--------------------------------------------------------------------------- */
+
+[data-theme="paper"] {
+  color-scheme: light;
+
+  --paper-noise-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+
+  --font-sans: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  --font-heading: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+
+  --radius: 4px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
+  --radius-4xl: 4px;
+
+  --background: 244 239 230;
+  --foreground: 43 37 32;
+  --card: 251 248 241;
+  --card-foreground: 43 37 32;
+  --popover: 251 248 241;
+  --popover-foreground: 43 37 32;
+  --primary: 92 73 56;
+  --primary-foreground: 251 248 241;
+  --secondary: 140 90 60;
+  --secondary-foreground: 251 248 241;
+  --muted: 235 228 214;
+  --muted-foreground: 108 97 85;
+  --accent: 130 102 72;
+  --accent-foreground: 43 37 32;
+  --destructive: 158 42 43;
+  --destructive-foreground: 251 248 241;
+  --border: 216 206 190;
+  --input: 196 184 165;
+  --ring: 92 73 56;
+  --sidebar: 247 242 233;
+  --sidebar-foreground: 68 58 49;
+
+  --color-white: #fbf8f1;
+
+  /* Reading-optimized warm paper neutral ramps */
+  --color-slate-50: #f4efe6;
+  --color-slate-100: #ebe4d6;
+  --color-slate-200: #dcd3c2;
+  --color-slate-300: #c4b8a5;
+  --color-slate-400: #968977;
+  --color-slate-500: #75695a;
+  --color-slate-600: #5c5145;
+  --color-slate-700: #463d33;
+  --color-slate-800: #332b24;
+  --color-slate-900: #26201a;
+  --color-slate-950: #1c1713;
+
+  --color-gray-50: #f4efe6;
+  --color-gray-100: #ebe4d6;
+  --color-gray-200: #dcd3c2;
+  --color-gray-300: #c4b8a5;
+  --color-gray-400: #968977;
+  --color-gray-500: #75695a;
+  --color-gray-600: #5c5145;
+  --color-gray-700: #463d33;
+  --color-gray-800: #332b24;
+  --color-gray-900: #26201a;
+  --color-gray-950: #1c1713;
+
+  --color-zinc-50: #f4efe6;
+  --color-zinc-100: #ebe4d6;
+  --color-zinc-200: #dcd3c2;
+  --color-zinc-300: #c4b8a5;
+  --color-zinc-400: #968977;
+  --color-zinc-500: #75695a;
+  --color-zinc-600: #5c5145;
+  --color-zinc-700: #463d33;
+  --color-zinc-800: #332b24;
+  --color-zinc-900: #26201a;
+  --color-zinc-950: #1c1713;
+
+  /* Desaturated, muted ink-wash chromatic ramps (low chroma for reading comfort) */
+  --color-indigo-50: #efeae2;
+  --color-indigo-100: #e2dcd0;
+  --color-indigo-200: #ccc3b4;
+  --color-indigo-300: #aba090;
+  --color-indigo-400: #7e7468;
+  --color-indigo-500: #5d5650;
+  --color-indigo-600: #4a4542;
+  --color-indigo-700: #3b3735;
+  --color-indigo-800: #2f2c2a;
+  --color-indigo-900: #252220;
+
+  --color-blue-50: #eceae3;
+  --color-blue-100: #dedbd1;
+  --color-blue-200: #c5c0b2;
+  --color-blue-500: #4c5c68;
+  --color-blue-600: #3d4b56;
+  --color-blue-700: #313d46;
+
+  --color-emerald-50: #ebeee4;
+  --color-emerald-100: #dce2d4;
+  --color-emerald-200: #c2ccb8;
+  --color-emerald-500: #4d6653;
+  --color-emerald-600: #3e5443;
+  --color-emerald-700: #314335;
+
+  --color-amber-50: #f3ece0;
+  --color-amber-100: #e8dcc8;
+  --color-amber-200: #d5c2a5;
+  --color-amber-500: #966b3b;
+  --color-amber-600: #7d572e;
+  --color-amber-700: #634423;
+
+  --color-purple-50: #efeae4;
+  --color-purple-100: #e2dad1;
+  --color-purple-200: #cbc0b4;
+  --color-purple-500: #695462;
+  --color-purple-600: #564350;
+  --color-purple-700: #453540;
+
+  --color-rose-50: #f2e8e4;
+  --color-rose-100: #e5d5cf;
+  --color-rose-200: #cfb8b0;
+  --color-rose-500: #8c4643;
+  --color-rose-600: #753835;
+  --color-rose-700: #5e2c2a;
+}
+
+[data-theme="paper"] body {
+  font-family: var(--font-sans);
+  background-color: color-mix(in oklab, #f4efe6 92%, var(--entity-accent, #5c4938));
+  background-image:
+    var(--paper-noise-svg),
+    radial-gradient(circle at 18% 12%, color-mix(in oklab, var(--entity-accent, #5c4938) 12%, transparent) 0%, transparent 65%),
+    linear-gradient(135deg, #f6f1e7 0%, #efe8da 55%, #e8dfd0 100%);
+  color: #2b2520;
+}
+
+/* Entity background indicator: warm paper grain + subtle coloration */
+[data-theme="paper"] .aurora-bg {
+  opacity: 0.32;
+  filter: sepia(0.38) saturate(0.5) contrast(0.9);
+}
+[data-theme="paper"] .aurora-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--paper-noise-svg);
+  background-repeat: repeat;
+  opacity: 0.85;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+/* 2px to 4px border radius across cards, panels, modals, badges, buttons, and inputs */
+[data-theme="paper"] :where(
+  .glass-panel,
+  dialog,
+  [role="dialog"],
+  aside,
+  header,
+  table,
+  button,
+  input,
+  select,
+  textarea,
+  a,
+  [class*="rounded-lg"],
+  [class*="rounded-xl"],
+  [class*="rounded-2xl"],
+  [class*="rounded-3xl"],
+  [class*="rounded-["]
+):not(.force-light *) {
+  border-radius: 3px !important;
+}
+
+[data-theme="paper"] .glass-panel,
+[data-theme="paper"] aside {
+  background-color: rgba(251, 248, 241, 0.94) !important;
+  background-image: var(--paper-noise-svg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #d8cebe !important;
+  box-shadow: 0 1px 3px rgba(43, 37, 32, 0.07), 0 1px 0 rgba(255, 255, 255, 0.6) inset !important;
+}
+
+/* Buttons: barely rounded (3px), paper grain texture, and darker tactile tone */
+[data-theme="paper"] button:not([role="switch"]):not(.force-light *) {
+  border-radius: 3px !important;
+  background-image: var(--paper-noise-svg) !important;
+  border: 1px solid rgba(58, 46, 36, 0.25) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 252, 244, 0.28), 0 1px 2px rgba(43, 37, 32, 0.14) !important;
+  filter: brightness(0.95) saturate(0.82);
+}
+[data-theme="paper"] button:not([role="switch"]):not(.force-light *):hover {
+  filter: brightness(0.9) saturate(0.88);
+}
+
+/* Inputs: bottom border in the color of the entity — like a ruled line on paper */
+[data-theme="paper"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea
+):not(.force-light *) {
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 1.5px solid color-mix(in oklab, var(--entity-accent, #5c4938) 72%, #3a2e24) !important;
+  border-radius: 2px 2px 0 0 !important;
+  background-color: color-mix(in oklab, var(--entity-accent, #5c4938) 4%, rgba(244, 239, 230, 0.55)) !important;
+  box-shadow: none !important;
+}
+[data-theme="paper"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea
+):not(.force-light *):focus,
+[data-theme="paper"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea
+):not(.force-light *):focus-visible {
+  border-bottom: 2px solid var(--entity-accent, #5c4938) !important;
+  background-color: color-mix(in oklab, var(--entity-accent, #5c4938) 8%, #fbf8f1) !important;
+  outline: none !important;
+  box-shadow: 0 2px 0 -1px color-mix(in oklab, var(--entity-accent, #5c4938) 35%, transparent) !important;
+}
+
+
+/* ===========================================================================
+   RADICAL THEME 2: MINIMALIST (`[data-theme="minimalist"]`)
+   ===========================================================================
+   - Zero shadows, zero border radii (0px)
+   - Simple, high-efficiency sans-serif font
+   - No menu colors (monochrome navigation)
+   - Entity colors shown ONLY on buttons and interactive elements
+   - Basic, crisp bordered table layouts
+--------------------------------------------------------------------------- */
+
+[data-theme="minimalist"] {
+  color-scheme: light;
+
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-heading: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+  --shadow-glass: none;
+  --shadow-glass-sm: none;
+
+  --background: 255 255 255;
+  --foreground: 9 9 11;
+  --card: 255 255 255;
+  --card-foreground: 9 9 11;
+  --popover: 255 255 255;
+  --popover-foreground: 9 9 11;
+  --primary: 24 24 27;
+  --primary-foreground: 255 255 255;
+  --secondary: 63 63 70;
+  --secondary-foreground: 255 255 255;
+  --muted: 244 244 245;
+  --muted-foreground: 113 113 122;
+  --accent: 244 244 245;
+  --accent-foreground: 9 9 11;
+  --border: 212 212 216;
+  --input: 161 161 170;
+  --ring: 24 24 27;
+  --sidebar: 250 250 250;
+  --sidebar-foreground: 39 39 42;
+
+  /* Neutralize decorative 50–300 container/badge shades so non-interactive
+     surfaces remain strictly monochrome, while 500–700 stay available for buttons */
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f4f4f5;
+  --color-slate-200: #e4e4e7;
+  --color-slate-300: #d4d4d8;
+  --color-slate-400: #a1a1aa;
+  --color-slate-500: #71717a;
+  --color-slate-600: #52525b;
+  --color-slate-700: #3f3f46;
+  --color-slate-800: #18181b;
+  --color-slate-900: #09090b;
+  --color-slate-950: #09090b;
+
+  --color-indigo-50: #fafafa;  --color-indigo-100: #f4f4f5;  --color-indigo-200: #e4e4e7;
+  --color-blue-50: #fafafa;    --color-blue-100: #f4f4f5;    --color-blue-200: #e4e4e7;
+  --color-sky-50: #fafafa;     --color-sky-100: #f4f4f5;     --color-sky-200: #e4e4e7;
+  --color-cyan-50: #fafafa;    --color-cyan-100: #f4f4f5;    --color-cyan-200: #e4e4e7;
+  --color-teal-50: #fafafa;    --color-teal-100: #f4f4f5;    --color-teal-200: #e4e4e7;
+  --color-emerald-50: #fafafa; --color-emerald-100: #f4f4f5; --color-emerald-200: #e4e4e7;
+  --color-green-50: #fafafa;   --color-green-100: #f4f4f5;   --color-green-200: #e4e4e7;
+  --color-lime-50: #fafafa;    --color-lime-100: #f4f4f5;    --color-lime-200: #e4e4e7;
+  --color-yellow-50: #fafafa;  --color-yellow-100: #f4f4f5;  --color-yellow-200: #e4e4e7;
+  --color-amber-50: #fafafa;   --color-amber-100: #f4f4f5;   --color-amber-200: #e4e4e7;
+  --color-orange-50: #fafafa;  --color-orange-100: #f4f4f5;  --color-orange-200: #e4e4e7;
+  --color-rose-50: #fafafa;    --color-rose-100: #f4f4f5;    --color-rose-200: #e4e4e7;
+  --color-pink-50: #fafafa;    --color-pink-100: #f4f4f5;    --color-pink-200: #e4e4e7;
+  --color-fuchsia-50: #fafafa; --color-fuchsia-100: #f4f4f5; --color-fuchsia-200: #e4e4e7;
+  --color-purple-50: #fafafa;  --color-purple-100: #f4f4f5;  --color-purple-200: #e4e4e7;
+  --color-violet-50: #fafafa;  --color-violet-100: #f4f4f5;  --color-violet-200: #e4e4e7;
+}
+
+[data-theme="minimalist"] body {
+  font-family: var(--font-sans);
+  background: #ffffff !important;
+  color: #09090b;
+}
+
+[data-theme="minimalist"] .aurora-bg {
+  display: none !important;
+}
+
+/* Zero border radius and zero shadows everywhere */
+[data-theme="minimalist"] *:not(.force-light *),
+[data-theme="minimalist"] *::before,
+[data-theme="minimalist"] *::after {
+  border-radius: 0px !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-theme="minimalist"] .glass-panel {
+  background: #ffffff !important;
+  border: 1px solid #d4d4d8 !important;
+}
+
+/* No menu colors: monochrome sidebar navigation & icons */
+[data-theme="minimalist"] aside {
+  background: #fafafa !important;
+  border-right: 1px solid #d4d4d8 !important;
+}
+[data-theme="minimalist"] aside :where(button, a) {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  color: #3f3f46 !important;
+}
+[data-theme="minimalist"] aside :where(button, a):hover {
+  background: #f4f4f5 !important;
+  color: #09090b !important;
+}
+[data-theme="minimalist"] aside :where(button, a) svg {
+  color: currentColor !important;
+  stroke: currentColor !important;
+}
+[data-theme="minimalist"] aside :where(button.text-white, a.text-white, [aria-current="page"]) {
+  background: #18181b !important;
+  color: #ffffff !important;
+  border-color: #18181b !important;
+}
+[data-theme="minimalist"] aside :where(button.text-white, a.text-white, [aria-current="page"]) svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+/* Entity colors shown ONLY on buttons and interactive elements */
+[data-theme="minimalist"] :where(main, header, dialog, [role="dialog"]) button:not([role="switch"]):not(:disabled):not(.force-light *) {
+  border: 1px solid var(--entity-accent, #18181b) !important;
+}
+[data-theme="minimalist"] :where(main, header, dialog, [role="dialog"]) button.text-white:not(:disabled):not(.force-light *) {
+  background-color: var(--entity-accent, #18181b) !important;
+  background-image: none !important;
+  border-color: var(--entity-accent, #18181b) !important;
+  color: #ffffff !important;
+}
+[data-theme="minimalist"] :where(input, select, textarea):not(.force-light *) {
+  border: 1px solid #d4d4d8 !important;
+  background-color: #ffffff !important;
+}
+[data-theme="minimalist"] :where(input, select, textarea):not(.force-light *):focus {
+  border-color: var(--entity-accent, #18181b) !important;
+  outline: 1px solid var(--entity-accent, #18181b) !important;
+}
+
+/* Basic high-density table layouts */
+[data-theme="minimalist"] table:not(.force-light *) {
+  border-collapse: collapse !important;
+  border: 1px solid #d4d4d8 !important;
+  background: #ffffff !important;
+}
+[data-theme="minimalist"] :where(th, td):not(.force-light *) {
+  border: 1px solid #e4e4e7 !important;
+  padding: 6px 10px !important;
+}
+[data-theme="minimalist"] thead th:not(.force-light *) {
+  background: #f4f4f5 !important;
+  color: #09090b !important;
+  font-weight: 600 !important;
+  border-bottom: 1px solid #a1a1aa !important;
+}
+[data-theme="minimalist"] tbody tr:hover td:not(.force-light *) {
+  background: #fafafa !important;
+}
+
+
+/* ===========================================================================
+   RADICAL THEME 3: EXTRA RETRO — MS-DOS TUI (`[data-theme="retro"]`)
+   ===========================================================================
+   - Classic 1990s MS-DOS / Borland Turbo Vision / Norton Commander aesthetic
+   - Monospace font, 0px corners, hard block offset shadows (4px 4px 0 #000)
+   - Cobalt VGA background (#000084), deep navy panels (#000050), cyan (#55ffff)
+     and yellow (#ffff55) phosphor type, CRT scanline texture
+--------------------------------------------------------------------------- */
+
+[data-theme="retro"] {
+  color-scheme: dark;
+
+  --accent-lift-color: #ffff55;
+  --accent-lift-amount: 45%;
+
+  --dark-surface: #000050;
+  --dark-hairline: #00aaaa;
+
+  --font-sans: "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Courier New", Courier, monospace;
+  --font-heading: "JetBrains Mono", "IBM Plex Mono", "Fira Code", "Courier New", Courier, monospace;
+
+  --radius: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+
+  --background: 0 0 132;
+  --foreground: 255 255 255;
+  --card: 0 0 80;
+  --card-foreground: 255 255 255;
+  --popover: 0 0 56;
+  --popover-foreground: 255 255 255;
+  --primary: 0 170 170;
+  --primary-foreground: 0 0 0;
+  --secondary: 255 255 85;
+  --secondary-foreground: 0 0 0;
+  --muted: 0 0 56;
+  --muted-foreground: 170 170 170;
+  --accent: 85 255 255;
+  --accent-foreground: 0 0 0;
+  --destructive: 255 85 85;
+  --destructive-foreground: 0 0 0;
+  --border: 0 170 170;
+  --input: 85 255 255;
+  --ring: 255 255 85;
+  --sidebar: 0 0 56;
+  --sidebar-foreground: 85 255 255;
+
+  /* 16-Color VGA / CGA Palette Mapping */
+  --color-slate-50: #000038;
+  --color-slate-100: #000050;
+  --color-slate-200: #008888;
+  --color-slate-300: #00aaaa;
+  --color-slate-400: #88cccc;
+  --color-slate-500: #aaaaaa;
+  --color-slate-600: #cccccc;
+  --color-slate-700: #55ffff;
+  --color-slate-800: #ffffff;
+  --color-slate-900: #ffff55;
+  --color-slate-950: #ffff55;
+
+  --color-gray-50: #000038;
+  --color-gray-100: #000050;
+  --color-gray-200: #008888;
+  --color-gray-300: #00aaaa;
+  --color-gray-400: #88cccc;
+  --color-gray-500: #aaaaaa;
+  --color-gray-600: #cccccc;
+  --color-gray-700: #55ffff;
+  --color-gray-800: #ffffff;
+  --color-gray-900: #ffff55;
+  --color-gray-950: #ffff55;
+
+  --color-zinc-50: #000038;
+  --color-zinc-100: #000050;
+  --color-zinc-200: #008888;
+  --color-zinc-300: #00aaaa;
+  --color-zinc-400: #88cccc;
+  --color-zinc-500: #aaaaaa;
+  --color-zinc-600: #cccccc;
+  --color-zinc-700: #55ffff;
+  --color-zinc-800: #ffffff;
+  --color-zinc-900: #ffff55;
+  --color-zinc-950: #ffff55;
+
+  --color-indigo-50: #001a38;  --color-indigo-100: #002b5c; --color-indigo-200: #00aaaa;
+  --color-indigo-500: #00aaaa; --color-indigo-600: #008888; --color-indigo-700: #55ffff;
+  --color-indigo-800: #ffff55; --color-indigo-900: #ffffff;
+
+  --color-blue-50: #001a38;    --color-blue-100: #002b5c;   --color-blue-200: #00aaaa;
+  --color-blue-500: #00aaaa;   --color-blue-600: #008888;   --color-blue-700: #55ffff;
+  --color-blue-800: #ffff55;   --color-blue-900: #ffffff;
+
+  --color-emerald-50: #002800; --color-emerald-100: #004400; --color-emerald-200: #00aa00;
+  --color-emerald-500: #00aa00; --color-emerald-600: #008800; --color-emerald-700: #55ff55;
+  --color-emerald-800: #55ff55; --color-emerald-900: #ffffff;
+
+  --color-green-50: #002800;   --color-green-100: #004400;  --color-green-200: #00aa00;
+  --color-green-500: #00aa00;  --color-green-600: #008800;  --color-green-700: #55ff55;
+  --color-green-800: #55ff55;  --color-green-900: #ffffff;
+
+  --color-amber-50: #332200;   --color-amber-100: #553800;  --color-amber-200: #aa5500;
+  --color-amber-500: #aa5500;  --color-amber-600: #884400;  --color-amber-700: #ffff55;
+  --color-amber-800: #ffff55;  --color-amber-900: #ffff55;
+
+  --color-rose-50: #380000;    --color-rose-100: #580000;   --color-rose-200: #aa0000;
+  --color-rose-500: #aa0000;   --color-rose-600: #880000;   --color-rose-700: #ff5555;
+  --color-rose-800: #ff5555;   --color-rose-900: #ffffff;
+
+  --color-red-50: #380000;     --color-red-100: #580000;    --color-red-200: #aa0000;
+  --color-red-500: #aa0000;    --color-red-600: #880000;    --color-red-700: #ff5555;
+  --color-red-800: #ff5555;    --color-red-900: #ffffff;
+
+  --color-purple-50: #280028;  --color-purple-100: #480048; --color-purple-200: #aa00aa;
+  --color-purple-500: #aa00aa; --color-purple-600: #880088; --color-purple-700: #ff55ff;
+  --color-purple-800: #ff55ff; --color-purple-900: #ffffff;
+
+  --color-violet-50: #280028;  --color-violet-100: #480048; --color-violet-200: #aa00aa;
+  --color-violet-500: #aa00aa; --color-violet-600: #880088; --color-violet-700: #ff55ff;
+  --color-violet-800: #ff55ff; --color-violet-900: #ffffff;
+}
+
+[data-theme="retro"] body {
+  font-family: var(--font-sans);
+  background-color: #000084 !important;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.22) 0px,
+    rgba(0, 0, 0, 0.22) 1px,
+    transparent 1px,
+    transparent 3px
+  ) !important;
+  color: #ffffff;
+}
+
+[data-theme="retro"] *:not(.force-light *),
+[data-theme="retro"] *::before,
+[data-theme="retro"] *::after {
+  border-radius: 0px !important;
+  font-family: var(--font-sans);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-theme="retro"] .aurora-blob {
+  display: none !important;
+}
+[data-theme="retro"] .aurora-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(85, 255, 255, 0.03) 0px,
+    rgba(85, 255, 255, 0.03) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  pointer-events: none;
+}
+
+/* DOS TUI double/stepped boxes and hard block shadows */
+[data-theme="retro"] .glass-panel,
+[data-theme="retro"] dialog,
+[data-theme="retro"] [role="dialog"] {
+  background: #000050 !important;
+  border: 2px solid #55ffff !important;
+  box-shadow: 4px 4px 0px #000000 !important;
+}
+
+[data-theme="retro"] aside {
+  background: #000038 !important;
+  border-right: 2px solid #55ffff !important;
+}
+
+[data-theme="retro"] header {
+  background: #00aaaa !important;
+  color: #000000 !important;
+  border-bottom: 2px solid #ffffff !important;
+}
+[data-theme="retro"] header *:not(button) {
+  color: #000000 !important;
+}
+
+/* DOS Buttons: VGA bevel + hard offset shadow */
+[data-theme="retro"] button:not([role="switch"]):not(.force-light *) {
+  border: 1px solid #55ffff !important;
+  box-shadow: 3px 3px 0px #000000 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+[data-theme="retro"] button:not([role="switch"]):not(.force-light *):active {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 1px 1px 0px #000000 !important;
+}
+
+/* DOS Data-Entry Inputs */
+[data-theme="retro"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea
+):not(.force-light *) {
+  background-color: #000000 !important;
+  color: #ffff55 !important;
+  border: 1px solid #55ffff !important;
+  box-shadow: inset 2px 2px 0px #000000 !important;
+}
+[data-theme="retro"] :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea
+):not(.force-light *):focus {
+  background-color: #001b2e !important;
+  border-color: #ffff55 !important;
+  outline: 1px dashed #ffff55 !important;
+}
+
+/* DOS TUI Grid Tables */
+[data-theme="retro"] table:not(.force-light *) {
+  border-collapse: collapse !important;
+  border: 2px solid #55ffff !important;
+  background-color: #000050 !important;
+}
+[data-theme="retro"] thead th:not(.force-light *) {
+  background-color: #00aaaa !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+  border: 1px solid #55ffff !important;
+  text-transform: uppercase;
+}
+[data-theme="retro"] td:not(.force-light *) {
+  border: 1px solid #008888 !important;
+  color: #ffffff !important;
+}
+[data-theme="retro"] tbody tr:hover td:not(.force-light *) {
+  background-color: #000084 !important;
+  color: #ffff55 !important;
+}
+
+[data-theme="retro"] ::selection {
+  background-color: #ffff55 !important;
+  color: #000000 !important;
 }
 
 

@@ -28,7 +28,7 @@ export interface ThemeOption {
   name: { en: string; sk: string; hu: string };
   description: { en: string; sk: string; hu: string };
   icon: string;
-  category: "herb" | "classic" | "dark";
+  category: "herb" | "classic" | "dark" | "radical";
   preview: {
     bg: string;
     card: string;
@@ -38,6 +38,8 @@ export interface ThemeOption {
     border: string;
   };
 }
+
+export const RADICAL_THEME_IDS = new Set(["paper", "minimalist", "retro"]);
 
 export const HERB_THEMES: ThemeOption[] = [
   {
@@ -84,6 +86,75 @@ export const HERB_THEMES: ThemeOption[] = [
       secondary: "#5b930b",
       text: "#332f2b",
       border: "#ece4d5"
+    }
+  },
+  {
+    id: "paper",
+    name: {
+      en: "Paper (Editorial Serif)",
+      sk: "Papier (Knižná Serifová)",
+      hu: "Papír (Editorial Szerif)"
+    },
+    description: {
+      en: "2–4px crisp corners, editorial serif typography, reading-optimized paper grain & muted ink tones, tactile buttons, and ruled entity-colored input lines.",
+      sk: "Jemné 2–4px rohy, knižné pätkové písmo, textúra papiera s tlmeným atramentom, hmatové tlačidlá a riadkované vstupy vo farbe entity.",
+      hu: "2–4px-es sarkok, könyvszerű talpas betűtípus, olvasásra optimalizált papírtextúra, sötétebb tónusú gombok és entitásszínű vonalas beviteli mezők."
+    },
+    icon: "📜",
+    category: "radical",
+    preview: {
+      bg: "#f4efe6",
+      card: "#fbf8f1",
+      primary: "#5c4938",
+      secondary: "#8c5a3c",
+      text: "#2b2520",
+      border: "#d8cebe"
+    }
+  },
+  {
+    id: "minimalist",
+    name: {
+      en: "Minimalist (Swiss Grid)",
+      sk: "Minimalistická (Čistá Mriežka)",
+      hu: "Minimalista (Tiszta Rács)"
+    },
+    description: {
+      en: "Zero shadows, 0px sharp corners, monochrome navigation, crisp bordered tables, simple sans typography, and entity colors strictly on interactive controls.",
+      sk: "Žiadne tiene, ostré 0px rohy, monochromatické menu, jednoduché tabuľky, čisté bezpätkové písmo a farby entít len na interaktívnych prvkoch.",
+      hu: "Árnyékok és lekerekítés nélkül (0px), monokróm menü, letisztult táblázatok, egyszerű sans betűtípus, entitásszínek kizárólag a gombokon."
+    },
+    icon: "◻️",
+    category: "radical",
+    preview: {
+      bg: "#ffffff",
+      card: "#fafafa",
+      primary: "#18181b",
+      secondary: "#2563eb",
+      text: "#09090b",
+      border: "#d4d4d8"
+    }
+  },
+  {
+    id: "retro",
+    name: {
+      en: "Extra Retro (MS-DOS TUI)",
+      sk: "Extra Retro (MS-DOS Terminál)",
+      hu: "Extra Retro (MS-DOS Terminál)"
+    },
+    description: {
+      en: "Classic 1990s MS-DOS / Borland Turbo Vision aesthetic with cobalt VGA panels, cyan & yellow phosphor monospace type, ASCII bevels, and hard block shadows.",
+      sk: "Klasická estetika MS-DOS / Borland Turbo Vision z 90. rokov s kobaltovými VGA panelmi, azúrovým a žltým neproporcionálnym písmom a ostrými tieňmi.",
+      hu: "Klasszikus 90-es évekbeli MS-DOS / Borland Turbo Vision megjelenés kobaltkék VGA panelekkel, cián és sárga monospace betűkkel és kemény blokkárnyékokkal."
+    },
+    icon: "💾",
+    category: "radical",
+    preview: {
+      bg: "#000084",
+      card: "#000050",
+      primary: "#00aaaa",
+      secondary: "#ffff55",
+      text: "#ffffff",
+      border: "#55ffff"
     }
   }
 ];
@@ -325,22 +396,31 @@ export const resolveAppearance = (
 // -----------------------------------------------------------------------------
 
 /** Address-bar / task-switcher colour, kept in step with the surface behind it. */
-const THEME_COLOR: Record<Appearance, string> = { light: "#f2f6fc", dark: "#0d1117" };
+const THEME_COLOR: Record<string, string> = {
+  light: "#f2f6fc",
+  dark: "#0d1117",
+  paper: "#f4efe6",
+  minimalist: "#ffffff",
+  retro: "#000084",
+};
 
 const paint = (appearance: Appearance, palette: string): void => {
   const root = document.documentElement;
-  root.setAttribute("data-theme", appearance === "dark" ? "dark" : palette);
+  const isRadical = RADICAL_THEME_IDS.has(palette);
+  const effectiveTheme = isRadical ? palette : appearance === "dark" ? "dark" : palette;
+  const effectiveAppearance: Appearance = palette === "retro" ? "dark" : isRadical ? "light" : appearance;
+  root.setAttribute("data-theme", effectiveTheme);
   // Read by CSS that needs the appearance without caring which light palette is
   // active, and by the QA suite to assert what is on screen.
-  root.setAttribute("data-appearance", appearance);
-  root.classList.toggle("dark", appearance === "dark");
+  root.setAttribute("data-appearance", effectiveAppearance);
+  root.classList.toggle("dark", effectiveAppearance === "dark");
   // Tells the browser to render native widgets — scrollbars, date pickers,
   // <select> popups, autofill — in the matching scheme. Without it they stay
   // light and punch white holes into a dark screen.
-  root.style.colorScheme = appearance;
+  root.style.colorScheme = effectiveAppearance;
 
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", THEME_COLOR[appearance]);
+  if (meta) meta.setAttribute("content", THEME_COLOR[effectiveTheme] || THEME_COLOR[effectiveAppearance]);
 };
 
 /**

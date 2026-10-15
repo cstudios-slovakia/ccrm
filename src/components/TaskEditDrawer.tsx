@@ -8,10 +8,11 @@ import {
     Hash,
     Lock,
     RotateCcw,
+    Ticket as TicketIcon,
     Trash2,
     X,
 } from "lucide-react";
-import type { Lead, Project, Task, UserProfile } from "../types";
+import type { Lead, Project, Task, Ticket, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
@@ -144,6 +145,7 @@ interface TaskEditDrawerProps {
     task: Task;
     leads: Lead[];
     projects?: Project[];
+    tickets?: Ticket[];
     users: UserProfile[];
     taskStates: string[];
     systemLanguage: Language;
@@ -179,6 +181,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     task,
     leads,
     projects = [],
+    tickets = [],
     users,
     taskStates,
     systemLanguage,
@@ -332,6 +335,56 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     const linkedLead = task.relatedLeadId
         ? leads.find((l) => String(l.id) === String(task.relatedLeadId))
         : undefined;
+
+    const resolvedTicketId = useMemo(() => {
+        if (draft.relatedTicketId !== undefined) return draft.relatedTicketId || "";
+        if (task.relatedTicketId) return task.relatedTicketId;
+        const byLink = tickets.find((tk) =>
+            (tk.taskLinks || []).some((l) => String(l.taskId) === String(task.id)),
+        );
+        if (byLink) return byLink.id;
+        const m = (task.title || "").match(/\[(TCK-[A-Za-z0-9_-]+)\]/i);
+        if (m) {
+            const num = m[1].toUpperCase();
+            const byNum = tickets.find(
+                (tk) => (tk.ticketNumber || "").toUpperCase() === num,
+            );
+            return byNum ? byNum.id : num;
+        }
+        return "";
+    }, [draft.relatedTicketId, task.relatedTicketId, task.id, task.title, tickets]);
+
+    const linkedTicket = useMemo(() => {
+        if (!resolvedTicketId) return undefined;
+        const lower = resolvedTicketId.toLowerCase();
+        return tickets.find(
+            (tk) =>
+                String(tk.id) === String(resolvedTicketId) ||
+                (tk.ticketNumber || "").toLowerCase() === lower,
+        );
+    }, [resolvedTicketId, tickets]);
+
+    const ticketOptions: DropdownOption[] = useMemo(() => {
+        const opts: DropdownOption[] = [
+            { value: "", label: t("-- None --", "-- Žiadny --", "-- Nincs --") },
+            ...tickets.map((tk) => ({
+                value: tk.id,
+                label: `${tk.ticketNumber} — ${tk.subject || tk.title || ""}`,
+            })),
+        ];
+        if (
+            resolvedTicketId &&
+            !opts.some((o) => o.value === resolvedTicketId)
+        ) {
+            opts.push({
+                value: resolvedTicketId,
+                label: linkedTicket
+                    ? `${linkedTicket.ticketNumber} — ${linkedTicket.subject || ""}`
+                    : resolvedTicketId,
+            });
+        }
+        return opts;
+    }, [tickets, resolvedTicketId, linkedTicket, t]);
 
     if (typeof document === "undefined") return null;
 
@@ -665,6 +718,35 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 options={projectOptions}
                             />
                         </div>
+
+                        {(tickets.length > 0 || resolvedTicketId) && (
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                    <label className="type-overline text-slate-500 flex items-center gap-1">
+                                        <TicketIcon className="h-3 w-3 text-indigo-600" />
+                                        {t("Support Ticket", "Podporný tiket", "Támogatási jegy")}
+                                    </label>
+                                    {resolvedTicketId && (
+                                        <a
+                                            href={`#tickets/${encodeURIComponent(linkedTicket?.id || resolvedTicketId)}`}
+                                            data-testid="task-drawer-ticket-link"
+                                            className="group/ticket type-overline text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
+                                        >
+                                            {t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}
+                                            {linkedTicket?.ticketNumber ? ` (${linkedTicket.ticketNumber})` : ""}
+                                            <ArrowUpRight className="h-3 w-3 transition-transform group-hover/ticket:translate-x-px group-hover/ticket:-translate-y-px" />
+                                        </a>
+                                    )}
+                                </div>
+                                <CustomSelect
+                                    searchable
+                                    value={resolvedTicketId}
+                                    disabled={!canEdit}
+                                    onChange={(v) => update({ relatedTicketId: v || undefined })}
+                                    options={ticketOptions}
+                                />
+                            </div>
+                        )}
 
                         <div className="space-y-1">
                             <div className="flex items-center justify-between gap-2">
