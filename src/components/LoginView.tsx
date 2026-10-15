@@ -20,12 +20,12 @@ import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ShanShuiBackground } from "./ShanShuiBackground";
+import { LoginInfoPanel } from "./LoginInfoPanel";
 import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
 import { passwordRules, PASSWORD_MIN_LENGTH } from "../utils/passwordRules";
 import {
   getCurrentLoginTheme,
-  formatLocalizedClock,
-  formatLocalizedDate
+  formatLocalizedClock
 } from "../utils/loginTheme";
 
 interface LoginViewProps {
@@ -65,7 +65,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   const activeTheme = getCurrentLoginTheme(currentTime);
   const clock = formatLocalizedClock(currentTime);
-  const dateStr = formatLocalizedDate(currentTime, systemLanguage);
 
   // Probed once on mount rather than on every render
   const [browserStorageBlocked] = useState(
@@ -245,8 +244,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   const phaseBadgeText = activeTheme.badge[systemLanguage] || activeTheme.badge.en;
   const phaseGreetingText = activeTheme.greeting[systemLanguage] || activeTheme.greeting.en;
-  const phaseSubtitleText = activeTheme.subtitle[systemLanguage] || activeTheme.subtitle.en;
-  const phaseQuoteText = activeTheme.quote[systemLanguage] || activeTheme.quote.en;
 
   return (
     <div
@@ -259,43 +256,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
       {/* Procedural Chinese Landscape Painting Infinite Scrolling Background */}
       {!isModal && <ShanShuiBackground />}
 
-      {/* LEFT AREA: Atmospheric Executive Time-of-Day Hero Panel */}
+      {/* LEFT AREA: greeting, clock, weather and quote of the day. Follows the
+          app's appearance like the login card does, so dark mode darkens both. */}
       {!isModal && (
-        <div className="force-light flex-1 hidden lg:flex flex-col justify-center items-start relative z-10 pr-12 xl:pr-20 py-8 min-h-145 max-w-2xl animate-in fade-in duration-700 select-none">
-          {/* Middle Body: Digital Clock & Executive Localized Greeting with Frosted Rice Paper Backdrop */}
-          <div
-            className="space-y-6 rounded-[32px] border backdrop-blur-md p-8 xl:p-10 shadow-xl transition-colors duration-700 bg-white/75 border-stone-200/70 shadow-stone-900/5"
-          >
-            {/* Live Digital Clock */}
-            <div className="space-y-1">
-              <div className="flex items-baseline font-mono font-bold tracking-tight text-stone-900 drop-shadow-sm">
-                <span className="text-5xl xl:text-7xl">{clock.hoursStr}</span>
-                <span className="text-display xl:text-6xl mx-1 animate-pulse text-stone-900/45">
-                  :
-                </span>
-                <span className="text-5xl xl:text-7xl">{clock.minutesStr}</span>
-                <span className="text-heading ml-2 font-semibold text-stone-600">
-                  .{clock.secondsStr}
-                </span>
-              </div>
-              <p className="text-ui font-extrabold pl-1 text-stone-700 drop-shadow-none">
-                {dateStr}
-              </p>
-            </div>
-
-            {/* Dynamic Greeting & Brand Slogan */}
-            <div className="space-y-2.5 max-w-lg">
-              <h1 className="type-entity-title leading-tight text-stone-900 drop-shadow-sm">
-                {phaseGreetingText}
-              </h1>
-              <p className={`text-title-sm font-bold bg-gradient-to-r ${activeTheme.accentGradient} bg-clip-text text-transparent leading-snug`}>
-                {phaseSubtitleText}
-              </p>
-              <p className="text-ui font-medium leading-relaxed text-stone-800">
-                {phaseQuoteText}
-              </p>
-            </div>
-          </div>
+        <div className="flex-1 hidden lg:flex flex-col justify-center items-start relative z-10 pr-12 xl:pr-20 py-8 min-h-145 max-w-2xl animate-in fade-in duration-700 select-none">
+          <LoginInfoPanel language={systemLanguage} />
         </div>
       )}
 

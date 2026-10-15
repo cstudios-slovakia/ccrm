@@ -1289,6 +1289,16 @@ export async function installBackendMocks(page: Page) {
     }),
   );
 
+  // The login screen's weather line. Answered here so the suite stays offline
+  // and the panel always renders the same way.
+  await page.route('https://api.open-meteo.com/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ current: { temperature_2m: 14.2, weather_code: 2, is_day: 1 } }),
+    }),
+  );
+
   await page.addInitScript((userJson: string) => {
     try {
       window.sessionStorage.setItem('crm_current_user_rbac', userJson);
