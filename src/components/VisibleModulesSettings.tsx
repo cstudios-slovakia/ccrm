@@ -682,7 +682,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                           <span className="sr-only">Toggle {module.title}</span>
                           <span
                             aria-hidden="true"
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out flex items-center justify-center ${
+                            className={`pointer-events-none inline-flex h-5 w-5 shrink-0 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out items-center justify-center ${
                               isVisible ? "translate-x-5" : "translate-x-0"
                             }`}
                           >
