@@ -595,7 +595,7 @@ if ($action === 'public_status') {
     $ticketRows = $tStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $msgStmt = $pdo->prepare("
-        SELECT `id`, `ticket_id`, `author_type`, `author_name`, `body`, `created_at`
+        SELECT `id`, `ticket_id`, `author_type`, `author_name`, `event_type`, `body`, `created_at`
         FROM `ticket_messages`
         WHERE `ticket_id` = ? AND `is_internal` = 0
         ORDER BY `created_at` ASC
@@ -610,6 +610,7 @@ if ($action === 'public_status') {
                 'id' => $m['id'],
                 'authorType' => $m['author_type'],
                 'authorName' => $m['author_name'],
+                'eventType' => $m['event_type'] ?? 'public_reply',
                 'body' => $m['body'],
                 'createdAt' => $m['created_at'],
             ];

@@ -180,7 +180,7 @@ if ($action === 'list') {
     $rows = $tStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $msgStmt = $pdo->prepare("
-        SELECT `id`, `author_type`, `author_name`, `body`, `attachments_json`, `created_at`
+        SELECT `id`, `author_type`, `author_name`, `event_type`, `body`, `attachments_json`, `created_at`
         FROM `ticket_messages`
         WHERE `ticket_id` = ? AND `is_internal` = 0
         ORDER BY `created_at` ASC
@@ -195,6 +195,7 @@ if ($action === 'list') {
                 'id' => $m['id'],
                 'authorType' => $m['author_type'],
                 'authorName' => $m['author_name'],
+                'eventType' => $m['event_type'] ?? 'public_reply',
                 'body' => $m['body'],
                 'attachments' => json_decode($m['attachments_json'] ?? '[]', true) ?: [],
                 'createdAt' => $m['created_at'],
@@ -677,6 +678,7 @@ $configJson = json_encode([
     }
     .ktw-msg.client { background: #1e293b; border: 1px solid #334155; }
     .ktw-msg.agent { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); }
+    .ktw-msg.status { background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.35); color: #e9d5ff; }
     .ktw-status-pill {
       display: inline-block;
       padding: 2px 7px;
@@ -1120,7 +1122,7 @@ $configJson = json_encode([
   };
 
   function getStatusInfo(statusId) {
-    const found = (loadedStatuses || []).find(function(s) { return s.id === statusId; });
+    const found = (loadedStatuses || []).find(function(s) { return s.id === statusId || s.key === statusId; });
     return found || { labelSk: statusId, color: '#64748b' };
   }
 
@@ -1146,6 +1148,20 @@ $configJson = json_encode([
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  function formatMessageBody(str) {
+    const raw = String(str || '')
+      .replace(/<\s*br\s*\/?>/gi, '\n')
+      .replace(/<\/\s*(p|div|li|h[1-6])\s*>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return escapeHtml(raw);
+  }
+
   function renderTicketsView() {
     const box = $('ktw-list-container');
     if (selectedTicketId) {
@@ -1157,23 +1173,32 @@ $configJson = json_encode([
       }
       const st = getStatusInfo(t.status);
       const msgsHtml = (t.messages || []).map(function(m) {
+        const isStatusUpdate = m.eventType === 'status_changed' || m.authorType === 'system';
+        const isAgent = !isStatusUpdate && m.authorType === 'agent';
+        const msgClass = isStatusUpdate ? 'status' : (isAgent ? 'agent' : 'client');
+        const headerLabel = isStatusUpdate
+          ? '🔄 Zmena stavu'
+          : (isAgent ? ('💬 ' + (m.authorName || 'Podpora')) : (m.authorName || 'Klient'));
         return `
-          <div class="ktw-msg ${m.authorType === 'agent' ? 'agent' : 'client'}">
+          <div class="ktw-msg ${msgClass}">
             <div style="display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;margin-bottom:3px;">
-              <strong>${escapeHtml(m.authorName || (m.authorType === 'agent' ? 'Podpora' : 'Klient'))}</strong>
+              <strong>${escapeHtml(headerLabel)}</strong>
               <span>${escapeHtml((m.createdAt || '').slice(0, 16))}</span>
             </div>
-            <div style="white-space:pre-wrap;">${escapeHtml(m.body)}</div>
+            <div style="white-space:pre-wrap;font-weight:${isStatusUpdate ? '700' : '400'};">${formatMessageBody(m.body)}</div>
           </div>
         `;
       }).join('');
 
       box.innerHTML = `
-        <button type="button" class="ktw-btn-secondary" id="ktw-back-btn" style="margin-bottom:10px;">← Späť na zoznam tiketov</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+          <button type="button" class="ktw-btn-secondary" id="ktw-back-btn" style="flex:1;">← Späť na zoznam tiketov</button>
+          <button type="button" class="ktw-btn-secondary" id="ktw-refresh-btn" style="width:auto;padding:8px 12px;" title="Obnoviť">↻</button>
+        </div>
         <div style="margin-bottom:10px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
             <span style="font-size:11px;font-weight:700;color:#94a3b8;">${escapeHtml(t.ticketNumber)}</span>
-            <span class="ktw-status-pill" style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}55;">${escapeHtml(st.labelSk || t.status)}</span>
+            <span class="ktw-status-pill" style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}55;">${escapeHtml(st.labelSk || st.labelEn || t.status)}</span>
           </div>
           <div style="font-size:14px;font-weight:700;margin-top:4px;">${escapeHtml(t.subject)}</div>
         </div>
@@ -1192,6 +1217,11 @@ $configJson = json_encode([
         selectedTicketId = null;
         renderTicketsView();
       };
+      if ($('ktw-refresh-btn')) {
+        $('ktw-refresh-btn').onclick = function() {
+          fetchExistingTickets();
+        };
+      }
       $('ktw-followup-send').onclick = async function() {
         const body = $('ktw-followup-body').value.trim();
         const fb = $('ktw-followup-fb');

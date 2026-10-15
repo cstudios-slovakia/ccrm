@@ -5544,11 +5544,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     foreach ($payload['tickets'] as $tck) {
                         $tckId = (string)($tck['id'] ?? '');
                         if ($tckId === '') continue;
-                        if ($isDeltaSync && ccrm_write_would_clobber($pdo, 'tickets', $tckId, $baseSyncedAt)) {
-                            $recordConflict('tickets', $tckId);
-                            $processedTicketIds[] = $tckId;
-                            continue;
-                        }
                         $tckNum = !empty($tck['ticketNumber']) ? (string)$tck['ticketNumber'] : ('TCK-' . strtoupper(substr($tckId, -4)));
                         $createdAt = !empty($tck['createdAt']) ? substr(str_replace('T', ' ', (string)$tck['createdAt']), 0, 19) : date('Y-m-d H:i:s');
                         $updatedAt = !empty($tck['updatedAt']) ? substr(str_replace('T', ' ', (string)$tck['updatedAt']), 0, 19) : date('Y-m-d H:i:s');
@@ -5629,10 +5624,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $keepMsgIds[] = $mId;
                             }
                             if (empty($keepMsgIds)) {
-                                $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ?")->execute([$tckId]);
+                                if ($isDeltaSync && $baseSyncedAt !== null) {
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND NOT (`author_type` = 'client' AND `created_at` > ?)")->execute([$tckId, $baseSyncedAt]);
+                                } else {
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ?")->execute([$tckId]);
+                                }
                             } else {
                                 $ph = implode(',', array_fill(0, count($keepMsgIds), '?'));
-                                $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepMsgIds));
+                                if ($isDeltaSync && $baseSyncedAt !== null) {
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph) AND NOT (`author_type` = 'client' AND `created_at` > ?)")->execute(array_merge([$tckId], $keepMsgIds, [$baseSyncedAt]));
+                                } else {
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepMsgIds));
+                                }
                             }
                         }
 

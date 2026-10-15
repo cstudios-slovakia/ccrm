@@ -10,11 +10,14 @@ import {
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
+import { TicketHtmlContent } from "./ui/TicketRichHtmlEditor";
+import { ticketTypeColor, ticketTypeLabel } from "../utils/ticketUtils";
 
 interface PublicTicketMessage {
   id: string;
   authorType: string;
   authorName: string;
+  eventType?: string;
   body: string;
   createdAt: string;
 }
@@ -247,6 +250,8 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                 const st = statusMap.get(tk.status);
                 const color = st?.color || "#6366f1";
                 const label = st?.labelEn || tk.status;
+                const tColor = ticketTypeColor(tk.type);
+                const tLabel = ticketTypeLabel(tk.type, "en");
                 const isExpanded = expandedId === tk.id;
 
                 return (
@@ -257,8 +262,25 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                     >
                       <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-micro font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                          <span
+                            className="font-mono text-micro font-extrabold px-2 py-0.5 rounded-md border"
+                            style={{
+                              backgroundColor: `${tColor}15`,
+                              color: tColor,
+                              borderColor: `${tColor}40`,
+                            }}
+                          >
                             {tk.ticketNumber}
+                          </span>
+                          <span
+                            className="text-micro font-bold uppercase px-2 py-0.5 rounded border"
+                            style={{
+                              backgroundColor: `${tColor}12`,
+                              color: tColor,
+                              borderColor: `${tColor}35`,
+                            }}
+                          >
+                            {tLabel}
                           </span>
                           <span className="text-micro font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600">
                             {tk.priority}
@@ -306,22 +328,51 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {tk.messages.map((m) => (
-                              <div
-                                key={m.id}
-                                className={`p-3 rounded-2xl border text-caption ${
-                                  m.authorType === "agent"
-                                    ? "bg-indigo-50/50 border-indigo-200"
-                                    : "bg-slate-50 border-slate-200"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between text-micro text-slate-500 mb-1">
-                                  <strong className="text-slate-800">{m.authorName}</strong>
-                                  <span>{String(m.createdAt || "").slice(0, 16)}</span>
+                            {tk.messages.map((m) => {
+                              const isStatusUpdate =
+                                m.eventType === "status_changed" || m.authorType === "system";
+                              const isAgent = !isStatusUpdate && m.authorType === "agent";
+                              return (
+                                <div
+                                  key={m.id}
+                                  className={`p-3 rounded-2xl border text-caption ${
+                                    isStatusUpdate
+                                      ? "bg-purple-50/60 border-purple-200"
+                                      : isAgent
+                                        ? "bg-indigo-50/50 border-indigo-200"
+                                        : "bg-slate-50 border-slate-200"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between text-micro text-slate-500 mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <strong className="text-slate-800">
+                                        {m.authorName || (isAgent ? "Support" : "Client")}
+                                      </strong>
+                                      {isStatusUpdate && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold uppercase bg-purple-100 text-purple-800 border border-purple-300">
+                                          <RefreshCw className="w-2.5 h-2.5" />
+                                          Status Update
+                                        </span>
+                                      )}
+                                      {isAgent && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold uppercase bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                          Support Reply
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span>{String(m.createdAt || "").slice(0, 16)}</span>
+                                  </div>
+                                  {isStatusUpdate ? (
+                                    <div className="font-bold text-purple-900">{m.body}</div>
+                                  ) : (
+                                    <TicketHtmlContent
+                                      html={m.body}
+                                      className="text-slate-700"
+                                    />
+                                  )}
                                 </div>
-                                <div className="whitespace-pre-wrap text-slate-700">{m.body}</div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

@@ -600,6 +600,33 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     null,
   );
 
+  const createStatusChangeMessage = (
+    tk: Ticket,
+    oldStatus: string,
+    nextStatus: string,
+    createdAt: string,
+  ): TicketMessage => {
+    const oldLabel = ticketStatusLabel(oldStatus, userLanguage, ticketStatuses);
+    const newLabel = ticketStatusLabel(
+      nextStatus,
+      userLanguage,
+      ticketStatuses,
+    );
+    return {
+      id: `tmsg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      ticketId: tk.id,
+      authorType: "system",
+      authorUserId: currentUser?.id || null,
+      authorName: currentUser?.name || "Support",
+      authorEmail: currentUser?.email || "",
+      body: `${oldLabel} → ${newLabel}`,
+      isInternal: false,
+      eventType: "status_changed",
+      attachments: [],
+      createdAt,
+    };
+  };
+
   const handleMoveTicketStatus = (ticketId: string, nextStatus: string) => {
     if (!canEdit) return;
     const target = tickets.find((tk) => tk.id === ticketId);
@@ -611,11 +638,18 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
         const becomingClosed =
           !isClosedTicketStatus(tk.status, ticketStatuses) &&
           isClosedTicketStatus(nextStatus, ticketStatuses);
+        const statusMsg = createStatusChangeMessage(
+          tk,
+          tk.status,
+          nextStatus,
+          now,
+        );
         return {
           ...tk,
           status: nextStatus,
           resolvedAt: becomingClosed ? tk.resolvedAt || now : tk.resolvedAt,
           updatedAt: now,
+          messages: [...(tk.messages || []), statusMsg],
         };
       }),
     );
@@ -641,12 +675,22 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       prev.map((tk) => {
         if (tk.id !== selectedTicket.id) return tk;
         const nextStatus = patch.status ?? tk.status;
+        const statusChanged =
+          Boolean(patch.status) && patch.status !== tk.status;
         const becomingClosed =
           !isClosedTicketStatus(tk.status, ticketStatuses) &&
           isClosedTicketStatus(nextStatus, ticketStatuses);
+        const nextMessages =
+          statusChanged && !patch.messages
+            ? [
+                ...(tk.messages || []),
+                createStatusChangeMessage(tk, tk.status, nextStatus, now),
+              ]
+            : patch.messages ?? tk.messages;
         return {
           ...tk,
           ...patch,
+          messages: nextMessages,
           resolvedAt: becomingClosed ? tk.resolvedAt || now : tk.resolvedAt,
           updatedAt: now,
         };
@@ -820,6 +864,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
         const becomingClosed =
           !isClosedTicketStatus(tk.status, ticketStatuses) &&
           isClosedTicketStatus(nextStatus, ticketStatuses);
+        const statusChanged = nextStatus && nextStatus !== tk.status;
+        const appendedMessages = statusChanged
+          ? [
+              newMsg,
+              createStatusChangeMessage(tk, tk.status, nextStatus, now),
+            ]
+          : [newMsg];
         return {
           ...tk,
           status: nextStatus,
@@ -828,7 +879,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             : tk.firstRespondedAt,
           resolvedAt: becomingClosed ? tk.resolvedAt || now : tk.resolvedAt,
           updatedAt: now,
-          messages: [...(tk.messages || []), newMsg],
+          messages: [...(tk.messages || []), ...appendedMessages],
         };
       }),
     );
@@ -3302,6 +3353,24 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             "Belső csapatjegyzet",
                           );
                         }
+                      } else if (evType === "status_changed") {
+                        iconNode = <RefreshCw className="h-4 w-4" />;
+                        iconBadgeClass =
+                          "border-purple-200 text-purple-600 bg-purple-50/40";
+                        cardToneClass =
+                          "bg-purple-50/30 border-purple-200/80 hover:border-purple-300";
+                        badgeLabel = t(
+                          "Status Update",
+                          "Zmena stavu",
+                          "Státuszváltozás",
+                        );
+                        badgePillClass =
+                          "bg-purple-100 text-purple-800 border-purple-300";
+                        eventTitle = t(
+                          "Ticket Status Updated",
+                          "Stav tiketu bol zmenený",
+                          "Jegy státusza frissítve",
+                        );
                       } else if (isClient || evType === "client_reply") {
                         iconNode = <MessageSquare className="h-4 w-4" />;
                         iconBadgeClass =
