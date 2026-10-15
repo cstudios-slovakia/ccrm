@@ -48,6 +48,8 @@ import {
   getTicketStatusLabel,
   nextTicketNumber,
   resolveProjectRetainer,
+  ticketTypeColor,
+  ticketTypeLabel,
 } from "./../utils/tickets";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TicketRichHtmlEditor, isImageAttachment } from "./ui/TicketRichHtmlEditor";
@@ -645,6 +647,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             projectTickets.map((tck) => {
               const stDef = ticketStatuses.find((s) => s.id === tck.status || s.key === tck.status);
               const sla = evaluateTicketSla(tck, ticketStatuses);
+              const typeColor = ticketTypeColor(tck.type);
               return (
                 <div
                   key={tck.id}
@@ -658,7 +661,14 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                   className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl border border-slate-200 bg-white hover:border-orange-500/50 cursor-pointer transition-all"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="px-2 py-1 rounded-lg text-micro font-mono font-bold bg-slate-100 text-slate-700">
+                    <span
+                      className="px-2 py-1 rounded-lg text-micro font-mono font-bold border"
+                      style={{
+                        backgroundColor: `${typeColor}15`,
+                        color: typeColor,
+                        borderColor: `${typeColor}40`,
+                      }}
+                    >
                       {tck.ticketNumber}
                     </span>
                     <div className="min-w-0">
@@ -679,6 +689,15 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2.5">
+                    <span
+                      className="px-2 py-0.5 rounded-md text-micro font-bold uppercase"
+                      style={{
+                        backgroundColor: `${typeColor}18`,
+                        color: typeColor,
+                      }}
+                    >
+                      {ticketTypeLabel(tck.type, userLanguage)}
+                    </span>
                     <span
                       className={`px-2 py-0.5 rounded-md text-micro font-bold uppercase ${
                         tck.priority === "critical"

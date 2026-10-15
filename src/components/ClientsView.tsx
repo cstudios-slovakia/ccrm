@@ -11,7 +11,7 @@ import {
   AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink, Ticket as TicketIcon
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
-import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, PRIORITY_COLORS } from "../utils/tickets";
+import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, generateOrderNumber, calculateOrderTotals, defaultOrderStatus } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
@@ -5793,6 +5793,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         {clientTickets.map((tk) => {
                           const stColor = ticketStatusColor(tk.status, ticketStatuses);
                           const stLabel = ticketStatusLabel(tk.status, systemLanguage, ticketStatuses);
+                          const typeColor = ticketTypeColor(tk.type);
                           const linkedProj = tk.projectId ? projects.find((p) => p.id === tk.projectId) : null;
                           return (
                             <div
@@ -5804,7 +5805,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             >
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono text-micro font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                                  <span
+                                    className="font-mono text-micro font-bold px-2 py-0.5 rounded-md border"
+                                    style={{
+                                      backgroundColor: `${typeColor}15`,
+                                      color: typeColor,
+                                      borderColor: `${typeColor}40`,
+                                    }}
+                                  >
                                     {tk.ticketNumber}
                                   </span>
                                   <span className="font-bold text-ui text-slate-800 truncate">{tk.subject}</span>
@@ -5828,6 +5836,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                                  style={{
+                                    backgroundColor: `${typeColor}18`,
+                                    color: typeColor,
+                                  }}
+                                >
+                                  {ticketTypeLabel(tk.type, systemLanguage)}
+                                </span>
                                 <span
                                   className="px-2 py-0.5 rounded-full text-micro font-bold uppercase"
                                   style={{

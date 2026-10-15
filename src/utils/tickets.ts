@@ -6,6 +6,7 @@ import type {
   TicketSettingsConfig,
   TicketStatusCategory,
   TicketStatusDef,
+  TicketType,
   SupportContract,
 } from "../types";
 
@@ -126,6 +127,39 @@ export const PRIORITY_COLORS: Record<TicketPriority, string> = {
   normal: "#3b82f6",
   high: "#f59e0b",
   critical: "#ef4444",
+};
+
+export const TICKET_TYPE_COLORS: Record<TicketType, string> = {
+  bug: "#f43f5e",
+  question: "#0ea5e9",
+  feature_request: "#a855f7",
+  incident: "#f59e0b",
+  billing: "#10b981",
+};
+
+const BUILTIN_TICKET_TYPE_LABELS: Record<TicketType, [string, string, string]> = {
+  bug: ["Bug / Error", "Chyba / Bug", "Hiba / Bug"],
+  question: ["Question", "Otázka", "Kérdés"],
+  feature_request: ["Feature Request", "Požiadavka", "Fejlesztési kérés"],
+  incident: ["Incident", "Incident", "Incidens"],
+  billing: ["Billing", "Fakturácia", "Számlázás"],
+};
+
+export const ticketTypeColor = (type?: TicketType | string | null): string =>
+  TICKET_TYPE_COLORS[(type as TicketType) || "bug"] || TICKET_TYPE_COLORS.bug;
+
+export const ticketTypeLabel = (
+  type?: TicketType | string | null,
+  lang: "sk" | "en" | "hu" = "sk",
+): string => {
+  const key: TicketType =
+    type && (type as TicketType) in BUILTIN_TICKET_TYPE_LABELS
+      ? (type as TicketType)
+      : "bug";
+  const labels = BUILTIN_TICKET_TYPE_LABELS[key];
+  if (lang === "hu") return labels[2];
+  if (lang === "en") return labels[0];
+  return labels[1];
 };
 
 export const DEFAULT_TICKET_SETTINGS: TicketSettingsConfig = {

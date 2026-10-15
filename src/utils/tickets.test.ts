@@ -15,6 +15,8 @@ import {
   normalizeTicketStatuses,
   parseDurationColonInput,
   sanitizeColonTimeDraft,
+  ticketTypeColor,
+  ticketTypeLabel,
 } from "./tickets.ts";
 import type { Project, Ticket } from "../types/index.ts";
 
@@ -186,5 +188,14 @@ test("computeRetainerPeriod and computeProjectRetainerUsage respect resetDay", (
   assert.equal(usage.percent, 15);
 });
 
-
-
+test("ticketTypeColor and ticketTypeLabel resolve per-type colors and localized labels", () => {
+  assert.equal(ticketTypeColor("bug"), "#f43f5e");
+  assert.equal(ticketTypeColor("question"), "#0ea5e9");
+  assert.equal(ticketTypeColor("feature_request"), "#a855f7");
+  assert.equal(ticketTypeColor("incident"), "#f59e0b");
+  assert.equal(ticketTypeColor("billing"), "#10b981");
+  assert.equal(ticketTypeColor(undefined), "#f43f5e");
+  assert.equal(ticketTypeLabel("bug", "en"), "Bug / Error");
+  assert.equal(ticketTypeLabel("feature_request", "sk"), "Požiadavka");
+  assert.equal(ticketTypeLabel("billing", "hu"), "Számlázás");
+});

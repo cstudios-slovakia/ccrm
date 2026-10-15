@@ -72,6 +72,8 @@ import {
   PRIORITY_COLORS,
   ticketStatusColor,
   ticketStatusLabel,
+  ticketTypeColor,
+  ticketTypeLabel,
   isClosedTicketStatus,
   evaluateTicketSla,
   computeSlaDueDates,
@@ -1307,6 +1309,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       setIsEditingDescription(false);
     };
 
+    const selTypeColor = ticketTypeColor(selectedTicket.type);
+    const selTypeOpt =
+      ticketTypeOptions.find((o) => o.value === (selectedTicket.type || "bug")) ||
+      ticketTypeOptions[0];
+
     return (
       <div className="w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left">
         {/* Top EntityHeader */}
@@ -1316,10 +1323,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           backLabel={t("Back to list", "Späť na zoznam", "Vissza a listához")}
           title={
             <span className="flex items-center gap-2.5 min-w-0">
-              <span className="shrink-0 text-indigo-600">
+              <span className="shrink-0" style={{ color: selTypeColor }}>
                 <TicketIcon className="h-7 w-7" />
               </span>
-              <span className="font-mono text-ui font-extrabold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-xl border border-indigo-200 shrink-0">
+              <span
+                className="font-mono text-ui font-extrabold px-2.5 py-0.5 rounded-xl border shrink-0"
+                style={{
+                  backgroundColor: `${selTypeColor}15`,
+                  color: selTypeColor,
+                  borderColor: `${selTypeColor}40`,
+                }}
+              >
                 {selectedTicket.ticketNumber}
               </span>
               {isEditingSubject ? (
@@ -1366,6 +1380,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           }
           meta={
             <span className="inline-flex flex-wrap items-center gap-2">
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                style={{
+                  backgroundColor: `${selTypeColor}18`,
+                  color: selTypeColor,
+                }}
+              >
+                {selTypeOpt?.icon}
+                <span>{selTypeOpt?.label}</span>
+              </span>
+              <span>•</span>
               <span className="uppercase font-bold text-slate-600">
                 {selectedTicket.source || selectedTicket.channel || "manual"}
               </span>
@@ -1771,34 +1796,34 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   )}
                 </div>
 
-                {/* 3. Priority */}
-                <div className="pt-3 border-t border-slate-100">
-                  <label className="block type-overline text-slate-400 mb-1">
-                    {t("Priority", "Priorita", "Prioritás")}
-                  </label>
-                  <CustomSelect
-                    value={selectedTicket.priority}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      updateSelectedTicket({ priority: v as TicketPriority })
-                    }
-                    options={priorityOptions}
-                  />
-                </div>
-
-                {/* 4. Ticket Type */}
-                <div>
-                  <label className="block type-overline text-slate-400 mb-1">
-                    {t("Ticket Type", "Typ tiketu", "Jegy típusa")}
-                  </label>
-                  <CustomSelect
-                    value={selectedTicket.type || "bug"}
-                    disabled={!canEdit}
-                    onChange={(v) =>
-                      updateSelectedTicket({ type: v as TicketType })
-                    }
-                    options={ticketTypeOptions}
-                  />
+                {/* 3. Priority & 4. Ticket Type */}
+                <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2.5">
+                  <div className="min-w-0">
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Priority", "Priorita", "Prioritás")}
+                    </label>
+                    <CustomSelect
+                      value={selectedTicket.priority}
+                      disabled={!canEdit}
+                      onChange={(v) =>
+                        updateSelectedTicket({ priority: v as TicketPriority })
+                      }
+                      options={priorityOptions}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Ticket Type", "Typ tiketu", "Jegy típusa")}
+                    </label>
+                    <CustomSelect
+                      value={selectedTicket.type || "bug"}
+                      disabled={!canEdit}
+                      onChange={(v) =>
+                        updateSelectedTicket({ type: v as TicketType })
+                      }
+                      options={ticketTypeOptions}
+                    />
+                  </div>
                 </div>
 
                 {/* 5. Assignee */}
@@ -4403,6 +4428,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     userLanguage,
                     ticketStatuses,
                   );
+                  const typeColor = ticketTypeColor(tk.type);
+                  const typeOpt =
+                    ticketTypeOptions.find(
+                      (o) => o.value === (tk.type || "bug"),
+                    ) || ticketTypeOptions[0];
                   const sla = evaluateTicketSla(tk, ticketStatuses);
                   const projName = getProjectName(tk.projectId);
                   const client = getClientForTicket(tk);
@@ -4415,7 +4445,14 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap min-w-0">
-                          <span className="font-mono text-micro font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                          <span
+                            className="font-mono text-micro font-bold px-2 py-0.5 rounded-md border"
+                            style={{
+                              backgroundColor: `${typeColor}15`,
+                              color: typeColor,
+                              borderColor: `${typeColor}40`,
+                            }}
+                          >
                             {tk.ticketNumber}
                           </span>
                           <span
@@ -4427,6 +4464,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             }}
                           >
                             {tk.priority}
+                          </span>
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold uppercase"
+                            style={{
+                              backgroundColor: `${typeColor}18`,
+                              color: typeColor,
+                            }}
+                          >
+                            {typeOpt?.icon}
+                            <span>{typeOpt?.label}</span>
                           </span>
                           <span className="text-micro font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600">
                             {tk.source || tk.channel || "manual"}
@@ -4582,6 +4629,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     {colTickets.map((tk) => {
                       const projName = getProjectName(tk.projectId);
                       const isDragging = draggedTicketId === tk.id;
+                      const typeColor = ticketTypeColor(tk.type);
+                      const typeOpt =
+                        ticketTypeOptions.find(
+                          (o) => o.value === (tk.type || "bug"),
+                        ) || ticketTypeOptions[0];
                       return (
                         <div
                           key={tk.id}
@@ -4607,20 +4659,39 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               : "border-slate-200 hover:border-indigo-300"
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-mono text-micro font-bold text-indigo-600">
-                              {tk.ticketNumber}
-                            </span>
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
                             <span
-                              className="px-1.5 py-0.5 rounded text-micro font-bold uppercase"
+                              className="font-mono text-micro font-bold px-1.5 py-0.5 rounded border"
                               style={{
-                                backgroundColor: `${PRIORITY_COLORS[tk.priority] || "#3b82f6"}18`,
-                                color:
-                                  PRIORITY_COLORS[tk.priority] || "#3b82f6",
+                                backgroundColor: `${typeColor}15`,
+                                color: typeColor,
+                                borderColor: `${typeColor}40`,
                               }}
                             >
-                              {tk.priority}
+                              {tk.ticketNumber}
                             </span>
+                            <div className="flex items-center gap-1">
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-bold uppercase"
+                                style={{
+                                  backgroundColor: `${typeColor}18`,
+                                  color: typeColor,
+                                }}
+                              >
+                                {typeOpt?.icon}
+                                <span>{typeOpt?.label}</span>
+                              </span>
+                              <span
+                                className="px-1.5 py-0.5 rounded text-micro font-bold uppercase"
+                                style={{
+                                  backgroundColor: `${PRIORITY_COLORS[tk.priority] || "#3b82f6"}18`,
+                                  color:
+                                    PRIORITY_COLORS[tk.priority] || "#3b82f6",
+                                }}
+                              >
+                                {tk.priority}
+                              </span>
+                            </div>
                           </div>
                           <div className="font-bold text-caption text-slate-800 line-clamp-2">
                             {tk.subject}
