@@ -29,13 +29,14 @@ export const ShanShuiBackground: React.FC<ShanShuiBackgroundProps> = ({ classNam
         onLoad={() => setIsLoaded(true)}
       />
 
-      {/* Atmospheric Antique Parchment Vignette Overlay */}
+      {/* Atmospheric Antique Parchment Vignette Overlay. Plain alpha, no
+          mix-blend-mode: a blend mode makes the browser re-blend the whole
+          animated iframe underneath on every frame. */}
       <div
         className="absolute inset-0 w-full h-full pointer-events-none select-none"
         style={{
           background:
-            "radial-gradient(ellipse at 50% 50%, rgba(245, 240, 230, 0.1) 40%, rgba(70, 55, 35, 0.12) 100%)",
-          mixBlendMode: "multiply"
+            "radial-gradient(ellipse at 50% 50%, rgba(245, 240, 230, 0.1) 40%, rgba(70, 55, 35, 0.12) 100%)"
         }}
       />
     </div>

@@ -273,7 +273,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
       >
         <div
-          className={`w-full bg-white/85 border border-white/40 rounded-[32px] shadow-2xl backdrop-blur-2xl p-6 sm:p-8 md:p-10 transition-all duration-500 ${activeTheme.cardGlowClass}`}
+          className={`w-full bg-white/94 border border-white/40 rounded-[32px] shadow-2xl p-6 sm:p-8 md:p-10 transition-all duration-500 ${activeTheme.cardGlowClass}`}
         >
           {/* Mobile-Only Time Greeting Header */}
           {!isModal && (
