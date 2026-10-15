@@ -22,6 +22,10 @@ import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
+import { TaskConclusionToggle } from "./TaskConclusionToggle";
+import { useTaskSettings } from "../hooks/useTaskSettings";
+import { CONCLUSION_MAX, cleanConclusion, needsConclusionToFinish, canUntickConclusion } from "../utils/taskConclusion";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
@@ -145,6 +149,8 @@ interface TaskEditDrawerProps {
     systemLanguage: Language;
     /** Recorded as `completedBy` when the status is moved to a done state here. */
     currentUserName: string;
+    /** The signed-in user, for permission checks such as unticking conclusion requirement. */
+    currentUser?: UserProfile;
     /** Off, the drawer still opens but every field is read-only. */
     canEdit: boolean;
     canArchive?: boolean;
@@ -177,6 +183,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     taskStates,
     systemLanguage,
     currentUserName,
+    currentUser,
     canEdit,
     canArchive = false,
     canDelete = false,
@@ -193,8 +200,25 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     const t: Translate = (en, sk, hu) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
     const [draft, setDraft] = useState<Task>(task);
+    const { offerConclusion } = useTaskSettings();
+    const effectiveUser = useMemo<Pick<UserProfile, "name" | "role">>(
+        () => currentUser ?? users.find((u) => u.name === currentUserName) ?? { name: currentUserName, role: "" },
+        [currentUser, users, currentUserName],
+    );
+    const canUntick = canUntickConclusion(task, effectiveUser);
+    const conclusionToggleDisabled = !canEdit || (!canUntick && Boolean(task.requiresConclusion));
+    const conclusionDisabledHint = !canUntick && Boolean(task.requiresConclusion)
+        ? t(
+              "Only the task's creator or an Admin can remove the conclusion requirement.",
+              "Požiadavku na záver môže zrušiť iba tvorca úlohy alebo administrátor.",
+              "A záró összegzés követelményét csak a feladat létrehozója vagy egy adminisztrátor távolíthatja el.",
+          )
+        : undefined;
+    // Set once a save was refused for lack of a conclusion, so the box stays
+    // marked until it is filled in.
+    const [conclusionMissing, setConclusionMissing] = useState(false);
+    const conclusionRef = useRef<HTMLTextAreaElement>(null);
     const [isClosing, setIsClosing] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
     const closeTimer = useRef<number | null>(null);
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
@@ -293,6 +317,18 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         });
     }
 
+    // Does saving this draft finish a task that still lacks its conclusion?
+    // Judged against the stored task, so only a real move to a done state counts.
+    const finishingWithoutConclusion = needsConclusionToFinish(
+        { ...task, requiresConclusion: draft.requiresConclusion, conclusion: draft.conclusion },
+        draft.status,
+        taskStates,
+    );
+    const draftIsDone = isDoneTaskState(draft.status, taskStates);
+    // The conclusion box shows once it matters: the task asks for one and is
+    // being (or has been) finished, or it already holds text.
+    const showConclusion = Boolean(draft.requiresConclusion) && (draftIsDone || Boolean(draft.conclusion?.trim()));
+
     const linkedLead = task.relatedLeadId
         ? leads.find((l) => String(l.id) === String(task.relatedLeadId))
         : undefined;
@@ -333,7 +369,29 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                     onSubmit={(e) => {
                         e.preventDefault();
                         if (!canEdit) return;
-                        onSave({ ...draft, tags: combinedTags });
+                        if (finishingWithoutConclusion) {
+                            setConclusionMissing(true);
+                            conclusionRef.current?.focus();
+                            (window as any).showToast?.(
+                                t(
+                                    "Write the conclusion before completing this task.",
+                                    "Pred dokončením úlohy napíšte záver.",
+                                    "A feladat befejezése előtt írja meg az összegzést.",
+                                ),
+                                "warning",
+                            );
+                            return;
+                        }
+                        const sanitizedRequiresConclusion =
+                            (!canUntick && task.requiresConclusion)
+                                ? true
+                                : (draft.requiresConclusion ? true : undefined);
+                        onSave({
+                            ...draft,
+                            requiresConclusion: sanitizedRequiresConclusion,
+                            conclusion: cleanConclusion(draft.conclusion ?? ""),
+                            tags: combinedTags,
+                        });
                         requestClose();
                     }}
                     className="flex-1 py-5 space-y-5 text-ui font-bold"
@@ -386,6 +444,21 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none disabled:bg-slate-50 text-ui font-bold"
                             />
                         </div>
+
+                        {/* Offered while the setting is on; a task that already carries
+                            the flag keeps showing it, so it can still be switched off. */}
+                        {(offerConclusion || draft.requiresConclusion) && (
+                            <TaskConclusionToggle
+                                checked={Boolean(draft.requiresConclusion)}
+                                onChange={(next) => {
+                                    if (!next && !canUntick && task.requiresConclusion) return;
+                                    update({ requiresConclusion: next || undefined });
+                                }}
+                                t={t}
+                                disabled={conclusionToggleDisabled}
+                                disabledHint={conclusionDisabledHint}
+                            />
+                        )}
 
                         {combinedTags.length > 0 && (
                             <div className="space-y-1 pt-0.5">
@@ -491,6 +564,42 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 options={taskStates.map((st) => ({ value: st, label: taskStateLabel(st, t) }))}
                             />
                         </div>
+
+                        {showConclusion && (
+                            <div className="space-y-1">
+                                <label className="type-overline text-slate-500 flex items-center justify-between">
+                                    <span>{t("Conclusion", "Záver", "Összegzés")}</span>
+                                    {draftIsDone && canEdit && (
+                                        <span className="text-micro font-normal text-rose-500">
+                                            {t("Required to complete", "Povinné pre dokončenie", "A befejezéshez kötelező")}
+                                        </span>
+                                    )}
+                                </label>
+                                <textarea
+                                    ref={conclusionRef}
+                                    data-testid="task-conclusion-input"
+                                    rows={3}
+                                    maxLength={CONCLUSION_MAX}
+                                    value={draft.conclusion ?? ""}
+                                    disabled={!canEdit}
+                                    aria-invalid={conclusionMissing && finishingWithoutConclusion}
+                                    onChange={(e) => {
+                                        setConclusionMissing(false);
+                                        update({ conclusion: e.target.value });
+                                    }}
+                                    placeholder={t(
+                                        "A short note or report on how the task was finished…",
+                                        "Krátka poznámka alebo správa o tom, ako úloha dopadla…",
+                                        "Rövid jegyzet vagy beszámoló arról, hogyan zárult a feladat…",
+                                    )}
+                                    className={`w-full px-3 py-2 rounded-xl border-2 focus:outline-none resize-none disabled:bg-slate-50 text-ui font-bold ${
+                                        conclusionMissing && finishingWithoutConclusion
+                                            ? "border-rose-400 focus:border-rose-500"
+                                            : "border-slate-200 focus:border-indigo-600"
+                                    }`}
+                                />
+                            </div>
+                        )}
 
                         <div className="space-y-1.5">
                             <label className="type-overline text-slate-500">
@@ -639,50 +748,58 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
                     </button>
 
-                    {draft.id && canArchive && onToggleArchive && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                // Both parents flip only the stored task's flag, so
-                                // edits made in the drawer before archiving were
-                                // dropped without a word. Keep them first.
-                                if (canEdit && draft.title.trim() && JSON.stringify(draft) !== JSON.stringify(task)) {
-                                    onSave({ ...draft, tags: combinedTags });
-                                }
-                                onToggleArchive(draft);
-                                requestClose();
-                            }}
-                            className="w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 active:scale-[0.98] text-slate-600 rounded-xl type-overline flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                        >
-                            {draft.archived ? (
-                                <>
-                                    <RotateCcw className="h-3.5 w-3.5" />
-                                    {t("Unarchive Task", "Zrušiť archiváciu úlohy", "Feladat archiválásának visszavonása")}
-                                </>
-                            ) : (
-                                <>
-                                    <ArchiveIcon className="h-3.5 w-3.5" />
-                                    {t("Archive Task", "Archivovať úlohu", "Feladat archiválása")}
-                                </>
-                            )}
-                        </button>
-                    )}
+                    {draft.id && canArchive && onToggleArchive && (() => {
+                        // Both parents flip only the stored task's flag, so
+                        // edits made in the drawer before archiving were
+                        // dropped without a word. Keep them first.
+                        const toggleArchive = () => {
+                            if (canEdit && draft.title.trim() && !finishingWithoutConclusion && JSON.stringify(draft) !== JSON.stringify(task)) {
+                                onSave({
+                                    ...draft,
+                                    requiresConclusion: (!canUntick && task.requiresConclusion)
+                                        ? true
+                                        : (draft.requiresConclusion ? true : undefined),
+                                    tags: combinedTags,
+                                });
+                            }
+                            onToggleArchive(draft);
+                            requestClose();
+                        };
+                        const buttonClass = "w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 active:scale-[0.98] text-slate-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all";
+                        // Unarchiving is a plain click; only archiving needs the hold.
+                        return draft.archived ? (
+                            <button type="button" onClick={toggleArchive} className={`${buttonClass} cursor-pointer`}>
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                {t("Unarchive Task", "Zrušiť archiváciu úlohy", "Feladat archiválásának visszavonása")}
+                            </button>
+                        ) : (
+                            <HoldToConfirmButton
+                                tone="archive"
+                                lang={systemLanguage}
+                                what={draft.title}
+                                onConfirm={toggleArchive}
+                                className={buttonClass}
+                                icon={<ArchiveIcon className="h-3.5 w-3.5" />}
+                            >
+                                {t("Archive Task", "Archivovať úlohu", "Feladat archiválása")}
+                            </HoldToConfirmButton>
+                        );
+                    })()}
 
                     {draft.id && canDelete && onDelete && (
-                        <button
-                            type="button"
-                            disabled={isDeleting}
-                            onClick={async () => {
-                                setIsDeleting(true);
+                        <HoldToConfirmButton
+                            tone="danger"
+                            lang={systemLanguage}
+                            what={draft.title}
+                            onConfirm={async () => {
                                 const deleted = await onDelete(draft);
-                                setIsDeleting(false);
                                 if (deleted) requestClose();
                             }}
-                            className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl type-overline flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:cursor-wait disabled:opacity-60"
+                            className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all"
+                            icon={<Trash2 className="h-3.5 w-3.5" />}
                         >
-                            <Trash2 className="h-3.5 w-3.5" />
                             {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
-                        </button>
+                        </HoldToConfirmButton>
                     )}
                 </form>
             </div>

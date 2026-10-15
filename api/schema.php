@@ -143,6 +143,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
               `completed_at` VARCHAR(16) NULL COMMENT 'YYYY-MM-DD HH:MM local completion timestamp; NULL for legacy rows',
               `email_reminders_json` TEXT NULL COMMENT 'Per-user e-mail reminder choice, JSON: user name to morning, 1h or 1d',
+              `requires_conclusion` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = the task cannot be completed until conclusion is written',
+              `conclusion` TEXT NULL COMMENT 'How the task was finished; written when it is completed',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -339,6 +341,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `has_timeline` TINYINT(1) NOT NULL DEFAULT 0,
               `has_gantt` TINYINT(1) NOT NULL DEFAULT 0,
               `has_deadline` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_invoice_date` TINYINT(1) NOT NULL DEFAULT 0,
               `deadline_warning_days` INT NOT NULL DEFAULT 0,
               `deadline_required` TINYINT(1) NOT NULL DEFAULT 0,
               `has_files` TINYINT(1) NOT NULL DEFAULT 0,
@@ -360,7 +363,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
               `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
               `rating` TINYINT NULL COMMENT 'Star Rating 1-5, 0 = not rated, NULL = never set',
-              `deadline` DATE NULL,
+              `invoice_date` DATE NULL COMMENT 'Invoice date (shown as Invoice date in the UI)',
+              `completion_deadline` DATE NULL COMMENT 'Date the project has to be completed by (shown as Deadline in the UI)',
               `delay_reason` VARCHAR(500) NULL,
               `start_date` DATE NULL,
               `finished_at` DATE NULL,
@@ -824,6 +828,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `employees` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `name` VARCHAR(150) NOT NULL,
+              `user_id` VARCHAR(50) NULL UNIQUE,
               `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
               `email` VARCHAR(150) NULL,
               `phone` VARCHAR(50) NULL,
@@ -846,7 +851,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_emp_active (`is_active`),
-              INDEX idx_emp_name (`name`)
+              INDEX idx_emp_name (`name`),
+              CONSTRAINT fk_employees_user_id FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Employee Salaries & Payouts (Monthly / Weekly payroll records)
@@ -882,7 +888,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `start_date` DATE NOT NULL,
               `end_date` DATE NOT NULL,
               `days_count` DECIMAL(5, 1) NOT NULL DEFAULT 1.0,
-              `status` ENUM('requested', 'approved', 'rejected', 'taken') NOT NULL DEFAULT 'approved',
+              `status` ENUM('requested', 'approved', 'rejected', 'taken', 'pending') NOT NULL DEFAULT 'approved',
               `note` TEXT NULL,
               `approved_by` VARCHAR(100) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1124,6 +1130,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'project_types', 'has_deadline')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_deadline` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_gantt`");
         }
+        // The invoice date is its own switch, apart from the deadline. Types that
+        // were time-boxed when it was split off keep showing the date they had.
+        if (!ccrm_column_exists($pdo, 'project_types', 'has_invoice_date')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_invoice_date` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_deadline`");
+            $pdo->exec("UPDATE `project_types` SET `has_invoice_date` = `has_deadline`");
+        }
         if (!ccrm_column_exists($pdo, 'project_types', 'deadline_warning_days')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `deadline_warning_days` INT NOT NULL DEFAULT 0 AFTER `has_deadline`");
         }
@@ -1152,13 +1164,23 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'projects', 'name')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `name` VARCHAR(200) NULL AFTER `project_type_id`");
         }
-        if (!ccrm_column_exists($pdo, 'projects', 'deadline')) {
-            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `deadline` DATE NULL AFTER `status`");
+        // 1.11.160: `deadline` was always the date the project is invoiced, which
+        // the UI now says out loud - the column follows (data kept). The real
+        // "Deadline" is a column of its own, `completion_deadline`.
+        if (!ccrm_column_exists($pdo, 'projects', 'invoice_date')) {
+            if (ccrm_column_exists($pdo, 'projects', 'deadline')) {
+                $pdo->exec("ALTER TABLE `projects` CHANGE COLUMN `deadline` `invoice_date` DATE NULL");
+            } else {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `invoice_date` DATE NULL AFTER `status`");
+            }
+        }
+        if (!ccrm_column_exists($pdo, 'projects', 'completion_deadline')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
         }
         // A project past its deadline must say why. NULL on every existing row,
         // which is exactly what an unexplained delay looks like to the client.
         if (!ccrm_column_exists($pdo, 'projects', 'delay_reason')) {
-            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `delay_reason` VARCHAR(500) NULL AFTER `deadline`");
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `delay_reason` VARCHAR(500) NULL AFTER `completion_deadline`");
         }
         // When the project really started and really finished, set by hand. NULL
         // start reads as the creation date on the client; a set finish date
@@ -1302,6 +1324,14 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'tasks', 'email_reminders_json')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `email_reminders_json` TEXT NULL AFTER `completed_at`");
         }
+        // "Requires conclusion": a task flagged with it cannot be completed until
+        // the person finishing it has written how it went (the conclusion).
+        if (!ccrm_column_exists($pdo, 'tasks', 'requires_conclusion')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `requires_conclusion` TINYINT(1) NOT NULL DEFAULT 0 AFTER `email_reminders_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'conclusion')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `conclusion` TEXT NULL AFTER `requires_conclusion`");
+        }
         // A recurring rule is stored as one row, so the reports derive every past
         // charge from the rule itself. Raising the price used to rewrite the months
         // already paid at the old one; the superseded amounts now travel with the
@@ -1339,6 +1369,13 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'projects', 'division')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `division` VARCHAR(100) NULL AFTER `status`");
         }
+        // Employees: link to user login
+        if (!ccrm_column_exists($pdo, 'employees', 'user_id')) {
+            $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasEmp > 0) {
+                $pdo->exec("ALTER TABLE `employees` ADD COLUMN `user_id` VARCHAR(50) NULL AFTER `name`, ADD UNIQUE INDEX `uq_employees_user_id` (`user_id`), ADD CONSTRAINT `fk_employees_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL");
+            }
+        }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
@@ -1346,12 +1383,23 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
+        // The ENUM must be widened before anything inserts a 'pending' vacation.
+        ccrm_migrate_vacation_status_pending($pdo);
         ccrm_seed_default_employees($pdo);
+        ccrm_repair_demo_employee_vacations($pdo);
         ccrm_migrate_user_role_varchar($pdo);
         ccrm_migrate_orders($pdo);
         ccrm_seed_default_warehouses_and_items($pdo);
         ccrm_seed_default_orders($pdo);
         ccrm_seed_default_invoices_and_projects($pdo);
+        ccrm_migrate_employee_role_rbac($pdo);
+        // Employee documents used to sit in the public uploads directory.
+        try {
+            require_once __DIR__ . '/employee_files.php';
+            ccrm_migrate_employee_files_private($pdo);
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee document migration skipped: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -1434,6 +1482,31 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * `employee_vacations`.`status` never accepted 'pending', yet the client
+     * (VacationRequestModal, EmployeeDetailView, mockEmployees.ts) uses it for a
+     * request waiting for approval. Saving one failed with "Data truncated for
+     * column 'status'", and the demo vacation seed died at its first pending row,
+     * leaving most employees without any leave. Widen the ENUM; idempotent.
+     */
+    function ccrm_migrate_vacation_status_pending(PDO $pdo): void {
+        try {
+            $columnType = $pdo->query(
+                "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_vacations' AND COLUMN_NAME = 'status'"
+            )->fetchColumn();
+            if (!is_string($columnType) || strpos($columnType, "'pending'") !== false) {
+                return; // table not provisioned yet, or already migrated.
+            }
+            $pdo->exec(
+                "ALTER TABLE `employee_vacations` MODIFY COLUMN `status`
+                 ENUM('requested', 'approved', 'rejected', 'taken', 'pending') NOT NULL DEFAULT 'approved'"
+            );
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] vacation status migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Widen `users.role` (and unused `role_permissions.role`) from the
      * original ENUM('admin','project_manager','viewer') to VARCHAR(100) so a
      * custom role name survives a save. Relabels the three legacy values to
@@ -1463,6 +1536,43 @@ if (!function_exists('ccrm_schema_statements')) {
             $pdo->exec("UPDATE `users` SET `role` = 'Viewer' WHERE `role` = 'viewer'");
         } catch (\Throwable $e) {
             error_log('[ccrm] ccrm_migrate_user_role_varchar relabel: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Ensure the native Employee role exists in ROLES_RBAC for existing installs.
+     * Idempotent: if a role named 'Employee' already exists, leaves it untouched and logs it.
+     */
+    function ccrm_migrate_employee_role_rbac(PDO $pdo): void {
+        require_once __DIR__ . '/permissions.php';
+        try {
+            $stmtRoles = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC' LIMIT 1");
+            $stmtRoles->execute();
+            $rolesRaw = $stmtRoles->fetchColumn();
+            if ($rolesRaw !== false && $rolesRaw !== null && trim((string)$rolesRaw) !== '') {
+                $rolesList = json_decode((string)$rolesRaw, true);
+                if (is_array($rolesList)) {
+                    $hasEmp = false;
+                    foreach ($rolesList as $r) {
+                        if (is_array($r) && strtolower(trim((string)($r['name'] ?? ''))) === 'employee') {
+                            $hasEmp = true;
+                            break;
+                        }
+                    }
+                    if (!$hasEmp) {
+                        $rolesList[] = [
+                            'name' => 'Employee',
+                            'permissions' => ccrm_employee_role_permissions(),
+                        ];
+                        $upd = $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'ROLES_RBAC'");
+                        $upd->execute([json_encode($rolesList)]);
+                    } else {
+                        error_log("[ccrm] ccrm_migrate_employee_role_rbac: role 'Employee' already exists in ROLES_RBAC, leaving untouched.");
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee role migration error: ' . $e->getMessage());
         }
     }
 
@@ -1617,6 +1727,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 $pdo->exec("CREATE TABLE IF NOT EXISTS `employees` (
                   `id` VARCHAR(50) NOT NULL PRIMARY KEY,
                   `name` VARCHAR(150) NOT NULL,
+                  `user_id` VARCHAR(50) NULL UNIQUE,
                   `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
                   `email` VARCHAR(150) NULL,
                   `phone` VARCHAR(50) NULL,
@@ -1639,7 +1750,8 @@ if (!function_exists('ccrm_schema_statements')) {
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX idx_emp_active (`is_active`),
-                  INDEX idx_emp_name (`name`)
+                  INDEX idx_emp_name (`name`),
+                  CONSTRAINT fk_employees_user_id FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
             }
             $hasSal = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_salaries'")->fetchColumn();
@@ -1677,7 +1789,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `start_date` DATE NOT NULL,
                   `end_date` DATE NOT NULL,
                   `days_count` DECIMAL(5, 1) NOT NULL DEFAULT 1.0,
-                  `status` ENUM('requested', 'approved', 'rejected', 'taken') NOT NULL DEFAULT 'approved',
+                  `status` ENUM('requested', 'approved', 'rejected', 'taken', 'pending') NOT NULL DEFAULT 'approved',
                   `note` TEXT NULL,
                   `approved_by` VARCHAR(100) NULL,
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2134,16 +2246,178 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Demo leave records positioned around $now (the install / seed date), so every
+     * employee's vacation calendar has entries in the month that opens by default.
+     * Mirrors generateDefaultMockVacations() in src/utils/mockEmployees.ts — keep the two in step.
+     *
+     * @return array<int, array{0:string,1:string,2:string,3:string,4:string,5:int,6:string,7:string,8:?string}>
+     *         rows ready for `employee_vacations`: id, employee_id, type, start, end, days, status, note, approved_by
+     */
+    function ccrm_demo_employee_vacations(\DateTimeImmutable $now): array {
+        $today = $now->setTime(0, 0, 0);
+        $todayStr = $today->format('Y-m-d');
+        $isWeekend = static fn(\DateTimeImmutable $d): bool => (int)$d->format('N') >= 6;
+        $spanEnd = static function (\DateTimeImmutable $start, int $workdays) use ($isWeekend): \DateTimeImmutable {
+            $out = $start;
+            $counted = 1;
+            while ($counted < $workdays) {
+                $out = $out->modify('+1 day');
+                if (!$isWeekend($out)) $counted++;
+            }
+            return $out;
+        };
+
+        // [employee, type, monthOffset, startDay, workdays, note, pending]
+        $templates = [
+            ['emp-1', 'annual', -4, 12, 4, 'Predĺžený víkend v Tatrách', false],
+            ['emp-1', 'doctor', -2, 9, 1, 'Preventívna prehliadka u lekára', false],
+            ['emp-1', 'sick', -1, 20, 3, 'Chrípka', false],
+            ['emp-1', 'annual', 0, 20, 3, 'Rodinný výlet', false],
+            ['emp-1', 'doctor', 0, 6, 1, 'Návšteva zubára', false],
+            ['emp-1', 'annual', 2, 22, 5, 'Plánovaná dovolenka', true],
+            ['emp-2', 'annual', -3, 6, 5, 'Letná dovolenka', false],
+            ['emp-2', 'doctor', -1, 14, 1, 'Kontrola u špecialistu', false],
+            ['emp-2', 'sick', 0, 8, 2, 'Nachladnutie', false],
+            ['emp-2', 'annual', 0, 27, 2, 'Predĺžený víkend', false],
+            ['emp-2', 'annual', 1, 10, 4, 'Rodinná udalosť', false],
+            ['emp-2', 'annual', 3, 15, 5, 'Plánovaná dovolenka', true],
+            ['emp-3', 'sick', -4, 3, 2, 'Bolesť chrbta', false],
+            ['emp-3', 'unpaid', -3, 2, 1, 'Súkromné vybavovanie', false],
+            ['emp-3', 'annual', -2, 16, 5, 'Turistika', false],
+            ['emp-3', 'annual', -1, 28, 2, 'Predĺžený víkend', false],
+            ['emp-3', 'annual', 0, 12, 4, 'Oddych a regenerácia', false],
+            ['emp-3', 'doctor', 0, 26, 1, 'Kontrola u lekára', false],
+            ['emp-3', 'doctor', 2, 11, 1, 'Očné vyšetrenie', true],
+            ['emp-4', 'annual', -3, 20, 5, 'Jesenný oddych', false],
+            ['emp-4', 'doctor', -1, 5, 1, 'Preventívna prehliadka', false],
+            ['emp-4', 'doctor', 0, 22, 1, 'Návšteva lekára s dieťaťom', false],
+            ['emp-4', 'annual', 1, 17, 5, 'Predĺžený víkend a oddych', false],
+            ['emp-4', 'annual', 2, 8, 3, 'Plánovaná dovolenka', true],
+        ];
+
+        // Anchored first: leave that covers today (on a weekend: the Friday before, so the range spans it).
+        $anchor = $today;
+        while ($isWeekend($anchor)) $anchor = $anchor->modify('-1 day');
+        $drafts = [[
+            'emp-4', 'annual', $anchor->format('Y-m-d'), $spanEnd($anchor, 3)->format('Y-m-d'), 3,
+            'approved', 'Krátke voľno — dnes mimo kancelárie', 'Vedenie',
+        ]];
+
+        $monthFirst = $today->modify('first day of this month');
+        foreach ($templates as [$empId, $type, $offset, $startDay, $workdays, $note, $pending]) {
+            $first = $monthFirst->modify(sprintf('%+d months', $offset));
+            $start = $first->setDate((int)$first->format('Y'), (int)$first->format('n'), $startDay);
+            while ($isWeekend($start)) $start = $start->modify('+1 day');
+            $startDate = $start->format('Y-m-d');
+            $waiting = $pending && $startDate > $todayStr;
+            $drafts[] = [
+                $empId, $type, $startDate, $spanEnd($start, $workdays)->format('Y-m-d'), $workdays,
+                $waiting ? 'pending' : 'approved', $note, $waiting ? null : 'Vedenie',
+            ];
+        }
+
+        // The calendar paints the first matching record per day, so one employee's leave must not overlap.
+        $accepted = [];
+        foreach ($drafts as $d) {
+            $clash = false;
+            foreach ($accepted as $a) {
+                if ($a[0] === $d[0] && $d[2] <= $a[3] && $d[3] >= $a[2]) { $clash = true; break; }
+            }
+            if (!$clash) $accepted[] = $d;
+        }
+
+        $rows = [];
+        foreach ($accepted as $i => $d) {
+            $rows[] = ['vac-demo-' . ($i + 1), $d[0], $d[1], $d[2], $d[3], $d[4], $d[5], $d[6], $d[7]];
+        }
+        return $rows;
+    }
+
+    /**
+     * Demo salary rows for the year of $now: past months paid, the current month paid once its payday
+     * has arrived, later months planned. Mirrors generateDefaultMockSalaries() in src/utils/mockEmployees.ts.
+     *
+     * @param array<int, array> $emps rows in the order used by ccrm_seed_default_employees()
+     * @return array<int, array> rows ready for `employee_salaries`
+     */
+    function ccrm_demo_employee_salaries(array $emps, \DateTimeImmutable $now): array {
+        $year = (int)$now->format('Y');
+        $nowIndex = $year * 12 + ((int)$now->format('n') - 1);
+        $nowDay = (int)$now->format('j');
+        $rows = [];
+
+        foreach ($emps as $empIdx => $e) {
+            $empId = $e[0];
+            $base = (float)$e[10];
+            $dueDay = (int)($e[11] ?: 15);
+            for ($m = 1; $m <= 12; $m++) {
+                $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
+                $periodKey = "{$year}-{$mStr}";
+                $periodIndex = $year * 12 + ($m - 1);
+                $isPaid = $periodIndex < $nowIndex || ($periodIndex === $nowIndex && $nowDay >= $dueDay - 1);
+
+                $bonus = $m === 6 ? 500.0 : ($m === 12 ? 800.0 : 0.0);
+                $overtime = (($empId === 'emp-3' || $empId === 'emp-2') && ($m + $empIdx) % 3 === 0)
+                    ? (float)(90 + (($m * 37 + $empIdx * 53) % 5) * 30) : 0.0;
+                $reimbursement = (($empId === 'emp-1' || $empId === 'emp-4') && ($m + $empIdx) % 4 === 1)
+                    ? (float)(45 + (($m * 29 + $empIdx * 17) % 4) * 20) : 0.0;
+
+                $lines = [['base', 'Základná mzda', $base]];
+                if ($bonus > 0) $lines[] = ['bonus', $m === 6 ? 'Polročné prémie' : 'Ročné prémie', $bonus];
+                if ($overtime > 0) $lines[] = ['overtime', 'Nadčasy', $overtime];
+                if ($reimbursement > 0) $lines[] = ['reimbursement', 'Cestovné / Diéty', $reimbursement];
+
+                $items = [];
+                $total = 0.0;
+                foreach ($lines as [$catId, $catName, $amount]) {
+                    $items[] = ['categoryId' => $catId, 'categoryName' => $catName, 'salary' => $amount, 'paid' => $isPaid ? $amount : 0.0];
+                    $total += $amount;
+                }
+
+                $rows[] = [
+                    "sal-{$empId}-{$periodKey}",
+                    $empId,
+                    'monthly',
+                    $periodKey,
+                    $year,
+                    $m,
+                    json_encode($items),
+                    $total,
+                    $isPaid ? $total : 0.0,
+                    $isPaid ? 'paid' : 'pending',
+                    "{$year}-{$mStr}-" . str_pad((string)$dueDay, 2, '0', STR_PAD_LEFT),
+                    $isPaid ? "{$year}-{$mStr}-" . str_pad((string)($dueDay - 1), 2, '0', STR_PAD_LEFT) : null,
+                    'bank_transfer',
+                    $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy',
+                ];
+            }
+        }
+        return $rows;
+    }
+
+    /**
      * Seeds sample employees, salaries, and vacation records into empty employee tables
-     * for demo installations.
+     * — demo installations only. A real installation starts with no staff.
      */
     function ccrm_seed_default_employees(PDO $pdo): void {
+        // All-or-nothing: the seed only runs while `employees` is empty, so a
+        // half-written seed (employees in, vacations failed) would never be retried.
+        // Pure DML, so a transaction is safe here; skip it if the caller opened one.
+        $ownTransaction = false;
         try {
             $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
             if ($hasTable === 0) return;
 
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
+
             $count = (int)$pdo->query("SELECT COUNT(*) FROM `employees`")->fetchColumn();
             if ($count > 0) return;
+
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $ownTransaction = true;
+            }
 
             // 1. Insert employees
             $insEmp = $pdo->prepare("INSERT INTO `employees` (`id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`, `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`, `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`, `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `is_active`, `notes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -2159,62 +2433,22 @@ if (!function_exists('ccrm_schema_statements')) {
                 $insEmp->execute($e);
             }
 
-            // 2. Insert Salaries for 2026
+            // 2. Insert salaries for the current year (past months paid, current month by payday, rest planned)
+            $now = new \DateTimeImmutable('now');
             $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (`id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`, `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`, `payment_method`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-
-            $year = 2026;
-            foreach ($emps as $e) {
-                $empId = $e[0];
-                $base = $e[10];
-                for ($m = 1; $m <= 12; $m++) {
-                    $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
-                    $periodKey = "{$year}-{$mStr}";
-                    $bonus = ($m === 6) ? 500.00 : (($m === 12) ? 800.00 : 0.00);
-                    $total = $base + $bonus;
-                    $isPaid = ($m <= 9);
-                    $paidAmount = $isPaid ? $total : 0.00;
-                    $status = $isPaid ? 'paid' : 'pending';
-                    $dueDate = "{$year}-{$mStr}-15";
-                    $payDate = $isPaid ? "{$year}-{$mStr}-14" : null;
-                    $items = [
-                        ['categoryId' => 'base', 'categoryName' => 'Základná mzda', 'salary' => $base, 'paid' => $isPaid ? $base : 0.00]
-                    ];
-                    if ($bonus > 0) {
-                        $items[] = ['categoryId' => 'bonus', 'categoryName' => 'Polročné prémie', 'salary' => $bonus, 'paid' => $isPaid ? $bonus : 0.00];
-                    }
-                    $insSal->execute([
-                        "sal-{$empId}-{$periodKey}",
-                        $empId,
-                        'monthly',
-                        $periodKey,
-                        $year,
-                        $m,
-                        json_encode($items),
-                        $total,
-                        $paidAmount,
-                        $status,
-                        $dueDate,
-                        $payDate,
-                        'bank_transfer',
-                        $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy'
-                    ]);
-                }
+            foreach (ccrm_demo_employee_salaries($emps, $now) as $row) {
+                $insSal->execute($row);
             }
 
-            // 3. Insert Vacations
+            // 3. Insert vacations positioned around today, so the calendar is populated for the install month
             $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (`id`, `employee_id`, `vacation_type_id`, `start_date`, `end_date`, `days_count`, `status`, `note`, `approved_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $vacs = [
-                ['vac-1', 'emp-1', 'annual', '2026-07-13', '2026-07-24', 10, 'taken', 'Letná rodinná dovolenka (Chorvátsko)', 'Vedenie'],
-                ['vac-2', 'emp-1', 'annual', '2026-12-23', '2026-12-31', 6, 'approved', 'Vianočné sviatky', 'Vedenie'],
-                ['vac-3', 'emp-2', 'annual', '2026-08-03', '2026-08-07', 5, 'taken', 'Letná dovolenka', 'Vedenie'],
-                ['vac-4', 'emp-2', 'doctor', '2026-09-18', '2026-09-18', 1, 'taken', 'Preventívna prehliadka u lekára', 'Vedenie'],
-                ['vac-5', 'emp-3', 'annual', '2026-08-17', '2026-08-21', 5, 'taken', 'Turistika Vysoké Tatry', 'Vedenie'],
-                ['vac-6', 'emp-4', 'annual', '2026-10-12', '2026-10-16', 5, 'approved', 'Predĺžený jesenný víkend a oddych', 'Vedenie']
-            ];
-            foreach ($vacs as $v) {
-                $insVac->execute($v);
+            foreach (ccrm_demo_employee_vacations($now) as $row) {
+                $insVac->execute($row);
             }
+
+            if ($ownTransaction) $pdo->commit();
         } catch (\Throwable $e) {
+            if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
             error_log('[ccrm schema] employees seed skipped: ' . $e->getMessage());
         }
     }
@@ -3287,6 +3521,60 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm schema] invoices and projects seed skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * One-time repair for demo installs that already hit the 'pending' ENUM bug:
+     * the seed inserted the employees, all salaries and the vacations that came
+     * before the first 'pending' one, then died. `employees` was no longer empty,
+     * so the seed never retried and those installs keep a calendar with a handful
+     * of leave records.
+     *
+     * Deliberately narrow, because it deletes rows. It acts only when ALL hold:
+     *  - DEMO_MODE is 'true' (never a real installation);
+     *  - the four seeded employees exist;
+     *  - every vacation row is a seeded `vac-demo-N` row nobody has edited
+     *    (updated_at = created_at) — a user's own or touched leave is never replaced;
+     *  - none of them is 'pending' (a healthy seed always contains some).
+     * Salaries and employees were written completely by the failed run, so only
+     * vacations are rebuilt. Runs in one transaction and is idempotent: once the
+     * pending rows exist the signature no longer matches.
+     */
+    function ccrm_repair_demo_employee_vacations(PDO $pdo): void {
+        $ownTransaction = false;
+        try {
+            $hasTables = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('employees', 'employee_vacations', 'system_settings')")->fetchColumn();
+            if ($hasTables < 3) return;
+
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'")->fetchColumn();
+            if ($demoMode !== 'true') return;
+
+            $seeded = (int)$pdo->query("SELECT COUNT(*) FROM `employees` WHERE `id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')")->fetchColumn();
+            if ($seeded < 4) return;
+
+            $total = (int)$pdo->query("SELECT COUNT(*) FROM `employee_vacations`")->fetchColumn();
+            if ($total === 0) return;
+            $untouchedSeed = (int)$pdo->query(
+                "SELECT COUNT(*) FROM `employee_vacations`
+                 WHERE `id` REGEXP '^vac-demo-[0-9]+$' AND `updated_at` = `created_at` AND `status` <> 'pending'"
+            )->fetchColumn();
+            if ($untouchedSeed !== $total) return;
+
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $ownTransaction = true;
+            }
+            $pdo->exec("DELETE FROM `employee_vacations` WHERE `id` REGEXP '^vac-demo-[0-9]+$'");
+            $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (`id`, `employee_id`, `vacation_type_id`, `start_date`, `end_date`, `days_count`, `status`, `note`, `approved_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach (ccrm_demo_employee_vacations(new \DateTimeImmutable('now')) as $row) {
+                $insVac->execute($row);
+            }
+            if ($ownTransaction) $pdo->commit();
+            error_log('[ccrm schema] demo vacations repaired after the pending-status seed failure');
+        } catch (\Throwable $e) {
+            if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
+            error_log('[ccrm schema] demo vacation repair skipped: ' . $e->getMessage());
         }
     }
 

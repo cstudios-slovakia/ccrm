@@ -6,12 +6,16 @@ import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
 import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
-import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
+import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays, projectTypeHasInvoiceDate } from "../utils/projects";
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
 import { registerPendingSave } from "../utils/pendingSaves";
 import { useDragReorder } from "../hooks/useDragReorder";
 import { moveRelative } from "../utils/reorder";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { runUndoable } from "../utils/undoable";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 /**
  * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation from leads
@@ -255,6 +259,17 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [editingType, setEditingType] = useState<ProjectType | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [editSection, setEditSection] = useState<EditSection>("general");
+  // Attributes and file fields of a saved type that were removed but can still be
+  // undone. Removing one makes the server drop the data stored under it, which no
+  // Undo can bring back — so the removal is only *shown* until the undo window
+  // closes, and applied (and autosaved) when it does.
+  const [pendingRemovedIds, setPendingRemovedIds] = useState<ReadonlySet<string>>(new Set());
+  const hideRemoved = (id: string) => setPendingRemovedIds(prev => new Set(prev).add(id));
+  const unhideRemoved = (id: string) => setPendingRemovedIds(prev => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  });
 
   // Form states
   const [typeName, setTypeName] = useState("");
@@ -264,6 +279,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [hasTimeline, setHasTimeline] = useState(false);
   const [hasGantt, setHasGantt] = useState(false);
   const [hasDeadline, setHasDeadline] = useState(false);
+  const [hasInvoiceDate, setHasInvoiceDate] = useState(false);
   const [deadlineWarningDays, setDeadlineWarningDays] = useState(DEFAULT_DEADLINE_WARNING_DAYS);
   const [deadlineRequired, setDeadlineRequired] = useState(false);
   const [fileFields, setFileFields] = useState<ProjectFileField[]>([]);
@@ -319,6 +335,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setHasTimeline(false);
     setHasGantt(false);
     setHasDeadline(false);
+    setHasInvoiceDate(false);
     setDeadlineWarningDays(DEFAULT_DEADLINE_WARNING_DAYS);
     setDeadlineRequired(false);
     setFileFields([]);
@@ -353,6 +370,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setHasTimeline(type.hasTimeline);
     setHasGantt(type.hasGantt);
     setHasDeadline(!!type.hasDeadline);
+    // A type saved before the switch was split off showed the date with its deadline.
+    setHasInvoiceDate(projectTypeHasInvoiceDate(type));
     // A type saved before deadlines existed has no window of its own; offer the
     // default rather than 0, which would read as "never warn me early".
     setDeadlineWarningDays(
@@ -449,16 +468,32 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   };
 
   const handleRemoveAttribute = (attrId: string) => {
-    if (editingType) {
-      const confirmMsg = t(
-        "WARNING: Removing this attribute will permanently delete all associated data from the database for existing projects. Do you want to proceed?",
-        "VAROVANIE: Odstránenie tohto atribútu trvalo vymaže všetky pridružené údaje z databázy pre existujúce projekty. Chcete pokračovať?",
-        "FIGYELMEZTETÉS: Ezen attribútum törlése véglegesen törli az összes kapcsolódó adatot az adatbázisból a meglévő projekteknél. Folytatja?"
-      );
-      if (!window.confirm(confirmMsg)) return;
+    if (!editingType) {
+      // A type that has not been saved yet: a draft, nothing to lose.
+      if (editingAttrId === attrId) resetAttrForm();
+      setAttributes(prev => prev.filter(a => a.id !== attrId));
+      return;
     }
+    const attr = attributes.find(a => a.id === attrId);
+    if (!attr) return;
     if (editingAttrId === attrId) resetAttrForm();
-    setAttributes(prev => prev.filter(a => a.id !== attrId));
+    const typeId = editingType.id;
+    runUndoable({
+      message: singleMessage(userLanguage, "attribute", "delete", attr.name),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => hideRemoved(attrId),
+      revert: () => unhideRemoved(attrId),
+      // Removing it wipes the stored values for existing projects — so it only
+      // happens here, once Undo is no longer possible. The persisted type is
+      // written directly: the editor may be gone by then.
+      onCommit: () => {
+        unhideRemoved(attrId);
+        setAttributes(prev => prev.filter(a => a.id !== attrId));
+        setProjectTypes(prev => prev.map(pt => pt.id === typeId
+          ? { ...pt, attributes: (pt.attributes || []).filter(a => a.id !== attrId) }
+          : pt));
+      },
+    });
   };
 
   const handleAddFileField = () => {
@@ -472,17 +507,30 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   };
 
   const handleRemoveFileField = (fieldId: string) => {
+    const field = fileFields.find(f => f.id === fieldId);
+    if (!field) return;
     // A slot that was already saved has uploads behind it; one added in this
     // session has nothing to lose.
-    if (editingType?.fileFields?.some(f => f.id === fieldId)) {
-      const confirmMsg = t(
-        "WARNING: Removing this file field will permanently delete the files attached to it in existing projects. Do you want to proceed?",
-        "VAROVANIE: Odstránenie tohto poľa trvalo vymaže súbory, ktoré sú k nemu priložené v existujúcich projektoch. Chcete pokračovať?",
-        "FIGYELMEZTETÉS: Ezen fájlmező törlése véglegesen törli a meglévő projektekben hozzá csatolt fájlokat. Folytatja?"
-      );
-      if (!window.confirm(confirmMsg)) return;
+    if (!editingType?.fileFields?.some(f => f.id === fieldId)) {
+      setFileFields(prev => prev.filter(f => f.id !== fieldId));
+      return;
     }
-    setFileFields(prev => prev.filter(f => f.id !== fieldId));
+    const typeId = editingType.id;
+    runUndoable({
+      message: singleMessage(userLanguage, "fileField", "delete", field.name),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => hideRemoved(fieldId),
+      revert: () => unhideRemoved(fieldId),
+      // Removing it deletes the files attached to it in existing projects, so it
+      // waits for the undo window to close (see handleRemoveAttribute).
+      onCommit: () => {
+        unhideRemoved(fieldId);
+        setFileFields(prev => prev.filter(f => f.id !== fieldId));
+        setProjectTypes(prev => prev.map(pt => pt.id === typeId
+          ? { ...pt, fileFields: (pt.fileFields || []).filter(f => f.id !== fieldId) }
+          : pt));
+      },
+    });
   };
 
   /* Drag-and-drop reordering of the custom attributes — see useDragReorder. */
@@ -569,21 +617,68 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
   const handleRemoveTimelineAttribute = (attrId: string) => {
     if (!selectedTeTypeId) return;
-    if (editingType) {
-      const confirmMsg = t(
-        "WARNING: Removing this timeline attribute will permanently delete all associated data from the database. Do you want to proceed?",
-        "VAROVANIE: Odstránenie tohto atribútu časovej osi trvalo vymaže všetky prislúchajúce údaje z databázy. Chcete pokračovať?",
-        "FIGYELMEZTETÉS: Ezen idővonal attribútum törlése véglegesen törli a hozzá tartozó adatokat az adatbázisból. Biztosan folytatja?"
-      );
-      if (!window.confirm(confirmMsg)) return;
-    }
+    const teTypeId = selectedTeTypeId;
+    const dropFrom = (types: typeof timelineEventTypes) => types.map(t => t.id === teTypeId
+      ? { ...t, attributes: t.attributes.filter((a: ProjectAttribute) => a.id !== attrId) }
+      : t);
     if (editingTeAttrId === attrId) resetTeAttrForm();
-    setTimelineEventTypes(prev => prev.map(t => {
-      if (t.id === selectedTeTypeId) {
-        return { ...t, attributes: t.attributes.filter((a: ProjectAttribute) => a.id !== attrId) };
-      }
-      return t;
-    }));
+    if (!editingType) {
+      setTimelineEventTypes(prev => dropFrom(prev));
+      return;
+    }
+    const attr = timelineEventTypes.find(t => t.id === teTypeId)?.attributes.find((a: ProjectAttribute) => a.id === attrId);
+    if (!attr) return;
+    const typeId = editingType.id;
+    runUndoable({
+      message: singleMessage(userLanguage, "attribute", "delete", attr.name),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => hideRemoved(attrId),
+      revert: () => unhideRemoved(attrId),
+      // Wipes the stored values — applied only once Undo is no longer possible.
+      onCommit: () => {
+        unhideRemoved(attrId);
+        setTimelineEventTypes(prev => dropFrom(prev));
+        setProjectTypes(prev => prev.map(pt => pt.id === typeId
+          ? { ...pt, timelineEventTypes: dropFrom((pt.timelineEventTypes || []) as typeof timelineEventTypes) as any }
+          : pt));
+      },
+    });
+  };
+
+  // A timeline event type of a saved project type: removing it drops the values
+  // stored under its attributes, so — like attributes — it is only hidden until
+  // the undo window closes.
+  const handleRemoveTimelineEventType = (etId: string) => {
+    const et = timelineEventTypes.find(x => x.id === etId);
+    if (!et) return;
+    const wasSelected = selectedTeTypeId === etId;
+    const fallbackId = timelineEventTypes.find(x => x.id !== etId)?.id || null;
+    const dropFrom = <T extends { id: string }>(list: T[]) => list.filter(x => x.id !== etId);
+    if (!editingType) {
+      if (wasSelected) setSelectedTeTypeId(fallbackId);
+      setTimelineEventTypes(prev => dropFrom(prev));
+      return;
+    }
+    const typeId = editingType.id;
+    runUndoable({
+      message: singleMessage(userLanguage, "eventType", "delete", et.name),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
+        hideRemoved(etId);
+        if (wasSelected) setSelectedTeTypeId(fallbackId);
+      },
+      revert: () => {
+        unhideRemoved(etId);
+        if (wasSelected) setSelectedTeTypeId(etId);
+      },
+      onCommit: () => {
+        unhideRemoved(etId);
+        setTimelineEventTypes(prev => dropFrom(prev));
+        setProjectTypes(prev => prev.map(pt => pt.id === typeId
+          ? { ...pt, timelineEventTypes: dropFrom(pt.timelineEventTypes || []) }
+          : pt));
+      },
+    });
   };
 
   const handleMoveTimelineAttribute = (index: number, direction: "up" | "down") => {
@@ -612,6 +707,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       hasTimeline,
       hasGantt,
       hasDeadline,
+      hasInvoiceDate,
       // Only meaningful while deadlines are on. Storing 0 for a type with them
       // off keeps the saved shape identical whichever way the switch was flipped.
       deadlineWarningDays: hasDeadline ? normalizeDeadlineWarningDays(deadlineWarningDays) : 0,
@@ -736,7 +832,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     }, 600);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingTypeId, typeName, typeDesc, typeIcon, typeColor, hasTimeline, hasGantt, hasDeadline,
+  }, [editingTypeId, typeName, typeDesc, typeIcon, typeColor, hasTimeline, hasGantt, hasDeadline, hasInvoiceDate,
       deadlineWarningDays, deadlineRequired, fileFields, attributes, timelineEventTypes]);
 
   /** Something typed into the create form that Save would keep. */
@@ -776,18 +872,25 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     );
   };
 
-  const confirmDeleteTypeMessage = () => t(
-    "WARNING: Deleting this project type will drop its associated data tables and permanently delete all projects of this type. Are you sure you want to proceed?",
-    "VAROVANIE: Vymazanie tohto typu projektu odstráni jeho pridružené dátové tabuľky a trvalo vymaže všetky projekty tohto typu. Naozaj chcete pokračovať?",
-    "FIGYELMEZTETÉS: Ezen projekt típus törlése törli a hozzá tartozó adattáblákat és véglegesen törli az összes ilyen típusú projektet. Biztosan folytatja?"
-  );
+  // Deleting a type also drops its data tables and every project of that type on
+  // the server, so the delete is held back until the undo window closes.
+  const deleteTypeWithUndo = (typeId: string, extra?: { apply: () => void }) => {
+    const target = projectTypes.find(pt => pt.id === typeId);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "projectTypes",
+      allRecords: projectTypes,
+      targets: [target],
+      setRecords: setProjectTypes,
+      lang: userLanguage,
+      entity: "projectType",
+      titleOf: pt => pt.name,
+      applyExtra: extra?.apply,
+    });
+  };
 
-  const handleDeleteType = (typeId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!window.confirm(confirmDeleteTypeMessage())) return;
-
-    setProjectTypes(prev => prev.filter(t => t.id !== typeId));
-    (window as any).showToast(t("Project type deleted.", "Projektový typ bol vymazaný.", "Projekt típus törölve."));
+  const handleDeleteType = (typeId: string) => {
+    deleteTypeWithUndo(typeId);
   };
 
   /** Delete straight from the editor, so removing a type doesn't need a trip
@@ -795,14 +898,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       being created has nothing saved yet to delete. */
   const handleDeleteEditingType = () => {
     if (!editingType) return;
-    if (!window.confirm(confirmDeleteTypeMessage())) return;
-
-    const typeId = editingType.id;
-    pendingTypeRef.current = null;
-    setProjectTypes(prev => prev.filter(t => t.id !== typeId));
-    setIsCreating(false);
-    setEditingType(null);
-    (window as any).showToast(t("Project type deleted.", "Projektový typ bol vymazaný.", "Projekt típus törölve."));
+    deleteTypeWithUndo(editingType.id, {
+      apply: () => {
+        pendingTypeRef.current = null;
+        setIsCreating(false);
+        setEditingType(null);
+      },
+    });
   };
 
   const renderIcon = (iconName: string, className?: string) => {
@@ -835,7 +937,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           {([
             { id: "general", Icon: SlidersHorizontal, label: t("General", "Všeobecné", "Általános"), count: null },
             { id: "timeline", Icon: History, label: t("Timeline", "Časová os", "Idővonal"), count: hasTimeline ? timelineEventTypes.length : null },
-            { id: "attributes", Icon: ListChecks, label: t("Attributes", "Atribúty", "Attribútumok"), count: attributes.length + (hasDeadline ? 1 : 0) },
+            { id: "attributes", Icon: ListChecks, label: t("Attributes", "Atribúty", "Attribútumok"), count: attributes.length + (hasDeadline ? 1 : 0) + (hasInvoiceDate ? 1 : 0) },
             { id: "files", Icon: Paperclip, label: t("Files", "Súbory", "Fájlok"), count: fileFields.length },
           ] as { id: EditSection; Icon: React.ComponentType<{ className?: string }>; label: string; count: number | null }[]).map(({ id, Icon, label, count }) => {
             const active = editSection === id;
@@ -1103,7 +1205,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   {timelineEventTypes.length === 0 ? (
                     <span className="text-micro text-slate-400 font-semibold">{t("No custom event types configured yet.", "Žiadne vlastné typy.", "Nincsenek egyedi eseménytípusok.")}</span>
                   ) : (
-                    timelineEventTypes.map((et) => {
+                    timelineEventTypes.filter(x => !pendingRemovedIds.has(x.id)).map((et) => {
                       const isSelected = selectedTeTypeId === et.id;
                       return (
                         <div
@@ -1121,19 +1223,16 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                           {renderIcon(et.icon, "h-3.5 w-3.5")}
                           <span style={{ color: et.color }}>●</span>
                           <span>{et.name}</span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (selectedTeTypeId === et.id) {
-                                setSelectedTeTypeId(timelineEventTypes.find(t => t.id !== et.id)?.id || null);
-                              }
-                              setTimelineEventTypes(prev => prev.filter(t => t.id !== et.id));
-                            }}
-                            className="text-slate-400 hover:text-rose-600 font-bold ml-1"
+                          <HoldToConfirmButton
+                              tone="danger"
+                              lang={userLanguage}
+                              what={et.name}
+                              onConfirm={() => handleRemoveTimelineEventType(et.id)}
+                              className="text-slate-400 hover:text-rose-600 font-bold ml-1"
+                              instant={!editingType}
                           >
                             &times;
-                          </button>
+                          </HoldToConfirmButton>
                         </div>
                       );
                     })
@@ -1177,7 +1276,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                 {t("No custom attributes defined for this event type.", "Pre tento typ udalosti nie sú definované žiadne vlastné atribúty.", "Nincsenek egyedi attribútumok definiálva ehhez az eseménytípushoz.")}
                               </div>
                             ) : (
-                              selectedTeType.attributes.map((attr: ProjectAttribute, idx: number) => (
+                              selectedTeType.attributes.filter((a: ProjectAttribute) => !pendingRemovedIds.has(a.id)).map((attr: ProjectAttribute, idx: number) => (
                                 <div
                                   key={attr.id}
                                   className={cn(
@@ -1218,14 +1317,17 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                     >
                                       <Pencil className="h-4.5 w-4.5" />
                                     </button>
-                                    <button
-                                      type="button"
-                                      disabled={!canEdit}
-                                      onClick={() => handleRemoveTimelineAttribute(attr.id)}
-                                      className="p-1 hover:bg-rose-50 rounded text-rose-600 transition-colors duration-150 active:scale-95"
+                                    <HoldToConfirmButton
+                                        tone="danger"
+                                        lang={userLanguage}
+                                        what={attr.name}
+                                        onConfirm={() => handleRemoveTimelineAttribute(attr.id)}
+                                        disabled={!canEdit}
+                                        className="p-1 hover:bg-rose-50 rounded text-rose-600 transition-colors duration-150 active:scale-95"
+                                        instant={!editingType}
                                     >
                                       <Trash2 className="h-4.5 w-4.5" />
-                                    </button>
+                                    </HoldToConfirmButton>
                                   </div>
                                 </div>
                               ))
@@ -1332,6 +1434,29 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             {/* Built-in attributes. Every type has them; each is switched on or
                 off rather than added, and brings its own settings when on. */}
             <div className="space-y-2">
+              {/* Invoice date: a plain date, no countdown */}
+              <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasInvoiceDate ? "border-indigo-200" : "border-slate-200"}`}>
+                <div className="flex items-center justify-between gap-3 p-3 text-ui font-semibold">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`flex items-center justify-center h-8 w-8 rounded-xl shrink-0 transition-colors duration-150 ${hasInvoiceDate ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
+                      <CalendarClock className="h-4 w-4" />
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-slate-800 text-ui">{t("Invoice date", "Termín fakturácie", "Számlázási határidő")}</span>
+                      <span className="text-slate-400 font-medium truncate">
+                        {t("The date the project is invoiced", "Dátum fakturácie projektu", "A projekt számlázásának dátuma")}
+                      </span>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={hasInvoiceDate}
+                    onChange={setHasInvoiceDate}
+                    disabled={!canEdit}
+                    label={t("Invoice date", "Termín fakturácie", "Számlázási határidő")}
+                  />
+                </div>
+              </div>
+
               {/* Deadline */}
               <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasDeadline ? "border-indigo-200" : "border-slate-200"}`}>
                 <div className="flex items-center justify-between gap-3 p-3 text-ui font-semibold">
@@ -1342,7 +1467,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     <div className="flex flex-col min-w-0">
                       <span className="text-slate-800 text-ui">{t("Deadline", "Termín dokončenia", "Határidő")}</span>
                       <span className="text-slate-400 font-medium truncate">
-                        {t("Due date and countdown", "Dátum dokončenia a odpočet", "Esedékesség és visszaszámlálás")}
+                        {t("Deadline and countdown", "Termín dokončenia a odpočet", "Határidő és visszaszámlálás")}
                         {hasDeadline && deadlineRequired && t(" • Required", " • Povinné", " • Kötelező")}
                       </span>
                     </div>
@@ -1419,7 +1544,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   {t("No attributes added yet. Use the form below to add attributes.", "Zatiaľ neboli pridané žiadne atribúty.", "Még nincsenek attribútumok hozzáadva.")}
                 </div>
               ) : (
-                attributes.map((attr, idx) => {
+                attributes.filter(a => !pendingRemovedIds.has(a.id)).map((attr, idx) => {
                   const drop = attrDrag.dropAt(attr.id);
                   const isEditing = editingAttrId === attr.id;
                   return (
@@ -1480,14 +1605,17 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       >
                         <Pencil className="h-4.5 w-4.5" />
                       </button>
-                      <button
-                        type="button"
-                        disabled={!canEdit}
-                        onClick={() => handleRemoveAttribute(attr.id)}
-                        className="p-1 hover:bg-rose-50 rounded text-rose-600 transition-colors duration-150 active:scale-95"
+                      <HoldToConfirmButton
+                          tone="danger"
+                          lang={userLanguage}
+                          what={attr.name}
+                          onConfirm={() => handleRemoveAttribute(attr.id)}
+                          disabled={!canEdit}
+                          className="p-1 hover:bg-rose-50 rounded text-rose-600 transition-colors duration-150 active:scale-95"
+                          instant={!editingType}
                       >
                         <Trash2 className="h-4.5 w-4.5" />
-                      </button>
+                      </HoldToConfirmButton>
                     </div>
                   </div>
                   );
@@ -1609,19 +1737,22 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   {t("No default files yet — add one below.", "Zatiaľ žiadne predvolené súbory — pridajte ich nižšie.", "Még nincsenek alapértelmezett fájlok — adjon hozzá lent.")}
                 </div>
               ) : (
-                fileFields.map(field => (
+                fileFields.filter(f => !pendingRemovedIds.has(f.id)).map(field => (
                   <div key={field.id} className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-2xl shadow-sm text-ui font-semibold animate-fade-in">
                     <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                     <span className="flex-1 min-w-0 truncate text-slate-800 text-ui">{field.name}</span>
-                    <button
-                      type="button"
-                      disabled={!canEdit}
-                      onClick={() => handleRemoveFileField(field.id)}
-                      className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-colors duration-150 active:scale-95 cursor-pointer disabled:opacity-30"
-                      title={t("Remove", "Odobrať", "Eltávolítás")}
+                    <HoldToConfirmButton
+                        tone="danger"
+                        lang={userLanguage}
+                        what={field.name}
+                        onConfirm={() => handleRemoveFileField(field.id)}
+                        disabled={!canEdit}
+                        className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-colors duration-150 active:scale-95 disabled:opacity-30"
+                        title={t("Remove", "Odobrať", "Eltávolítás")}
+                        instant={!editingType?.fileFields?.some(f => f.id === field.id)}
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </HoldToConfirmButton>
                   </div>
                 ))
               )}
@@ -1659,14 +1790,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         {canEdit && (
           <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
             {editingType ? (
-              <button
-                type="button"
-                onClick={handleDeleteEditingType}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border border-rose-200 text-ui font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span>{t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}</span>
-              </button>
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={userLanguage}
+                  what={editingType?.name}
+                  onConfirm={handleDeleteEditingType}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border border-rose-200 text-ui font-bold text-rose-600 hover:bg-rose-50"
+                  icon={<Trash2 className="h-4 w-4" />}
+              ><span>{t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}</span>
+              </HoldToConfirmButton>
             ) : (
               <span />
             )}
@@ -1842,6 +1974,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         {t("Gantt", "Gantt", "Gantt")}
                       </span>
                     )}
+                    {projectTypeHasInvoiceDate(type) && (
+                      <span className="px-2 py-0.5 rounded-full bg-sky-50 text-micro font-bold text-sky-600 border border-sky-100">
+                        {t("Invoice date", "Termín fakturácie", "Számlázási határidő")}
+                      </span>
+                    )}
                     {type.hasDeadline && (
                       <span className="px-2 py-0.5 rounded-full bg-amber-50 text-micro font-bold text-amber-600 border border-amber-100">
                         {t("Deadline", "Termín", "Határidő")}
@@ -1857,14 +1994,16 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               </div>
 
               {canEdit && (
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteType(type.id, e)}
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer shrink-0"
-                  title={t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}
+                <HoldToConfirmButton
+                    tone="danger"
+                    lang={userLanguage}
+                    what={type.name}
+                    onConfirm={() => handleDeleteType(type.id)}
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all shrink-0"
+                    title={t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}
                 >
                   <Trash2 className="h-4.5 w-4.5" />
-                </button>
+                </HoldToConfirmButton>
               )}
             </div>
           ))}

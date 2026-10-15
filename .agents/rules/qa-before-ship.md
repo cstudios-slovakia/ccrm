@@ -33,6 +33,8 @@ backend and is safe to run at any time.
 | One module's UI | `npm run test:qa:crawler` |
 | Sidebar, header or routing | `npm run test:qa:nav` |
 | How `sync.php` or `api/*.php` stores or reads back a field | `npm run test:persistence` — the QA suite mocks the backend and cannot see a value saved under one key and read back under another (TESTING.md 5c) |
+| The MCP gateway (`public/api/mcp*.php`) or a formula it ports (`financialOverviewTable`, `recurringExpenses`, `futureMovements`, `projectBilling`, `equationEvaluator`) | `npm run test:mcp` — which tools a key may call, field stripping, TypeScript↔PHP parity and write paths against a scratch database (TESTING.md 5d) |
+| Permissions, the role matrix, `read_scope.php`, `sync.php` filtering, or any endpoint that reads CRM data for a user | `npm run test:rbac` - per-role read and write checks on the real server against a scratch database; the mocked QA suite cannot see server-side leaks (TESTING.md 5e) |
 | Anything else, finished | `npm run test:qa` — it scopes itself to what changed |
 
 `npm run test:qa` is **not** a full run by default: it diffs against

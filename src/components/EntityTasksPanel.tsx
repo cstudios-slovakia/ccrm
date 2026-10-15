@@ -19,6 +19,8 @@ import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TaskEditDrawer } from "./TaskEditDrawer";
+import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
+import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { TaskPillText } from "./TaskPillText";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import {
@@ -35,7 +37,8 @@ import {
   type TaskDateFilter,
 } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
-import { requestTaskDeletion } from "../utils/taskApi";
+import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import {
   canArchiveTask,
   canDeleteTask,
@@ -118,6 +121,8 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   const [assignee, setAssignee] = useState(() => resolveAssigneeName(myName, myName, userNames));
   const [showFinished, setShowFinished] = useState(true);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  // Completing a task that requires a conclusion asks for it first.
+  const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(userLanguage);
   const [recentIds, setRecentIds] = useState<Set<string>>(() => new Set());
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -247,37 +252,29 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     inputRef.current?.focus();
   };
 
-  const toggleDone = (task: Task) => {
+  const toggleDone = async (task: Task) => {
     if (!canEditTask(task, currentUser, taskAccess)) return;
-    setTasks((prev) => prev.map((tk) => (tk.id === task.id ? toggleTaskDone(tk, taskStates, myName) : tk)));
+    let conclusion: string | undefined;
+    if (needsConclusionToFinish(task, taskStates[taskStates.length - 1] || "Done", taskStates)) {
+      const written = await askConclusion(task);
+      if (written === null) return;
+      conclusion = written;
+    }
+    setTasks((prev) =>
+      prev.map((tk) => {
+        if (tk.id !== task.id) return tk;
+        const toggled = toggleTaskDone(tk, taskStates, myName);
+        return conclusion !== undefined ? { ...toggled, conclusion } : toggled;
+      }),
+    );
   };
 
-  const deleteTask = async (task: Task): Promise<boolean> => {
-    if (!canDeleteTask(task, currentUser, taskAccess)) return false;
-    const confirmed = window.confirm(
-      t(
-        `Permanently delete "${task.title}"? This cannot be undone.`,
-        `Natrvalo odstrániť úlohu "${task.title}"? Túto akciu nemožno vrátiť späť.`,
-        `Véglegesen törli a(z) "${task.title}" feladatot? Ez nem vonható vissza.`,
-      ),
-    );
-    if (!confirmed) return false;
-    try {
-      await requestTaskDeletion(task.id);
-      setTasks((prev) => prev.filter((tk) => tk.id !== task.id));
-      toast(t("Task deleted", "Úloha odstránená", "Feladat törölve"));
-      return true;
-    } catch (error) {
-      console.error("Task deletion failed", error);
-      toast(
-        t(
-          "Task was not deleted. Please try again.",
-          "Úloha nebola odstránená. Skúste to znova.",
-          "A feladat nem lett törölve. Próbálja újra.",
-        ),
-      );
-      return false;
-    }
+  // Hold-to-confirm already asked; the Undo toast is the safety net. The server
+  // delete is deferred until the undo window closes (see deleteTasksWithUndo).
+  const deleteTask = (task: Task): Promise<boolean> => {
+    if (!canDeleteTask(task, currentUser, taskAccess)) return Promise.resolve(false);
+    deleteTasksWithUndo({ allTasks: tasks, targets: [task], setTasks, lang: userLanguage });
+    return Promise.resolve(true);
   };
 
   const formatDue = (task: Task) => {
@@ -484,14 +481,16 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             <Pencil className="h-3.5 w-3.5" />
           </button>
           {mayDelete && (
-            <button
-              type="button"
-              onClick={() => void deleteTask(task)}
+            <HoldToConfirmButton
+              tone="danger"
+              lang={userLanguage}
+              what={task.title}
+              onConfirm={() => void deleteTask(task)}
               title={t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
             >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </HoldToConfirmButton>
           )}
         </div>
       </li>
@@ -795,6 +794,8 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
         </div>
       )}
 
+      {conclusionDialog}
+
       {/* Task Edit Drawer */}
       {editingTask && (
         <TaskEditDrawer
@@ -805,6 +806,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           users={users}
           taskStates={taskStates}
           systemLanguage={userLanguage}
+          currentUser={currentUser}
           currentUserName={myName}
           mailConfigured={mailConfigured}
           canEdit={canEditTask(editingTask, currentUser, taskAccess)}
@@ -812,7 +814,9 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           canDelete={canDeleteTask(editingTask, currentUser, taskAccess)}
           onSave={(next) => setTasks((prev) => prev.map((tk) => (tk.id === next.id ? next : tk)))}
           onToggleArchive={(next) =>
-            setTasks((prev) => prev.map((tk) => (tk.id === next.id ? { ...tk, archived: !next.archived } : tk)))
+            next.archived
+              ? setTasks((prev) => prev.map((tk) => (tk.id === next.id ? { ...tk, archived: false } : tk)))
+              : archiveTasksWithUndo({ targets: [next], setTasks, lang: userLanguage })
           }
           onDelete={deleteTask}
           onClose={() => setEditingTask(null)}

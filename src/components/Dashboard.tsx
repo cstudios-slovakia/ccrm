@@ -14,6 +14,7 @@ import { isClosedLeadState } from "../utils/leadSla";
 import { openProjectStatuses, projectStatusColor, projectStatusLabel } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { GroupedStatusValueEquationStats, type StatusStatGroup, type StatusStatItem, type StatusStatDetailRow } from "./GroupedStatusValueEquationStats";
+import { useUserPref } from "../utils/userPrefs";
 import { StatGrid, PageHeader, Tabs } from "./layout";
 
 interface DashboardProps {
@@ -459,6 +460,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Sub-tabs active status inside Dashboard
   const [activeTab, setActiveTab] = useState<"overview" | "campaigns" | "crm" | "clients">("overview");
+
+  // Equation panel preferences
+  const [storedEquationView, setEquationView] = useUserPref("dashboardEquationView");
+  const [equationCounts, setEquationCounts] = useUserPref("dashboardEquationCounts");
+  const [storedEquationExcluded, setEquationExcluded] = useUserPref("dashboardEquationExcluded");
+  const equationView = storedEquationView === "summary" ? "summary" : "detail";
+  const equationExcluded = Array.isArray(storedEquationExcluded) ? storedEquationExcluded : [];
 
   // Funnel metric state (can be "count" or "value")
   const [funnelMetric, setFunnelMetric] = useState<"count" | "value">("count");
@@ -1174,7 +1182,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
           groups={dashboardEquationGroups}
           currency={currencyCode}
           language={systemLanguage}
-          storageKey="ccrm_overview_equation_stats"
+          view={equationView}
+          onViewChange={setEquationView}
+          showCounts={equationCounts !== false}
+          onShowCountsChange={setEquationCounts}
+          excludedKeys={equationExcluded}
+          onExcludedKeysChange={setEquationExcluded}
         />
       )}
 

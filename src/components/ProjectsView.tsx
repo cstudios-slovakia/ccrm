@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X, PanelRightOpen } from "lucide-react";
 import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
@@ -31,6 +31,7 @@ import {
   projectStatusLabel,
   projectStatusOptions,
   projectStatusOrder,
+  projectTypeHasInvoiceDate,
 } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
@@ -52,10 +53,13 @@ import {
   projectAttributeSortValue,
   resolveProjectColumns,
   toStoredColumns,
+  totalProjectColumns,
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
 import { PageHeader } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -249,6 +253,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editingProjectType, setEditingProjectType] = useState<ProjectType | null>(null);
+  const [quickEditProjectId, setQuickEditProjectId] = useState<string | null>(null);
+  const quickEditProject = useMemo(() => {
+    if (!quickEditProjectId) return null;
+    return projects.find(p => p.id === quickEditProjectId) || null;
+  }, [projects, quickEditProjectId]);
 
   // "+ New Project" dropdown control
   const [isCreateDropdownOpen, setIsCreateDropdownOpen] = useState(false);
@@ -260,6 +269,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      the hand-set order and is rearranged by dragging — no column sorts it. */
   const [viewMode, setViewMode] = useUserPref("projectsViewMode");
   const isStructure = viewMode === "structure";
+
+  /* The "Active Projects Budget Breakdown" panel's own adjustments — detail or
+     summary, whether to show counts, and the statuses left out of the total —
+     live in the same DB-backed preferences. Which statuses are "active" at all is
+     not one of them: that comes from the project status settings. */
+  const [storedEquationView, setEquationView] = useUserPref("projectsEquationView");
+  const [equationCounts, setEquationCounts] = useUserPref("projectsEquationCounts");
+  const [storedEquationExcluded, setEquationExcluded] = useUserPref("projectsEquationExcluded");
+  const equationView = storedEquationView === "summary" ? "summary" : "detail";
+  const equationExcluded = Array.isArray(storedEquationExcluded) ? storedEquationExcluded : [];
 
   /* How the list is ordered. The table's column headers and the sort menu in the
      filter bar write the same DB-backed preference, so cards and table agree and
@@ -538,28 +557,69 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     }
   };
 
-  const handleDeleteProject = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!canDelete) return;
-    if (!window.confirm(t("Are you sure you want to delete this project?", "Naozaj chcete vymazať tento projekt?", "Biztosan törli ezt a projektet?"))) {
-      return;
-    }
-
-    setProjects(prev => prev.filter(p => p.id !== id));
-    (window as any).showToast(t("Project deleted.", "Projekt bol vymazaný.", "Projekt törölve."));
+  const handleOpenQuickEdit = (p: Project) => {
+    setQuickEditProjectId(p.id);
   };
 
-  const handleArchiveProject = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleSaveQuickEditProject = (updatedProject: Project, { close = false }: { close?: boolean } = {}) => {
+    if (!canEdit) return;
+    setProjects(prev => {
+      const exists = prev.some(p => p.id === updatedProject.id);
+      if (exists) {
+        return prev.map(p => p.id === updatedProject.id ? updatedProject : p);
+      } else {
+        return [updatedProject, ...prev];
+      }
+    });
+
+    if (close) {
+      setQuickEditProjectId(null);
+      (window as any).showToast?.(t("Project saved successfully!", "Projekt bol úspešne uložený!", "Projekt sikeresen mentve!"));
+    }
+  };
+
+  const projectTitle = (p: Project) => projectDisplayName(p, leads, t("Project", "Projekt", "Projekt"));
+
+  // The hold on the button is the confirmation; the server delete waits for the
+  // Undo window to close (see utils/recordActions).
+  const handleDeleteProject = (id: string) => {
+    if (!canDelete) return;
+    const target = projects.find(p => p.id === id);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "projects",
+      allRecords: projects,
+      targets: [target],
+      setRecords: setProjects,
+      lang: userLanguage,
+      entity: "project",
+      titleOf: projectTitle,
+    });
+  };
+
+  const archiveProjects = (targets: Project[], onApplied?: () => void) =>
+    archiveRecordsWithUndo({
+      targets,
+      setRecords: setProjects,
+      lang: userLanguage,
+      entity: "project",
+      titleOf: projectTitle,
+      fields: ["archived"],
+      change: p => ({ ...p, archived: true }),
+      onApplied,
+    });
+
+  // Archiving is held and undoable; restoring is a plain click.
+  const handleArchiveProject = (id: string) => {
     if (!canEdit) return;
     const target = projects.find(p => p.id === id);
     if (!target) return;
-    const nextArchived = !target.archived;
-    setProjects(prev => prev.map(p => (p.id === id ? { ...p, archived: nextArchived } : p)));
-    const msg = nextArchived
-      ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
-      : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
-    (window as any).showToast?.(msg);
+    if (!target.archived) {
+      archiveProjects([target]);
+      return;
+    }
+    setProjects(prev => prev.map(p => (p.id === id ? { ...p, archived: false } : p)));
+    (window as any).showToast?.(t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva."));
   };
 
   /**
@@ -865,6 +925,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         // Unrated travels as null, not 0 — see ProjectSortValues.rating.
         rating: ratingValue(p.rating) || null,
         deadline: evaluateProjectDeadline(p, pType, today, projectStatuses)?.deadline ?? null,
+        invoiceDate: projectTypeHasInvoiceDate(pType) ? (p.invoiceDate || null) : null,
         progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
         value: sortValueActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).totalBudget || null) : null,
         invoicable: sortInvoicableActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).invoicable || null) : null,
@@ -888,6 +949,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     const visible = new Set(filteredProjects.map(p => p.id));
     return (isStructure ? structureProjects : orderedProjects).filter(p => visible.has(p.id));
   }, [isStructure, structureProjects, orderedProjects, filteredProjects]);
+
+  /* The Totals row under the list: every summable column on screen, added up
+     over the projects the filters leave. Which columns count is declared once,
+     in SUMMABLE_PROJECT_COLUMNS (utils/projectColumns.ts). */
+  const columnTotals = useMemo(() => {
+    const figures = sortedProjects.flatMap(p => {
+      const pType = projectTypes.find(t => t.id === p.projectTypeId);
+      if (!pType) return [];
+      return [getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId))];
+    });
+    return totalProjectColumns(activeColumns, figures);
+  }, [sortedProjects, projectTypes, leads, activeColumns, getProjectFinancials]);
 
   const areAllVisibleSelected = useMemo(() => {
     if (sortedProjects.length === 0) return false;
@@ -973,6 +1046,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const handleBulkArchive = (archive: boolean) => {
     if (!canEdit || selectedProjectIds.size === 0) return;
     const count = selectedProjectIds.size;
+    if (archive) {
+      archiveProjects(projects.filter(p => selectedProjectIds.has(p.id)), () => {
+        setActiveBulkMenu(null);
+        setSelectedProjectIds(new Set());
+      });
+      return;
+    }
     setProjects(prev =>
       prev.map(p => {
         if (!selectedProjectIds.has(p.id)) return p;
@@ -984,17 +1064,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     );
     setActiveBulkMenu(null);
     setSelectedProjectIds(new Set());
-    const msg = archive
-      ? (userLanguage === "sk"
-          ? `${count} ${count === 1 ? "projekt bol archivovaný" : count < 5 ? "projekty boli archivované" : "projektov bolo archivovaných"}.`
-          : userLanguage === "hu"
-          ? `${count} projekt archiválva.`
-          : `${count} ${count === 1 ? "project" : "projects"} archived.`)
-      : (userLanguage === "sk"
-          ? `${count} ${count === 1 ? "projekt bol obnovený" : count < 5 ? "projekty boli obnovené" : "projektov bolo obnovených"}.`
-          : userLanguage === "hu"
-          ? `${count} projekt visszaállítva.`
-          : `${count} ${count === 1 ? "project" : "projects"} restored.`);
+    const msg = userLanguage === "sk"
+      ? `${count} ${count === 1 ? "projekt bol obnovený" : count < 5 ? "projekty boli obnovené" : "projektov bolo obnovených"}.`
+      : userLanguage === "hu"
+      ? `${count} projekt visszaállítva.`
+      : `${count} ${count === 1 ? "project" : "projects"} restored.`;
     (window as any).showToast?.(msg);
   };
 
@@ -1121,15 +1195,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
           {/* Archive / Restore Buttons */}
           {hasActiveSelected && (
-            <button
-              type="button"
-              onClick={() => handleBulkArchive(true)}
-              title={t("Archive selected projects", "Archivovať vybrané projekty", "Kiválasztott projektek archiválása")}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
-            >
-              <Archive className="h-3.5 w-3.5 text-amber-400" />
-              <span>{t("Archive", "Archivovať", "Archiválás")}</span>
-            </button>
+            <HoldToConfirmButton
+                tone="archive"
+                lang={userLanguage}
+                what={t("selected projects", "vybrané projekty", "kiválasztott projektek")}
+                onConfirm={() => handleBulkArchive(true)}
+                title={t("Archive selected projects", "Archivovať vybrané projekty", "Kiválasztott projektek archiválása")}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-amber-700/50"
+                icon={<Archive className="h-3.5 w-3.5 text-amber-400" />}
+            ><span>{t("Archive", "Archivovať", "Archiválás")}</span>
+            </HoldToConfirmButton>
           )}
           {hasArchivedSelected && (
             <button
@@ -1187,7 +1262,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "type", label: t("Type", "Typ", "Típus") },
     { value: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
     { value: "rating", label: t("Rating", "Hodnotenie", "Értékelés") },
-    { value: "deadline", label: t("Deadline", "Termín", "Határidő") },
+    { value: "invoiceDate", label: t("Invoice date", "Termín fakturácie", "Számlázási határidő") },
+    { value: "deadline", label: t("Deadline", "Termín dokončenia", "Határidő") },
     { value: "progress", label: t("Progress", "Postup", "Haladás") },
     { value: "status", label: t("Status", "Stav", "Állapot") },
     { value: "value", label: t("Value", "Hodnota", "Érték") },
@@ -1456,6 +1532,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             {renderDelayFlag(p, dl)}
           </div>
         ) : emptyCell;
+      case "invoiceDate":
+        return projectTypeHasInvoiceDate(pType) && p.invoiceDate ? (
+          <span className="inline-flex items-center gap-1.5 text-ui font-semibold text-slate-600 whitespace-nowrap">
+            <CalendarClock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            {formatDateLocalized(p.invoiceDate, userLanguage)}
+          </span>
+        ) : emptyCell;
       case "progress":
         return pType.hasGantt && p.gantt && p.gantt.length > 0 ? (
           <div className="flex items-center gap-2 min-w-[7rem]">
@@ -1592,13 +1675,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         }}
         onSave={handleSaveProject}
         onDelete={(id) => {
-          // The card asks for confirmation itself, so this only removes and closes.
+          // The card's hold-to-confirm already asked; this removes and closes, and the
+          // Undo toast brings the project back into the list.
           if (!canDelete) return;
-          setProjects(prev => prev.filter(p => p.id !== id));
+          handleDeleteProject(id);
           setEditingProject(null);
           setEditingProjectType(null);
           window.location.hash = "projects";
-          (window as any).showToast(t("Project deleted.", "Projekt bol vymazaný.", "Projekt törölve."));
         }}
         isNew={!projects.some(p => p.id === editingProject.id)}
       />
@@ -1686,29 +1769,24 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             items={activeProjectStatusItems}
             currency={defaultCurrency}
             language={userLanguage}
-            title={
-              userLanguage === "sk"
-                ? "Prehľad rozpočtov aktívnych fáz"
-                : userLanguage === "hu"
-                  ? "Aktív fázisok összegének összesítése"
-                  : "Active Projects Budget Breakdown"
-            }
-            subtitle={
-              userLanguage === "sk"
-                ? "Kliknutím na stav ho zahrniete alebo vylúčite zo súčtu"
-                : userLanguage === "hu"
-                  ? "Kattintson egy állapotra a végösszegből való kizáráshoz/hozzáadáshoz"
-                  : "Click any status pill to toggle its inclusion in the equation total"
-            }
-            unitLabel={
-              userLanguage === "sk"
-                ? "projektov"
-                : userLanguage === "hu"
-                  ? "projekt"
-                  : "projects"
-            }
-            storageKey="ccrm_projects_equation_stats"
+            title={t(
+              "Active Projects Budget Breakdown",
+              "Prehľad rozpočtov aktívnych fáz",
+              "Aktív fázisok összegének összesítése",
+            )}
+            subtitle={t(
+              "Click any status pill to toggle its inclusion in the equation total",
+              "Kliknutím na stav ho zahrniete alebo vylúčite zo súčtu",
+              "Kattintson egy állapotra a végösszegből való kizáráshoz/hozzáadáshoz",
+            )}
+            unitLabel={t("projects", "projektov", "projekt")}
             themeColor="purple"
+            view={equationView}
+            onViewChange={setEquationView}
+            showCounts={equationCounts !== false}
+            onShowCountsChange={setEquationCounts}
+            excludedKeys={equationExcluded}
+            onExcludedKeysChange={setEquationExcluded}
           />
 
           {/* Summary strip — and the status filter itself. It used to show four
@@ -2117,16 +2195,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               )}
             </div>
           ) : viewMode === "list" || isStructure ? (
-            <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
-              <div className="overflow-x-auto scrollbar-thin">
+            <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6">
+              <div className="overflow-x-auto scrollbar-thin rounded-3xl">
                 <table className="w-full text-left border-collapse min-w-0 ws-lg:min-w-210">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a
                       column is, and whether it is here at all, is decided in one
                       place. See utils/projectColumns.ts. */}
-                  <thead className="hidden ws-lg:table-header-group">
-                    <tr className="border-b border-slate-200 bg-slate-50/70">
-                      <th className="px-3 py-3 w-10 text-center">
+                  <thead className="hidden ws-lg:table-header-group sticky top-0 z-20">
+                    <tr className="border-b border-slate-200 bg-slate-50/95 backdrop-blur-xs">
+                      <th className="sticky top-0 left-0 z-20 bg-slate-50/95 backdrop-blur-xs px-3 py-3 w-10 text-center rounded-tl-3xl border-b border-slate-200">
                         <button
                           type="button"
                           onClick={handleSelectAllVisible}
@@ -2152,7 +2230,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           return (
                             <th
                               key={col.key}
-                              className="px-4 py-3 type-overline text-slate-400 whitespace-nowrap"
+                              className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
                             >
                               {columnLabel(col)}
                             </th>
@@ -2162,7 +2240,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           <th
                             key={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
-                            className="px-4 py-3 type-overline text-slate-400 whitespace-nowrap"
+                            className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
                           >
                             <button
                               type="button"
@@ -2181,7 +2259,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           </th>
                         );
                       })}
-                      <th className="px-4 py-3 w-10" />
+                      <th className="sticky top-0 right-0 bg-slate-50/95 backdrop-blur-xs z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-slate-200 rounded-tr-3xl" />
                     </tr>
                   </thead>
                   <tbody>
@@ -2264,27 +2342,62 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               )}
                             </td>
                           ))}
-                          <td className="hidden ws-lg:table-cell px-4 py-3">
+                          <td
+                            className={`hidden ws-lg:table-cell px-4 py-3 sticky right-0 z-10 w-28 transition-colors shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 ${
+                              isSelected
+                                ? "bg-indigo-50/95 group-hover:bg-indigo-50"
+                                : "bg-white/95 group-hover:bg-[#f5f7ff] backdrop-blur-xs"
+                            }`}
+                          >
                             <div className="flex items-center gap-1 justify-end">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenQuickEdit(p);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all cursor-pointer"
+                                title={t("Quick edit", "Rýchla úprava", "Gyors szerkesztés")}
+                              >
+                                <PanelRightOpen className="h-4 w-4" />
+                              </button>
                               {canEdit && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleArchiveProject(p.id, e)}
-                                  className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
-                                  title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
-                                >
-                                  {p.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                                </button>
+                                p.archived ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleArchiveProject(p.id);
+                                    }}
+                                    className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
+                                    title={t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása")}
+                                  >
+                                    <ArchiveRestore className="h-4 w-4" />
+                                  </button>
+                                ) : (
+                                  <HoldToConfirmButton
+                                    tone="archive"
+                                    lang={userLanguage}
+                                    what={projectTitle(p)}
+                                    onConfirm={() => handleArchiveProject(p.id)}
+                                    className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all"
+                                    title={t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                                  >
+                                    <Archive className="h-4 w-4" />
+                                  </HoldToConfirmButton>
+                                )
                               )}
                               {canDelete && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleDeleteProject(p.id, e)}
-                                  className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                                  title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                                <HoldToConfirmButton
+                                    tone="danger"
+                                    lang={userLanguage}
+                                    what={projectTitle(p)}
+                                    onConfirm={() => handleDeleteProject(p.id)}
+                                    className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                    title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                </button>
+                                </HoldToConfirmButton>
                               )}
                             </div>
                           </td>
@@ -2337,6 +2450,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 >
                                   <button
                                     type="button"
+                                    onClick={() => handleOpenQuickEdit(p)}
+                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
+                                    title={t("Quick edit", "Rýchla úprava", "Gyors szerkesztés")}
+                                  >
+                                    <PanelRightOpen className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => handleOpenProject(p, pType)}
                                     className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
                                     title={t("Edit project", "Upraviť projekt", "Projekt szerkesztése")}
@@ -2344,24 +2465,39 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                     <Edit3 className="h-3.5 w-3.5" />
                                   </button>
                                   {canEdit && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => handleArchiveProject(p.id, e)}
-                                      className="h-6 w-6 rounded-md text-slate-400 hover:text-amber-500 hover:bg-amber-50 flex items-center justify-center transition-colors cursor-pointer"
-                                      title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
-                                    >
-                                      {p.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
-                                    </button>
+                                    p.archived ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleArchiveProject(p.id)}
+                                        className="h-6 w-6 rounded-md text-slate-400 hover:text-amber-500 hover:bg-amber-50 flex items-center justify-center transition-colors cursor-pointer"
+                                        title={t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása")}
+                                      >
+                                        <ArchiveRestore className="h-3.5 w-3.5" />
+                                      </button>
+                                    ) : (
+                                      <HoldToConfirmButton
+                                        tone="archive"
+                                        lang={userLanguage}
+                                        what={projectTitle(p)}
+                                        onConfirm={() => handleArchiveProject(p.id)}
+                                        className="h-6 w-6 rounded-md text-slate-400 hover:text-amber-500 hover:bg-amber-50 flex items-center justify-center transition-colors"
+                                        title={t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                                      >
+                                        <Archive className="h-3.5 w-3.5" />
+                                      </HoldToConfirmButton>
+                                    )
                                   )}
                                   {canDelete && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => handleDeleteProject(p.id, e)}
-                                      className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
-                                      title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                                    <HoldToConfirmButton
+                                        tone="danger"
+                                        lang={userLanguage}
+                                        what={projectTitle(p)}
+                                        onConfirm={() => handleDeleteProject(p.id)}
+                                        className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                                        title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
+                                    </HoldToConfirmButton>
                                   )}
                                 </div>
                               </div>
@@ -2488,6 +2624,59 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       );
                     })}
                   </tbody>
+                  {/* Totals: one cell under each summable column, and none
+                      under the rest. A column counts by being listed in
+                      SUMMABLE_PROJECT_COLUMNS — nothing here changes for a new one. */}
+                  {columnTotals.size > 0 && (
+                    <tfoot data-projects-totals>
+                      <tr className="block ws-lg:table-row border-t-2 border-slate-200 bg-slate-50/70">
+                        <td className="hidden ws-lg:table-cell px-3 py-3 w-10" />
+                        {activeColumns.map((col, colIndex) => {
+                          const parts = columnTotals.get(col.key);
+                          return (
+                            <td
+                              key={col.key}
+                              data-total-column={parts ? col.key : undefined}
+                              className="hidden ws-lg:table-cell px-4 py-3 align-top"
+                            >
+                              {colIndex === 0 && (
+                                <span className="type-overline text-slate-500">
+                                  {t("Totals", "Súčty", "Összesen")}
+                                </span>
+                              )}
+                              {parts && (
+                                <div className="flex flex-col gap-0.5">
+                                  {parts.map(part => (
+                                    <span key={part.currency} className="text-ui font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                      {formatMoney(part.amount, part.currency, userLanguage)}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="hidden ws-lg:table-cell px-4 py-3 sticky right-0 z-10 w-28 bg-slate-50/95 backdrop-blur-xs shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-200/50" />
+
+                        {/* Under ws-lg the rows are cards, so the totals are a card too. */}
+                        <td className="block ws-lg:hidden px-3.5 ws-sm:px-4 py-3 space-y-1">
+                          <span className="type-overline text-slate-500">{t("Totals", "Súčty", "Összesen")}</span>
+                          {activeColumns.filter(col => columnTotals.has(col.key)).map(col => (
+                            <div key={col.key} className="flex items-baseline justify-between gap-3">
+                              <span className="text-ui font-semibold text-slate-500">{columnLabel(col)}</span>
+                              <span className="flex flex-col items-end">
+                                {columnTotals.get(col.key)!.map(part => (
+                                  <span key={part.currency} className="text-ui font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                    {formatMoney(part.amount, part.currency, userLanguage)}
+                                  </span>
+                                ))}
+                              </span>
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>
@@ -2675,28 +2864,56 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       </div>
                     )}
 
+                    {/* Hover quick edit trigger */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenQuickEdit(p);
+                      }}
+                      className="absolute right-20 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer z-10"
+                      title={t("Quick edit", "Rýchla úprava", "Gyors szerkesztés")}
+                    >
+                      <PanelRightOpen className="h-4.5 w-4.5" />
+                    </button>
+
                     {/* Hover archive trigger */}
                     {canEdit && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleArchiveProject(p.id, e)}
-                        className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer z-10"
-                        title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
-                      >
-                        {p.archived ? <ArchiveRestore className="h-4.5 w-4.5" /> : <Archive className="h-4.5 w-4.5" />}
-                      </button>
+                      p.archived ? (
+                        <button
+                          type="button"
+                          onClick={() => handleArchiveProject(p.id)}
+                          className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer z-10 cursor-pointer"
+                          title={t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása")}
+                        >
+                          <ArchiveRestore className="h-4.5 w-4.5" />
+                        </button>
+                      ) : (
+                        <HoldToConfirmButton
+                          tone="archive"
+                          lang={userLanguage}
+                          what={projectTitle(p)}
+                          onConfirm={() => handleArchiveProject(p.id)}
+                          className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer z-10"
+                          title={t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                        >
+                          <Archive className="h-4.5 w-4.5" />
+                        </HoldToConfirmButton>
+                      )
                     )}
 
                     {/* Hover delete trigger */}
                     {canDelete && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteProject(p.id, e)}
-                        className="absolute right-4 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer z-10"
-                        title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                      <HoldToConfirmButton
+                          tone="danger"
+                          lang={userLanguage}
+                          what={projectTitle(p)}
+                          onConfirm={() => handleDeleteProject(p.id)}
+                          className="absolute right-4 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all z-10"
+                          title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
                       >
                         <Trash2 className="h-4.5 w-4.5" />
-                      </button>
+                      </HoldToConfirmButton>
                     )}
 
                     {/* Drag affordance. Last in the card on purpose: useGridFlip
@@ -2726,6 +2943,51 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       )}
 
       {renderBulkActionToolbar()}
+
+      {quickEditProject && (
+        <ProjectDetailsView
+          layoutMode="sidebar"
+          project={quickEditProject}
+          projectType={projectTypes.find(t => t.id === quickEditProject.projectTypeId) || null}
+          leads={leads}
+          setLeads={setLeads}
+          users={users}
+          userLanguage={userLanguage}
+          financialRecords={financialRecords}
+          setFinancialRecords={setFinancialRecords}
+          financialCategories={financialCategories}
+          setFinancialCategories={setFinancialCategories}
+          currencyCode={currencyCode}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          financeAccess={financeAccess}
+          tasks={tasks}
+          setTasks={setTasks}
+          projects={projects}
+          taskStates={taskStates}
+          taskStateColors={taskStateColors}
+          taskAccess={taskAccess}
+          currentUser={currentUser}
+          mailConfigured={mailConfigured}
+          divisions={divisions}
+          divisionColors={divisionColors}
+          onClose={() => setQuickEditProjectId(null)}
+          onOpenFullView={() => {
+            const p = quickEditProject;
+            const type = projectTypes.find(t => t.id === p.projectTypeId);
+            setQuickEditProjectId(null);
+            if (type) {
+              handleOpenProject(p, type);
+            }
+          }}
+          onSave={handleSaveQuickEditProject}
+          onDelete={(id) => {
+            if (!canDelete) return;
+            handleDeleteProject(id);
+            setQuickEditProjectId(null);
+          }}
+        />
+      )}
 
     </div>
   );

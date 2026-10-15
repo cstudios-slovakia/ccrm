@@ -4,12 +4,15 @@
  * Communicates with OpenAI to create dynamic dashboard JSON layouts.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
 
 if (php_sapi_name() !== 'cli') {
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
+    // Building or translating a custom dashboard is editing one.
+    ccrm_gate($sessionUser, 'dashboard.custom', 'edit');
 }
 
 $configFile = dirname(__DIR__) . '/config.php';
@@ -84,8 +87,8 @@ CCRM Database Tables and Columns (Read-Only):
 7. `unified_entries`: `id`, `name`, `entry_name`, `folder_name`, `icon`, `color`.
 8. Dynamic tables for custom unified entries: Named `ue_{safeId}` where `safeId` is lowercase alphanumeric of the entry id. Columns: `id`, `parent_id` (parent folder), `is_folder` (TINYINT), `title`, `due_date`, `file_name`, `file_size`, `file_type` (offer, contract, invoice), `file_path`, `client_id`, `lead_id`, `warning_days`, `icon`.
    * Use these tables to count or query files (where `file_name IS NOT NULL` or `is_folder = 0`).
-9. `project_types` (project definitions): `id` (VARCHAR), `name` (VARCHAR), `description` (TEXT), `icon` (VARCHAR), `color` (VARCHAR), `has_timeline` (TINYINT), `has_gantt` (TINYINT).
-10. `projects` (project instances): `id` (VARCHAR), `project_type_id` (VARCHAR), `lead_id` (VARCHAR, references lead/client), `client_id` (VARCHAR, references client lead), `status` (VARCHAR, e.g. active, completed, archived).
+9. `project_types` (project definitions): `id` (VARCHAR), `name` (VARCHAR), `description` (TEXT), `icon` (VARCHAR), `color` (VARCHAR), `has_timeline` (TINYINT), `has_gantt` (TINYINT), `has_deadline` (TINYINT), `has_invoice_date` (TINYINT).
+10. `projects` (project instances): `id` (VARCHAR), `project_type_id` (VARCHAR), `lead_id` (VARCHAR, references lead/client), `client_id` (VARCHAR, references client lead), `status` (VARCHAR, e.g. active, completed, archived), `invoice_date` (DATE, the Invoice date / Termín fakturácie), `completion_deadline` (DATE, the Deadline / Termín dokončenia; there is no `deadline` column on projects), `delay_reason` (VARCHAR).
 11. `project_managers` (assigned users): `project_id` (VARCHAR), `user_id` (VARCHAR).
 12. Dynamic tables for project types:
     - Custom attribute values: Named `proj_data_{safeId}` (where `safeId` is lowercase alphanumeric of project_type_id). Columns: `id`, `project_id`, `created_at`, `updated_at`, and `attr_{attributeId}` columns for custom attributes.

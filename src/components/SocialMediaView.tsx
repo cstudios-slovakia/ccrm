@@ -2200,16 +2200,16 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                     </div>
 
                     <table className="w-full text-left border-collapse min-w-175">
-                      <thead>
+                      <thead className="sticky top-0 z-20 bg-slate-50">
                         <tr className="border-b border-slate-200 type-overline text-slate-400">
-                          <th className="py-2.5 px-3">Platform</th>
-                          <th className="py-2.5 px-3 text-center">Posts</th>
-                          <th className="py-2.5 px-3 text-center">Likes</th>
-                          <th className="py-2.5 px-3 text-center">Comments</th>
-                          <th className="py-2.5 px-3 text-center">Shares</th>
-                          <th className="py-2.5 px-3 text-center">Clicks</th>
-                          <th className="py-2.5 px-3 text-center">Impressions</th>
-                          <th className="py-2.5 px-3 text-right">ER %</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3">Platform</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Posts</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Likes</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Comments</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Shares</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Clicks</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Impressions</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-right">ER %</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-800">
@@ -2264,15 +2264,15 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                     </div>
 
                     <table className="w-full text-left border-collapse min-w-200">
-                      <thead>
+                      <thead className="sticky top-0 z-20 bg-slate-50">
                         <tr className="border-b border-slate-200 type-overline text-slate-400">
-                          <th className="py-2.5 px-3">Post Content</th>
-                          <th className="py-2.5 px-3 text-center">Likes</th>
-                          <th className="py-2.5 px-3 text-center">Comments</th>
-                          <th className="py-2.5 px-3 text-center">Shares</th>
-                          <th className="py-2.5 px-3 text-center">Clicks</th>
-                          <th className="py-2.5 px-3 text-center">Impressions</th>
-                          <th className="py-2.5 px-3 text-right">ER %</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3">Post Content</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Likes</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Comments</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Shares</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Clicks</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Impressions</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-right">ER %</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-800">

@@ -15,6 +15,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import type { Employee, EmployeeFile, EmployeeSettings, FinancialCategory } from "../../types";
+import { employeeFileHref } from "../../utils/employeeFiles";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
 interface EmployeeFormModalProps {
@@ -805,8 +806,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {employeeFileHref(employee?.id, file) ? (
                       <a
-                        href={file.url}
+                        href={employeeFileHref(employee?.id, file) as string}
                         target="_blank"
                         rel="noreferrer"
                         className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md transition"
@@ -814,6 +816,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       >
                         <Download className="w-4 h-4" />
                       </a>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => handleRemoveFile(file.id)}

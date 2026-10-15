@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BUILTIN_PROJECT_COLUMNS,
+  SUMMABLE_PROJECT_COLUMNS,
   DEFAULT_HIDDEN_PROJECT_COLUMNS,
   LOCKED_PROJECT_COLUMN,
   asAttributeList,
@@ -15,6 +16,7 @@ import {
   readChecklistValue,
   resolveProjectColumns,
   toStoredColumns,
+  totalProjectColumns,
   visibleProjectColumns,
   writeChecklistValue,
 } from "./projectColumns.ts";
@@ -256,4 +258,61 @@ test("dates sort as text, because they are stored ISO-first", () => {
   assert.equal(projectAttributeSortValue(attr("d", "date"), "2026-01-05", ctx), "2026-01-05");
   assert.equal(projectAttributeSortValue(attr("d", "date"), null, ctx), null);
   assert.equal(projectAttributeSortValue(attr("s", "textfield"), "hello", ctx), "hello");
+});
+
+/* -------------------------------------------------------------------------- */
+/* Totals row                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const money = (totalBudget: number, invoiced: number, currency = "EUR", hasValue = true) => ({
+  totalBudget,
+  invoiced,
+  invoicable: Math.max(0, totalBudget - invoiced),
+  currency,
+  hasValue,
+});
+
+test("the totals row sums Value and Invoicable, and leaves the other columns out", () => {
+  const totals = totalProjectColumns(
+    [{ key: "name" }, { key: "value" }, { key: "invoicable" }, { key: "status" }],
+    [money(1000, 400), money(500, 0)],
+  );
+  assert.deepEqual([...totals.keys()], ["value", "invoicable"]);
+  assert.deepEqual(totals.get("value"), [{ currency: "EUR", amount: 1500 }]);
+  assert.deepEqual(totals.get("invoicable"), [{ currency: "EUR", amount: 1100 }]);
+});
+
+test("only the columns on screen are totalled", () => {
+  const totals = totalProjectColumns([{ key: "name" }, { key: "value" }], [money(1000, 400)]);
+  assert.deepEqual([...totals.keys()], ["value"]);
+});
+
+test("currencies are never added together", () => {
+  const totals = totalProjectColumns(
+    [{ key: "value" }],
+    [money(1000, 0, "EUR"), money(200, 0, "HUF"), money(50, 0, "EUR")],
+  );
+  assert.deepEqual(totals.get("value"), [
+    { currency: "EUR", amount: 1050 },
+    { currency: "HUF", amount: 200 },
+  ]);
+});
+
+test("a project with no value adds nothing, and a column with nothing to add is absent", () => {
+  const empty = money(0, 0, "EUR", false);
+  assert.equal(totalProjectColumns([{ key: "value" }], [empty]).size, 0);
+  assert.equal(totalProjectColumns([{ key: "value" }], []).size, 0);
+  assert.deepEqual(totalProjectColumns([{ key: "value" }], [empty, money(70, 0)]).get("value"), [
+    { currency: "EUR", amount: 70 },
+  ]);
+});
+
+test("a custom attribute column is not summed", () => {
+  assert.equal(totalProjectColumns([{ key: attributeColumnKey("a1") }], [money(10, 0)]).size, 0);
+});
+
+test("every summable column is a real built-in column", () => {
+  for (const key of Object.keys(SUMMABLE_PROJECT_COLUMNS)) {
+    assert.ok((BUILTIN_PROJECT_COLUMNS as readonly string[]).includes(key), key);
+  }
 });

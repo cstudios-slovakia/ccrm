@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
-import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus } from "lucide-react";
+import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus, MicOff } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
@@ -14,6 +14,10 @@ import { ClientSelect } from "./ui/ClientSelect";
 import { useQuickAddClient } from "./ui/QuickAddClient";
 import { registerPendingSave } from "../utils/pendingSaves";
 import { PageHeader, Tabs } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { archiveRecordsWithUndo } from "../utils/recordActions";
+import { runUndoable } from "../utils/undoable";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -111,6 +115,22 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     if (!canEdit) return;
     setTasksRaw(updater);
   };
+  // Archiving a note is held and undoable; restoring is a plain click.
+  const archiveMeeting = (meeting: MeetingNote) =>
+    archiveRecordsWithUndo({
+      targets: [meeting],
+      setRecords: setMeetingNotes,
+      lang: systemLanguage,
+      entity: "meeting",
+      titleOf: (m) => m.title,
+      fields: ["archived"],
+      change: (m) => ({ ...m, archived: true }),
+      // The open note mirrors the list entry.
+      onApplied: () => setSelectedMeeting((cur) => (cur && cur.id === meeting.id ? { ...cur, archived: true } : cur)),
+      revertExtra: () =>
+        setSelectedMeeting((cur) => (cur && cur.id === meeting.id ? { ...cur, archived: meeting.archived } : cur)),
+    });
+
   const [viewState, setViewState] = useState<"list" | "new" | "detail">(
     (initialView === "new" || initialView === "record") && !canEdit
       ? "list"
@@ -158,6 +178,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recordDuration, setRecordDuration] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  // The stored recording failed to load (file deleted, or a demo meeting that
+  // only ever had a transcript). The bar then says so instead of offering a
+  // player that cannot play.
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
+  useEffect(() => { setAudioUnavailable(false); }, [audioUrl]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [uploadedAudioFile, setUploadedAudioFile] = useState<string | null>(null);
@@ -511,25 +536,27 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     }
   };
 
+  // The recording leaves the event being logged at once; Undo puts the exact
+  // previous player state back. The uploaded file itself is never touched.
   const removeAudioFile = () => {
-    if (confirm(t("Are you sure you want to remove this recording?", "Naozaj chcete odstrániť túto nahrávku?", "Biztosan eltávolítja ezt a felvételt?"))) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      setAudioUrl(null);
-      setUploadedAudioFile(null);
-      setRecordingState("none");
-      
-      if (viewState !== "new" && selectedMeeting) {
-        const updated = { ...selectedMeeting, audioFile: undefined };
-        setSelectedMeeting(updated);
-        setMeetingNotes(prev => prev.map(m => m.id === selectedMeeting.id ? updated : m));
-      }
-      
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(t("Recording removed", "Nahrávka bola odstránená", "A felvétel eltávolítva"));
-      }
-    }
+    const before = { url: audioUrl, file: uploadedAudioFile, state: recordingState };
+    runUndoable({
+      message: singleMessage(systemLanguage, "recording", "delete", ""),
+      undoLabel: undoLabel(systemLanguage),
+      apply: () => {
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        setAudioUrl(null);
+        setUploadedAudioFile(null);
+        setRecordingState("none");
+      },
+      revert: () => {
+        setAudioUrl(before.url);
+        setUploadedAudioFile(before.file);
+        setRecordingState(before.state);
+      },
+    });
   };
 
   const handleTranscribeMeeting = async () => {
@@ -649,7 +676,30 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     }
   };
 
+  // Compact stand-in for the player when there is nothing to play.
+  const renderNoAudioNotice = (meeting: MeetingNote) => {
+    const message = meeting.id.startsWith("demo-")
+      ? t("Demo recording – no audio. The transcript and AI notes are sample data.", "Ukážková nahrávka – bez zvuku. Prepis a AI poznámky sú vzorové dáta.", "Bemutató felvétel – hang nélkül. Az átirat és az AI-jegyzetek mintaadatok.")
+      : meeting.audioFile
+        ? t("The audio file is no longer available. The transcript and notes are kept.", "Zvukový súbor už nie je dostupný. Prepis a poznámky zostávajú.", "A hangfájl már nem érhető el. Az átirat és a jegyzetek megmaradnak.")
+        : t("No audio attached – transcript only.", "Bez zvukovej nahrávky – iba prepis.", "Nincs csatolt hangfelvétel – csak átirat.");
+    return (
+      <div className="w-full max-w-212.5 bg-white/70 backdrop-blur-md border border-slate-200 shadow-sm px-4 py-3 rounded-2xl mb-6 flex items-center gap-3 text-left">
+        <span className="h-7 w-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+          <MicOff className="h-3.5 w-3.5" />
+        </span>
+        <p className="text-ui text-slate-600 min-w-0">{message}</p>
+      </div>
+    );
+  };
+
   const renderRecordingBar = () => {
+    if (viewState === "detail" && selectedMeeting) {
+      const nothingToPlay = selectedMeeting.audioFile ? audioUnavailable : !!selectedMeeting.transcription;
+      if (nothingToPlay && (recordingState === "none" || recordingState === "stopped")) {
+        return renderNoAudioNotice(selectedMeeting);
+      }
+    }
     if (recordingState === "none") return null;
 
     return (
@@ -717,7 +767,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               onEnded={() => setIsPlaying(false)}
               onError={() => {
                 setIsPlaying(false);
-                if (typeof (window as any).showToast === "function") {
+                // A saved meeting swaps the dead player for the notice above; a
+                // fresh recording that fails to load still needs the toast.
+                if (viewState === "detail") {
+                  setAudioUnavailable(true);
+                } else if (typeof (window as any).showToast === "function") {
                   (window as any).showToast(t("The recording could not be loaded.", "Nahrávku sa nepodarilo načítať.", "A felvételt nem sikerült betölteni."), "error");
                 }
               }}
@@ -768,14 +822,16 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </div>
             <Volume2 className="h-4 w-4 text-slate-400 shrink-0" />
             {canDelete && (
-            <button
-              type="button"
-              onClick={removeAudioFile}
-              className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer shrink-0"
-              title={t("Remove recording", "Odstrániť nahrávku", "Felvétel eltávolítása")}
+            <HoldToConfirmButton
+                tone="danger"
+                lang={systemLanguage}
+                what={t("recording", "nahrávku", "felvételt")}
+                onConfirm={removeAudioFile}
+                className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors shrink-0"
+                title={t("Remove recording", "Odstrániť nahrávku", "Felvétel eltávolítása")}
             >
               <Trash2 className="h-4 w-4" />
-            </button>
+            </HoldToConfirmButton>
             )}
           </div>
         )}
@@ -1779,37 +1835,35 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               </button>
 
               {viewState === "detail" && selectedMeeting && canEdit && (
-                <button
-                  onClick={() => {
-                    const updated = { ...selectedMeeting, archived: !selectedMeeting.archived };
-                    setSelectedMeeting(updated);
-                    setMeetingNotes(prev => prev.map(m => m.id === selectedMeeting.id ? updated : m));
-                    if (typeof (window as any).showToast === "function") {
-                      (window as any).showToast(
-                        updated.archived
-                          ? (systemLanguage === "sk" ? "Zápis bol archivovaný" : systemLanguage === "hu" ? "Jegyzet archiválva" : "Note archived")
-                          : (systemLanguage === "sk" ? "Zápis bol obnovený" : systemLanguage === "hu" ? "Jegyzet visszaállítva" : "Note unarchived")
-                      );
-                    }
-                  }}
-                  className={cn(
-                    "px-4 py-2.5 rounded-xl border text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0 transition-all hover:scale-[1.02]",
-                    selectedMeeting.archived
-                      ? "border-rose-200 bg-rose-600 text-white hover:bg-rose-700"
-                      : "border-rose-200 bg-white text-rose-600 hover:bg-rose-50/50 hover:text-rose-700"
-                  )}
-                >
-                  <Archive className="h-4 w-4" />
-                  {selectedMeeting.archived ? (
-                    <>
-                      {systemLanguage === "sk" ? "Obnoviť z archívu" : systemLanguage === "hu" ? "Visszaállítás" : "Restore"}
-                    </>
-                  ) : (
-                    <>
-                      {systemLanguage === "sk" ? "Archivovať" : systemLanguage === "hu" ? "Archiválás" : "Archive"}
-                    </>
-                  )}
-                </button>
+                selectedMeeting.archived ? (
+                  <button
+                    onClick={() => {
+                      const updated = { ...selectedMeeting, archived: false };
+                      setSelectedMeeting(updated);
+                      setMeetingNotes(prev => prev.map(m => m.id === selectedMeeting.id ? updated : m));
+                      if (typeof (window as any).showToast === "function") {
+                        (window as any).showToast(
+                          systemLanguage === "sk" ? "Zápis bol obnovený" : systemLanguage === "hu" ? "Jegyzet visszaállítva" : "Note unarchived"
+                        );
+                      }
+                    }}
+                    className="px-4 py-2.5 rounded-xl border text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0 transition-all hover:scale-[1.02] border-rose-200 bg-rose-600 text-white hover:bg-rose-700"
+                  >
+                    <Archive className="h-4 w-4" />
+                    {systemLanguage === "sk" ? "Obnoviť z archívu" : systemLanguage === "hu" ? "Visszaállítás" : "Restore"}
+                  </button>
+                ) : (
+                  <HoldToConfirmButton
+                    tone="archive"
+                    lang={systemLanguage}
+                    what={selectedMeeting.title}
+                    onConfirm={() => archiveMeeting(selectedMeeting)}
+                    className="px-4 py-2.5 rounded-xl border text-ui font-heading font-bold flex items-center gap-1.5 shrink-0 transition-all hover:scale-[1.02] border-rose-200 bg-white text-rose-600 hover:bg-rose-50/50 hover:text-rose-700"
+                    icon={<Archive className="h-4 w-4" />}
+                  >
+                    {systemLanguage === "sk" ? "Archivovať" : systemLanguage === "hu" ? "Archiválás" : "Archive"}
+                  </HoldToConfirmButton>
+                )
               )}
           </>
         </div>
@@ -1969,36 +2023,35 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       </div>
                       
                       {/* Archive/Unarchive Action Button */}
-                      {canEdit && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          if (!canEdit) return;
-                          e.stopPropagation();
-                          const updated = { ...m, archived: !m.archived };
-                          setMeetingNotes(prev => prev.map(item => item.id === m.id ? updated : item));
-                          if (typeof (window as any).showToast === "function") {
-                            (window as any).showToast(
-                              updated.archived
-                                ? (systemLanguage === "sk" ? "Zápis bol archivovaný" : systemLanguage === "hu" ? "Jegyzet archiválva" : "Note archived")
-                                : (systemLanguage === "sk" ? "Zápis bol obnovený" : systemLanguage === "hu" ? "Jegyzet visszaállítva" : "Note unarchived")
-                            );
-                          }
-                        }}
-                        className={cn(
-                          "shrink-0 w-8 h-8 rounded-xl border flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95",
-                          m.archived 
-                            ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100" 
-                            : "bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-                        )}
-                        title={m.archived 
-                          ? (systemLanguage === "sk" ? "Obnoviť z archívu" : systemLanguage === "hu" ? "Visszaállítás" : "Restore from Archive") 
-                          : (systemLanguage === "sk" ? "Archivovať" : systemLanguage === "hu" ? "Archiválás" : "Archive")
-                        }
-                      >
-                        <Archive className="h-4 w-4" />
-                      </button>
-                      )}
+                      {canEdit && (m.archived ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMeetingNotes(prev => prev.map(item => item.id === m.id ? { ...m, archived: false } : item));
+                            if (typeof (window as any).showToast === "function") {
+                              (window as any).showToast(
+                                systemLanguage === "sk" ? "Zápis bol obnovený" : systemLanguage === "hu" ? "Jegyzet visszaállítva" : "Note unarchived"
+                              );
+                            }
+                          }}
+                          className="shrink-0 w-8 h-8 rounded-xl border flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
+                          title={systemLanguage === "sk" ? "Obnoviť z archívu" : systemLanguage === "hu" ? "Visszaállítás" : "Restore from Archive"}
+                        >
+                          <Archive className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <HoldToConfirmButton
+                          tone="archive"
+                          lang={systemLanguage}
+                          what={m.title}
+                          onConfirm={() => archiveMeeting(m)}
+                          className="shrink-0 w-8 h-8 rounded-xl border flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                          title={systemLanguage === "sk" ? "Archivovať" : systemLanguage === "hu" ? "Archiválás" : "Archive"}
+                        >
+                          <Archive className="h-4 w-4" />
+                        </HoldToConfirmButton>
+                      ))}
                     </div>
                   </div>
                 ))}

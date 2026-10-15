@@ -19,6 +19,9 @@ services:
     volumes:
       - ./config.php:/var/www/html/config.php
       - ./uploads:/var/www/html/uploads
+      - ./sync.php:/var/www/html/sync.php
+      - ./upload.php:/var/www/html/upload.php
+      - ./api:/var/www/html/api
     restart: always
 
 

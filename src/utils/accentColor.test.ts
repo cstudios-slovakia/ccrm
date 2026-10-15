@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { liftAccent, readableOn } from "./accentColor.ts";
+import { deepenForWhite, liftAccent, readableOn } from "./accentColor.ts";
 
 test("liftAccent leaves the colour to the theme, and refuses to break the declaration", () => {
   assert.equal(
@@ -23,6 +23,18 @@ test("readableOn picks the legible foreground for a configured fill", () => {
   assert.equal(readableOn("#000000"), "#ffffff");
   assert.equal(readableOn("#fff"), "#0b1220");
   assert.equal(readableOn("rgb(14, 165, 233)"), "#0b1220");
+});
+
+test("deepenForWhite keeps a colour that already carries white and darkens one that does not", () => {
+  assert.equal(deepenForWhite("#4f46e5"), "#4f46e5"); // indigo-600 already passes
+  for (const light of ["#fbbf24", "#0ea5e9", "#facc15", "#ffffff"]) {
+    const deep = deepenForWhite(light);
+    assert.notEqual(deep, light);
+    // White is the legible label on the result: the same test readableOn applies.
+    assert.equal(readableOn(deep), "#ffffff");
+  }
+  assert.equal(deepenForWhite("var(--whatever)"), "var(--whatever)");
+  assert.equal(deepenForWhite(null), "");
 });
 
 test("readableOn falls back rather than guessing at an unparseable colour", () => {

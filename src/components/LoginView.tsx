@@ -15,6 +15,7 @@ import {
   Moon
 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
+import { PasskeyLoginButton } from "./PasskeyLoginButton";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -363,6 +364,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </div>
             </div>
           )}
+
+          {/* Biometric / Passkey Login Button */}
+          <PasskeyLoginButton
+            systemLanguage={systemLanguage}
+            rememberMe={rememberMe}
+            onLoginSuccess={onLoginSuccess}
+            disabled={isLoading}
+          />
 
           {/* Credentials Form */}
           <form onSubmit={handleLogin} className="space-y-4">

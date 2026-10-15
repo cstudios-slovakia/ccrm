@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -78,6 +79,18 @@ if (!$isAdmin && !$hasDeletePermission && !$isCreator && !$isLegacyAssignee) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'You do not have permission to delete this task.']);
     exit;
+}
+
+// The delete permission reaches only tasks the caller can see: without
+// tasks.view_all that is their own, created and assigned ones, so an id guessed
+// from elsewhere is refused instead of deleted.
+if (!$isAdmin) {
+    $readScope = ccrm_read_scope($pdo, $sessionUser);
+    if (!ccrm_can($readScope, 'tasks.view_all') && !isset(ccrm_visible_task_ids($pdo, $readScope, [$taskId])[$taskId])) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'You do not have permission to delete this task.']);
+        exit;
+    }
 }
 
 try {

@@ -71,6 +71,7 @@ import {
   type GridItem
 } from "../utils/dashboardGrid";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { canViewWidget, type SourceAccess } from "../utils/dashboardSources";
 import {
   WIDGET_SIZES,
   WIDGET_SIZE_LABELS,
@@ -120,6 +121,11 @@ interface DynamicDashboardViewProps {
   pipelineStages?: string[];
   /** Role access for this dashboard. `edit: false` is view-only widgets. */
   access?: ModuleAccess;
+  /**
+   * Which modules the viewer can read. A widget whose data comes from a module they cannot view is left
+   * out (the server would refuse or empty it); the saved layout keeps it for people who can.
+   */
+  sourceAccess?: SourceAccess;
   /* --- What the designed cards paint with. All configured in Settings, so a
      card never invents a colour: a phase badge here is the same blue as the
      same phase on the sales board. --- */
@@ -410,6 +416,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   variant = "custom",
   pipelineStages = [],
   access = FULL_MODULE_ACCESS,
+  sourceAccess,
   leadStateColors = null,
   leadSourceColors = null,
   taskStates = [],
@@ -539,6 +546,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   useDragAutoScroll(draggedWidgetId !== null, rootRef);
 
   const prevDashIdRef = useRef(dashboard.id);
+  const lastSavedLayoutRef = useRef<any>(null);
 
   /**
    * Per-widget (and per-tab) query fingerprint from the last fetch, so a
@@ -554,17 +562,25 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   // edit mode at random whenever they had not changed anything yet.
   useEffect(() => {
     const switched = dashboard.id !== prevDashIdRef.current;
-    if (switched || isSaved) {
+    if (switched) {
       setTempLayout(dashboard.layout);
       setTempPrompts(dashboard.prompts || []);
-      if (switched) {
-        setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
-        setViewOverrides({});
-        setSettingsWidgetId(null);
-        prevQueriesRef.current = {};
-      }
+      setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
+      setViewOverrides({});
+      setSettingsWidgetId(null);
+      prevQueriesRef.current = {};
       setIsSaved(true);
       prevDashIdRef.current = dashboard.id;
+      lastSavedLayoutRef.current = null;
+    } else if (isSaved) {
+      // If we just saved this layout in handleSave, do not overwrite tempLayout
+      // with a stale dashboard.layout prop before parent re-renders.
+      if (lastSavedLayoutRef.current && dashboard.layout !== lastSavedLayoutRef.current) {
+        return;
+      }
+      lastSavedLayoutRef.current = null;
+      setTempLayout(dashboard.layout);
+      setTempPrompts(dashboard.prompts || []);
     }
   }, [dashboard, isSaved]);
 
@@ -575,13 +591,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
    * to `tempLayout` by widget id.
    */
   const widgets: any[] = useMemo(() => {
-    const list = tempLayout?.widgets || [];
+    const list = (tempLayout?.widgets || []).filter((w: any) => canViewWidget(w, sourceAccess));
     return list.map((w: any) => {
       const override = viewOverrides[w.id];
       if (!override) return w;
       return applySettingsToQuery(w, { ...settingsOfWidget(w), ...override }, currentUserName);
     });
-  }, [tempLayout, viewOverrides, currentUserName]);
+  }, [tempLayout, viewOverrides, currentUserName, sourceAccess]);
 
   // The "Invoicable value by status" widget is drawn from the data this view
   // already holds, so nothing below is worth computing until one is on the board.
@@ -1023,6 +1039,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       prompts: tempPrompts,
       activeModel: selectedModel
     };
+    lastSavedLayoutRef.current = tempLayout;
     onSaveDashboard(updated);
     setIsSaved(true);
     setIsEditMode(false);
@@ -1391,6 +1408,50 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const changeWidgetType = (id: string, nextType: string) =>
     mutateWidgets(ws => ws.map(w => (w.id === id ? adaptWidgetToType(w, nextType, sampleRowOf(id)) : w)));
 
+  const DEFAULT_LEAD_STAGES = useMemo(() => ["new", "contacted", "offer sent", "accepted", "rejected"], []);
+  const allKnownLeadStages = useMemo(() => {
+    const seen = new Set<string>();
+    const known = [
+      ...(pipelineStages || []),
+      ...Object.keys(leadStageGroups || {}),
+      ...Object.keys(leadStateColors || {}),
+      ...(leads || []).map(l => l.status),
+    ]
+      .map(stage => String(stage ?? "").trim())
+      .filter(Boolean);
+    const list = known.length > 0 ? known : DEFAULT_LEAD_STAGES;
+    return list
+      .map(stage => String(stage ?? "").trim())
+      .filter(stage => {
+        if (!stage) return false;
+        const key = canonical(stage);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [pipelineStages, leadStageGroups, leadStateColors, leads, DEFAULT_LEAD_STAGES]);
+
+  const DEFAULT_TASK_STATES = useMemo(() => ["New", "In progress", "Blocked", "Done"], []);
+  const allKnownTaskStates = useMemo(() => {
+    const seen = new Set<string>();
+    const known = [
+      ...(taskStates || []),
+      ...Object.keys(taskStateColors || {}),
+    ]
+      .map(state => String(state ?? "").trim())
+      .filter(Boolean);
+    const list = known.length > 0 ? known : DEFAULT_TASK_STATES;
+    return list
+      .map(state => String(state ?? "").trim())
+      .filter(state => {
+        if (!state) return false;
+        const key = canonical(state);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [taskStates, taskStateColors, DEFAULT_TASK_STATES]);
+
   /**
    * Phases a widget can be narrowed to: everything Settings has configured, plus
    * any phase the widget is already reporting or filtering on. The union matters
@@ -1399,13 +1460,27 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
    */
   const statusOptionsFor = (widget: any): string[] => {
     const action = widget?.query?.action;
-    if (action === "recent_tasks") return taskStates;
-    if (action !== STAGE_QUERY_ACTION && action !== "recent_leads") return [];
-    const data = widgetData[widget.id];
+    if (action === "recent_tasks" || action === "tasks_summary") {
+      const data = widgetData[widget?.id];
+      const fromData = Array.isArray(data) ? data.map((row: any) => row?.status) : [];
+      const picked = settingsOfWidget(widget).statuses;
+      const seen = new Set<string>();
+      return [...allKnownTaskStates, ...fromData, ...(Array.isArray(picked) ? picked.filter(p => p !== "__none__") : [])]
+        .map(stage => String(stage ?? "").trim())
+        .filter(stage => {
+          if (!stage) return false;
+          const key = canonical(stage);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    }
+    if (action !== STAGE_QUERY_ACTION && action !== "recent_leads" && action !== "pipeline_value") return [];
+    const data = widgetData[widget?.id];
     const fromData = Array.isArray(data) ? data.map((row: any) => row?.status) : [];
     const picked = settingsOfWidget(widget).statuses;
     const seen = new Set<string>();
-    return [...pipelineStages, ...fromData, ...(Array.isArray(picked) ? picked : [])]
+    return [...allKnownLeadStages, ...fromData, ...(Array.isArray(picked) ? picked.filter(p => p !== "__none__") : [])]
       .map(stage => String(stage ?? "").trim())
       .filter(stage => {
         if (!stage) return false;
@@ -1611,13 +1686,24 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     // this view already holds rather than by a query, and a component made
     // inside this function would remount (and close its drawer) on every render.
     if (renderer === "statusEquation") {
+      const settings = settingsOfWidget(w);
       return (
         <GroupedStatusValueEquationStats
           groups={equationGroupsFor(w)}
           currency={currencyCode}
           language={(systemLanguage as Language) || "sk"}
           storageKey={`ccrm_dashboard_equation_${w.id}`}
-          embedded={{ title, icon: section.icon, accent: section.accent }}
+          embedded={{
+            title,
+            icon: section.icon,
+            accent: section.accent,
+            view: settings.view === "summary" ? "summary" : "detail",
+            // The card's own toggle filters without dirtying the layout, like
+            // "Newest / Highest value"; the settings drawer sets the default.
+            onView: (view) => setViewOverrides(prev => ({ ...prev, [w.id]: { ...(prev[w.id] || {}), view } })),
+            showRemaining: settings.showRemaining !== false,
+            showCounts: settings.showCounts !== false
+          }}
         />
       );
     }
@@ -2141,7 +2227,11 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           settings={settingsOfWidget(settingsWidget)}
           columnCatalogue={presetOfWidget(settingsWidget)?.columnCatalogue ?? []}
           statusOptions={statusOptionsFor(settingsWidget)}
-          statusColors={settingsWidget.query?.action === "recent_tasks" ? taskStateColors : leadStateColors}
+          statusColors={
+            settingsWidget.query?.action === "recent_tasks" || settingsWidget.query?.action === "tasks_summary"
+              ? taskStateColors
+              : leadStateColors
+          }
           excludableGroups={rendererOfWidget(settingsWidget) === "statusEquation" ? equationOptionGroups : []}
           canDelete={canDelete}
           t={t}

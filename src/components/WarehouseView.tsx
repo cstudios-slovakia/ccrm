@@ -89,6 +89,8 @@ import type {
   UserProfile
 } from "../types";
 import { StatGrid, PageHeader, Tabs } from "./layout";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
 
 interface WarehouseViewProps {
   systemLanguage: Language;
@@ -1117,23 +1119,29 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const handleDeleteItem = (itemId: string) => {
     if (!canDelete) return;
     const item = warehouseItems.find(i => i.id === itemId);
-    if (!window.confirm(t(
-      `Are you sure you want to delete product "${item?.name || itemId}"? This will remove all associated stock records.`,
-      `Naozaj chcete vymazať tovar "${item?.name || itemId}"? Odstránia sa aj všetky priradené skladové záznamy.`,
-      `Biztosan törli a "${item?.name || itemId}" terméket? Az összes kapcsolódó készletadat is törlődik.`
-    ))) {
-      return;
-    }
-
-    setWarehouseItems(prev => prev.filter(i => i.id !== itemId));
-    setWarehouseStock(prev => prev.filter(s => s.itemId !== itemId));
-    setSelectedProductDetailId(null);
-    setEditingItem(null);
-    window.location.hash = "warehouse";
-
-    if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(t("Product was deleted successfully.", "Tovar bol úspešne vymazaný.", "A termék sikeresen törölve."));
-    }
+    if (!item) return;
+    // The product's stock rows go with it and cascade on the server too, so
+    // both are held back together until the undo window closes.
+    deleteRecordsWithUndo({
+      collection: "warehouseItems",
+      allRecords: warehouseItems,
+      targets: [item],
+      setRecords: setWarehouseItems,
+      cascade: [{
+        collection: "warehouseStock",
+        all: warehouseStock,
+        targets: warehouseStock.filter(s => s.itemId === itemId),
+        set: setWarehouseStock,
+      }],
+      lang: systemLanguage,
+      entity: "product",
+      titleOf: i => i.name || itemId,
+      applyExtra: () => {
+        setSelectedProductDetailId(null);
+        setEditingItem(null);
+        window.location.hash = "warehouse";
+      },
+    });
   };
 
   // Save / Update Item handler
@@ -1272,27 +1280,21 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     if (!canDelete) return;
     const sup = suppliers.find(s => s.id === supplierId);
     if (!sup) return;
-
-    const hasMovements = warehouseMovements.some(m => m.supplierId === supplierId);
-    const confirmMsg = hasMovements
-      ? t(
-          `Are you sure you want to delete supplier "${sup.name}"? They are associated with existing warehouse receipts/movements.`,
-          `Naozaj chcete vymazať dodávateľa "${sup.name}"? Tento dodávateľ je priradený k existujúcim príjemkám a pohybom.`,
-          `Biztosan törli a(z) "${sup.name}" beszállítót? Kapcsolódó raktári mozgások vannak hozzárendelve.`
-        )
-      : t(
-          `Are you sure you want to delete supplier "${sup.name}"?`,
-          `Naozaj chcete vymazať dodávateľa "${sup.name}"?`,
-          `Biztosan törli a(z) "${sup.name}" beszállítót?`
-        );
-
-    if (window.confirm(confirmMsg)) {
-      setSuppliers(prev => prev.filter(s => s.id !== supplierId));
-      if (editingSupplier?.id === supplierId) {
-        setIsSupplierModalOpen(false);
-        setEditingSupplier(null);
-      }
-    }
+    deleteRecordsWithUndo({
+      collection: "suppliers",
+      allRecords: suppliers,
+      targets: [sup],
+      setRecords: setSuppliers,
+      lang: systemLanguage,
+      entity: "supplier",
+      titleOf: s => s.name,
+      applyExtra: () => {
+        if (editingSupplier?.id === supplierId) {
+          setIsSupplierModalOpen(false);
+          setEditingSupplier(null);
+        }
+      },
+    });
   };
 
   // Save / Update Warehouse handler
@@ -1376,35 +1378,35 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       return;
     }
 
-    // Check if warehouse has movements
-    const hasMovements = warehouseMovements.some(m => m.warehouseId === warehouseId || m.targetWarehouseId === warehouseId);
-    const confirmMsg = hasMovements
-      ? t(
-          `Are you sure you want to delete warehouse "${wh.name}" (${wh.code})? It has past movement history recorded.`,
-          `Naozaj chcete vymazať sklad "${wh.name}" (${wh.code})? Sklad má evidovanú históriu pohybov.`,
-          `Biztosan törli a(z) "${wh.name}" (${wh.code}) raktárat? Történeti mozgások vannak rögzítve.`
-        )
-      : t(
-          `Are you sure you want to delete warehouse "${wh.name}" (${wh.code})?`,
-          `Naozaj chcete vymazať sklad "${wh.name}" (${wh.code})?`,
-          `Biztosan törli a(z) "${wh.name}" (${wh.code}) raktárat?`
-        );
-
-    if (window.confirm(confirmMsg)) {
-      setWarehouses(prev => {
-        const remaining = prev.filter(w => w.id !== warehouseId);
-        if (wh.isDefault && remaining.length > 0) {
-          remaining[0].isDefault = true;
+    const remainingWarehouses = warehouses.filter(w => w.id !== warehouseId);
+    // The deleted warehouse may have been the default; the first one left takes over.
+    const newDefaultId = wh.isDefault && remainingWarehouses.length > 0 ? remainingWarehouses[0].id : null;
+    deleteRecordsWithUndo({
+      collection: "warehouses",
+      allRecords: warehouses,
+      targets: [wh],
+      setRecords: setWarehouses,
+      cascade: [{
+        collection: "warehouseStock",
+        all: warehouseStock,
+        targets: warehouseStock.filter(s => s.warehouseId === warehouseId),
+        set: setWarehouseStock,
+      }],
+      lang: systemLanguage,
+      entity: "warehouse",
+      titleOf: w => w.name,
+      applyExtra: () => {
+        if (newDefaultId) {
+          setWarehouses(prev => prev.map(w => (w.id === newDefaultId ? { ...w, isDefault: true } : w)));
         }
-        return remaining;
-      });
-
-      setWarehouseStock(prev => prev.filter(s => s.warehouseId !== warehouseId));
-
-      if (selectedWarehouseId === warehouseId) {
-        setSelectedWarehouseId("all");
-      }
-    }
+        if (selectedWarehouseId === warehouseId) setSelectedWarehouseId("all");
+      },
+      revertExtra: () => {
+        if (newDefaultId) {
+          setWarehouses(prev => prev.map(w => (w.id === newDefaultId ? { ...w, isDefault: false } : w)));
+        }
+      },
+    });
   };
 
   // Set Default Warehouse
@@ -2417,17 +2419,17 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-ui text-slate-600 min-w-210">
-                  <thead className="bg-slate-100/60 border-b border-slate-200/80 type-overline text-slate-500">
+                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200/80 type-overline text-slate-500">
                     <tr>
-                      <th className="py-3 px-3 w-10 text-center">#</th>
-                      <th className="py-3 px-3 min-w-55">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
-                      <th className="py-3 px-3 w-36 min-w-32.5">{t("Quantity", "Množstvo", "Mennyiség")}</th>
-                      <th className="py-3 px-3 w-32 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
-                      <th className="py-3 px-3 w-32 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
-                      <th className="py-3 px-3 w-32 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
-                      <th className="py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
-                      <th className="py-3 px-3 min-w-35">{t("Note", "Poznámka", "Megjegyzés")}</th>
-                      <th className="py-3 px-2 w-10 text-center"></th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-10 text-center">#</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 min-w-55">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-36 min-w-32.5">{t("Quantity", "Množstvo", "Mennyiség")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 min-w-35">{t("Note", "Poznámka", "Megjegyzés")}</th>
+                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-2 w-10 text-center"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2856,16 +2858,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </button>
 
             {!isNew && canDelete && (
-              <button
-                onClick={() => { if (!canDelete) return; currentItem && handleDeleteItem(currentItem.id); }}
-                className={`rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold transition-all flex items-center gap-1.5 ${
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={systemLanguage}
+                  what={currentItem?.name}
+                  onConfirm={() => { if (!canDelete) return; currentItem && handleDeleteItem(currentItem.id); }}
+                  className={`rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold transition-all flex items-center gap-1.5 ${
                   isHeaderStuck ? "p-1.5 ws-md:px-2.5 ws-md:py-1.5 text-ui" : "p-2.5 text-ui rounded-2xl"
                 }`}
-                title={t("Delete Product", "Vymazať tovar", "Termék törlése")}
-              >
-                <Trash2 className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />
-                <span className="hidden ws-sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
-              </button>
+                  title={t("Delete Product", "Vymazať tovar", "Termék törlése")}
+                  icon={<Trash2 className={isHeaderStuck ? "w-3.5 h-3.5" : "w-4 h-4"} />}
+              ><span className="hidden ws-sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+              </HoldToConfirmButton>
             )}
 
             {canEdit && (
@@ -4918,20 +4922,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
 
           {/* Items Data Grid */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm">
+            <div className="overflow-x-auto rounded-2xl">
               <table className="w-full text-left text-ui text-slate-600 min-w-210">
-                <thead className="bg-slate-50/80 border-b border-slate-200/80 type-overline text-slate-500">
+                <thead className="sticky top-0 z-20 bg-slate-50 border-b border-slate-200/80 type-overline text-slate-500">
                   <tr>
-                    <th className="py-3 px-4">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</th>
-                    <th className="py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</th>
-                    <th className="py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</th>
-                    <th className="py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
-                    <th className="py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</th>
-                    <th className="py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</th>
-                    <th className="py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</th>
-                    <th className="py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</th>
-                    <th className="py-3 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 rounded-tl-2xl">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</th>
+                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</th>
+                    <th className="sticky top-0 right-0 z-30 bg-slate-50 py-3 px-4 text-right rounded-tr-2xl">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -5427,13 +5431,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         </button>
                         )}
                         {canDelete && (
-                        <button
-                          onClick={() => { if (!canDelete) return; handleDeleteWarehouse(wh.id); }}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          title={t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}
+                        <HoldToConfirmButton
+                            tone="danger"
+                            lang={systemLanguage}
+                            what={wh.name}
+                            onConfirm={() => { if (!canDelete) return; handleDeleteWarehouse(wh.id); }}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                            title={t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        </HoldToConfirmButton>
                         )}
                       </div>
                     </div>
@@ -5609,13 +5616,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       )}
 
                       {canDelete && (
-                      <button
-                        onClick={() => { if (!canDelete) return; handleDeleteSupplier(sup.id); }}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                        title={t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}
+                      <HoldToConfirmButton
+                          tone="danger"
+                          lang={systemLanguage}
+                          what={sup.name}
+                          onConfirm={() => { if (!canDelete) return; handleDeleteSupplier(sup.id); }}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title={t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </HoldToConfirmButton>
                       )}
                     </div>
                   </div>
@@ -6473,14 +6483,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
               <div>
                 {editingSupplier && canDelete && (
-                  <button
-                    type="button"
-                    onClick={() => { if (!canDelete) return; handleDeleteSupplier(editingSupplier.id); }}
-                    className="px-3.5 py-2 text-red-600 hover:bg-red-50 rounded-xl text-ui font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>{t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}</span>
-                  </button>
+                  <HoldToConfirmButton
+                      tone="danger"
+                      lang={systemLanguage}
+                      what={editingSupplier.name}
+                      onConfirm={() => { if (!canDelete) return; handleDeleteSupplier(editingSupplier.id); }}
+                      className="px-3.5 py-2 text-red-600 hover:bg-red-50 rounded-xl text-ui font-semibold flex items-center gap-1.5 transition"
+                      icon={<Trash2 className="w-4 h-4" />}
+                  ><span>{t("Delete Supplier", "Vymazať dodávateľa", "Beszállító törlése")}</span>
+                  </HoldToConfirmButton>
                 )}
               </div>
 
@@ -6616,14 +6627,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
               <div>
                 {editingWarehouse && canDelete && (
-                  <button
-                    type="button"
-                    onClick={() => { if (!canDelete) return; handleDeleteWarehouse(editingWarehouse.id); }}
-                    className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl text-ui font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>{t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}</span>
-                  </button>
+                  <HoldToConfirmButton
+                      tone="danger"
+                      lang={systemLanguage}
+                      what={editingWarehouse.name}
+                      onConfirm={() => { if (!canDelete) return; handleDeleteWarehouse(editingWarehouse.id); }}
+                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-xl text-ui font-semibold flex items-center gap-1.5 transition"
+                      icon={<Trash2 className="w-4 h-4" />}
+                  ><span>{t("Delete Warehouse", "Vymazať sklad", "Raktár törlése")}</span>
+                  </HoldToConfirmButton>
                 )}
               </div>
 

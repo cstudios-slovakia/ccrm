@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { EntityHeader, Tabs } from "./layout";
 import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
   Coins, TrendingUp, TrendingDown, DollarSign, Receipt,
   PieChart, X, Edit3, Wallet, Check, Paperclip, CircleCheck, CircleAlert,
-  Archive, ArchiveRestore
+  Archive, ArchiveRestore, PanelRightOpen, Maximize2, ChevronDown, ChevronUp
 } from "lucide-react";
 import type {
   Project, ProjectType, Lead, UserProfile,
@@ -24,7 +25,7 @@ import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
-import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeStyle, projectStatusDotStyle, projectStatusOptions } from "../utils/projects";
+import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeStyle, projectStatusDotStyle, projectStatusOptions, projectTypeHasInvoiceDate } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
@@ -40,6 +41,12 @@ import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { registerPendingSave } from "../utils/pendingSaves";
 import { useViewSize } from "../utils/viewSize";
+import { useUserPref } from "../utils/userPrefs";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { runUndoable } from "../utils/undoable";
+import { reinsertAt, removeByIds } from "../utils/undoableList";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files";
@@ -106,6 +113,13 @@ interface ProjectDetailsViewProps {
   mailConfigured?: boolean;
   divisions?: string[];
   divisionColors?: Record<string, string>;
+  /**
+   * "full": Full-page view with grid layout and right tab switcher (default).
+   * "sidebar": Compact slide-over sidebar with stacked cards and sections.
+   */
+  layoutMode?: "full" | "sidebar";
+  /** Callback to switch from sidebar mode to full page view. */
+  onOpenFullView?: () => void;
 }
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
@@ -138,6 +152,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   mailConfigured,
   divisions = ["Cstudios", "Cstudios Budapest"],
   divisionColors = {},
+  layoutMode = "full",
+  onOpenFullView,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -288,7 +304,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   // Global state wiring
   const [projectName, setProjectName] = useState("");
-  const [deadline, setDeadline] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState("");
+  /* The date the project has to be completed by. A plain date next to the
+     invoice date above — it counts down to nothing and flags nothing. */
+  const [completionDeadline, setCompletionDeadline] = useState("");
   /* Why the project is late. Mandatory once it actually is — see the red flag
      block under the deadline. */
   const [delayReason, setDelayReason] = useState("");
@@ -331,16 +350,36 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   latestFilesRef.current = { data: dynamicData, custom: customFileFields };
 
   // Right Side tab control with URL sync
+  const [defaultTabPref, setDefaultTabPref] = useUserPref("projectDefaultTab");
+
+  /** Whether this project's type (and the viewer's task access) offers a tab. */
+  const isTabAvailable = (tab: RightTab): boolean => {
+    if (!projectType) return true;
+    if (tab === "timeline") return projectType.hasTimeline;
+    if (tab === "gantt") return projectType.hasGantt;
+    if (tab === "tasks") return !!(setTasks && taskAccess.view);
+    return true;
+  };
+
+  /** The user's pinned tab when this project can show it, else the type's first tab. */
+  const resolveDefaultRightTab = (): RightTab => {
+    if (isRightTab(defaultTabPref) && isTabAvailable(defaultTabPref)) return defaultTabPref;
+    if (!projectType || projectType.hasTimeline) return "timeline";
+    return projectType.hasGantt ? "gantt" : "finances";
+  };
+
   const getInitialRightTab = (): RightTab => {
+    if (layoutMode === "sidebar") return resolveDefaultRightTab();
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
     const tabParam = params.get("tab");
-    return isRightTab(tabParam) ? tabParam : "timeline";
+    return isRightTab(tabParam) ? tabParam : resolveDefaultRightTab();
   };
 
   const [activeRightTab, setActiveRightTab] = useState<RightTab>(getInitialRightTab);
 
   const handleRightTabChange = (tab: RightTab) => {
     setActiveRightTab(tab);
+    if (layoutMode === "sidebar") return;
     const hash = window.location.hash;
     const [base, query] = hash.split("?");
     const params = new URLSearchParams(query || "");
@@ -348,8 +387,45 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     window.location.hash = `${base}?${params.toString()}`;
   };
 
-  // Project Financial Modal & Form
+  // Sidebar mode drawer closing animation & escape key handling
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    };
+  }, []);
+
+  const requestClose = () => {
+    if (layoutMode !== "sidebar") {
+      onClose();
+      return;
+    }
+    if (closeTimer.current !== null) return;
+    setIsClosing(true);
+    closeTimer.current = window.setTimeout(() => {
+      onClose();
+    }, 250);
+  };
+
   const [isFinModalOpen, setIsFinModalOpen] = useState(false);
+  useEffect(() => {
+    if (layoutMode !== "sidebar") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isFinModalOpen && !pickingClient) {
+        requestClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [layoutMode, isFinModalOpen, pickingClient]);
+
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const toggleSection = (key: string) =>
+    setCollapsedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Project Financial Modal & Form
   const [finEditingRecord, setFinEditingRecord] = useState<FinancialRecord | null>(null);
   const [finFormType, setFinFormType] = useState<FinancialType>("income");
   const [finFormTitle, setFinFormTitle] = useState("");
@@ -415,7 +491,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
      A change still waiting when the view closes is written out on the way. */
   const editableSnapshot = (p: Project) => ({
     name: p.name || "",
-    deadline: p.deadline || "",
+    invoiceDate: p.invoiceDate || "",
+    completionDeadline: p.completionDeadline || "",
     delayReason: p.delayReason || "",
     startDate: projectStartDate(p) || todayLocal(),
     finishedAt: p.finishedAt || "",
@@ -437,10 +514,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return {
       ...project,
       name: projectName.trim(),
-      // Only a type with deadlines on can hold one. Turning the switch off on
-      // the type would otherwise leave an invisible date behind that starts
-      // counting down again the moment someone turns it back on.
-      deadline: projectType.hasDeadline ? (deadline || null) : null,
+      // Only a type with the field switched on can hold the date. Turning the
+      // switch off on the type would otherwise leave an invisible date behind
+      // that comes back (and, for the deadline, starts counting down again) the
+      // moment someone turns it back on.
+      invoiceDate: projectTypeHasInvoiceDate(projectType) ? (invoiceDate || null) : null,
+      completionDeadline: projectType.hasDeadline ? (completionDeadline || null) : null,
       // Only kept while it is still the answer to something: a project that is
       // no longer late has no delay to explain, and leaving the old text behind
       // would make it reappear the next time a date slips.
@@ -498,14 +577,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setNameDraft(project.name || "");
 
     // Resolve right tab from URL or defaults
-    const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
-    const tabParam = params.get("tab");
-    if (isRightTab(tabParam)) {
-      setActiveRightTab(tabParam);
+    if (layoutMode !== "sidebar") {
+      const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+      const tabParam = params.get("tab");
+      if (isRightTab(tabParam)) {
+        setActiveRightTab(tabParam);
+      } else if (projectType) {
+        setActiveRightTab(resolveDefaultRightTab());
+      }
     } else if (projectType) {
-      if (projectType.hasTimeline) setActiveRightTab("timeline");
-      else if (projectType.hasGantt) setActiveRightTab("gantt");
-      else setActiveRightTab("finances");
+      setActiveRightTab(resolveDefaultRightTab());
     }
   }, [project?.id, projectType?.id]);
 
@@ -521,7 +602,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
     const s = editableSnapshot(project);
     setProjectName(s.name);
-    setDeadline(s.deadline);
+    setInvoiceDate(s.invoiceDate);
+    setCompletionDeadline(s.completionDeadline);
     setDelayReason(s.delayReason);
     setStartDate(s.startDate);
     setFinishedAt(s.finishedAt);
@@ -544,7 +626,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   );
   const currentSnapshotJson = JSON.stringify({
     name: projectName,
-    deadline,
+    invoiceDate,
+    completionDeadline,
     delayReason,
     startDate,
     finishedAt,
@@ -917,12 +1000,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             : "bg-slate-100 text-slate-600 border-slate-200";
 
   const handleDeleteProjectFinancial = (id: string) => {
-    if (!canDeleteFinance) return;
-    if (confirm(t("Delete this financial record?", "Vymazať tento finančný záznam?", "Törli ezt a tételt?"))) {
-      if (setFinancialRecords) {
-        setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
-      }
-    }
+    if (!canDeleteFinance || !setFinancialRecords) return;
+    const target = financialRecords.find((r) => r.id === id);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "financialRecords",
+      allRecords: financialRecords,
+      targets: [target],
+      setRecords: setFinancialRecords,
+      lang: userLanguage,
+      entity: "record",
+      titleOf: (r) => r.title,
+    });
   };
 
   if (!project || !projectType) return null;
@@ -1022,12 +1111,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleRemoveFile = (attrId: string, fileIndex: number) => {
     if (!canDelete) return;
-    const currentFiles = asList(dynamicData[attrId]);
-    const nextFiles = currentFiles.filter((_: any, idx: number) => idx !== fileIndex);
-    setDynamicData(prev => ({
-      ...prev,
-      [attrId]: nextFiles
-    }));
+    const removed = asList(dynamicData[attrId])[fileIndex];
+    if (!removed) return;
+    runUndoable({
+      message: singleMessage(userLanguage, "file", "delete", removed.name),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => setDynamicData(prev => ({
+        ...prev,
+        [attrId]: asList(prev[attrId]).filter((_: any, idx: number) => idx !== fileIndex)
+      })),
+      revert: () => setDynamicData(prev => {
+        const list = asList(prev[attrId]);
+        if (list.some((f: any) => f.path === removed.path && f.name === removed.name)) return prev;
+        const next = [...list];
+        next.splice(Math.min(fileIndex, next.length), 0, removed);
+        return { ...prev, [attrId]: next };
+      }),
+    });
   };
 
   /** The upload list and button for a files attribute or a document slot, in edit mode. */
@@ -1052,13 +1152,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <span className="text-micro text-slate-400 font-medium shrink-0">({f.size})</span>
             </a>
             {canDelete && (
-              <button
-                type="button"
-                onClick={() => handleRemoveFile(attrId, fIdx)}
-                className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 cursor-pointer"
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={userLanguage}
+                  what={f.name}
+                  onConfirm={() => handleRemoveFile(attrId, fIdx)}
+                  className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0"
               >
                 <Trash2 className="h-4 w-4" />
-              </button>
+              </HoldToConfirmButton>
             )}
           </div>
         ))}
@@ -1111,6 +1213,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const newCustomFileTaken = fileSlots.some(s => s.name.toLowerCase() === newCustomFileName.trim().toLowerCase());
   const canAddCustomFile = canEdit && newCustomFileName.trim() !== "" && !newCustomFileTaken;
 
+  const openTasksCount = (setTasks && taskAccess.view)
+    ? tasks.filter(tk =>
+        tk.relatedProjectId === project?.id &&
+        !tk.archived &&
+        !isDoneTaskState(tk.status, taskStates) &&
+        (taskAccess.viewAll || isOnPersonalDashboard(tk, currentUser?.name || ""))
+      ).length
+    : 0;
+
   /** Writes the file slots back into the state; the autosave takes it from there. */
   const commitFiles = (nextData: Record<string, any>, nextCustom: ProjectCustomFileField[]) => {
     latestFilesRef.current = { data: nextData, custom: nextCustom };
@@ -1142,13 +1253,34 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleSlotRemoveFile = (slot: FileSlot, fileIndex: number) => {
     if (!canDelete) return;
-    if (!window.confirm(t("Remove this file?", "Odstrániť tento súbor?", "Eltávolítja ezt a fájlt?"))) return;
-    const { data, custom } = latestFilesRef.current;
-    if (slot.custom) {
-      commitFiles(data, custom.map(f => f.id === slot.id ? { ...f, files: (f.files || []).filter((_, i) => i !== fileIndex) } : f));
-    } else {
-      commitFiles({ ...data, [slot.id]: asList(data[slot.id]).filter((_, i) => i !== fileIndex) }, custom);
-    }
+    const removed = slot.files[fileIndex];
+    if (!removed) return;
+    const putBack = (list: any[]) => {
+      if (list.some((f: any) => f.path === removed.path && f.name === removed.name)) return list;
+      const next = [...list];
+      next.splice(Math.min(fileIndex, next.length), 0, removed);
+      return next;
+    };
+    runUndoable({
+      message: singleMessage(userLanguage, "file", "delete", removed.name),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
+        const { data, custom } = latestFilesRef.current;
+        if (slot.custom) {
+          commitFiles(data, custom.map(f => f.id === slot.id ? { ...f, files: (f.files || []).filter((_, i) => i !== fileIndex) } : f));
+        } else {
+          commitFiles({ ...data, [slot.id]: asList(data[slot.id]).filter((_, i) => i !== fileIndex) }, custom);
+        }
+      },
+      revert: () => {
+        const { data, custom } = latestFilesRef.current;
+        if (slot.custom) {
+          commitFiles(data, custom.map(f => f.id === slot.id ? { ...f, files: putBack(f.files || []) } : f));
+        } else {
+          commitFiles({ ...data, [slot.id]: putBack(asList(data[slot.id])) }, custom);
+        }
+      },
+    });
   };
 
   const handleAddCustomFileField = () => {
@@ -1161,13 +1293,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleRemoveCustomFileField = (slot: FileSlot) => {
     if (!canDelete) return;
-    if (slot.files.length > 0 && !window.confirm(t(
-      "Remove this custom file together with everything uploaded to it?",
-      "Odstrániť tento vlastný súbor spolu so všetkým, čo je k nemu nahrané?",
-      "Eltávolítja ezt az egyedi fájlt a hozzá feltöltött tartalommal együtt?",
-    ))) return;
-    const { data, custom } = latestFilesRef.current;
-    commitFiles(data, custom.filter(f => f.id !== slot.id));
+    const { custom: before } = latestFilesRef.current;
+    const index = before.findIndex(f => f.id === slot.id);
+    const removedField = before[index];
+    if (!removedField) return;
+    runUndoable({
+      message: singleMessage(userLanguage, "file", "delete", slot.name),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
+        const { data, custom } = latestFilesRef.current;
+        commitFiles(data, custom.filter(f => f.id !== slot.id));
+      },
+      // The whole field comes back with everything uploaded to it.
+      revert: () => {
+        const { data, custom } = latestFilesRef.current;
+        if (custom.some(f => f.id === slot.id)) return;
+        const next = [...custom];
+        next.splice(Math.min(index, next.length), 0, removedField);
+        commitFiles(data, next);
+      },
+    });
   };
 
   /** One file slot on the Files tab: red while nothing is uploaded, green once something is. */
@@ -1208,14 +1353,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </label>
             )}
             {slot.custom && canDelete && (
-              <button
-                type="button"
-                onClick={() => handleRemoveCustomFileField(slot)}
-                className="p-1.5 rounded-lg hover:bg-white/70 text-rose-600 transition-all duration-150 active:scale-95 cursor-pointer"
-                title={t("Remove custom file", "Odstrániť vlastný súbor", "Egyedi fájl eltávolítása")}
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={userLanguage}
+                  what={slot.name}
+                  onConfirm={() => handleRemoveCustomFileField(slot)}
+                  className="p-1.5 rounded-lg hover:bg-white/70 text-rose-600 transition-all duration-150 active:scale-95"
+                  title={t("Remove custom file", "Odstrániť vlastný súbor", "Egyedi fájl eltávolítása")}
               >
                 <Trash2 className="h-4 w-4" />
-              </button>
+              </HoldToConfirmButton>
             )}
           </div>
         </div>
@@ -1243,14 +1390,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   {f.size && <span className="text-micro text-slate-400 font-medium shrink-0">({f.size})</span>}
                 </a>
                 {canDelete && (
-                  <button
-                    type="button"
-                    onClick={() => handleSlotRemoveFile(slot, fIdx)}
-                    className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-all duration-150 active:scale-95 cursor-pointer"
-                    title={t("Remove", "Odobrať", "Eltávolítás")}
+                  <HoldToConfirmButton
+                      tone="danger"
+                      lang={userLanguage}
+                      what={f.name}
+                      onConfirm={() => handleSlotRemoveFile(slot, fIdx)}
+                      className="p-1 hover:bg-rose-50 rounded text-rose-600 shrink-0 transition-all duration-150 active:scale-95"
+                      title={t("Remove", "Odobrať", "Eltávolítás")}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  </HoldToConfirmButton>
                 )}
               </div>
             ))}
@@ -1331,8 +1480,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleRemoveTimelineEvent = (id: string) => {
     if (!canDelete) return;
-    if (!window.confirm(t("Delete timeline event?", "Vymazať udalosť časovej osi?", "Törli az idővonal eseményt?"))) return;
-    setTimeline(prev => prev.filter(e => e.id !== id));
+    const { removed } = removeByIds(timeline, [id], e => e.id);
+    if (removed.length === 0) return;
+    runUndoable({
+      message: singleMessage(userLanguage, "event", "delete", removed[0].item.title),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => setTimeline(prev => prev.filter(e => e.id !== id)),
+      revert: () => setTimeline(prev => reinsertAt(prev, removed, e => e.id)),
+    });
   };
 
   // Gantt Handlers
@@ -1369,8 +1524,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleRemoveGanttRow = (id: string) => {
     if (!canDelete) return;
-    if (!window.confirm(t("Delete Gantt row?", "Vymazať riadok Gantt diagramu?", "Törli a Gantt diagram sort?"))) return;
-    setGantt(prev => prev.filter(r => r.id !== id));
+    const { removed } = removeByIds(gantt, [id], r => r.id);
+    if (removed.length === 0) return;
+    runUndoable({
+      message: singleMessage(userLanguage, "ganttRow", "delete", removed[0].item.title),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => setGantt(prev => prev.filter(r => r.id !== id)),
+      revert: () => setGantt(prev => reinsertAt(prev, removed, r => r.id)),
+    });
   };
 
   const getMonday = (d: Date) => {
@@ -1470,14 +1631,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return { weekdays, weekGroups, totalTimelineWidth: currentOffset };
   };
 
-  /** Deletes the whole project, after the same confirmation the list asks for. */
+  /** Deletes the whole project. The hold on the button is the confirmation; the list's Undo toast brings it back. */
   const handleDeleteProject = () => {
     if (!canDelete || !onDelete) return;
-    if (!window.confirm(t(
-      "Are you sure you want to delete this project?",
-      "Naozaj chcete vymazať tento projekt?",
-      "Biztosan törli ezt a projektet?",
-    ))) return;
     // An edit still waiting would otherwise write the project straight back.
     pendingSaveRef.current = null;
     onDelete(project.id);
@@ -1508,11 +1664,240 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
   };
 
-  return (
-    <div className="w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left">
+  const isSidebar = layoutMode === "sidebar";
 
-      {/* Entity header: back, project icon and name (edited in place), type beneath, actions right. */}
-      <EntityHeader
+  const renderSidebarHeader = () => (
+    <div className="shrink-0 bg-white border-b border-slate-200 px-5 py-4 select-none space-y-3">
+      {/* Top action row */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 text-caption font-bold">
+            <PanelRightOpen className="h-3.5 w-3.5" />
+            <span>{t("Quick Edit", "Rýchla úprava", "Gyors szerkesztés")}</span>
+          </span>
+          {canEdit ? (
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-micro font-semibold rounded-full ${
+                finishBeforeStart ? "bg-rose-50 text-rose-600 border border-rose-200" : saveState === "pending" ? "text-slate-400" : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+              }`}
+              data-testid="project-sidebar-save-state"
+            >
+              {finishBeforeStart ? (
+                <>
+                  <CircleAlert className="h-3 w-3 shrink-0" />
+                  <span>{t("Check dates", "Skontrolujte dátumy", "Dátumok ellenőrzése")}</span>
+                </>
+              ) : saveState === "pending" ? (
+                <>
+                  <Icons.Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                  <span>{t("Saving…", "Ukladá sa…", "Mentés…")}</span>
+                </>
+              ) : (
+                <>
+                  <Icons.CloudCheck className="h-3 w-3 shrink-0" />
+                  <span>{t("Saved", "Uložené", "Mentve")}</span>
+                </>
+              )}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-amber-200 bg-amber-50 text-micro font-semibold text-amber-700">
+              <Icons.Lock className="h-3 w-3 shrink-0" />
+              <span>{t("Read-only", "Iba na čítanie", "Csak olvasható")}</span>
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onOpenFullView && (
+            <button
+              type="button"
+              onClick={onOpenFullView}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 text-caption font-bold transition-all active:scale-95 cursor-pointer"
+              title={t("Open full project view", "Otvoriť celú kartu projektu", "Teljes projekt megnyitása")}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+              <span className="hidden ws-sm:inline">{t("Full view", "Celá karta", "Teljes nézet")}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={requestClose}
+            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            title={t("Close", "Zatvoriť", "Bezárás")}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Project Title & Type */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <span className="shrink-0" style={{ color: projectType.color }}>
+            {renderIcon(projectType.icon, "h-7 w-7")}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              {isEditingName ? (
+                <input
+                  value={nameDraft}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); commitName(); }
+                    else if (e.key === "Escape") { e.preventDefault(); cancelNameEdit(); }
+                  }}
+                  autoFocus
+                  maxLength={200}
+                  placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
+                  className="select-text min-w-0 w-full px-2 py-0.5 rounded-lg border border-indigo-300 bg-white type-entity-title text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-body"
+                />
+              ) : (
+                <>
+                  <h3 className="text-body font-heading font-bold text-slate-900 truncate">
+                    {projectDisplayName(
+                      { name: projectName, leadId: associatedLeadId },
+                      leads,
+                      t("New Project", "Nový projekt", "Új projekt"),
+                    )}
+                  </h3>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => { nameCancelledRef.current = false; setNameDraft(projectName); setIsEditingName(true); }}
+                      className="shrink-0 p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer"
+                      title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            <p className="text-caption font-medium text-slate-500 truncate mt-0.5">
+              {isEditingName && !nameDraft.trim()
+                ? t(
+                    "Left empty, the project is listed under the paired lead's name",
+                    "Ak ostane prázdny, projekt sa zobrazí pod menom spárovaného leadu",
+                    "Üresen hagyva a projekt a párosított lead nevén szerepel",
+                  )
+                : projectType.name}
+            </p>
+          </div>
+        </div>
+
+        {/* Header Action Buttons: Favorite, Archive, Delete */}
+        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+          {!isNew && (
+            <FavoriteHeartButton
+              entityId={project.id}
+              type="project"
+              title={projectName || projectDisplayName({ name: projectName, leadId: associatedLeadId }, leads, t("Untitled project", "Projekt bez návu", "Névtelen projekt"))}
+              subtitle={projectType.name}
+              color={projectType.color}
+              icon={projectType.icon}
+              url={`#projects/${project.id}`}
+              showLabel={false}
+              systemLanguage={userLanguage}
+              className="bg-white border border-slate-200 hover:border-rose-300 p-2 rounded-xl shadow-xs"
+            />
+          )}
+
+          {canEdit && !isNew && (project.archived ? (
+            <button
+              type="button"
+              onClick={() => {
+                handleSave({ archived: false });
+                (window as any).showToast?.(t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva."));
+              }}
+              className="p-2 rounded-xl text-amber-600 hover:bg-amber-50 hover:text-amber-800 transition-all cursor-pointer"
+              title={t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása")}
+            >
+              <ArchiveRestore className="h-4 w-4" />
+            </button>
+          ) : (
+            <HoldToConfirmButton
+              tone="archive"
+              lang={userLanguage}
+              what={projectName}
+              onConfirm={() => {
+                const previous = project.archived;
+                runUndoable({
+                  message: singleMessage(userLanguage, "project", "archive", projectName),
+                  undoLabel: undoLabel(userLanguage),
+                  apply: () => handleSave({ archived: true }),
+                  revert: () => handleSave({ archived: previous }),
+                });
+              }}
+              className="p-2 rounded-xl text-amber-600 hover:bg-amber-50 hover:text-amber-800 transition-all"
+              title={t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+              icon={<Archive className="h-4 w-4" />}
+            />
+          ))}
+
+          {canDelete && !isNew && onDelete && (
+            <HoldToConfirmButton
+              tone="danger"
+              lang={userLanguage}
+              what={projectName}
+              onConfirm={handleDeleteProject}
+              className="p-2 rounded-xl text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-all"
+              title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+              icon={<Trash2 className="h-4 w-4" />}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const wrapSection = (
+    key: string,
+    icon: React.ReactNode,
+    title: string,
+    badge: React.ReactNode,
+    content: React.ReactNode,
+  ) => {
+    if (!isSidebar) return content;
+    const isCollapsed = collapsedSections[key] ?? false;
+    return (
+      <div key={key} className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
+        <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={() => toggleSection(key)}
+            className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer group"
+          >
+            <span className="p-1.5 rounded-xl bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+              {icon}
+            </span>
+            <h4 className="text-ui font-heading font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+              {title}
+            </h4>
+            {badge}
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleSection(key)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            title={isCollapsed ? t("Expand", "Rozbaliť", "Kibontás") : t("Collapse", "Zbaliť", "Összecsukás")}
+          >
+            {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
+        </div>
+        {!isCollapsed && <div className="pt-4">{content}</div>}
+      </div>
+    );
+  };
+
+  const mainView = (
+    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-slate-100 flex flex-col h-full shadow-2xl border-l border-slate-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left"}>
+
+      {/* Entity header / Sidebar header */}
+      {isSidebar ? (
+        renderSidebarHeader()
+      ) : (
+        <EntityHeader
         className="shrink-0 select-none"
         onBack={onClose}
         backLabel={t("Back to list", "Späť na zoznam", "Vissza a listához")}
@@ -1590,36 +1975,54 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             )}
 
             {/* Archive / Restore Button */}
-            {canEdit && !isNew && (
+            {canEdit && !isNew && (project.archived ? (
               <button
                 type="button"
                 onClick={() => {
-                  const nextArchived = !project.archived;
-                  handleSave({ archived: nextArchived });
-                  const msg = nextArchived
-                    ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
-                    : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
-                  (window as any).showToast?.(msg);
+                  handleSave({ archived: false });
+                  (window as any).showToast?.(t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva."));
                 }}
                 className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-ui hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
-                title={project.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                title={t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása")}
               >
-                {project.archived ? <ArchiveRestore className="h-4 w-4 shrink-0" /> : <Archive className="h-4 w-4 shrink-0" />}
-                <span className="hidden ws-sm:inline">{project.archived ? t("Restore", "Obnoviť", "Visszaállítás") : t("Archive", "Archivovať", "Archiválás")}</span>
+                <ArchiveRestore className="h-4 w-4 shrink-0" />
+                <span className="hidden ws-sm:inline">{t("Restore", "Obnoviť", "Visszaállítás")}</span>
               </button>
-            )}
+            ) : (
+              <HoldToConfirmButton
+                tone="archive"
+                lang={userLanguage}
+                what={projectName}
+                onConfirm={() => {
+                  const previous = project.archived;
+                  runUndoable({
+                    message: singleMessage(userLanguage, "project", "archive", projectName),
+                    undoLabel: undoLabel(userLanguage),
+                    apply: () => handleSave({ archived: true }),
+                    revert: () => handleSave({ archived: previous }),
+                  });
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-ui hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95"
+                title={t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                icon={<Archive className="h-4 w-4 shrink-0" />}
+              >
+                <span className="hidden ws-sm:inline">{t("Archive", "Archivovať", "Archiválás")}</span>
+              </HoldToConfirmButton>
+            ))}
 
             {/* Deleting a project that has never been saved would delete nothing,
                 so the button only appears once the project exists. */}
             {canDelete && !isNew && onDelete && (
-              <button
-                onClick={handleDeleteProject}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-ui hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
-                title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
-              >
-                <Trash2 className="h-4 w-4 shrink-0" />
-                <span className="hidden ws-sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
-              </button>
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={userLanguage}
+                  what={projectName}
+                  onConfirm={handleDeleteProject}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-ui hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95"
+                  title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                  icon={<Trash2 className="h-4 w-4 shrink-0" />}
+              ><span className="hidden ws-sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+              </HoldToConfirmButton>
             )}
             {canEdit ? (
               /* No Save button: every change saves itself. This only says whether
@@ -1664,15 +2067,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           </>
         }
       />
+      )}
 
       {/* Workspace Body */}
-      <div className="flex-1 ws-lg:overflow-hidden grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 min-h-0">
+      <div className={isSidebar ? "flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-4 scrollbar-thin text-left" : "flex-1 ws-lg:overflow-hidden grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 min-h-0"}>
         
         {/* LEFT COLUMN: the project's own card, its custom attributes, then
             the paired client at the bottom. The project card is edited in
             place and every change saves itself; the attributes card keeps an
             Edit mode of its own. */}
-        <div className="ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left">
+        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left"}>
 
 
           {/* PROJECT CARD DETAILS */}
@@ -1777,56 +2181,95 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             </div>
 
-            {/* Deadline. Only for a project type that is time-boxed — see
-                hasDeadline in Projects -> Settings -> project type. */}
-            {projectType.hasDeadline && (() => {
-              const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal(), projectStatuses);
+            {/* Invoice date and deadline. Each has its own switch on the project
+                type (Projects -> Settings -> project type): the invoice date is
+                a plain date; the deadline is what counts down and flags a delay,
+                measured against the real finish in the Timeline. */}
+            {(projectTypeHasInvoiceDate(projectType) || projectType.hasDeadline) && (() => {
+              const dl = evaluateProjectDeadline({ completionDeadline, status, finishedAt }, projectType, todayLocal(), projectStatuses);
               const missedDeadline = projectMissedDeadline(dl);
               const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
               return (
                 <div>
-                  {/* Planned deadline on the left, the real start and finish next
-                      to it. The real finish, once set, is what the list shows. */}
                   <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
+                  {projectTypeHasInvoiceDate(projectType) && (
                   <div>
                   <label className="block type-overline text-slate-400 mb-1">
-                    {t("Deadline", "Termín dokončenia", "Határidő")} {canEdit && projectType.deadlineRequired && <span className="text-red-500">*</span>}
+                    {t("Invoice date", "Termín fakturácie", "Számlázási határidő")}
                   </label>
                   {!canEdit ? (
                     <p className="text-ui font-bold text-slate-800">
-                      {deadline
-                        ? formatDateLocalized(deadline, userLanguage)
-                        : <span className="text-slate-300 italic font-semibold">{t("No deadline set", "Bez termínu", "Nincs határidő")}</span>}
+                      {invoiceDate
+                        ? formatDateLocalized(invoiceDate, userLanguage)
+                        : <span className="text-slate-300 italic font-semibold">{t("No invoice date set", "Bez termínu fakturácie", "Nincs számlázási határidő")}</span>}
                     </p>
                   ) : (
                   <div className="flex items-center gap-2">
                     <input
                       type="date"
-                      value={deadline}
-                      onChange={e => setDeadline(e.target.value)}
+                      value={invoiceDate}
+                      onChange={e => setInvoiceDate(e.target.value)}
                       className={dateInputClass}
                     />
-                    {deadline && (
+                    {invoiceDate && (
                       <button
                         type="button"
-                        onClick={() => setDeadline("")}
+                        onClick={() => setInvoiceDate("")}
                         className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title={t("Clear deadline", "Zrušiť termín", "Határidő törlése")}
+                        title={t("Clear invoice date", "Zrušiť termín fakturácie", "Számlázási határidő törlése")}
                       >
                         <X className="h-4 w-4" />
                       </button>
                     )}
                   </div>
                   )}
-                  {canEdit && projectType.deadlineRequired && !deadline && (
+                  </div>
+                  )}
+
+                  {projectType.hasDeadline && (
+                  <div>
+                  <label className="block type-overline text-slate-400 mb-1">
+                    {t("Deadline", "Termín dokončenia", "Határidő")} {canEdit && projectType.deadlineRequired && <span className="text-red-500">*</span>}
+                  </label>
+                  {!canEdit ? (
+                    <p className="text-ui font-bold text-slate-800">
+                      {completionDeadline
+                        ? formatDateLocalized(completionDeadline, userLanguage)
+                        : <span className="text-slate-300 italic font-semibold">{t("No deadline set", "Bez termínu dokončenia", "Nincs határidő")}</span>}
+                    </p>
+                  ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={completionDeadline}
+                      onChange={e => setCompletionDeadline(e.target.value)}
+                      className={dateInputClass}
+                    />
+                    {completionDeadline && (
+                      <button
+                        type="button"
+                        onClick={() => setCompletionDeadline("")}
+                        className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title={t("Clear deadline", "Zrušiť termín dokončenia", "Határidő törlése")}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  )}
+                  {canEdit && projectType.deadlineRequired && !completionDeadline && (
                     <p className="mt-1 text-micro font-bold text-rose-600 leading-snug">
-                      {t("A deadline is required for this project type.", "Termín je pre tento typ projektu povinný.", "Ennél a projekt típusnál a határidő kötelező.")}
+                      {t("A deadline is required for this project type.", "Termín dokončenia je pre tento typ projektu povinný.", "Ennél a projekt típusnál a határidő kötelező.")}
                     </p>
                   )}
                   </div>
+                  )}
 
+                  {/* The real start and finish. The finish, once set, is what the
+                      deadline is measured against — and what the list shows. */}
+                  {projectType.hasDeadline && (
                   <div>
-                  <label className="block type-overline text-slate-400 mb-1">{t("Real dates", "Skutočný termín", "Tényleges időpontok")}</label>
+                  <label className="block type-overline text-slate-400 mb-1">{t("Timeline", "Časová os", "Idővonal")}</label>
                   {!canEdit ? (
                     <p className="text-ui font-bold text-slate-800">
                       {startDate ? formatDateLocalized(startDate, userLanguage) : "—"}
@@ -1878,6 +2321,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   )}
                   </div>
+                  )}
                   </div>
 
                   {dl && (
@@ -1906,10 +2350,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </p>
                   )}
 
-                  {/* The red flag. Once the project missed its date — still
-                      open and past it, or finished after it — the reason for
-                      the delay is required: until it is written down the
-                      project wears a flag everywhere it is listed. */}
+                  {/* The red flag. Once the project missed its deadline — still
+                      open and past it, or finished (the finish date in the
+                      Timeline) after it — the reason for the delay is required:
+                      until it is written down the project wears a flag
+                      everywhere it is listed. */}
                   {missedDeadline && (
                     <div className="mt-3 p-3 rounded-2xl border border-rose-200 bg-rose-50">
                       <label className="flex items-center gap-1.5 type-overline text-rose-700 mb-1.5">
@@ -2248,17 +2693,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     );
                                   })()}
                                   {canDelete && (
-                                    <button
-                                      type="button"
-                                      aria-label={t("Remove checkbox", "Odstrániť políčko", "Jelölőnégyzet törlése")}
-                                      onClick={() => save({
-                                        extra: list.extra.filter(e => e.label !== extra.label),
-                                        checked: list.checked.filter(o => o !== extra.label),
-                                      })}
-                                      className="shrink-0 p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-150 active:scale-95 cursor-pointer"
+                                    <HoldToConfirmButton
+                                        tone="danger"
+                                        lang={userLanguage}
+                                        what={extra.label}
+                                        onConfirm={() => {
+                                        const previous = { extra: list.extra, checked: list.checked };
+                                        runUndoable({
+                                          message: singleMessage(userLanguage, "item", "delete", extra.label),
+                                          undoLabel: undoLabel(userLanguage),
+                                          apply: () => save({
+                                            extra: list.extra.filter(e => e.label !== extra.label),
+                                            checked: list.checked.filter(o => o !== extra.label),
+                                          }),
+                                          revert: () => save(previous),
+                                        });
+                                      }}
+                                        className="shrink-0 p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-150 active:scale-95"
                                     >
                                       <X className="h-3.5 w-3.5" />
-                                    </button>
+                                    </HoldToConfirmButton>
                                   )}
                                 </div>
                               ))}
@@ -2592,52 +3046,62 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-5 shadow-sm text-left">
+        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-5 shadow-sm text-left"}>
           {/* Tab bar: icon, label, optional badge; scrolls sideways rather than wrapping. */}
-          <Tabs<RightTab>
-            className="mb-4 shrink-0"
-            value={activeRightTab}
-            onChange={handleRightTabChange}
-            items={[
-              { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
-              {
-                key: "tasks",
-                hidden: !(setTasks && taskAccess.view),
-                icon: <Icons.ListChecks />,
-                label: t("Tasks", "Úlohy", "Feladatok"),
-                // Open tasks, counted by the same visibility rule the tab lists them with.
-                count:
-                  tasks.filter(tk =>
-                    tk.relatedProjectId === project.id &&
-                    !tk.archived &&
-                    !isDoneTaskState(tk.status, taskStates) &&
-                    (taskAccess.viewAll || isOnPersonalDashboard(tk, currentUser?.name || ""))
-                  ).length || undefined,
-              },
-              { key: "gantt", hidden: !projectType.hasGantt, icon: <Icons.GanttChartSquare />, label: t("Gantt Chart", "Ganttov diagram", "Gantt diagram") },
-              {
-                key: "finances",
-                icon: <Coins />,
-                label: t("Finances", "Financie", "Pénzügyek"),
-                badge: (
-                  <span className={`px-1.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/15 text-emerald-700" : "bg-rose-500/15 text-rose-700"}`}>
-                    {money(revenueAnalysis.realProfit)}
-                  </span>
-                ),
-              },
-              {
-                key: "files",
-                icon: <Paperclip />,
-                label: t("Files", "Súbory", "Fájlok"),
-                badge: missingFileCount > 0 ? (
-                  <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-rose-500/20 text-rose-600">{missingFileCount}</span>
-                ) : undefined,
-              },
-            ]}
-          />
+          {!isSidebar && (
+            <Tabs<RightTab>
+              className="mb-4 shrink-0"
+              value={activeRightTab}
+              onChange={handleRightTabChange}
+              defaultPin={{
+                value: defaultTabPref,
+                onChange: setDefaultTabPref,
+                setLabel: t("Open projects on this tab", "Otvárať projekty na tejto karte", "Projektek megnyitása ezen a lapon"),
+                clearLabel: t("Default tab — click to unpin", "Predvolená karta — kliknutím zrušíte", "Alapértelmezett lap — kattintson a feloldáshoz"),
+              }}
+              items={[
+                { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
+                {
+                  key: "tasks",
+                  hidden: !(setTasks && taskAccess.view),
+                  icon: <Icons.ListChecks />,
+                  label: t("Tasks", "Úlohy", "Feladatok"),
+                  // Open tasks, counted by the same visibility rule the tab lists them with.
+                  count: openTasksCount || undefined,
+                },
+                { key: "gantt", hidden: !projectType.hasGantt, icon: <Icons.GanttChartSquare />, label: t("Gantt Chart", "Ganttov diagram", "Gantt diagram") },
+                {
+                  key: "finances",
+                  icon: <Coins />,
+                  label: t("Finances", "Financie", "Pénzügyek"),
+                  badge: (
+                    <span className={`px-1.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/15 text-emerald-700" : "bg-rose-500/15 text-rose-700"}`}>
+                      {money(revenueAnalysis.realProfit)}
+                    </span>
+                  ),
+                },
+                {
+                  key: "files",
+                  icon: <Paperclip />,
+                  label: t("Files", "Súbory", "Fájlok"),
+                  badge: missingFileCount > 0 ? (
+                    <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-rose-500/20 text-rose-600">{missingFileCount}</span>
+                  ) : undefined,
+                },
+              ]}
+            />
+          )}
 
           {/* TAB CONTENT: Tasks — ordinary tasks that carry this project's id */}
-          {activeRightTab === "tasks" && setTasks && (
+          {(isSidebar || activeRightTab === "tasks") && setTasks && taskAccess.view && wrapSection(
+            "tasks",
+            <Icons.ListChecks className="h-4 w-4 text-indigo-600" />,
+            t("Tasks", "Úlohy", "Feladatok"),
+            openTasksCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {openTasksCount}
+              </span>
+            ) : undefined,
             <ProjectTasksPanel
               project={project}
               isNew={isNew}
@@ -2656,11 +3120,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           )}
 
           {/* TAB CONTENT: Timeline */}
-          {activeRightTab === "timeline" && projectType.hasTimeline && (
-            <div className="flex-1 ws-lg:overflow-hidden flex flex-col ws-lg:flex-row gap-6">
+          {(isSidebar || activeRightTab === "timeline") && projectType.hasTimeline && wrapSection(
+            "timeline",
+            <Icons.Clock className="h-4 w-4 text-purple-600" />,
+            t("Timeline", "Časová os", "Idővonal"),
+            undefined,
+            <div className={`flex-1 ${isSidebar ? "flex flex-col gap-5" : "ws-lg:overflow-hidden flex flex-col ws-lg:flex-row gap-6"}`}>
               {/* Timeline Form — writes an event, so a read-only role gets the list alone. */}
               {canEdit && (
-              <div className="ws-lg:w-1/3 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit">
+              <div className={`${isSidebar ? "w-full" : "ws-lg:w-1/3"} flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit`}>
                 <span className="type-overline text-slate-400 mb-3 block">
                   {t("Log Timeline Event", "Zaznamenať udalosť", "Esemény rögzítése")}
                 </span>
@@ -3013,13 +3481,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       </div>
 
                       {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTimelineEvent(event.id)}
-                          className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition-all cursor-pointer"
+                        <HoldToConfirmButton
+                            tone="danger"
+                            lang={userLanguage}
+                            what={event.title}
+                            onConfirm={() => handleRemoveTimelineEvent(event.id)}
+                            className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-50 text-rose-600 rounded-lg transition-all"
                         >
                           <Trash2 className="h-4.5 w-4.5" />
-                        </button>
+                        </HoldToConfirmButton>
                       )}
                     </div>
                   ))
@@ -3029,9 +3499,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           )}
 
           {/* TAB CONTENT: Gantt Chart */}
-          {activeRightTab === "gantt" && projectType.hasGantt && (() => {
+          {(isSidebar || activeRightTab === "gantt") && projectType.hasGantt && (() => {
             const { weekdays, weekGroups, totalTimelineWidth } = getGanttTimelineData();
-            return (
+            return wrapSection(
+              "gantt",
+              <Icons.GanttChartSquare className="h-4 w-4 text-sky-600" />,
+              t("Gantt Chart", "Ganttov diagram", "Gantt diagram"),
+              undefined,
               <div className="flex-1 ws-lg:overflow-hidden flex flex-col gap-4 text-ui font-semibold">
                 
                 {/* Gantt Entry Form Inline — adds a row, so only for a role that may edit. */}
@@ -3166,13 +3640,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     <Icons.Calendar className="h-3.5 w-3.5 text-slate-400" />
                                   )}
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveGanttRow(row.id)}
-                                  className="text-slate-400 hover:text-rose-600 p-1 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                                <HoldToConfirmButton
+                                    tone="danger"
+                                    lang={userLanguage}
+                                    what={row.title}
+                                    onConfirm={() => handleRemoveGanttRow(row.id)}
+                                    className="text-slate-400 hover:text-rose-600 p-1 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                </button>
+                                </HoldToConfirmButton>
                               </div>
                             </div>
                           );
@@ -3468,8 +3944,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           )}
 
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
-          {activeRightTab === "files" && (
-            <div className="flex-1 ws-lg:overflow-y-auto space-y-5 scrollbar-thin ws-lg:pr-1 animate-in fade-in duration-150 text-left">
+          {(isSidebar || activeRightTab === "files") && wrapSection(
+            "files",
+            <Paperclip className="h-4 w-4 text-amber-600" />,
+            t("Files", "Súbory", "Fájlok"),
+            missingFileCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                {missingFileCount}
+              </span>
+            ) : undefined,
+            <div className={`flex-1 ${isSidebar ? "space-y-5" : "ws-lg:overflow-y-auto space-y-5 scrollbar-thin ws-lg:pr-1"} animate-in fade-in duration-150 text-left`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col min-w-0">
                   <span className="font-heading font-bold text-body text-slate-800 flex items-center gap-1.5">
@@ -3557,8 +4041,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           )}
 
           {/* TAB CONTENT: Finances & Revenue Analysis (CRITICAL REQUIREMENT #5, #6, #7) */}
-          {activeRightTab === "finances" && (
-            <div className="flex-1 ws-lg:overflow-y-auto space-y-6 scrollbar-thin ws-lg:pr-1 animate-in fade-in duration-150 text-left">
+          {(isSidebar || activeRightTab === "finances") && wrapSection(
+            "finances",
+            <Coins className="h-4 w-4 text-emerald-600" />,
+            t("Finances", "Financie", "Pénzügyek"),
+            <span className={`px-2 py-0.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
+              {money(revenueAnalysis.realProfit)}
+            </span>,
+            <div className={`flex-1 ${isSidebar ? "space-y-6" : "ws-lg:overflow-y-auto space-y-6 scrollbar-thin ws-lg:pr-1"} animate-in fade-in duration-150 text-left`}>
               {/* 0. Top Row: Project Value & Invoicable + Project Cost Budget */}
               <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                 {/* 0A. PROJECT VALUE & INVOICABLE */}
@@ -3991,14 +4481,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-ui">
-                      <thead className="text-slate-400 border-b border-slate-200">
+                      <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>
-                          <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
-                          <th className="py-2 px-3 font-semibold">{t("Invoice # & Title", "Číslo FA a popis", "Számlaszám és tétel")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Real (€)", "Uhradené (€)", "Fizetett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Invoice # & Title", "Číslo FA a popis", "Számlaszám és tétel")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Uhradené (€)", "Fizetett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">
@@ -4033,12 +4523,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   </button>
                                 )}
                                 {canDeleteFinance && (
-                                  <button
-                                    onClick={() => handleDeleteProjectFinancial(inv.id)}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                  <HoldToConfirmButton
+                                      tone="danger"
+                                      lang={userLanguage}
+                                      what={inv.title}
+                                      onConfirm={() => handleDeleteProjectFinancial(inv.id)}
+                                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  </HoldToConfirmButton>
                                 )}
                               </div>
                             </td>
@@ -4078,14 +4571,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-ui">
-                      <thead className="text-slate-400 border-b border-slate-200">
+                      <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>
-                          <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
-                          <th className="py-2 px-3 font-semibold">{t("Expense Title & Category", "Názov a kategória", "Megnevezés és kategória")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Real (€)", "Zaplatené (€)", "Kifizetett (€)")}</th>
-                          <th className="py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
-                          <th className="py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Expense Title & Category", "Názov a kategória", "Megnevezés és kategória")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Zaplatené (€)", "Kifizetett (€)")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">
@@ -4119,12 +4612,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   </button>
                                 )}
                                 {canDeleteFinance && (
-                                  <button
-                                    onClick={() => handleDeleteProjectFinancial(exp.id)}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                  <HoldToConfirmButton
+                                      tone="danger"
+                                      lang={userLanguage}
+                                      what={exp.title}
+                                      onConfirm={() => handleDeleteProjectFinancial(exp.id)}
+                                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  </HoldToConfirmButton>
                                 )}
                               </div>
                             </td>
@@ -4171,7 +4667,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* PROJECT FINANCIAL MODAL */}
           {isFinModalOpen && (
-            <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-[100005] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
               <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
@@ -4330,4 +4826,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
     </div>
   );
+
+  if (isSidebar) {
+    return createPortal(
+      <div className="fixed inset-0 z-[100000] flex justify-end overflow-hidden" role="dialog" aria-modal="true">
+        {/* Backdrop */}
+        <div
+          onClick={requestClose}
+          className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-200 ${
+            isClosing ? "opacity-0" : "opacity-100"
+          }`}
+        />
+        {mainView}
+      </div>,
+      document.body
+    );
+  }
+
+  return mainView;
 };

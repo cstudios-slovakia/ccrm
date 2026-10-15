@@ -46,6 +46,15 @@ const toDateOnly = (value: string | undefined | null): string => {
 export const DEFAULT_DEADLINE_WARNING_DAYS = 7;
 
 /**
+ * Whether a project type carries an invoice date. Projects saved before the
+ * invoice-date switch was split off from `hasDeadline` followed the deadline
+ * switch; types without an explicit `hasInvoiceDate` continue to follow it.
+ */
+export const projectTypeHasInvoiceDate = (
+  projectType: Pick<ProjectType, "hasInvoiceDate" | "hasDeadline"> | undefined | null,
+): boolean => Boolean(projectType?.hasInvoiceDate ?? projectType?.hasDeadline);
+
+/**
  * A warning window, cleaned up: a positive whole number of days, or 0 for
  * "no early warning, only flag it once it is actually late".
  */
@@ -93,14 +102,14 @@ export interface ProjectDeadlineStatus {
  * nothing at all on null rather than an empty badge.
  */
 export const evaluateProjectDeadline = (
-  project: Pick<Project, "deadline" | "status" | "finishedAt"> | undefined | null,
+  project: Pick<Project, "completionDeadline" | "status" | "finishedAt"> | undefined | null,
   projectType: Pick<ProjectType, "hasDeadline" | "deadlineWarningDays"> | undefined | null,
   today: string,
   statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
 ): ProjectDeadlineStatus | null => {
   if (!projectType?.hasDeadline) return null;
 
-  const deadline = toDateOnly(project?.deadline);
+  const deadline = toDateOnly(project?.completionDeadline);
   const deadlineDay = toDayNumber(deadline);
   const todayDay = toDayNumber(today);
   const warningDays = normalizeDeadlineWarningDays(projectType.deadlineWarningDays);

@@ -7,12 +7,15 @@
  * whichever language the original prompt happened to use.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
 
 if (php_sapi_name() !== 'cli') {
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
+    // Building or translating a custom dashboard is editing one.
+    ccrm_gate($sessionUser, 'dashboard.custom', 'edit');
 }
 
 $configFile = dirname(__DIR__) . '/config.php';

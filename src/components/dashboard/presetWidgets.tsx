@@ -14,7 +14,7 @@
 
 import React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Building2, Plus, User } from "lucide-react";
+import { ArrowUpRight, Building2, Plus, User } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { formatDateLocalized, nowLocalStamp } from "../../utils/localTime";
 import { isTaskOverdue } from "../../utils/projectTasks";
@@ -633,70 +633,98 @@ export const StageDonutWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
     return arc;
   });
 
+  /** Open Leads with the pipeline stage filter set to this status. */
+  const openStatus = (status: unknown) => {
+    const raw = String(status ?? "").trim().toLowerCase();
+    ctx.navigate(raw ? `leads?status=${encodeURIComponent(raw)}` : "leads");
+  };
+
   return (
     <WidgetCard
       icon={section.icon}
       accent={section.accent}
       title={title}
-      actions={
-        <MoreLink
-          label={ctx.t("Open", "Otvoriť", "Megnyitás")}
-          href="#leads"
-          onClick={() => ctx.navigate("leads")}
-        />
-      }
     >
-      <div className="flex items-center gap-6">
-        <div className="relative w-33 h-33 shrink-0">
-          <svg width="132" height="132" viewBox="0 0 120 120" aria-hidden="true">
-            <circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" className="text-slate-100" strokeWidth="16" />
-            {arcs.map((arc) => (
-              <circle
-                key={arc.key}
-                cx="60"
-                cy="60"
-                r={radius}
-                fill="none"
-                stroke={arc.color}
-                strokeWidth="16"
-                strokeDasharray={arc.dash}
-                strokeDashoffset={arc.offset}
-                transform="rotate(-90 60 60)"
-              />
-            ))}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span
-              className="text-heading font-bold text-slate-900 leading-none"
-              style={{ fontVariantNumeric: "tabular-nums" }}
-            >
-              {total.toLocaleString()}
-            </span>
-            <span className="type-overline text-slate-400 mt-0.75">
-              {ctx.t("leads", "leadov", "lead")}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-col flex-1 min-w-0">
-          {list.map((row, index) => (
-            <div key={`${row?.status ?? index}`} className="flex items-center gap-2 h-5.5">
+      {list.length === 0 ? (
+        <EmptyWidgetRows t={ctx.t} />
+      ) : (
+        <div className="flex items-center gap-6">
+          <div className="relative w-33 h-33 shrink-0">
+            <svg width="132" height="132" viewBox="0 0 120 120" aria-hidden="true">
+              <circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" className="text-slate-100" strokeWidth="16" />
+              {arcs.map((arc) => (
+                <circle
+                  key={arc.key}
+                  cx="60"
+                  cy="60"
+                  r={radius}
+                  fill="none"
+                  stroke={arc.color}
+                  strokeWidth="16"
+                  strokeDasharray={arc.dash}
+                  strokeDashoffset={arc.offset}
+                  transform="rotate(-90 60 60)"
+                />
+              ))}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span
-                className="w-2 h-2 rounded-[3px] shrink-0"
-                style={{ backgroundColor: colorForStatus(row?.status, ctx.leadStateColors, "#94a3b8") }}
-              />
-              <span className="text-ui font-semibold text-slate-700 flex-1 truncate capitalize">
-                {labelForStatus(row?.status, ctx.leadStates)}
-              </span>
-              <span
-                className="text-ui font-bold text-slate-900"
+                className="text-heading font-bold text-slate-900 leading-none"
                 style={{ fontVariantNumeric: "tabular-nums" }}
               >
-                {num(row?.count).toLocaleString()}
+                {total.toLocaleString()}
+              </span>
+              <span className="type-overline text-slate-400 mt-0.75">
+                {ctx.t("leads", "leadov", "lead")}
               </span>
             </div>
-          ))}
+          </div>
+          <div className="flex flex-col flex-1 min-w-0">
+            {list.map((row, index) => {
+              const statusKey = String(row?.status ?? "").trim().toLowerCase();
+              const href = statusKey
+                ? `#leads?status=${encodeURIComponent(statusKey)}`
+                : "#leads";
+              return (
+                <a
+                  key={`${row?.status ?? index}`}
+                  href={href}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openStatus(row?.status);
+                  }}
+                  className="group flex items-center gap-2 h-5.5 -mx-1 px-1 rounded-md text-inherit hover:bg-slate-50 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 transition-colors"
+                  title={ctx.t(
+                    `Show ${labelForStatus(row?.status, ctx.leadStates)} leads`,
+                    `Zobraziť leady: ${labelForStatus(row?.status, ctx.leadStates)}`,
+                    `${labelForStatus(row?.status, ctx.leadStates)} lead-ek megnyitása`
+                  )}
+                >
+                  <span
+                    className="w-2 h-2 rounded-[3px] shrink-0"
+                    style={{ backgroundColor: colorForStatus(row?.status, ctx.leadStateColors, "#94a3b8") }}
+                  />
+                  <span className="text-ui font-semibold text-slate-700 truncate capitalize">
+                    {labelForStatus(row?.status, ctx.leadStates)}
+                  </span>
+                  <ArrowUpRight
+                    aria-hidden="true"
+                    className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-150 ease-out group-hover:text-indigo-600 group-hover:translate-x-px group-hover:-translate-y-px"
+                    strokeWidth={2.25}
+                  />
+                  <span className="flex-1" />
+                  <span
+                    className="text-ui font-bold text-slate-900"
+                    style={{ fontVariantNumeric: "tabular-nums" }}
+                  >
+                    {num(row?.count).toLocaleString()}
+                  </span>
+                </a>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </WidgetCard>
   );
 };

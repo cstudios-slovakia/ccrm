@@ -307,6 +307,90 @@ reads back a field, and after adding a column, a JSON blob or a dynamic table.
 It is outside `npm test` for the same reason as 5b: it needs Docker + MySQL.
 It cleans up every row and table it created, prefix `ccrm-del-probe-`.
 
+## 5d. The MCP probe: what can an AI key read and write?
+
+```bash
+npm run test:mcp        # needs `docker compose up` (containers crm + ccrm-db-1)
+```
+
+`scripts/probe-mcp/run.mjs` exercises the MCP gateway (`public/api/mcp*.php`) on
+real PHP and MySQL. It **never touches the dev data**: it clones the dev
+database into a scratch schema (`ccrm_mcp_probe`), serves a copy of
+`public/api` from `/var/www/html/mcpprobe` in the dev web container, seeds
+four users (Admin and three roles with nothing / view / edit on every module)
+and their keys, and drops the schema and the directory when it finishes.
+
+Three groups of checks, about 130 in all:
+
+1. **Authorization** — which tools each role sees in `tools/list` and may call
+   (`-32003` otherwise), that every tool in the source is in the permission
+   table, field stripping (`pin`, salaries) without `employees.salaries`,
+   `tasks.view_all`, revoked keys, keys older than a password reset, no
+   wildcard CORS, no SQL in error messages, and a source scan proving no MCP
+   file contains `DELETE FROM`, `TRUNCATE` or `DROP TABLE`.
+2. **Parity** — the PHP finance maths against the TypeScript originals on one
+   fixture (`scripts/probe-mcp/fixture.mjs`): the overview table
+   (`aggregateOverviewTable`, recurring rules included), project billing
+   (`projectBilling`, `resolveProjectValue` incl. money attributes), the
+   cash-flow forecast (`projectFutureMovements`) and the simplified-table
+   equation evaluator. If you change one side of a ported formula, this fails
+   until you change the other.
+3. **Write paths** — invoices (numbering, net/VAT maths, ledger link, no
+   orphan on failure), stock (weighted average cost, no overselling), payroll
+   (ledger mirror, paid periods are final), leads (stage guard, history),
+   projects (configured statuses, finish date), tasks, vacations.
+
+Run it after any change to `public/api/mcp*.php`, and when a formula it ports
+changes (`financialOverviewTable.ts`, `recurringExpenses.ts`,
+`futureMovements.ts`, `projectBilling.ts`, `equationEvaluator.ts`). It is
+outside `npm test` for the same reason as 5b and 5c: it needs Docker + MySQL.
+
+## 5e. The RBAC probe: does the server really hold the line?
+
+```bash
+npm run test:rbac       # needs `docker compose up` (containers crm + ccrm-db-1)
+```
+
+`scripts/probe-rbac/run.mjs` proves that **the server** enforces the role
+matrix, which the mocked QA suite cannot see. Like 5d it never touches the dev
+data: it clones the dev database into a scratch schema, serves a copy of
+`public/` from a scratch directory in the dev web container, seeds one user per
+role (Admin, Project Manager, Employee, a restricted custom role, a role with
+no edit rights, a role with every module off) and drops everything afterwards.
+It logs in as each of them and inspects raw response bodies and the database.
+
+Groups of checks, about 190 in all:
+
+1. **R - read scope.** What `sync.php` GET, `my_employment.php`, the private
+   document endpoint and the gated AI / search / dashboard / report /
+   integration endpoints return per role: no hidden collection, field or row
+   appears anywhere in the body (not just in the fields the UI renders), and
+   Admin and Project Manager answers match the last unfiltered `sync.php`.
+2. **W - write scope.** Forged `sync.php` POSTs and direct endpoint calls leave
+   the database unchanged: tasks, leads and clients outside the visible set,
+   salaries, PIN, leave approval, role registry, the user link, own-account
+   rename / e-mail change, masked time-tracking tokens.
+3. **M - migrations.** The Employee role is added once and an existing role of
+   that name is left alone; `employees.user_id` is added with its unique index
+   and foreign key, twice in a row.
+4. **P1 - parity.** TypeScript and PHP permission registries and the Employee
+   role map are identical (`src/utils/permissions.test.ts`).
+
+Run it after any change to `permissions.ts` / `permissions.php`,
+`read_scope.php`, `sync.php`, `my_employment.php`, `employee_file*.php`,
+`upload.php`, or any endpoint that reads CRM data on behalf of a user. It is
+outside `npm test` because it needs Docker + MySQL. A new permission is not
+done until it has a read check and a write check here (see
+`docs/db_integration_notes/RBAC_SYSTEM.md`, "Adding a permission").
+
+### 5f. Passkeys / WebAuthn ceremony tests (`npm run test:passkeys`)
+
+Runs headless verification of WebAuthn options generation, serialization/deserialization, challenge expiration and single-use lifecycle, and AAGUID lookup without requiring a database or browser:
+
+```bash
+npm run test:passkeys
+```
+
 ---
 
 ## 6. When to run what
@@ -314,10 +398,13 @@ It cleans up every row and table it created, prefix `ccrm-del-probe-`.
 | Situation | Run |
 |---|---|
 | Mid-change, want fast feedback | `npm run test:unit` |
+| Touched passkeys (`api/passkeys*.php`) | `npm run test:passkeys` |
 | Touched a specific module's UI | `npm run test:qa:crawler` |
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |
 | Touched how `sync.php`/`api/*.php` stores or reads back a field | `npm run test:persistence` — GET-after-POST against the local Docker backend (see 5c) |
+| Touched the MCP gateway (`public/api/mcp*.php`) or a formula it ports | `npm run test:mcp` — roles, field stripping, TS↔PHP parity and write paths on a scratch database (see 5d) |
+| Touched permissions, `read_scope.php`, or who may read or write what on the server | `npm run test:rbac` - per-role read and write checks against a scratch database (see 5e) |
 | **Finished a feature or a fix** | **`npm run test:qa`** (scoped automatically) |
 | Several sessions share this checkout | `node scripts/qa/run-qa.mjs --files <your files>` — the automatic diff would scope to everyone's changes |
 | Another run is live (`Waiting:` printed) | nothing — it queues and starts when the other run ends |

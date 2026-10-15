@@ -48,6 +48,7 @@ const values = (r: Row): ProjectSortValues => ({
   managers: "",
   rating: r.rating ?? null,
   deadline: r.deadline ?? null,
+  invoiceDate: r.invoiceDate ?? null,
   progress: r.progress ?? null,
   value: r.value ?? null,
   invoicable: r.invoicable ?? null,
@@ -194,4 +195,15 @@ test("applyManualOrder follows the hand-set order, new projects on top, stale id
 
 test("the manual key keeps the incoming order and has no direction", () => {
   assert.deepEqual(order(sortProjects(rows, { key: "manual", direction: "desc" }, values)), ["p1", "p2", "p3", "p4"]);
+});
+
+test("the invoice date sorts on its own, apart from the deadline", () => {
+  const rows: Row[] = [
+    { id: "a", deadline: "2026-01-01", invoiceDate: "2026-12-01" },
+    { id: "b", deadline: "2026-06-01", invoiceDate: null },
+    { id: "c", deadline: "2026-09-01", invoiceDate: "2026-03-01" },
+  ];
+  assert.deepEqual(order(sortProjects(rows, { key: "invoiceDate", direction: "asc" }, values)), ["c", "a", "b"]);
+  assert.deepEqual(order(sortProjects(rows, { key: "invoiceDate", direction: "desc" }, values)), ["a", "c", "b"]);
+  assert.deepEqual(order(sortProjects(rows, { key: "deadline", direction: "asc" }, values)), ["a", "b", "c"]);
 });

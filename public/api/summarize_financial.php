@@ -4,6 +4,7 @@
  * Fetches statement details, retrieves associated report tables from RegisterUZ, and summarizes them using OpenAI.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -24,8 +25,9 @@ if (php_sapi_name() !== 'cli') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         summary_error(405, 'method_not_allowed', 'Method Not Allowed');
     }
-    // SECURITY: Authenticated users only
-    ccrm_require_auth();
+    // SECURITY: Authenticated users only, and only with a view of the finance module.
+    $sessionUser = ccrm_require_auth();
+    ccrm_gate($sessionUser, 'financial');
 }
 
 $configFile = dirname(__DIR__) . '/config.php';

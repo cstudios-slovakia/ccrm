@@ -19,6 +19,9 @@ import { FlockIcon } from "./icons/FlockIcon";
 import { EmployeeTieIcon } from "./icons/EmployeeTieIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
 import { cn } from "../utils/cn";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -377,7 +380,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       {
         id: "employees",
         label: getTranslation(systemLanguage, "sidebar.employees"),
-        description: t("Staff directory, salaries matrix, Toggl tracking & leave planner", "Zoznam zamestnancov, matica miezd, meranie času a dovolenky", "Munkatársak, bérmátrix, időkövetés és szabadságok"),
+        description: t("Your employment, staff directory, payroll, time tracking & leave", "Vaše zamestnanie, zoznam zamestnancov, mzdy, meranie času a dovolenky", "Munkaviszonya, munkatársak, bérek, időkövetés és szabadságok"),
         icon: EmployeeTieIcon,
         color: "#c29b62",
         bgColor: "rgba(194, 155, 98, 0.12)",
@@ -654,17 +657,23 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const handleDeleteGroup = (groupId: string) => {
-    if (window.confirm(t("Delete this group and move its items to Unused?", "Vymazať túto skupinu a presunúť jej položky do Nepoužívaných?", "Törli ezt a csoportot, és áthelyezi elemeit a Nem használtak közé?"))) {
-      const groupToDelete = resolvedGroupsData.groupsWithItems.find((g) => g.id === groupId);
-      const itemsToMove = groupToDelete ? groupToDelete.items.map((i) => i.id) : [];
+    const groupToDelete = resolvedGroupsData.groupsWithItems.find((g) => g.id === groupId);
+    const itemsToMove = groupToDelete ? groupToDelete.items.map((i) => i.id) : [];
 
-      const nextGroups = groups.filter((g) => g.id !== groupId);
-      const nextGroupItems = { ...groupItemsMap };
-      delete nextGroupItems[groupId];
-      const nextUnused = Array.from(new Set([...unusedItemIds, ...itemsToMove]));
+    const nextGroups = groups.filter((g) => g.id !== groupId);
+    const nextGroupItems = { ...groupItemsMap };
+    delete nextGroupItems[groupId];
+    const nextUnused = Array.from(new Set([...unusedItemIds, ...itemsToMove]));
 
-      persistLayout(nextGroups, nextGroupItems, nextUnused);
-    }
+    // The layout as it is now: Undo writes exactly this back. The group's items
+    // were moved to Unused, so nothing is lost either way.
+    const before = { groups, groupItems: groupItemsMap, unused: unusedItemIds };
+    runUndoable({
+      message: singleMessage(asLang(systemLanguage), "group", "delete", groupToDelete?.name ?? groups.find((g) => g.id === groupId)?.name),
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => persistLayout(nextGroups, nextGroupItems, nextUnused),
+      revert: () => persistLayout(before.groups, before.groupItems, before.unused),
+    });
   };
 
   // Group Drag & Drop (Reordering whole columns)
@@ -1256,14 +1265,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <Pencil className="h-3 w-3" />
                           </button>
                           {groups.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteGroup(group.id)}
-                              className="p-1 rounded-lg hover:bg-rose-100  text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                              title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
+                            <HoldToConfirmButton
+                                tone="danger"
+                                lang={asLang(systemLanguage)}
+                                what={group.name}
+                                onConfirm={() => handleDeleteGroup(group.id)}
+                                className="p-1 rounded-lg hover:bg-rose-100  text-slate-400 hover:text-rose-600 transition-colors"
+                                title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
                             >
                               <Trash2 className="h-3 w-3" />
-                            </button>
+                            </HoldToConfirmButton>
                           )}
                         </>
                       )}

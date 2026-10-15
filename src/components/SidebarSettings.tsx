@@ -15,6 +15,9 @@ import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
 import { normalizeSidebarGroups, type SidebarGroup } from "../utils/sidebarLayout";
 import { cn } from "../utils/cn";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 
 interface SidebarSettingsProps {
   systemLanguage: Language;
@@ -83,11 +86,17 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
     const current = normalizeSidebarGroups(storedGroups, []);
     if (current.length <= 1) return;
     const toDelete = current.find((g) => g.id === groupId);
-    const remaining = current.filter((g) => g.id !== groupId);
-    if (toDelete && toDelete.items.length > 0 && remaining.length > 0) {
-      remaining[0].items.push(...toDelete.items);
-    }
-    setStoredGroups(remaining);
+    if (!toDelete) return;
+    // Built without touching `current`, which is also the snapshot Undo writes back.
+    const remaining = current
+      .filter((g) => g.id !== groupId)
+      .map((g, index) => (index === 0 && toDelete.items.length > 0 ? { ...g, items: [...g.items, ...toDelete.items] } : g));
+    runUndoable({
+      message: singleMessage(asLang(systemLanguage), "group", "delete", toDelete.title),
+      undoLabel: undoLabel(asLang(systemLanguage)),
+      apply: () => setStoredGroups(remaining),
+      revert: () => setStoredGroups(current),
+    });
   };
 
   const handleResetGroups = () => {
@@ -418,14 +427,16 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
                       <Pencil className="h-3 w-3" />
                     </button>
                     {activeGroups.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteGroup(grp.id)}
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
+                      <HoldToConfirmButton
+                          tone="danger"
+                          lang={asLang(systemLanguage)}
+                          what={grp.title}
+                          onConfirm={() => handleDeleteGroup(grp.id)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
                       >
                         <Trash2 className="h-3 w-3" />
-                      </button>
+                      </HoldToConfirmButton>
                     )}
                   </div>
                 )}

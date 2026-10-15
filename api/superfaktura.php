@@ -4,6 +4,7 @@
  * Handles authentication, connection test, estimate creation, invoice creation, and PDF retrieval.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -14,7 +15,7 @@ if (php_sapi_name() !== 'cli') {
         echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
         exit;
     }
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
 }
 
 $configFile = dirname(__DIR__) . '/config.php';
@@ -52,6 +53,11 @@ try {
 // Stored SuperFaktura configuration. Credentials may also arrive in the request
 // body — that is how the Settings "Test connection" button probes keys the admin
 // has typed but not saved yet.
+// Issuing a document is invoicing work; probing the connector with keys is settings work.
+if (isset($sessionUser)) {
+    ccrm_gate_any($sessionUser, $action === 'test_connection' ? ['general_config', 'invoices'] : ['invoices'], 'edit');
+}
+
 $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INVOICING_INTEGRATIONS'");
 $stmt->execute();
 $invIntJson = $stmt->fetchColumn();

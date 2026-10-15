@@ -6,7 +6,8 @@ import {
   Plus,
   Settings as SettingsIcon,
   ChevronRight,
-  Loader2
+  Loader2,
+  UserRound
 } from "lucide-react";
 import type {
   Employee,
@@ -14,13 +15,15 @@ import type {
   EmployeeSettings,
   EmployeeVacation,
   FinancialCategory,
-  UserProfile as AuthUser
+  UserProfile as AuthUser,
+  RolePermission
 } from "../../types";
 import type { ModuleAccess } from "../../utils/permissions";
+import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import {
   DEFAULT_MOCK_EMPLOYEES,
   generateDefaultMockSalaries,
-  DEFAULT_MOCK_VACATIONS,
+  generateDefaultMockVacations,
   DEFAULT_MOCK_SETTINGS
 } from "../../utils/mockEmployees";
 import { EmployeeListView } from "./EmployeeListView";
@@ -28,9 +31,11 @@ import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
 import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
-import { useConfirmDialog } from "../ui/ConfirmDialog";
-import { PageHeader, Tabs } from "../layout";
+import { MyEmploymentView } from "./MyEmploymentView";
+import { PageHeader, Tabs, type TabItem } from "../layout";
 import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
+import { deleteRecordsWithUndo } from "../../utils/recordActions";
+import { asLang } from "../../utils/undoMessages";
 
 interface EmployeesViewProps {
   access: ModuleAccess;
@@ -46,7 +51,19 @@ interface EmployeesViewProps {
   employeeSettings?: EmployeeSettings | null;
   setEmployeeSettings: (settings: EmployeeSettings | ((prev: EmployeeSettings) => EmployeeSettings)) => void;
   financialCategories: FinancialCategory[];
+  /** Sample staff is demo data: only a demo install may load or auto-seed it. */
+  isDemoMode?: boolean;
+  /** What this person may see and change, field group by field group (see utils/employeeRights). */
+  rights?: EmployeeRights;
+  /** Logins, for the "linked user account" picker. */
+  users?: AuthUser[];
+  /** Role registry, to warn when a linked login can open this whole module. */
+  roles?: RolePermission[];
+  /** The person may open the "My employment" tab (any self.* permission). */
+  selfService?: boolean;
 }
+
+type EmployeesViewName = "list" | "detail" | "matrix" | "form" | "settings" | "me";
 
 // Helper to resolve an employee by ID, case-insensitive ID, name, or name slug
 export const findEmployeeByIdOrSlug = (
@@ -88,7 +105,7 @@ export const findEmployeeByIdOrSlug = (
 const parseEmployeesUrlState = (
   allEmployees: Employee[]
 ): {
-  view: "list" | "detail" | "matrix" | "form" | "settings";
+  view: EmployeesViewName;
   employeeId: string | null;
   editEmployee: Employee | null;
   isEditMode?: boolean;
@@ -99,6 +116,11 @@ const parseEmployeesUrlState = (
   const base = (parts[0] || "").toLowerCase();
   const sub = (parts[1] || "").toLowerCase();
   const params = new URLSearchParams(queryPart || "");
+
+  // 0. #employees/me or the old #my-employment address: the signed-in person's own data
+  if (base === "my-employment" || base === "my_employment" || base === "myemployment" || (base === "employees" && (sub === "me" || sub === "my-employment"))) {
+    return { view: "me", employeeId: null, editEmployee: null };
+  }
 
   // 1. #employee-<idOrSlug> (e.g. #employee-emp_1 or #employee-peter-kovac)
   if (base.startsWith("employee-")) {
@@ -176,22 +198,46 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   setVacations,
   employeeSettings,
   setEmployeeSettings,
-  financialCategories = []
+  financialCategories = [],
+  isDemoMode = false,
+  rights = FULL_EMPLOYEE_RIGHTS,
+  users = [],
+  roles = [],
+  selfService = false
 }) => {
   // Navigation state derived from URL hash
   const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
-  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
+  const [requestedView, setCurrentView] = useState<EmployeesViewName>(initialUrlState.view);
+  // A typed or bookmarked address never opens a screen this person has no right to: the directory,
+  // pay matrix and employee screens need the employees module (a regular employee lands on their
+  // own tab), the pay matrix needs the pay toggle, create / edit needs employees = edit, settings
+  // needs general_config, and My employment needs a self-service permission.
+  const currentView: EmployeesViewName = (() => {
+    const needsDirectory =
+      requestedView === "list" || requestedView === "detail" || requestedView === "matrix" || requestedView === "form";
+    if (needsDirectory && !rights.view) return selfService ? "me" : "list";
+    if (requestedView === "me" && !selfService) return "list";
+    if (
+      (requestedView === "matrix" && !rights.salaries) ||
+      (requestedView === "form" && !rights.edit) ||
+      (requestedView === "settings" && !rights.canConfigure)
+    ) {
+      return "list";
+    }
+    return requestedView;
+  })();
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(initialUrlState.employeeId);
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(initialUrlState.editEmployee);
   const [isEditMode, setIsEditMode] = useState<boolean>(!!initialUrlState.isEditMode);
-  const [confirmAction, confirmDialog] = useConfirmDialog();
 
   // Navigation helpers that update URL hash
-  const navigateToTab = (tab: "list" | "matrix" | "settings") => {
+  const navigateToTab = (tab: "list" | "matrix" | "settings" | "me") => {
     if (tab === "matrix") {
       window.location.hash = "employees/salaries";
     } else if (tab === "settings") {
       window.location.hash = "employees/settings";
+    } else if (tab === "me") {
+      window.location.hash = "employees/me";
     } else {
       window.location.hash = "employees";
     }
@@ -245,21 +291,24 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   // Handle Seed Mock Data
   const handleSeedMockData = React.useCallback(() => {
     setEmployees(DEFAULT_MOCK_EMPLOYEES);
-    setSalaries(generateDefaultMockSalaries(new Date().getFullYear()));
-    setVacations(DEFAULT_MOCK_VACATIONS);
+    // Anchored to today so the calendar and salary matrix open on populated months
+    const now = new Date();
+    setSalaries(generateDefaultMockSalaries(now.getFullYear(), now));
+    setVacations(generateDefaultMockVacations(now));
     if (!employeeSettings || !employeeSettings.salaryTypes?.length) {
       setEmployeeSettings(DEFAULT_MOCK_SETTINGS);
     }
   }, [setEmployees, setSalaries, setVacations, setEmployeeSettings, employeeSettings]);
 
-  // Auto-seed on mount if employees array is empty so the module immediately displays rich data
+  // Demo installs only: auto-seed on mount if the employees array is empty so the
+  // module immediately displays rich data. A real install starts empty.
   const initialCheckRef = React.useRef(false);
   React.useEffect(() => {
-    if (!initialCheckRef.current && employees.length === 0) {
+    if (isDemoMode && rights.edit && !initialCheckRef.current && employees.length === 0) {
       initialCheckRef.current = true;
       handleSeedMockData();
     }
-  }, [employees.length, handleSeedMockData]);
+  }, [isDemoMode, employees.length, handleSeedMockData]);
 
   // Handle Save Employee (create or update)
   const handleSaveEmployee = (emp: Employee) => {
@@ -274,25 +323,23 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     });
   };
 
-  // Handle Delete Employee
-  const handleDeleteEmployee = async (empId: string) => {
-    const ok = await confirmAction({
-      title: t("Delete Employee", "Zmazať zamestnanca", "Alkalmazott törlése"),
-      message: t(
-        "Are you sure you want to delete this employee? Their profile and records will be removed.",
-        "Naozaj chcete zmazať tohto zamestnanca? Jeho profil a záznamy budú odstránené.",
-        "Biztosan törölni szeretné ezt az alkalmazottat?"
-      ),
-      confirmLabel: t("Delete", "Zmazať", "Törlés"),
-      cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
-      danger: true
+  // Handle Delete Employee — the hold on the button is the confirmation; the
+  // server delete waits for the undo window (utils/recordActions).
+  const handleDeleteEmployee = (empId: string) => {
+    const target = employees.find((e) => e.id === empId);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "employees",
+      allRecords: employees,
+      targets: [target],
+      setRecords: setEmployees,
+      lang: asLang(systemLanguage),
+      entity: "employee",
+      titleOf: (e) => e.name,
+      applyExtra: () => {
+        if (selectedEmployeeId === empId) navigateToTab("list");
+      },
     });
-    if (ok) {
-      setEmployees((prev) => prev.filter((e) => e.id !== empId));
-      if (selectedEmployeeId === empId) {
-        navigateToTab("list");
-      }
-    }
   };
 
   // Handle Save Salary
@@ -323,7 +370,17 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   // Handle Delete Vacation
   const handleDeleteVacation = (vacId: string) => {
-    setVacations((prev) => prev.filter((v) => v.id !== vacId));
+    const target = vacations.find((v) => v.id === vacId);
+    if (!target) return;
+    deleteRecordsWithUndo({
+      collection: "employeeVacations",
+      allRecords: vacations,
+      targets: [target],
+      setRecords: setVacations,
+      lang: asLang(systemLanguage),
+      entity: "record",
+      titleOf: () => employees.find((e) => e.id === target.employeeId)?.name,
+    });
   };
 
   // Handle Save Settings
@@ -331,22 +388,31 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     setEmployeeSettings(updated);
   };
 
+  // One section, several audiences: the directory / payroll tabs need the employees module, the
+  // My employment tab needs a self-service permission, settings needs general_config.
+  const tabItems: TabItem<"list" | "matrix" | "me" | "settings">[] = [
+    { key: "list", icon: <Users className="w-3.5 h-3.5" />, label: t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete"), hidden: !rights.view },
+    { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix"), hidden: !rights.view || !rights.salaries },
+    { key: "me", icon: <UserRound className="w-3.5 h-3.5" />, label: t("My employment", "Moje zamestnanie", "Munkaviszonyom"), hidden: !selfService },
+    { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások"), hidden: !rights.canConfigure },
+  ];
+
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
       {/* Module header: title first, then the sub-navigation (docs/VIEW-SIZE.md §6.1) */}
       {currentView !== "form" && (
         <PageHeader
           icon={<EmployeeTieIcon className="size-6" color="#9e7638" />}
-          title={t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek")}
+          title={t("People", "Ľudia", "Munkatársak")}
           subtitle={t(
-            "Staff directory, salary structures, Toggl time tracking & vacation planner",
-            "Prehľad zamestnancov, štruktúra miezd, meranie času a plánovač dovoleniek",
-            "Munkatársak, bérstruktúra, időkövetés és szabadságtervező"
+            "Your employment, staff directory, payroll, time tracking & leave",
+            "Vaše zamestnanie, zoznam zamestnancov, mzdy, meranie času a dovolenky",
+            "Munkaviszonya, munkatársak, bérek, időkövetés és szabadságok"
           )}
           actions={
             currentView === "list" ? (
               <>
-                {employees.length === 0 && (
+                {isDemoMode && rights.edit && employees.length === 0 && (
                   <button
                     type="button"
                     onClick={handleSeedMockData}
@@ -356,6 +422,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                     <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
                   </button>
                 )}
+                {rights.edit && (
                 <button
                   type="button"
                   onClick={() => navigateToAddEmployee()}
@@ -364,6 +431,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                   <Plus className="size-4" />
                   <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
                 </button>
+                )}
               </>
             ) : undefined
           }
@@ -375,15 +443,13 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
         <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
           {/* Sub-view switcher tabs */}
           <div className="flex items-center gap-2">
-            <Tabs
-              value={currentView === "detail" ? "list" : currentView}
-              onChange={navigateToTab}
-              items={[
-                { key: "list", icon: <Users className="w-3.5 h-3.5" />, label: t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete") },
-                { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix") },
-                { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások") },
-              ]}
-            />
+            {tabItems.filter((i) => !i.hidden).length > 1 && (
+              <Tabs
+                value={currentView === "list" || currentView === "matrix" || currentView === "me" || currentView === "settings" ? currentView : "list"}
+                onChange={navigateToTab}
+                items={tabItems}
+              />
+            )}
 
             {currentView === "detail" && selectedEmployee && (
               <div className="flex items-center gap-2 pl-2">
@@ -397,7 +463,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
           {/* Quick Toolbar (Demo Seed if empty) */}
           <div className="flex items-center gap-2">
-            {employees.length === 0 && (
+            {isDemoMode && rights.edit && employees.length === 0 && (
               <button
                 type="button"
                 onClick={handleSeedMockData}
@@ -425,9 +491,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onDeleteEmployee={handleDeleteEmployee}
             onOpenSettings={() => navigateToTab("settings")}
             onOpenMatrix={() => navigateToTab("matrix")}
-            onSeedMockData={handleSeedMockData}
+            onSeedMockData={isDemoMode ? handleSeedMockData : undefined}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
           />
         )}
 
@@ -448,6 +515,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onDeleteVacation={handleDeleteVacation}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
+            users={users}
+            roles={roles}
           />
         )}
 
@@ -508,6 +578,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             financialCategories={financialCategories}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
+            rights={rights}
+            employees={employees}
+            users={users}
+            roles={roles}
             onSave={(emp) => {
               handleSaveEmployee(emp);
               navigateToEmployeeDetail(emp.id);
@@ -519,6 +593,14 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 navigateToTab("list");
               }
             }}
+          />
+        )}
+
+        {currentView === "me" && (
+          <MyEmploymentView
+            systemLanguage={systemLanguage}
+            systemCurrency={systemCurrency}
+            embedded
           />
         )}
 
@@ -538,7 +620,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
       </div>
 
       {/* Delete Confirmation Dialog */}
-      {confirmDialog}
     </div>
   );
 };

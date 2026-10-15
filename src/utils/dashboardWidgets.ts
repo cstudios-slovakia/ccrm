@@ -230,6 +230,16 @@ export interface WidgetSettings {
    */
   excludedLeadStatuses?: string[];
   excludedProjectStatuses?: string[];
+  /**
+   * Status-value equation: "detail" draws every status as a pill, "summary"
+   * only the total and one line per group. Absent means "detail". The card's own
+   * toggle changes it for the viewer without saving; the drawer sets the default.
+   */
+  view?: "detail" | "summary";
+  /** Status-value equation: the "Remaining invoicable" line on a group. Absent means shown. */
+  showRemaining?: boolean;
+  /** Status-value equation: how many records each status and group holds. Absent means shown. */
+  showCounts?: boolean;
 }
 
 export interface WidgetPreset {
@@ -355,6 +365,7 @@ const PRESETS: WidgetPreset[] = [
       renderer: "stageDonut",
       title: text("Leads by stage", "Leady podľa fázy", "Leadek fázis szerint"),
       size: "md",
+      settings: { statuses: [] },
       mapping: { labelsKey: "status", dataKey: "count" },
       query: { action: "leads_by_status", params: {} }
     })
@@ -649,7 +660,15 @@ export const rendererOfWidget = (widget: any): WidgetRenderer | null => {
 /** A widget's settings, with the preset's defaults filled in for what is missing. */
 export const settingsOfWidget = (widget: any): WidgetSettings => {
   const defaults = (presetOfWidget(widget)?.build()?.settings ?? {}) as WidgetSettings;
-  return { ...defaults, ...(widget?.settings ?? {}) };
+  const merged = { ...defaults, ...(widget?.settings ?? {}) } as WidgetSettings;
+  // A widget filtered only through its query (saved before settings existed, or
+  // AI-made) must still show that filter in the drawer instead of "all phases".
+  const queryStatuses = widget?.query?.params?.statuses;
+  const hasSettingsPick = Array.isArray(merged.statuses) && merged.statuses.length > 0;
+  if (!hasSettingsPick && Array.isArray(queryStatuses) && queryStatuses.length > 0) {
+    merged.statuses = [...queryStatuses];
+  }
+  return merged;
 };
 
 /**
@@ -662,9 +681,8 @@ export const settingsOfWidget = (widget: any): WidgetSettings => {
 export const applySettingsToQuery = (widget: any, settings: WidgetSettings, currentUser?: string): any => {
   const action = widget?.query?.action;
 
-  // The phase breakdown takes the same `statuses` filter, and nothing else the
-  // drawer offers: its rows *are* the phases.
-  if (action === "leads_by_status") {
+  // The phase breakdown, pipeline value, and task breakdown take the same `statuses` filter
+  if (action === "leads_by_status" || action === "pipeline_value" || action === "tasks_summary") {
     return {
       ...widget,
       settings,

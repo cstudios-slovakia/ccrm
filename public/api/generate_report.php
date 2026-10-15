@@ -5,6 +5,7 @@
  * and uses OpenAI to generate a multi-year revenue history table and written analysis.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 if (function_exists('ccrm_send_cors')) {
@@ -30,7 +31,9 @@ if (php_sapi_name() !== 'cli') {
     }
     // SECURITY: Authenticated users only
     if (function_exists('ccrm_require_auth')) {
-        ccrm_require_auth();
+        $sessionUser = ccrm_require_auth();
+        // The report is written onto the company's lead / client record.
+        ccrm_gate_any($sessionUser, ['leads', 'clients'], 'edit');
     }
 }
 

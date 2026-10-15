@@ -142,6 +142,20 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       access("employees"),
       deleteToggle("employees"),
       toggle("employees.salaries", "edit", "nothing", { key: "employees", level: "view" }),
+      toggle("employees.vacations", "edit", "nothing", { key: "employees", level: "view" }),
+      toggle("employees.files", "edit", "nothing", { key: "employees", level: "view" }),
+      toggle("employees.personal", "edit", "nothing", { key: "employees", level: "view" }),
+    ],
+  },
+  {
+    id: "self_service",
+    permissions: [
+      access("self.profile", "nothing", "nothing"),
+      toggle("self.payroll", "nothing", "nothing"),
+      access("self.vacations", "nothing", "nothing"),
+      toggle("self.files", "nothing", "nothing"),
+      toggle("self.hours", "nothing", "nothing"),
+      toggle("self.account", "edit", "nothing"),
     ],
   },
   {
@@ -207,9 +221,10 @@ export const PERMISSION_DEFS: Record<string, PermissionDef> = Object.fromEntries
 export const ALL_PERMISSION_KEYS: string[] = Object.keys(PERMISSION_DEFS);
 
 /** Role names that the matrix will not let anyone delete. */
-export const PROTECTED_ROLE_NAMES = ["Admin", "Project Manager"];
+export const PROTECTED_ROLE_NAMES = ["Admin", "Project Manager", "Employee"];
 
 export const ADMIN_ROLE_NAME = "Admin";
+export const EMPLOYEE_ROLE_NAME = "Employee";
 
 export const isAdminRoleName = (roleName: string | null | undefined): boolean =>
   (roleName || "").trim().toLowerCase() === "admin";
@@ -274,6 +289,60 @@ export const newRolePermissions = (): Record<string, PermissionValue> =>
 export const adminRolePermissions = (): Record<string, PermissionValue> =>
   Object.fromEntries(ALL_PERMISSION_KEYS.map((k) => [k, "edit"]));
 
+/** The safe default map for the native Employee role. */
+export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
+  dashboard: "nothing",
+  "dashboard.custom": "nothing",
+  tasks: "edit",
+  "tasks.delete": "nothing",
+  "tasks.view_all": "nothing",
+  leads: "nothing",
+  "leads.delete": "nothing",
+  clients: "nothing",
+  "clients.delete": "nothing",
+  projects: "nothing",
+  "projects.delete": "nothing",
+  invoices: "nothing",
+  "invoices.delete": "nothing",
+  orders: "nothing",
+  "orders.delete": "nothing",
+  warehouse: "nothing",
+  "warehouse.delete": "nothing",
+  financial: "nothing",
+  "financial.delete": "nothing",
+  employees: "nothing",
+  "employees.delete": "nothing",
+  "employees.salaries": "nothing",
+  "employees.vacations": "nothing",
+  "employees.files": "nothing",
+  "employees.personal": "nothing",
+  meetings: "nothing",
+  "meetings.delete": "nothing",
+  files: "nothing",
+  "files.delete": "nothing",
+  email: "nothing",
+  unified_entries: "nothing",
+  "unified_entries.delete": "nothing",
+  automation: "nothing",
+  social_media: "nothing",
+  overview: "nothing",
+  updates: "edit",
+  rag_ai: "nothing",
+  general_config: "nothing",
+  pm_managers: "nothing",
+  pipeline_stages: "nothing",
+  traffic_sources: "nothing",
+  ai_config: "nothing",
+  system_reset: "nothing",
+  nav_edit: "nothing",
+  "self.account": "nothing",
+  "self.profile": "view",
+  "self.payroll": "edit",
+  "self.vacations": "edit",
+  "self.files": "edit",
+  "self.hours": "edit",
+});
+
 /**
  * Write one value into a role and return the role with every key materialised
  * (legacy keys dropped), so a record touched in the new matrix is never half
@@ -323,9 +392,20 @@ export interface AccessResolver {
   module: (moduleKey: string) => ModuleAccess;
   /** Any settings category open at `view` or better. */
   hasSettingsAccess: boolean;
+  /** Any self-service (own employment data) key open at `view` or better. */
+  hasSelfServiceAccess: boolean;
   /** Whether the sidebar / router may open a route id (see `sectionForRoute`). */
   canOpenRoute: (routeId: string) => boolean;
 }
+
+/** Keys of the self-service section — any of them granted opens the My employment tab of People. */
+export const SELF_SERVICE_PERMISSION_KEYS = [
+  "self.profile",
+  "self.payroll",
+  "self.vacations",
+  "self.files",
+  "self.hours",
+];
 
 /**
  * Map a route id (`activeTab` base, before any `/sub` path) to the permission
@@ -337,6 +417,13 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   const base = routeId.split("/")[0].split("?")[0];
   if (base === "personal-settings") return null;
   if (base === "settings") return "settings";
+  // People (employees) is one section: the directory / payroll tabs need the employees module,
+  // the My employment tab needs a self.* key. Either opens the section; `my-employment` is the
+  // old address of that tab.
+  if (base === "employees" || base === "my-employment") return "people";
+  // SAI rehearses sales conversations against the lead / client base. It has no permission key of
+  // its own; it follows leads so a role with no sales access (Employee) is not offered it.
+  if (base === "sai") return "leads";
   if (base.startsWith("user-")) return "pm_managers";
   if (base.startsWith("dash_")) return "dashboard.custom";
   if (base.startsWith("ue_")) return "unified_entries";
@@ -387,12 +474,14 @@ export const buildAccess = (user: UserProfile | null | undefined, roles: RolePer
   };
 
   const hasSettingsAccess = isAdmin || SETTINGS_PERMISSION_KEYS.some((k) => can(k));
+  const hasSelfServiceAccess = isAdmin || SELF_SERVICE_PERMISSION_KEYS.some((k) => can(k));
 
   const canOpenRoute = (routeId: string): boolean => {
     if (isAdmin) return true;
     const key = permissionKeyForRoute(routeId);
     if (key === null) return true;
     if (key === "settings") return hasSettingsAccess;
+    if (key === "people") return can("employees") || hasSelfServiceAccess;
     return can(key);
   };
 
@@ -404,6 +493,7 @@ export const buildAccess = (user: UserProfile | null | undefined, roles: RolePer
     canEdit,
     module,
     hasSettingsAccess,
+    hasSelfServiceAccess,
     canOpenRoute,
   };
 };

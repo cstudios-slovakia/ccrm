@@ -4,13 +4,15 @@ import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import { QuickTaskModal } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
+import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
 import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
 import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
 import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
+import { TaskSettingsProvider } from "./hooks/useTaskSettings";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -24,12 +26,17 @@ import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listId
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
+import { hasLaunchIntent } from "./utils/launchIntent";
+import { useAppBadge } from "./utils/appBadge";
+import { countBadgeTasks } from "./utils/taskBadge";
+import { PwaInstallBanner } from "./components/PwaInstallBanner";
 import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardWidgets";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation, formatTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
 import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
+import { employeeRightsFrom } from "./utils/employeeRights";
 import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -43,11 +50,18 @@ import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/F
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
-import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X } from "lucide-react";
+import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X, Plus, ArrowUpRight } from "lucide-react";
 import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
+import { baselineOf, diffRecords, type RecordBaseline } from "./utils/syncDiff";
+import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
+import { ReadScopeContext } from "./hooks/useReadScope";
+import { parseUnifiedEntryKey, pendingDeletionIds, pendingDeletionKeys, pendingDeletionRecords, unifiedEntryKey, withoutPendingDeletions } from "./utils/pendingDeletions";
+import { createUndoQueue } from "./utils/undoQueue";
+import { asLang, restoredMessage } from "./utils/undoMessages";
+import { UndoToast } from "./components/ui/UndoToast";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
 import { fetchLicenseState } from "./utils/licenseApi";
@@ -77,6 +91,8 @@ import {
 } from "./utils/financialTrend";
 import { flushPendingSaves } from "./utils/pendingSaves";
 import { updatePwaManifest } from "./utils/pwaManifest";
+import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
+import { clearErrorLogsWithUndo } from "./utils/errorLogs";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -186,6 +202,9 @@ const computeSettingsSig = (s: any): string => {
     normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
+    // Normalized on both sides, like the project auto-creation blob above. See
+    // normalizeTaskSettings / ccrm_normalize_task_settings.
+    normalizeTaskSettings(s.taskSettings),
     // Normalized on both sides: an install that never opened the editor has
     // nothing stored, and that must compare equal to the built-ins it is shown.
     normalizeProjectStatusDefs(s.projectStatuses),
@@ -226,75 +245,6 @@ const computePushSig = (p: {
   computeSettingsSig(p.settings),
 ]);
 
-// --- Delta sync (protocol v2) -------------------------------------------------
-// Baseline of what the server is known to hold, as id → serialised record, so a
-// push can carry just the records that actually changed plus the ids that went
-// away. Under v1 every save re-uploaded the entire dataset; on a real install
-// that is megabytes per keystroke-level edit and it is the reason a settings
-// save took ~15s on a normal office uplink.
-
-type RecordBaseline = Map<string, string>;
-
-// Serialising every record on every push would be O(dataset) main-thread work.
-// React state updates rebuild the array but leave untouched items as the SAME
-// object, so caching by identity makes the diff cost track the edit, not the
-// dataset. WeakMap so dropped records are collected with their entry.
-const recordHashCache = new WeakMap<object, string>();
-
-const hashRecord = (record: any): string => {
-  if (record === null || typeof record !== "object") return JSON.stringify(record);
-  const cached = recordHashCache.get(record);
-  if (cached !== undefined) return cached;
-  const hash = JSON.stringify(record);
-  recordHashCache.set(record, hash);
-  return hash;
-};
-
-const baselineOf = (records: any[] | undefined): RecordBaseline => {
-  const out: RecordBaseline = new Map();
-  for (const r of records ?? []) {
-    if (r && r.id != null) out.set(String(r.id), hashRecord(r));
-  }
-  return out;
-};
-
-/**
- * Records that differ from the baseline, and ids the baseline had but the current
- * list does not. A missing baseline means "we have never confirmed anything with
- * the server", so everything is treated as changed and nothing as deleted — the
- * safe direction, since inventing deletions is how data disappears.
- */
-const diffRecords = (
-  records: any[] | undefined,
-  baseline: RecordBaseline | undefined
-): { changed: any[]; deletedIds: string[]; next: RecordBaseline } => {
-  const list = records ?? [];
-  const next = baselineOf(list);
-  if (!baseline) {
-    return { changed: list, deletedIds: [], next };
-  }
-  const changed: any[] = [];
-  for (const r of list) {
-    if (!r) continue;
-    // A record with no id cannot be held in the baseline (which is keyed by id),
-    // so there is no way to tell whether it changed — it must always be sent.
-    // Skipping it, as this used to, silently dropped whole collections: user rows
-    // carry no id, so every profile edit (name, password, mailbox credentials, a
-    // newly added user) was diffed down to an empty array and never reached the
-    // server, while the UI happily showed it as saved until the next reload.
-    if (r.id == null) {
-      changed.push(r);
-      continue;
-    }
-    const id = String(r.id);
-    if (baseline.get(id) !== next.get(id)) changed.push(r);
-  }
-  const deletedIds: string[] = [];
-  for (const id of baseline.keys()) {
-    if (!next.has(id)) deletedIds.push(id);
-  }
-  return { changed, deletedIds, next };
-};
 
 function App() {
   const activePushesRef = useRef(0);
@@ -440,6 +390,10 @@ function App() {
       berek: "employees",
     };
 
+    if (hashLower === "my-employment" || hashLower === "my_employment" || hashLower === "myemployment") {
+      return "employees/me";
+    }
+
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
     if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
@@ -448,6 +402,11 @@ function App() {
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
     const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
+      if (!hashLower || hashLower === "" || hashLower === "dashboard") {
+        return "tasks";
+      }
+    }
     if (!validTabs.includes(resolvedBase)) return "dashboard";
     const route = resolvedBase + subPath;
     return queryRaw ? `${route}?${queryRaw}` : route;
@@ -476,6 +435,20 @@ function App() {
     action?: { label: string; onClick: () => void };
   };
   const [toast, setToast] = useState<ToastPayload | null>(null);
+  // The Undo toast has its own slot: an ordinary toast raised a moment later (a
+  // save confirmation, an error) must not replace it and take the Undo button away.
+  const [undoToast, setUndoToast] = useState<{
+    actionId: string;
+    message: string;
+    undoLabel: string;
+    durationMs: number;
+  } | null>(null);
+  const undoQueueRef = useRef(createUndoQueue());
+  // Set while the page is going away, so the final push is sent with keepalive.
+  const unloadingRef = useRef(false);
+  const flushSyncRef = useRef<() => void>(() => {});
+  // Set while the finance ledger still holds the movement of an invoice deleted under an open undo window.
+  const ledgerStaleRef = useRef(false);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
   const toastIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -551,7 +524,70 @@ function App() {
       }
       displayToast(next);
     };
+
+    // Archive/delete with Undo. Shown immediately (never held back behind a save —
+    // the delay would eat the undo window) and settled exactly once: Undo runs
+    // onUndo; expiry, ×, a newer undo toast, pagehide and logout run onCommit.
+    window.showUndoToast = (opts: UndoToastOptions) => {
+      const queue = undoQueueRef.current;
+      const actionId = queue.register({
+        onUndo: () => {
+          opts.onUndo();
+          const stored = window.localStorage?.getItem("crm_language");
+          displayToast({
+            id: ++toastIdRef.current,
+            message: restoredMessage(stored === "en" || stored === "hu" ? stored : "sk"),
+            variant: "info",
+          });
+        },
+        onCommit: opts.onCommit,
+      });
+      // register() has just committed whatever was pending before this action.
+      setUndoToast({ actionId, message: opts.message, undoLabel: opts.undoLabel, durationMs: opts.durationMs ?? 6000 });
+    };
+    window.ccrmFlushSync = () => flushSyncRef.current();
+    return () => {
+      delete window.showUndoToast;
+      delete window.ccrmFlushSync;
+    };
   }, []);
+
+  // A shown archive/delete must never be dropped: when the page is hidden or
+  // closed, every pending action is committed and the push is flushed (with
+  // keepalive, so the request outlives the page).
+  useEffect(() => {
+    const commitAll = (unloading: boolean) => {
+      if (unloading) unloadingRef.current = true;
+      if (undoQueueRef.current.commitAll() > 0) setUndoToast(null);
+    };
+    const onPageHide = () => commitAll(true);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") commitAll(false);
+      else unloadingRef.current = false;
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  // Ctrl/Cmd+Z undoes the visible archive/delete — but never while the user is
+  // typing, where it means "undo my text".
+  useEffect(() => {
+    if (!undoToast) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+      e.preventDefault();
+      if (undoQueueRef.current.undo(undoToast.actionId)) setUndoToast(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undoToast]);
   const [systemName, setSystemName] = useState(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_system_name") : null;
     return stored || "CCRM";
@@ -677,6 +713,8 @@ function App() {
     };
     detectCerp();
   }, []);
+  // What the server withheld from this session (sync.php `readScope`).
+  const [readScope, setReadScope] = useState<ReadScope>(EMPTY_READ_SCOPE);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -792,6 +830,9 @@ function App() {
   // app — the public webhook and workflow actions — and so two devices syncing
   // the same new lead cannot each produce a project for it.
   const [projectAutoCreate, setProjectAutoCreate] = useState<ProjectAutoCreateSettings>(DEFAULT_PROJECT_AUTO_CREATE);
+  // Settings → Tasks. Today only whether the "Requires conclusion" checkbox is
+  // offered when a task is created.
+  const [taskSettings, setTaskSettings] = useState<TaskSettings>(DEFAULT_TASK_SETTINGS);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -913,22 +954,10 @@ function App() {
     }
   };
 
-  const clearErrorLogs = async () => {
-    if (!confirm(t("Are you sure you want to clear all error logs?", "Naozaj chcete vymazať všetky chybové záznamy?", "Biztosan törli az összes hibanaplót?"))) {
-      return;
-    }
-    try {
-      const response = await fetch("/api/error_logs.php", { method: "DELETE" });
-      const data = await response.json();
-      if (data.success) {
-        setErrorLogs([]);
-        if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(t("Error logs cleared.", "Chybové záznamy boli vymazané.", "A hibanaplók törölve."));
-        }
-      }
-    } catch (e) {
-      console.error("Failed to clear error logs", e);
-    }
+  // The hold on the button is the confirmation; the logs are deleted on the server
+  // when the undo window closes (utils/errorLogs).
+  const clearErrorLogs = () => {
+    clearErrorLogsWithUndo({ logs: errorLogs, setLogs: setErrorLogs, lang: asLang(userLanguage) });
   };
 
   const handleCopyLogDetails = (log: any) => {
@@ -1081,7 +1110,7 @@ ${log.payload || ''}
           viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
           break;
         case "employees":
-          viewName = t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek");
+          viewName = getTranslation(userLanguage, "sidebar.employees");
           break;
         case "invoices":
           viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
@@ -1109,6 +1138,8 @@ ${log.payload || ''}
   // shortcuts and the route guard all read from it. Views receive their own
   // `ModuleAccess` slice so none of them has to know about roles.
   const access = useMemo(() => buildAccess(currentUser, roles), [currentUser, roles]);
+  const employeeRights = useMemo(() => employeeRightsFrom(access), [access]);
+  const dashboardSourceAccess = useMemo(() => ({ can: access.can, isAdmin: access.isAdmin }), [access]);
 
   const taskAccess = (() => {
     const m = access.module("tasks");
@@ -1303,6 +1334,7 @@ ${log.payload || ''}
         projectAutoCreate,
         taskStates,
         taskStateColors,
+        taskSettings,
         projectStatuses,
         orderStatuses,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
@@ -1325,7 +1357,7 @@ ${log.payload || ''}
     if (serverProtocolRef.current >= 2) {
       const deleted: Record<string, unknown> = {};
       const narrow = (key: string, records: any[]) => {
-        const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key]);
+        const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key], pendingDeletionIds(key));
         payload[key] = changed;
         if (deletedIds.length) deleted[key] = deletedIds;
         pendingBaselines[key] = next;
@@ -1359,7 +1391,7 @@ ${log.payload || ''}
       const ueDeleted: Record<string, string[]> = {};
       const ueChanged: Record<string, any[]> = {};
       for (const [ueId, rows] of Object.entries(liveUnifiedEntriesData ?? {})) {
-        const { changed, deletedIds, next } = diffRecords(rows as any[], ueSyncedRecordsRef.current[ueId]);
+        const { changed, deletedIds, next } = diffRecords(rows as any[], ueSyncedRecordsRef.current[ueId], pendingDeletionIds(unifiedEntryKey(ueId)));
         ueChanged[ueId] = changed;
         if (deletedIds.length) ueDeleted[ueId] = deletedIds;
         pendingUeBaselines[ueId] = next;
@@ -1369,13 +1401,36 @@ ${log.payload || ''}
 
       payload.syncProtocol = 2;
       if (Object.keys(deleted).length) payload.deleted = deleted;
+    } else {
+      // Under protocol v1 a record missing from the payload means "delete it", so a
+      // deletion the user can still undo has to be put back into the snapshot.
+      for (const key of pendingDeletionKeys()) {
+        const held = pendingDeletionRecords(key) as any[];
+        const entryId = parseUnifiedEntryKey(key);
+        if (entryId !== null) {
+          const rows = payload.unifiedEntriesData?.[entryId];
+          if (!Array.isArray(rows)) continue;
+          const present = new Set(rows.map((r: any) => String(r?.id)));
+          payload.unifiedEntriesData = {
+            ...payload.unifiedEntriesData,
+            [entryId]: [...rows, ...held.filter((r) => !present.has(String(r?.id)))],
+          };
+        } else if (Array.isArray(payload[key])) {
+          const present = new Set(payload[key].map((r: any) => String(r?.id)));
+          payload[key] = [...payload[key], ...held.filter((r) => !present.has(String(r?.id)))];
+        }
+      }
     }
 
     try {
+      const body = JSON.stringify(payload);
       const res = await fetch("/sync.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body,
+        // The page is closing: let the request outlive it. Browsers cap keepalive
+        // bodies at 64 KB, which a delta push (ids + changed records) stays well under.
+        keepalive: unloadingRef.current && body.length < 60000
       });
       if (res.status === 401) {
         setCurrentUser(null);
@@ -1446,7 +1501,8 @@ ${log.payload || ''}
               skipped.has(key) ||
               skipped.has(`${key}:delete`) ||
               deleteBlockedKeys.has(key) ||
-              (key === "leads" && (skipped.has("leads:clients") || skipped.has("leads:clients:delete")))
+              (key === "leads" && (skipped.has("leads:clients") || skipped.has("leads:clients:delete"))) ||
+              (key === "customDashboards" && (skipped.has("customDashboards:home") || skipped.has("customDashboards:home:delete")))
             ) {
               continue;
             }
@@ -1472,7 +1528,12 @@ ${log.payload || ''}
             // the next full pull puts the stored value back.
             if (tag.startsWith("settings:")) return (payload as any).settings != null;
             const base = tag.replace(/:delete$/, "");
-            const payloadKey = base === "leads:clients" ? "leads" : base;
+            const payloadKey =
+              base === "leads:clients"
+                ? "leads"
+                : base === "customDashboards:home"
+                ? "customDashboards"
+                : base;
             if (tag.endsWith(":delete")) {
               const ids = (payload as any).deleted?.[payloadKey];
               return Array.isArray(ids) && ids.length > 0;
@@ -1584,6 +1645,23 @@ ${log.payload || ''}
     };
     pushChainRef.current = pushChainRef.current.then(doPush, doPush);
     return pushChainRef.current;
+  };
+  flushSyncRef.current = () => {
+    // Invoices deleted under an open undo window kept their ledger movement; now
+    // that the window has closed, let the ledger catch up (this also pushes).
+    if (ledgerStaleRef.current && pendingDeletionIds("invoicesOffers").size === 0) {
+      updateInvoicesOffersAndSync(invoicesOffersRef.current);
+      return;
+    }
+    void pushStateToServer();
+  };
+
+  // Settles every pending archive/delete and waits for the push that carries it.
+  // Logging out kills the session, so anything still held back for Undo has to
+  // reach the server first.
+  const commitPendingUndos = async () => {
+    if (undoQueueRef.current.commitAll() > 0) setUndoToast(null);
+    try { await pushChainRef.current; } catch { /* the push reports its own failure */ }
   };
 
   const updateUnifiedEntriesAndSync = (
@@ -1807,7 +1885,14 @@ ${log.payload || ''}
     invoicesOffersRef.current = next;
     setInvoicesOffers(next);
     const prevRecords = financialRecordsRef.current;
-    const nextRecords = reconcileInvoiceMovements(prev, next, prevRecords);
+    // An invoice whose deletion can still be undone keeps its ledger movement: the
+    // movement is derived from the invoice, but may carry a category or project
+    // the user set, which re-deriving it on Undo would lose. It is cleaned up
+    // once the undo window has closed (see ledgerStaleRef in flushSyncRef).
+    const heldInvoices = (pendingDeletionRecords("invoicesOffers") as InvoiceOffer[])
+      .filter((inv) => !next.some((o) => o.id === inv.id));
+    ledgerStaleRef.current = heldInvoices.length > 0;
+    const nextRecords = reconcileInvoiceMovements(prev, heldInvoices.length ? [...next, ...heldInvoices] : next, prevRecords);
     if (nextRecords !== prevRecords) {
       financialRecordsRef.current = nextRecords;
       setFinancialRecords(nextRecords);
@@ -2259,7 +2344,7 @@ ${log.payload || ''}
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
       projectStatuses,
       orderStatuses,
       financialMode, financialSimplifiedTable,
@@ -2290,7 +2375,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, orderStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, orderStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2300,8 +2385,12 @@ ${log.payload || ''}
     window.addEventListener("hashchange", handleHashChange);
 
     if (!window.location.hash) {
-      // On initial app load with no explicit route, open the user's chosen default landing page
-      window.location.hash = getDefaultPageForUser(currentUser) || "dashboard";
+      if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
+        window.location.hash = "tasks?embed=tasks";
+      } else {
+        // On initial app load with no explicit route, open the user's chosen default landing page
+        window.location.hash = getDefaultPageForUser(currentUser) || "dashboard";
+      }
     }
 
     return () => window.removeEventListener("hashchange", handleHashChange);
@@ -2350,7 +2439,12 @@ ${log.payload || ''}
     const sameOr = <T,>(next: T) => (prev: T): T =>
       JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 
-    const applyServerData = (data: any) => {
+    const applyServerData = (rawData: any) => {
+      // The server still holds records the user just deleted and can undo; applying
+      // its answer as-is would bring them back on screen for the undo window.
+      // `rawData` stays untouched for the delta baseline below, which must keep
+      // knowing the server has them.
+      const data = withoutPendingDeletions(rawData);
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
       // Not a real read: with DEMO_MODE on, an unauthenticated GET answers 200
@@ -2385,6 +2479,13 @@ ${log.payload || ''}
       }
       if (data.serverTime != null && String(data.serverTime).trim() !== "" && String(data.serverTime) !== "[object Object]") {
         baseSyncedAtRef.current = String(data.serverTime);
+      }
+      // A collection the server withheld arrives as [] (never omitted), so the
+      // state and delta baseline below already settle on "empty" and nothing
+      // restricted is pushed back. This only records which empties are withheld.
+      {
+        const incomingScope = parseReadScope(data.readScope);
+        setReadScope((prev) => (sameReadScope(prev, incomingScope) ? prev : incomingScope));
       }
       if (data.leads && Array.isArray(data.leads)) {
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
@@ -2614,6 +2715,10 @@ ${log.payload || ''}
         });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setTaskSettings((prev) => {
+          const next = normalizeTaskSettings(s.taskSettings);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setProjectStatuses((prev) => {
           const next = normalizeProjectStatusDefs(s.projectStatuses);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -2640,30 +2745,30 @@ ${log.payload || ''}
       // response, a rejected conflict, a record the server skipped — the next full
       // pull restores an accurate picture of what the server actually holds.
       syncedRecordsRef.current = {
-        leads: baselineOf(data.leads ?? leadsRef.current),
-        tasks: baselineOf(data.tasks ?? tasksRef.current),
-        users: baselineOf(data.users ?? usersRef.current),
-        meetingNotes: baselineOf(data.meetingNotes ?? meetingNotesRef.current),
-        customDashboards: baselineOf(data.customDashboards ?? customDashboardsRef.current),
-        projectTypes: baselineOf(data.projectTypes ?? projectTypesRef.current),
-        projects: baselineOf(data.projects ?? projectsRef.current),
-        warehouses: baselineOf(data.warehouses ?? warehousesRef.current),
-        suppliers: baselineOf(data.suppliers ?? suppliersRef.current),
-        warehouseItems: baselineOf(data.warehouseItems ?? warehouseItemsRef.current),
-        warehouseStock: baselineOf(data.warehouseStock ?? warehouseStockRef.current),
-        warehouseBatches: baselineOf(data.warehouseBatches ?? warehouseBatchesRef.current),
-        warehouseMovements: baselineOf(data.warehouseMovements ?? warehouseMovementsRef.current),
-        financialCategories: baselineOf(data.financialCategories ?? financialCategoriesRef.current),
-        financialRecords: baselineOf(data.financialRecords ?? financialRecordsRef.current),
-        invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
-        aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
-        clientCategories: baselineOf(data.clientCategories ?? clientCategoriesRef.current),
-        employees: baselineOf(data.employees ?? employeesRef.current),
-        employeeSalaries: baselineOf(data.employeeSalaries ?? employeeSalariesRef.current),
-        employeeVacations: baselineOf(data.employeeVacations ?? employeeVacationsRef.current),
-        orders: baselineOf(data.orders ?? ordersRef.current),
+        leads: baselineOf(rawData.leads ?? leadsRef.current),
+        tasks: baselineOf(rawData.tasks ?? tasksRef.current),
+        users: baselineOf(rawData.users ?? usersRef.current),
+        meetingNotes: baselineOf(rawData.meetingNotes ?? meetingNotesRef.current),
+        customDashboards: baselineOf(rawData.customDashboards ?? customDashboardsRef.current),
+        projectTypes: baselineOf(rawData.projectTypes ?? projectTypesRef.current),
+        projects: baselineOf(rawData.projects ?? projectsRef.current),
+        warehouses: baselineOf(rawData.warehouses ?? warehousesRef.current),
+        suppliers: baselineOf(rawData.suppliers ?? suppliersRef.current),
+        warehouseItems: baselineOf(rawData.warehouseItems ?? warehouseItemsRef.current),
+        warehouseStock: baselineOf(rawData.warehouseStock ?? warehouseStockRef.current),
+        warehouseBatches: baselineOf(rawData.warehouseBatches ?? warehouseBatchesRef.current),
+        warehouseMovements: baselineOf(rawData.warehouseMovements ?? warehouseMovementsRef.current),
+        financialCategories: baselineOf(rawData.financialCategories ?? financialCategoriesRef.current),
+        financialRecords: baselineOf(rawData.financialRecords ?? financialRecordsRef.current),
+        invoicesOffers: baselineOf(rawData.invoicesOffers ?? invoicesOffersRef.current),
+        aiCustomTemplates: baselineOf(rawData.aiCustomTemplates ?? aiCustomTemplatesRef.current),
+        clientCategories: baselineOf(rawData.clientCategories ?? clientCategoriesRef.current),
+        employees: baselineOf(rawData.employees ?? employeesRef.current),
+        employeeSalaries: baselineOf(rawData.employeeSalaries ?? employeeSalariesRef.current),
+        employeeVacations: baselineOf(rawData.employeeVacations ?? employeeVacationsRef.current),
+        orders: baselineOf(rawData.orders ?? ordersRef.current),
       };
-      const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
+      const ueData = rawData.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
       for (const [ueId, rows] of Object.entries(ueData)) {
         nextUeBaselines[ueId] = baselineOf(rows as any[]);
@@ -2850,6 +2955,39 @@ ${log.payload || ''}
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
     (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
 
+  // Embedded Tasks Mode: the compact "My tasks" window (Pop out button, Picture-in-Picture
+  // or popup), loaded as `#tasks?embed=tasks`.
+  const isEmbeddedTasks = useMemo(() => {
+    try {
+      if (typeof window === "undefined") return false;
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = parseAppHash(window.location.hash || activeTab).params;
+      return (
+        searchParams.get("embed") === "tasks" ||
+        searchParams.get("embed") === "true" ||
+        hashParams.get("embed") === "tasks" ||
+        hashParams.get("embed") === "true"
+      );
+    } catch {
+      return false;
+    }
+  }, [activeTab]);
+
+  // Badge on the installed app's icon: missed + today tasks of the signed-in user.
+  // Recomputed every minute because a task turns "missed" when its time passes.
+  const [badgeCount, setBadgeCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!currentUser || isEmbeddedTasks || !taskAccess.view) {
+      setBadgeCount(null);
+      return;
+    }
+    const update = () => setBadgeCount(countBadgeTasks(tasks, currentUser.name, taskStates).total);
+    update();
+    const timer = window.setInterval(update, 60000);
+    return () => window.clearInterval(timer);
+  }, [tasks, taskStates, currentUser?.name, isEmbeddedTasks, taskAccess.view]);
+  useAppBadge(badgeCount);
+
   // View router
   const renderWorkspaceView = () => {
     // Raw currency code (or "" for "auto, follow region") — passed down so each
@@ -2866,6 +3004,26 @@ ${log.payload || ''}
       activityLog: [],
       metadata_json: "{}"
     };
+
+    if (isEmbeddedTasks) {
+      return (
+        <TaskDashboardView 
+          tasks={tasks}
+          setTasks={updateTasksAndSync}
+          leads={leads}
+          projects={projects}
+          users={users}
+          systemLanguage={userLanguage}
+          currentUser={activeUser}
+          taskStates={taskStates}
+          taskStateColors={taskStateColors}
+          taskAccess={taskAccess}
+          mailConfigured={isSystemMailConfigured(integrationsConfig)}
+          leadStageGroups={leadStageGroups}
+          leadStateParents={leadStateParents}
+        />
+      );
+    }
 
     const { route: activeRoute } = parseAppHash(activeTab);
 
@@ -2886,7 +3044,7 @@ ${log.payload || ''}
           roleName={currentUser?.role}
           hasKnownRole={access.hasKnownRole}
           onLogout={() => {
-            fetch("/api/logout.php", { method: "POST" })
+            commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
               .finally(() => {
                 setCurrentUser(null);
                 window.location.href = "/";
@@ -2900,6 +3058,7 @@ ${log.payload || ''}
       const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
         <SettingsView 
+          employees={employeeRights.view ? employees : undefined}
           systemName={systemName} 
           setSystemName={setSystemName} 
           leadStates={orderedLeadStates}
@@ -2949,6 +3108,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskSettings={taskSettings}
+          setTaskSettings={setTaskSettings}
           isDemoMode={isDemoMode}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
@@ -2982,6 +3143,7 @@ ${log.payload || ''}
           <DynamicDashboardView
             dashboard={dashboard}
             access={access.module("dashboard.custom")}
+            sourceAccess={dashboardSourceAccess}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.map((d) => (d.id === updated.id ? updated : d))
@@ -3033,6 +3195,10 @@ ${log.payload || ''}
       return (
         <EmployeesView
           access={access.module("employees")}
+          rights={employeeRights}
+          users={users}
+          roles={roles}
+          selfService={access.hasSelfServiceAccess}
           systemLanguage={userLanguage}
           systemCurrency={currencyCode}
           currentUser={activeUser}
@@ -3045,6 +3211,7 @@ ${log.payload || ''}
           employeeSettings={employeeSettings}
           setEmployeeSettings={updateEmployeeSettingsAndSync}
           financialCategories={financialCategories}
+          isDemoMode={isDemoMode}
         />
       );
     }
@@ -3155,6 +3322,7 @@ ${log.payload || ''}
       const settingsActionId = parts[3] || null;
       return (
         <SettingsView 
+          employees={employeeRights.view ? employees : undefined}
           systemName={systemName} 
           setSystemName={setSystemName} 
           leadStates={orderedLeadStates}
@@ -3207,6 +3375,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskSettings={taskSettings}
+          setTaskSettings={setTaskSettings}
           setLeads={updateLeadsAndSync}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
@@ -3491,6 +3661,7 @@ ${log.payload || ''}
       case "personal-settings":
         return (
           <PersonalSettingsView
+            canChangeAccount={access.can("self.account")}
             currentUser={activeUser}
             users={users}
             setUsers={updateUsersAndSync}
@@ -3554,6 +3725,7 @@ ${log.payload || ''}
             dashboard={homeDashboard}
             variant="home"
             access={access.module("dashboard")}
+            sourceAccess={dashboardSourceAccess}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.some(d => d.id === HOME_DASHBOARD_ID)
@@ -3710,6 +3882,10 @@ ${log.payload || ''}
         return (
           <EmployeesView
             access={access.module("employees")}
+          rights={employeeRights}
+          users={users}
+          roles={roles}
+            selfService={access.hasSelfServiceAccess}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             currentUser={activeUser}
@@ -3722,6 +3898,7 @@ ${log.payload || ''}
             employeeSettings={employeeSettings}
             setEmployeeSettings={updateEmployeeSettingsAndSync}
             financialCategories={financialCategories}
+            isDemoMode={isDemoMode}
           />
         );
       default:
@@ -3845,6 +4022,13 @@ ${log.payload || ''}
           // login - unless the role may not open it, in which case the first
           // permitted module wins (the route guard would only show a wall).
           const userAccess = buildAccess(user, roles);
+          // A deep link the user arrived with (installed-app shortcut, share, "New
+          // task" link) outranks the default landing page: signing in is the
+          // detour, not the destination. The Tasks view picks the params up.
+          if (hasLaunchIntent(window.location.hash) && userAccess.canOpenRoute("tasks")) {
+            setActiveTab(getTabFromHash());
+            return;
+          }
           const preferred = getDefaultPageForUser(user) || "dashboard";
           const dp = userAccess.canOpenRoute(preferred) ? preferred : (firstAllowedRoute(userAccess) ?? preferred);
           setActiveTab(dp);
@@ -3859,8 +4043,10 @@ ${log.payload || ''}
 
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
+    <ReadScopeContext.Provider value={readScope}>
     <ProjectStatusesProvider value={projectStatuses}>
     <OrderStatusesProvider value={orderStatuses}>
+    <TaskSettingsProvider value={taskSettings}>
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -3879,36 +4065,107 @@ ${log.payload || ''}
 
       {/* Blurred application background layout if not logged in */}
       <div className={`flex flex-1 overflow-hidden transition-all duration-500 relative z-10 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
-        {/* Sidebar navigation with role-gated settings visibility */}
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={(tab) => { 
-            if (!access.canOpenRoute(tab)) return;
-            window.location.hash = tab; 
-          }} 
-          systemName={systemName}
-          showSettings={access.hasSettingsAccess}
-          canOpenRoute={access.canOpenRoute}
-          onLogout={() => {
-            fetch("/api/logout.php", { method: "POST" })
-              .finally(() => {
-                setCurrentUser(null);
-                window.location.href = "/";
-              });
-          }}
-          systemLanguage={userLanguage}
-          showRagAi={access.can("rag_ai")}
-          currentUser={currentUser}
-          roles={roles}
-          canEditNav={access.can("nav_edit")}
-          onSaveUserLayout={handleSaveUserLayout}
-          unifiedEntries={unifiedEntries}
-          customDashboards={customDashboards}
-          onSaveCustomDashboards={updateCustomDashboardsAndSync}
-          defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
-          onSaveDefaultPage={handleSaveDefaultPage}
-          disabledModules={integrationsConfig?.disabledModules || []}
-        />
+        {isEmbeddedTasks ? (
+          <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-50/60 overflow-hidden">
+            {/* Minimal extension header bar */}
+            <header className="h-10 px-3 bg-white/95 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between shrink-0 select-none z-20">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
+                <span className="font-heading font-extrabold text-body text-slate-900 tracking-tight flex items-center gap-1.5">
+                  <span>CCRM</span>
+                  <span className="text-micro font-bold uppercase px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                    Tasks
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {currentUser && (
+                  <span className="text-caption font-semibold text-slate-600 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    {currentUser.name}
+                  </span>
+                )}
+                {taskAccess.create && (
+                  <button
+                    type="button"
+                    onClick={() => setQuickTaskOpen(true)}
+                    className="px-2 py-0.5 rounded-lg text-micro font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
+                  </button>
+                )}
+                <a
+                  href="/#tasks"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded-lg text-micro font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors flex items-center gap-1 border border-slate-200"
+                  title={t("Open full CCRM", "Otvoriť plné CCRM", "Teljes CCRM megnyitása")}
+                >
+                  <ArrowUpRight className="w-3 h-3" />
+                  <span>{t("Open App", "Otvoriť aplikáciu", "Alkalmazás")}</span>
+                </a>
+              </div>
+            </header>
+
+            {quickTaskOpen && taskAccess.create && (
+              <QuickTaskModal
+                tasks={tasks}
+                leads={leads}
+                projects={projects}
+                users={users}
+                taskStates={taskStates}
+                systemLanguage={userLanguage}
+                currentUserName={displayUser.name}
+                mailConfigured={isSystemMailConfigured(integrationsConfig)}
+                leadStageGroups={leadStageGroups}
+                leadStateParents={leadStateParents}
+                onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
+                onClose={() => setQuickTaskOpen(false)}
+              />
+            )}
+
+            {/* Embedded Workspace main */}
+            <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col p-2 ws-sm:p-3">
+              <ErrorBoundary contained resetKey="embedded-tasks">
+                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                  {renderWorkspaceView()}
+                </Suspense>
+              </ErrorBoundary>
+            </main>
+          </div>
+        ) : (
+          <>
+            {/* Sidebar navigation with role-gated settings visibility */}
+            <Sidebar 
+              activeTab={activeTab} 
+              setActiveTab={(tab) => { 
+                if (!access.canOpenRoute(tab)) return;
+                window.location.hash = tab; 
+              }} 
+              systemName={systemName}
+              showSettings={access.hasSettingsAccess}
+              canOpenRoute={access.canOpenRoute}
+              onLogout={() => {
+                commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
+                  .finally(() => {
+                    setCurrentUser(null);
+                    window.location.href = "/";
+                  });
+              }}
+              systemLanguage={userLanguage}
+              showRagAi={access.can("rag_ai")}
+              currentUser={currentUser}
+              roles={roles}
+              canEditNav={access.can("nav_edit")}
+              onSaveUserLayout={handleSaveUserLayout}
+              unifiedEntries={unifiedEntries}
+              customDashboards={customDashboards}
+              onSaveCustomDashboards={updateCustomDashboardsAndSync}
+              defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
+              onSaveDefaultPage={handleSaveDefaultPage}
+              disabledModules={integrationsConfig?.disabledModules || []}
+            />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
         <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
@@ -3917,7 +4174,7 @@ ${log.payload || ''}
             systemName={systemName}
             currentUser={displayUser}
             onLogout={() => {
-              fetch("/api/logout.php", { method: "POST" })
+              commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
                 .finally(() => {
                   setCurrentUser(null);
                   window.location.href = "/";
@@ -3970,6 +4227,7 @@ ${log.payload || ''}
           
           <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {currentUser && <PwaInstallBanner language={userLanguage} userKey={currentUser.email || currentUser.name || "anon"} />}
               {showNotifBanner && currentUser && getBrowserNotificationPermission() === "default" && (
                 <div className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="flex items-center gap-3">
@@ -4068,9 +4326,11 @@ ${log.payload || ''}
             </footer>
           </main>
         </div>
+        </>
+        )}
 
         {/* Global Executive Copilot Sidebar (contracts workspace side-by-side on desktop) */}
-        {currentUser && isCopilotOpen && (
+        {currentUser && !isEmbeddedTasks && isCopilotOpen && (
           <CopilotSidebar
             isOpen={isCopilotOpen}
             onClose={() => setIsCopilotOpen(false)}
@@ -4082,7 +4342,7 @@ ${log.payload || ''}
       </div>
 
       {/* Global Floating Copilot Orb (Draggable to any of the 4 corners) */}
-      {currentUser && (
+      {currentUser && !isEmbeddedTasks && (
         <FloatingCopilotOrb
           isOpen={isCopilotOpen}
           onOpen={() => setIsCopilotOpen(true)}
@@ -4116,8 +4376,29 @@ ${log.payload || ''}
             </span>
           </div>
         )}
+        {undoToast && (
+          <UndoToast
+            key={undoToast.actionId}
+            message={undoToast.message}
+            undoLabel={undoToast.undoLabel}
+            closeLabel={t("Close", "Zavrieť", "Bezárás")}
+            durationMs={undoToast.durationMs}
+            onUndo={() => {
+              undoQueueRef.current.undo(undoToast.actionId);
+              setUndoToast(null);
+            }}
+            onClose={() => {
+              undoQueueRef.current.commit(undoToast.actionId);
+              setUndoToast(null);
+            }}
+            onExpire={() => {
+              undoQueueRef.current.commit(undoToast.actionId);
+              setUndoToast((curr) => (curr?.actionId === undoToast.actionId ? null : curr));
+            }}
+          />
+        )}
         {toast && (
-          <div className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
+          <div role="status" aria-live="polite" className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
             <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border ${
               toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-slate-800"
             }`}>
@@ -4217,14 +4498,16 @@ ${log.payload || ''}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
               </button>
-              <button
-                type="button"
-                onClick={clearErrorLogs}
-                className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-xl transition-all cursor-pointer"
-                title={t("Clear All", "Vymazať všetko", "Összes törlése")}
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={asLang(userLanguage)}
+                  what={t("error logs", "chybové záznamy", "hibanaplók")}
+                  onConfirm={clearErrorLogs}
+                  className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-xl transition-all"
+                  title={t("Clear All", "Vymazať všetko", "Összes törlése")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </HoldToConfirmButton>
             </div>
           </div>
 
@@ -4349,8 +4632,10 @@ ${log.payload || ''}
       )}
     </div>
     </QuickAddClientProvider>
+    </TaskSettingsProvider>
     </OrderStatusesProvider>
     </ProjectStatusesProvider>
+    </ReadScopeContext.Provider>
     </UserPrefsContext.Provider>
   );
 }

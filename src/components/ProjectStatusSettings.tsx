@@ -14,6 +14,10 @@ import {
 import { ColorPicker } from "./ui/ColorPicker";
 import { CustomSelect } from "./ui/CustomSelect";
 import { InlineRenameName } from "./ui/InlineRenameName";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { runUndoable } from "../utils/undoable";
+import { reinsertAt } from "../utils/undoableList";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 /*
   ── PROJECT STATUSES EDITOR ─────────────────────────────
@@ -181,25 +185,28 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
     }
     const remaining = statuses.filter((d) => d.key !== def.key);
     const fallback = defaultProjectStatus(remaining);
-    const inUse = usage[def.key] || 0;
-    const name = labelOf(def.key);
-    const fallbackName = projectStatusLabel(fallback, t, remaining);
-    const question = inUse > 0
-      ? t(
-          `Remove the status "${name}"? ${inUse} project(s) in it will be moved to "${fallbackName}".`,
-          `Odstrániť stav "${name}"? ${inUse} projekt(y) v ňom sa presunie do stavu "${fallbackName}".`,
-          `Eltávolítja a(z) "${name}" állapotot? A benne lévő ${inUse} projekt a(z) "${fallbackName}" állapotba kerül.`,
-        )
-      : t(
-          `Remove the status "${name}"?`,
-          `Odstrániť stav "${name}"?`,
-          `Eltávolítja a(z) "${name}" állapotot?`,
-        );
-    if (!confirm(question)) return;
-    setStatuses(remaining);
-    if (inUse > 0 && setProjects) {
-      setProjects((prev) => prev.map((p) => (p.status === def.key ? { ...p, status: fallback } : p)));
-    }
+    const index = statuses.findIndex((d) => d.key === def.key);
+    // The projects that sat in this status are moved to the fallback; remember
+    // which, so Undo moves exactly those back and nothing else.
+    const moved = new Set(
+      (projects ?? []).filter((p) => p.status === def.key).map((p) => p.id),
+    );
+    runUndoable({
+      message: singleMessage(userLanguage, "status", "delete", labelOf(def.key)),
+      undoLabel: undoLabel(userLanguage),
+      apply: () => {
+        setStatuses(remaining);
+        if (moved.size > 0 && setProjects) {
+          setProjects((prev) => prev.map((p) => (p.status === def.key ? { ...p, status: fallback } : p)));
+        }
+      },
+      revert: () => {
+        setStatuses((prev) => reinsertAt(prev, [{ item: def, index }], (d) => d.key));
+        if (moved.size > 0 && setProjects) {
+          setProjects((prev) => prev.map((p) => (moved.has(p.id) && p.status === fallback ? { ...p, status: def.key } : p)));
+        }
+      },
+    });
   };
 
   return (
@@ -341,15 +348,16 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
 
                   <td className="py-3 px-4 text-center align-middle">
                     {canEdit ? (
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(def)}
-                        className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block cursor-pointer"
-                        title={t("Remove status", "Odstrániť stav", "Állapot eltávolítása")}
-                        aria-label={t("Remove status", "Odstrániť stav", "Állapot eltávolítása")}
+                      <HoldToConfirmButton
+                          tone="danger"
+                          lang={userLanguage}
+                          what={labelOf(def.key)}
+                          onConfirm={() => handleRemove(def)}
+                          className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                          title={t("Remove status", "Odstrániť stav", "Állapot eltávolítása")}
                       >
                         <X className="h-3.5 w-3.5" />
-                      </button>
+                      </HoldToConfirmButton>
                     ) : (
                       <span className="type-overline text-slate-300 block select-none">{t("Locked", "Zamknuté", "Zárolt")}</span>
                     )}

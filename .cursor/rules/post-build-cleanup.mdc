@@ -1,0 +1,13 @@
+---
+description: Ensure git working tree is cleaned up after verification builds
+alwaysApply: true
+---
+
+Canonical source is listed below. Follow it exactly. The current release line is 1.11.x-Lemon (`src/utils/version.ts`, `1.11-lemon-changelog.md`). Older 1.8-Imbe paths in the versioning rule are stale.
+
+Source: `.agents/rules/post-build-cleanup.md`.
+
+# Post-Build Worktree Cleanup Rule
+
+- When validating TypeScript/React code correctness, prefer running `npx tsc --noEmit` rather than `npm run build` so `dist/` is not modified.
+- If `npm run build` (or any command producing build artifacts in `dist/`) is executed, always restore and clean up the `dist/` directory immediately afterward (`git checkout -- dist/ && git clean -fd dist/`) unless explicitly committing a production distribution bundle.
