@@ -303,6 +303,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // 3.4. CHAT Action
     $userQuery = $payload['message'] ?? '';
+    // The UI language, when the caller sends it. Before this was defined the prompt read an
+    // undefined variable (a PHP warning on every chat message) and always fell through to English.
+    $systemLanguage = in_array($payload['systemLanguage'] ?? '', ['sk', 'hu', 'en'], true) ? $payload['systemLanguage'] : '';
     if (empty(trim($userQuery))) {
         echo json_encode(['success' => false, 'message' => 'Empty message content']);
         exit;
@@ -538,7 +541,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   . "1. DIRECT RELEVANCE: Always answer the user's specific question or request directly. Do not pivot to unrelated financial figures, overdue invoices, or generic summaries unless the user specifically inquired about them.\n"
                   . "2. SCREEN AWARENESS & ACCURACY: If the user asks what is on the screen, what they are looking at, or asks for guidance on the current view, refer directly to the USER'S ACTIVE SCREEN CONTEXT above and explain the specific module, visible sections, cards, and available actions in detail.\n"
                   . "3. DATA CITATION: When asked about finances, clients, projects, tasks, or certificates, cite the exact figures, dates, and names from the CRM knowledge base accurately.\n"
-                  . "4. NATURAL EXECUTIVE TONE: Answer in the same language the user asked (" . ($systemLanguage === 'hu' ? 'Hungarian / Magyar' : ($systemLanguage === 'sk' ? 'Slovak / Slovenčina' : 'English')) . "). Do not append boilerplate or repetitive headers unless a structured action plan was specifically requested.\n"
+                  . "4. NATURAL EXECUTIVE TONE: Answer in the same language the user asked (" . ($systemLanguage === 'hu' ? 'Hungarian / Magyar' : ($systemLanguage === 'sk' ? 'Slovak / Slovenčina' : ($systemLanguage === 'en' ? 'English' : 'the language of the question'))) . "). Do not append boilerplate or repetitive headers unless a structured action plan was specifically requested.\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are. Answer the user question based on the context provided."
                   . $pastDecisionsBlock
