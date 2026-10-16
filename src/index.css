@@ -41,6 +41,8 @@
   
   --font-sans: "Google Sans", "Product Sans", sans-serif;
   --font-heading: "Google Sans", "Product Sans", sans-serif;
+  /* Quotations only — the login screen's quote of the day. */
+  --font-quote: "Newsreader", Georgia, "Times New Roman", serif;
   
   --shadow-glass: 0 10px 40px -10px rgba(79, 70, 229, 0.08), 0 2px 12px -2px rgba(0, 0, 0, 0.03);
   --shadow-glass-sm: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
@@ -1755,6 +1757,8 @@ dialog[open]::backdrop {
 @utility type-page-title   { font-family: var(--font-heading); font-size: var(--text-heading); line-height: var(--text-heading--line-height); font-weight: 800; letter-spacing: -0.02em; }
 @utility type-entity-title { font-family: var(--font-heading); font-size: var(--text-display); line-height: var(--text-display--line-height); font-weight: 900; letter-spacing: -0.025em; }
 @utility type-metric       { font-size: var(--text-metric);   line-height: var(--text-metric--line-height);   font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+@utility type-clock        { font-family: var(--font-heading); font-size: calc(var(--text-display) * 3); line-height: 1; font-weight: 400; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+@utility type-quote        { font-family: var(--font-quote); font-size: calc(var(--text-title) * 1.35); line-height: 1.35; font-weight: 400; font-style: italic; }
 
 /* Table styles (docs/VIEW-SIZE.md §6.2 "DataTable") */
 @utility table-header   { font-size: var(--text-micro); line-height: var(--text-micro--line-height); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }

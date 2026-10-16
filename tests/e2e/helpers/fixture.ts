@@ -42,6 +42,17 @@ export const TEST_USER = {
     leadTableViews: {},
     leadFilters: {},
     emailSettings: { isValidated: true },
+    // An existing install's admin: the preferences blob is there, and the module
+    // setup wizard has been dealt with. Without this the user would look
+    // brand-new (see utils/moduleWizard.ts) and the wizard would cover the
+    // screen in every test. moduleSetupWizard.spec.ts opts in to the new-admin
+    // case through installBackendMocks({ user }).
+    // `themeMode` and `theme` are what the first-login migration always writes
+    // alongside any other preference. Leaving them out would let the first
+    // preference the app saves (opening Updates stores `seenUpdateId`) fill in
+    // the defaults — themeMode "system" — and the theme adoption effect would
+    // then undo whatever appearance the test had forced.
+    preferences: { themeMode: 'system', theme: 'basic', moduleWizardCompletedAt: '2026-01-01T00:00:00.000Z' },
   }),
 };
 
@@ -62,8 +73,8 @@ const TASK_STATES = ['New', 'In progress', 'Blocked', 'Done'];
 
 /**
  * `Silvia` is deliberately first and has a rich timeline with attachments: she
- * is the client the crawler drills into to exercise the client profile detail
- * view, its sub-tabs and its `?tab=` deep routing.
+ * is the lead the specs open for the lead detail view and its task, project and
+ * invoice links. She is a pipeline lead, not a client record.
  */
 const LEADS = [
   {
@@ -217,6 +228,83 @@ const LEADS = [
     companyId: '87654321',
     legalForm: 'a.s.',
     categories: ['Services'],
+    timeline: [],
+  },
+  // Client records. The Clients register lists only these (utils/clientRecord.ts:
+  // an id starting `client-`, or a positive adjustment); every lead above is a
+  // pipeline lead and never appears there. They are appended, not prepended, so
+  // `leads[0]` is still Silvia, and their names are unique so a name-based picker
+  // or filter never finds two matches.
+  {
+    id: 'client-kovac',
+    name: 'Kováč Reality s.r.o.',
+    city: 'Trnava',
+    clientType: 'business',
+    status: 'accepted',
+    source: 'website',
+    owner: 'Erik',
+    value: 12600,
+    createdAt: isoStamp(-60, '09:30'),
+    rating: 5,
+    phone: '+421 905 123 456',
+    email: 'obchod@kovacreality.sk',
+    address: { street: 'Štefánikova 8', city: 'Trnava', postalCode: '91701', country: 'Slovakia' },
+    companyId: '45678901',
+    taxId: '2045678901',
+    vatId: 'SK2045678901',
+    contactPerson: 'Marek Kováč',
+    website: 'https://kovacreality.sk',
+    legalForm: 's.r.o.',
+    categories: ['Services'],
+    timeline: [
+      {
+        id: 'ev-kovac-1',
+        type: 'email',
+        timestamp: isoStamp(-45, '10:10'),
+        title: 'Rámcová dohoda',
+        content: 'Klient potvrdil rámcovú dohodu na správu nehnuteľností.',
+        isOutgoing: false,
+        author: 'Erik',
+      },
+      {
+        id: 'ev-kovac-2',
+        type: 'offer',
+        timestamp: isoStamp(-30, '13:00'),
+        title: 'Zmluva podpísaná',
+        content: 'Podpísaná rámcová zmluva.',
+        fileName: 'zmluva-kovac.pdf',
+        fileSize: '201 KB',
+        fileType: 'contract',
+        filePath: '/uploads/zmluva-kovac.pdf',
+        attachments: [{ name: 'zmluva-kovac.pdf', size: '201 KB', path: '/uploads/zmluva-kovac.pdf' }],
+        author: 'Erik',
+      },
+      {
+        id: 'ev-kovac-3',
+        type: 'appointment',
+        timestamp: isoStamp(4, '09:00'),
+        title: 'Štvrťročná kontrola',
+        content: 'Stretnutie v kancelárii klienta.',
+        extraTime: '10:00',
+        author: 'Erik',
+      },
+    ],
+  },
+  {
+    id: 'client-bielikova',
+    name: 'Bieliková Lenka',
+    city: 'Banská Bystrica',
+    clientType: 'person',
+    status: 'accepted',
+    source: 'instagram',
+    owner: 'Mária',
+    value: 950,
+    createdAt: isoStamp(-18, '15:20'),
+    rating: 4,
+    phone: '+421 906 321 654',
+    email: 'lenka.bielikova@example.com',
+    address: { street: 'Námestie SNP 3', city: 'Banská Bystrica', postalCode: '97401', country: 'Slovakia' },
+    categories: ['Products'],
     timeline: [],
   },
 ];
@@ -851,8 +939,13 @@ export function buildSyncPayload() {
   };
 }
 
-/** Name of the client whose profile the crawler drills into. */
-export const DRILLDOWN_CLIENT = 'Silvia';
+/**
+ * Name of the client whose profile the dark-mode sweep drills into. It must be a
+ * client *record* (see `client-kovac` above): `Silvia` is a pipeline lead, which
+ * the Clients register does not list, so the register stayed empty and a click
+ * on her name waited for the test timeout.
+ */
+export const DRILLDOWN_CLIENT = 'Kováč Reality s.r.o.';
 
 /**
  * Installs the backend mocks and pre-seeds an authenticated admin session.
@@ -876,12 +969,39 @@ export const DRILLDOWN_CLIENT = 'Silvia';
  *    arrangement would come back from the mock exactly as the dataset declared
  *    it and never as the test had just saved it.
  */
-export async function installBackendMocks(page: Page) {
+export async function installBackendMocks(
+  page: Page,
+  /**
+   * `user` is who is signed in. It defaults to the seeded admin; a spec passes a
+   * different one to be a brand-new admin (no preferences blob) or a non-admin.
+   */
+  options: {
+    user?: typeof TEST_USER | typeof SECOND_USER;
+    /**
+     * The appearance saved on the signed-in user's row. The app adopts the row's
+     * value over the browser's, so a spec that forces dark mode must say so here
+     * as well as in localStorage.
+     */
+    themeMode?: 'system' | 'light' | 'dark';
+    /** Further accounts of the workspace, on top of the two seeded ones. */
+    extraUsers?: (typeof TEST_USER)[];
+  } = {},
+) {
+  const baseUser = options.user ?? TEST_USER;
+  const signedIn = options.themeMode
+    ? {
+        ...baseUser,
+        metadata_json: JSON.stringify({
+          ...JSON.parse(baseUser.metadata_json),
+          preferences: { ...(JSON.parse(baseUser.metadata_json).preferences ?? {}), themeMode: options.themeMode },
+        }),
+      }
+    : baseUser;
   await page.route('**/api/login.php', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, user: TEST_USER }),
+      body: JSON.stringify({ success: true, user: signedIn }),
     }),
   );
 
@@ -891,6 +1011,13 @@ export async function installBackendMocks(page: Page) {
   const pushedListColumns = new Map<string, unknown>();
   /** dashboard id -> dashboard pushed by the app. */
   const pushedCustomDashboards = new Map<string, any>();
+  /**
+   * The workspace's integrationsConfig as the app last pushed it. Settings ->
+   * Visible Modules (and the module setup wizard) store `disabledModules` in
+   * it, and every navigation here is a real page load, so without this a saved
+   * choice would come straight back as the seed.
+   */
+  let pushedIntegrationsConfig: unknown;
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -901,9 +1028,13 @@ export async function installBackendMocks(page: Page) {
         contentType: 'application/json',
         body: JSON.stringify({
           ...payload,
-          users: payload.users.map((u) =>
-            pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u,
-          ),
+          users: [...payload.users, ...(options.extraUsers ?? [])]
+            .map((u) => (u.email === signedIn.email ? signedIn : u))
+            .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
+          settings:
+            pushedIntegrationsConfig === undefined
+              ? payload.settings
+              : { ...payload.settings, integrationsConfig: pushedIntegrationsConfig },
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
           ),
@@ -916,7 +1047,11 @@ export async function installBackendMocks(page: Page) {
         users?: { email?: string; metadata_json?: unknown }[];
         projectTypes?: { id?: string; listColumns?: unknown }[];
         customDashboards?: { id?: string }[];
+        settings?: { integrationsConfig?: unknown };
       };
+      if (body?.settings?.integrationsConfig !== undefined) {
+        pushedIntegrationsConfig = body.settings.integrationsConfig;
+      }
       for (const u of body?.users ?? []) {
         if (u?.email && u.metadata_json !== undefined) pushedUserMeta.set(u.email, u.metadata_json);
       }
@@ -1289,6 +1424,16 @@ export async function installBackendMocks(page: Page) {
     }),
   );
 
+  // The login screen's weather line. Answered here so the suite stays offline
+  // and the panel always renders the same way.
+  await page.route('https://api.open-meteo.com/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ current: { temperature_2m: 14.2, weather_code: 2, is_day: 1 } }),
+    }),
+  );
+
   await page.addInitScript((userJson: string) => {
     try {
       window.sessionStorage.setItem('crm_current_user_rbac', userJson);
@@ -1296,5 +1441,5 @@ export async function installBackendMocks(page: Page) {
     } catch {
       /* sessionStorage unavailable — the login fallback in gotoView handles it. */
     }
-  }, JSON.stringify(TEST_USER));
+  }, JSON.stringify(signedIn));
 }

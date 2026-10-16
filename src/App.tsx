@@ -65,6 +65,9 @@ import { asLang, restoredMessage } from "./utils/undoMessages";
 import { UndoToast } from "./components/ui/UndoToast";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
+import { ModuleSetupWizard } from "./components/ModuleSetupWizard";
+import { useModuleCatalog } from "./utils/moduleCatalog";
+import { countActive, shouldMarkModuleWizardPending, shouldShowModuleWizard } from "./utils/moduleWizard";
 import { fetchLicenseState } from "./utils/licenseApi";
 import type { LicenseState } from "./utils/license";
 import type { UserPrefs, UserPrefsApi } from "./utils/userPrefs";
@@ -2189,13 +2192,27 @@ ${log.payload || ''}
       clearLegacyPrefs();
       return;
     }
+    const legacyPrefs = readLegacyPrefs();
     const nextMeta = {
       ...parseUserMetadata(currentUser),
       // The appearance is seeded from what this browser is actually showing,
       // not from DEFAULT_USER_PREFS: writing the default here would be read
       // straight back by the adoption effect above and would silently undo the
       // theme the visitor picked before they ever logged in.
-      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs(), themeMode, theme: userTheme }
+      preferences: {
+        ...DEFAULT_USER_PREFS,
+        ...legacyPrefs,
+        themeMode,
+        theme: userTheme,
+        // This branch is the only place a never-before-seen account is visible:
+        // the blob written here is what makes hasStoredPrefs() true from now on.
+        // So the module setup wizard's "this admin is new" verdict is recorded
+        // now, as a flag — see shouldMarkModuleWizardPending.
+        moduleWizardPending: shouldMarkModuleWizardPending(currentUser, legacyPrefs, {
+          setupCompletedAt: integrationsConfig?.moduleSetupCompletedAt,
+          otherUsers: users.filter(u => u.email !== currentUser.email)
+        })
+      }
     };
     updateUsersAndSync(prevUsers => prevUsers.map(u =>
       u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
@@ -2280,6 +2297,66 @@ ${log.payload || ''}
       }
     });
   }, [currentUser, users, isInitialSyncResolved]);
+
+  // ---------------------------------------------------------------------------
+  // Module setup wizard. Opens by itself once per installation, for the first
+  // admin only, and on demand from Settings -> Visible Modules. It reads and writes
+  // the same workspace field as that page (integrationsConfig.disabledModules).
+  // That the first-run setup happened is workspace data too
+  // (integrationsConfig.moduleSetupCompletedAt), so a later admin never gets it.
+  // ---------------------------------------------------------------------------
+  const moduleCatalog = useModuleCatalog(userLanguage, customDashboards, unifiedEntries);
+  const [moduleWizardOpen, setModuleWizardOpen] = useState(false);
+  const moduleWizardAutoOpenedForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!currentUser || !isInitialSyncResolved) return;
+    // The flag is only meaningful once the row's own preferences have loaded.
+    if (!users.some(u => u.email === currentUser.email)) return;
+    if (moduleWizardAutoOpenedForRef.current === currentUser.email) return;
+    if (!shouldShowModuleWizard(currentUser, userPrefs, { setupCompletedAt: integrationsConfig?.moduleSetupCompletedAt })) return;
+    moduleWizardAutoOpenedForRef.current = currentUser.email;
+    setModuleWizardOpen(true);
+  }, [currentUser, users, isInitialSyncResolved, userPrefs, integrationsConfig?.moduleSetupCompletedAt]);
+
+  const announce = (message: string) => {
+    if (typeof (window as any).showToast === "function") (window as any).showToast(message);
+  };
+
+  // Stamps the workspace (so no other admin is ever offered the first-run setup)
+  // as well as this user. `nextDisabled` is omitted when the setup is only skipped.
+  const finishModuleWizard = (nextDisabled?: string[]) => {
+    setModuleWizardOpen(false);
+    const completedAt = new Date().toISOString();
+    setUserPref("moduleWizardCompletedAt", completedAt);
+    updateIntegrationsConfigAndSync((prev: any) => ({
+      ...prev,
+      // Written exactly as Settings -> Visible Modules writes it.
+      ...(nextDisabled ? { disabledModules: nextDisabled } : {}),
+      moduleSetupCompletedAt: prev?.moduleSetupCompletedAt || completedAt
+    }));
+  };
+
+  const handleModuleWizardConfirm = (nextDisabled: string[]) => {
+    finishModuleWizard(nextDisabled);
+    const active = countActive(nextDisabled, moduleCatalog.map(m => m.id));
+    announce(t(
+      `Module setup saved — ${active} of ${moduleCatalog.length} modules are visible.`,
+      `Nastavenie modulov uložené – viditeľných je ${active} z ${moduleCatalog.length} modulov.`,
+      `A modulok beállítása mentve – ${active} / ${moduleCatalog.length} modul látható.`
+    ));
+  };
+
+  const handleModuleWizardSkip = () => {
+    // Leaves disabledModules alone, but still counts as "done" for the whole
+    // workspace so it does not come back for anyone.
+    finishModuleWizard();
+    announce(t(
+      "Module setup skipped. You can run it again from Settings → Visible Modules.",
+      "Nastavenie modulov preskočené. Sprievodcu môžete spustiť znova v Nastavenia → Viditeľnosť modulov.",
+      "A modulok beállítása kihagyva. A varázslót bármikor újraindíthatja a Beállítások → Modulok láthatósága menüpontban."
+    ));
+  };
 
   const handleSaveUserLayout = (layout: string[], hidden?: string[], sidebarGroups?: SidebarGroup[]) => {
     if (!currentUser) return;
@@ -3447,6 +3524,8 @@ ${log.payload || ''}
           isDemoMode={isDemoMode}
           integrationsConfig={integrationsConfig}
           updateIntegrationsConfig={updateIntegrationsConfigAndSync}
+          // Admin only: the wizard writes workspace-wide settings, and a non-admin never sees it.
+          onOpenModuleWizard={access.isAdmin ? () => setModuleWizardOpen(true) : undefined}
           dbInfo={dbInfo || undefined}
           taskStates={taskStates}
           setTaskStates={setTaskStates}
@@ -4493,6 +4572,16 @@ ${log.payload || ''}
       )}
       
 
+
+      {/* Module setup wizard — portaled to <body>, so its place in the tree is immaterial. */}
+      <ModuleSetupWizard
+        open={moduleWizardOpen && access.isAdmin}
+        language={userLanguage}
+        catalog={moduleCatalog}
+        disabledModules={integrationsConfig?.disabledModules || []}
+        onConfirm={handleModuleWizardConfirm}
+        onSkip={handleModuleWizardSkip}
+      />
 
       {/* Bottom-right notification stack. The save indicator and the toast share one
           column so they can never land on top of each other — they used to be two

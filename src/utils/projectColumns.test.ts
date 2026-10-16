@@ -264,10 +264,11 @@ test("dates sort as text, because they are stored ISO-first", () => {
 /* Totals row                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const money = (totalBudget: number, invoiced: number, currency = "EUR", hasValue = true) => ({
+const money = (totalBudget: number, invoiced: number, currency = "EUR", hasValue = true, received = 0) => ({
   totalBudget,
   invoiced,
   invoicable: Math.max(0, totalBudget - invoiced),
+  stillToBePaid: Math.max(0, totalBudget - received),
   currency,
   hasValue,
 });
@@ -280,6 +281,28 @@ test("the totals row sums Value and Invoicable, and leaves the other columns out
   assert.deepEqual([...totals.keys()], ["value", "invoicable"]);
   assert.deepEqual(totals.get("value"), [{ currency: "EUR", amount: 1500 }]);
   assert.deepEqual(totals.get("invoicable"), [{ currency: "EUR", amount: 1100 }]);
+});
+
+test("the totals row sums Still to be paid from what has been received", () => {
+  const totals = totalProjectColumns(
+    [{ key: "value" }, { key: "invoicable" }, { key: "stillToBePaid" }],
+    [money(1000, 1000, "EUR", true, 400), money(500, 0)],
+  );
+  assert.deepEqual(totals.get("stillToBePaid"), [{ currency: "EUR", amount: 1100 }]);
+  assert.deepEqual(totals.get("invoicable"), [{ currency: "EUR", amount: 500 }]);
+});
+
+test("Still to be paid is a built-in column that starts hidden, after Invoicable", () => {
+  const cols = resolveProjectColumns([], null);
+  const keys = cols.map(c => c.key);
+  assert.equal(keys.indexOf("stillToBePaid"), keys.indexOf("invoicable") + 1);
+  assert.equal(cols.find(c => c.key === "stillToBePaid")?.visible, false);
+});
+
+test("a layout saved before the column existed gains it, hidden", () => {
+  const saved = [{ key: "name", visible: true }, { key: "status", visible: true }];
+  const col = resolveProjectColumns([], saved).find(c => c.key === "stillToBePaid");
+  assert.equal(col?.visible, false);
 });
 
 test("only the columns on screen are totalled", () => {

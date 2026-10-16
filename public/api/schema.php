@@ -1127,6 +1127,9 @@ if (!function_exists('ccrm_schema_statements')) {
      * run on every install/update without relying on try/catch swallowing.
      */
     function ccrm_apply_migrations(PDO $pdo): void {
+        // Several steps below ALTER `orders`; a database that predates the table
+        // would otherwise fatal on the first one.
+        ccrm_migrate_orders($pdo);
         // Project contract / invoicable value
         if (!ccrm_column_exists($pdo, 'projects', 'value')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");

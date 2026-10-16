@@ -20,6 +20,7 @@ export type BuiltinProjectColumnKey =
   | "status"
   | "value"
   | "invoicable"
+  | "stillToBePaid"
   | "division";
 
 /**
@@ -38,6 +39,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
   "status",
   "value",
   "invoicable",
+  "stillToBePaid",
   "division",
 ];
 
@@ -45,7 +47,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
  * Built-ins that are offered but start switched off, like an attribute: they
  * widen the table, so they appear only when someone asks for them.
  */
-export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "invoicable", "division"];
+export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "invoicable", "stillToBePaid", "division"];
 
 /**
  * The project's own name is what identifies the row and opens it, so it is the
@@ -71,6 +73,7 @@ export const BUILTIN_COLUMN_LABELS: Record<BuiltinProjectColumnKey, [string, str
   status: ["Status", "Stav", "Állapot"],
   value: ["Value", "Hodnota", "Érték"],
   invoicable: ["Invoicable", "Fakturovateľné", "Számlázható"],
+  stillToBePaid: ["Still to be paid", "Zostáva uhradiť", "Még fizetendő"],
   division: ["Division", "Divízia", "Divízió"],
 };
 
@@ -83,6 +86,8 @@ export interface ProjectMoneyFigures {
   totalBudget: number;
   invoiced: number;
   invoicable: number;
+  /** Invoiced but unpaid plus not invoiced yet: the Finances tab's "Still to be paid to us". */
+  stillToBePaid: number;
   currency: string;
   /** False for a project with no value at all — its cells are empty and add nothing. */
   hasValue: boolean;
@@ -104,6 +109,7 @@ export const SUMMABLE_PROJECT_COLUMNS: Partial<
 > = {
   value: f => f.totalBudget,
   invoicable: f => f.invoicable,
+  stillToBePaid: f => f.stillToBePaid,
 };
 
 export const isSummableProjectColumn = (key: string): boolean =>

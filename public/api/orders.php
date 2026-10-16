@@ -42,6 +42,36 @@ ccrm_apply_migrations($pdo);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? null;
 
+// Permission gate (same rules as sync.php): reading needs `orders`, writing needs
+// edit on it, deleting needs the delete right on top. Turning a guest order into a
+// client also creates a lead row, so it needs edit on `clients` as well. The CLI
+// path (cron / maintenance) has no session and is not gated.
+if (php_sapi_name() !== 'cli') {
+    require_once __DIR__ . '/read_scope.php';
+    $ordersScope = ccrm_read_scope($pdo, $user);
+    $ordersDeny = function (string $message): void {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden', 'message' => $message]);
+        exit;
+    };
+    if ($method === 'GET') {
+        if (!ccrm_can($ordersScope, 'orders')) {
+            $ordersDeny("Permission 'orders' required.");
+        }
+    } elseif ($method === 'POST' || $method === 'DELETE') {
+        if (!ccrm_can($ordersScope, 'orders', 'edit')) {
+            $ordersDeny("Permission 'orders' at level 'edit' required.");
+        }
+        if ($method === 'DELETE' && empty($ordersScope['isAdmin'])
+            && empty(ccrm_perm_module($ordersScope['permissions'] ?? [], 'orders')['delete'])) {
+            $ordersDeny("Permission 'orders.delete' required.");
+        }
+        if ($method === 'POST' && $action === 'convert_guest_to_client' && !ccrm_can($ordersScope, 'clients', 'edit')) {
+            $ordersDeny("Permission 'clients' at level 'edit' required.");
+        }
+    }
+}
+
 switch ($method) {
     case 'GET':
         if (isset($_GET['id'])) {
@@ -136,7 +166,7 @@ switch ($method) {
                 exit;
             }
 
-            $newClientId = 'lead_' . bin2hex(random_bytes(10));
+            $newClientId = 'client-' . bin2hex(random_bytes(10));
             $companyName = !empty($ord['billing_name'])
                 ? $ord['billing_name']
                 : (!empty($ord['guest_company']) ? $ord['guest_company'] : (!empty($ord['guest_name']) ? $ord['guest_name'] : 'Nový zákazník'));
@@ -146,9 +176,9 @@ switch ($method) {
                 // Insert into leads table as a client
                 $insLead = $pdo->prepare("
                     INSERT INTO `leads` (
-                        `id`, `company`, `contact_person`, `email`, `phone`, `ico`, `dic`, `ic_dph`,
-                        `street`, `city`, `zip`, `country`, `status`, `created_at`
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Zákazník', NOW())
+                        `id`, `name`, `client_type`, `contact_person`, `email`, `phone`, `company_id`, `tax_id`, `vat_id`,
+                        `street`, `city`, `postal_code`, `country`, `status`, `owner`, `created_at`
+                    ) VALUES (?, ?, 'business', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Zákazník', ?, NOW())
                 ");
                 $insLead->execute([
                     $newClientId,
@@ -162,7 +192,8 @@ switch ($method) {
                     $ord['billing_street'] ?: ($ord['delivery_street'] ?? null),
                     $ord['billing_city'] ?: ($ord['delivery_city'] ?? null),
                     $ord['billing_zip'] ?: ($ord['delivery_zip'] ?? null),
-                    $ord['billing_country'] ?: ($ord['delivery_country'] ?? 'SK')
+                    $ord['billing_country'] ?: ($ord['delivery_country'] ?? 'SK'),
+                    (string)($user['name'] ?? $user['email'] ?? '')
                 ]);
 
                 // Link order to the newly created client

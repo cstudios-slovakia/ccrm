@@ -1101,7 +1101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'district' => $row['district'] ?? '',
                 'financialSummary' => $row['financial_summary'] ?? '',
                 'clientCategoryId' => $row['client_category_id'] ?? null,
-                'ticketAllowedEmails' => (!empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
+                // Ticket-module data riding on the lead row: withheld without `tickets`.
+                'ticketAllowedEmails' => (ccrm_can($scope, 'tickets') && !empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
                 'archived' => intval($row['archived'] ?? 0) === 1,
                 'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
             ];
@@ -1113,13 +1114,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $canTasksViewAll = ccrm_can($scope, 'tasks.view_all');
 
 
+    // The ticket link on a task (`relatedTicketId`) is ticket-module data: a
+    // caller without `tickets` sees the task but not which ticket it belongs to.
+    $canTickets = ccrm_can($scope, 'tickets');
     $ticketByTask = [];
-    try {
-        $ttStmt = $pdo->query("SELECT `task_id`, `ticket_id` FROM `ticket_task_links`");
-        while ($ttRow = $ttStmt->fetch(PDO::FETCH_ASSOC)) {
-            $ticketByTask[$ttRow['task_id']] = $ttRow['ticket_id'];
-        }
-    } catch (\Throwable $e) {}
+    if ($canTickets) {
+        try {
+            $ttStmt = $pdo->query("SELECT `task_id`, `ticket_id` FROM `ticket_task_links`");
+            while ($ttRow = $ttStmt->fetch(PDO::FETCH_ASSOC)) {
+                $ticketByTask[$ttRow['task_id']] = $ttRow['ticket_id'];
+            }
+        } catch (\Throwable $e) {}
+    }
     $tasks = [];
     $allKnownTags = [];
     if ($canTasks) {
@@ -1148,9 +1154,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         while ($row = $tasksStmt->fetch()) {
             $taskId = $row['id'];
             $assignedUsers = $assigneesByTask[$taskId] ?? [];
-            $relTicketId = !empty($row['related_ticket_id'])
+            $relTicketId = !$canTickets ? null : (!empty($row['related_ticket_id'])
                 ? $row['related_ticket_id']
-                : ($ticketByTask[$taskId] ?? null);
+                : ($ticketByTask[$taskId] ?? null));
 
             $taskItem = [
                 'id' => $taskId,
@@ -1321,11 +1327,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $invoicingIntegrations = ccrm_mask_invoicing_secrets($invoicingIntegrations);
     }
 
-    $ticketStatuses = isset($settings['TICKET_STATUSES']) ? json_decode($settings['TICKET_STATUSES'], true) : null;
+    // Ticket workflow configuration (statuses, mailbox, canned replies) is part of
+    // the ticket module: withheld as null, which the client reads as "use defaults".
+    $ticketStatuses = ($canTickets && isset($settings['TICKET_STATUSES'])) ? json_decode($settings['TICKET_STATUSES'], true) : null;
     if (!is_array($ticketStatuses)) {
         $ticketStatuses = null;
     }
-    $ticketSettings = isset($settings['TICKET_SETTINGS']) ? json_decode($settings['TICKET_SETTINGS'], true) : null;
+    $ticketSettings = ($canTickets && isset($settings['TICKET_SETTINGS'])) ? json_decode($settings['TICKET_SETTINGS'], true) : null;
     if (is_array($ticketSettings)) {
         $ticketSettings = ccrm_decrypt_config_secrets($ticketSettings, ['imapPassword', 'openAiKey']);
         $ticketSettings = ccrm_mask_secrets($ticketSettings, ['imapPassword', 'openAiKey']);
@@ -1608,12 +1616,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
                     'value' => isset($pRow['value']) ? (float)$pRow['value'] : null,
                     'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
-                    'ticketWidgetEnabled' => isset($pRow['ticket_widget_enabled']) && (int)$pRow['ticket_widget_enabled'] === 1,
-                    'ticketAllowedDomains' => json_decode($pRow['ticket_allowed_domains'] ?? '[]', true) ?: [],
-                    'ticketAllowedEmails' => json_decode($pRow['ticket_allowed_emails'] ?? '[]', true) ?: [],
-                    'ticketPublicHash' => $pRow['ticket_public_hash'] ?? null,
-                    'ticketWidgetConfig' => ($decodedWidgetCfg = json_decode($pRow['ticket_widget_config_json'] ?? '{}', true)) && is_array($decodedWidgetCfg) ? $decodedWidgetCfg : (object)[],
-                    'ticketRetainer' => isset($decodedWidgetCfg['retainer']) && is_array($decodedWidgetCfg['retainer']) ? $decodedWidgetCfg['retainer'] : null,
+                    // Widget and public status-board settings. `ticketPublicHash` is the
+                    // key to the public board, so it stays server-side without `tickets`.
+                    'ticketWidgetEnabled' => $canTickets && isset($pRow['ticket_widget_enabled']) && (int)$pRow['ticket_widget_enabled'] === 1,
+                    'ticketAllowedDomains' => $canTickets ? (json_decode($pRow['ticket_allowed_domains'] ?? '[]', true) ?: []) : [],
+                    'ticketAllowedEmails' => $canTickets ? (json_decode($pRow['ticket_allowed_emails'] ?? '[]', true) ?: []) : [],
+                    'ticketPublicHash' => $canTickets ? ($pRow['ticket_public_hash'] ?? null) : null,
+                    'ticketWidgetConfig' => ($decodedWidgetCfg = json_decode($pRow['ticket_widget_config_json'] ?? '{}', true)) && is_array($decodedWidgetCfg) && $canTickets ? $decodedWidgetCfg : (object)[],
+                    'ticketRetainer' => $canTickets && isset($decodedWidgetCfg['retainer']) && is_array($decodedWidgetCfg['retainer']) ? $decodedWidgetCfg['retainer'] : null,
                     'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
                     'managers' => $managersByProject[$projId] ?? [],
                     'data' => [],
@@ -2132,7 +2142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
 
         $orders = [];
-        if ($pdo->query("SHOW TABLES LIKE 'orders'")->rowCount() > 0) {
+        if (ccrm_can($scope, 'orders') && $pdo->query("SHOW TABLES LIKE 'orders'")->rowCount() > 0) {
             $orderStmt = $pdo->query("SELECT * FROM `orders` ORDER BY `order_date` DESC, `created_at` DESC");
             $itemsByOrder = [];
             if ($pdo->query("SHOW TABLES LIKE 'order_items'")->rowCount() > 0) {
@@ -2232,7 +2242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $supportContracts = [];
     $tickets = [];
     try {
-        if ($pdo->query("SHOW TABLES LIKE 'support_contracts'")->rowCount() > 0) {
+        if ($canTickets && $pdo->query("SHOW TABLES LIKE 'support_contracts'")->rowCount() > 0) {
             $scStmt = $pdo->query("SELECT * FROM `support_contracts` ORDER BY `created_at` DESC");
             while ($row = $scStmt->fetch(PDO::FETCH_ASSOC)) {
                 $clientId = $row['client_id'] ?? null;
@@ -2267,7 +2277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         }
 
-        if ($pdo->query("SHOW TABLES LIKE 'tickets'")->rowCount() > 0) {
+        if ($canTickets && $pdo->query("SHOW TABLES LIKE 'tickets'")->rowCount() > 0) {
             $msgsByTicket = [];
             if ($pdo->query("SHOW TABLES LIKE 'ticket_messages'")->rowCount() > 0) {
                 $tmStmt = $pdo->query("SELECT * FROM `ticket_messages` ORDER BY `created_at` ASC");
@@ -2431,6 +2441,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $restricted[] = 'warehouseStock';
         $restricted[] = 'warehouseBatches';
         $restricted[] = 'warehouseMovements';
+    }
+
+    // Withheld, not deleted: the client holds [] for these and must not read that
+    // as "the user emptied them". `ticketStatuses` / `ticketSettings` inside
+    // `settings` travel as null, which the client turns into its defaults.
+    if (!ccrm_can($scope, 'orders')) {
+        $restricted[] = 'orders';
+    }
+
+    if (!ccrm_can($scope, 'tickets')) {
+        $restricted[] = 'tickets';
+        $restricted[] = 'supportContracts';
     }
 
     if (!ccrm_can($scope, 'financial')) {
@@ -2725,6 +2747,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         return true;
     };
+
+    // Ticket data that rides on rows owned by other modules (a project's widget
+    // settings, a lead's ticket e-mails, a task's ticket link, the ticket
+    // workflow settings). Those rows are saved by people who may hold no `tickets`
+    // right; this flag decides whether the ticket part of the payload counts.
+    // Without it the stored value is kept: the client never saw the real one.
+    $canEditTickets = $isAdmin || ccrm_perm_can_edit($perms, 'tickets');
 
     // Read scope of the caller: the same resolution the GET filters by, so a write
     // is limited to what the caller was allowed to read in the first place.
@@ -3030,7 +3059,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTicketSettings = ($existingTicketSettingsRaw !== false && $existingTicketSettingsRaw !== null) ? json_decode($existingTicketSettingsRaw, true) : [];
             if (!is_array($existingTicketSettings)) { $existingTicketSettings = []; }
             $ticketSettingsValue = ($existingTicketSettingsRaw !== false && $existingTicketSettingsRaw !== null) ? $existingTicketSettingsRaw : null;
-            if (array_key_exists('ticketSettings', $s) && is_array($s['ticketSettings'])) {
+            if ($canEditTickets && array_key_exists('ticketSettings', $s) && is_array($s['ticketSettings'])) {
                 $mergedTicketSettings = ccrm_merge_secrets($s['ticketSettings'], $existingTicketSettings, ['imapPassword', 'openAiKey']);
                 $mergedTicketSettings = ccrm_encrypt_config_secrets($mergedTicketSettings, ['imapPassword', 'openAiKey']);
                 $ticketSettingsValue = json_encode($mergedTicketSettings, JSON_UNESCAPED_UNICODE);
@@ -3106,7 +3135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'PROJECT_STATUSES' => isset($s['projectStatuses']) && is_array($s['projectStatuses'])
                     ? json_encode(ccrm_normalize_project_statuses($s['projectStatuses']), JSON_UNESCAPED_UNICODE)
                     : null,
-                'TICKET_STATUSES' => isset($s['ticketStatuses']) && is_array($s['ticketStatuses'])
+                'TICKET_STATUSES' => $canEditTickets && isset($s['ticketStatuses']) && is_array($s['ticketStatuses'])
                     ? json_encode(array_values($s['ticketStatuses']), JSON_UNESCAPED_UNICODE)
                     : null,
                 'TICKET_SETTINGS' => $ticketSettingsValue,
@@ -3724,6 +3753,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $projTicketWidgetConfig = is_array($rawWidgetCfg)
                     ? json_encode($rawWidgetCfg, JSON_UNESCAPED_UNICODE)
                     : null;
+                if (!$canEditTickets) {
+                    // Saving a project is not a ticket edit: keep the stored widget
+                    // setup (NULL falls through the COALESCE in the upsert).
+                    $projTicketWidgetEnabled = (int)($existingProjMap[$projId]['ticket_widget_enabled'] ?? 0);
+                    $projTicketAllowedDomains = null;
+                    $projTicketAllowedEmails = null;
+                    $projTicketPublicHash = !empty($existingProjMap[$projId]['ticket_public_hash']) ? $existingProjMap[$projId]['ticket_public_hash'] : bin2hex(random_bytes(16));
+                    $projTicketWidgetConfig = null;
+                }
 
                 // Archived state: column is NOT NULL DEFAULT 0, so never pass null into VALUES.
                 $projArchived = !empty($p['archived']) ? 1 : 0;
@@ -4035,7 +4073,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $l['owner'] = $l['owner'] ?? $defaultOwner;
 
                 $oldStatus = $isNew ? null : ($dbLeads[$leadId]['status'] ?? null);
-                $leadTicketAllowedEmails = array_key_exists('ticketAllowedEmails', $l) && is_array($l['ticketAllowedEmails'])
+                $leadTicketAllowedEmails = $canEditTickets && array_key_exists('ticketAllowedEmails', $l) && is_array($l['ticketAllowedEmails'])
                     ? json_encode(array_values(array_filter(array_map('trim', $l['ticketAllowedEmails']))), JSON_UNESCAPED_UNICODE)
                     : null;
 
@@ -4422,14 +4460,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $oldTaskStatus = null;
                 $oldTaskOwner = null;
                 $oldRequiresConclusion = false;
+                $oldRelatedTicketId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion` FROM `tasks` WHERE `id` = ? LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id` FROM `tasks` WHERE `id` = ? LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
                         $oldTaskStatus = $oldRow['status'] ?? null;
                         $oldTaskOwner = $oldRow['owner'] ?? null;
                         $oldRequiresConclusion = intval($oldRow['requires_conclusion'] ?? 0) === 1;
+                        $oldRelatedTicketId = (isset($oldRow['related_ticket_id']) && $oldRow['related_ticket_id'] !== '') ? $oldRow['related_ticket_id'] : null;
                     }
                 }
 
@@ -4448,7 +4488,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
+                // Linking a task to a ticket is a ticket edit. Someone who can edit
+                // tasks but not tickets (or who cannot even see them, and so was
+                // sent null) keeps the link exactly as stored: they can neither
+                // add, change nor erase it, and no ticket_task_links row is made.
                 $relTicketIdVal = (isset($t['relatedTicketId']) && $t['relatedTicketId'] !== '') ? $t['relatedTicketId'] : null;
+                $ticketLinkAllowed = $canEditTickets;
+                if (!$ticketLinkAllowed) {
+                    $relTicketIdVal = $oldRelatedTicketId;
+                }
 
                 $insTask->execute([
                     $taskId,
@@ -4472,7 +4520,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($t['requiresConclusion']) ? 1 : 0,
                     $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null
                 ]);
-                if ($relTicketIdVal !== null) {
+                if ($relTicketIdVal !== null && $ticketLinkAllowed) {
                     try {
                         $pdo->prepare("INSERT IGNORE INTO `ticket_task_links` (`ticket_id`, `task_id`, `sync_mode`, `created_at`) VALUES (?, ?, 'auto_resolve', NOW())")->execute([$relTicketIdVal, $taskId]);
                     } catch (\Throwable $e) {}
@@ -5852,7 +5900,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.21. Synchronize Orders & Order Items
-        if (isset($payload['orders']) && is_array($payload['orders'])) {
+        if (isset($payload['orders']) && is_array($payload['orders']) && !$ccrm_skip_writes('orders', 'orders')) {
             $stmt = $pdo->query("SELECT `id` FROM `orders`");
             $existingOrderIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedOrderIds = [];
@@ -6025,7 +6073,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $ordersToDelete = $isDeltaSync ? $deletionsFor('orders', $existingOrderIds) : array_diff($existingOrderIds, $processedOrderIds);
-            if (!empty($ordersToDelete)) {
+            if (!empty($ordersToDelete) && !$ccrm_skip_deletes('orders', 'orders')) {
                 ccrm_delete_omitted($pdo, 'orders', $ordersToDelete, null, [], false, $isDeltaSync);
             }
         }
@@ -6101,7 +6149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $contractsToDelete = $isDeltaSync ? $deletionsFor('supportContracts', $existingContractIds) : array_diff($existingContractIds, $processedContractIds);
-                    if (!empty($contractsToDelete)) {
+                    if (!empty($contractsToDelete) && !$ccrm_skip_deletes('tickets', 'supportContracts')) {
                         ccrm_delete_omitted($pdo, 'support_contracts', $contractsToDelete, null, [], false, $isDeltaSync);
                     }
                 }
@@ -6344,7 +6392,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $ticketsToDelete = $isDeltaSync ? $deletionsFor('tickets', $existingTicketIds) : array_diff($existingTicketIds, $processedTicketIds);
-                    if (!empty($ticketsToDelete)) {
+                    if (!empty($ticketsToDelete) && !$ccrm_skip_deletes('tickets', 'tickets')) {
                         $delPh = implode(',', array_fill(0, count($ticketsToDelete), '?'));
                         $delVals = array_values($ticketsToDelete);
                         $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` IN ($delPh)")->execute($delVals);

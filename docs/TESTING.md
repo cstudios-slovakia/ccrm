@@ -373,7 +373,12 @@ Groups of checks, about 190 in all:
 3. **M - migrations.** The Employee role is added once and an existing role of
    that name is left alone; `employees.user_id` is added with its unique index
    and foreign key, twice in a row.
-4. **P1 - parity.** TypeScript and PHP permission registries and the Employee
+4. **T - orders and tickets** (`T-R`, `T-W`, `T-X`, `T-E`). Four extra roles (`TicketsNothing`, `TicketsView`,
+   `TicketsEdit`, `TicketsFull`) against `orders` / `tickets`: what `sync.php` sends (and the raw body
+   leaks), what a forged POST can create, change or delete, the ticket data carried by tasks, projects, leads
+   and settings, `orders.php` / `tickets.php`, and that the public status board and widget still answer
+   without a session. The probe migrates the scratch copy first, because the dev database may predate Mango.
+5. **P1 - parity.** TypeScript and PHP permission registries and the Employee
    role map are identical (`src/utils/permissions.test.ts`).
 
 Run it after any change to `permissions.ts` / `permissions.php`,
@@ -390,6 +395,32 @@ Runs headless verification of WebAuthn options generation, serialization/deseria
 ```bash
 npm run test:passkeys
 ```
+
+### 5g. Module screenshots (`npm run shots:modules`)
+
+The module setup wizard shows a real screenshot of every module. They are
+generated, not drawn:
+
+```bash
+npm run shots:modules                       # all modules -> public/module-screenshots/<id>.webp
+npm run shots:modules -- --only leads,tasks # a few
+```
+
+`scripts/capture-module-screenshots.mjs` starts Vite on the QA port, installs the
+**QA fixture's** mocks (`tests/e2e/helpers/fixture.ts` - no PHP, no database, no
+real data; the release-notes CMS is mocked inside the script with invented
+notes), and photographs each module's landing view in light mode at 1440x900,
+cropped to the workspace area at 16:10 and encoded as WebP of at most 150 KB.
+It takes the same machine-wide lock as a QA run, so it queues behind one.
+
+It asserts nothing. **Look at every image** it writes - an empty state, a
+spinner, a toast or an open popover means re-shooting - and commit the result.
+The files ship because Vite copies `public/` into `dist/` and `php ccrm update`
+publishes `public/*` to the docroot (`scripts/sync-backend.mjs` only mirrors
+files that already have a root counterpart, so these are untouched by it).
+
+Re-run it after a visible redesign of a module; the wizard falls back to an
+icon card for any module whose image is missing.
 
 ---
 

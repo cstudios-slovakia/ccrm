@@ -512,6 +512,8 @@ interface SettingsViewProps {
   
   integrationsConfig?: any;
   updateIntegrationsConfig?: (next: any) => void;
+  /** Opens the module setup wizard (owned by App, which also opens it on first login). */
+  onOpenModuleWizard?: () => void;
   dbInfo?: { host: string; port: string; name: string; user: string; type?: string };
 
   taskStates: string[];
@@ -666,6 +668,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   isDemoMode,
   integrationsConfig,
   updateIntegrationsConfig,
+  onOpenModuleWizard,
   dbInfo,
   taskStates,
   setTaskStates,
@@ -4307,6 +4310,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }}
               customDashboards={customDashboards}
               unifiedEntries={unifiedEntries}
+              onRunSetupWizard={onOpenModuleWizard}
             />
           </div>
         )}

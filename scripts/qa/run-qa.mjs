@@ -95,6 +95,11 @@ const RULES = [
   [/^src\/components\/PersonalSettingsView\./, ['Personal Settings']],
   [/^src\/components\/(ThemeSettings|LightRays)\./, ['Personal Settings', 'Dark mode']],
   [/^src\/components\/License(Banner|Settings)\./, ['Licensing', 'System Settings']],
+  /* The module setup wizard and the Visible Modules page it mirrors share one
+     catalog; either one changing can break the other, so both are covered. */
+  [/^src\/components\/(ModuleSetupWizard|VisibleModulesSettings)\./, ['Module setup wizard', 'System Settings']],
+  [/^src\/utils\/(moduleCatalog|moduleWizard)\./, ['Module setup wizard', 'System Settings']],
+  [/^scripts\/capture-module-screenshots\.mjs$/, ['Module setup wizard']],
   [/^src\/components\/SettingsView\./, ['System Settings']],
   [/^src\/components\/(SocialMediaView|RagAiView|UnifiedEntryView)\./, ['Shell navigation']],
 

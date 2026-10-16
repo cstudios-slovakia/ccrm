@@ -25,15 +25,21 @@
       left: 0;
       width: 100%;
       height: 100%;
+      overflow: hidden;
       pointer-events: none;
       background-repeat: repeat;
       background-size: 512px 512px;
     }
+    /* The scenery is drawn once into its own compositor layer and slid sideways
+       with a transform (see rebase()/applyScroll()). Animating the viewBox instead
+       made Chrome re-rasterise ~40k polylines on the CPU every frame. Sized in px
+       from script; no mix-blend-mode, which forced a full-screen blend per frame. */
     svg {
       display: block;
-      width: 100%;
-      height: 100%;
-      mix-blend-mode: multiply;
+      position: absolute;
+      top: 0;
+      left: 0;
+      will-change: transform;
       shape-rendering: geometricPrecision;
     }
   </style>
@@ -528,6 +534,38 @@
     return plist;
   }
 
+  // The scene used to be multiplied onto the parchment by mix-blend-mode on the
+  // whole SVG, which makes the browser re-blend a full-screen layer on the GPU
+  // every frame. Multiply is linear in the source colour, so pre-multiplying
+  // each colour by the paper's mean colour (here, once, at generation time) and
+  // blending normally gives the same result, alpha included.
+  var PAPER = [240, 228, 204]; // mean of the texture made by initParchment()
+  var PAPER_RGB = "rgb(" + PAPER.join(",") + ")";
+  var paperTintCache = {};
+  var RGB_RE = /^rgba?\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*(?:,\s*(-?[\d.]+)\s*)?\)$/;
+
+  function paperTint(css) {
+    var hit = paperTintCache[css];
+    if (hit !== undefined) return hit;
+    var out = css;
+    if (css === "white") {
+      out = PAPER_RGB;
+    } else {
+      var m = RGB_RE.exec(css);
+      if (m) {
+        out =
+          "rgba(" +
+          Math.round((m[1] * PAPER[0]) / 255) + "," +
+          Math.round((m[2] * PAPER[1]) / 255) + "," +
+          Math.round((m[3] * PAPER[2]) / 255) + "," +
+          (m[4] === undefined ? "1" : m[4]) +
+          ")";
+      }
+    }
+    paperTintCache[css] = out;
+    return out;
+  }
+
   function poly(plist, args) {
     var args = args != undefined ? args : {};
     var xof = args.xof != undefined ? args.xof : 0;
@@ -535,6 +573,8 @@
     var fil = args.fil != undefined ? args.fil : "rgba(0,0,0,0)";
     var str = args.str != undefined ? args.str : fil;
     var wid = args.wid != undefined ? args.wid : 0;
+    fil = paperTint(fil);
+    str = paperTint(str);
 
     var canv = "<polyline points='";
     for (var i = 0; i < plist.length; i++) {
@@ -2987,7 +3027,7 @@
           "<text font-size='" +
           hei * 0.6 +
           "' font-family='Verdana'" +
-          " style='fill:rgba(100,100,100,0.9)'" +
+          " style='fill:" + paperTint("rgba(100,100,100,0.9)") + "'" +
           " text-anchor='middle' transform='translate(" +
           (mp[0] + xoff) +
           "," +
@@ -3931,8 +3971,41 @@
     planmtx: {}
   };
 
-  function calcViewBox() {
-    return MEM.cursx.toFixed(1) + " 0 " + viewW + " " + viewH;
+  // World-space x of the SVG's left edge. The SVG itself only changes when the
+  // chunks are re-rendered (rebase); in between, scrolling is a pure translate.
+  var baseX = 0;
+  // World units rendered past the view: must exceed the ~256 units the camera
+  // drifts between two rebases, with headroom for a slow frame.
+  var SPAN_EXTRA = 600;
+
+  function getScale() {
+    return (window.innerHeight || 1080) / viewH;
+  }
+
+  // Same framing the old viewBox + xMidYMid "slice" gave: height fits exactly,
+  // and a narrow window crops the sides evenly.
+  function getOffsetX() {
+    return ((window.innerWidth || 1920) - viewW * getScale()) / 2;
+  }
+
+  function applyScroll() {
+    var svg = document.getElementById("SVG");
+    if (!svg) return;
+    var tx = getOffsetX() - (MEM.cursx - baseX) * getScale();
+    svg.style.transform = "translate3d(" + tx.toFixed(2) + "px,0,0)";
+  }
+
+  // Re-anchor the SVG at the camera. Call in the same task as any change to the
+  // chunk markup so the user never sees an intermediate state.
+  function rebase() {
+    var svg = document.getElementById("SVG");
+    if (!svg) return;
+    var scale = getScale();
+    baseX = MEM.cursx;
+    svg.setAttribute("viewBox", baseX.toFixed(1) + " 0 " + (viewW + SPAN_EXTRA) + " " + viewH);
+    svg.style.width = ((viewW + SPAN_EXTRA) * scale).toFixed(2) + "px";
+    svg.style.height = (viewH * scale).toFixed(2) + "px";
+    applyScroll();
   }
 
   function chunkloader(xmin, xmax) {
@@ -4059,6 +4132,7 @@
     if (g) {
       g.innerHTML = MEM.canv;
     }
+    rebase();
   }
 
   // Initial chunk generation
@@ -4066,9 +4140,10 @@
   chunkrender(0, viewW + 1536);
 
   document.getElementById("BG").innerHTML =
-    "<svg id='SVG' xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' " +
-    "preserveAspectRatio='xMidYMid slice' viewBox='" + calcViewBox() + "'>" +
+    "<svg id='SVG' xmlns='http://www.w3.org/2000/svg' " +
+    "preserveAspectRatio='xMinYMin slice'>" +
     "<g id='G'>" + MEM.canv + "</g></svg>";
+  rebase();
 
   // Infinite Scroll Engine (Camera moves rightwards -> scenery drifts from Right to Left)
   var scrollSpeed = 24; // Coordinate pixels per second
@@ -4082,11 +4157,8 @@
 
     MEM.cursx += scrollSpeed * delta;
 
-    // Fast GPU attribute update
-    var svg = document.getElementById("SVG");
-    if (svg) {
-      svg.setAttribute("viewBox", calcViewBox());
-    }
+    // Compositor-only: slides the already-rasterised layer, no repaint.
+    applyScroll();
 
     // Incrementally load ahead and prune behind every ~256px
     if (MEM.cursx - lastChunkCheckX >= 256 || MEM.cursx + viewW + 1024 > MEM.xmax) {
@@ -4103,11 +4175,7 @@
   window.addEventListener("resize", function() {
     viewW = getViewWidth();
     chunkloader(MEM.cursx, MEM.cursx + viewW + 1536);
-    pruneAndRender();
-    var svg = document.getElementById("SVG");
-    if (svg) {
-      svg.setAttribute("viewBox", calcViewBox());
-    }
+    pruneAndRender(); // also rebases to the new window size
   });
   </script>
 </body>

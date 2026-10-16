@@ -32,7 +32,8 @@
     "test:qa:report:html": "npx playwright show-report",
     "test:qa:setup": "playwright install chromium",
     "test:qa:typecheck": "tsc -p tsconfig.qa.json",
-    "shots": "playwright test --config playwright.demo.config.ts"
+    "shots": "playwright test --config playwright.demo.config.ts",
+    "shots:modules": "node scripts/capture-module-screenshots.mjs"
   },
   "dependencies": {
     "@blobatar/react": "^2.7.0",

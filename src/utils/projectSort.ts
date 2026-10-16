@@ -2,7 +2,7 @@
 // especially "a project with no value sorts last, whichever way you sort" —
 // are the same in the table, the cards, and the tests.
 
-export type BuiltinProjectSortKey = "default" | "manual" | "name" | "client" | "type" | "managers" | "rating" | "invoiceDate" | "deadline" | "progress" | "status" | "value" | "invoicable" | "division";
+export type BuiltinProjectSortKey = "default" | "manual" | "name" | "client" | "type" | "managers" | "rating" | "invoiceDate" | "deadline" | "progress" | "status" | "value" | "invoicable" | "stillToBePaid" | "division";
 
 /**
  * A column to order by: one of the built-in ones, or `attr:<attributeId>` for a
@@ -61,6 +61,7 @@ export const PROJECT_SORT_KEYS: readonly BuiltinProjectSortKey[] = [
   "status",
   "value",
   "invoicable",
+  "stillToBePaid",
   "division",
 ];
 
@@ -148,6 +149,8 @@ export interface ProjectSortValues {
   value: number | null;
   /** The project's invoicable amount, or null when it has none. */
   invoicable: number | null;
+  /** What is still to be paid to us on the project, or null when it has no value. */
+  stillToBePaid: number | null;
   /** The division, "" when unassigned. */
   division: string;
   /** Position of the status in the workflow order. */

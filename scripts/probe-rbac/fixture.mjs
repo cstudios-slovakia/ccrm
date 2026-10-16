@@ -25,6 +25,22 @@ export const USERS = {
   leads_only: { id: 'probe-leads-only', name: 'Probe LeadsOnly', email: 'probe-leads-only@probe.test', role: 'LeadsOnly' },
   no_edit: { id: 'probe-no-edit', name: 'Probe No Edit', email: 'probe-no-edit@probe.test', role: 'NoEdit' },
   account_editor: { id: 'probe-account-editor', name: 'Probe Account Editor', email: 'probe-account-editor@probe.test', role: 'AccountEditor' },
+  // Orders + tickets (Mango). All four can edit tasks, projects, leads and general settings, so the
+  // cross-module rows that carry ticket data (task link, widget setup, ticket settings) are reachable.
+  tk_none: { id: 'probe-tk-none', name: 'Probe TK None', email: 'probe-tk-none@probe.test', role: 'TicketsNothing' },
+  tk_view: { id: 'probe-tk-view', name: 'Probe TK View', email: 'probe-tk-view@probe.test', role: 'TicketsView' },
+  tk_edit: { id: 'probe-tk-edit', name: 'Probe TK Edit', email: 'probe-tk-edit@probe.test', role: 'TicketsEdit' },
+  tk_full: { id: 'probe-tk-full', name: 'Probe TK Full', email: 'probe-tk-full@probe.test', role: 'TicketsFull' },
+};
+
+// Values the orders / tickets checks look for in raw response bodies and in the database.
+export const TK = {
+  orderNumber: 'OBJ-PROBE-1',
+  ticketTitle: 'Secret Ticket Title',
+  ticketBody: 'Secret ticket message body',
+  publicHash: 'probe-public-hash-0001',
+  leadEmail: 'secret-sender@client.probe',
+  imapHost: 'imap.probe-secret.test',
 };
 
 export const BILLING_SETTINGS = { companyName: 'Probe Billing Co', iban: 'SK0000000000000000000000' };
@@ -195,8 +211,26 @@ export function fixtureSql() {
   // Every key explicit, so nothing falls back to a legacy "edit" default: this role can edit nothing.
   const noEditPerms = { ...nothing, tasks: 'view', updates: 'view' };
 
+  // Orders + tickets roles: every key explicit, differing only in the two modules under test.
+  const tkBase = {
+    ...nothing,
+    tasks: 'edit',
+    'tasks.view_all': 'edit',
+    projects: 'edit',
+    leads: 'edit',
+    general_config: 'edit',
+  };
+  const tkNoneRolePerms = { ...tkBase };
+  const tkViewPerms = { ...tkBase, tickets: 'view', orders: 'view' };
+  const tkEditPerms = { ...tkBase, tickets: 'edit', orders: 'edit' };
+  const tkFullPerms = { ...tkBase, tickets: 'edit', 'tickets.delete': 'edit', orders: 'edit', 'orders.delete': 'edit', clients: 'edit' };
+
   const roles = [
     { name: 'Admin', permissions: {} },
+    { name: 'TicketsNothing', permissions: tkNoneRolePerms },
+    { name: 'TicketsView', permissions: tkViewPerms },
+    { name: 'TicketsEdit', permissions: tkEditPerms },
+    { name: 'TicketsFull', permissions: tkFullPerms },
     { name: 'Project Manager', permissions: pmPerms },
     { name: 'HR', permissions: hrPerms },
     { name: 'HR-Lite', permissions: hrLitePerms },
@@ -294,6 +328,26 @@ export function fixtureSql() {
 
   lines.push('DELETE FROM unified_entries WHERE id IN ("ue-probe-1");');
   lines.push(`INSERT INTO unified_entries (id, name, icon, color, modules_json) VALUES ('ue-probe-1', 'Secret Unified Entry', 'Folder', '#000', '[]');`);
+
+  // Orders, tickets and the rows that carry ticket data on other modules.
+  lines.push('DELETE FROM order_items WHERE order_id = "ord-probe-1";');
+  lines.push('DELETE FROM orders WHERE id = "ord-probe-1";');
+  lines.push(`INSERT INTO orders (id, order_number, type, status, customer_type, client_id, order_date, total_gross_amount) VALUES ('ord-probe-1', ${q(TK.orderNumber)}, 'sales', 'new', 'client', 'client-probe-1', '2026-01-10', 120);`);
+  lines.push(`INSERT INTO order_items (id, order_id, name, quantity, unit_price) VALUES ('oi-probe-1', 'ord-probe-1', 'Probe item', 1, 100);`);
+  lines.push('DELETE FROM ticket_messages WHERE ticket_id IN ("tck-probe-1");');
+  lines.push('DELETE FROM ticket_task_links WHERE ticket_id IN ("tck-probe-1");');
+  lines.push('DELETE FROM tickets WHERE id IN ("tck-probe-1");');
+  lines.push('DELETE FROM support_contracts WHERE id IN ("sc-probe-1");');
+  lines.push(`INSERT INTO support_contracts (id, client_id, project_id, notes) VALUES ('sc-probe-1', 'client-probe-1', 'proj-probe-1', 'Probe support contract');`);
+  lines.push(`INSERT INTO tickets (id, ticket_number, title, status, priority) VALUES ('tck-probe-1', 'TCK-PROBE1', ${q(TK.ticketTitle)}, 'new', 'normal');`);
+  lines.push(`INSERT INTO ticket_messages (id, ticket_id, author_type, author_name, body) VALUES ('tm-probe-1', 'tck-probe-1', 'client', 'Probe Client', ${q(TK.ticketBody)});`);
+  lines.push('DELETE FROM tasks WHERE id = "task-tk-1";');
+  lines.push(`INSERT INTO tasks (id, title, owner, created_by, related_ticket_id, status, priority, archived, deadline) VALUES ('task-tk-1', 'Task linked to a ticket', 'Probe Admin', 'Probe Admin', 'tck-probe-1', 'New', 'medium', 0, '2026-12-31');`);
+  lines.push(`INSERT INTO ticket_task_links (ticket_id, task_id, sync_mode) VALUES ('tck-probe-1', 'task-tk-1', 'auto_resolve');`);
+  lines.push(`UPDATE projects SET ticket_widget_enabled = 1, ticket_public_hash = ${q(TK.publicHash)}, ticket_allowed_domains = '["probe.test"]' WHERE id = 'proj-probe-1';`);
+  lines.push(`UPDATE leads SET ticket_allowed_emails = ${q(JSON.stringify([TK.leadEmail]))} WHERE id = 'lead-probe-1';`);
+  lines.push('DELETE FROM system_settings WHERE `key` = "TICKET_SETTINGS";');
+  lines.push(`INSERT INTO system_settings (\`key\`, \`value\`) VALUES ('TICKET_SETTINGS', ${q(JSON.stringify({ imapHost: TK.imapHost }))});`);
 
   lines.push('SET FOREIGN_KEY_CHECKS=1;');
   return lines.join('\n');

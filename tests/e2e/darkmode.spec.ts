@@ -272,7 +272,8 @@ const collectDarkRegressions = async (page: Page, label: string) => {
 
 test.describe('Dark mode', () => {
   test.beforeEach(async ({ page }) => {
-    await startSession(page);
+    // The user's row says dark too: the app adopts the row's appearance over the browser's.
+    await startSession(page, { themeMode: 'dark' });
     // The appearance is read from localStorage before the first paint, exactly
     // as index.html does it, so the app boots dark rather than flipping later.
     await page.addInitScript(() => {
@@ -389,6 +390,29 @@ test.describe('Dark mode', () => {
     if (findings.length) {
       throw new Error(
         `${findings.length} element group(s) below ${MIN_CONTRAST}:1 inside an overlay in dark mode:\n` +
+          describeFindings(findings),
+      );
+    }
+  });
+
+  /**
+   * The module setup wizard is a large portaled modal full of screenshots and
+   * descriptive text, painted on its own surfaces, so it gets the overlay audit
+   * the drawers above get. Opened from Settings -> Visible Modules, where the
+   * seeded admin (an existing user) can launch it on demand.
+   */
+  test('the module setup wizard stays legible in dark mode', async ({ page }) => {
+    await gotoView(page, '#settings/modules');
+    await page.getByTestId('run-module-setup-wizard').click();
+    await expect(page.getByTestId('module-wizard')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-appearance', 'dark');
+    await page.waitForTimeout(700);
+
+    const findings = await collectDarkRegressions(page, 'module setup wizard');
+    if (findings.length) {
+      throw new Error(
+        `${findings.length} element group(s) below ${MIN_CONTRAST}:1 in the module setup wizard in dark mode:
+` +
           describeFindings(findings),
       );
     }

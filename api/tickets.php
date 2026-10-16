@@ -657,6 +657,14 @@ if ($action === 'public_status') {
 require_once __DIR__ . '/auth.php';
 $sessionUser = ccrm_require_auth();
 
+// Every authenticated action here changes ticket state or acts as the support
+// desk (probes the mailbox, imports mail as tickets, sends mail as support), so
+// each needs edit on `tickets`. The public actions above are not gated.
+require_once __DIR__ . '/read_scope.php';
+if (in_array($action, ['test_imap', 'poll_imap', 'send_email_reply'], true)) {
+    ccrm_require_perm($pdo, $sessionUser, 'tickets', 'edit');
+}
+
 if ($action === 'test_imap') {
     $savedSettings = ccrm_load_ticket_settings($pdo);
     $host = trim((string)($input['imapHost'] ?? $savedSettings['imapHost'] ?? ''));
