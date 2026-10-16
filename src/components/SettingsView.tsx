@@ -7192,10 +7192,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       options={[
                         { value: "none", label: t("Disabled", "Zakázané", "Letiltva") },
                         { value: "mariadb", label: t("MariaDB (Native SQL Vectors - Recommended)", "MariaDB (Natívne SQL vektory – Odporúčané)", "MariaDB (Natív SQL vektorok – Ajánlott)") },
-                        { value: "qdrant", label: t("Qdrant Sidecar Container", "Qdrant Sidecar kontajner", "Qdrant Sidecar konténer") },
-                        { value: "pinecone", label: t("Pinecone Cloud Service", "Cloudová služba Pinecone", "Pinecone felhőszolgáltatás") },
+                        // Indexing and semantic search run on MariaDB only (api/vector_index.php); the other two
+                        // backends can only be pinged, so they are shown but cannot be chosen.
+                        { value: "qdrant", disabled: true, label: t("Qdrant Sidecar Container (not supported yet)", "Qdrant Sidecar kontajner (zatiaľ nepodporované)", "Qdrant Sidecar konténer (még nem támogatott)") },
+                        { value: "pinecone", disabled: true, label: t("Pinecone Cloud Service (not supported yet)", "Cloudová služba Pinecone (zatiaľ nepodporované)", "Pinecone felhőszolgáltatás (még nem támogatott)") },
                       ]}
                     />
+                    {(vectorDb === "qdrant" || vectorDb === "pinecone") && (
+                      <p className="text-ui font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-2xl">
+                        {t(
+                          "This backend is saved from an earlier version but is not supported yet: the assistant cannot build or search a vector index on it and answers from keyword search only. Select MariaDB to use semantic search.",
+                          "Tento backend je uložený z predchádzajúcej verzie, ale zatiaľ nie je podporovaný: asistent v ňom nevie vytvoriť ani prehľadávať vektorový index a odpovedá len z vyhľadávania podľa kľúčových slov. Pre sémantické vyhľadávanie zvoľte MariaDB.",
+                          "Ez a háttér egy korábbi verzióból maradt mentve, de még nem támogatott: az asszisztens nem tud rajta vektorindexet építeni vagy abban keresni, ezért csak kulcsszavas keresésből válaszol. A szemantikus kereséshez válassza a MariaDB-t."
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   {vectorDb === "mariadb" && (
