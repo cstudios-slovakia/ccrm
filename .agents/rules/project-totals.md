@@ -7,7 +7,7 @@ description: A countable field in the projects list must be added to the Totals 
 The projects list (table view) ends with a **Totals** row. It is not hand-built
 per column: it walks the visible columns and sums every one declared in
 `SUMMABLE_PROJECT_COLUMNS` in [`src/utils/projectColumns.ts`](../../src/utils/projectColumns.ts).
-Today that is `value` and `invoicable`.
+Today that is `value`, `invoicable` and `stillToBePaid`.
 
 When you add a column or field that can be counted or summed (an amount, a
 quantity, hours, a count — anything where a total means something):

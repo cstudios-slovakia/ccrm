@@ -41,6 +41,17 @@ test("invoicable sorts numerically and an empty value goes last in both directio
   assert.deepEqual(order(sortProjects(invoiced, { key: "invoicable", direction: "desc" }, values)), ["c", "a", "b"]);
 });
 
+test("still to be paid sorts numerically, keeps a paid-off zero, and an empty value goes last", () => {
+  const owed: Row[] = [
+    { id: "a", stillToBePaid: 900 },
+    { id: "b", stillToBePaid: null },
+    { id: "c", stillToBePaid: 0 },
+    { id: "d", stillToBePaid: 2676.67 },
+  ];
+  assert.deepEqual(order(sortProjects(owed, { key: "stillToBePaid", direction: "asc" }, values)), ["c", "a", "d", "b"]);
+  assert.deepEqual(order(sortProjects(owed, { key: "stillToBePaid", direction: "desc" }, values)), ["d", "a", "c", "b"]);
+});
+
 const values = (r: Row): ProjectSortValues => ({
   name: r.name ?? "",
   client: "",
@@ -52,6 +63,7 @@ const values = (r: Row): ProjectSortValues => ({
   progress: r.progress ?? null,
   value: r.value ?? null,
   invoicable: r.invoicable ?? null,
+  stillToBePaid: r.stillToBePaid ?? null,
   division: r.division ?? "",
   statusRank: r.statusRank ?? 0,
 });

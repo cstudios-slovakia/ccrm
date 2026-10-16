@@ -57,6 +57,7 @@ import {
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
+import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
@@ -713,10 +714,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
     const pInvoicable = Math.max(0, pVal - pInvoiced);
 
+    /* "Still to be paid to us" is the Finances tab's own figure, so it comes from
+       the same helpers that tab uses rather than from the sums above. */
+    const contract = resolveProjectValue(p, pType, lead, defaultCurrency);
+    const stillToBePaid = projectBilling(contract.value, financialRecords || [], p.id).stillToBePaid;
+
     return {
       totalBudget: pVal,
       invoiced: pInvoiced,
       invoicable: pInvoicable,
+      stillToBePaid,
       currency: pCurrency,
       hasValue: pVal > 0,
     };
@@ -913,6 +920,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      list is filtered still has to leave the hidden projects somewhere. */
   const sortValueActive = effectiveSort.key === "value";
   const sortInvoicableActive = effectiveSort.key === "invoicable";
+  const sortStillToBePaidActive = effectiveSort.key === "stillToBePaid";
   const orderedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder(projectStatuses);
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
@@ -941,13 +949,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
         value: sortValueActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).totalBudget || null) : null,
         invoicable: sortInvoicableActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).invoicable || null) : null,
+        /* Zero is an answer here — fully paid — so only a project with no value is empty. */
+        stillToBePaid: sortStillToBePaidActive ? (() => {
+          const fin = getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId));
+          return fin.hasValue ? fin.stillToBePaid : null;
+        })() : null,
         division: p.division || "",
         statusRank: rank === -1 ? statusOrder.length : rank,
         attributes,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, sortInvoicableActive, getProjectFinancials]);
+  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, sortInvoicableActive, sortStillToBePaidActive, getProjectFinancials]);
 
   /* Every project in the structure: the hand-set order, whatever the sort says.
      Projects it has never seen (created since the last drag) sit on top. */
@@ -1280,6 +1293,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "status", label: t("Status", "Stav", "Állapot") },
     { value: "value", label: t("Value", "Hodnota", "Érték") },
     { value: "invoicable", label: t("Invoicable", "Fakturovateľné", "Számlázható") },
+    { value: "stillToBePaid", label: t("Still to be paid", "Zostáva uhradiť", "Még fizetendő") },
     { value: "division", label: t("Division", "Divízia", "Divízió") },
     ...sortableAttributes.map(({ key, attribute }) => ({ value: key as ProjectSortKey, label: attribute.name })),
   ];
@@ -1582,6 +1596,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ? (
             <span className={`text-ui font-bold tabular-nums whitespace-nowrap ${fin.invoicable > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}>
               {formatMoney(fin.invoicable, fin.currency, userLanguage)}
+            </span>
+          )
+          : emptyCell;
+      }
+      case "stillToBePaid": {
+        const fin = getProjectFinancials(p, pType, lead);
+        return fin.hasValue
+          ? (
+            <span className={`text-ui font-bold tabular-nums whitespace-nowrap ${fin.stillToBePaid > 0 ? "text-blue-600 dark:text-blue-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+              {formatMoney(fin.stillToBePaid, fin.currency, userLanguage)}
             </span>
           )
           : emptyCell;
