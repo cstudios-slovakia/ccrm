@@ -73,8 +73,8 @@ const TASK_STATES = ['New', 'In progress', 'Blocked', 'Done'];
 
 /**
  * `Silvia` is deliberately first and has a rich timeline with attachments: she
- * is the client the crawler drills into to exercise the client profile detail
- * view, its sub-tabs and its `?tab=` deep routing.
+ * is the lead the specs open for the lead detail view and its task, project and
+ * invoice links. She is a pipeline lead, not a client record.
  */
 const LEADS = [
   {
@@ -228,6 +228,83 @@ const LEADS = [
     companyId: '87654321',
     legalForm: 'a.s.',
     categories: ['Services'],
+    timeline: [],
+  },
+  // Client records. The Clients register lists only these (utils/clientRecord.ts:
+  // an id starting `client-`, or a positive adjustment); every lead above is a
+  // pipeline lead and never appears there. They are appended, not prepended, so
+  // `leads[0]` is still Silvia, and their names are unique so a name-based picker
+  // or filter never finds two matches.
+  {
+    id: 'client-kovac',
+    name: 'Kováč Reality s.r.o.',
+    city: 'Trnava',
+    clientType: 'business',
+    status: 'accepted',
+    source: 'website',
+    owner: 'Erik',
+    value: 12600,
+    createdAt: isoStamp(-60, '09:30'),
+    rating: 5,
+    phone: '+421 905 123 456',
+    email: 'obchod@kovacreality.sk',
+    address: { street: 'Štefánikova 8', city: 'Trnava', postalCode: '91701', country: 'Slovakia' },
+    companyId: '45678901',
+    taxId: '2045678901',
+    vatId: 'SK2045678901',
+    contactPerson: 'Marek Kováč',
+    website: 'https://kovacreality.sk',
+    legalForm: 's.r.o.',
+    categories: ['Services'],
+    timeline: [
+      {
+        id: 'ev-kovac-1',
+        type: 'email',
+        timestamp: isoStamp(-45, '10:10'),
+        title: 'Rámcová dohoda',
+        content: 'Klient potvrdil rámcovú dohodu na správu nehnuteľností.',
+        isOutgoing: false,
+        author: 'Erik',
+      },
+      {
+        id: 'ev-kovac-2',
+        type: 'offer',
+        timestamp: isoStamp(-30, '13:00'),
+        title: 'Zmluva podpísaná',
+        content: 'Podpísaná rámcová zmluva.',
+        fileName: 'zmluva-kovac.pdf',
+        fileSize: '201 KB',
+        fileType: 'contract',
+        filePath: '/uploads/zmluva-kovac.pdf',
+        attachments: [{ name: 'zmluva-kovac.pdf', size: '201 KB', path: '/uploads/zmluva-kovac.pdf' }],
+        author: 'Erik',
+      },
+      {
+        id: 'ev-kovac-3',
+        type: 'appointment',
+        timestamp: isoStamp(4, '09:00'),
+        title: 'Štvrťročná kontrola',
+        content: 'Stretnutie v kancelárii klienta.',
+        extraTime: '10:00',
+        author: 'Erik',
+      },
+    ],
+  },
+  {
+    id: 'client-bielikova',
+    name: 'Bieliková Lenka',
+    city: 'Banská Bystrica',
+    clientType: 'person',
+    status: 'accepted',
+    source: 'instagram',
+    owner: 'Mária',
+    value: 950,
+    createdAt: isoStamp(-18, '15:20'),
+    rating: 4,
+    phone: '+421 906 321 654',
+    email: 'lenka.bielikova@example.com',
+    address: { street: 'Námestie SNP 3', city: 'Banská Bystrica', postalCode: '97401', country: 'Slovakia' },
+    categories: ['Products'],
     timeline: [],
   },
 ];
@@ -862,8 +939,13 @@ export function buildSyncPayload() {
   };
 }
 
-/** Name of the client whose profile the crawler drills into. */
-export const DRILLDOWN_CLIENT = 'Silvia';
+/**
+ * Name of the client whose profile the dark-mode sweep drills into. It must be a
+ * client *record* (see `client-kovac` above): `Silvia` is a pipeline lead, which
+ * the Clients register does not list, so the register stayed empty and a click
+ * on her name waited for the test timeout.
+ */
+export const DRILLDOWN_CLIENT = 'Kováč Reality s.r.o.';
 
 /**
  * Installs the backend mocks and pre-seeds an authenticated admin session.
@@ -901,6 +983,8 @@ export async function installBackendMocks(
      * as well as in localStorage.
      */
     themeMode?: 'system' | 'light' | 'dark';
+    /** Further accounts of the workspace, on top of the two seeded ones. */
+    extraUsers?: (typeof TEST_USER)[];
   } = {},
 ) {
   const baseUser = options.user ?? TEST_USER;
@@ -944,7 +1028,7 @@ export async function installBackendMocks(
         contentType: 'application/json',
         body: JSON.stringify({
           ...payload,
-          users: payload.users
+          users: [...payload.users, ...(options.extraUsers ?? [])]
             .map((u) => (u.email === signedIn.email ? signedIn : u))
             .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
           settings:

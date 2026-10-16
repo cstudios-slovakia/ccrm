@@ -7,11 +7,22 @@ import type { UserPrefs } from "./userPrefs.ts";
  * tested (moduleWizard.test.ts).
  *
  * Which modules are visible is WORKSPACE data (`integrationsConfig.disabledModules`,
- * the same field Settings -> Visible Modules edits). Whether a given admin has
- * been shown the wizard is PER USER (`UserPrefs.moduleWizardCompletedAt`).
+ * the same field Settings -> Visible Modules edits), and so is the question of
+ * whether the first-run setup has happened (`integrationsConfig.moduleSetupCompletedAt`):
+ * the wizard opens by itself once per installation, for the first admin only. Every
+ * later admin would otherwise overwrite the choice everyone in the workspace sees;
+ * from then on it is changed by hand in Settings -> Visible Modules.
  */
 
 type UserLike = { role?: string | null; metadata_json?: unknown } | null | undefined;
+
+/** What the wizard needs to know about the workspace, as opposed to the person. */
+export interface ModuleWizardWorkspace {
+  /** `integrationsConfig.moduleSetupCompletedAt`: set once the first-run setup was dealt with. */
+  setupCompletedAt?: string | null;
+  /** Every OTHER account of the workspace (the one being checked is left out). */
+  otherUsers?: readonly UserLike[];
+}
 
 /**
  * Browser-side traces that this browser has been used to run the app before.
@@ -37,8 +48,15 @@ const NON_USAGE_LEGACY_KEYS = new Set<keyof UserPrefs>(["theme"]);
  * have a popup sprung on them. Existing accounts already carry a blob, so they
  * are never marked.
  *
- * Two guards keep the signal honest:
- *  - only admins: the wizard writes workspace-wide settings;
+ * Why only the first admin? The wizard writes workspace-wide settings, so it is
+ * an installation step, not an onboarding step. A new admin on a workspace that
+ * is already in use (the setup stamp is set, or any other account has been
+ * through its first login) is never marked: their choices would override what
+ * every user of the app sees. After the first run, modules are managed by hand in
+ * Settings -> Visible Modules.
+ *
+ * Guards that keep the signal honest:
+ *  - only admins;
  *  - a browser that still holds pre-migration preferences (see readLegacyPrefs)
  *    belongs to someone who has used the app, even if their account never
  *    reached the migration.
@@ -49,10 +67,13 @@ const NON_USAGE_LEGACY_KEYS = new Set<keyof UserPrefs>(["theme"]);
  */
 export const shouldMarkModuleWizardPending = (
   user: UserLike,
-  legacyPrefs: Partial<UserPrefs> = {}
+  legacyPrefs: Partial<UserPrefs> = {},
+  workspace: ModuleWizardWorkspace = {}
 ): boolean => {
   if (!user || !isAdminRoleName(user.role)) return false;
   if (hasStoredPrefs(user)) return false;
+  if (workspace.setupCompletedAt) return false;
+  if ((workspace.otherUsers ?? []).some((other) => hasStoredPrefs(other))) return false;
   const hasUsageTraces = (Object.keys(legacyPrefs) as Array<keyof UserPrefs>).some(
     (key) => !NON_USAGE_LEGACY_KEYS.has(key)
   );
@@ -61,13 +82,20 @@ export const shouldMarkModuleWizardPending = (
 
 /**
  * Should the wizard open by itself right now? Re-checks the role, because a
- * session can outlive a demotion and the wizard changes workspace settings.
+ * session can outlive a demotion and the wizard changes workspace settings, and
+ * the workspace stamp, because another admin may have finished the setup since
+ * this one was marked.
  */
 export const shouldShowModuleWizard = (
   user: UserLike,
-  prefs: Pick<UserPrefs, "moduleWizardPending" | "moduleWizardCompletedAt">
+  prefs: Pick<UserPrefs, "moduleWizardPending" | "moduleWizardCompletedAt">,
+  workspace: Pick<ModuleWizardWorkspace, "setupCompletedAt"> = {}
 ): boolean =>
-  !!user && isAdminRoleName(user.role) && prefs.moduleWizardPending === true && !prefs.moduleWizardCompletedAt;
+  !!user &&
+  isAdminRoleName(user.role) &&
+  prefs.moduleWizardPending === true &&
+  !prefs.moduleWizardCompletedAt &&
+  !workspace.setupCompletedAt;
 
 /* ------------------------------------------------------------------ draft */
 

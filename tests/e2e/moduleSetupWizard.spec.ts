@@ -12,6 +12,9 @@ import { SECOND_USER, TEST_USER } from './helpers/fixture';
  * `integrationsConfig.disabledModules` Settings uses, that they survive a reload,
  * and that the dialog can be driven from the keyboard alone.
  *
+ * The wizard is a first-installation step: it opens only for the first admin of a
+ * workspace nobody has signed in to yet, never for an admin who is added later.
+ *
  * The seeded admin counts as an EXISTING user (it carries a preferences blob and a
  * completed-wizard stamp), so no other spec ever sees the dialog. A brand-new admin
  * is the same user without that blob.
@@ -37,7 +40,7 @@ const settingsSwitch = (page: Page, title: string) => page.getByRole('switch', {
  * name. (The wizard's strings are covered in all three languages by the unit
  * tests of the catalog; this spec is about behaviour.)
  */
-const begin = async (page: Page, user?: typeof TEST_USER | typeof SECOND_USER) => {
+const begin = async (page: Page, user?: typeof TEST_USER | typeof SECOND_USER, extraUsers?: (typeof TEST_USER)[]) => {
   await page.addInitScript(() => {
     try {
       window.localStorage.setItem('crm_language', 'en');
@@ -45,7 +48,7 @@ const begin = async (page: Page, user?: typeof TEST_USER | typeof SECOND_USER) =
       /* storage unavailable */
     }
   });
-  await startSession(page, user ? { user } : undefined);
+  await startSession(page, user || extraUsers ? { user, extraUsers } : undefined);
 };
 
 /** Waits out the dialog's exit animation. */
@@ -76,6 +79,19 @@ test.describe('Module setup wizard', () => {
     // The first-login migration and the auto-open effect both run within a moment of sync.
     await page.waitForTimeout(1500);
     await expect(wizard(page)).toHaveCount(0);
+  });
+
+  test('does not open for a new admin once another account has used the workspace', async ({ page }) => {
+    // The workspace is already in use: a second admin must not be offered a setup
+    // whose Confirm would override the modules every user of the app sees.
+    const earlierAdmin = { ...TEST_USER, id: 'user-first', email: 'first@crm.com', name: 'First' };
+    await begin(page, NEW_ADMIN, [earlierAdmin]);
+    await gotoView(page, '#dashboard');
+    await page.waitForTimeout(1500);
+    await expect(wizard(page)).toHaveCount(0);
+    // It stays available by hand.
+    await openVisibleModules(page);
+    await expect(page.getByTestId('run-module-setup-wizard')).toBeVisible();
   });
 
   test('does not open for a non-admin, and offers them no launch button', async ({ page }) => {

@@ -42,6 +42,26 @@ test("a browser holding pre-migration preferences belongs to someone who has use
   assert.equal(shouldMarkModuleWizardPending(admin, {}), true);
 });
 
+test("a new admin on a workspace that is already in use is never marked", () => {
+  // Another account has been through its first login: this is not the installation.
+  assert.equal(shouldMarkModuleWizardPending(admin, {}, { otherUsers: [withPrefs("Admin")] }), false);
+  assert.equal(shouldMarkModuleWizardPending(admin, {}, { otherUsers: [{ role: "Manager", metadata_json: "{}" }, withPrefs("Employee")] }), false);
+  // The setup was already dealt with, whoever did it.
+  assert.equal(shouldMarkModuleWizardPending(admin, {}, { setupCompletedAt: "2026-10-15T08:00:00.000Z" }), false);
+});
+
+test("the first admin is marked even when other accounts exist but have never signed in", () => {
+  const neverSignedIn = [{ role: "Manager", metadata_json: "{}" }, { role: "Admin", metadata_json: undefined as unknown }];
+  assert.equal(shouldMarkModuleWizardPending(admin, {}, { otherUsers: neverSignedIn }), true);
+  assert.equal(shouldMarkModuleWizardPending(admin, {}, { otherUsers: [], setupCompletedAt: null }), true);
+});
+
+test("the wizard does not open once the workspace setup is stamped, even for a pending admin", () => {
+  const pending = { ...DEFAULT_USER_PREFS, moduleWizardPending: true };
+  assert.equal(shouldShowModuleWizard(admin, pending, { setupCompletedAt: "2026-10-15T08:00:00.000Z" }), false);
+  assert.equal(shouldShowModuleWizard(admin, pending, { setupCompletedAt: null }), true);
+});
+
 test("the wizard shows only for an admin whose pending flag is set and not yet completed", () => {
   const pending = { ...DEFAULT_USER_PREFS, moduleWizardPending: true };
   assert.equal(shouldShowModuleWizard(admin, pending), true);

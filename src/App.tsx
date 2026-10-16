@@ -2208,7 +2208,10 @@ ${log.payload || ''}
         // the blob written here is what makes hasStoredPrefs() true from now on.
         // So the module setup wizard's "this admin is new" verdict is recorded
         // now, as a flag — see shouldMarkModuleWizardPending.
-        moduleWizardPending: shouldMarkModuleWizardPending(currentUser, legacyPrefs)
+        moduleWizardPending: shouldMarkModuleWizardPending(currentUser, legacyPrefs, {
+          setupCompletedAt: integrationsConfig?.moduleSetupCompletedAt,
+          otherUsers: users.filter(u => u.email !== currentUser.email)
+        })
       }
     };
     updateUsersAndSync(prevUsers => prevUsers.map(u =>
@@ -2296,10 +2299,11 @@ ${log.payload || ''}
   }, [currentUser, users, isInitialSyncResolved]);
 
   // ---------------------------------------------------------------------------
-  // Module setup wizard. Opens by itself once for a brand-new admin, and on demand
-  // from Settings -> Visible Modules. It reads and writes the same workspace field
-  // as that page (integrationsConfig.disabledModules); the per-user "done" flag is
-  // the only thing it stores about the person.
+  // Module setup wizard. Opens by itself once per installation, for the first
+  // admin only, and on demand from Settings -> Visible Modules. It reads and writes
+  // the same workspace field as that page (integrationsConfig.disabledModules).
+  // That the first-run setup happened is workspace data too
+  // (integrationsConfig.moduleSetupCompletedAt), so a later admin never gets it.
   // ---------------------------------------------------------------------------
   const moduleCatalog = useModuleCatalog(userLanguage, customDashboards, unifiedEntries);
   const [moduleWizardOpen, setModuleWizardOpen] = useState(false);
@@ -2310,24 +2314,31 @@ ${log.payload || ''}
     // The flag is only meaningful once the row's own preferences have loaded.
     if (!users.some(u => u.email === currentUser.email)) return;
     if (moduleWizardAutoOpenedForRef.current === currentUser.email) return;
-    if (!shouldShowModuleWizard(currentUser, userPrefs)) return;
+    if (!shouldShowModuleWizard(currentUser, userPrefs, { setupCompletedAt: integrationsConfig?.moduleSetupCompletedAt })) return;
     moduleWizardAutoOpenedForRef.current = currentUser.email;
     setModuleWizardOpen(true);
-  }, [currentUser, users, isInitialSyncResolved, userPrefs]);
+  }, [currentUser, users, isInitialSyncResolved, userPrefs, integrationsConfig?.moduleSetupCompletedAt]);
 
   const announce = (message: string) => {
     if (typeof (window as any).showToast === "function") (window as any).showToast(message);
   };
 
-  const finishModuleWizard = () => {
+  // Stamps the workspace (so no other admin is ever offered the first-run setup)
+  // as well as this user. `nextDisabled` is omitted when the setup is only skipped.
+  const finishModuleWizard = (nextDisabled?: string[]) => {
     setModuleWizardOpen(false);
-    setUserPref("moduleWizardCompletedAt", new Date().toISOString());
+    const completedAt = new Date().toISOString();
+    setUserPref("moduleWizardCompletedAt", completedAt);
+    updateIntegrationsConfigAndSync((prev: any) => ({
+      ...prev,
+      // Written exactly as Settings -> Visible Modules writes it.
+      ...(nextDisabled ? { disabledModules: nextDisabled } : {}),
+      moduleSetupCompletedAt: prev?.moduleSetupCompletedAt || completedAt
+    }));
   };
 
   const handleModuleWizardConfirm = (nextDisabled: string[]) => {
-    // Written exactly as Settings -> Visible Modules writes it.
-    updateIntegrationsConfigAndSync((prev: any) => ({ ...prev, disabledModules: nextDisabled }));
-    finishModuleWizard();
+    finishModuleWizard(nextDisabled);
     const active = countActive(nextDisabled, moduleCatalog.map(m => m.id));
     announce(t(
       `Module setup saved — ${active} of ${moduleCatalog.length} modules are visible.`,
@@ -2337,8 +2348,8 @@ ${log.payload || ''}
   };
 
   const handleModuleWizardSkip = () => {
-    // Leaves disabledModules alone, but still counts as "seen" so it does not
-    // come back on every login.
+    // Leaves disabledModules alone, but still counts as "done" for the whole
+    // workspace so it does not come back for anyone.
     finishModuleWizard();
     announce(t(
       "Module setup skipped. You can run it again from Settings → Visible Modules.",
