@@ -334,6 +334,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $to_real = $ragData['to_real'];
     $sanitized_query = sanitize_text($userQuery, $to_placeholder);
 
+    // Semantic (vector) retrieval: the records closest in meaning to the question, limited to
+    // what this user may read and masked like the rest of the context. Empty when the vector
+    // index is off or not trained yet, in which case the keyword context below is all there is.
+    $vectorBlock = ['text' => '', 'hits' => 0];
+    if ($ragPdo && $openAiKey !== '') {
+        require_once __DIR__ . '/vector_index.php';
+        $vectorBlock = ccrm_vec_context_block($pdo, $ragPdo, $openAiKey, $sanitized_query, $scope, $to_placeholder, 10);
+    }
+
     // 3.3. CONVENE COUNCIL Action (Multi-Executive Deliberation)
     if ($action === 'convene_council') {
         $councilQuery = $payload['query'] ?? $payload['message'] ?? '';
@@ -371,6 +380,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        . "=== REAL-TIME CRM DATA CONTEXT ===\n"
                        . $sanitized_context
                        . "\n==================================\n\n"
+                       . ($vectorBlock['text'] !== '' ? $vectorBlock['text'] . "\n\n" : '')
                        . "STRUCTURE YOUR RESPONSE AS FOLLOWS (using clean Markdown with bold headers and bullet points):\n\n"
                        . "## 🏛️ Executive Council Boardroom Verdict\n"
                        . "**Executive Summary & Decision**: [Definitive recommendation by the Executive Orchestrator / CEO]\n\n"
@@ -546,6 +556,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   . "Keep references exactly as they are. Answer the user question based on the context provided."
                   . $pastDecisionsBlock
                   . $screenContextBlock . "\n\n"
+                  . ($vectorBlock['text'] !== '' ? $vectorBlock['text'] . "\n" : '')
                   . "=== RAG KNOWLEDGE BASE CONTEXT ===\n"
                   . $sanitized_context
                   . "\n==================================\n\n"
@@ -631,7 +642,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     echo json_encode([
         'success' => true,
-        'reply' => $reply
+        'reply' => $reply,
+        'vector_hits' => $vectorBlock['hits']
     ]);
     exit;
 }
