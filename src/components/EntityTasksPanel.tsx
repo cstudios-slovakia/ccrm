@@ -122,6 +122,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   const [deadline, setDeadline] = useState(() => localDateStr(new Date()));
   const [assignee, setAssignee] = useState(() => resolveAssigneeName(myName, myName, userNames));
   const [showFinished, setShowFinished] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   // Completing a task that requires a conclusion asks for it first.
   const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(userLanguage);
@@ -174,6 +175,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       dateBasis,
     );
   }, [visibleTasks, taskStates, dateFilter, customStart, customEnd, dateBasis]);
+  // Archiving hides a task without finishing it, so archived tasks get their own
+  // section instead of being listed as completed.
+  const completed = useMemo(() => finished.filter((task) => !task.archived), [finished]);
+  const archived = useMemo(() => finished.filter((task) => task.archived), [finished]);
 
   const activeRange = useMemo(() => {
     if (dateFilter === "all") return null;
@@ -396,7 +401,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
         >
           <span
             className={`block text-ui font-bold truncate transition-colors ${
-              closed ? "text-slate-400 line-through" : "text-slate-800 group-hover:text-indigo-600"
+              done ? "text-slate-400 line-through" : closed ? "text-slate-500" : "text-slate-800 group-hover:text-indigo-600"
             }`}
           >
             <TaskPillText text={task.title} />
@@ -784,9 +789,11 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                     "Tomuto filtru termínov nezodpovedajú žiadne úlohy.",
                     "Nincsenek feladatok a kiválasztott időszakban.",
                   )
-              : finished.length > 0
+              : completed.length > 0 && archived.length === 0
                 ? t("All tasks in this view are completed.", "Všetky úlohy v tomto zobrazení sú hotové.", "Minden feladat befejeződött ebben a nézetben.")
-                : canCreate
+                : finished.length > 0
+                  ? t("No open tasks in this view.", "V tomto zobrazení nie sú žiadne otvorené úlohy.", "Ebben a nézetben nincs nyitott feladat.")
+                  : canCreate
                   ? t("No tasks yet — write the first one above.", "Zatiaľ žiadne úlohy — napíšte prvú vyššie.", "Még nincs feladat — írja be az elsőt fent.")
                   : t("No tasks available.", "Žiadne úlohy k dispozícii.", "Nincsenek elérhető feladatok.")}
           </div>
@@ -794,7 +801,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       </div>
 
       {/* COMPLETED TASKS SECTION: Strikethrough & clearly visible */}
-      {finished.length > 0 && (
+      {completed.length > 0 && (
         <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
           <button
             type="button"
@@ -804,11 +811,32 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           >
             <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showFinished ? "" : "-rotate-90"}`} />
             {t("Completed", "Dokončené", "Befejezett")}
-            <span className="px-1.5 rounded-full bg-slate-100 text-slate-600 font-extrabold">{finished.length}</span>
+            <span className="px-1.5 rounded-full bg-slate-100 text-slate-600 font-extrabold">{completed.length}</span>
           </button>
           {showFinished && (
             <ul className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-              {finished.map(renderRow)}
+              {completed.map(renderRow)}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* ARCHIVED TASKS SECTION: hidden by hand, each keeps its own status */}
+      {archived.length > 0 && (
+        <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => setShowArchived((v) => !v)}
+            aria-expanded={showArchived}
+            className="self-start flex items-center gap-1.5 px-2 py-1 -mx-2 rounded-lg type-overline text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:scale-95 transition-all cursor-pointer"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showArchived ? "" : "-rotate-90"}`} />
+            {t("Archived", "Archivované", "Archivált")}
+            <span className="px-1.5 rounded-full bg-slate-100 text-slate-600 font-extrabold">{archived.length}</span>
+          </button>
+          {showArchived && (
+            <ul className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+              {archived.map(renderRow)}
             </ul>
           )}
         </div>

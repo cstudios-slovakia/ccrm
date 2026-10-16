@@ -61,6 +61,7 @@ import {
     TASK_SORT_STORAGE_KEY,
     parseTaskGroupBy,
     parseTaskSort,
+    compareTasks,
     sortTasks,
     type TaskGroupBy,
     type TaskSort,
@@ -1815,13 +1816,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 if (selectedTaskIds.has(t.id) && t.archived) {
                     if (mayArchiveTask(t)) {
                         modifiedCount++;
-                        return {
-                            ...t,
-                            archived: false,
-                            status: taskStates[0] || "New",
-                            completedAt: undefined,
-                            completedBy: undefined,
-                        };
+                        // Restoring only un-hides the task; its status stays as it was.
+                        return { ...t, archived: false };
                     } else {
                         skippedCount++;
                     }
@@ -3652,6 +3648,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // left hold — including a task you opened for somebody else, which is on
         // your dashboard but assigned to them, and would otherwise be listed on
         // the left with no row on the right.
+        // Order inside the workload cards: by deadline, or the flat list's sort.
+        const orderMemberTasks = isFlatList ? compareTasks(taskSort) : byDeadline;
+
         const tasksForMember = (userName: string) =>
             filteredTasks
                 .filter((task) =>
@@ -3659,7 +3658,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         ? Boolean(task.assignedUsers?.includes(userName))
                         : isOnPersonalDashboard(task, userName),
                 )
-                .sort(byDeadline);
+                .sort(orderMemberTasks);
 
         const memberColor = (userName: string) =>
             users.find((u) => u.name === userName)?.color || "#6366f1";
@@ -3770,7 +3769,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                           !task.assignedUsers ||
                           task.assignedUsers.length === 0,
                   )
-                  .sort(byDeadline)
+                  .sort(orderMemberTasks)
             : [];
 
         return (
@@ -5232,6 +5231,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="ws-sm:col-span-5 empty:hidden">
                             {renderTaskAttrFilters({ assignee: true, assigner: true, clientClassName: "max-w-md" })}
                         </div>
+                        {/* Group by / Sort — the list view only; the calendar lays tasks out by day */}
+                        {archiveView === "list" && (
+                            <div className="ws-sm:col-span-5">{groupingControls}</div>
+                        )}
                         {/* Search */}
                         <div className="space-y-1">
                             <label className="type-overline text-slate-400">
@@ -5390,7 +5393,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     ) : (
                         <div className="pr-1">
                             {archiveTab === "done" &&
-                                filteredArchivedTasks.length > 0 && (
+                                filteredArchivedTasks.length > 0 &&
+                                isFlatList && (
+                                <div className="space-y-2">
+                                    {sortTasks(filteredArchivedTasks, taskSort).map(
+                                        renderArchivedTaskRow,
+                                    )}
+                                </div>
+                            )}
+
+                            {archiveTab === "done" &&
+                                filteredArchivedTasks.length > 0 &&
+                                !isFlatList && (
                                 <div className="space-y-6">
                                     {archivedTasksGroupedByDate.map((group) => (
                                         <div key={group.date} className="space-y-2">
@@ -5419,9 +5433,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {archiveTab === "archived" &&
                                 filteredManuallyArchivedTasks.length > 0 && (
                                 <div className="space-y-2">
-                                    {filteredManuallyArchivedTasks.map(
-                                        renderManuallyArchivedTaskRow,
-                                    )}
+                                    {(isFlatList
+                                        ? sortTasks(filteredManuallyArchivedTasks, taskSort)
+                                        : filteredManuallyArchivedTasks
+                                    ).map(renderManuallyArchivedTaskRow)}
                                 </div>
                             )}
 
