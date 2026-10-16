@@ -668,12 +668,15 @@ export class ViewCrawler {
       // With a modal open (a record detail, a file preview) the page behind it
       // is out of the user's reach on purpose: audit the modal's own strips, not
       // the ones it covers. Same test for "topmost layer" as markTopOverlay().
-      const layers = Array.from(document.querySelectorAll('.fixed.inset-0')).filter((el) => {
+      const candidates = Array.from(document.querySelectorAll('.fixed.inset-0, [role="dialog"]')).filter((el) => {
         const cs = window.getComputedStyle(el);
-        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.pointerEvents === 'none') return false;
         const r = el.getBoundingClientRect();
         return r.width > 240 && r.height > 240;
       });
+      const layers = candidates.filter(
+        (el) => !el.matches('[role="dialog"]') || !candidates.some((other) => other !== el && other.contains(el)),
+      );
       const topLayer = layers.length
         ? layers.reduce((best, el) => {
             const z = parseInt(window.getComputedStyle(el).zIndex, 10) || 0;
@@ -844,12 +847,17 @@ export class ViewCrawler {
   async markTopOverlay(): Promise<Locator | null> {
     const found = await this.page.evaluate(() => {
       document.querySelectorAll('[data-qa-overlay]').forEach((el) => el.removeAttribute('data-qa-overlay'));
-      const layers = Array.from(document.querySelectorAll('.fixed.inset-0')).filter((el) => {
+      // Same test for "an overlay" as readViewState(): click-through layers
+      // (the ambient aurora background) do not count, floating dialogs do.
+      const candidates = Array.from(document.querySelectorAll('.fixed.inset-0, [role="dialog"]')).filter((el) => {
         const cs = window.getComputedStyle(el);
-        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.pointerEvents === 'none') return false;
         const r = el.getBoundingClientRect();
         return r.width > 240 && r.height > 240;
       });
+      const layers = candidates.filter(
+        (el) => !el.matches('[role="dialog"]') || !candidates.some((other) => other !== el && other.contains(el)),
+      );
       if (layers.length === 0) return false;
       const top = layers.reduce((best, el) => {
         const z = parseInt(window.getComputedStyle(el).zIndex, 10) || 0;
@@ -915,6 +923,9 @@ export class ViewCrawler {
       if (!(await button.isVisible({ timeout: 400 }).catch(() => false))) continue;
 
       const before = await readViewState(this.page);
+      // A toggle ("Add to favorites") can match the create-intent words without
+      // being a create control; its contract is that aria-pressed flips.
+      const pressedBefore = await button.getAttribute('aria-pressed').catch(() => null);
       const clicked = await button.click({ timeout: 3500 }).then(
         () => true,
         () => false,
@@ -953,7 +964,10 @@ export class ViewCrawler {
       if (!overlay) {
         // Not every create button opens an overlay; some navigate or expand a
         // panel inline. Only a total absence of change is suspicious.
-        if (after.fingerprint === before.fingerprint && after.hash === before.hash) {
+        const pressedAfter = pressedBefore === null ? null : await button.getAttribute('aria-pressed').catch(() => null);
+        if (pressedAfter !== null && pressedAfter !== pressedBefore) {
+          this.pass(`Toggle "${label}" in ${scopeLabel} flipped aria-pressed from ${pressedBefore} to ${pressedAfter}`);
+        } else if (after.fingerprint === before.fingerprint && after.hash === before.hash) {
           this.record({
             target: `Button "${label}"`,
             action: `Click "${label}" in ${scopeLabel}`,

@@ -121,13 +121,26 @@ export async function readViewState(page: Page): Promise<ViewState> {
 
     // Drawers and modals are full-viewport fixed layers. Some are portalled to
     // <body>, others render inline, so match on the layer itself rather than on
-    // where it lives in the tree.
-    const overlays = Array.from(document.querySelectorAll('.fixed.inset-0')).filter((el) => {
+    // where it lives in the tree. Two refinements, kept in step with
+    // markTopOverlay() and auditTabStrips() in uiExplorer.ts:
+    //  - a layer with `pointer-events: none` cannot take a click, so it is not
+    //    something a user has to dismiss. The app's ambient `aurora-bg` is one:
+    //    it is fixed, inset-0 and on every page, and counting it made every
+    //    "close the form" check unsatisfiable.
+    //  - a floating panel that is a dialog but not a full-viewport layer (the
+    //    header's create-task form) is an overlay too. A dialog inside a layer
+    //    already counted is part of that layer, not a second one.
+    const layerSelector = '.fixed.inset-0, [role="dialog"]';
+    const candidates = Array.from(document.querySelectorAll(layerSelector)).filter((el) => {
       const cs = window.getComputedStyle(el);
       if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.05) return false;
+      if (cs.pointerEvents === 'none') return false;
       const r = el.getBoundingClientRect();
       return r.width > 240 && r.height > 240;
     });
+    const overlays = candidates.filter(
+      (el) => !el.matches('[role="dialog"]') || !candidates.some((other) => other !== el && other.contains(el)),
+    );
 
     // Cheap structural hash: tag/class skeleton of the workspace subtree.
     const skeleton = Array.from(main?.querySelectorAll('h1, h2, h3, table, form, button') ?? [])
