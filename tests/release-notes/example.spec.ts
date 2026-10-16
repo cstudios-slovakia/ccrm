@@ -22,6 +22,8 @@ test('tasks: inline quick task panel', async ({ page }) => {
     name: L({ sk: 'Vytvoriť novú úlohu', en: 'Create New Task', hu: 'Új feladat' }),
   }).first();
   const clientFilter = page.locator('main').getByTestId('task-client-filter').first();
+  // The attribute filters are folded away behind a Filters button — open it first.
+  await page.locator('main').getByTestId('task-filters-toggle').first().click();
 
   // 1. A whole new view, with its key controls numbered.
   await shotView(page, 'tasks-overview', {
