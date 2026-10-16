@@ -3470,7 +3470,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const isOpen = !collapsible || opts.expanded === true;
         const heading = (
             <h3
-                className={`text-base ws-sm:text-lg font-extrabold flex items-center gap-2.5 select-none [&_svg]:h-5 [&_svg]:w-5 ${tone.title}`}
+                className={`text-title font-extrabold flex items-center gap-2.5 select-none [&_svg]:h-5 [&_svg]:w-5 ${tone.title}`}
             >
                 {opts.icon} {opts.title} ({opts.tasks.length})
             </h3>
