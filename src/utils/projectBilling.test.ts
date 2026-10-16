@@ -28,6 +28,22 @@ test("S1: partially paid invoice - the unpaid rest is still invoiced", () => {
   expectBilling(b, { value: 10000, received: 4000, invoicedOpen: 5200, invoiced: 9200, notInvoiced: 800, stillToBePaid: 6000, overInvoiced: 0 });
 });
 
+test("list and dashboards: Invoicable is notInvoiced, and differs from Still to be paid", () => {
+  // 4 015 value, 1 338,33 received, 2 676,66 invoiced and open: one cent is left to invoice
+  // while 2 676,67 is still to be paid to us.
+  const b = projectBilling(
+    4015,
+    [
+      inc({ amountPlanned: 1338.33, amountReal: 1338.33, status: "paid" }),
+      inc({ amountPlanned: 2676.66, status: "pending" }),
+    ],
+    P,
+  );
+  assert.equal(b.notInvoiced, 0.01);
+  assert.equal(b.stillToBePaid, 2676.67);
+  assert.equal(b.received, 1338.33);
+});
+
 test("S2: cancelled invoice does not count as invoiced", () => {
   const b = projectBilling(10000, [inc({ amountPlanned: 3000, status: "cancelled" })], P);
   expectBilling(b, { value: 10000, received: 0, invoicedOpen: 0, invoiced: 0, notInvoiced: 10000, stillToBePaid: 10000, overInvoiced: 0 });

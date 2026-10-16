@@ -39,10 +39,9 @@ import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
 import {
   formatMoney,
-  isMoneyValueEmpty,
-  parseMoneyValue,
   currencyForRegion
 } from "../utils/currency";
+import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { isClosedLeadState } from "../utils/leadSla";
 import {
   isClosedProjectStatus,
@@ -682,67 +681,31 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
       projectsInStatus.forEach((p) => {
         const pType = (projectTypes || []).find((t) => t.id === p.projectTypeId);
-        const moneyAttrs =
-          pType?.attributes?.filter((a) => a.type === "money") || [];
-        let pVal = 0;
-        let hasMoneyVal = false;
-        if (p.value !== undefined && p.value !== null && Number.isFinite(Number(p.value)) && Number(p.value) > 0) {
-          pVal = Number(p.value);
-          hasMoneyVal = true;
-        }
-        if (!hasMoneyVal) {
-          for (const attr of moneyAttrs) {
-            const raw = p.data?.[attr.id];
-            if (
-              raw !== undefined &&
-              raw !== null &&
-              !isMoneyValueEmpty(raw, defaultCurrency)
-            ) {
-              const parsed = parseMoneyValue(raw, defaultCurrency);
-              if (parsed.amount) {
-                pVal += parsed.amount;
-                hasMoneyVal = true;
-              }
-            }
-          }
-        }
-        if (!hasMoneyVal && p.leadId && leads) {
-          const pairedLead = leads.find((l) => l.id === p.leadId);
-          if (pairedLead?.value) {
-            pVal = Number(pairedLead.value) || 0;
-            hasMoneyVal = true;
-          }
-        }
-        if (!hasMoneyVal && p.budget) {
-          pVal = Number(p.budget) || 0;
-        }
+        /* Value and invoiced come from the same helpers as the project's Finances
+           tab. Cancelled rows are not invoiced, a partly paid row counts in full,
+           and `project.budget` (a cost ceiling) is never taken for revenue. */
+        const pVal = resolveProjectValue(
+          p,
+          pType,
+          leads?.find((l) => l.id === p.leadId),
+          defaultCurrency,
+        ).value;
 
-        // Calculate invoiced on this project
         let pInvoiced = 0;
+        let pInvoicable = 0;
         if (financialRecords && financialRecords.length > 0) {
-          const pFinRecords = financialRecords.filter(
-            (r) => r.projectId === p.id && r.type === "income"
-          );
-          pInvoiced = pFinRecords.reduce(
-            (sum, r) =>
-              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
-            0
-          );
-        } else if (invoicesOffers && invoicesOffers.length > 0) {
-          const pInvoices = invoicesOffers.filter(
-            (io) =>
-              p.leadId &&
-              io.leadId === p.leadId &&
-              io.type === "invoice" &&
-              io.status !== "cancelled"
-          );
-          pInvoiced = pInvoices.reduce(
-            (sum, io) => sum + (Number(io.totalPrice) || 0),
-            0
-          );
+          const billing = projectBilling(pVal, financialRecords, p.id);
+          pInvoiced = billing.invoiced;
+          pInvoicable = billing.notInvoiced;
+        } else {
+          if (invoicesOffers && invoicesOffers.length > 0) {
+            const pInvoices = invoicesOffers.filter(
+              (io) => p.leadId && io.leadId === p.leadId && io.type === "invoice" && io.status !== "cancelled"
+            );
+            pInvoiced = pInvoices.reduce((sum, io) => sum + (Number(io.totalPrice) || 0), 0);
+          }
+          pInvoicable = Math.max(0, pVal - pInvoiced);
         }
-
-        const pInvoicable = Math.max(0, pVal - pInvoiced);
 
         statusInvoicableVal += pInvoicable;
         statusTotalBudgetValue += pVal;
