@@ -4,7 +4,6 @@ import {
   Calculator,
   RotateCcw,
   XCircle,
-  Equal,
   Hash,
   Info,
   Search,
@@ -15,7 +14,7 @@ import { formatMoney } from "../utils/currency";
 import { deepenForWhite } from "../utils/accentColor";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
-import { BigNumber, CardFooter, SegmentBar, SegmentedToggle, WidgetCard } from "./dashboard/widgetKit";
+import { BigNumber, SegmentBar, SegmentedToggle, WidgetCard } from "./dashboard/widgetKit";
 
 export interface StatusStatDetailRow {
   id: string;
@@ -55,6 +54,8 @@ export interface StatusValueEquationStatsProps {
   /** Shown as the heading's tooltip — the card has no room for a caption line. */
   subtitle?: string;
   unitLabel?: string;
+  /** The words after the total. Defaults to "invoicable in total"; leads have no invoicing, so they pass "value in total". */
+  totalLabel?: string;
   /**
    * Keeps the view and the left-out statuses in localStorage under this key.
    * Leave it off and pass the controlled props below to keep them somewhere
@@ -123,6 +124,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
   title,
   subtitle,
   unitLabel,
+  totalLabel,
   storageKey,
   defaultExpanded = true,
   themeColor = "blue",
@@ -418,18 +420,40 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
           actions={cardActions}
           className="select-none"
         >
-          <div className="flex flex-col gap-3" title={subtitle || defaultSubtitle}>
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <BigNumber>{money(totalValue)}</BigNumber>
-              <span className="text-ui font-semibold text-slate-500">
-                {t("invoicable in total", "na fakturovanie spolu", "számlázható összesen")}
+          {view === "detail" && (
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+              {items.map((item, index) => (
+                <React.Fragment key={item.key}>
+                  {index > 0 && <span className="text-ui font-bold text-slate-300">+</span>}
+                  {statusPill(item)}
+                </React.Fragment>
+              ))}
+              <button
+                type="button"
+                onClick={disableAll}
+                className={cn(ghostButton, "ml-auto text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0")}
+              >
+                <XCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
+                {t("Clear all", "Zrušiť všetko", "Minden törlése")}
+              </button>
+            </div>
+          )}
+
+          <div
+            className={cn("flex flex-col gap-3", view === "detail" && "border-t border-slate-100 pt-3.5")}
+            title={subtitle || defaultSubtitle}
+          >
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <BigNumber className="text-metric!">{money(totalValue)}</BigNumber>
+              <span className="text-body font-semibold text-slate-500">
+                {totalLabel || t("invoicable in total", "na fakturovanie spolu", "számlázható összesen")}
                 {showCounts && ` · ${totalCount} ${resolvedUnitLabel}`}
                 {hasDisabled &&
                   ` · ${enabledItems.length} ${t("of", "zo", "/")} ${items.length} ${t("statuses", "stavov", "állapot")}`}
               </span>
             </div>
             <SegmentBar
-              thickness={12}
+              thickness={16}
               segments={enabledItems.map((item) => ({
                 key: item.key,
                 value: Number(item.value) || 0,
@@ -438,37 +462,6 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
               }))}
             />
           </div>
-
-          {view === "detail" && (
-            <>
-              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-t border-slate-100 pt-3.5">
-                {items.map((item, index) => (
-                  <React.Fragment key={item.key}>
-                    {index > 0 && <span className="text-ui font-bold text-slate-300">+</span>}
-                    {statusPill(item)}
-                  </React.Fragment>
-                ))}
-              </div>
-
-              <CardFooter>
-                <span className="flex items-center gap-1.5 flex-wrap text-ui font-semibold text-slate-500 min-w-0">
-                  <span className="whitespace-nowrap">
-                    {enabledItems.length} {t("of", "zo", "/")} {items.length} {t("statuses", "stavov", "állapot")}
-                  </span>
-                  <Equal className="h-3 w-3 text-slate-400 shrink-0" strokeWidth={3} />
-                  <span className="font-bold text-slate-700 tabular-nums whitespace-nowrap">{money(totalValue)}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={disableAll}
-                  className={cn(ghostButton, "text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0")}
-                >
-                  <XCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
-                  {t("Clear all", "Zrušiť všetko", "Minden törlése")}
-                </button>
-              </CardFooter>
-            </>
-          )}
         </WidgetCard>
       </div>
 

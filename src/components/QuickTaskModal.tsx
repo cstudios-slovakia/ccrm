@@ -92,6 +92,9 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         if (!incomingTitle.text) return;
         setTitle((prev) => (prev.trim() ? prev.replace(/\s+$/, "") + "\n" + incomingTitle.text : incomingTitle.text));
     }, [incomingTitle]);
+    const [description, setDescription] = useState("");
+    // A description only makes sense for one task: several title lines mean several tasks.
+    const isSingleLine = title.split("\n").filter((line) => line.trim().length > 0).length <= 1;
     const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
     const [deadline, setDeadline] = useState(() => initialDeadline || toLocalDateStr(new Date()));
     const [deadlineTime, setDeadlineTime] = useState("16:00");
@@ -172,8 +175,15 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         const created: Task[] = lines.map((line, index) => ({
             id: `task-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
             title: line,
-            description: "",
-            tags: extractTagsFromText(line),
+            // The description field hides once a second line appears; whatever was
+            // typed before that still belongs to the first task.
+            description: index === 0 ? description.trim() : "",
+            tags: Array.from(
+                new Set([
+                    ...extractTagsFromText(line),
+                    ...(index === 0 ? extractTagsFromText(description) : []),
+                ]),
+            ),
             status: taskStates[0] || "New",
             priority,
             deadline,
@@ -212,6 +222,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         } else {
             // Keep the popup open for the next task: clear the title and refocus.
             setTitle("");
+            setDescription("");
             setRequiresConclusion(Boolean(defaultRequiresConclusion));
             setTimeout(() => {
                 document.querySelector<HTMLTextAreaElement>("[data-quick-task-form] textarea")?.focus();
@@ -307,6 +318,28 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                             className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-ui font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-12.5"
                         />
                     </div>
+
+                    {isSingleLine && (
+                        <div className="space-y-1">
+                            <label className="type-overline text-slate-500">
+                                {t("Description", "Popis", "Leírás")}
+                            </label>
+                            <TaskTagMentionInput
+                                multiline
+                                rows={2}
+                                value={description}
+                                onChange={setDescription}
+                                existingTags={existingTags}
+                                mentionEntities={mentionEntities}
+                                placeholder={t(
+                                    "Optional details...",
+                                    "Voliteľné podrobnosti...",
+                                    "Opcionális részletek...",
+                                )}
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-ui font-medium placeholder:text-slate-400 leading-relaxed resize-y min-h-12.5"
+                            />
+                        </div>
+                    )}
 
                     {offerConclusion && (
                         <TaskConclusionToggle

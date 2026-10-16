@@ -5777,7 +5777,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* Data Table (Breakdown of past + future periods) */}
                   {isWeeklyTableOpen && (
-                    <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200  animate-in fade-in duration-200">
+                    <div className="mt-3 table-sticky-scroll rounded-2xl border border-slate-200  animate-in fade-in duration-200">
                       <table className="w-full text-left text-ui">
                         <thead className="bg-slate-50 type-overline text-slate-500 border-b border-slate-200 sticky top-0 z-20">
                           <tr>
@@ -6176,7 +6176,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <span className="font-bold text-slate-700">{tableGranularity.toUpperCase()} • {tableYear}</span>
             </div>
 
-            <div className="overflow-x-auto scrollbar-thin overscroll-x-contain">
+            <div className="table-sticky-scroll scrollbar-thin overscroll-x-contain">
               <table className="w-full text-left text-ui border-collapse">
                 {/* Sticky Header */}
                 <thead className="bg-slate-50  sticky top-0 z-30 shadow-xs border-b border-slate-200 ">
@@ -6787,7 +6787,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           {/* GROUPED MOVEMENTS LEDGER TABLE */}
           <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
-            <div className="overflow-x-auto scrollbar-thin">
+            <div className="table-sticky-scroll scrollbar-thin">
               <table className="w-full text-left text-ui border-collapse">
                 <thead className="bg-slate-50  text-slate-600  type-overline border-b border-slate-200  sticky top-0 z-20">
                   <tr>
@@ -7570,7 +7570,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           {/* RECURRING EXPENSES TABLE */}
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm">
-            <div className="overflow-x-auto scrollbar-thin rounded-3xl">
+            <div className="table-sticky-scroll scrollbar-thin rounded-3xl">
               <table className="w-full text-left text-ui border-collapse">
                 <thead className="bg-slate-50 text-slate-600 type-overline border-b border-slate-200 sticky top-0 z-20">
                   <tr>

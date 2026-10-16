@@ -2898,6 +2898,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {/* Mobile-only Quick Action Buttons placed at top right next to status */}
                         <div className="flex ws-sm:hidden items-center gap-0.5 shrink-0">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTask(task);
+                                }}
+                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                                title={
+                                    mayEditTask(task)
+                                        ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                        : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")
+                                }
+                            >
+                                {mayEditTask(task) ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
                             <HoldToConfirmButton
                                 tone="archive"
                                 lang={systemLanguage}
@@ -2917,20 +2931,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             >
                                 <ArchiveIcon className="h-3.5 w-3.5" />
                             </HoldToConfirmButton>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingTask(task);
-                                }}
-                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                                title={
-                                    mayEditTask(task)
-                                        ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
-                                        : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")
-                                }
-                            >
-                                {mayEditTask(task) ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                            </button>
                         </div>
                     </div>
 
@@ -3075,6 +3075,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                 {/* Desktop-only right side quick action buttons */}
                 <div className="hidden ws-sm:flex items-center gap-0.5 shrink-0 pt-0.5">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingTask(task);
+                        }}
+                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                        title={
+                            mayEditTask(task)
+                                ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")
+                        }
+                    >
+                        {mayEditTask(task) ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
                     <HoldToConfirmButton
                         tone="archive"
                         lang={systemLanguage}
@@ -3094,20 +3108,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     >
                         <ArchiveIcon className="h-3.5 w-3.5" />
                     </HoldToConfirmButton>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingTask(task);
-                        }}
-                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                        title={
-                            mayEditTask(task)
-                                ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
-                                : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")
-                        }
-                    >
-                        {mayEditTask(task) ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
                 </div>
             </div>
         );

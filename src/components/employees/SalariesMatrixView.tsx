@@ -271,7 +271,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
 
       {/* Main Salaries Matrix Table */}
       <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-        <div className="overflow-x-auto rounded-3xl">
+        <div className="table-sticky-scroll rounded-3xl">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-20">
               <tr className="border-b border-slate-200/80 bg-slate-50 text-ui font-bold text-slate-500">

@@ -4533,7 +4533,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {t("No invoices issued for this project yet.", "K tomuto projektu zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez a projekthez.")}
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="table-sticky-scroll">
                     <table className="w-full text-left text-ui">
                       <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>
@@ -4623,7 +4623,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {t("No expenses logged for this project yet.", "K tomuto projektu zatiaľ neboli zaevidované žiadne výdavky.", "Még nincsenek kiadások rögzítve.")}
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="table-sticky-scroll">
                     <table className="w-full text-left text-ui">
                       <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>

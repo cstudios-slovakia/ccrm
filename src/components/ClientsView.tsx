@@ -337,7 +337,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
     const flushTable = (key: string) => {
       if (tableRows.length > 0) {
         elements.push(
-          <div key={`table-${key}`} className="overflow-x-auto my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
+          <div key={`table-${key}`} className="table-sticky-scroll my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
             <table className="min-w-full divide-y divide-slate-200 text-caption">
               <thead className="bg-slate-50">
                 <tr>
@@ -5348,7 +5348,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                    <div className="table-sticky-scroll border border-slate-200 rounded-2xl">
                       <table className="w-full text-left text-ui">
                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                           <tr>
@@ -6207,7 +6207,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       {/* 3. Clients Data Grid Table */}
       <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden">
-        <div className="overflow-x-auto ws-lg:overflow-x-auto scrollbar-thin">
+        <div className="overflow-x-auto ws-lg:table-sticky-scroll scrollbar-thin">
           <table className="w-full border-collapse text-left block ws-lg:table">
             <thead className="hidden ws-lg:table-header-group">
               <tr className="bg-white text-emerald-700 type-overline select-none">

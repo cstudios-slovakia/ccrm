@@ -1143,7 +1143,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 
       {/* 5. DOCUMENTS TABLE */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm">
-        <div className="overflow-x-auto rounded-3xl">
+        <div className="table-sticky-scroll rounded-3xl">
           <table className="w-full text-left text-ui border-collapse min-w-195">
             <thead className="sticky top-0 z-20">
               <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
