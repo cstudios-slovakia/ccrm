@@ -246,7 +246,7 @@ test.describe('Hold to confirm — leads, projects, clients', () => {
 
   test('client: archive from the list, Undo brings it back', async ({ page }) => {
     await startSession(page);
-    // The fixture has no client record (client-* id or a positive value adjustment), so seed one.
+    // Seed a known client so the test does not depend on which clients the fixture happens to list.
     await captureSync(page, 2, (payload) => {
       payload.leads = [...payload.leads, { ...(payload.leads[0] as any), id: 'client-qa', name: 'QA Klient', adjustment: 100 } as any];
     });
