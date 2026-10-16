@@ -553,19 +553,14 @@ if ($action === 'public_status') {
     $pStmt->execute([$hash]);
     $project = $pStmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$project) {
-        $allProjs = $pdo->query("SELECT `id`, `name`, `project_type_id`, `lead_id`, `client_id`, `ticket_widget_config_json`, `ticket_public_hash` FROM `projects` WHERE `archived` = 0")->fetchAll(PDO::FETCH_ASSOC) ?: [];
-        foreach ($allProjs as $cand) {
-            $fallbackHash = 'pub_' . preg_replace('/[^a-zA-Z0-9]/', '', (string)$cand['id']) . '_status';
-            if ($hash === $fallbackHash || $hash === $cand['id']) {
-                $project = $cand;
-                if (empty($cand['ticket_public_hash'])) {
-                    $pdo->prepare("UPDATE `projects` SET `ticket_public_hash` = ? WHERE `id` = ?")->execute([$hash, $cand['id']]);
-                }
-                break;
-            }
-        }
-    }
+    // The stored ticket_public_hash (random 32-hex minted on save by sync.php)
+    // is the ONLY accepted identifier. The previous fallback also matched the
+    // raw project id and a 'pub_<id>_status' derivation of it, then PERSISTED
+    // the caller-supplied value as the project's hash. Project ids are
+    // predictable ('proj-' + Date.now() from the client), so that fallback was
+    // an unauthenticated read of every project's tickets plus an unauthenticated
+    // UPDATE. Old links minted from the fallback stop resolving; regenerate
+    // them from the project's ticket panel (handleRegenerateHash).
 
     if (!$project) {
         http_response_code(404);

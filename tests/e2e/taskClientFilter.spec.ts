@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
 
 /**
@@ -8,11 +8,19 @@ import { gotoView, startSession } from './helpers/appDriver';
 
 const TASK_TITLE = 'Zavolať klientke Silvii';
 
+/** The attribute filters are folded behind a "Filters" button until opened. */
+async function openFilters(page: Page) {
+  const toggle = page.getByTestId('task-filters-toggle').first();
+  await expect(page.getByTestId('task-client-filter').last()).toBeHidden();
+  await toggle.click();
+}
+
 test.describe('Tasks → client filter', () => {
   test('My Tasks shows the client filter and it narrows the calendar', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#tasks');
 
+    await openFilters(page);
     const filter = page.getByTestId('task-client-filter');
     await expect(filter).toBeVisible();
     await expect(page.getByText(TASK_TITLE).first()).toBeVisible();
@@ -33,6 +41,7 @@ test.describe('Tasks → client filter', () => {
       await startSession(page);
       await gotoView(page, '#tasks');
       await page.getByRole('button', { name: scope, exact: true }).click();
+      await openFilters(page);
       await expect(page.getByTestId('task-client-filter')).toBeVisible();
       await page.screenshot({ path: `test-results/task-client-filter-${scope}.png`, fullPage: false });
     });
@@ -42,6 +51,10 @@ test.describe('Tasks → client filter', () => {
     await startSession(page);
     await gotoView(page, '#tasks');
     await page.getByRole('button', { name: 'Globálne úlohy', exact: true }).click();
-    await expect(page.getByTestId('task-client-filter')).toBeVisible();
+    // The workload filter bar above the board carries it, always on show; the
+    // task card below repeats it inside the folded Filters block.
+    await expect(page.getByTestId('task-client-filter').first()).toBeVisible();
+    await openFilters(page);
+    await expect(page.getByTestId('task-client-filter').last()).toBeVisible();
   });
 });

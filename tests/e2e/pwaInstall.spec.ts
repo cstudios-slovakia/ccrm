@@ -172,7 +172,7 @@ test.describe('Deep links into Tasks', () => {
   test('#tasks?newTask=<text> opens the create form prefilled and removes the param', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#tasks?newTask=Call%20Silvia%20%26%20confirm%20the%20survey');
-    const textarea = page.locator('[data-quick-task-form] textarea');
+    const textarea = page.locator('[data-quick-task-form] textarea').first();
     await expect(textarea).toBeVisible();
     await expect(textarea).toHaveValue('Call Silvia & confirm the survey');
     await expect.poll(() => page.evaluate(() => location.hash)).toBe('#tasks');
@@ -186,7 +186,7 @@ test.describe('Deep links into Tasks', () => {
   test('#tasks?newTask= (the "New task" shortcut) opens a blank form', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#tasks?newTask=');
-    const textarea = page.locator('[data-quick-task-form] textarea');
+    const textarea = page.locator('[data-quick-task-form] textarea').first();
     await expect(textarea).toBeVisible();
     await expect(textarea).toHaveValue('');
     await expect.poll(() => page.evaluate(() => location.hash)).toBe('#tasks');
@@ -195,7 +195,7 @@ test.describe('Deep links into Tasks', () => {
   test('a second link while the form is open adds a line instead of wiping what was typed', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#tasks?newTask=First');
-    const textarea = page.locator('[data-quick-task-form] textarea');
+    const textarea = page.locator('[data-quick-task-form] textarea').first();
     await expect(textarea).toHaveValue('First');
     await page.evaluate(() => {
       location.hash = '#tasks?newTask=Second';
@@ -219,7 +219,7 @@ test.describe('Deep links into Tasks', () => {
     });
     await page.goto(`/?qa=77&${params.toString()}`, { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page);
-    const textarea = page.locator('[data-quick-task-form] textarea');
+    const textarea = page.locator('[data-quick-task-form] textarea').first();
     await expect(textarea).toHaveValue('Offer draft — see page 3 https://docs.example.com/offer');
     const url = await page.evaluate(() => ({ search: location.search, hash: location.hash }));
     expect(url.search).toBe('?qa=77');
@@ -241,7 +241,7 @@ test.describe('Deep links into Tasks', () => {
     await page.locator('input[type="password"]').fill('password');
     await page.locator('form button[type="submit"]').click();
 
-    const textarea = page.locator('[data-quick-task-form] textarea');
+    const textarea = page.locator('[data-quick-task-form] textarea').first();
     await expect(textarea).toBeVisible({ timeout: 15_000 });
     await expect(textarea).toHaveValue('Sent from a shortcut');
   });

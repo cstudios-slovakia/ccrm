@@ -1,0 +1,20 @@
+# TLS is automatic: Caddy gets and renews a Let's Encrypt certificate for
+# {$CCRM_DOMAIN} as soon as ports 80/443 reach it. HTTP/2 and HTTP/3 are on by
+# default. (Caddy has no built-in Brotli; zstd + gzip cover the same ground.)
+{$CCRM_DOMAIN} {
+	encode zstd gzip
+
+	# Uploads of up to 128M (php.ini) plus multipart overhead.
+	request_body {
+		max_size 150MB
+	}
+
+	reverse_proxy web:80 {
+		# api/mcp.php streams Server-Sent Events; do not buffer them.
+		flush_interval -1
+		# Long AI / summarise calls (php max_execution_time is 180 s).
+		transport http {
+			response_header_timeout 190s
+		}
+	}
+}

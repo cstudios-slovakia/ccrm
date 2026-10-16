@@ -971,9 +971,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-sticky-scroll">
             <table className="w-full text-left border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-20 bg-slate-50">
                 <tr className="border-b border-slate-100 bg-slate-50/50 type-overline text-slate-400 select-none">
                   <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
                   {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}

@@ -539,7 +539,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
       {/* 3. VIEW 1: TIMESHEET CALENDAR MATRIX (Adapted to CCRM Brand Theme) */}
       {viewMode === "matrix" && (
         <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/95 dark:bg-[#12161f]/95 shadow-glass">
-          <div className="overflow-x-auto rounded-3xl">
+          <div className="table-sticky-scroll rounded-3xl">
             <table className="w-full min-w-190 border-collapse text-left">
               {/* Table Header */}
               <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-[#161b26]">
@@ -857,7 +857,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="table-sticky-scroll">
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-[#161b26]">
                 <tr className="border-b border-slate-200/80 dark:border-slate-800 type-overline text-slate-500">

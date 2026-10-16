@@ -793,9 +793,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
       {/* 5. ORDERS TABLE */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="table-sticky-scroll">
           <table className="w-full text-left text-ui border-collapse min-w-220">
-            <thead>
+            <thead className="sticky top-0 z-20 bg-slate-50">
               <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
                 <th className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</th>
                 <th className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</th>

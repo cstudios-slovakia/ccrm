@@ -1748,6 +1748,15 @@ dialog[open]::backdrop {
 }
 
 /* Type recipes (no colour — colours stay raw palette classes). */
+/* A list table whose head stays put. `position: sticky` sticks to the nearest
+   scrolling ancestor, and an `overflow-x: auto` wrapper silently becomes one
+   (overflow-y computes to auto), so without a height bound the head never sticks
+   to the page. Bounding the wrapper makes the table its own scroller, with the
+   head pinned inside it. */
+@utility table-sticky-scroll {
+  overflow: auto;
+  max-height: max(24rem, calc(100dvh - 12rem));
+}
 @utility type-overline     { font-size: var(--text-micro);    line-height: var(--text-micro--line-height);    font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 @utility type-label        { font-size: var(--text-caption);  line-height: var(--text-caption--line-height);  font-weight: 600; }
 @utility type-meta         { font-size: var(--text-caption);  line-height: var(--text-caption--line-height);  font-weight: 500; }

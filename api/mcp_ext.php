@@ -124,6 +124,18 @@ function mcp_limit(array $args, int $default = 50, int $max = 100): int {
 
 function mcp_new_id(string $prefix): string { return $prefix . bin2hex(random_bytes(8)); }
 
+/**
+ * The leads/clients module split the app enforces on every read (sync.php skips
+ * rows of the kind the caller may not see; see ccrm_lead_scope_sql): a key owner
+ * with only one of the two modules may not read rows of the other kind. Used by
+ * the lead-facing tools so MCP answers the same "may this caller see this row?"
+ * question the app answers.
+ */
+function mcp_lead_module_visible(array $row): bool {
+    $isClient = mcp_is_client_record($row);
+    return $isClient ? mcp_can('clients') : mcp_can('leads');
+}
+
 /** Run $fn in a transaction; the caller's exception is rethrown after the rollback. */
 function mcp_tx(\PDO $pdo, callable $fn) {
     $owns = !$pdo->inTransaction();

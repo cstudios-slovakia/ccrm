@@ -1493,7 +1493,7 @@ You are operating on behalf of ${currentUser.name} (${currentUser.email}, Role: 
                   {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="table-sticky-scroll">
                   <table className="w-full text-left text-ui border-collapse">
                     <thead className="sticky top-0 z-20 bg-slate-50">
                       <tr className="border-b border-slate-200 text-slate-500 type-overline">

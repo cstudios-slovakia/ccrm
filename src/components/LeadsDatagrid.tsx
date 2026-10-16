@@ -10504,6 +10504,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 items={activeLeadStatusItems}
                 currency={currencyCode}
                 language={systemLanguage}
+                totalLabel={
+                    systemLanguage === "sk"
+                        ? "hodnota spolu"
+                        : systemLanguage === "hu"
+                          ? "érték összesen"
+                          : "value in total"
+                }
                 title={
                     systemLanguage === "sk"
                         ? "Prehľad hodnôt aktívnych fáz"
@@ -10704,7 +10711,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 )}
 
                 {viewMode === "list" ? (
-                    <div className="overflow-x-auto ws-lg:overflow-x-auto scrollbar-thin">
+                    <div className="overflow-x-auto ws-lg:table-sticky-scroll scrollbar-thin">
                         <table className="w-full border-collapse text-left block ws-lg:table">
                             <thead className="hidden ws-lg:table-header-group">
                                 <tr className="bg-white text-blue-600 type-overline">

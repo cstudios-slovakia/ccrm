@@ -2417,7 +2417,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="table-sticky-scroll">
                 <table className="w-full text-left text-ui text-slate-600 min-w-210">
                   <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200/80 type-overline text-slate-500">
                     <tr>
@@ -3723,7 +3723,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <div className="table-sticky-scroll">
                       <table className="w-full text-left text-ui min-w-170">
                         <thead className="bg-slate-50 text-slate-500 type-overline border-b border-slate-100">
                           <tr>
@@ -3887,7 +3887,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 {t("No active lots in this warehouse. Inventory tracked as unbatched bulk stock.", "V tomto sklade nie sú zaevidované žiadne konkrétne šarže. Tovar sa eviduje ako voľná zásoba.", "Ezen a raktáron nincsenek aktív tételek.")}
                               </div>
                             ) : (
-                              <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                              <div className="table-sticky-scroll rounded-2xl border border-slate-100">
                                 <table className="w-full text-left text-ui">
                                   <thead className="bg-slate-50 text-slate-400 type-overline">
                                     <tr>
@@ -4020,7 +4020,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                    <div className="table-sticky-scroll rounded-2xl border border-slate-100">
                       <table className="w-full text-left text-ui min-w-170">
                         <thead className="bg-slate-50 text-slate-400 type-overline">
                           <tr>
@@ -4923,7 +4923,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
           {/* Items Data Grid */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="overflow-x-auto rounded-2xl">
+            <div className="table-sticky-scroll rounded-2xl">
               <table className="w-full text-left text-ui text-slate-600 min-w-210">
                 <thead className="sticky top-0 z-20 bg-slate-50 border-b border-slate-200/80 type-overline text-slate-500">
                   <tr>
@@ -5286,7 +5286,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <h4 className="type-overline text-slate-500 mb-2">
                           {t("Movement Line Items", "Položky dokladu", "Tételek")}
                         </h4>
-                        <div className="overflow-x-auto">
+                        <div className="table-sticky-scroll">
                           <table className="w-full text-left text-ui">
                             <thead>
                               <tr className="border-b border-slate-200 text-slate-400 type-overline">

@@ -2189,7 +2189,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </div>
           ) : viewMode === "list" || isStructure ? (
             <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6">
-              <div className="overflow-x-auto scrollbar-thin rounded-3xl">
+              <div className="overflow-x-auto ws-lg:table-sticky-scroll scrollbar-thin rounded-3xl">
                 <table className="w-full text-left border-collapse min-w-0 ws-lg:min-w-210">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a

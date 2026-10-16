@@ -35,7 +35,7 @@ function recordSyncedTasks(page: Page) {
 async function openProjectTasks(page: Page) {
   await gotoView(page, '#projects');
   await page.getByText(PROJECT_NAME).first().click();
-  const tab = page.locator('main').getByRole('button', { name: TAB });
+  const tab = page.locator('main').getByRole('tab', { name: TAB });
   await tab.first().click();
   return page.getByRole('textbox', { name: /New tasks, one per line|Nové úlohy, jedna na riadok|Új feladatok, soronként egy/ });
 }
@@ -75,7 +75,7 @@ test.describe('Project tasks', () => {
       .toBe(true);
 
     // Clicking a row opens the full task drawer; a change there is saved.
-    await row(page, 'QA hromadná druhá').getByRole('button', { name: 'QA hromadná druhá' }).click();
+    await row(page, 'QA hromadná druhá').getByRole('button', { name: /^QA hromadná druhá/ }).click();
     const drawer = page.locator('div.fixed.inset-0').filter({ hasText: /Edit Task|Upraviť úlohu|Feladat szerkesztése/ });
     await expect(drawer).toBeVisible();
     await page.screenshot({ path: 'test-results/project-tasks-drawer.png', fullPage: false });

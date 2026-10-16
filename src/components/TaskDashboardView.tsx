@@ -8,6 +8,8 @@ import {
     ChevronLeft,
     ChevronRight,
     Eye,
+    Pencil,
+
     Lock,
     Briefcase,
     Plus,
@@ -33,6 +35,7 @@ import {
     Hash,
     UserCheck,
     PictureInPicture2,
+    SlidersHorizontal,
     Ticket as TicketIcon,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project, Ticket } from "../types";
@@ -372,74 +375,121 @@ const ClosedTasksToggleBar: React.FC<{
     days: number;
     onChangeDays: (days: number) => void;
     t: (en: string, sk: string, hu: string) => string;
-    /** Sits at the left of the bar, e.g. the client filter. */
-    leading?: React.ReactNode;
-}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t, leading }) => {
+    /** The attribute filters (client, project, …). Folded away behind a "Filters" button. */
+    filters?: React.ReactNode;
+    /** How many of those filters are set — shown on the button while it is folded. */
+    filterCount?: number;
+}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t, filters, filterCount = 0 }) => {
     const daysLabel = t(
         days === 1 ? "day)" : "days)",
         days === 1 ? "deň)" : (days >= 2 && days <= 4 ? "dni)" : "dní)"),
         "nap)",
     );
+    // Folded by default; a filter already in force opens it, so a narrowed list
+    // never hides why it is narrow. The chips row shows the same filters folded.
+    const [filtersOpen, setFiltersOpen] = useState(filterCount > 0);
+    const filtersLabel = t("Filters", "Filtre", "Szűrők");
 
     return (
-        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center justify-end gap-x-4 gap-y-2 select-none">
-            {leading && <div className="min-w-0 flex-1 basis-56">{leading}</div>}
-            <div className="flex items-center gap-1.5 text-caption font-medium text-slate-400">
-                <span
-                    onClick={() => onToggleShowClosed(!showClosedTasks)}
-                    className="hover:text-slate-600 transition-colors cursor-pointer"
-                >
-                    {t(
-                        "Show closed tasks (<",
-                        "Zobraziť dokončené (<",
-                        "Lezárt feladatok (<",
-                    )}
-                </span>
-                <input
-                    type="number"
-                    min={1}
-                    max={365}
-                    value={days}
-                    onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === "") {
-                            onChangeDays(1);
-                            return;
-                        }
-                        const val = parseInt(raw, 10);
-                        if (!isNaN(val)) {
-                            onChangeDays(val);
-                        }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    title={t(
-                        "Days threshold for closed tasks",
-                        "Počet dní pre zobrazenie dokončených úloh",
-                        "Napok száma lezárt feladatokhoz",
-                    )}
-                    aria-label={t(
-                        "Days threshold for closed tasks",
-                        "Počet dní pre zobrazenie dokončených úloh",
-                        "Napok száma lezárt feladatokhoz",
-                    )}
-                    className="w-10 h-5 px-1 py-0 text-center font-bold text-slate-700 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs text-caption select-text"
-                />
-                <span
-                    onClick={() => onToggleShowClosed(!showClosedTasks)}
-                    className="hover:text-slate-600 transition-colors cursor-pointer"
-                >
-                    {daysLabel}
-                </span>
-            </div>
-            <TaskCardSwitch
-                checked={showClosedTasks}
-                onChange={onToggleShowClosed}
-                label={t(
-                    "Show closed tasks",
-                    "Zobraziť dokončené úlohy",
-                    "Lezárt feladatok mutatása",
+        <div className="bg-slate-50/50 border-b border-slate-100 select-none">
+            <div className="px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                {filters ? (
+                    <button
+                        type="button"
+                        onClick={() => setFiltersOpen((o) => !o)}
+                        aria-expanded={filtersOpen}
+                        data-testid="task-filters-toggle"
+                        title={filtersOpen ? t("Hide filters", "Skryť filtre", "Szűrők elrejtése") : t("Show filters", "Zobraziť filtre", "Szűrők mutatása")}
+                        className={`inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-lg border text-ui font-bold transition-all duration-150 active:scale-95 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 ${
+                            filterCount > 0
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                    >
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                        <span>{filtersLabel}</span>
+                        {filterCount > 0 && (
+                            <span className="min-w-4 h-4 px-1 rounded-full bg-indigo-600 text-white text-caption font-bold leading-4 text-center">
+                                {filterCount}
+                            </span>
+                        )}
+                        <ChevronDown
+                            className={`w-3.5 h-3.5 transition-transform duration-200 ${filtersOpen ? "rotate-180" : ""}`}
+                        />
+                    </button>
+                ) : (
+                    <span />
                 )}
-            />
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-caption font-medium text-slate-400">
+                        <span
+                            onClick={() => onToggleShowClosed(!showClosedTasks)}
+                            className="hover:text-slate-600 transition-colors cursor-pointer"
+                        >
+                            {t(
+                                "Show closed tasks (<",
+                                "Zobraziť dokončené (<",
+                                "Lezárt feladatok (<",
+                            )}
+                        </span>
+                        <input
+                            type="number"
+                            min={1}
+                            max={365}
+                            value={days}
+                            onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === "") {
+                                    onChangeDays(1);
+                                    return;
+                                }
+                                const val = parseInt(raw, 10);
+                                if (!isNaN(val)) {
+                                    onChangeDays(val);
+                                }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            title={t(
+                                "Days threshold for closed tasks",
+                                "Počet dní pre zobrazenie dokončených úloh",
+                                "Napok száma lezárt feladatokhoz",
+                            )}
+                            aria-label={t(
+                                "Days threshold for closed tasks",
+                                "Počet dní pre zobrazenie dokončených úloh",
+                                "Napok száma lezárt feladatokhoz",
+                            )}
+                            className="w-10 h-5 px-1 py-0 text-center font-bold text-slate-700 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs text-caption select-text"
+                        />
+                        <span
+                            onClick={() => onToggleShowClosed(!showClosedTasks)}
+                            className="hover:text-slate-600 transition-colors cursor-pointer"
+                        >
+                            {daysLabel}
+                        </span>
+                    </div>
+                    <TaskCardSwitch
+                        checked={showClosedTasks}
+                        onChange={onToggleShowClosed}
+                        label={t(
+                            "Show closed tasks",
+                            "Zobraziť dokončené úlohy",
+                            "Lezárt feladatok mutatása",
+                        )}
+                    />
+                </div>
+            </div>
+            {filters && (
+                <div
+                    className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${
+                        filtersOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    }`}
+                >
+                    <div className={`min-h-0 overflow-hidden ${filtersOpen ? "" : "invisible"}`}>
+                        <div className="px-4 py-3 border-t border-slate-100">{filters}</div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -811,6 +861,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [addDeadline, setAddDeadline] = useState<string | undefined>(undefined);
     // Text handed in by a deep link (`#tasks?newTask=…`: app shortcut, share target,
     // bookmarklet) and the `#tasks?voice=1` request for the voice recorder.
+    // Tasks created on this page since it loaded; highlighted until a refresh.
+    const [freshTaskIds, setFreshTaskIds] = useState<Set<string>>(() => new Set());
+    const markFresh = (created: Task[]) =>
+        setFreshTaskIds((prev) => new Set([...prev, ...created.map((c) => c.id)]));
     const [incomingTitle, setIncomingTitle] = useState<{ id: number; text: string } | undefined>(undefined);
     const [voiceArmRequest, setVoiceArmRequest] = useState(0);
 
@@ -2729,10 +2783,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div
                 key={task.id}
-                className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-start justify-between gap-3 text-ui ${
+                onClick={(e) => {
+                    // Portalled dropdowns bubble through React but sit outside this row.
+                    if (!e.currentTarget.contains(e.target as Node)) return;
+                    if ((e.target as HTMLElement).closest("button, a, input, select, label, textarea, [role='listbox'], [role='option']")) return;
+                    setEditingTask(task);
+                }}
+                className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-start justify-between gap-3 text-ui cursor-pointer ${
                     isSelected
                         ? "bg-indigo-50/70"
-                        : "bg-white hover:bg-slate-50/90"
+                        : freshTaskIds.has(task.id)
+                          ? "bg-orange-50 hover:bg-orange-100/70 shadow-[inset_3px_0_0_#ff5d00]"
+                          : "bg-white hover:bg-slate-50/90"
                 } relative`}
             >
                 {task.isLocking && (
@@ -2836,6 +2898,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {/* Mobile-only Quick Action Buttons placed at top right next to status */}
                         <div className="flex ws-sm:hidden items-center gap-0.5 shrink-0">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTask(task);
+                                }}
+                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                                title={
+                                    mayEditTask(task)
+                                        ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                        : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")
+                                }
+                            >
+                                {mayEditTask(task) ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
                             <HoldToConfirmButton
                                 tone="archive"
                                 lang={systemLanguage}
@@ -2855,32 +2931,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             >
                                 <ArchiveIcon className="h-3.5 w-3.5" />
                             </HoldToConfirmButton>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingTask(task);
-                                }}
-                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                                title={
-                                    mayEditTask(task)
-                                        ? t(
-                                              "Edit Task",
-                                              "Upraviť úlohu",
-                                              "Feladat szerkesztése",
-                                          )
-                                        : t(
-                                              "View Task",
-                                              "Zobraziť úlohu",
-                                              "Feladat megtekintése",
-                                          )
-                                }
-                            >
-                                {mayEditTask(task) ? (
-                                    <Settings className="h-3.5 w-3.5" />
-                                ) : (
-                                    <Eye className="h-3.5 w-3.5" />
-                                )}
-                            </button>
                         </div>
                     </div>
 
@@ -3025,6 +3075,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                 {/* Desktop-only right side quick action buttons */}
                 <div className="hidden ws-sm:flex items-center gap-0.5 shrink-0 pt-0.5">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingTask(task);
+                        }}
+                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                        title={
+                            mayEditTask(task)
+                                ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")
+                        }
+                    >
+                        {mayEditTask(task) ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
                     <HoldToConfirmButton
                         tone="archive"
                         lang={systemLanguage}
@@ -3044,32 +3108,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     >
                         <ArchiveIcon className="h-3.5 w-3.5" />
                     </HoldToConfirmButton>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingTask(task);
-                        }}
-                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                        title={
-                            mayEditTask(task)
-                                ? t(
-                                      "Edit Task",
-                                      "Upraviť úlohu",
-                                      "Feladat szerkesztése",
-                                  )
-                                : t(
-                                      "View Task",
-                                      "Zobraziť úlohu",
-                                      "Feladat megtekintése",
-                                  )
-                        }
-                    >
-                        {mayEditTask(task) ? (
-                            <Settings className="h-3.5 w-3.5" />
-                        ) : (
-                            <Eye className="h-3.5 w-3.5" />
-                        )}
-                    </button>
                 </div>
             </div>
         );
@@ -3432,7 +3470,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const isOpen = !collapsible || opts.expanded === true;
         const heading = (
             <h3
-                className={`text-ui font-bold flex items-center gap-2 select-none ${tone.title}`}
+                className={`text-title font-extrabold flex items-center gap-2.5 select-none [&_svg]:h-5 [&_svg]:w-5 ${tone.title}`}
             >
                 {opts.icon} {opts.title} ({opts.tasks.length})
             </h3>
@@ -3443,7 +3481,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 {collapsible ? (
                     <button
                         onClick={opts.onToggle}
-                        className={`w-full px-4 py-2.5 flex items-center justify-between text-left focus:outline-none cursor-pointer transition-colors ${tone.headerBg}`}
+                        className={`w-full px-4 py-3.5 flex items-center justify-between text-left focus:outline-none cursor-pointer transition-colors ${tone.headerBg}`}
                     >
                         {heading}
                         <span className={`transition-colors ${tone.chevron}`}>
@@ -3455,7 +3493,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </span>
                     </button>
                 ) : (
-                    <div className={`w-full px-4 py-2.5 flex items-center justify-between text-left ${tone.headerBg}`}>
+                    <div className={`w-full px-4 py-3.5 flex items-center justify-between text-left ${tone.headerBg}`}>
                         {heading}
                     </div>
                 )}
@@ -3787,7 +3825,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 days={closedTasksDays}
                                 onChangeDays={handleClosedTasksDaysChange}
                                 t={t}
-                                leading={renderTaskAttrFilters({ assignee: false, assigner: true })}
+                                filters={renderTaskAttrFilters({ assignee: false, assigner: true, grid: true })}
+                                filterCount={attrFilterCount({ assignee: false, assigner: true })}
                             />
                             {renderTaskBucket({
                                 tone: "rose",
@@ -3993,7 +4032,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Only leads / clients that have a task show up here — the register can be
     // hundreds long, and picking one with nothing to show is a dead end.
-    const renderClientFilter = (className = "") => {
+    // Each filter is a label over a full-width control (stacked) inside the
+    // folded Filters block, or a label beside a fixed-width control (inline) in
+    // the archive filter row. One place so the four filters cannot drift apart.
+    const filterFieldClass = (stacked: boolean, className: string) =>
+        `${stacked ? "flex flex-col items-stretch gap-1" : "flex items-center gap-1.5"} text-ui font-bold ${className}`;
+    const filterControlClass = (stacked: boolean, inlineWidth: string) =>
+        `min-w-0 ${stacked ? "w-full" : inlineWidth}`;
+
+    const renderClientFilter = (className = "", stacked = false) => {
         const withTasks = new Set(
             tasks.map((task) => String(task.relatedLeadId ?? "")).filter(Boolean),
         );
@@ -4003,7 +4050,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             .map((l) => l.id);
         if (withTasks.size === 0) return null;
         return (
-            <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-client-filter">
+            <div className={filterFieldClass(stacked, className)} data-testid="task-client-filter">
                 <span className="text-slate-500 shrink-0">
                     {t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:")}
                 </span>
@@ -4025,7 +4072,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // Same idea as the client filter: only projects that have a task are offered.
-    const renderProjectFilter = (className = "") => {
+    const renderProjectFilter = (className = "", stacked = false) => {
         const withTasks = new Set(
             tasks.map((task) => String(task.relatedProjectId ?? "")).filter(Boolean),
         );
@@ -4039,11 +4086,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             .sort((a, b) => a.label.localeCompare(b.label));
         if (options.length === 0) return null;
         return (
-            <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-project-filter">
+            <div className={filterFieldClass(stacked, className)} data-testid="task-project-filter">
                 <span className="text-slate-500 shrink-0">
                     {t("Project:", "Projekt:", "Projekt:")}
                 </span>
-                <div className="min-w-0 w-56">
+                <div className={filterControlClass(stacked, "w-56")}>
                     <CustomSelect
                         value={projectFilter || "all"}
                         onChange={(v) => setProjectFilter(v === "all" ? "" : v)}
@@ -4059,12 +4106,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // Global Tasks has its own "Project Manager" select for the same filter.
-    const renderAssigneeFilter = (className = "") => (
-        <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-assignee-filter">
+    const renderAssigneeFilter = (className = "", stacked = false) => (
+        <div className={filterFieldClass(stacked, className)} data-testid="task-assignee-filter">
             <span className="text-slate-500 shrink-0">
                 {t("Assignee:", "Priradené:", "Felelős:")}
             </span>
-            <div className="min-w-0 w-48">
+            <div className={filterControlClass(stacked, "w-48")}>
                 <CustomSelect
                     value={assigneeFilter}
                     onChange={(v) => setAssigneeFilter(v)}
@@ -4078,7 +4125,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         </div>
     );
 
-    const renderAssignerFilter = (className = "") => {
+    const renderAssignerFilter = (className = "", stacked = false) => {
         const creatorsInTasks = Array.from(
             new Set(tasks.map((t) => t.createdBy).filter(Boolean) as string[])
         );
@@ -4087,11 +4134,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         ).sort((a, b) => a.localeCompare(b));
 
         return (
-            <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-assigner-filter">
+            <div className={filterFieldClass(stacked, className)} data-testid="task-assigner-filter">
                 <span className="text-slate-500 shrink-0">
                     {t("Assigner:", "Zadal:", "Megbízó:")}
                 </span>
-                <div className="min-w-0 w-48">
+                <div className={filterControlClass(stacked, "w-48")}>
                     <CustomSelect
                         value={assignerFilter}
                         onChange={(v) => setAssignerFilter(v)}
@@ -4106,15 +4153,33 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
-    // Client / lead, project and (outside Global Tasks) assignee and assigner, in one row.
-    const renderTaskAttrFilters = (opts: { assignee: boolean; assigner?: boolean; clientClassName?: string }) => (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0">
-            {renderClientFilter(opts.clientClassName ?? "max-w-xs")}
-            {renderProjectFilter()}
-            {opts.assignee && renderAssigneeFilter()}
-            {opts.assigner && renderAssignerFilter()}
-        </div>
-    );
+    // Client / lead, project and (outside Global Tasks) assignee and assigner.
+    // `grid` is the folded block under the closed-tasks bar: one equal column per
+    // filter, wrapping as the card narrows. Otherwise they sit in one wrapping row.
+    const renderTaskAttrFilters = (opts: { assignee: boolean; assigner?: boolean; clientClassName?: string; grid?: boolean }) => {
+        const stacked = Boolean(opts.grid);
+        return (
+            <div
+                className={
+                    stacked
+                        ? "grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-x-4 gap-y-3 min-w-0"
+                        : "flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0"
+                }
+            >
+                {renderClientFilter(opts.clientClassName ?? (stacked ? "" : "max-w-xs"), stacked)}
+                {renderProjectFilter("", stacked)}
+                {opts.assignee && renderAssigneeFilter("", stacked)}
+                {opts.assigner && renderAssignerFilter("", stacked)}
+            </div>
+        );
+    };
+
+    // How many attribute filters are set, for the badge on the Filters button.
+    const attrFilterCount = (opts: { assignee: boolean; assigner: boolean }) =>
+        (clientFilter ? 1 : 0) +
+        (projectFilter ? 1 : 0) +
+        (opts.assignee && assigneeFilter !== "all" ? 1 : 0) +
+        (opts.assigner && assignerFilter !== "all" ? 1 : 0);
 
     // The filters in force, each removable — shown in all three sections so a
     // filter fired by a click in one place is never hidden from view. The date
@@ -4241,7 +4306,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         leadStateParents={leadStateParents}
                         initialDeadline={addDeadline}
                         incomingTitle={incomingTitle}
-                        onCreate={(created) => setTasks((prev) => [...created, ...prev])}
+                        onCreate={(created) => {
+                            markFresh(created);
+                            setTasks((prev) => [...created, ...prev]);
+                        }}
                         onClose={closeAddDrawer}
                     />
                 ) : (
@@ -4261,6 +4329,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         armRequest={voiceArmRequest}
                         onArmHandled={() => setVoiceArmRequest(0)}
                         onTasksCreated={(createdTasks) => {
+                            markFresh(createdTasks);
                             setTasks((prev) => [...createdTasks, ...prev]);
                         }}
                     />
@@ -4276,7 +4345,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     days={closedTasksDays}
                     onChangeDays={handleClosedTasksDaysChange}
                     t={t}
-                    leading={renderTaskAttrFilters({ assignee: true, assigner: true })}
+                    filters={renderTaskAttrFilters({ assignee: true, assigner: true, grid: true })}
+                    filterCount={attrFilterCount({ assignee: true, assigner: true })}
                 />
                 {renderActiveFilterChips({
                     showDay: true,

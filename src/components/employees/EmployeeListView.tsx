@@ -378,7 +378,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               )}
             </p>
           )}
-          <div className="overflow-x-auto">
+          <div className="table-sticky-scroll">
             <table className="w-full text-left text-ui border-collapse">
               <thead className="sticky top-0 z-20 bg-slate-50">
                 <tr className="border-b border-slate-200/80 bg-slate-50 text-slate-500 type-overline">

@@ -652,7 +652,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
       {/* 3. Files Datagrid Table (Amber Light Brown styled) */}
       <div className="glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-xl overflow-hidden">
-        <div className="overflow-x-auto overflow-y-auto max-h-[75vh] scrollbar-thin">
+        <div className="table-sticky-scroll scrollbar-thin">
           <table className="w-full border-collapse text-left min-w-195">
             <thead>
               <tr className="bg-white text-amber-800 type-overline">

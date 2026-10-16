@@ -223,8 +223,12 @@ function mcp_require_conclusion_to_finish(array $row, $incoming): void {
 
 function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
-    $cur = $pdo->prepare("SELECT status, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ?");
-    $cur->execute([$id]);
+    // Same visibility rule as the read tools: a caller without tasks.view_all may
+    // only touch their own, created and assigned tasks (judged on the stored row,
+    // like sync.php's visibleTaskIds check).
+    [$scopeSql, $scopeParams] = mcp_task_scope($user);
+    $cur = $pdo->prepare("SELECT status, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $cur->execute(array_merge([$id], $scopeParams));
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
 
@@ -279,8 +283,11 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
 function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
     $done = mcp_task_done_state($pdo);
-    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ?");
-    $chk->execute([$id]);
+    // Judged on the stored row, like sync.php: without tasks.view_all only the
+    // caller's own, created and assigned tasks may be completed.
+    [$scopeSql, $scopeParams] = mcp_task_scope($user);
+    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $chk->execute(array_merge([$id], $scopeParams));
     $row = $chk->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
     // `note` is the older name of the same field.
