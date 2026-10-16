@@ -44,7 +44,7 @@ DirectoryIndex index.html index.php
     RewriteRule (^|/)\.git(/|$) - [F,L]
     # scripts/ and tests/ hold CLI seeders, importers and test harnesses; the repo
     # root is the docroot on git-clone deploys, so they were web-reachable.
-    RewriteRule ^(scratch|tempData|\.agent|\.claude|src-php|node_modules|docs|scripts|tests)(/|$) - [F,L]
+    RewriteRule ^(scratch|tempData|\.agent|\.claude|src-php|node_modules|docs|scripts|tests|deploy)(/|$) - [F,L]
 </IfModule>
 # Fallback (mod_alias, almost always present): 404 the git dir even without mod_rewrite.
 <IfModule mod_alias.c>

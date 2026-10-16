@@ -1,0 +1,11 @@
+[mysqld]
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+# Sized for a 4-8 GB class box; raise on larger hosts. Not tunable on shared hosting.
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 256M
+innodb_flush_log_at_trx_commit = 1
+max_connections = 150
+# mysqldump in the web image is the MariaDB client; keep the classic auth plugin
+# available for it (MySQL 8.4 disables it by default).
+mysql_native_password = ON

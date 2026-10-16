@@ -1376,13 +1376,25 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return array_map(fn($l) => $l + ['url' => mcp_record_url($pdo, $l)], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            // The leads/clients module split: rows of the kind this key may not
+            // read are withheld, exactly as sync.php withholds them.
+            return array_map(
+                fn($l) => $l + ['url' => mcp_record_url($pdo, $l)],
+                array_values(array_filter($stmt->fetchAll(\PDO::FETCH_ASSOC), 'mcp_lead_module_visible'))
+            );
 
         case 'get_lead':
             $stmt = $pdo->prepare("SELECT * FROM leads WHERE id = ?");
             $stmt->execute([$args['id']]);
             $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$lead) {
+                throw new \Exception("Lead not found with ID: " . $args['id']);
+            }
+            // A client-classified row needs the clients module, a pipeline lead the
+            // leads module — same rule the list applies, so no record can be reached
+            // by id that the caller could not see in the list. The not-found message
+            // is reused so the split cannot be used to probe for record existence.
+            if (!mcp_lead_module_visible($lead)) {
                 throw new \Exception("Lead not found with ID: " . $args['id']);
             }
 
@@ -1737,8 +1749,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $comment = mcp_require_string($args, 'comment');
 
             // Comments are kept on the linked lead's timeline; without one there is nowhere to store them.
-            $tStmt = $pdo->prepare("SELECT title, related_lead_id FROM tasks WHERE id = ?");
-            $tStmt->execute([$taskId]);
+            [$scopeSql, $scopeParams] = mcp_task_scope($user);
+            $tStmt = $pdo->prepare("SELECT title, related_lead_id FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $tStmt->execute(array_merge([$taskId], $scopeParams));
             $task = $tStmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) throw new \Exception("Task not found with ID: {$taskId}");
             if (empty($task['related_lead_id'])) {
@@ -2295,6 +2308,14 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
         // --- 8. Communications & Notes ---
         case 'list_communications':
             $leadId = $args['lead_id'];
+            // The lead/client the timeline belongs to must be readable by this key
+            // (module split), not just the leads module in general.
+            $leadStmt = $pdo->prepare("SELECT id, adjustment FROM leads WHERE id = ?");
+            $leadStmt->execute([$leadId]);
+            $leadRow = $leadStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($leadRow && !mcp_lead_module_visible($leadRow)) {
+                throw new \Exception("Lead not found with ID: {$leadId}");
+            }
             $where = ["lead_id = ?", "hidden = 0"];
             $params = [$leadId];
             // Mail bodies belong to the mailbox module: callers without it do not see email events.

@@ -1,0 +1,86 @@
+# CCRM production stack for a VPS.  Usage: see README.md in this folder.
+#
+#   Internet :80/:443 -> caddy (TLS, HTTP/2+3, compression)
+#                          -> web (Apache + PHP 8.3, docroot = git checkout)
+#                               -> db (MySQL 8.4)   -> vector_db (MariaDB 11.8)
+#
+# Only caddy publishes ports. The databases are reachable from the web container
+# alone — never from the internet, unlike the dev compose file.
+name: ccrm
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    environment:
+      CCRM_DOMAIN: ${CCRM_DOMAIN:?set CCRM_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # certificates — losing it means re-issuing
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+  web:
+    build: .
+    image: ccrm-web:local
+    restart: unless-stopped
+    volumes:
+      # The git checkout IS the docroot. config.php, api_key.txt and uploads/
+      # live in it (git-ignored), so they survive `php ccrm update`.
+      - ${CCRM_DIR:-/srv/ccrm}:/var/www/html
+      - ${CCRM_BACKUP_DIR:-/srv/ccrm-backups}:/backups
+      # Read-only deploy key + known_hosts for `git pull` from GitHub.
+      - ${CCRM_SSH_DIR:-/srv/ccrm-ssh}:/var/www/.ssh:ro
+    environment:
+      CCRM_BACKUP_DIR: /backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ccrm
+      MYSQL_USER: ccrm_user
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./mysql/ccrm.cnf:/etc/mysql/conf.d/ccrm.cnf:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # RAG / semantic search. Needs MariaDB >= 11.8 for VECTOR + HNSW, which no
+  # distro package ships — one reason this stack uses containers. In the CRM:
+  # Settings -> Integrations -> Vector DB = MariaDB, host `vector_db`, port 3306.
+  vector_db:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: vector_db
+      MARIADB_USER: vector_user
+      MARIADB_PASSWORD: ${VECTOR_DB_PASSWORD:?set VECTOR_DB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${VECTOR_DB_ROOT_PASSWORD:?set VECTOR_DB_ROOT_PASSWORD in .env}
+    volumes:
+      - vector_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  db_data:
+  vector_db_data:
+  caddy_data:
+  caddy_config:

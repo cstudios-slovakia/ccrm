@@ -128,6 +128,34 @@ if (!$project || empty($project['ticket_widget_enabled'])) {
     exit;
 }
 
+// Bearer capability for the widget. Origin/Referer headers are client-supplied
+// and trivially forged, so the domain allowlist below can never be the security
+// boundary — it is only a browser-level convenience. Every action, including
+// the script itself, now requires the project's per-embed key, which is the
+// random ticket_public_hash minted on save (sync.php) or by "Regenerate public
+// link" in the ticket panel. The operator copies the whole <script src=...>
+// embed (which contains the key) into their site; anyone who can read that
+// page can use the widget — which is the feature — but nobody can reach a
+// project's tickets without it.
+$widgetKey = (string)($project['ticket_public_hash'] ?? '');
+if ($widgetKey === '') {
+    $widgetKey = bin2hex(random_bytes(16));
+    $pdo->prepare("UPDATE `projects` SET `ticket_public_hash` = ? WHERE `id` = ?")->execute([$widgetKey, $projectId]);
+}
+$providedKey = (string)($_GET['key'] ?? ($input['key'] ?? ''));
+if ($providedKey === '' || !hash_equals($widgetKey, $providedKey)) {
+    if ($action === 'script') {
+        http_response_code(403);
+        header('Content-Type: application/javascript; charset=utf-8');
+        echo "/* Koperniq Ticket Widget: Missing or invalid embed key. */\n";
+        exit;
+    }
+    http_response_code(403);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Missing or invalid widget embed key.']);
+    exit;
+}
+
 $allowedDomains = json_decode($project['ticket_allowed_domains'] ?? '[]', true) ?: [];
 if (!ccrm_widget_domain_matches($requestHost, $allowedDomains)) {
     if ($action === 'script') {
@@ -142,12 +170,9 @@ if (!ccrm_widget_domain_matches($requestHost, $allowedDomains)) {
     exit;
 }
 
-// Ensure project has a public hash for the status link
-$publicHash = $project['ticket_public_hash'] ?? '';
-if ($publicHash === '') {
-    $publicHash = bin2hex(random_bytes(16));
-    $pdo->prepare("UPDATE `projects` SET `ticket_public_hash` = ? WHERE `id` = ?")->execute([$publicHash, $projectId]);
-}
+// The public hash was minted (or reused) by the embed-key check above; the
+// status link and the widget embed share the same per-project capability.
+$publicHash = $widgetKey;
 
 // Helper to load combined email whitelist (project + paired client)
 $getCombinedEmailWhitelist = function () use ($pdo, $project): array {

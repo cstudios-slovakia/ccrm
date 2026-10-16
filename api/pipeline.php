@@ -36,18 +36,40 @@ try {
     exit;
 }
 
-// Helper to get or generate the API key
-function getOrGenerateKey($file) {
-    if (file_exists($file)) {
-        $key = trim(file_get_contents($file));
-        if (!empty($key)) {
-            return $key;
-        }
+// Helper to get the stored API key. Never mints: the key is created (and rotated)
+// by the admin actions below, so an unauthenticated request cannot influence it.
+// The file is read under an explicit lock shared with the writers, so a rotation
+// in flight can never hand out a half-written or truncated key.
+function getStoredKey($file) {
+    if (!file_exists($file)) {
+        return '';
     }
-    // Generate a secure key
-    $key = 'sk_live_' . bin2hex(random_bytes(12));
-    file_put_contents($file, $key);
+    $fh = fopen($file, 'r');
+    if ($fh === false) {
+        return '';
+    }
+    flock($fh, LOCK_SH);
+    $key = trim(stream_get_contents($fh));
+    flock($fh, LOCK_UN);
+    fclose($fh);
     return $key;
+}
+
+// Write the key atomically: a temporary file renamed into place, so concurrent
+// readers never see a partial write and two writers cannot interleave. Returns
+// false when the key could not be persisted — callers must treat that as a
+// failure, never as "use the in-memory value anyway".
+function writeStoredKey($file, $key) {
+    $tmp = $file . '.tmp' . bin2hex(random_bytes(4));
+    if (file_put_contents($tmp, $key, LOCK_EX) === false) {
+        @unlink($tmp);
+        return false;
+    }
+    if (!rename($tmp, $file)) {
+        @unlink($tmp);
+        return false;
+    }
+    return true;
 }
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
@@ -55,7 +77,15 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 // 1. GET KEY Action (admin only — reveals the integration secret)
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_key') {
     ccrm_require_admin();
-    $key = getOrGenerateKey($apiKeyFile);
+    $key = getStoredKey($apiKeyFile);
+    if ($key === '') {
+        $key = 'sk_live_' . bin2hex(random_bytes(12));
+        if (!writeStoredKey($apiKeyFile, $key)) {
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Could not persist the API key.']);
+            exit;
+        }
+    }
     echo json_encode(['status' => 'success', 'api_key' => $key]);
     exit;
 }
@@ -64,7 +94,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_key') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'reset_key') {
     $admin = ccrm_require_admin();
     $key = 'sk_live_' . bin2hex(random_bytes(12));
-    file_put_contents($apiKeyFile, $key);
+    if (!writeStoredKey($apiKeyFile, $key)) {
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Could not persist the API key.']);
+        exit;
+    }
     ccrm_audit_log($pdo, $admin, 'api_key.reset', 'Public lead-intake API key rotated');
     echo json_encode(['status' => 'success', 'api_key' => $key]);
     exit;
@@ -256,9 +290,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    $actualKey = getOrGenerateKey($apiKeyFile);
+    $actualKey = getStoredKey($apiKeyFile);
 
-    if (empty($providedKey) || empty($actualKey) || !hash_equals((string)$actualKey, (string)$providedKey)) {
+    if ($actualKey === '') {
+        http_response_code(503);
+        echo json_encode(['status' => 'error', 'message' => 'Lead intake is not configured yet. An administrator must generate the API key first.']);
+        exit;
+    }
+
+    if (empty($providedKey) || !hash_equals((string)$actualKey, (string)$providedKey)) {
         http_response_code(401);
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized: Invalid or missing X-API-KEY header']);
         exit;

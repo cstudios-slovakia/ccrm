@@ -407,8 +407,11 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
         case 'set_task_assignees': {
             $taskId = mcp_require_string($args, 'task_id');
             if (!is_array($args['assignees'] ?? null) || !$args['assignees']) throw new \InvalidArgumentException("'assignees' must be a non-empty list of user names.");
-            $stmt = $pdo->prepare("SELECT id, owner FROM tasks WHERE id = ?");
-            $stmt->execute([$taskId]);
+            // Adding an assignee also grants visibility of the task, so the stored
+            // row must already be visible to this caller (same rule as sync.php).
+            [$scopeSql, $scopeParams] = mcp_task_scope($user);
+            $stmt = $pdo->prepare("SELECT id, owner FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $stmt->execute(array_merge([$taskId], $scopeParams));
             $task = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) throw new \Exception("Task not found with ID: {$taskId}");
             $users = $pdo->query("SELECT name FROM users")->fetchAll(\PDO::FETCH_COLUMN);
@@ -432,8 +435,11 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
         case 'set_task_tags': {
             $taskId = mcp_require_string($args, 'task_id');
             if (!is_array($args['tags'] ?? null) || !$args['tags']) throw new \InvalidArgumentException("'tags' must be a non-empty list.");
-            $chk = $pdo->prepare("SELECT id FROM tasks WHERE id = ?");
-            $chk->execute([$taskId]);
+            // Tags travel with the task row in the app, so the same stored-row
+            // visibility rule applies here.
+            [$scopeSql, $scopeParams] = mcp_task_scope($user);
+            $chk = $pdo->prepare("SELECT id FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $chk->execute(array_merge([$taskId], $scopeParams));
             if (!$chk->fetchColumn()) throw new \Exception("Task not found with ID: {$taskId}");
             $insTag = $pdo->prepare("INSERT IGNORE INTO tags (id, name) VALUES (?, ?)");
             $insLink = $pdo->prepare("INSERT IGNORE INTO task_tags (task_id, tag_name) VALUES (?, ?)");
@@ -642,6 +648,16 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
         case 'list_documents': {
             $where = ["type IN ('offer','order','proforma_invoice','advance_receipt','invoice','delivery_note')", 'hidden = 0']; $params = [];
             if (!empty($args['lead_id'])) { $where[] = 'lead_id = ?'; $params[] = (string)$args['lead_id']; }
+            if (!empty($args['lead_id'])) {
+                // The documents belong to the lead/client the caller names: the
+                // module split applies to the record, not just the documents.
+                $leadStmt = $pdo->prepare("SELECT id, adjustment FROM leads WHERE id = ?");
+                $leadStmt->execute([(string)$args['lead_id']]);
+                $leadRow = $leadStmt->fetch(\PDO::FETCH_ASSOC);
+                if ($leadRow && !mcp_lead_module_visible($leadRow)) {
+                    throw new \Exception("Lead not found with ID: " . (string)$args['lead_id']);
+                }
+            }
             $t = mcp_enum($args, 'type', ['offer', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note']);
             if ($t) { $where[] = 'type = ?'; $params[] = $t; }
             $stmt = $pdo->prepare("SELECT id, lead_id, type, timestamp, title, amount, file_name, file_type, author FROM timeline_events WHERE " . implode(' AND ', $where) . " ORDER BY timestamp DESC LIMIT " . mcp_limit($args));
