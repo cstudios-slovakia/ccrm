@@ -110,6 +110,22 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
   result unchecked — concurrent first requests can each mint a different key and
   permanently 401 all integrations. (S)
 - [ ] 🔵 `validate_vat.php` leaks its curl handle (no `curl_close`). (S)
+- [ ] 🟡 **Clients and leads are still one table, tied together by name.** A client
+  is a `leads` row with a `client-*` id (or `adjustment > 0`). Since v1.12.49
+  `leads.client_id` is the real link: it is populated (migration backfill,
+  `php ccrm backfill-clients --dry-run` lists what could not be linked), synced, and
+  used by the lead detail panel (`src/utils/leadClient.ts`). Everything else still
+  groups by lowercased name: the Clients page (`ClientsView.tsx`,
+  `allClientProfiles`), the dashboards, `list_clients` and the other MCP tools.
+  Finish in this order: (1) a Clients-page profile save must only touch the client
+  row and the leads linked to it, not every same-name record; (2) give
+  adjustment-only clients a real `client-*` row (migration with a dry run, moving
+  `adjustment` onto it); (3) group the Clients page, dashboards and MCP by
+  `client_id`; (4) move clients into their own `clients` table and drop the
+  `client-*` prefix and the `adjustment > 0` rule. Steps 1–3 are cheap and
+  reversible; step 4 migrates every table that references `leads.id` as
+  `client_id` (tickets, SLAs, invoices, documents, tasks) and the sync, MCP, RAG
+  and QA fixtures, so do it last and on its own. (L)
 
 ---
 
