@@ -182,7 +182,7 @@ if ($action === 'train') {
     } catch (\Throwable $e) {
         http_response_code(500);
         if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
-        echo json_encode(['success' => false, 'message' => 'Indexing failed: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Indexing failed. See the error log.']);
     }
     exit;
 }

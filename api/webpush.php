@@ -371,7 +371,7 @@ if (!function_exists('ccrm_send_push_notification')) {
             $vapidKeys = ccrm_get_or_create_vapid_keys($pdo);
         } catch (\Throwable $e) {
             error_log('[ccrm webpush] Cannot get VAPID keys: ' . $e->getMessage());
-            return ['sent' => 0, 'failed' => 0, 'error' => $e->getMessage()];
+            return ['sent' => 0, 'failed' => 0, 'error' => 'Push keys unavailable.'];
         }
 
         $sql = "SELECT `id`, `endpoint`, `p256dh`, `auth`, `user_name`, `user_email` FROM `push_subscriptions`";
@@ -389,7 +389,7 @@ if (!function_exists('ccrm_send_push_notification')) {
             $subscriptions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
             error_log('[ccrm webpush] Subscription query error: ' . $e->getMessage());
-            return ['sent' => 0, 'failed' => 0, 'error' => $e->getMessage()];
+            return ['sent' => 0, 'failed' => 0, 'error' => 'Could not read push subscriptions.'];
         }
 
         if (empty($subscriptions)) {

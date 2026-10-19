@@ -1438,9 +1438,65 @@ HTACCESS;
                 $detail,
                 $_SERVER['REMOTE_ADDR'] ?? null,
             ]);
+            ccrm_queue_security_alert($pdo, $action, $actor, $detail);
         } catch (\Throwable $e) {
             error_log('[ccrm audit_log] ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Audit actions that tell the administrators as they happen, not only when
+     * somebody opens the audit log. Value = push notification title.
+     */
+    function ccrm_security_alert_actions(): array {
+        return [
+            'auth.lockout'     => 'Login lockout',
+            'user.role_change' => 'User role changed',
+            'user.delete'      => 'User removed',
+            'generate_mcp_key' => 'MCP API key created',
+            'api_key.reset'    => 'Lead intake API key reset',
+            'error_logs.clear' => 'Error logs cleared',
+        ];
+    }
+
+    /**
+     * Web Push to every administrator for a security-relevant audit event.
+     *
+     * Runs after the response is sent: the push goes out over the network and
+     * several callers hold an open database transaction. A burst of lockouts
+     * (a brute-force run) sends one alert per ten minutes, not one per attempt.
+     */
+    function ccrm_queue_security_alert(\PDO $pdo, string $action, ?array $actor, ?string $detail): void {
+        $titles = ccrm_security_alert_actions();
+        if (!isset($titles[$action])) return;
+
+        $who = (string)($actor['email'] ?? '');
+        $body = trim(($who !== '' ? $who . ': ' : '') . (string)$detail);
+        $body = mb_substr($body !== '' ? $body : $action, 0, 140);
+
+        register_shutdown_function(static function () use ($pdo, $action, $titles, $body): void {
+            try {
+                if (function_exists('fastcgi_finish_request')) {
+                    @fastcgi_finish_request();
+                }
+                if ($action === 'auth.lockout') {
+                    $recent = $pdo->prepare(
+                        "SELECT COUNT(*) FROM `audit_log` WHERE `action` = ? AND `created_at` > (NOW() - INTERVAL 10 MINUTE)"
+                    );
+                    $recent->execute([$action]);
+                    if ((int)$recent->fetchColumn() > 1) return;
+                }
+                require_once __DIR__ . '/webpush.php';
+                $admins = $pdo->query(
+                    "SELECT `email` FROM `users` WHERE LOWER(TRIM(`role`)) = 'admin' AND `email` <> ''"
+                )->fetchAll(\PDO::FETCH_COLUMN);
+                foreach ($admins as $email) {
+                    ccrm_send_push_notification($pdo, (string)$email, '🔐 ' . $titles[$action], $body, '/#settings/audit');
+                }
+            } catch (\Throwable $e) {
+                error_log('[ccrm security alert] ' . $e->getMessage());
+            }
+        });
     }
 
     /** System-level integration secrets (system_settings.INTEGRATIONS_CONFIG). */

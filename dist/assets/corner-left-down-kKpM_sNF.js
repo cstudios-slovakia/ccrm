@@ -1,0 +1,1 @@
+import{n as e}from"./jsx-runtime-DQ2sTfV8.js";var t=e(`corner-down-left`,[[`path`,{d:`M20 4v7a4 4 0 0 1-4 4H4`,key:`6o5b7l`}],[`path`,{d:`m9 10-5 5 5 5`,key:`1kshq7`}]]),n=e(`corner-left-down`,[[`path`,{d:`m14 15-5 5-5-5`,key:`1eia93`}],[`path`,{d:`M20 4h-7a4 4 0 0 0-4 4v12`,key:`nbpdq2`}]]);export{t as n,n as t};

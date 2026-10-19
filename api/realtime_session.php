@@ -162,7 +162,8 @@ if ($action === 'query_rag') {
             $resultText = "No specific CRM records found matching query: " . $query;
         }
     } catch (\Exception $e) {
-        $resultText = "Error querying CRM data: " . $e->getMessage();
+        ccrm_log_exception($e);
+        $resultText = "Error querying CRM data.";
     }
 
     echo json_encode([
@@ -332,7 +333,8 @@ if ($action === 'create_task') {
             'task_id' => $taskId
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to create task: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to create task.']);
     }
     exit;
 }
@@ -366,7 +368,8 @@ if ($action === 'create_lead') {
             'lead_id' => $leadId
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to register lead: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to register lead.']);
     }
     exit;
 }
@@ -414,7 +417,8 @@ if ($action === 'add_client_note') {
             'lead_id' => $lead['id']
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to log client note: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to log client note.']);
     }
     exit;
 }
@@ -461,7 +465,8 @@ if ($action === 'create_project') {
             'project_name' => $name
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to create project: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to create project.']);
     }
     exit;
 }
@@ -547,7 +552,8 @@ if ($action === 'update_project') {
             'project_name' => $proj['name']
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to update project: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to update project.']);
     }
     exit;
 }
@@ -591,7 +597,8 @@ if ($action === 'add_project_task') {
             'project_name' => $proj['name']
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to add project task: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to add project task.']);
     }
     exit;
 }
@@ -639,7 +646,8 @@ if ($action === 'add_project_financial') {
             'project_name' => $proj['name']
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to log project financial record: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to log project financial record.']);
     }
     exit;
 }
@@ -678,7 +686,8 @@ if ($action === 'add_project_milestone') {
             'project_name' => $proj['name']
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to add project milestone: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to add project milestone.']);
     }
     exit;
 }
@@ -718,7 +727,8 @@ if ($action === 'delete_project') {
             'project_name' => $proj['name']
         ]);
     } catch (\Exception $e) {
-        echo json_encode(['success' => false, 'message' => 'Failed to delete project: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'Failed to delete project.']);
     }
     exit;
 }

@@ -80,6 +80,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.social": "📱 Social Media (Zernio)",
     "settings.tab.danger": "⚠️ System Reset",
     "settings.tab.errors": "⚠️ Error Logs",
+    "settings.tab.audit": "🔐 Audit log",
     "settings.tab.license": "🔑 Licence",
 
     // Visible Modules Tab
@@ -909,6 +910,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.social": "📱 Sociálne siete (Zernio)",
     "settings.tab.danger": "⚠️ Reset systému",
     "settings.tab.errors": "⚠️ Chybové záznamy",
+    "settings.tab.audit": "🔐 Audit log",
     "settings.tab.license": "🔑 Licencia",
 
     // Viditeľnosť modulov
@@ -1737,6 +1739,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.social": "📱 Közösségi média (Zernio)",
     "settings.tab.danger": "⚠️ Rendszer visszaállítása",
     "settings.tab.errors": "⚠️ Hiba naplók",
+    "settings.tab.audit": "🔐 Audit napló",
     "settings.tab.license": "🔑 Licenc",
 
     // Modulok láthatósága
