@@ -503,6 +503,14 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'created_at' => ccrm_date_only($inc['createdAt'] ?? null)
     ];
 
+    // An older browser bundle does not know `clientId` and never sends it; that is
+    // "no opinion", not "unlinked" (see the COALESCE on the write below).
+    if (array_key_exists('clientId', $inc)) {
+        $incClient = ($inc['clientId'] ?? '') !== '' ? $inc['clientId'] : null;
+        $dbClient = ($db['client_id'] ?? '') !== '' ? $db['client_id'] : null;
+        if ($incClient !== $dbClient) return false;
+    }
+
     if (array_key_exists('ticketAllowedEmails', $inc)) {
         $incEmails = is_array($inc['ticketAllowedEmails']) ? array_values(array_filter(array_map('trim', $inc['ticketAllowedEmails']))) : [];
         $dbEmails = (!empty($db['ticket_allowed_emails'])) ? (json_decode($db['ticket_allowed_emails'], true) ?: []) : [];
@@ -1090,6 +1098,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? '',
                 'interestNote' => $row['interest_note'] ?? '',
                 'referralLeadId' => $row['referral_lead_id'] ?? '',
+                'clientId' => ($row['client_id'] ?? '') !== '' ? $row['client_id'] : null,
                 'establishmentDate' => $row['establishment_date'] ?? '',
                 'legalForm' => $row['legal_form'] ?? '',
                 'skNace' => $row['sk_nace'] ?? '',
@@ -3976,15 +3985,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insLead = $pdo->prepare("INSERT INTO `leads` (
               `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `division`, `value`, `adjustment`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
-              `ai_summary`, `ai_summary_fingerprint`, `interest_note`, `referral_lead_id`,
+              `ai_summary`, `ai_summary_fingerprint`, `interest_note`, `referral_lead_id`, `client_id`,
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
               `created_at`,
               `follow_ups`,
               `client_category_id`, `ticket_allowed_emails`, `archived`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `division` = VALUES(`division`), `value` = VALUES(`value`), `adjustment` = VALUES(`adjustment`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
+              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `division` = VALUES(`division`), `value` = VALUES(`value`), `adjustment` = VALUES(`adjustment`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`), `client_id` = COALESCE(VALUES(`client_id`), `client_id`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
               `follow_ups` = VALUES(`follow_ups`),
@@ -4103,6 +4112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['aiSummaryFingerprint'] ?? null,
                     $l['interestNote'] ?? null,
                     $l['referralLeadId'] ?? null,
+                    ($l['clientId'] ?? '') !== '' ? $l['clientId'] : null,
                     $l['establishmentDate'] ?? null,
                     $l['legalForm'] ?? null,
                     $l['skNace'] ?? null,

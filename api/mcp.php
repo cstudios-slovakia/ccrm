@@ -1531,6 +1531,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                          VALUES (?, ?, 'note', NOW(), 'Client Registered', ?, ?)"
                     )->execute([mcp_new_id('ev_'), $clientId, 'Converted from lead ' . $id . ' via MCP.', $user['name']]);
                 }
+                // Point the lead at its client by id, the way the app does when it creates one.
+                $pdo->prepare("UPDATE leads SET client_id = ? WHERE id = ?")->execute([$clientId, $id]);
                 $projectId = null;
                 if (!empty($args['create_project'])) {
                     $projectId = mcp_create_project_row($pdo, ['name' => $projectName, 'client_id' => $id]);

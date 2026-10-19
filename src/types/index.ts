@@ -182,6 +182,11 @@ export interface Lead {
   // Lead Referral (links to another Lead/Client ID)
   referralLeadId?: string;
 
+  // The client record (a `client-*` row) this lead belongs to. Replaces matching
+  // by name, which cannot tell two people of the same name apart. Absent on leads
+  // that no client has been created for or linked to yet.
+  clientId?: string | null;
+
   // Which channel first brought the visitor to the website (facebook,
   // instagram, google, direct, ...) and a free-text detail (medium, campaign,
   // referrer, landing page). Reported by the public web-form webhook and

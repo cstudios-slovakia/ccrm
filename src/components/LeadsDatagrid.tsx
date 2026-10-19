@@ -5,6 +5,11 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
+import {
+    contactDetailsFor,
+    isLinkedById,
+    resolveLinkedClient,
+} from "../utils/leadClient";
 import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo, deleteLeadsWithUndo } from "../utils/leadActions";
@@ -2076,6 +2081,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         const profiles: Record<
             string,
             {
+                id: string;
                 name: string;
                 city: string;
                 clientType: "person" | "business" | "partner";
@@ -2093,6 +2099,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             const key = lead.name.trim().toLowerCase();
             if (key && !profiles[key]) {
                 profiles[key] = {
+                    id: lead.id,
                     name: lead.name.trim(),
                     city: lead.city || "",
                     clientType: lead.clientType || "person",
@@ -2308,6 +2315,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [leadDivision, setLeadDivision] = useState("");
     const [leadRating, setLeadRating] = useState(3);
     const [leadCity, setLeadCity] = useState("");
+    const [leadPhone, setLeadPhone] = useState("");
+    const [leadEmail, setLeadEmail] = useState("");
+    const [leadContactPerson, setLeadContactPerson] = useState("");
     const [leadClientType, setLeadClientType] = useState<
         "person" | "business" | "partner"
     >("person");
@@ -2466,6 +2476,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             setLeadDivision(activeLead.division || "");
             setLeadRating(activeLead.rating || 3);
             setLeadCity(activeLead.city || "");
+            setLeadPhone(activeLead.phone || "");
+            setLeadEmail(activeLead.email || "");
+            setLeadContactPerson(activeLead.contactPerson || "");
             setLeadClientType(activeLead.clientType || "person");
             setLeadSelectedCategories(activeLead.categories || []);
             setLeadReferralId(activeLead.referralLeadId || "");
@@ -2480,32 +2493,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         const clientName = activeLead.name.trim().toLowerCase();
         if (!clientName) return null;
 
-        const matchingLeads = leads.filter(
-            (l) => l.name.trim().toLowerCase() === clientName,
-        );
-
-        // Check if there is an actual client record or client association for this name:
-        // A client exists if there is an explicit client-* record or non-zero adjustment
-        const clientRecord = matchingLeads.find(
-            (l) =>
-                (l.id || "").startsWith("client-") ||
-                (Number(l.adjustment) || 0) > 0,
-        );
-
+        // The explicit `clientId` link first; same-name matching only for leads
+        // that have none yet (see utils/leadClient.ts).
+        const clientRecord = resolveLinkedClient(activeLead, leads);
         if (!clientRecord) {
             return null;
         }
 
-        const phone =
-            activeLead.phone ||
-            matchingLeads.find((l) => l.phone)?.phone ||
-            clientRecord.phone ||
-            "";
-        const email =
-            activeLead.email ||
-            matchingLeads.find((l) => l.email)?.email ||
-            clientRecord.email ||
-            "";
+        // Same-name leads only lend their details to a lead with no id link: a
+        // linked lead's look-alike is a different person.
+        const matchingLeads = isLinkedById(activeLead, leads)
+            ? []
+            : leads.filter((l) => l.name.trim().toLowerCase() === clientName);
+
+        const { phone, email, contactPerson } = contactDetailsFor(
+            activeLead,
+            leads,
+            clientRecord,
+        );
         const website =
             activeLead.website ||
             matchingLeads.find((l) => l.website)?.website ||
@@ -2531,7 +2536,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             companyId: leadWithCompanyId.companyId || "",
             taxId: leadWithCompanyId.taxId || "",
             vatId: leadWithCompanyId.vatId || "",
-            contactPerson: leadWithCompanyId.contactPerson || "",
+            contactPerson: contactPerson || leadWithCompanyId.contactPerson || "",
             website,
         };
     }, [leads, activeLead]);
@@ -2575,7 +2580,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 interestNote: lead.interestNote || undefined,
             };
 
-            setLeads((prev) => [newClientRecord, ...prev]);
+            // The lead keeps its own copy of the contact details and points at the
+            // new client by id, so a later rename cannot detach it.
+            setLeads((prev) => [
+                newClientRecord,
+                ...prev.map((l) =>
+                    l.id === lead.id ? { ...l, clientId: newClientId } : l,
+                ),
+            ]);
 
             (window as any).showToast?.(
                 t(
@@ -2599,6 +2611,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     return {
                         ...l,
                         name: clientName,
+                        clientId: found?.id ?? l.clientId,
                         city: l.city || found?.city || "",
                         phone: l.phone || found?.phone || undefined,
                         email: l.email || found?.email || undefined,
@@ -3339,6 +3352,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             : {}),
                         name: leadName.trim(),
                         city: leadCity.trim(),
+                        phone: leadPhone.trim() || undefined,
+                        email: leadEmail.trim() || undefined,
+                        contactPerson: leadContactPerson.trim() || undefined,
                         clientType: leadClientType,
                         value: valNum,
                         owner: leadOwner,
@@ -4343,8 +4359,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             return;
         }
 
+        // "Existing client" links to the picked client's record; "new client"
+        // links to the record created just below.
+        const newClientRowId = `client-${Date.now() + 1}`;
+        const pickedClientId =
+            clientMode === "new"
+                ? newClientRowId
+                : clientMode === "existing"
+                  ? existingClients.find((c) => c.name === selectedExistingClient)?.id
+                  : undefined;
+
         const newLead: Lead = {
             id: `lead-${Date.now()}`,
+            clientId: pickedClientId,
             name: newLeadName.trim(),
             city: newLeadCity.trim(),
             clientType: newLeadType,
@@ -4366,7 +4393,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         if (clientMode === "new") {
             const newClientRecord: Lead = {
-                id: `client-${Date.now() + 1}`,
+                id: newClientRowId,
                 name: newLeadName.trim(),
                 city: newLeadCity.trim(),
                 clientType: newLeadType,
@@ -5839,6 +5866,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 activeLead.rating || 3,
                                             );
                                             setLeadCity(activeLead.city || "");
+                                            setLeadPhone(activeLead.phone || "");
+                                            setLeadEmail(activeLead.email || "");
+                                            setLeadContactPerson(
+                                                activeLead.contactPerson || "",
+                                            );
                                             setLeadClientType(
                                                 activeLead.clientType ||
                                                     "person",
@@ -6059,6 +6091,83 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         />
                                     </div>
                                 </div>
+
+                                {/* How we reach this lead. Phone and e-mail are what the
+                                    timeline mailbox and call logging key on; the contact
+                                    person only matters when the lead is not a private person. */}
+                                <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="type-overline text-slate-500">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.phone_number",
+                                            )}
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            disabled={!isEditingLead}
+                                            value={leadPhone}
+                                            onChange={(e) =>
+                                                setLeadPhone(e.target.value)
+                                            }
+                                            placeholder={
+                                                isEditingLead ? "+421 900 000 000" : "—"
+                                            }
+                                            className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                                                isEditingLead
+                                                    ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
+                                                    : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
+                                            }`}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="type-overline text-slate-500">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.email_address",
+                                            )}
+                                        </label>
+                                        <input
+                                            type="email"
+                                            disabled={!isEditingLead}
+                                            value={leadEmail}
+                                            onChange={(e) =>
+                                                setLeadEmail(e.target.value)
+                                            }
+                                            placeholder={
+                                                isEditingLead ? "name@example.com" : "—"
+                                            }
+                                            className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                                                isEditingLead
+                                                    ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
+                                                    : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
+                                            }`}
+                                        />
+                                    </div>
+                                </div>
+                                {(leadClientType !== "person" || leadContactPerson) && (
+                                    <div className="space-y-1">
+                                        <label className="type-overline text-slate-500">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.contact_person",
+                                            )}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            disabled={!isEditingLead}
+                                            value={leadContactPerson}
+                                            onChange={(e) =>
+                                                setLeadContactPerson(e.target.value)
+                                            }
+                                            className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                                                isEditingLead
+                                                    ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
+                                                    : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
+                                            }`}
+                                        />
+                                    </div>
+                                )}
 
                                 {/* Valuation */}
                                 <div className="space-y-1">

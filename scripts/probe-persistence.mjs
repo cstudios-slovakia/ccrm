@@ -377,7 +377,7 @@ try {
       organizationSize: "10-19", ownershipType: "private", dataSource: "registeruz", dissolutionDate: "",
       region: "Žilinský", district: "Žilina",
       vatValidationResult: { valid: true, name: "X s.r.o.", address: "Y", checkedAt: "2026-02-02" },
-      categories: ["Strechy", "Okná"], interestNote: "Záujem o šindeľ – 'urgent'", referralLeadId: "",
+      categories: ["Strechy", "Okná"], interestNote: "Záujem o šindeľ – 'urgent'", referralLeadId: "", clientId: `${PREFIX}client-link`,
       followUps: { new: "2026-02-03" }, aiSummary: "sum", aiSummaryFingerprint: "fp", clientCategoryId: null, archived: false,
       timeline: [
         { id: `ev-${t0}-1`, type: "note", timestamp: stamp, title: "Poznámka", content: "Text s diakritikou: ľščťžýáíé", author: "Probe", audioFile: "/uploads/a.webm", transcription: "prepis" },
@@ -392,11 +392,18 @@ try {
     const back = ((await json("/sync.php")).body?.leads || []).find((l) => l.id === fullLeadId);
     const scalar = ["name", "city", "clientType", "status", "source", "owner", "value", "rating", "createdAt", "phone", "email",
       "companyId", "taxId", "vatId", "contactPerson", "website", "establishmentDate", "legalForm", "skNace", "organizationSize",
-      "ownershipType", "dataSource", "dissolutionDate", "region", "district", "interestNote", "referralLeadId", "aiSummary",
+      "ownershipType", "dataSource", "dissolutionDate", "region", "district", "interestNote", "referralLeadId", "clientId", "aiSummary",
       "aiSummaryFingerprint", "clientCategoryId", "archived", "address", "vatValidationResult", "followUps"];
     const d = diffKeys(back, lead, scalar);
     check("lead: every field reads back unchanged", !!back && d.length === 0, `diffs=${d.map((k) => `${k}=${JSON.stringify(back?.[k])}`).join(" ")}`);
     check("lead: categories read back", deepEq([...(back?.categories || [])].sort(), [...lead.categories].sort()), `categories=${JSON.stringify(back?.categories)}`);
+    // An older browser bundle has no `clientId` and never sends one. Its edit of the
+    // lead must change the lead and leave the link to the client alone.
+    const stale = { ...back, city: "Žilina (stale bundle)" };
+    delete stale.clientId;
+    const rStale = await post({ baseSyncedAt: await clock(), leads: [stale] });
+    const afterStale = ((await json("/sync.php")).body?.leads || []).find((l) => l.id === fullLeadId);
+    check("lead: an edit from a bundle without clientId keeps the client link", rStale.status === 200 && afterStale?.city === stale.city && afterStale?.clientId === lead.clientId, `status=${rStale.status} city=${afterStale?.city} clientId=${JSON.stringify(afterStale?.clientId)}`);
     const byId = Object.fromEntries((back?.timeline || []).map((e) => [e.id, e]));
     const teKeys = ["type", "timestamp", "title", "content", "amount", "extraTime", "fileName", "fileSize", "fileType", "attachments", "author", "audioFile", "transcription"];
     const teDiffs = lead.timeline.flatMap((e) => diffKeys(byId[e.id], e, teKeys.filter((k) => k in e)).map((k) => `${e.type}.${k}=${JSON.stringify(byId[e.id]?.[k])}`));

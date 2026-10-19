@@ -18,6 +18,9 @@ switch ($command) {
     case 'migrate':
         ccrm_migrate();
         break;
+    case 'backfill-clients':
+        ccrm_backfill_clients_cli(in_array('--dry-run', $args, true));
+        break;
     case 'license':
     case 'licence':
         ccrm_license_cli(isset($args[2]) ? $args[2] : 'status', isset($args[3]) ? $args[3] : null);
@@ -33,6 +36,7 @@ function ccrm_help() {
     echo "Usage:\n";
     echo "  php ccrm update            - Pulls latest code, runs composer install, publishes assets, and migrates DB\n";
     echo "  php ccrm migrate           - Runs database migrations manually\n";
+    echo "  php ccrm backfill-clients [--dry-run] - Links leads to their client record by id and lists the ones it could not\n";
     echo "  php ccrm license status    - Shows this installation's licence and whether it allows updates\n";
     echo "  php ccrm license set <key> - Activates a licence key (or imports an offline licence token)\n";
     echo "  php ccrm license check     - Forces an immediate re-check with the licence server\n";
@@ -78,6 +82,42 @@ function ccrm_cli_pdo() {
     } catch (\Throwable $e) {
         echo "Error: could not connect to the database: " . $e->getMessage() . "\n";
         return null;
+    }
+}
+
+/**
+ * Links every lead that has no client_id to its client record, where nothing
+ * contradicts the name match, and prints what it left out so a person can decide.
+ * Safe to repeat; --dry-run changes nothing.
+ */
+function ccrm_backfill_clients_cli($dryRun) {
+    $pdo = ccrm_cli_pdo();
+    if ($pdo === null) {
+        echo "Error: CCRM is not installed here (no config.php), or the database is unreachable.\n";
+        exit(1);
+    }
+    foreach (['/api', '/dist/api', '/public/api'] as $dir) {
+        if (file_exists(__DIR__ . $dir . '/lead_client_backfill.php')) {
+            require_once __DIR__ . $dir . '/lead_client_backfill.php';
+            break;
+        }
+    }
+    if (!function_exists('ccrm_backfill_lead_client_ids')) {
+        echo "Error: api/lead_client_backfill.php was not found in this checkout.\n";
+        exit(1);
+    }
+
+    $report = ccrm_backfill_lead_client_ids($pdo, !$dryRun);
+    echo ($dryRun ? "Dry run - nothing was written.\n" : "Done.\n");
+    echo "  " . ($dryRun ? "Would link" : "Linked") . ":        " . $report['linked'] . " lead(s)\n";
+    echo "  Already linked:   " . $report['already_linked'] . "\n";
+    echo "  No client of that name (plain leads): " . $report['no_client_with_that_name'] . "\n";
+    $groups = $report['ambiguous_groups'];
+    echo "  Left unlinked:    " . count($groups) . " group(s)\n";
+    foreach ($groups as $g) {
+        echo "\n  - " . $g['name'] . "  [" . $g['reason'] . "]\n";
+        echo "      client(s): " . implode(', ', $g['client_ids']) . "\n";
+        echo "      lead(s):   " . implode(', ', $g['lead_ids']) . "\n";
     }
 }
 

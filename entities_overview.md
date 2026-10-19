@@ -84,6 +84,8 @@ Main table representing potential deals, customers, and client accounts.
 * `data_source` VARCHAR(100)
 * `ownership_type` VARCHAR(50)
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
+* `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
+* `contact_person` VARCHAR(100)
 
 ### `lead_categories`
 Junction table mapping leads to business categories.
