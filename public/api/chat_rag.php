@@ -303,6 +303,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // 3.4. CHAT Action
     $userQuery = $payload['message'] ?? '';
+    // The UI language, when the caller sends it. Before this was defined the prompt read an
+    // undefined variable (a PHP warning on every chat message) and always fell through to English.
+    $systemLanguage = in_array($payload['systemLanguage'] ?? '', ['sk', 'hu', 'en'], true) ? $payload['systemLanguage'] : '';
     if (empty(trim($userQuery))) {
         echo json_encode(['success' => false, 'message' => 'Empty message content']);
         exit;
@@ -330,6 +333,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $to_placeholder = $ragData['to_placeholder'];
     $to_real = $ragData['to_real'];
     $sanitized_query = sanitize_text($userQuery, $to_placeholder);
+
+    // Semantic (vector) retrieval: the records closest in meaning to the question, limited to
+    // what this user may read and masked like the rest of the context. Empty when the vector
+    // index is off or not trained yet, in which case the keyword context below is all there is.
+    $vectorBlock = ['text' => '', 'hits' => 0];
+    if ($ragPdo && $openAiKey !== '') {
+        require_once __DIR__ . '/vector_index.php';
+        $vectorBlock = ccrm_vec_context_block($pdo, $ragPdo, $openAiKey, $sanitized_query, $scope, $to_placeholder, 10);
+    }
 
     // 3.3. CONVENE COUNCIL Action (Multi-Executive Deliberation)
     if ($action === 'convene_council') {
@@ -368,6 +380,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        . "=== REAL-TIME CRM DATA CONTEXT ===\n"
                        . $sanitized_context
                        . "\n==================================\n\n"
+                       . ($vectorBlock['text'] !== '' ? $vectorBlock['text'] . "\n\n" : '')
                        . "STRUCTURE YOUR RESPONSE AS FOLLOWS (using clean Markdown with bold headers and bullet points):\n\n"
                        . "## 🏛️ Executive Council Boardroom Verdict\n"
                        . "**Executive Summary & Decision**: [Definitive recommendation by the Executive Orchestrator / CEO]\n\n"
@@ -538,11 +551,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   . "1. DIRECT RELEVANCE: Always answer the user's specific question or request directly. Do not pivot to unrelated financial figures, overdue invoices, or generic summaries unless the user specifically inquired about them.\n"
                   . "2. SCREEN AWARENESS & ACCURACY: If the user asks what is on the screen, what they are looking at, or asks for guidance on the current view, refer directly to the USER'S ACTIVE SCREEN CONTEXT above and explain the specific module, visible sections, cards, and available actions in detail.\n"
                   . "3. DATA CITATION: When asked about finances, clients, projects, tasks, or certificates, cite the exact figures, dates, and names from the CRM knowledge base accurately.\n"
-                  . "4. NATURAL EXECUTIVE TONE: Answer in the same language the user asked (" . ($systemLanguage === 'hu' ? 'Hungarian / Magyar' : ($systemLanguage === 'sk' ? 'Slovak / Slovenčina' : 'English')) . "). Do not append boilerplate or repetitive headers unless a structured action plan was specifically requested.\n"
+                  . "4. NATURAL EXECUTIVE TONE: Answer in the same language the user asked (" . ($systemLanguage === 'hu' ? 'Hungarian / Magyar' : ($systemLanguage === 'sk' ? 'Slovak / Slovenčina' : ($systemLanguage === 'en' ? 'English' : 'the language of the question'))) . "). Do not append boilerplate or repetitive headers unless a structured action plan was specifically requested.\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are. Answer the user question based on the context provided."
                   . $pastDecisionsBlock
                   . $screenContextBlock . "\n\n"
+                  . ($vectorBlock['text'] !== '' ? $vectorBlock['text'] . "\n" : '')
                   . "=== RAG KNOWLEDGE BASE CONTEXT ===\n"
                   . $sanitized_context
                   . "\n==================================\n\n"
@@ -580,7 +594,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    // Reasoning models (gpt-5*, o*) answer in 5-60 s depending on how much CRM context is in the
+    // prompt; a 20 s limit turned slow-but-fine answers into "Operation timed out ... 0 bytes".
+    @set_time_limit(150);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
@@ -624,7 +642,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     echo json_encode([
         'success' => true,
-        'reply' => $reply
+        'reply' => $reply,
+        'vector_hits' => $vectorBlock['hits']
     ]);
     exit;
 }

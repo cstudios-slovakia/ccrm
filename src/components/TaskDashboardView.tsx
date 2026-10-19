@@ -57,6 +57,16 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
 import { nowLocalStamp } from "../utils/localTime";
 import {
+    TASK_GROUP_BY_STORAGE_KEY,
+    TASK_SORT_STORAGE_KEY,
+    parseTaskGroupBy,
+    parseTaskSort,
+    compareTasks,
+    sortTasks,
+    type TaskGroupBy,
+    type TaskSort,
+} from "../utils/taskGrouping";
+import {
     canArchiveTask as userCanArchiveTask,
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
@@ -379,7 +389,9 @@ const ClosedTasksToggleBar: React.FC<{
     filters?: React.ReactNode;
     /** How many of those filters are set — shown on the button while it is folded. */
     filterCount?: number;
-}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t, filters, filterCount = 0 }) => {
+    /** The "Group by" / "Sort" selects, shown beside the Filters button. */
+    grouping?: React.ReactNode;
+}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t, filters, filterCount = 0, grouping }) => {
     const daysLabel = t(
         days === 1 ? "day)" : "days)",
         days === 1 ? "deň)" : (days >= 2 && days <= 4 ? "dni)" : "dní)"),
@@ -393,6 +405,7 @@ const ClosedTasksToggleBar: React.FC<{
     return (
         <div className="bg-slate-50/50 border-b border-slate-100 select-none">
             <div className="px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <div className="flex flex-wrap items-center gap-2">
                 {filters ? (
                     <button
                         type="button"
@@ -417,9 +430,9 @@ const ClosedTasksToggleBar: React.FC<{
                             className={`w-3.5 h-3.5 transition-transform duration-200 ${filtersOpen ? "rotate-180" : ""}`}
                         />
                     </button>
-                ) : (
-                    <span />
-                )}
+                ) : null}
+                {grouping}
+                </div>
                 <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1.5 text-caption font-medium text-slate-400">
                         <span
@@ -816,6 +829,41 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [globalDateEnd, setGlobalDateEnd] = useState<Date | null>(null);
     const [archiveDateStart, setArchiveDateStart] = useState<Date | null>(null);
     const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
+
+    // How every task list is laid out — time buckets (the original) or one flat
+    // list without buckets — and, for the flat list, its sort order. One choice
+    // for My Tasks, the team board and the archive, remembered per browser.
+    const [groupBy, setGroupByState] = useState<TaskGroupBy>(() => {
+        try {
+            return parseTaskGroupBy(localStorage.getItem(TASK_GROUP_BY_STORAGE_KEY));
+        } catch {
+            return parseTaskGroupBy(null);
+        }
+    });
+    const [taskSort, setTaskSortState] = useState<TaskSort>(() => {
+        try {
+            return parseTaskSort(localStorage.getItem(TASK_SORT_STORAGE_KEY));
+        } catch {
+            return parseTaskSort(null);
+        }
+    });
+    const setGroupBy = (next: TaskGroupBy) => {
+        setGroupByState(next);
+        try {
+            localStorage.setItem(TASK_GROUP_BY_STORAGE_KEY, next);
+        } catch {
+            // ignore
+        }
+    };
+    const setTaskSort = (next: TaskSort) => {
+        setTaskSortState(next);
+        try {
+            localStorage.setItem(TASK_SORT_STORAGE_KEY, next);
+        } catch {
+            // ignore
+        }
+    };
+    const isFlatList = groupBy === "created";
 
     // Toggle switch & days threshold to show closed tasks on the tasks card
     const [showClosedTasks, setShowClosedTasks] = useState<boolean>(() => {
@@ -1768,13 +1816,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 if (selectedTaskIds.has(t.id) && t.archived) {
                     if (mayArchiveTask(t)) {
                         modifiedCount++;
-                        return {
-                            ...t,
-                            archived: false,
-                            status: taskStates[0] || "New",
-                            completedAt: undefined,
-                            completedBy: undefined,
-                        };
+                        // Restoring only un-hides the task; its status stays as it was.
+                        return { ...t, archived: false };
                     } else {
                         skippedCount++;
                     }
@@ -3452,6 +3495,60 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // "Group by" and, for the flat list, "Sort" — one pair of selects shared by
+    // My Tasks, the team board and the archive (the choice is global).
+    const groupingControls = (
+        <div className="flex flex-wrap items-center gap-2" data-testid="task-grouping">
+            <div className="flex items-center gap-1.5 text-ui font-bold">
+                <span className="text-slate-500">
+                    {t("Group by:", "Zoskupiť podľa:", "Csoportosítás:")}
+                </span>
+                <CustomSelect
+                    value={groupBy}
+                    onChange={(v) => setGroupBy(parseTaskGroupBy(v))}
+                    size="sm"
+                    searchable={false}
+                    options={[
+                        { value: "due", label: t("Due date", "Termín", "Határidő") },
+                        {
+                            value: "created",
+                            label: t("Created (no groups)", "Vytvorenie (bez skupín)", "Létrehozás (csoportok nélkül)"),
+                        },
+                    ]}
+                />
+            </div>
+            {isFlatList && (
+                <div className="flex items-center gap-1.5 text-ui font-bold">
+                    <span className="text-slate-500">{t("Sort:", "Zoradiť:", "Rendezés:")}</span>
+                    <CustomSelect
+                        value={taskSort}
+                        onChange={(v) => setTaskSort(parseTaskSort(v))}
+                        size="sm"
+                        searchable={false}
+                        options={[
+                            { value: "newest", label: t("Newest first", "Najnovšie hore", "Legújabb elöl") },
+                            { value: "oldest", label: t("Oldest first", "Najstaršie hore", "Legrégebbi elöl") },
+                            { value: "dueSoonest", label: t("Due soonest", "Najskôr v termíne", "Legközelebbi határidő") },
+                            { value: "dueLatest", label: t("Due latest", "Najneskôr v termíne", "Legtávolabbi határidő") },
+                            { value: "priority", label: t("Priority", "Priorita", "Prioritás") },
+                            { value: "title", label: t("Title A–Z", "Názov A–Z", "Cím A–Z") },
+                        ]}
+                    />
+                </div>
+            )}
+        </div>
+    );
+
+    // The flat list's single card section — every task of a panel, no buckets.
+    const renderFlatTaskList = (flatTasks: Task[]) =>
+        renderTaskBucket({
+            tone: "slate",
+            icon: <ArrowUpDown className="h-4 w-4" />,
+            title: t("All tasks", "Všetky úlohy", "Összes feladat"),
+            tasks: sortTasks(flatTasks, taskSort),
+            emptyLabel: t("No tasks.", "Žiadne úlohy.", "Nincsenek feladatok."),
+        });
+
     // One time bucket of the left-hand task panel (Overdue / Today / Tomorrow /
     // Upcoming). Shared by My Calendar and Global Tasks so both panels look and
     // behave the same. Pass `expanded` to make the bucket collapsible; leave it
@@ -3551,6 +3648,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // left hold — including a task you opened for somebody else, which is on
         // your dashboard but assigned to them, and would otherwise be listed on
         // the left with no row on the right.
+        // Order inside the workload cards: by deadline, or the flat list's sort.
+        const orderMemberTasks = isFlatList ? compareTasks(taskSort) : byDeadline;
+
         const tasksForMember = (userName: string) =>
             filteredTasks
                 .filter((task) =>
@@ -3558,7 +3658,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         ? Boolean(task.assignedUsers?.includes(userName))
                         : isOnPersonalDashboard(task, userName),
                 )
-                .sort(byDeadline);
+                .sort(orderMemberTasks);
 
         const memberColor = (userName: string) =>
             users.find((u) => u.name === userName)?.color || "#6366f1";
@@ -3669,7 +3769,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                           !task.assignedUsers ||
                           task.assignedUsers.length === 0,
                   )
-                  .sort(byDeadline)
+                  .sort(orderMemberTasks)
             : [];
 
         return (
@@ -3827,7 +3927,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 t={t}
                                 filters={renderTaskAttrFilters({ assignee: false, assigner: true, grid: true })}
                                 filterCount={attrFilterCount({ assignee: false, assigner: true })}
+                                grouping={groupingControls}
                             />
+                            {isFlatList ? (
+                                renderFlatTaskList([
+                                    ...globalOverdue,
+                                    ...globalToday,
+                                    ...globalUpcoming,
+                                    ...globalDone,
+                                ])
+                            ) : (
+                            <>
                             {renderTaskBucket({
                                 tone: "rose",
                                 icon: <AlertCircle className="h-4 w-4" />,
@@ -3878,6 +3988,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 onToggle: () =>
                                     setIsGlobalDoneExpanded((open) => !open),
                             })}
+                            </>
+                            )}
                         </div>
                     </div>
 
@@ -4347,12 +4459,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     t={t}
                     filters={renderTaskAttrFilters({ assignee: true, assigner: true, grid: true })}
                     filterCount={attrFilterCount({ assignee: true, assigner: true })}
+                    grouping={groupingControls}
                 />
                 {renderActiveFilterChips({
                     showDay: true,
                     className: "px-4 py-2 border-b border-slate-100",
                 })}
 
+                {isFlatList ? (
+                    renderFlatTaskList([
+                        ...overdueTasks,
+                        ...todayTasks,
+                        ...tomorrowTasks,
+                        ...futureTasks,
+                        ...(showClosedTasks ? doneTasks : []),
+                    ])
+                ) : (
+                <>
                 {/* Overdue / Missed — always visible */}
                 {renderTaskBucket({
                     tone: "rose",
@@ -4426,6 +4549,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     onToggle: () =>
                         setIsDoneExpanded(!isDoneExpanded),
                 })}
+                </>
+                )}
             </div>
         </div>
     );
@@ -5106,6 +5231,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="ws-sm:col-span-5 empty:hidden">
                             {renderTaskAttrFilters({ assignee: true, assigner: true, clientClassName: "max-w-md" })}
                         </div>
+                        {/* Group by / Sort — the list view only; the calendar lays tasks out by day */}
+                        {archiveView === "list" && (
+                            <div className="ws-sm:col-span-5">{groupingControls}</div>
+                        )}
                         {/* Search */}
                         <div className="space-y-1">
                             <label className="type-overline text-slate-400">
@@ -5264,7 +5393,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     ) : (
                         <div className="pr-1">
                             {archiveTab === "done" &&
-                                filteredArchivedTasks.length > 0 && (
+                                filteredArchivedTasks.length > 0 &&
+                                isFlatList && (
+                                <div className="space-y-2">
+                                    {sortTasks(filteredArchivedTasks, taskSort).map(
+                                        renderArchivedTaskRow,
+                                    )}
+                                </div>
+                            )}
+
+                            {archiveTab === "done" &&
+                                filteredArchivedTasks.length > 0 &&
+                                !isFlatList && (
                                 <div className="space-y-6">
                                     {archivedTasksGroupedByDate.map((group) => (
                                         <div key={group.date} className="space-y-2">
@@ -5293,9 +5433,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {archiveTab === "archived" &&
                                 filteredManuallyArchivedTasks.length > 0 && (
                                 <div className="space-y-2">
-                                    {filteredManuallyArchivedTasks.map(
-                                        renderManuallyArchivedTaskRow,
-                                    )}
+                                    {(isFlatList
+                                        ? sortTasks(filteredManuallyArchivedTasks, taskSort)
+                                        : filteredManuallyArchivedTasks
+                                    ).map(renderManuallyArchivedTaskRow)}
                                 </div>
                             )}
 

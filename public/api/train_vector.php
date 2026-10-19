@@ -120,386 +120,81 @@ if ($action === 'stats') {
 }
 
 if ($action === 'train') {
+    // Real indexing. Step 0 compares the CRM with the index and queues what is new or changed;
+    // every call then embeds as many queued records as fit in ~20 s. The UI loop (SettingsView)
+    // keeps calling until `finished`. The vector store is the one saved in the integrations
+    // settings, not whatever the request claims.
+    @set_time_limit(170);
     $step = isset($data['step']) ? (int)$data['step'] : 0;
-    $vectorDb = $data['vectorDb'] ?? 'none';
-    
-    // We will simulate batches. Let's load the data from database.
+    $logs = [];
+
     try {
-        // Fetch data
-        $leads = $pdo->query("SELECT `id`, `name`, `email`, `financial_summary` FROM `leads` LIMIT 20")->fetchAll();
-        $clients = $pdo->query("SELECT DISTINCT `name`, `city`, `client_type` FROM `leads` WHERE `name` IS NOT NULL AND TRIM(`name`) != '' LIMIT 20")->fetchAll();
-        $emails = $pdo->query("SELECT `id`, `title`, `content` FROM `timeline_events` WHERE `type` = 'email' LIMIT 20")->fetchAll();
-        $notes = $pdo->query("SELECT `id`, `title`, `content` FROM `timeline_events` WHERE `type` = 'note' LIMIT 20")->fetchAll();
-        $documents = $pdo->query("
-            SELECT te.`id`, te.`title`, te.`content`, te.`amount`, te.`file_name`, te.`file_size`, te.`file_type`, l.`name` as `lead_name`
-            FROM `timeline_events` te
-            LEFT JOIN `leads` l ON te.`lead_id` = l.`id`
-            WHERE te.`type` = 'offer'
-            LIMIT 40
-        ")->fetchAll();
-        
-        $meetings = [];
-        try {
-            $meetings = $pdo->query("SELECT `id`, `title`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL) LIMIT 20")->fetchAll();
-        } catch (\Exception $e) {}
-
-        $unifiedEntries = [];
-        try {
-            $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll();
-            foreach ($registries as $reg) {
-                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
-                $tableName = "ue_" . $safeId;
-                $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
-                if ($chkTable) {
-                    $query = "
-                        SELECT ue.*, l.`name` as `client_name`
-                        FROM `{$tableName}` ue
-                        LEFT JOIN `leads` l ON ue.`client_id` = l.`id`
-                        LIMIT 40
-                    ";
-                    $rows = $pdo->query($query)->fetchAll();
-                    foreach ($rows as $r) {
-                        $unifiedEntries[] = array_merge($r, [
-                            'registry_id' => $reg['id'],
-                            'registry_name' => $reg['name'],
-                            'entry_name_label' => $reg['entry_name'] ?: 'Entry',
-                            'folder_name_label' => $reg['folder_name'] ?: 'Folder'
-                        ]);
-                    }
-                }
-            }
-        } catch (\Exception $e) {}
-
-        $products = [];
-        try {
-            $products = $pdo->query("
-                SELECT wi.`id`, wi.`sku`, wi.`barcode`, wi.`name`, wi.`description`, wi.`category`, wi.`unit`, wi.`min_stock`, wi.`optimal_stock`, wi.`default_location`, wi.`has_expiration`, wi.`default_sell_price`, wi.`avg_purchase_price`
-                FROM `warehouse_items` wi
-                LIMIT 50
-            ")->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\Exception $e) {}
-
-        $allSourceItems = [];
-        foreach ($leads as $l) {
-            $text = "Lead: " . $l['name'] . " (Email: " . ($l['email'] ?? 'N/A') . ")";
-            if (!empty($l['financial_summary'])) {
-                $text .= "\nFinancial Report & Analysis:\n" . $l['financial_summary'];
-            }
-            $allSourceItems[] = [
-                'type' => 'lead',
-                'id' => $l['id'],
-                'label' => $l['name'],
-                'text' => $text
-            ];
-        }
-        foreach ($clients as $c) {
-            $allSourceItems[] = [
-                'type' => 'client',
-                'id' => md5($c['name']),
-                'label' => $c['name'],
-                'text' => "Client Profile: " . $c['name'] . "\nLocation: " . ($c['city'] ?? 'N/A') . "\nType: " . ($c['client_type'] ?? 'person')
-            ];
-        }
-        foreach ($emails as $e) {
-            $allSourceItems[] = [
-                'type' => 'email',
-                'id' => $e['id'],
-                'label' => $e['title'],
-                'text' => "Email Subject: " . $e['title'] . "\nBody: " . strip_tags($e['content'])
-            ];
-        }
-        foreach ($notes as $n) {
-            $allSourceItems[] = [
-                'type' => 'note',
-                'id' => $n['id'],
-                'label' => $n['title'],
-                'text' => "Note: " . $n['title'] . "\nContent: " . strip_tags($n['content'])
-            ];
-        }
-        foreach ($documents as $d) {
-            $categoryLabel = 'Document';
-            if ($d['file_type'] === 'offer') $categoryLabel = 'Offer Sheet';
-            if ($d['file_type'] === 'contract') $categoryLabel = 'Contract';
-            if ($d['file_type'] === 'invoice') $categoryLabel = 'Invoice';
-
-            $valText = !empty($d['amount']) ? "\nAmount/Value: €" . number_format($d['amount'], 2) : "";
-            $ownerText = !empty($d['lead_name']) ? "\nAssociated Client/Lead: " . $d['lead_name'] : "";
-
-            $allSourceItems[] = [
-                'type' => 'document',
-                'id' => $d['id'],
-                'label' => $d['file_name'] ?? $d['title'],
-                'text' => "Document (" . $categoryLabel . "): " . ($d['file_name'] ?? 'N/A') . 
-                          "\nTitle: " . $d['title'] . 
-                          "\nSize: " . ($d['file_size'] ?? 'N/A') .
-                          $ownerText .
-                          $valText .
-                          "\nDescription: " . ($d['content'] ?? 'N/A')
-            ];
-        }
-        foreach ($meetings as $m) {
-            $plainNotes = "";
-            if (!empty($m['notes'])) {
-                if (strpos(trim($m['notes']), '[') === 0) {
-                    try {
-                        $blocks = json_decode($m['notes'], true);
-                        if (is_array($blocks)) {
-                            foreach ($blocks as $b) {
-                                $plainNotes .= ($b['content'] ?? '') . "\n";
-                            }
-                        }
-                    } catch (\Exception $ex) {
-                        $plainNotes = $m['notes'];
-                    }
-                } else {
-                    $plainNotes = $m['notes'];
-                }
-            }
-            $aiSummaryText = "";
-            if (!empty($m['ai_summary_json'])) {
-                try {
-                    $sumObj = json_decode($m['ai_summary_json'], true);
-                    $aiSummaryText = $sumObj['summary'] ?? '';
-                } catch (\Exception $ex) {}
-            }
-            $allSourceItems[] = [
-                'type' => 'meeting_note',
-                'id' => $m['id'],
-                'label' => $m['title'],
-                'text' => "Meeting Note: " . $m['title'] . "\nContact/Client: " . ($m['lead_name'] ?? 'General') . "\nNotes:\n" . strip_tags($plainNotes) . "\nAI Summary: " . $aiSummaryText
-            ];
-        }
-
-        foreach ($unifiedEntries as $ue) {
-            $isFolder = (int)($ue['is_folder'] ?? 0) === 1;
-            $typeLabel = $isFolder ? $ue['folder_name_label'] : $ue['entry_name_label'];
-            $clientText = !empty($ue['client_name']) ? "\nAssociated Client/Lead: " . $ue['client_name'] : "";
-            $dueDateText = !empty($ue['due_date']) ? "\nDue Date: " . $ue['due_date'] : "";
-            $fileText = !empty($ue['file_name']) ? "\nAttachment: " . $ue['file_name'] . " (" . ($ue['file_size'] ?? '') . ")" : "";
-            
-            $text = "Unified Entry (" . $ue['registry_name'] . " - " . $typeLabel . "): " . ($ue['title'] ?: 'Untitled') .
-                    $clientText .
-                    $dueDateText .
-                    $fileText;
-                    
-            $allSourceItems[] = [
-                'type' => 'unified_entry',
-                'id' => $ue['registry_id'] . '-' . $ue['id'],
-                'label' => ($ue['title'] ?: 'Untitled'),
-                'text' => $text
-            ];
-        }
-
-        foreach ($products as $p) {
-            $rawCat = $p['category'] ?? '';
-            $cats = [];
-            if (!empty($rawCat)) {
-                if (strpos($rawCat, '[') === 0) {
-                    $cats = json_decode($rawCat, true) ?: [];
-                } else {
-                    $cats = array_map('trim', explode(',', $rawCat));
-                }
-            }
-            $catStr = !empty($cats) ? implode(", ", $cats) : ($rawCat ?: 'N/A');
-            
-            $onHand = 0;
-            $reserved = 0;
-            try {
-                $stQuery = $pdo->prepare("SELECT SUM(`quantity`) as `total_qty`, SUM(`reserved_quantity`) as `total_res` FROM `warehouse_stock` WHERE `item_id` = ?");
-                $stQuery->execute([$p['id']]);
-                $stRow = $stQuery->fetch(PDO::FETCH_ASSOC);
-                $onHand = (float)($stRow['total_qty'] ?? 0);
-                $reserved = (float)($stRow['total_res'] ?? 0);
-            } catch (\Exception $e) {}
-            $avail = max(0, $onHand - $reserved);
-
-            $batchesList = [];
-            try {
-                $bQuery = $pdo->prepare("SELECT `batch_number`, `expiration_date`, `current_quantity` FROM `warehouse_batches` WHERE `item_id` = ? AND `current_quantity` > 0 ORDER BY `expiration_date` ASC LIMIT 5");
-                $bQuery->execute([$p['id']]);
-                $batchesList = $bQuery->fetchAll(PDO::FETCH_ASSOC);
-            } catch (\Exception $e) {}
-
-            $text = "Warehouse Product / Material Profile:\n" .
-                    "- Product Name: " . $p['name'] . "\n" .
-                    "- SKU Code: " . ($p['sku'] ?: 'N/A') . "\n" .
-                    "- EAN / Barcode: " . ($p['barcode'] ?: 'N/A') . "\n" .
-                    "- Categories: " . $catStr . "\n" .
-                    "- Unit of Measure: " . ($p['unit'] ?: 'ks') . "\n" .
-                    "- Suggested Selling Price (excl. VAT): €" . number_format($p['default_sell_price'] ?? 0, 2) . "\n" .
-                    "- Weighted Average Purchase Price (WAP): €" . number_format($p['avg_purchase_price'] ?? 0, 2) . "\n" .
-                    "- Total Physical Stock: " . $onHand . " " . ($p['unit'] ?: 'ks') . " (Available to sell: " . $avail . ", Reserved: " . $reserved . ")\n" .
-                    "- Default Storage Bin / Location: " . ($p['default_location'] ?: 'Main Floor') . "\n" .
-                    "- Expiration Tracking (FEFO): " . (!empty($p['has_expiration']) ? 'Enabled' : 'Disabled') . "\n";
-            
-            if (!empty($batchesList)) {
-                $text .= "- Active FEFO Batches & Lots:\n";
-                foreach ($batchesList as $b) {
-                    $text .= "  * Batch #" . $b['batch_number'] . " (Qty: " . $b['current_quantity'] . " " . ($p['unit'] ?: 'ks') . ", Exp: " . ($b['expiration_date'] ? substr($b['expiration_date'], 0, 10) : 'N/A') . ")\n";
-                }
-            }
-
-            if (!empty($p['description'])) {
-                $text .= "- Technical Description / Specs: " . strip_tags($p['description']) . "\n";
-            }
-
-            $allSourceItems[] = [
-                'type' => 'product',
-                'id' => $p['id'],
-                'label' => $p['name'] . ($p['sku'] ? " (" . $p['sku'] . ")" : ""),
-                'text' => $text
-            ];
-        }
-
-        // Ingest Employees, Salaries & Vacations
-        try {
-            if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
-                $emps = $pdo->query("SELECT * FROM `employees` WHERE `is_active` = 1 LIMIT 40")->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($emps as $emp) {
-                    $text = "Employee Record / Staff Profile:\n" .
-                            "- Name: " . $emp['name'] . "\n" .
-                            "- Email: " . ($emp['email'] ?: 'N/A') . "\n" .
-                            "- Phone: " . ($emp['phone'] ?: 'N/A') . "\n" .
-                            "- Address: " . ($emp['address_street'] ? ($emp['address_street'] . ', ' . $emp['address_city'] . ' ' . $emp['address_zip']) : 'N/A') . "\n" .
-                            "- Salary Rate: €" . number_format((float)$emp['salary_amount'], 2) . " / " . $emp['salary_type'] . "\n" .
-                            "- Payout Target Day: " . ($emp['salary_due_day'] ? ($emp['salary_due_day'] . 'th of month') : 'Company Default') . "\n" .
-                            "- External Time Tracker (Toggl): " . ($emp['time_tracking_user_name'] ?: 'None') . "\n" .
-                            "- Vacation Allowances: " . ($emp['vacation_allowances_json'] ?: 'Default') . "\n" .
-                            "- Notes: " . ($emp['notes'] ?: '');
-                    $allSourceItems[] = [
-                        'type' => 'employee',
-                        'id' => $emp['id'],
-                        'label' => $emp['name'],
-                        'text' => $text
-                    ];
-                }
-            }
-            if ($pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
-                $sals = $pdo->query("
-                    SELECT es.*, e.`name` as `emp_name`
-                    FROM `employee_salaries` es
-                    JOIN `employees` e ON es.`employee_id` = e.`id`
-                    ORDER BY es.`year` DESC, es.`period_number` DESC
-                    LIMIT 30
-                ")->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($sals as $s) {
-                    $text = "Payroll Record (" . $s['period_key'] . "):\n" .
-                            "- Employee: " . $s['emp_name'] . "\n" .
-                            "- Total Salary: €" . number_format((float)$s['total_salary'], 2) . "\n" .
-                            "- Total Paid: €" . number_format((float)$s['total_paid'], 2) . "\n" .
-                            "- Status: " . strtoupper($s['status']) . "\n" .
-                            "- Payment Date: " . ($s['payment_date'] ?: 'Unpaid / Pending') . "\n" .
-                            "- Due Date: " . ($s['due_date'] ?: 'N/A');
-                    $allSourceItems[] = [
-                        'type' => 'employee_salary',
-                        'id' => $s['id'],
-                        'label' => $s['emp_name'] . ' - ' . $s['period_key'],
-                        'text' => $text
-                    ];
-                }
-            }
-            if ($pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
-                $vacs = $pdo->query("
-                    SELECT ev.*, e.`name` as `emp_name`
-                    FROM `employee_vacations` ev
-                    JOIN `employees` e ON ev.`employee_id` = e.`id`
-                    ORDER BY ev.`start_date` DESC
-                    LIMIT 30
-                ")->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($vacs as $v) {
-                    $text = "Vacation / Absence Record:\n" .
-                            "- Employee: " . $v['emp_name'] . "\n" .
-                            "- Leave Type: " . $v['vacation_type_id'] . "\n" .
-                            "- Duration: " . $v['start_date'] . " to " . $v['end_date'] . " (" . $v['days_count'] . " days)\n" .
-                            "- Status: " . strtoupper($v['status']) . "\n" .
-                            "- Note: " . ($v['note'] ?: 'None');
-                    $allSourceItems[] = [
-                        'type' => 'employee_vacation',
-                        'id' => $v['id'],
-                        'label' => $v['emp_name'] . ' (' . $v['vacation_type_id'] . ')',
-                        'text' => $text
-                    ];
-                }
-            }
-        } catch (\Exception $e) {}
-        
-        $totalItems = count($allSourceItems);
-        if ($totalItems === 0) {
-            echo json_encode([
-                'success' => true,
-                'finished' => true,
-                'progress' => 100,
-                'logs' => ["[INFO] No records found in database to index."]
-            ]);
+        require_once __DIR__ . '/vector_index.php';
+        $cfg = ccrm_vec_config($pdo);
+        $apiKey = (string)($cfg['openAiKey'] ?? '');
+        if (($cfg['vectorDb'] ?? 'none') !== 'mariadb') {
+            echo json_encode(['success' => true, 'finished' => true, 'progress' => 100, 'step' => $step + 1, 'logs' => [
+                "[INFO] Vector search currently runs on MariaDB 11.8+ only. Select MariaDB as the vector database, validate it and save the settings first."]]);
             exit;
         }
-        
-        $batchSize = 3;
-        $startIndex = $step * $batchSize;
-        
-        if ($startIndex >= $totalItems) {
-            echo json_encode([
-                'success' => true,
-                'finished' => true,
-                'progress' => 100,
-                'logs' => [
-                    "[SUCCESS] All items indexed successfully!",
-                    "[INFO] Created vector indexes and optimization parameters.",
-                    "[INFO] Vector DB connection closed clean."
-                ]
-            ]);
+        if ($apiKey === '') {
+            echo json_encode(['success' => false, 'message' => 'The OpenAI API key is missing. Add it in Settings > AI integrations; it is used to create the embeddings.']);
             exit;
         }
-        
-        $slice = array_slice($allSourceItems, $startIndex, $batchSize);
-        $logs = [];
-        $chunksCreated = 0;
-        
+        $vec = get_rag_db_connection($cfg);
+        if (!$vec) {
+            echo json_encode(['success' => false, 'message' => 'Could not connect to the MariaDB vector database. Check the host, user and password and validate the connection.']);
+            exit;
+        }
+        $schemaError = ccrm_vec_schema($vec);
+        if ($schemaError !== '') {
+            echo json_encode(['success' => false, 'message' => $schemaError]);
+            exit;
+        }
+
         if ($step === 0) {
-            $logs[] = "[INIT] Connecting to " . strtoupper($vectorDb) . " database...";
-            $logs[] = "[INIT] Initializing knowledge index namespace 'laminam_crm_kb'...";
-            $logs[] = "[INFO] Found " . $totalItems . " total source records to chunk and embed.";
-        }
-        
-        foreach ($slice as $item) {
-            $logs[] = "[CHUNK] Parsing " . strtoupper($item['type']) . " #" . substr($item['id'], 0, 8) . " (" . $item['label'] . ")...";
-            
-            // Text chunking simulation: 500-1000 chars, multibyte-safe
-            $text = $item['text'];
-            $chunkSize = 300;
-            $chunks = [];
-            $textLen = mb_strlen($text, 'UTF-8');
-            for ($i = 0; $i < $textLen; $i += $chunkSize) {
-                $chunks[] = mb_substr($text, $i, $chunkSize, 'UTF-8');
+            $logs[] = "[INIT] Vector database: MariaDB, " . CCRM_VEC_MODEL . " (" . CCRM_VEC_DIM . " dimensions)";
+            $q = ccrm_vec_queue_build($pdo, $vec);
+            $logs[] = "[SCAN] " . $q['indexed_items'] . " searchable records in the CRM; " . $q['queued'] . " new or changed, " . $q['removed'] . " removed from the index.";
+            foreach ($q['warnings'] as $w) {
+                $logs[] = "[WARN] Skipped a source: " . $w;
             }
-            
-            foreach ($chunks as $idx => $chunk) {
-                $chunksCreated++;
-                $logs[] = "  -> Generated Chunk " . ($idx + 1) . " (" . mb_strlen($chunk, 'UTF-8') . " chars): '" . mb_substr(trim($chunk), 0, 45, 'UTF-8') . "...'";
+            if ($q['queued'] === 0) {
+                $st = ccrm_vec_status($vec);
+                echo json_encode(['success' => true, 'finished' => true, 'progress' => 100, 'step' => 1, 'logs' => array_merge($logs, [
+                    "[SUCCESS] The index is up to date (" . $st['items'] . " records, " . $st['chunks'] . " chunks)."])]);
+                exit;
             }
-            
-            // Simulate API calls for embedding
-            $logs[] = "[EMBED] Calling OpenAI API for " . count($chunks) . " chunks of '" . $item['label'] . "'...";
-            $logs[] = "[UPSERT] Stored " . count($chunks) . " vectors with client metadata in " . strtoupper($vectorDb) . ".";
+            echo json_encode(['success' => true, 'finished' => false, 'progress' => 0, 'step' => 1, 'logs' => $logs]);
+            exit;
         }
-        
-        $nextStep = $step + 1;
-        $progress = min(100, round(($nextStep * $batchSize) / $totalItems * 100));
-        
-        echo json_encode([
-            'success' => true,
-            'finished' => $progress >= 100,
-            'progress' => $progress,
-            'step' => $nextStep,
-            'logs' => $logs
-        ], JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR);
-        
-    } catch (\Exception $e) {
+
+        $r = ccrm_vec_process($pdo, $vec, $apiKey, 20);
+        $done = max(0, $r['total'] - $r['remaining']);
+        $progress = $r['total'] > 0 ? min(100, (int)floor($done * 100 / $r['total'])) : 100;
+        $logs[] = "[EMBED] " . $r['items'] . " records / " . $r['chunks'] . " chunks embedded and stored (" . $done . " of " . $r['total'] . ").";
+        $finished = $r['remaining'] === 0;
+        if ($finished) {
+            $st = ccrm_vec_status($vec);
+            $logs[] = "[SUCCESS] Indexing finished: " . $st['items'] . " records, " . $st['chunks'] . " chunks in the vector index (HNSW, cosine).";
+        }
+        echo json_encode(['success' => true, 'finished' => $finished, 'progress' => $finished ? 100 : $progress, 'step' => $step + 1, 'logs' => $logs]);
+    } catch (\Throwable $e) {
         http_response_code(500);
-        if (function_exists('ccrm_log_exception')) { ccrm_log_exception(); }
-        echo json_encode(['success' => false, 'message' => 'The request failed. See the error log for details.']);
+        if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+        echo json_encode(['success' => false, 'message' => 'Indexing failed: ' . $e->getMessage()]);
     }
     exit;
 }
 
-echo json_encode(['success' => false, 'message' => 'Unknown action.']);
+if ($action === 'index_status') {
+    try {
+        require_once __DIR__ . '/vector_index.php';
+        $cfg = ccrm_vec_config($pdo);
+        $vec = ($cfg['vectorDb'] ?? 'none') === 'mariadb' ? get_rag_db_connection($cfg) : null;
+        echo json_encode(['success' => true, 'enabled' => (bool)$vec, 'status' => $vec ? ccrm_vec_status($vec) : null]);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'message' => 'The request failed. See the error log for details.']);
+    }
+    exit;
+}

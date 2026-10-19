@@ -1493,7 +1493,11 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    // Reasoning models (gpt-5*, o*) answer in 5-60 s depending on how much CRM context is in the
+    // prompt; a 20 s limit turned slow-but-fine answers into "Operation timed out ... 0 bytes".
+    @set_time_limit(150);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [

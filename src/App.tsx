@@ -2656,8 +2656,9 @@ ${log.payload || ''}
             }
 
             // 2. Task created by me or previously assigned to me has been marked as completed/done by someone else
-            const isDone = isDoneTaskState(task.status, currentStates) || task.archived === true;
-            const wasDone = old ? (isDoneTaskState(old.status, currentStates) || old.archived === true) : false;
+            // Archiving is not finishing: only the status says whether a task is done.
+            const isDone = isDoneTaskState(task.status, currentStates);
+            const wasDone = old ? isDoneTaskState(old.status, currentStates) : false;
 
             if (old && !wasDone && isDone) {
               const completer = task.completedBy || task.owner || task.assignedUsers?.[0] || t("Team member", "Člen tímu", "Csapattag");

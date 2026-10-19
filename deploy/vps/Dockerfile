@@ -17,6 +17,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssh-client unzip curl default-mysql-client \
  && rm -rf /var/lib/apt/lists/*
 
+# The MariaDB client verifies TLS by default and MySQL 8.4's certificate is
+# self-signed, so mysqldump (backups) fails. The link is the private compose
+# network, never the internet; PDO (mysqlnd) does not verify either.
+RUN mkdir -p /etc/mysql/conf.d && printf '[client]\nskip-ssl\n' > /etc/mysql/conf.d/ccrm-client.cnf
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # .htaccess files must take effect: they carry the config.php / .git / uploads

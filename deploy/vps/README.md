@@ -22,22 +22,17 @@ Host prerequisites: Docker + Compose, a DNS name pointing at the VPS, ports
 
 ```bash
 # 1. Directories. The checkout is owned by uid 33 (www-data in the container).
-sudo mkdir -p /srv/ccrm /srv/ccrm-backups /srv/ccrm-ssh
+sudo mkdir -p /srv/ccrm /srv/ccrm-backups /srv/ccrm-ssh   # ccrm-ssh: only needed for a private repo
 sudo chown 33:33 /srv/ccrm /srv/ccrm-backups
 
 # 2. Stack files (copy deploy/vps from the repo), then configure.
 cd /opt/ccrm-stack && cp .env.example .env && nano .env   # passwords + domain
 chmod +x *.sh
 
-# 3. Deploy key for the private GitHub repo (read-only), plus known_hosts.
-ssh-keygen -t ed25519 -N '' -f /srv/ccrm-ssh/id_ed25519 -C ccrm-vps   # sudo
-ssh-keyscan github.com | sudo tee /srv/ccrm-ssh/known_hosts
-#    -> add /srv/ccrm-ssh/id_ed25519.pub as a read-only Deploy key on the repo
-sudo chown -R 33:33 /srv/ccrm-ssh && sudo chmod 600 /srv/ccrm-ssh/id_ed25519
-
-# 4. Start the databases, then clone as www-data and publish.
+# 3. Start the databases, then clone as www-data and publish. (A private
+#    repo needs a read-only deploy key in /srv/ccrm-ssh and an ssh:// URL.)
 docker compose up -d --build db vector_db web
-docker compose exec -u www-data web git clone -b 1.12-mango git@github.com:cstudios-slovakia/ccrm.git .
+docker compose exec -u www-data web git clone --depth 1 -b 1.12-mango https://github.com/cstudios-slovakia/ccrm.git .
 docker compose exec -u www-data web composer install --no-dev
 docker compose exec -u www-data web php ccrm update
 docker compose up -d caddy
