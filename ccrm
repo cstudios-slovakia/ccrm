@@ -18,6 +18,12 @@ switch ($command) {
     case 'migrate':
         ccrm_migrate();
         break;
+    case 'backfill-clients':
+        ccrm_backfill_clients_cli(in_array('--dry-run', $args, true));
+        break;
+    case 'adjustment-clients':
+        ccrm_adjustment_clients_cli(in_array('--apply', $args, true), in_array('--undo', $args, true));
+        break;
     case 'license':
     case 'licence':
         ccrm_license_cli(isset($args[2]) ? $args[2] : 'status', isset($args[3]) ? $args[3] : null);
@@ -33,6 +39,9 @@ function ccrm_help() {
     echo "Usage:\n";
     echo "  php ccrm update            - Pulls latest code, runs composer install, publishes assets, and migrates DB\n";
     echo "  php ccrm migrate           - Runs database migrations manually\n";
+    echo "  php ccrm backfill-clients [--dry-run] - Links leads to their client record by id and lists the ones it could not\n";
+    echo "  php ccrm adjustment-clients [--apply] [--undo] - Gives clients that exist only through an adjustment a real client row; without --apply it only reports
+";
     echo "  php ccrm license status    - Shows this installation's licence and whether it allows updates\n";
     echo "  php ccrm license set <key> - Activates a licence key (or imports an offline licence token)\n";
     echo "  php ccrm license check     - Forces an immediate re-check with the licence server\n";
@@ -79,6 +88,113 @@ function ccrm_cli_pdo() {
         echo "Error: could not connect to the database: " . $e->getMessage() . "\n";
         return null;
     }
+}
+
+/**
+ * Links every lead that has no client_id to its client record, where nothing
+ * contradicts the name match, and prints what it left out so a person can decide.
+ * Safe to repeat; --dry-run changes nothing.
+ */
+function ccrm_backfill_clients_cli($dryRun) {
+    $pdo = ccrm_cli_pdo();
+    if ($pdo === null) {
+        echo "Error: CCRM is not installed here (no config.php), or the database is unreachable.\n";
+        exit(1);
+    }
+    foreach (['/api', '/dist/api', '/public/api'] as $dir) {
+        if (file_exists(__DIR__ . $dir . '/lead_client_backfill.php')) {
+            require_once __DIR__ . $dir . '/lead_client_backfill.php';
+            break;
+        }
+    }
+    if (!function_exists('ccrm_backfill_lead_client_ids')) {
+        echo "Error: api/lead_client_backfill.php was not found in this checkout.\n";
+        exit(1);
+    }
+
+    $report = ccrm_backfill_lead_client_ids($pdo, !$dryRun);
+    echo ($dryRun ? "Dry run - nothing was written.\n" : "Done.\n");
+    echo "  " . ($dryRun ? "Would link" : "Linked") . ":        " . $report['linked'] . " lead(s)\n";
+    echo "  Already linked:   " . $report['already_linked'] . "\n";
+    echo "  No client of that name (plain leads): " . $report['no_client_with_that_name'] . "\n";
+    $groups = $report['ambiguous_groups'];
+    echo "  Left unlinked:    " . count($groups) . " group(s)\n";
+    foreach ($groups as $g) {
+        echo "\n  - " . $g['name'] . "  [" . $g['reason'] . "]\n";
+        echo "      client(s): " . implode(', ', $g['client_ids']) . "\n";
+        echo "      lead(s):   " . implode(', ', $g['lead_ids']) . "\n";
+    }
+}
+
+/**
+ * Clients that exist only through `adjustment > 0` get a real client-* row, the
+ * adjustment moves onto it and the lead is linked by id. Reports only unless --apply
+ * is given; --undo reverses a previous --apply. Totals are checked per name and a
+ * client whose total would change is rolled back.
+ */
+function ccrm_adjustment_clients_cli($apply, $undo) {
+    $pdo = ccrm_cli_pdo();
+    if ($pdo === null) {
+        echo "Error: CCRM is not installed here (no config.php), or the database is unreachable.
+";
+        exit(1);
+    }
+    foreach (['/api', '/dist/api', '/public/api'] as $dir) {
+        if (file_exists(__DIR__ . $dir . '/adjustment_client_migration.php')) {
+            require_once __DIR__ . $dir . '/adjustment_client_migration.php';
+            break;
+        }
+    }
+    if (!function_exists('ccrm_migrate_adjustment_clients')) {
+        echo "Error: api/adjustment_client_migration.php was not found in this checkout.
+";
+        exit(1);
+    }
+
+    if ($undo) {
+        $r = ccrm_undo_adjustment_clients($pdo, $apply);
+        echo ($apply ? "Done.
+" : "Dry run - nothing was written. Add --apply to undo.
+");
+        echo "  " . ($apply ? "Restored" : "Would restore") . ": " . count($r['restored']) . " client(s)
+";
+        foreach ($r['restored'] as $c) echo "    - " . $c['name'] . "  " . $c['client_id'] . " -> adjustment " . $c['adjustment'] . " back on " . $c['restored_to'] . "
+";
+        echo "  Left as they are: " . count($r['kept']) . "
+";
+        foreach ($r['kept'] as $c) echo "    - " . $c['name'] . "  " . $c['client_id'] . "  [" . $c['reason'] . "]
+";
+        return;
+    }
+
+    $r = ccrm_migrate_adjustment_clients($pdo, $apply);
+    echo ($apply ? "Done.
+" : "Dry run - nothing was written. Add --apply to run it.
+");
+    echo "  " . ($apply ? "Planned" : "Would create") . ":        " . count($r['planned']) . " client row(s)
+";
+    foreach ($r['planned'] as $e) {
+        echo "    - " . $e['name'] . "  " . $e['client_id'] . "  adjustment " . number_format($e['adjustment'], 2, '.', '') . " moves from " . implode(', ', $e['moved_from']) . "
+";
+        echo "        links " . count($e['link_ids']) . " lead(s): " . implode(', ', $e['link_ids']) . "
+";
+        foreach ($e['left_unlinked'] as $g) echo "        left unlinked [" . $g['reason'] . "]: " . implode(', ', $g['lead_ids']) . "
+";
+    }
+    if ($apply) {
+        echo "  Created:          " . count($r['created']) . "
+";
+        echo "  Rolled back:      " . count($r['failed']) . "
+";
+        foreach ($r['failed'] as $f) echo "    - " . $f['name'] . "  [" . $f['reason'] . "]
+";
+    }
+    echo "  Names that already have a client row: " . $r['names_with_client_row'] . "
+";
+    echo "  Skipped:          " . count($r['unresolved']) . " name(s)
+";
+    foreach ($r['unresolved'] as $u) echo "    - " . $u['name'] . "  [" . $u['reason'] . "]  " . implode(', ', $u['lead_ids']) . "
+";
 }
 
 /** Human wording for the status codes ccrm_license_state() produces. */

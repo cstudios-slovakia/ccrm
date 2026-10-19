@@ -77,6 +77,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `ai_summary_fingerprint` TEXT NULL,
               `interest_note` TEXT NULL COMMENT 'What the client is interested in / the problem to solve',
               `referral_lead_id` VARCHAR(50) NULL COMMENT 'Lead/client who referred this one. Deliberately NOT a foreign key: a sync payload can carry the referring lead after this one, and deleting the referrer must not delete or block this lead',
+              `client_id` VARCHAR(50) NULL COMMENT 'The client record (a client-* row) this lead belongs to. Not a foreign key, for the same reason as referral_lead_id; the app falls back to matching by name when it is empty or points at a deleted row',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
@@ -1353,6 +1354,21 @@ if (!function_exists('ccrm_schema_statements')) {
         // every referral looked saved and then vanished on the next poll.
         if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
+        }
+        // Which client record a lead belongs to. Until now that was decided by name
+        // alone, so two people of one name shared a client and a rename detached a
+        // lead. Existing rows are linked once, right after the column appears, and
+        // only where nothing contradicts the match (see lead_client_backfill.php);
+        // `php ccrm backfill-clients --dry-run` lists what was left out.
+        if (!ccrm_column_exists($pdo, 'leads', 'client_id')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `client_id` VARCHAR(50) NULL AFTER `referral_lead_id`, ADD INDEX idx_lead_client (`client_id`)");
+            require_once __DIR__ . '/lead_client_backfill.php';
+            $backfill = ccrm_backfill_lead_client_ids($pdo, true);
+            error_log(sprintf(
+                'CCRM: linked %d lead(s) to their client; %d group(s) left unlinked as ambiguous (php ccrm backfill-clients --dry-run lists them).',
+                $backfill['linked'],
+                count($backfill['ambiguous_groups'])
+            ));
         }
         // 1.9.26: where the visitor came from before they filled in the form
         // (facebook, instagram, google, direct...). Written by api/pipeline.php

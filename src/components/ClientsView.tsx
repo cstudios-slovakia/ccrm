@@ -16,6 +16,7 @@ import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, generateOrderNumber, calculateOrderTotals, defaultOrderStatus } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultPaymentMethod } from "../utils/payment";
+import { applyClientProfile } from "../utils/leadClient";
 import { getAvailableShippingMethods } from "../utils/shipping";
 import { getDefaultVatRate } from "../utils/vat";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
@@ -2840,43 +2841,38 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
 
-    setLeads(prev => prev.map(lead => {
-      if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
-        return {
-          ...lead,
-          name: profileName.trim(),
-          adjustment: parseFloat(profileAdjustment) || 0,
-          city: profileCity.trim(),
-          clientType: profileType,
-          owner: profileOwner,
-          phone: profilePhone.trim(),
-          email: profileEmail.trim(),
-          address: {
-            street: profileStreet.trim(),
-            city: profileCity.trim(),
-            postalCode: profilePostalCode.trim(),
-            country: profileCountry
-          },
-          companyId: profileType !== "person" ? profileCompanyId.trim() : undefined,
-          taxId: profileType !== "person" ? profileTaxId.trim() : undefined,
-          vatId: profileType !== "person" ? profileVatId.trim() : undefined,
-          vatValidationResult: profileType !== "person" ? profileVatResult : null,
-          contactPerson: profileType !== "person" ? profileContactPerson.trim() : undefined,
-          website: profileType !== "person" ? profileWebsite.trim() : undefined,
-          establishmentDate: profileType !== "person" ? profileEstablishmentDate.trim() : undefined,
-          legalForm: profileType !== "person" ? profileLegalForm.trim() : undefined,
-          skNace: profileType !== "person" ? profileSkNace.trim() : undefined,
-          organizationSize: profileType !== "person" ? profileOrganizationSize.trim() : undefined,
-          ownershipType: profileType !== "person" ? profileOwnershipType.trim() : undefined,
-          dataSource: profileType !== "person" ? profileDataSource.trim() : undefined,
-          dissolutionDate: profileType !== "person" ? profileDissolutionDate.trim() : undefined,
-          region: profileType !== "person" ? profileRegion.trim() : undefined,
-          district: profileType !== "person" ? profileDistrict.trim() : undefined,
-          categories: profileCategories,
-          clientCategoryId: profileClientCategoryId || null
-        };
-      }
-      return lead;
+    // Only this client's own records take the profile; see applyClientProfile.
+    setLeads(prev => applyClientProfile(prev, activeClient.name, {
+      name: profileName.trim(),
+      adjustment: parseFloat(profileAdjustment) || 0,
+      city: profileCity.trim(),
+      clientType: profileType,
+      owner: profileOwner,
+      phone: profilePhone.trim(),
+      email: profileEmail.trim(),
+      address: {
+        street: profileStreet.trim(),
+        city: profileCity.trim(),
+        postalCode: profilePostalCode.trim(),
+        country: profileCountry
+      },
+      companyId: profileType !== "person" ? profileCompanyId.trim() : undefined,
+      taxId: profileType !== "person" ? profileTaxId.trim() : undefined,
+      vatId: profileType !== "person" ? profileVatId.trim() : undefined,
+      vatValidationResult: profileType !== "person" ? profileVatResult : null,
+      contactPerson: profileType !== "person" ? profileContactPerson.trim() : undefined,
+      website: profileType !== "person" ? profileWebsite.trim() : undefined,
+      establishmentDate: profileType !== "person" ? profileEstablishmentDate.trim() : undefined,
+      legalForm: profileType !== "person" ? profileLegalForm.trim() : undefined,
+      skNace: profileType !== "person" ? profileSkNace.trim() : undefined,
+      organizationSize: profileType !== "person" ? profileOrganizationSize.trim() : undefined,
+      ownershipType: profileType !== "person" ? profileOwnershipType.trim() : undefined,
+      dataSource: profileType !== "person" ? profileDataSource.trim() : undefined,
+      dissolutionDate: profileType !== "person" ? profileDissolutionDate.trim() : undefined,
+      region: profileType !== "person" ? profileRegion.trim() : undefined,
+      district: profileType !== "person" ? profileDistrict.trim() : undefined,
+      categories: profileCategories,
+      clientCategoryId: profileClientCategoryId || null
     }));
 
     setIsEditingProfile(false); // Toggle back to read-only

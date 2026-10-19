@@ -84,6 +84,17 @@ Main table representing potential deals, customers, and client accounts.
 * `data_source` VARCHAR(100)
 * `ownership_type` VARCHAR(50)
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
+* `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
+* `contact_person` VARCHAR(100)
+
+### `client_adjustment_migration`
+Written only by `php ccrm adjustment-clients --apply` (created on first use, not by the schema). One row per client row that command created from an adjustment-only client; `--undo` reads it to put the adjustment back.
+* `client_id` VARCHAR(50) [PK] (the `client-adj-*` row created in `leads`)
+* `name` VARCHAR(150)
+* `adjustment` DECIMAL(14,2) (the amount that was moved onto the client row)
+* `moved_from` TEXT (JSON: lead ids the adjustment was taken from)
+* `linked_ids` TEXT (JSON: lead ids given this `client_id`)
+* `migrated_at` DATETIME
 
 ### `lead_categories`
 Junction table mapping leads to business categories.

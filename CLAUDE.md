@@ -70,5 +70,12 @@ The order when finishing a change:
   to type-check without touching it.
 - The root `tsconfig.json` checks nothing on its own — `npm run build` (`tsc -b`)
   is what actually type-checks `src/`.
+- Clients and leads are **one table**: a client is a `leads` row with a `client-*`
+  id (or `adjustment > 0`). `leads.client_id` is the link from a lead to its
+  client; where it is empty the app still falls back to matching by name. Use
+  `src/utils/leadClient.ts` instead of comparing names, and see the ROADMAP item
+  "Clients and leads are still one table" before touching client grouping.
+- The backend source is `public/`; the repo-root copies (`sync.php`, `api/`) are
+  mirrored by `npm run sync:backend`. Edit `public/`, then sync.
 - The production server has **no build step**. The compiled frontend is built
   locally and committed to `dist/`, then published by `php ccrm update`.
