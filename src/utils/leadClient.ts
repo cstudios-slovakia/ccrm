@@ -55,3 +55,46 @@ export const contactDetailsFor = <T extends LeadLike>(
     lead[field] || siblings.find((l) => l[field])?.[field] || client?.[field] || "";
   return { phone: pick("phone"), email: pick("email"), contactPerson: pick("contactPerson") };
 };
+
+/** How a record takes part when the Clients page saves a profile. */
+export type ProfileRole = "client" | "linked" | "sibling" | "other";
+
+/**
+ * Who a profile save of `clientName` may touch.
+ * - client: a client record of that name (explicit `client-*` row or adjustment > 0)
+ * - linked: a lead whose `clientId` points at one of those records
+ * - sibling: a same-name lead with no usable link; it keeps receiving the update
+ * - other: everything else, including a same-name lead linked to a different client
+ */
+export const profileRoleFor = <T extends LeadLike>(lead: T, all: T[], clientName: string): ProfileRole => {
+  const key = nameKey(clientName);
+  const sameName = nameKey(lead.name) === key;
+  if (sameName && isClientRecord(lead)) return "client";
+  const clientIds = new Set(all.filter((l) => nameKey(l.name) === key && isClientRecord(l)).map((l) => l.id));
+  if (lead.clientId && clientIds.has(lead.clientId)) return "linked";
+  if (!sameName) return "other";
+  return isLinkedById(lead, all) ? "other" : "sibling";
+};
+
+const CONTACT_FIELDS = ["phone", "email", "contactPerson"] as const;
+
+/**
+ * Applies a client profile to the records it belongs to (see `profileRoleFor`).
+ * A lead linked by id keeps its own name and contact details: those are per lead,
+ * and the client card already falls back to the client's values when they are empty.
+ */
+export const applyClientProfile = <T extends LeadLike>(
+  all: T[],
+  clientName: string,
+  patch: Partial<T> & { name: string },
+): T[] =>
+  all.map((lead) => {
+    const role = profileRoleFor(lead, all, clientName);
+    if (role === "other") return lead;
+    if (role !== "linked") return { ...lead, ...patch };
+    const own: Partial<T> = { ...patch };
+    for (const f of CONTACT_FIELDS) delete own[f];
+    // Renaming the client renames leads that carried its name; a differently named lead keeps its own.
+    if (nameKey(lead.name) !== nameKey(clientName)) delete own.name;
+    return { ...lead, ...own };
+  });
