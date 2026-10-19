@@ -20,7 +20,20 @@ $sessionUser = ccrm_require_auth();
 // SAI is a sales module (it rehearses conversations against the lead / client base) and has no
 // permission key of its own: it needs a view of leads or clients, like its menu entry (see
 // permissionKeyForRoute). This also keeps its LLM proxy away from roles that have no sales access.
-ccrm_gate_any($sessionUser, ['leads', 'clients']);
+$swarmScope = ccrm_gate_any($sessionUser, ['leads', 'clients']);
+
+// Anything that creates, changes, deletes or spends AI budget needs an EDIT right
+// (not just a view), and must be a POST: a GET can be fired by a link or an <img>
+// on another site, and it used to be enough to delete a simulation (VULN-23).
+$swarmActionEarly = $_GET['action'] ?? ($_POST['action'] ?? 'list');
+if (in_array($swarmActionEarly, ['create_simulation', 'checkpoint', 'delete', 'llm_proxy'], true)) {
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
+        exit;
+    }
+    ccrm_gate_any($sessionUser, ['leads', 'clients'], 'edit');
+}
 
 // Include autoloader / classes
 require_once __DIR__ . '/Swarm/SwarmManager.php';
@@ -39,8 +52,9 @@ if (!function_exists('get_db_connection')) {
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
+    ccrm_log_exception($e);
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
     exit;
 }
 
@@ -85,6 +99,63 @@ function get_server_llm_credentials(PDO $pdo): array {
 
 $action = $_GET['action'] ?? ($_POST['action'] ?? 'list');
 
+// Which module's data each context source slug reads. The caller gets only the
+// sources whose module they may read ('all' / '*' expands to exactly those), so the
+// simulation context can never carry what the app would not show them.
+$ccrmSourceModules = [
+    'active_leads' => ['leads'],
+    'existing_clients' => ['clients'],
+    'projects' => ['projects'],
+    'lost_deal_objections' => ['leads', 'clients'],
+    'competitor_intel' => ['leads', 'clients'],
+    'meeting_notes' => ['meetings'],
+    'client_emails' => ['email'],
+    'files' => ['files'],
+    'products' => ['warehouse'],
+    'financials' => ['financial'],
+    'social_media_posts' => ['social_media'],
+    'unified_entries' => ['unified_entries'],
+];
+
+// May the caller see this simulation? Administrators: all. Everyone else: their own.
+// A simulation that predates ownership has no owner, so it is shown only to someone
+// who may read every data source it was grounded on.
+$swarmCanAccess = function (?string $owner, array $sources) use ($swarmScope, $sessionUser, $ccrmSourceModules): bool {
+    if (!empty($swarmScope['isAdmin'])) {
+        return true;
+    }
+    if ($owner !== null && $owner !== '') {
+        return $owner === (string)($sessionUser['id'] ?? '');
+    }
+    $slugs = (in_array('*', $sources, true) || in_array('all', $sources, true)) ? array_keys($ccrmSourceModules) : $sources;
+    foreach ($slugs as $slug) {
+        $modules = $ccrmSourceModules[$slug] ?? null;
+        if ($modules === null) {
+            continue;
+        }
+        $readable = false;
+        foreach ($modules as $moduleKey) {
+            if (ccrm_can($swarmScope, $moduleKey)) {
+                $readable = true;
+                break;
+            }
+        }
+        if (!$readable) {
+            return false;
+        }
+    }
+    return true;
+};
+$swarmRequireAccess = function (string $simId) use ($swarmManager, $swarmCanAccess): void {
+    $info = $swarmManager->getAccessInfo($simId);
+    if ($info === null || !$swarmCanAccess($info['created_by'], $info['sources'])) {
+        // Same answer for "missing" and "not yours" so ids cannot be probed.
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Simulation not found.']);
+        exit;
+    }
+};
+
 // ─────────────────────────────────────────────────────────────
 // ACTION: LLM PROXY (Secure browser -> CCRM -> OpenAI gateway)
 // ─────────────────────────────────────────────────────────────
@@ -104,7 +175,18 @@ if ($action === 'llm_proxy') {
     $body = json_decode($rawInput, true) ?: [];
 
     $messages = $body['messages'] ?? [];
-    $model = $body['model'] ?? $creds['defaultModel'];
+    // Only the models the Swarm UI offers (or the administrator configured): an
+    // arbitrary client-chosen model would let any user spend the key on the most
+    // expensive one.
+    $swarmCfg = [];
+    try {
+        $swarmCfg = ccrm_load_integrations_config($pdo);
+    } catch (\Throwable $e) {
+    }
+    $swarmAllowedModels = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', $creds['defaultModel'], ccrm_ai_model($swarmCfg, $creds['defaultModel'])];
+    $model = (isset($body['model']) && is_string($body['model']) && in_array($body['model'], $swarmAllowedModels, true))
+        ? $body['model']
+        : $creds['defaultModel'];
     // Map internal branding names to live OpenAI model identifiers
     if ($model === 'gpt-5.6-luna') {
         $model = 'gpt-4o-mini';
@@ -117,7 +199,9 @@ if ($action === 'llm_proxy') {
         ? (int)$body['max_completion_tokens'] 
         : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 8000);
 
-    if (empty($messages)) {
+    $maxTokens = max(1, min($maxTokens, 16000));
+
+    if (empty($messages) || !is_array($messages)) {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Messages array cannot be empty.']);
         exit;
@@ -192,7 +276,8 @@ if ($action === 'llm_proxy') {
 
     if ($curlErr) {
         http_response_code(502);
-        echo json_encode(['success' => false, 'message' => 'LLM gateway communication error: ' . $curlErr]);
+        error_log('[swarm] LLM gateway error: ' . $curlErr);
+        echo json_encode(['success' => false, 'message' => 'LLM gateway communication error.']);
         exit;
     }
 
@@ -208,23 +293,7 @@ if ($action === 'fetch_crm_context') {
     $lookbackMonths = isset($_GET['lookback_months']) ? (int)$_GET['lookback_months'] : 12;
     $sourcesRaw = $_GET['sources'] ?? '';
     $sources = !empty($sourcesRaw) ? explode(',', $sourcesRaw) : [];
-    // Each source slug reads one module's data. The caller gets only the sources whose module
-    // they may read ('all' / '*' expands to exactly those), so the simulation context can
-    // never carry what the app would not show them.
-    $ccrmSourceModules = [
-        'active_leads' => ['leads'],
-        'existing_clients' => ['clients'],
-        'projects' => ['projects'],
-        'lost_deal_objections' => ['leads', 'clients'],
-        'competitor_intel' => ['leads', 'clients'],
-        'meeting_notes' => ['meetings'],
-        'client_emails' => ['email'],
-        'files' => ['files'],
-        'products' => ['warehouse'],
-        'financials' => ['financial'],
-        'social_media_posts' => ['social_media'],
-        'unified_entries' => ['unified_entries'],
-    ];
+    // $ccrmSourceModules (above) maps each source slug to the modules it reads.
     $ccrmPdo = ccrm_auth_pdo();
     $ccrmScope = $ccrmPdo !== null ? ccrm_read_scope($ccrmPdo, $sessionUser) : ['isAdmin' => false, 'permissions' => []];
     $wantedSources = (in_array('*', $sources, true) || in_array('all', $sources, true)) ? array_keys($ccrmSourceModules) : $sources;
@@ -253,11 +322,24 @@ if ($action === 'create_simulation') {
     $body = json_decode($rawInput, true) ?: [];
 
     try {
-        $res = $swarmManager->createSimulation($body);
+        // Re-using an id means updating that simulation: only its owner (or an admin) may.
+        $requestedId = isset($body['id']) && is_string($body['id']) ? SwarmManager::sanitizeId($body['id']) : '';
+        if ($requestedId !== '' && $swarmManager->getAccessInfo($requestedId) !== null) {
+            $swarmRequireAccess($requestedId);
+        } else {
+            // Every new simulation creates four database tables, so the count is capped.
+            if ($swarmManager->countSimulations((string)$sessionUser['id']) >= 30 || $swarmManager->countSimulations() >= 500) {
+                http_response_code(429);
+                echo json_encode(['success' => false, 'message' => 'Simulation limit reached. Delete an old simulation first.']);
+                exit;
+            }
+        }
+        $res = $swarmManager->createSimulation($body, (string)$sessionUser['id']);
         echo json_encode($res);
     } catch (\Exception $ex) {
+        ccrm_log_exception($ex);
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => $ex->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Could not create the simulation.']);
     }
     exit;
 }
@@ -280,12 +362,15 @@ if ($action === 'checkpoint') {
         exit;
     }
 
+    $swarmRequireAccess((string)$simId);
+
     try {
-        $res = $swarmManager->saveCheckpoint($simId, $round, $snapshot, $newPosts);
+        $res = $swarmManager->saveCheckpoint($simId, $round, is_array($snapshot) ? $snapshot : [], is_array($newPosts) ? $newPosts : []);
         echo json_encode($res);
     } catch (\Exception $ex) {
+        ccrm_log_exception($ex);
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => $ex->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Could not save the checkpoint.']);
     }
     exit;
 }
@@ -301,6 +386,7 @@ if ($action === 'resume') {
         exit;
     }
 
+    $swarmRequireAccess((string)$simId);
     $state = $swarmManager->getResumeState($simId);
     if (!$state) {
         http_response_code(404);
@@ -316,7 +402,16 @@ if ($action === 'resume') {
 // ACTION: LIST SIMULATIONS
 // ─────────────────────────────────────────────────────────────
 if ($action === 'list') {
-    $list = $swarmManager->listSimulations();
+    $list = array_values(array_filter(
+        $swarmManager->listSimulations(),
+        function ($row) use ($swarmCanAccess) {
+            $sources = (isset($row['crm_data_sources']) && is_array($row['crm_data_sources']))
+                ? array_values(array_filter($row['crm_data_sources'], 'is_string'))
+                : [];
+            $owner = isset($row['created_by']) && $row['created_by'] !== null ? (string)$row['created_by'] : null;
+            return $swarmCanAccess($owner, $sources);
+        }
+    ));
     echo json_encode(['success' => true, 'simulations' => $list]);
     exit;
 }
@@ -332,12 +427,15 @@ if ($action === 'delete') {
         exit;
     }
 
+    $swarmRequireAccess((string)$simId);
+
     try {
         $ok = $swarmManager->deleteSimulation($simId);
         echo json_encode(['success' => $ok]);
     } catch (\Exception $ex) {
+        ccrm_log_exception($ex);
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => $ex->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Could not delete the simulation.']);
     }
     exit;
 }

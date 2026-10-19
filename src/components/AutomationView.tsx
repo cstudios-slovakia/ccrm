@@ -1806,7 +1806,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     }
   };
 
-  const cronUrl = `${window.location.origin}/api/cron.php?token=${apiKeys.cronToken || "TOKEN"}`;
+  // The token goes in a header, not the URL: URLs are written to access logs.
+  const cronUrl = `curl -s -H "X-Cron-Token: ${apiKeys.cronToken || "TOKEN"}" "${window.location.origin}/api/cron.php"`;
 
   return (
     <div className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -3879,7 +3880,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     {canEdit && (
                     <button 
                       type="button"
-                      onClick={() => setApiKeys({ ...apiKeys, cronToken: Math.random().toString(36).substring(2, 18) })}
+                      onClick={() => setApiKeys({ ...apiKeys, cronToken: crypto.randomUUID().replace(/-/g, "") })}
                       className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-ui font-bold text-slate-600"
                     >
                       {t("Regenerate", "Regenerovať", "Újra előállít")}
@@ -3901,7 +3902,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       className="text-ui font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1"
                     >
                       <Copy className="h-3 w-3" />
-                      {t("Copy URL", "Kopírovať", "Másolás")}
+                      {t("Copy command", "Kopírovať príkaz", "Parancs másolása")}
                     </button>
                   </div>
                   <code className="text-micro font-mono block break-all bg-white p-2.5 border border-slate-200 rounded text-slate-600">
@@ -3909,9 +3910,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   </code>
                   <p className="text-micro text-slate-400 mt-2 leading-relaxed">
                     {t(
-                      "To execute timer events and run queued workflows, configure a crontab schedule on your host server to query this webhook endpoint every minute: e.g. * * * * * curl -s 'URL'",
-                      "Pre spúšťanie časovačov a spracovanie frontu, nastavte crontab na serveri každú minútu: napr. * * * * * curl -s 'URL'",
-                      "A munkafolyamatok ütemezéséhez állítson be cron feladatot a fenti címmel percenként."
+                      "To execute timer events and run queued workflows, add this command to a crontab on your host server and run it every minute (e.g. * * * * * followed by the command). The token is sent as a header so it does not end up in access logs.",
+                      "Pre spúšťanie časovačov a spracovanie frontu pridajte tento príkaz do crontabu na serveri a spúšťajte ho každú minútu (napr. * * * * * a príkaz). Token sa posiela v hlavičke, takže sa nezapíše do prístupových logov.",
+                      "A munkafolyamatok ütemezéséhez adja hozzá ezt a parancsot a szerver crontabjához, percenként futtatva. A token fejlécben megy, így nem kerül a hozzáférési naplóba."
                     )}
                   </p>
                 </div>

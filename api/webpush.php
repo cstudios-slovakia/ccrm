@@ -67,6 +67,55 @@ if (!function_exists('ccrm_der_to_jose')) {
     }
 }
 
+if (!function_exists('ccrm_vapid_keys_persist')) {
+    /**
+     * Store the VAPID key pair with its private half (`privateKey`, `pem`)
+     * encrypted at rest like every other secret in system_settings — a backup or
+     * a read of that table must not hand out the key that signs push messages.
+     * The public key stays in the clear (the browser needs it anyway).
+     */
+    function ccrm_vapid_keys_persist(PDO $pdo, array $keys): void {
+        $stored = $keys;
+        foreach (['privateKey', 'pem'] as $field) {
+            if (!empty($stored[$field])) {
+                $stored[$field] = ccrm_encrypt_secret((string)$stored[$field]);
+            }
+        }
+        $ins = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('VAPID_KEYS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+        $ins->execute([json_encode($stored, JSON_UNESCAPED_SLASHES)]);
+    }
+}
+
+if (!function_exists('ccrm_validate_push_endpoint')) {
+    /**
+     * A push endpoint is a URL the SERVER later POSTs to, so it is an SSRF
+     * vector. Real push services (FCM, Mozilla autopush, Apple, WNS) are all
+     * https on the default port; anything else, or anything that resolves to an
+     * internal address, is refused. Returns an error message, or null when fine.
+     */
+    function ccrm_validate_push_endpoint(string $endpoint): ?string {
+        if (strlen($endpoint) > 2048) {
+            return 'Push endpoint is too long.';
+        }
+        $parts = parse_url($endpoint);
+        if (!is_array($parts) || empty($parts['host']) || strtolower((string)($parts['scheme'] ?? '')) !== 'https') {
+            return 'Push endpoint must be an https URL.';
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            return 'Push endpoint must not contain credentials.';
+        }
+        if (isset($parts['port']) && (int)$parts['port'] !== 443) {
+            return 'Push endpoint must use the default https port.';
+        }
+        try {
+            ccrm_assert_public_host((string)$parts['host']);
+        } catch (\InvalidArgumentException $e) {
+            return 'Push endpoint host is not allowed.';
+        }
+        return null;
+    }
+}
+
 if (!function_exists('ccrm_get_or_create_vapid_keys')) {
     /**
      * Retrieves or automatically provisions VAPID ECDSA P-256 keys in system_settings.
@@ -79,7 +128,23 @@ if (!function_exists('ccrm_get_or_create_vapid_keys')) {
             if ($raw) {
                 $decoded = json_decode((string)$raw, true);
                 if (is_array($decoded) && !empty($decoded['publicKey']) && !empty($decoded['pem'])) {
-                    return $decoded;
+                    $wasPlaintext = strncmp((string)$decoded['pem'], 'enc:v1:', 7) !== 0;
+                    foreach (['privateKey', 'pem'] as $field) {
+                        if (!empty($decoded[$field])) {
+                            $decoded[$field] = ccrm_decrypt_secret((string)$decoded[$field]);
+                        }
+                    }
+                    if (!empty($decoded['pem'])) {
+                        if ($wasPlaintext) {
+                            // Keys written before encryption at rest: seal them now.
+                            try {
+                                ccrm_vapid_keys_persist($pdo, $decoded);
+                            } catch (\Throwable $e) {
+                                error_log('[ccrm webpush] Could not encrypt stored VAPID keys: ' . $e->getMessage());
+                            }
+                        }
+                        return $decoded;
+                    }
                 }
             }
         } catch (\Throwable $e) {
@@ -116,8 +181,7 @@ if (!function_exists('ccrm_get_or_create_vapid_keys')) {
         ];
 
         try {
-            $ins = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('VAPID_KEYS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-            $ins->execute([json_encode($keys, JSON_UNESCAPED_SLASHES)]);
+            ccrm_vapid_keys_persist($pdo, $keys);
         } catch (\Throwable $e) {
             error_log('[ccrm webpush] Failed to persist VAPID keys: ' . $e->getMessage());
         }
@@ -227,6 +291,10 @@ if (!function_exists('ccrm_dispatch_webpush')) {
         if (empty($parts['scheme']) || empty($parts['host'])) {
             return ['success' => false, 'status' => 0, 'error' => 'Invalid endpoint URL'];
         }
+        // Subscriptions registered before endpoints were validated may point anywhere.
+        if (ccrm_validate_push_endpoint($endpoint) !== null) {
+            return ['success' => false, 'status' => 0, 'error' => 'Endpoint not allowed'];
+        }
 
         $audience = $parts['scheme'] . '://' . $parts['host'] . (!empty($parts['port']) ? ':' . $parts['port'] : '');
         $subject = 'mailto:support@cstudios.sk';
@@ -264,6 +332,8 @@ if (!function_exists('ccrm_dispatch_webpush')) {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
 
         $response = curl_exec($ch);
         $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);

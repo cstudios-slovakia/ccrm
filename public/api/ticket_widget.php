@@ -11,7 +11,8 @@ require_once $configFile;
 
 try {
     $pdo = get_db_connection();
-    ccrm_migrate_tickets($pdo);
+    // Public endpoint: never backfill embed keys from here (VULN-08).
+    ccrm_migrate_tickets($pdo, false);
 } catch (\Throwable $e) {
     http_response_code(500);
     exit;
@@ -99,6 +100,41 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     exit;
 }
 
+/**
+ * The widget is public, so what it stores must be bounded and inert (VULN-06):
+ * at most 5 attachments, each a raster image sent as a base64 data URL of at most
+ * 2 MB. Anything else — other schemes (a `javascript:` link the admin UI would
+ * render as a clickable href), SVG, a `path` / `url` pointing elsewhere, nested
+ * junk — is dropped, and only the known fields are kept.
+ */
+function ccrm_widget_clean_attachments($raw): array {
+    if (!is_array($raw)) {
+        return [];
+    }
+    $clean = [];
+    foreach (array_slice($raw, 0, 5) as $att) {
+        if (!is_array($att) || empty($att['dataUrl']) || !is_string($att['dataUrl'])) {
+            continue;
+        }
+        $dataUrl = $att['dataUrl'];
+        if (strlen($dataUrl) > 2 * 1024 * 1024) {
+            continue;
+        }
+        if (!preg_match('~^data:image/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$~', $dataUrl, $m)) {
+            continue;
+        }
+        $mime = 'image/' . strtolower($m[1] === 'jpg' ? 'jpeg' : $m[1]);
+        $clean[] = [
+            'id' => substr(preg_replace('/[^A-Za-z0-9_\-]/', '', (string)($att['id'] ?? '')) ?: ('att-' . bin2hex(random_bytes(4))), 0, 64),
+            'name' => substr(trim(preg_replace('/[\x00-\x1f<>"\']/', '', (string)($att['name'] ?? 'screenshot.png'))) ?: 'screenshot.png', 0, 255),
+            'type' => $mime,
+            'dataUrl' => $dataUrl,
+            'createdAt' => gmdate('c'),
+        ];
+    }
+    return $clean;
+}
+
 $rawBody = file_get_contents('php://input');
 $input = $rawBody ? (json_decode($rawBody, true) ?: []) : [];
 $action = $_GET['action'] ?? ($input['action'] ?? 'script');
@@ -137,13 +173,12 @@ if (!$project || empty($project['ticket_widget_enabled'])) {
 // embed (which contains the key) into their site; anyone who can read that
 // page can use the widget — which is the feature — but nobody can reach a
 // project's tickets without it.
+// The key is only ever minted by an authenticated save (sync.php) or "Regenerate
+// public link". An anonymous request must not write anything (VULN-08): a project
+// that has no key yet simply has no usable widget until an admin creates one.
 $widgetKey = (string)($project['ticket_public_hash'] ?? '');
-if ($widgetKey === '') {
-    $widgetKey = bin2hex(random_bytes(16));
-    $pdo->prepare("UPDATE `projects` SET `ticket_public_hash` = ? WHERE `id` = ?")->execute([$widgetKey, $projectId]);
-}
 $providedKey = (string)($_GET['key'] ?? ($input['key'] ?? ''));
-if ($providedKey === '' || !hash_equals($widgetKey, $providedKey)) {
+if ($widgetKey === '' || $providedKey === '' || !hash_equals($widgetKey, $providedKey)) {
     if ($action === 'script') {
         http_response_code(403);
         header('Content-Type: application/javascript; charset=utf-8');
@@ -261,11 +296,27 @@ if ($action === 'submit') {
     $priority = in_array($input['priority'] ?? '', ['critical', 'high', 'normal', 'low'], true) ? $input['priority'] : 'normal';
     $type = in_array($input['type'] ?? '', ['bug', 'question', 'feature_request', 'incident', 'billing'], true) ? $input['type'] : 'bug';
     $metadata = isset($input['metadata']) && is_array($input['metadata']) ? $input['metadata'] : [];
-    $attachments = isset($input['attachments']) && is_array($input['attachments']) ? array_slice($input['attachments'], 0, 5) : [];
+    $attachments = ccrm_widget_clean_attachments($input['attachments'] ?? []);
+
+    // Bound every free-text field a stranger can send (VULN-06).
+    $subject = mb_substr($subject, 0, 255);
+    $description = mb_substr($description, 0, 20000);
+    $reporterName = mb_substr($reporterName, 0, 100);
+    $reporterEmail = mb_substr($reporterEmail, 0, 150);
+    if (strlen((string)json_encode($metadata)) > 20000) {
+        $metadata = [];
+    }
 
     if ($subject === '') {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Subject is required.']);
+        exit;
+    }
+
+    if (ccrm_rate_limit_exceeded($pdo, 'widget_submit', md5(($_SERVER['REMOTE_ADDR'] ?? '') . '|' . $projectId), 10, 600)) {
+        http_response_code(429);
+        header('Retry-After: 600');
+        echo json_encode(['success' => false, 'message' => 'Too many tickets submitted. Please try again later.']);
         exit;
     }
 
@@ -347,11 +398,21 @@ if ($action === 'followup') {
     $body = trim((string)($input['body'] ?? ''));
     $authorName = trim((string)($input['authorName'] ?? ''));
     $authorEmail = strtolower(trim((string)($input['authorEmail'] ?? '')));
-    $attachments = isset($input['attachments']) && is_array($input['attachments']) ? array_slice($input['attachments'], 0, 5) : [];
+    $attachments = ccrm_widget_clean_attachments($input['attachments'] ?? []);
+    $body = mb_substr($body, 0, 20000);
+    $authorName = mb_substr($authorName, 0, 100);
+    $authorEmail = mb_substr($authorEmail, 0, 150);
 
     if ($ticketId === '' || $body === '') {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Ticket ID and message body are required.']);
+        exit;
+    }
+
+    if (ccrm_rate_limit_exceeded($pdo, 'widget_followup', md5(($_SERVER['REMOTE_ADDR'] ?? '') . '|' . $projectId), 30, 600)) {
+        http_response_code(429);
+        header('Retry-After: 600');
+        echo json_encode(['success' => false, 'message' => 'Too many messages sent. Please try again later.']);
         exit;
     }
 
@@ -489,7 +550,7 @@ $configJson = json_encode([
   }
   const shadow = hostEl.attachShadow({ mode: 'open' });
 
-  const primary = CFG.primaryColor || '#f97316';
+  const primary = safeColor(CFG.primaryColor, '#f97316');
   const posRight = (CFG.position || 'bottom-right') !== 'bottom-left';
 
   const style = document.createElement('style');
@@ -805,14 +866,14 @@ $configJson = json_encode([
   container.innerHTML = `
     <button class="ktw-launcher" id="ktw-launcher" type="button">
       <span class="ktw-launcher-icon" id="ktw-launcher-icon">💬</span>
-      <span>${CFG.buttonLabel || 'Support'}</span>
+      <span>${escapeHtml(CFG.buttonLabel || 'Support')}</span>
       <span class="ktw-badge" id="ktw-err-badge">0</span>
     </button>
     <div class="ktw-panel" id="ktw-panel">
       <div class="ktw-header">
         <div>
-          <h3 class="ktw-title">${CFG.title || (INIT.projectName + ' Support')}</h3>
-          <p class="ktw-subtitle">${CFG.subtitle || 'Report an issue or follow up on existing tickets'}</p>
+          <h3 class="ktw-title">${escapeHtml(CFG.title || (INIT.projectName + ' Support'))}</h3>
+          <p class="ktw-subtitle">${escapeHtml(CFG.subtitle || 'Report an issue or follow up on existing tickets')}</p>
         </div>
         <button class="ktw-close" id="ktw-close" type="button">✕</button>
       </div>
@@ -884,7 +945,7 @@ $configJson = json_encode([
       </div>
       <div class="ktw-footer">
         <span style="color:#94a3b8;">Verejný prehľad stavov:</span>
-        <a class="ktw-link" href="${INIT.publicStatusUrl}" target="_blank" rel="noopener noreferrer">Otvoriť status stránku ↗</a>
+        <a class="ktw-link" href="${escapeHtml(safeHttpUrl(INIT.publicStatusUrl))}" target="_blank" rel="noopener noreferrer">Otvoriť status stránku ↗</a>
       </div>
     </div>
   `;
@@ -1148,7 +1209,7 @@ $configJson = json_encode([
 
   function getStatusInfo(statusId) {
     const found = (loadedStatuses || []).find(function(s) { return s.id === statusId || s.key === statusId; });
-    return found || { labelSk: statusId, color: '#64748b' };
+    return Object.assign({ labelSk: statusId }, found || {}, { color: safeColor(found && found.color, '#64748b') });
   }
 
   async function fetchExistingTickets() {
@@ -1158,7 +1219,7 @@ $configJson = json_encode([
       const res = await fetch(INIT.endpointUrl + '?action=list&project=' + encodeURIComponent(INIT.projectId));
       const data = await res.json();
       if (!data.success) {
-        box.innerHTML = '<div class="ktw-alert err">' + (data.message || 'Chyba načítania.') + '</div>';
+        box.innerHTML = '<div class="ktw-alert err">' + escapeHtml(data.message || 'Chyba načítania.') + '</div>';
         return;
       }
       loadedTickets = data.tickets || [];
@@ -1169,8 +1230,24 @@ $configJson = json_encode([
     }
   }
 
+  // Escapes text for BOTH element content and quoted attribute values.
   function escapeHtml(str) {
-    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Colours end up inside <style> and style="" attributes: hex only.
+  function safeColor(value, fallback) {
+    return /^#[0-9a-fA-F]{3,8}$/.test(String(value || '')) ? String(value) : fallback;
+  }
+
+  // Links in the widget may only be plain http(s).
+  function safeHttpUrl(value) {
+    return /^https?:\/\//i.test(String(value || '')) ? String(value) : '#';
   }
 
   function formatMessageBody(str) {

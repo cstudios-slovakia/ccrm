@@ -101,6 +101,7 @@ import {
 import { AddWidgetDrawer } from "./dashboard/AddWidgetDrawer";
 import { WidgetSettingsDrawer } from "./dashboard/WidgetSettingsDrawer";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
+import { Chart as BundledChart } from "../utils/chartRuntime";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
@@ -2439,11 +2440,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
       chartInstanceRef.current.destroy();
     }
 
-    const ChartGlob = (window as any).Chart;
-    if (!ChartGlob) {
-      console.warn("Chart.js is not loaded in the window environment.");
-      return;
-    }
+    const ChartGlob: any = BundledChart;
 
     const dataList = Array.isArray(data) ? data : [];
     const labelsKey = widget.mapping?.labelsKey || "status";

@@ -52,7 +52,7 @@ $data = json_decode($input, true);
 
 $prompt = $data['prompt'] ?? '';
 $history = $data['history'] ?? [];
-$model = $data['model'] ?? 'gpt-5.6-terra';
+$model = ccrm_ai_requested_model($integrationsConfig, $data['model'] ?? null);
 
 if (empty($prompt)) {
     http_response_code(400);

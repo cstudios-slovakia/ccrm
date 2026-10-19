@@ -127,8 +127,9 @@ if (!function_exists('ccrm_send_cors')) {
 
     /** Open the authenticated session for a users row and return the profile array login.php answers with. */
     function ccrm_establish_login_session(\PDO $pdo, array $row, bool $remember): array {
-        // The address this user reached the CRM at is the one mailed links should use.
-        ccrm_remember_app_url($pdo);
+        // The address an administrator reached the CRM at is the one mailed links
+        // should use. Other roles never get to choose it (see ccrm_remember_app_url).
+        ccrm_remember_app_url($pdo, $row);
 
         // Establish the authenticated session (extended lifetime when "remember me").
         ccrm_start_session($remember);
@@ -182,9 +183,74 @@ if (!function_exists('ccrm_send_cors')) {
         ];
     }
 
+    /**
+     * True when this is a state-changing request that the browser says (or its
+     * Origin header shows) came from another origin. SameSite=Lax does not cover
+     * a sibling subdomain, and endpoints that read php://input never insisted on
+     * a JSON content type, so a cross-origin form post could still ride the
+     * session cookie. A browser's own Sec-Fetch-Site / Origin cannot be forged by
+     * the page that triggers the request, so they are the check.
+     *
+     * Requests carrying neither header (curl, the MCP gateway, cron) are not
+     * browser requests and are left alone — no cookie is being ridden there.
+     */
+    function ccrm_is_cross_site_mutation(): bool {
+        $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+            return false;
+        }
+
+        $fetchSite = strtolower(trim((string)($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '')));
+        if ($fetchSite === 'same-origin' || $fetchSite === 'none') {
+            return false;
+        }
+        if ($fetchSite !== '') {
+            return true; // same-site (e.g. a sibling subdomain) or cross-site
+        }
+
+        $origin = trim((string)($_SERVER['HTTP_ORIGIN'] ?? ''));
+        if ($origin === '') {
+            return false;
+        }
+        $o = parse_url($origin);
+        if (!is_array($o) || empty($o['host'])) {
+            return true; // "null" origin or garbage
+        }
+        $scheme   = strtolower((string)($o['scheme'] ?? 'http'));
+        $default  = $scheme === 'https' ? 443 : 80;
+        $oHost    = strtolower(trim((string)$o['host'], '[]'));
+        $oPort    = (int)($o['port'] ?? $default);
+
+        $hostHeader = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
+        $h = $hostHeader !== '' ? parse_url('//' . $hostHeader) : false;
+        if (is_array($h) && !empty($h['host'])
+            && strtolower(trim((string)$h['host'], '[]')) === $oHost
+            && (int)($h['port'] ?? $default) === $oPort) {
+            return false;
+        }
+
+        // An operator who pinned the public URL (CCRM_APP_URL) may sit behind a
+        // proxy that rewrites Host; that pinned host is equally trusted.
+        if (defined('CCRM_APP_URL') && is_string(CCRM_APP_URL) && CCRM_APP_URL !== '') {
+            $a = parse_url(CCRM_APP_URL);
+            if (is_array($a) && !empty($a['host'])) {
+                $aDefault = strtolower((string)($a['scheme'] ?? 'http')) === 'https' ? 443 : 80;
+                if (strtolower(trim((string)$a['host'], '[]')) === $oHost
+                    && (int)($a['port'] ?? $aDefault) === $oPort) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     function ccrm_current_user(): ?array {
         ccrm_start_session();
         if (empty($_SESSION['ccrm_uid'])) {
+            return null;
+        }
+        // A cross-origin write is never allowed to use the session cookie.
+        if (ccrm_is_cross_site_mutation()) {
             return null;
         }
 
@@ -269,6 +335,11 @@ if (!function_exists('ccrm_send_cors')) {
     function ccrm_require_auth(): array {
         $user = ccrm_current_user();
         if ($user === null) {
+            if (ccrm_is_cross_site_mutation()) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Cross-origin request blocked.']);
+                exit;
+            }
             http_response_code(401);
             echo json_encode(['success' => false, 'message' => 'Authentication required.']);
             exit;
@@ -1194,7 +1265,7 @@ HTACCESS;
                     $e->getFile(),
                     $e->getLine(),
                     $e->getTraceAsString(),
-                    $_SERVER['REQUEST_URI'] ?? null,
+                    ccrm_redact_uri($_SERVER['REQUEST_URI'] ?? null),
                     $_SERVER['REQUEST_METHOD'] ?? null,
                     ccrm_redact_payload(file_get_contents('php://input') ?: null)
                 ]);
@@ -1254,7 +1325,11 @@ HTACCESS;
     /**
      * Encrypt a single secret value (AES-256-GCM). Returns an `enc:v1:` prefixed
      * token. Empty strings, already-encrypted values and the mask pass through
-     * unchanged. On any failure the plaintext is returned rather than lost.
+     * unchanged. Fails CLOSED: if encryption is impossible this throws, because
+     * ccrm_decrypt_secret() treats any value without the prefix as legacy
+     * plaintext, so a silent fallback would store the secret in the clear.
+     *
+     * @throws \RuntimeException when the value cannot be encrypted
      */
     function ccrm_encrypt_secret(string $plain): string {
         if ($plain === '' || $plain === CCRM_SECRET_MASK || strncmp($plain, 'enc:v1:', 7) === 0) {
@@ -1264,13 +1339,15 @@ HTACCESS;
             $iv  = random_bytes(12);
             $tag = '';
             $ct  = openssl_encrypt($plain, 'aes-256-gcm', ccrm_secret_key(), OPENSSL_RAW_DATA, $iv, $tag);
-            if ($ct === false) {
-                return $plain;
-            }
-            return 'enc:v1:' . base64_encode($iv . $tag . $ct);
         } catch (\Throwable $e) {
-            return $plain;
+            error_log('[ccrm secrets] encryption failed: ' . $e->getMessage());
+            throw new \RuntimeException('Could not encrypt a secret value; refusing to store it in plain text.', 0, $e);
         }
+        if ($ct === false) {
+            error_log('[ccrm secrets] openssl_encrypt returned false');
+            throw new \RuntimeException('Could not encrypt a secret value; refusing to store it in plain text.');
+        }
+        return 'enc:v1:' . base64_encode($iv . $tag . $ct);
     }
 
     /**
@@ -1530,6 +1607,58 @@ HTACCESS;
     }
 
     /**
+     * The model a dashboard AI endpoint should use. The editor offers a slider over
+     * these three, so a client may pick one of them; anything else (a high-cost
+     * model it was never offered, an old stored name) falls back to the model the
+     * administrator configured, instead of being forwarded to OpenAI as typed.
+     */
+    function ccrm_ai_requested_model(array $config, $requested): string {
+        $configured = ccrm_ai_model($config, 'gpt-5.6-terra');
+        $allowed = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', $configured];
+        return (is_string($requested) && in_array($requested, $allowed, true)) ? $requested : $configured;
+    }
+
+    /**
+     * Sliding-window rate limit kept in the database (fixed ledger table, created
+     * on first use). Records a hit and returns false while the caller is under
+     * `$max` hits in the last `$windowSeconds`; returns true — without recording —
+     * once they are over. Fails OPEN: a broken ledger must never lock out real
+     * traffic.
+     */
+    function ccrm_rate_limit_exceeded(\PDO $pdo, string $bucket, string $subject, int $max, int $windowSeconds): bool {
+        try {
+            if (!$pdo->inTransaction()) {
+                $pdo->exec(
+                    "CREATE TABLE IF NOT EXISTS `rate_limits` (
+                      `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+                      `bucket` VARCHAR(50) NOT NULL,
+                      `subject` VARCHAR(64) NOT NULL,
+                      `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      INDEX `idx_rate_window` (`bucket`, `subject`, `created_at`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+            }
+            if (random_int(1, 50) === 1) {
+                $pdo->exec("DELETE FROM `rate_limits` WHERE `created_at` < (NOW() - INTERVAL 1 DAY)");
+            }
+            $subject = substr($subject, 0, 64);
+            $count = $pdo->prepare(
+                "SELECT COUNT(*) FROM `rate_limits`
+                  WHERE `bucket` = ? AND `subject` = ? AND `created_at` > (NOW() - INTERVAL " . (int)$windowSeconds . " SECOND)"
+            );
+            $count->execute([$bucket, $subject]);
+            if ((int)$count->fetchColumn() >= $max) {
+                return true;
+            }
+            $pdo->prepare("INSERT INTO `rate_limits` (`bucket`, `subject`) VALUES (?, ?)")->execute([$bucket, $subject]);
+            return false;
+        } catch (\Throwable $e) {
+            error_log('[ccrm rate limit] ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * OpenAI's reasoning-model families (o1/o3/o4/gpt-5*) reject any
      * 'temperature' value other than the default (1) — sending 0.2/0.3/0.4
      * fails with "Unsupported value: 'temperature' does not support X".
@@ -1537,6 +1666,22 @@ HTACCESS;
      */
     function ccrm_ai_model_supports_temperature(string $model): bool {
         return !preg_match('/^(o[1-9]|gpt-5)/i', trim($model));
+    }
+
+    /**
+     * Blank the value of secret-looking query parameters (?token=, ?key=, ?api_key=
+     * ...) in a request URI before it is written to error_logs, so a bearer token
+     * sent in a URL does not survive in the table.
+     */
+    function ccrm_redact_uri($uri) {
+        if (!is_string($uri) || $uri === '' || strpos($uri, '?') === false) {
+            return $uri;
+        }
+        return preg_replace(
+            '/([?&][^=&#]*(?:token|key|secret|pass|auth)[^=&#]*=)[^&#]*/i',
+            '$1[REDACTED]',
+            $uri
+        );
     }
 
     /**
@@ -1565,6 +1710,151 @@ HTACCESS;
         $redactor($data);
         $encoded = json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE);
         return $encoded === false ? '[unserializable payload]' : $encoded;
+    }
+
+    /**
+     * Outbound-connection guard (SSRF). The connection testers (IMAP/SMTP/vector
+     * database) and Web Push dispatch connect to a host a user typed in. Without
+     * a check they map the internal network, reach cloud metadata
+     * (169.254.169.254) and talk to loopback services.
+     *
+     * Operators who legitimately run their mail server or vector store on a
+     * private address opt in with `define('CCRM_ALLOW_PRIVATE_HOSTS', true);` in
+     * config.php (or the CCRM_ALLOW_PRIVATE_HOSTS=1 environment variable).
+     */
+    function ccrm_private_hosts_allowed(): bool {
+        if (defined('CCRM_ALLOW_PRIVATE_HOSTS') && CCRM_ALLOW_PRIVATE_HOSTS) {
+            return true;
+        }
+        $env = getenv('CCRM_ALLOW_PRIVATE_HOSTS');
+        return $env !== false && in_array(strtolower(trim($env)), ['1', 'true', 'yes'], true);
+    }
+
+    /** True for a public, routable address (IPv4-mapped IPv6 is judged as its IPv4). */
+    function ccrm_ip_is_public(string $ip): bool {
+        if (stripos($ip, '::ffff:') === 0
+            && filter_var(substr($ip, 7), FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            $ip = substr($ip, 7);
+        }
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false
+            && !ccrm_ip_is_never_allowed($ip);
+    }
+
+    /**
+     * Addresses no outbound connection of ours should ever reach, even where
+     * private networks are fine (the vector database tester): link-local — which
+     * includes the cloud metadata service at 169.254.169.254 — "this network",
+     * unspecified, multicast and reserved ranges.
+     */
+    function ccrm_ip_is_never_allowed(string $ip): bool {
+        if (stripos($ip, '::ffff:') === 0
+            && filter_var(substr($ip, 7), FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            $ip = substr($ip, 7);
+        }
+        $bin = @inet_pton($ip);
+        if ($bin === false) {
+            return true;
+        }
+        if (strlen($bin) === 4) {
+            $a = ord($bin[0]);
+            $b = ord($bin[1]);
+            return $a === 0 || ($a === 169 && $b === 254) || $a >= 224;
+        }
+        if ($bin === str_repeat("\0", 16)) {
+            return true; // ::
+        }
+        $first = ord($bin[0]);
+        $second = ord($bin[1]);
+        return $first === 0xff || ($first === 0xfe && ($second & 0xC0) === 0x80);
+    }
+
+    /**
+     * Like ccrm_assert_public_host() but private and loopback addresses ARE
+     * allowed: a vector database is normally a sidecar or an internal server.
+     * Only the never-allowed ranges above are refused.
+     *
+     * @throws \InvalidArgumentException
+     */
+    function ccrm_assert_not_special_host(string $host): void {
+        $host = trim($host, '[] ');
+        if ($host === '' || preg_match('/[\s\/\\\\@#?;]/', $host)) {
+            throw new \InvalidArgumentException('Invalid host name.');
+        }
+        $ips = ccrm_resolve_host_ips($host);
+        if (!$ips) {
+            throw new \InvalidArgumentException('Unable to resolve host.');
+        }
+        foreach ($ips as $ip) {
+            if (ccrm_ip_is_never_allowed($ip)) {
+                throw new \InvalidArgumentException('Connections to link-local or reserved addresses are not allowed.');
+            }
+        }
+    }
+
+    /** Every IPv4/IPv6 address a host name (or literal) resolves to. */
+    function ccrm_resolve_host_ips(string $host): array {
+        $host = trim($host, '[] ');
+        if ($host === '') {
+            return [];
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            return [$host];
+        }
+        $ips = [];
+        $v4 = @gethostbynamel($host);
+        if (is_array($v4)) {
+            $ips = $v4;
+        }
+        $v6 = @dns_get_record($host, DNS_AAAA);
+        if (is_array($v6)) {
+            foreach ($v6 as $rec) {
+                if (!empty($rec['ipv6'])) {
+                    $ips[] = $rec['ipv6'];
+                }
+            }
+        }
+        return array_values(array_unique($ips));
+    }
+
+    /**
+     * Refuse a host that does not resolve, or that resolves to any private,
+     * loopback, link-local or otherwise reserved address.
+     *
+     * @throws \InvalidArgumentException
+     */
+    function ccrm_assert_public_host(string $host): void {
+        $host = trim(preg_replace('#^(ssl|tls|tcp)://#i', '', trim($host)), '[] ');
+        if ($host === '' || preg_match('/[\s\/\\\\@#?]/', $host)) {
+            throw new \InvalidArgumentException('Invalid host name.');
+        }
+        if (ccrm_private_hosts_allowed()) {
+            return;
+        }
+        $ips = ccrm_resolve_host_ips($host);
+        if (!$ips) {
+            throw new \InvalidArgumentException('Unable to resolve host.');
+        }
+        foreach ($ips as $ip) {
+            if (!ccrm_ip_is_public($ip)) {
+                throw new \InvalidArgumentException(
+                    'Connections to internal, loopback or link-local addresses are not allowed.'
+                );
+            }
+        }
+    }
+
+    /**
+     * Same, for a mail server: the host must be public (see above) AND the port
+     * one of the standard mail ports, so the tester cannot be used as a generic
+     * port scanner.
+     *
+     * @throws \InvalidArgumentException
+     */
+    function ccrm_validate_external_mail_target(string $host, int $port, array $allowedPorts = [143, 993, 110, 995, 25, 465, 587, 2525]): void {
+        if (!in_array($port, $allowedPorts, true)) {
+            throw new \InvalidArgumentException('Port is not a standard mail port.');
+        }
+        ccrm_assert_public_host($host);
     }
 
     /** Load the stored INTEGRATIONS_CONFIG as an assoc array (server-side use). */
@@ -1602,11 +1892,14 @@ HTACCESS;
     }
 
     /**
-     * Remember the base URL a user just signed in through. Only a request that
-     * carried a valid password gets here, so the stored value is one a real
-     * user actually reached the CRM at — unlike an anonymous request's Host.
+     * Remember the base URL an administrator just signed in through. The Host
+     * header is client-controlled, and the stored value ends up in password-reset
+     * links, so a non-admin's sign-in (any Viewer can send `Host: evil.example`)
+     * must never set or replace it. An operator can pin the value for good with
+     * CCRM_APP_URL in config.php, which wins over this.
      */
-    function ccrm_remember_app_url(\PDO $pdo): void {
+    function ccrm_remember_app_url(\PDO $pdo, ?array $user = null): void {
+        if (strtolower(trim((string)($user['role'] ?? ''))) !== 'admin') return;
         $url = ccrm_request_base_url();
         if ($url === '') return;
         try {
@@ -1624,9 +1917,10 @@ HTACCESS;
      * the current request (a fresh install nobody has signed in to yet).
      * Anonymous callers such as the password-reset request must not decide the
      * host a mailed link points at — that is how a reset token gets delivered to
-     * an attacker's server.
+     * an attacker's server. Callers that run on an anonymous request pass
+     * $allowRequestFallback = false so that last step is skipped for them.
      */
-    function ccrm_app_base_url(\PDO $pdo): string {
+    function ccrm_app_base_url(\PDO $pdo, bool $allowRequestFallback = true): string {
         if (defined('CCRM_APP_URL') && is_string(CCRM_APP_URL) && CCRM_APP_URL !== '') {
             return rtrim(CCRM_APP_URL, '/') . '/';
         }
@@ -1638,7 +1932,7 @@ HTACCESS;
                 return $stored;
             }
         } catch (\Throwable $e) { /* fall through */ }
-        return ccrm_request_base_url();
+        return $allowRequestFallback ? ccrm_request_base_url() : '';
     }
 
     /** Replace every non-empty secret value with the mask (outbound). */

@@ -31,8 +31,9 @@ try {
         throw new Exception("Database connection unavailable.");
     }
 } catch (\Throwable $e) {
+    ccrm_log_exception($e);
     http_response_code(500);
-    echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
+    echo json_encode(['error' => 'Database connection failed.']);
     exit;
 }
 
@@ -203,9 +204,10 @@ switch ($method) {
                 $pdo->commit();
                 echo json_encode(['success' => true, 'client_id' => $newClientId]);
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                ccrm_log_exception($e);
                 http_response_code(500);
-                echo json_encode(['error' => $e->getMessage()]);
+                echo json_encode(['error' => 'An internal error occurred.']);
             }
             exit;
         }
@@ -393,9 +395,10 @@ switch ($method) {
             $pdo->commit();
             echo json_encode(['success' => true, 'id' => $id]);
         } catch (Exception $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['error' => $e->getMessage()]);
+            echo json_encode(['error' => 'An internal error occurred.']);
         }
         break;
 

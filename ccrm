@@ -426,7 +426,9 @@ function ccrm_update() {
 
     // 3. Run composer install
     echo "Running composer install to update dependencies...\n";
-    passthru("composer install", $composerResult);
+    // Production: no dev packages, no interaction, and no third-party Composer
+    // scripts/plugins (they would run arbitrary code as the deploy user).
+    passthru("composer install --no-dev --no-interaction --prefer-dist --no-scripts --no-plugins", $composerResult);
     if ($composerResult !== 0) {
         echo "Error: composer install failed.\n";
         exit(1);

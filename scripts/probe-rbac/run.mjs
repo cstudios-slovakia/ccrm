@@ -866,18 +866,199 @@ echo json_encode(['text' => $r['raw_context']]);`;
         check(`T-E: ${key} tickets.php ${action} -> 403`, r.status === 403, `${r.status} ${r.raw.slice(0, 120)}`);
       }
     }
-    for (const action of ['test_imap', 'send_email_reply']) {
-      const r = await api(SESSIONS.tk_edit, 'api/tickets.php', { method: 'POST', query: `?action=${action}`, body: {} });
-      check(`T-E: edit tickets.php ${action} passes the gate`, r.status === 200 && r.data?.success === false && /Missing/.test(r.data?.message || ''), `${r.status} ${r.raw.slice(0, 160)}`);
+    {
+      const r = await api(SESSIONS.tk_edit, 'api/tickets.php', { method: 'POST', query: '?action=send_email_reply', body: {} });
+      check('T-E: edit tickets.php send_email_reply passes the gate', r.status === 200 && r.data?.success === false && /Missing/.test(r.data?.message || ''), `${r.status} ${r.raw.slice(0, 160)}`);
+      // test_imap connects to a host the caller names and can borrow the stored password,
+      // so it is administrator-only (security audit VULN-03 / VULN-11), not just ticket-edit.
+      const ti = await api(SESSIONS.tk_edit, 'api/tickets.php', { method: 'POST', query: '?action=test_imap', body: {} });
+      check('T-E: edit (non-admin) tickets.php test_imap -> 403 (admin only)', ti.status === 403, `${ti.status} ${ti.raw.slice(0, 160)}`);
+      const tia = await api(SESSIONS.admin, 'api/tickets.php', { method: 'POST', query: '?action=test_imap', body: {} });
+      check('T-E: admin tickets.php test_imap passes the gate', tia.status === 200 && tia.data?.success === false && /Missing/.test(tia.data?.message || ''), `${tia.status} ${tia.raw.slice(0, 160)}`);
     }
     {
       const pub = await fetch(`${BASE}/rbacprobe/api/tickets.php?action=public_status&hash=${TK.publicHash}`);
       const pj = await pub.json().catch(() => null);
       check('T-E: the public status board still answers without a session', pub.status === 200 && pj?.success === true, `${pub.status} ${JSON.stringify(pj)?.slice(0, 160)}`);
-      const wd = await fetch(`${BASE}/rbacprobe/api/ticket_widget.php?action=script&project=proj-probe-1`, { headers: { Origin: 'https://edited.test', Referer: 'https://edited.test/' } });
+      const wd = await fetch(`${BASE}/rbacprobe/api/ticket_widget.php?action=script&project=proj-probe-1&key=${TK.publicHash}`, { headers: { Origin: 'https://edited.test', Referer: 'https://edited.test/' } });
       const wt = await wd.text();
       check('T-E: the public widget script still answers without a session', wd.status === 200 && /ktw|Koperniq|function/.test(wt), `${wd.status} ${wt.slice(0, 120)}`);
     }
+
+    // --- S: security audit fixes (Strix audit 2026-10-16, VULN-01..25) ---
+    // Each check hits the real PHP and reads the DATABASE afterwards where it can, so a
+    // handler that merely answers "no" while still writing would not pass.
+    section('S: security audit fixes');
+    const origin = new URL(BASE).origin; // http://127.0.0.1:8085 — the Host the server sees
+    const same = { Origin: origin, 'Sec-Fetch-Site': 'same-origin' };
+
+    // VULN-01 workflows need the automation module, VULN-12 zernio the social_media module.
+    const wfEmp = await api(SESSIONS.employee_a, 'api/workflows.php', { query: '?action=list' });
+    check('S1: workflows list refused without the automation module', wfEmp.status === 403, `${wfEmp.status} ${wfEmp.raw.slice(0, 120)}`);
+    const wfEmpSave = await api(SESSIONS.employee_a, 'api/workflows.php', { method: 'POST', query: '?action=save', body: { name: 'Pwn WF', trigger_type: 'manual', nodes: [], edges: [] } });
+    check('S1: workflows save refused without the automation module, and nothing stored', wfEmpSave.status === 403 && val("SELECT COUNT(*) FROM workflows WHERE name='Pwn WF'") === '0', `${wfEmpSave.status}`);
+    const wfAdmin = await api(SESSIONS.admin, 'api/workflows.php', { query: '?action=list' });
+    check('S1: admin can still list workflows', wfAdmin.status === 200 && wfAdmin.data?.success === true, `${wfAdmin.status} ${wfAdmin.raw.slice(0, 120)}`);
+    const zr = await api(SESSIONS.employee_a, 'api/zernio.php', { method: 'POST', query: '?action=reply_comment', body: { postId: 'p', commentId: 'c', message: 'hi' } });
+    check('S2: zernio reply_comment refused without the social_media module', zr.status === 403, `${zr.status} ${zr.raw.slice(0, 120)}`);
+    const zg = await api(SESSIONS.employee_a, 'api/zernio.php', { method: 'POST', query: '?action=get_accounts', body: {} });
+    check('S2: zernio get_accounts refused without the social_media module', zg.status === 403, `${zg.status}`);
+
+    // VULN-18: a cross-origin write must not ride the session cookie.
+    const csrfBase = { method: 'POST', query: '?action=save', body: { name: 'CSRF WF', trigger_type: 'manual', nodes: [], edges: [] } };
+    const csrfSite = await api(SESSIONS.admin, 'api/workflows.php', { ...csrfBase, headers: { 'Sec-Fetch-Site': 'cross-site', Origin: 'https://evil.test' } });
+    check('S3: admin POST with Sec-Fetch-Site: cross-site is blocked (403)', csrfSite.status === 403, `${csrfSite.status} ${csrfSite.raw.slice(0, 120)}`);
+    const csrfSub = await api(SESSIONS.admin, 'api/workflows.php', { ...csrfBase, headers: { 'Sec-Fetch-Site': 'same-site' } });
+    check('S3: ... and same-site (a sibling subdomain) is blocked too', csrfSub.status === 403, `${csrfSub.status}`);
+    const csrfOrigin = await api(SESSIONS.admin, 'api/workflows.php', { ...csrfBase, headers: { Origin: 'https://evil.test' } });
+    check('S3: a mismatched Origin header alone is blocked (older browsers)', csrfOrigin.status === 403, `${csrfOrigin.status}`);
+    check('S3: none of the blocked writes created a workflow', val("SELECT COUNT(*) FROM workflows WHERE name='CSRF WF'") === '0');
+    const csrfOk = await api(SESSIONS.admin, 'api/workflows.php', { ...csrfBase, headers: same });
+    check('S3: the same request from the app\'s own origin works', csrfOk.status === 200 && csrfOk.data?.success === true, `${csrfOk.status} ${csrfOk.raw.slice(0, 120)}`);
+    const noHdr = await api(SESSIONS.admin, 'api/workflows.php', { ...csrfBase, body: { ...csrfBase.body, name: 'CSRF WF 2' } });
+    check('S3: a non-browser client (no Origin / Sec-Fetch-Site) is unaffected', noHdr.status === 200 && noHdr.data?.success === true, `${noHdr.status}`);
+    sql("DELETE FROM workflows WHERE name IN ('CSRF WF', 'CSRF WF 2')");
+
+    // VULN-10: push subscriptions belong to the signed-in user only.
+    const pushUrl = 'api/push_subscription.php';
+    const anon = (method, body, query = '') => fetch(`${BASE}/rbacprobe/${pushUrl}${query}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    check('S4: push subscription GET without a session -> 401', (await anon('GET')).status === 401);
+    check('S4: push subscription POST without a session -> 401', (await anon('POST', { endpoint: 'https://8.8.8.8/p/1', keys: { p256dh: 'a', auth: 'b' } })).status === 401);
+    check('S4: push subscription DELETE without a session -> 401', (await anon('DELETE', { endpoint: 'https://8.8.8.8/p/1' })).status === 401);
+    const pushBad = await api(SESSIONS.employee_a, pushUrl, { method: 'POST', body: { endpoint: 'https://127.0.0.1/hook', keys: { p256dh: 'a', auth: 'b' } } });
+    check('S4: a loopback push endpoint is refused (SSRF)', pushBad.status === 400, `${pushBad.status} ${pushBad.raw.slice(0, 120)}`);
+    const pushHttp = await api(SESSIONS.employee_a, pushUrl, { method: 'POST', body: { endpoint: 'http://8.8.8.8/hook', keys: { p256dh: 'a', auth: 'b' } } });
+    check('S4: a non-https push endpoint is refused', pushHttp.status === 400, `${pushHttp.status}`);
+    const pushMeta = await api(SESSIONS.employee_a, pushUrl, { method: 'POST', body: { endpoint: 'https://169.254.169.254/latest', keys: { p256dh: 'a', auth: 'b' } } });
+    check('S4: the cloud-metadata address is refused', pushMeta.status === 400, `${pushMeta.status}`);
+    const pushOk = await api(SESSIONS.employee_a, pushUrl, { method: 'POST', body: { endpoint: 'https://8.8.8.8/push/probe-1', keys: { p256dh: 'p', auth: 'a' }, userName: 'Probe Admin', userEmail: 'probe-admin@probe.test' } });
+    const pushRow = val("SELECT CONCAT(user_id, '|', user_name, '|', user_email) FROM push_subscriptions WHERE endpoint = 'https://8.8.8.8/push/probe-1'");
+    check('S4: a registration is bound to the SESSION user; the userName/userEmail in the body are ignored',
+      pushOk.status === 200 && pushRow === `${USERS.employee_a.id}|${USERS.employee_a.name}|${USERS.employee_a.email}`, `${pushOk.status} ${pushRow}`);
+    await api(SESSIONS.admin, pushUrl, { method: 'DELETE', body: { endpoint: 'https://8.8.8.8/push/probe-1' } });
+    check('S4: another user cannot remove it', val("SELECT COUNT(*) FROM push_subscriptions WHERE endpoint = 'https://8.8.8.8/push/probe-1'") === '1');
+    await api(SESSIONS.employee_a, pushUrl, { method: 'DELETE', body: { endpoint: 'https://8.8.8.8/push/probe-1' } });
+    check('S4: the owner can', val("SELECT COUNT(*) FROM push_subscriptions WHERE endpoint = 'https://8.8.8.8/push/probe-1'") === '0');
+
+    // VULN-04: an alias must not smuggle a secret column past the redaction.
+    const dq2 = (body) => api(SESSIONS.admin, 'api/dashboard_query.php', { method: 'POST', body });
+    for (const col of ['metadata_json', 'password_hash', 'sessions_valid_from']) {
+      const r = await dq2({ action: 'sql', sql: `SELECT ${col} AS label FROM users` });
+      check(`S5: SELECT ${col} AS label FROM users is refused`, r.status === 403, `${r.status} ${r.raw.slice(0, 120)}`);
+    }
+    const star = await dq2({ action: 'sql', sql: 'SELECT * FROM users LIMIT 1' });
+    check('S5: SELECT * still returns rows with the secret columns redacted',
+      star.status === 200 && Array.isArray(star.data?.data) && star.data.data.length > 0 &&
+      star.data.data.every((r) => r.password_hash === '[REDACTED]' && r.metadata_json === '[REDACTED]'), `${star.status} ${star.raw.slice(0, 160)}`);
+
+    // VULN-23: a Swarm simulation belongs to its creator.
+    const sw = (key, query, opts = {}) => api(SESSIONS[key], 'api/swarm.php', { query, ...opts });
+    const swCreate = await sw('leads_only', '?action=create_simulation', { method: 'POST', body: { id: 'probe-sim-1', title: 'Owner sim', hypothesis: 'h', crm_data_sources: ['active_leads'] }, headers: same });
+    check('S6: a user with leads edit can create a simulation', swCreate.status === 200 && swCreate.data?.success === true, `${swCreate.status} ${swCreate.raw.slice(0, 160)}`);
+    check('S6: ... and it records its owner', val("SELECT created_by FROM swarm_simulations WHERE id='probe-sim-1'") === USERS.leads_only.id);
+    const swOther = await sw('pm', '?action=resume&simulation_id=probe-sim-1');
+    check('S6: another user cannot resume it (404, same as missing)', swOther.status === 404, `${swOther.status} ${swOther.raw.slice(0, 120)}`);
+    const swList = await sw('pm', '?action=list');
+    check('S6: ... nor see it in the list', swList.status === 200 && !(swList.data?.simulations || []).some((s) => s.id === 'probe-sim-1'), swList.raw.slice(0, 160));
+    const swHijack = await sw('pm', '?action=create_simulation', { method: 'POST', body: { id: 'probe-sim-1', title: 'HIJACKED', hypothesis: 'x' }, headers: same });
+    check('S6: re-using its id to overwrite it is refused, title unchanged', swHijack.status === 404 && val("SELECT title FROM swarm_simulations WHERE id='probe-sim-1'") === 'Owner sim', `${swHijack.status}`);
+    const swCk = await sw('pm', '?action=checkpoint', { method: 'POST', body: { simulation_id: 'probe-sim-1', round: 1, snapshot: { x: 1 } }, headers: same });
+    check('S6: another user cannot overwrite its checkpoint', swCk.status === 404, `${swCk.status}`);
+    const swGetDel = await sw('leads_only', '?action=delete&simulation_id=probe-sim-1');
+    check('S6: delete over GET is refused (405) and the simulation survives', swGetDel.status === 405 && val("SELECT COUNT(*) FROM swarm_simulations WHERE id='probe-sim-1'") === '1', `${swGetDel.status}`);
+    const swDelOther = await sw('pm', '?action=delete&simulation_id=probe-sim-1', { method: 'POST', headers: same });
+    check('S6: another user cannot delete it', swDelOther.status === 404 && val("SELECT COUNT(*) FROM swarm_simulations WHERE id='probe-sim-1'") === '1', `${swDelOther.status}`);
+    const swAdmin = await sw('admin', '?action=resume&simulation_id=probe-sim-1');
+    check('S6: an administrator can read any simulation', swAdmin.status === 200 && swAdmin.data?.success === true, `${swAdmin.status}`);
+    const swDelOwn = await sw('leads_only', '?action=delete&simulation_id=probe-sim-1', { method: 'POST', headers: same });
+    check('S6: the owner can delete it', swDelOwn.status === 200 && val("SELECT COUNT(*) FROM swarm_simulations WHERE id='probe-sim-1'") === '0', `${swDelOwn.status}`);
+
+    // VULN-03 / 11 / 13: connection testers do not dial internal hosts or hand the stored secret to a new host.
+    const ti2 = await api(SESSIONS.admin, 'api/tickets.php', { method: 'POST', query: '?action=test_imap', body: { imapHost: 'attacker.example', imapPort: 993, imapUser: 'u', imapPassword: '' } });
+    check('S7: test_imap with a CHANGED host and no password is refused (stored password is pinned to its host)', ti2.status === 200 && ti2.data?.success === false && /re-enter/i.test(ti2.data?.message || ''), `${ti2.status} ${ti2.raw.slice(0, 160)}`);
+    const ti3 = await api(SESSIONS.admin, 'api/tickets.php', { method: 'POST', query: '?action=test_imap', body: { imapHost: '127.0.0.1', imapPort: 993, imapUser: 'u', imapPassword: 'typed' } });
+    check('S7: test_imap against loopback is refused', ti3.data?.success === false && /internal|loopback|link-local/i.test(ti3.data?.message || ''), `${ti3.status} ${ti3.raw.slice(0, 160)}`);
+    const ti4 = await api(SESSIONS.admin, 'api/tickets.php', { method: 'POST', query: '?action=test_imap', body: { imapHost: '8.8.8.8', imapPort: 22, imapUser: 'u', imapPassword: 'typed' } });
+    check('S7: test_imap on a non-mail port is refused', ti4.data?.success === false && /port/i.test(ti4.data?.message || ''), `${ti4.status} ${ti4.raw.slice(0, 160)}`);
+    const mb = await api(SESSIONS.employee_a, 'api/mail_broker.php', { method: 'POST', query: '?action=test_credentials', body: { provider: 'custom', imapHost: '169.254.169.254', imapPort: 143, imapSecure: 'none', smtpHost: 'smtp.example.test', smtpPort: 587 } });
+    check('S7: mail_broker test_credentials against the metadata address is refused', mb.data?.success === false && /internal|link-local|loopback/i.test(mb.data?.error || ''), `${mb.status} ${mb.raw.slice(0, 160)}`);
+    const vv1 = await api(SESSIONS.admin, 'api/validate_vector.php', { method: 'POST', body: { vectorDb: 'qdrant', qdrantUrl: 'file:///etc/passwd' } });
+    check('S7: validate_vector refuses a file:// Qdrant URL', vv1.data?.success === false && /http/i.test(vv1.data?.message || ''), `${vv1.status} ${vv1.raw.slice(0, 160)}`);
+    const vv2 = await api(SESSIONS.admin, 'api/validate_vector.php', { method: 'POST', body: { vectorDb: 'qdrant', qdrantUrl: 'http://169.254.169.254/latest/meta-data' } });
+    check('S7: validate_vector refuses the cloud-metadata address', vv2.data?.success === false && /link-local|reserved/i.test(vv2.data?.message || ''), `${vv2.status} ${vv2.raw.slice(0, 160)}`);
+    const vv3 = await api(SESSIONS.admin, 'api/validate_vector.php', { method: 'POST', body: { vectorDb: 'mariadb', mariaDbHost: '127.0.0.1;unix_socket=/tmp/x', mariaDbPort: '3306', mariaDbUser: 'u', mariaDbName: 'd', mariaDbPassword: 'p' } });
+    check('S7: validate_vector refuses DSN-injecting values', vv3.data?.success === false && /invalid/i.test(vv3.data?.message || ''), `${vv3.status} ${vv3.raw.slice(0, 160)}`);
+
+    // VULN-05: the reply goes to the ticket's reporter as stored, whatever the caller sends.
+    const er0 = await api(SESSIONS.tk_edit, 'api/tickets.php', { method: 'POST', query: '?action=send_email_reply', body: { ticketId: 'tck-probe-1', toEmail: 'attacker@evil.test', body: 'x' } });
+    check('S8: send_email_reply for a ticket with no reporter e-mail is refused (the caller-supplied address is not used)', er0.status === 404, `${er0.status} ${er0.raw.slice(0, 120)}`);
+    const er1 = await api(SESSIONS.tk_edit, 'api/tickets.php', { method: 'POST', query: '?action=send_email_reply', body: { ticketId: 'no-such-ticket', toEmail: 'attacker@evil.test', body: 'x' } });
+    check('S8: ... and for an unknown ticket', er1.status === 404, `${er1.status}`);
+    sql("UPDATE tickets SET reporter_email='client@probe.test' WHERE id='tck-probe-1'");
+    const er2 = await api(SESSIONS.tk_edit, 'api/tickets.php', { method: 'POST', query: '?action=send_email_reply', body: { ticketId: 'tck-probe-1', toEmail: 'attacker@evil.test', body: 'x' } });
+    check('S8: with a reporter e-mail on file the request gets past the recipient lookup', er2.status === 200 && /SMTP/i.test(er2.data?.message || ''), `${er2.status} ${er2.raw.slice(0, 160)}`);
+    sql("UPDATE tickets SET reporter_email=NULL WHERE id='tck-probe-1'");
+
+    // VULN-06 / 08 / 19: the public widget bounds and cleans what strangers send.
+    const wdomains = JSON.parse(val("SELECT ticket_allowed_domains FROM projects WHERE id='proj-probe-1'") || '[]');
+    const wHost = wdomains[0] || 'probe.test';
+    const wHeaders = { Origin: `https://${wHost}`, Referer: `https://${wHost}/` };
+    const widget = (action, body) => fetch(`${BASE}/rbacprobe/api/ticket_widget.php?action=${action}&project=proj-probe-1&key=${TK.publicHash}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...wHeaders }, body: JSON.stringify(body) });
+    // The widget refuses senders outside the project / client e-mail whitelist, so use one on it.
+    const wlEmails = [
+      val("SELECT COALESCE(ticket_allowed_emails, '[]') FROM leads WHERE id='lead-probe-1'"),
+      val("SELECT COALESCE(ticket_allowed_emails, '[]') FROM projects WHERE id='proj-probe-1'"),
+    ].flatMap((j) => { try { return JSON.parse(j); } catch { return []; } });
+    const wEmail = wlEmails.find((e) => String(e).includes('@')) || 'r@probe.test';
+    const wRes = await widget('submit', {
+      subject: 'Probe widget ticket', description: 'd', reporterName: 'N', reporterEmail: wEmail,
+      attachments: [
+        { id: 'a1', name: 'evil', type: 'text/html', dataUrl: 'javascript:alert(1)' },
+        { id: 'a2', name: 'huge.png', dataUrl: 'data:image/png;base64,' + 'A'.repeat(2 * 1024 * 1024 + 8) },
+        { id: 'a3', name: 'ok.png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=', path: 'javascript:alert(2)', url: 'javascript:alert(3)' },
+      ],
+    });
+    const wJson = await wRes.json().catch(() => null);
+    const att = val("SELECT attachments_json FROM tickets WHERE title='Probe widget ticket' ORDER BY created_at DESC LIMIT 1");
+    check('S9: widget submit stores only the valid, small image attachment (no javascript:, no oversize, no path/url)',
+      wRes.status === 200 && wJson?.success === true && !/javascript:/i.test(att) && !/"path"|"url"/.test(att) && att.includes('ok.png') && !att.includes('huge.png'), `${wRes.status} ${att.slice(0, 200)}`);
+    const wPrev = val("SELECT ticket_public_hash FROM projects WHERE id='proj-probe-1'");
+    sql("UPDATE projects SET ticket_public_hash = NULL WHERE id='proj-probe-1'");
+    const noKeyScript = await fetch(`${BASE}/rbacprobe/api/ticket_widget.php?action=script&project=proj-probe-1`, { headers: wHeaders });
+    check('S9: an anonymous widget request does not write a hash into a project that has none (VULN-08)',
+      noKeyScript.status === 403 && val("SELECT COALESCE(ticket_public_hash, 'NULL') FROM projects WHERE id='proj-probe-1'") === 'NULL', `${noKeyScript.status}`);
+    sql(`UPDATE projects SET ticket_public_hash = ${JSON.stringify(wPrev)} WHERE id='proj-probe-1'`);
+    const script = await (await fetch(`${BASE}/rbacprobe/api/ticket_widget.php?action=script&project=proj-probe-1&key=${TK.publicHash}`, { headers: wHeaders })).text();
+    check('S9: the widget script escapes the title, label and subtitle it interpolates into innerHTML',
+      /escapeHtml\(CFG\.title/.test(script) && /escapeHtml\(CFG\.buttonLabel/.test(script) && /escapeHtml\(CFG\.subtitle/.test(script) && /function safeColor/.test(script));
+
+    // VULN-24: the audit trail records authentication and can be read (admin only).
+    const badLogin = await fetch(`${BASE}/rbacprobe/api/login.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: USERS.viewer.email, password: 'definitely-wrong' }) });
+    check('S10: a wrong password is still a 401', badLogin.status === 401);
+    check('S10: ... and is recorded in the audit log', Number(val(`SELECT COUNT(*) FROM audit_log WHERE action='auth.login_failed' AND actor_email='${USERS.viewer.email}'`)) >= 1);
+    check('S10: the successful logins at the start are recorded', Number(val("SELECT COUNT(*) FROM audit_log WHERE action='auth.login_success'")) >= 1);
+    const al = await api(SESSIONS.admin, 'api/audit_log.php', { query: '?action=auth.&per_page=5' });
+    check('S10: an admin can read the audit log (paginated, filtered)', al.status === 200 && al.data?.success === true && Array.isArray(al.data.entries) && al.data.entries.length > 0 && al.data.entries.every((e) => e.action.startsWith('auth.')), `${al.status} ${al.raw.slice(0, 160)}`);
+    check('S10: a non-admin cannot', (await api(SESSIONS.employee_a, 'api/audit_log.php')).status === 403);
+    const alCsv = await api(SESSIONS.admin, 'api/audit_log.php', { query: '?format=csv' });
+    check('S10: the CSV export works for an admin', alCsv.status === 200 && alCsv.raw.startsWith('id,created_at,actor_id'), alCsv.raw.slice(0, 80));
+    sql("INSERT INTO error_logs (message, file, line, trace) VALUES ('probe error', 'x.php', 1, '')");
+    const elDel = await api(SESSIONS.admin, 'api/error_logs.php', { method: 'DELETE', headers: same });
+    check('S10: clearing the error log is itself audited', elDel.status === 200 && Number(val("SELECT COUNT(*) FROM audit_log WHERE action='error_logs.clear'")) >= 1, `${elDel.status}`);
+    const rst = await fetch(`${BASE}/rbacprobe/api/password_reset.php?action=reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'not-a-real-token', password: 'Abcdefghijk1' }) });
+    check('S10: an invalid reset token is refused and recorded', rst.status === 400 && Number(val("SELECT COUNT(*) FROM audit_log WHERE action='password_reset.invalid_token'")) >= 1, `${rst.status}`);
+
+    // VULN-07: the cron endpoint is not open to every signed-in user, nor to a plain GET with a cookie.
+    const cronEmp = await api(SESSIONS.employee_a, 'api/cron.php', { method: 'POST', headers: same });
+    check('S11: cron.php with a non-admin session -> 403', cronEmp.status === 403, `${cronEmp.status} ${cronEmp.raw.slice(0, 120)}`);
+    const cronGet = await api(SESSIONS.admin, 'api/cron.php');
+    check('S11: cron.php with an admin session but GET -> 403 (must be POST)', cronGet.status === 403, `${cronGet.status}`);
+    const cronTok = await fetch(`${BASE}/rbacprobe/api/cron.php?token=wrong`);
+    check('S11: cron.php with a wrong token and no session -> 401', cronTok.status === 401, `${cronTok.status}`);
+
+    // VULN-14 / VULN-15: realtime voice and the dashboard AI endpoints.
+    const rtSdp = await api(SESSIONS.employee_a, 'api/realtime_session.php', { method: 'POST', body: { action: 'exchange_sdp', sdp: 'v=0' } });
+    check('S12: realtime exchange_sdp without rag_ai -> 403 (before anything about the OpenAI key is revealed)', rtSdp.status === 403, `${rtSdp.status} ${rtSdp.raw.slice(0, 120)}`);
 
     // --- W7: protected roles survive an admin push (kept last: it rewrites the registry) ---
     section('W7: protected roles');

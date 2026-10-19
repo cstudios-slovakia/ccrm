@@ -298,17 +298,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if (empty($providedKey) || !hash_equals((string)$actualKey, (string)$providedKey)) {
+    // Throttle per client address (VULN-15): wrong keys, and accepted submissions.
+    // The ceilings are generous enough for a busy site whose own server posts the
+    // form (every visitor then shares one address) but stop a flood.
+    $pipelineIp = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+    $pipelineKeyOk = !empty($providedKey) && hash_equals((string)$actualKey, (string)$providedKey);
+    if (!$pipelineKeyOk && ccrm_rate_limit_exceeded($pdo, 'pipeline_badkey', $pipelineIp, 20, 900)) {
+        http_response_code(429);
+        header('Retry-After: 900');
+        echo json_encode(['status' => 'error', 'message' => 'Too many failed attempts. Try again later.']);
+        exit;
+    }
+
+    if (!$pipelineKeyOk) {
         http_response_code(401);
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized: Invalid or missing X-API-KEY header']);
         exit;
     }
 
-    // Read payload
-    $input = file_get_contents('php://input');
+    if (ccrm_rate_limit_exceeded($pdo, 'pipeline_lead', $pipelineIp, 30, 60)) {
+        http_response_code(429);
+        header('Retry-After: 60');
+        echo json_encode(['status' => 'error', 'message' => 'Too many requests. Slow down and retry shortly.']);
+        exit;
+    }
+
+    // Read payload (a lead form is a few KB; the cap stops oversized blobs being
+    // stored in the lead's metadata)
+    $input = file_get_contents('php://input', false, null, 0, 65537);
     if (!$input) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Empty request body']);
+        exit;
+    }
+    if (strlen($input) > 65536) {
+        http_response_code(413);
+        echo json_encode(['status' => 'error', 'message' => 'Request body too large (64 KB maximum).']);
         exit;
     }
 

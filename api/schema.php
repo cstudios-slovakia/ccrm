@@ -3709,7 +3709,7 @@ if (!function_exists('ccrm_schema_statements')) {
     /**
      * Migrates ticket system tables and columns on leads, project_types, and projects.
      */
-    function ccrm_migrate_tickets(PDO $pdo): void {
+    function ccrm_migrate_tickets(PDO $pdo, bool $backfillHashes = true): void {
         try {
             if (!ccrm_column_exists($pdo, 'project_types', 'has_tickets')) {
                 try { $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_tickets` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_files`"); } catch (\Throwable $e) {}
@@ -3730,8 +3730,11 @@ if (!function_exists('ccrm_schema_statements')) {
                 }
             }
 
-            // Backfill ticket_public_hash on projects missing one
-            try {
+            // Backfill ticket_public_hash on projects missing one. Only for trusted callers
+            // (schema upgrade, signed-in requests): the public widget and status board call
+            // this migration too, and an anonymous request must not write to the database
+            // (VULN-08).
+            if ($backfillHashes) try {
                 $missingHashes = $pdo->query("SELECT `id` FROM `projects` WHERE `ticket_public_hash` IS NULL OR `ticket_public_hash` = ''")->fetchAll(PDO::FETCH_COLUMN);
                 if (!empty($missingHashes)) {
                     $updHash = $pdo->prepare("UPDATE `projects` SET `ticket_public_hash` = ? WHERE `id` = ?");

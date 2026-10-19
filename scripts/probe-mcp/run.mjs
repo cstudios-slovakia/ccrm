@@ -63,7 +63,7 @@ const section = (t) => console.log(`\n== ${t}`);
 
 let rpcId = 1;
 async function rpc(method, params, token) {
-  const res = await fetch(`${ENDPOINT}?token=${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params }) });
+  const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CCRM-MCP-KEY': token }, body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params }) });
   return { status: res.status, headers: res.headers, body: await res.json().catch(() => null) };
 }
 async function call(token, tool, args = {}) {

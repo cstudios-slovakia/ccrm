@@ -24,7 +24,8 @@ if (!MCP_KEY) {
 }
 
 async function callCcrmRpc(method: string, params: Record<string, unknown> = {}): Promise<any> {
-  const url = `${API_URL}/mcp.php?token=${encodeURIComponent(MCP_KEY)}`;
+  // The key travels in headers only: a key in the URL lands in server and proxy logs.
+  const url = `${API_URL}/mcp.php`;
   const body = JSON.stringify({
     jsonrpc: "2.0",
     id: Date.now(),

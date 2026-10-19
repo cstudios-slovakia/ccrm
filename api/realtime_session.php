@@ -22,22 +22,23 @@ try {
     exit;
 }
 
-// 1. Fetch integrations config to get OpenAI API key
-$stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
-$stmt->execute();
-$configJson = $stmt->fetchColumn();
-$integrationsConfig = $configJson ? json_decode($configJson, true) : [];
-$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
-if (empty($openAiKey)) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'OpenAI API key is missing. Please configure your OpenAI API Key in CRM Settings > Integrations.'
-    ]);
-    exit;
+// ccrm_require_auth() only knows id / role / email. The session never carried a
+// `user` entry, so the write tools below used to read an empty array and credit every
+// record to the hard-coded fallback "Erik" (VULN-14). Resolve the real profile once.
+$ccrmSessionProfile = $sessionUser;
+try {
+    $profStmt = $pdo->prepare("SELECT `name`, `email` FROM `users` WHERE `id` = ? LIMIT 1");
+    $profStmt->execute([(string)($sessionUser['id'] ?? '')]);
+    if ($profRow = $profStmt->fetch(\PDO::FETCH_ASSOC)) {
+        $ccrmSessionProfile['name'] = (string)($profRow['name'] ?? '');
+        $ccrmSessionProfile['email'] = (string)($profRow['email'] ?? ($sessionUser['email'] ?? ''));
+    }
+} catch (\Throwable $e) {
+    ccrm_log_exception($e);
 }
 
+// The role check runs BEFORE the integration config is read: a caller without the
+// right must get a 403, not a message that reveals whether an OpenAI key is set up.
 // 2. Parse request payload
 $input = file_get_contents('php://input');
 $payload = json_decode($input, true) ?: [];
@@ -71,10 +72,34 @@ if (isset($ccrmVoiceWrites[$action])) {
     }
 }
 
+// 1. Fetch integrations config to get OpenAI API key
+$stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
+$stmt->execute();
+$configJson = $stmt->fetchColumn();
+$integrationsConfig = $configJson ? json_decode($configJson, true) : [];
+$integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
+
+$openAiKey = $integrationsConfig['openAiKey'] ?? '';
+if (empty($openAiKey)) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'OpenAI API key is missing. Please configure your OpenAI API Key in CRM Settings > Integrations.'
+    ]);
+    exit;
+}
+
 // 2.1. WebRTC SDP Exchange Proxy Action (bypasses browser CORS & preflight blocks)
 if ($action === 'exchange_sdp') {
     $sdp = $payload['sdp'] ?? '';
-    $token = !empty($payload['client_secret']) ? $payload['client_secret'] : $openAiKey;
+    // Never fall back to the master OpenAI key: the browser must present the
+    // ephemeral key it got from create_session, or any signed-in user could spend
+    // the organisation's key on a session of their choosing.
+    $token = trim((string)($payload['client_secret'] ?? ''));
+    if ($token === '') {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'client_secret is required.']);
+        exit;
+    }
 
     if (empty($sdp)) {
         http_response_code(400);
@@ -82,7 +107,10 @@ if ($action === 'exchange_sdp') {
         exit;
     }
 
-    $model = !empty($payload['model']) ? $payload['model'] : 'gpt-realtime-1.5';
+    $model = (string)($payload['model'] ?? '');
+    if (!preg_match('/^gpt-realtime[A-Za-z0-9._\-]{0,40}$/', $model)) {
+        $model = 'gpt-realtime-1.5';
+    }
     $ch = curl_init('https://api.openai.com/v1/realtime/calls?model=' . urlencode($model));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -280,7 +308,7 @@ if ($action === 'create_task') {
         echo json_encode(['success' => false, 'message' => 'Task title is required.']);
         exit;
     }
-    $sessionUser = $_SESSION['user'] ?? [];
+    $sessionUser = $ccrmSessionProfile;
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
     $taskId = 'task_' . time() . '_' . substr(md5(uniqid()), 0, 6);
     $description = trim($payload['description'] ?? '');
@@ -315,7 +343,7 @@ if ($action === 'create_lead') {
         echo json_encode(['success' => false, 'message' => 'Lead/Client name is required.']);
         exit;
     }
-    $sessionUser = $_SESSION['user'] ?? [];
+    $sessionUser = $ccrmSessionProfile;
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
     $leadId = 'lead_' . time() . '_' . substr(md5(uniqid()), 0, 6);
     $city = trim($payload['city'] ?? '');
@@ -350,7 +378,7 @@ if ($action === 'add_client_note') {
         echo json_encode(['success' => false, 'message' => 'Client name and note content are required.']);
         exit;
     }
-    $sessionUser = $_SESSION['user'] ?? [];
+    $sessionUser = $ccrmSessionProfile;
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
 
     // First match the caller may both see and edit (a lead needs leads, a client needs
@@ -398,7 +426,7 @@ if ($action === 'create_project') {
         echo json_encode(['success' => false, 'message' => 'Project name is required.']);
         exit;
     }
-    $sessionUser = $_SESSION['user'] ?? [];
+    $sessionUser = $ccrmSessionProfile;
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
 
     $projectTypeId = ccrm_resolve_project_type_id($pdo, $payload['project_type'] ?? null);
@@ -538,7 +566,7 @@ if ($action === 'add_project_task') {
         exit;
     }
 
-    $sessionUser = $_SESSION['user'] ?? [];
+    $sessionUser = $ccrmSessionProfile;
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
     $taskId = 'task_' . time() . '_' . substr(md5(uniqid()), 0, 6);
     $description = trim($payload['description'] ?? '');
@@ -585,7 +613,7 @@ if ($action === 'add_project_financial') {
         exit;
     }
 
-    $sessionUser = $_SESSION['user'] ?? [];
+    $sessionUser = $ccrmSessionProfile;
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
     $frId = 'fr_' . time() . '_' . substr(md5(uniqid()), 0, 6);
 
@@ -701,7 +729,7 @@ $userName = trim($payload['user_name'] ?? '');
 
 if (empty($userName)) {
     // Try to get name from session user
-    $sessionUser = $_SESSION['user'] ?? [];
+    $sessionUser = $ccrmSessionProfile;
     $userName = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0];
     if (empty($userName)) {
         $userName = 'Erik';
