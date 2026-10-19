@@ -118,9 +118,10 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
   groups by lowercased name: the Clients page (`ClientsView.tsx`,
   `allClientProfiles`), the dashboards, `list_clients` and the other MCP tools.
   Finish in this order: (1) a Clients-page profile save must only touch the client
-  row and the leads linked to it, not every same-name record; (2) give
-  adjustment-only clients a real `client-*` row (migration with a dry run, moving
-  `adjustment` onto it); (3) group the Clients page, dashboards and MCP by
+  row and the leads linked to it, not every same-name record (done); (2) give
+  adjustment-only clients a real `client-*` row (done in code since v1.12.50:
+  `php ccrm adjustment-clients` reports, `--apply` runs, `--undo` reverses; **not
+  yet run on any real database**); (3) group the Clients page, dashboards and MCP by
   `client_id`; (4) move clients into their own `clients` table and drop the
   `client-*` prefix and the `adjustment > 0` rule. Steps 1–3 are cheap and
   reversible; step 4 migrates every table that references `leads.id` as
