@@ -31,7 +31,10 @@ require_once $configFile;
  * OUTPUT is the only check that cannot be worded around.
  */
 function ccrm_sensitive_result_columns(): array {
-    return ['password_hash', 'password', 'metadata_json', 'api_key', 'token', 'secret'];
+    return [
+        'password_hash', 'password', 'metadata_json', 'api_key', 'key_hash', 'token', 'secret',
+        'sessions_valid_from', 'ticket_public_hash',
+    ];
 }
 
 /** Reads a JSON-encoded value from `system_settings`, or `$default` if unset. */
@@ -81,6 +84,9 @@ function ccrm_dashboard_sql_requirements(string $sql): array {
         'task_assignees' => ['tasks', 'tasks.view_all'],
         'roles' => ['pm_managers'],
         'role_permissions' => ['pm_managers'],
+        // Accounts: even with the secret columns refused, the table lists every
+        // user's email and role, so it is not open to every dashboard author.
+        'users' => ['pm_managers'],
         'meeting_notes' => ['meetings'],
         'meeting_tasks' => ['meetings'],
         // Indexed mail and mail summaries hold every user's mailbox; raw SQL cannot be narrowed
@@ -144,10 +150,16 @@ function is_safe_select_query($sql, $pdo) {
             return false;
         }
     }
-    // 4. Prevent reading password columns by name. Output redaction below is the
-    //    real guarantee; this just fails the obvious attempt early and loudly.
-    if (preg_match('/\bpassword(_hash)?\b/', $lowerSql)) {
-        return false;
+    // 4. Refuse any query that NAMES a sensitive column, anywhere in the text.
+    //    Redacting the result by column label alone is not enough: an alias renames
+    //    the label (`SELECT metadata_json AS m FROM users` comes back as `m`), so
+    //    the secret slipped past the post-query filter. A column that is never
+    //    mentioned can only arrive through `*`, which keeps its real label and is
+    //    caught by the redaction below.
+    foreach (ccrm_sensitive_result_columns() as $secretColumn) {
+        if (preg_match('/\b' . preg_quote($secretColumn, '/') . '\b/', $lowerSql)) {
+            return false;
+        }
     }
     // 5. Never let the server's own catalogues be read. These are not returned by
     //    SHOW TABLES, so the per-table check below never saw them and

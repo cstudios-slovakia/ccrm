@@ -31,11 +31,12 @@ if (file_exists($configFile)) {
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
 } catch (\Throwable $e) {
+    ccrm_log_exception($e);
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'error' => 'Database connection failed: ' . $e->getMessage(),
-        'message' => 'Database connection failed: ' . $e->getMessage()
+        'error' => 'Database connection failed.',
+        'message' => 'Database connection failed.'
     ]);
     exit;
 }

@@ -284,8 +284,10 @@ if ($action === 'request') {
                      VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 0)"
                 );
                 $ins->execute([$token, $user['id']]);
+                ccrm_audit_log($pdo, ['id' => $user['id'], 'email' => $user['email']], 'password_reset.request', 'Reset link requested');
 
-                $baseUrl = ccrm_app_base_url($pdo);
+                // Anonymous request: never fall back to this request's own Host header.
+                $baseUrl = ccrm_app_base_url($pdo, false);
                 if ($baseUrl === '') {
                     throw new Exception('No base URL for the reset link — set CCRM_APP_URL in config.php.');
                 }
@@ -362,6 +364,7 @@ if ($action === 'reset') {
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$row) {
+        ccrm_audit_log($pdo, ['id' => null, 'email' => null], 'password_reset.invalid_token', 'Invalid or expired reset token presented');
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'This reset link is invalid or has expired.']);
         exit;

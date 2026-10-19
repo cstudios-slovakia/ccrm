@@ -53,7 +53,7 @@ $input = file_get_contents('php://input');
 $data = json_decode($input, true);
 
 $layout = $data['layout'] ?? null;
-$model = $data['model'] ?? 'gpt-5.6-terra';
+$model = ccrm_ai_requested_model($integrationsConfig, $data['model'] ?? null);
 
 if (!is_array($layout) || !isset($layout['widgets']) || !is_array($layout['widgets'])) {
     http_response_code(400);

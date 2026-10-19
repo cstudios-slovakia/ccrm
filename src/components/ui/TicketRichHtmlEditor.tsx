@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { TicketAttachment } from "../../types";
 import type { Language } from "../../utils/translations";
+import { sanitizeRichHtml, safeAttachmentHref } from "../../utils/safeHtml";
 
 export const isImageAttachment = (att: TicketAttachment): boolean => {
   const src = (att.path || att.url || att.dataUrl || att.name || "").toLowerCase();
@@ -27,16 +28,10 @@ export const isImageAttachment = (att: TicketAttachment): boolean => {
   return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(\?.*)?$/i.test(src);
 };
 
-export const sanitizeTicketHtml = (raw: string): string => {
-  if (!raw) return "";
-  return raw
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
-    .replace(/<embed\b[^>]*>/gi, "")
-    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/javascript:/gi, "");
-};
+// Ticket HTML comes from strangers (public widget, inbound e-mail) and is rendered in
+// an administrator's session, so it goes through an allowlist sanitiser, not a regex
+// blacklist (see utils/safeHtml.ts).
+export const sanitizeTicketHtml = (raw: string): string => sanitizeRichHtml(raw, "ticket");
 
 export const looksLikeHtml = (text: string): boolean => {
   if (!text) return false;
@@ -546,7 +541,7 @@ export const TicketAttachmentsList: React.FC<{
       {images.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {images.map((img, idx) => {
-            const href = img.path || img.url || img.dataUrl || "#";
+            const href = safeAttachmentHref(img.path || img.url || img.dataUrl);
             return (
               <a
                 key={img.id || `${img.name}-${idx}`}
@@ -574,7 +569,7 @@ export const TicketAttachmentsList: React.FC<{
       {files.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {files.map((att, idx) => {
-            const href = att.path || att.url || att.dataUrl || "#";
+            const href = safeAttachmentHref(att.path || att.url || att.dataUrl);
             return (
               <a
                 key={att.id || `${att.name}-${idx}`}

@@ -19,8 +19,12 @@ RUN npx vite build
 # Stage 2: Setup PHP-Apache to run backend and serve frontend
 FROM php:8.2-apache
 
-# Use the docker-php-extension-installer to easily and robustly install PHP extensions
-ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+# Use the docker-php-extension-installer to easily and robustly install PHP extensions.
+# Pinned to a released version and taken from its official image: the previous
+# `releases/latest/download/...` URL ran whatever script was current at build time as
+# root, with no version or checksum, so a swapped release asset would have executed
+# arbitrary commands inside every image build.
+COPY --from=mlocati/php-extension-installer:2.7.26 /usr/bin/install-php-extensions /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions imap pdo_mysql zip

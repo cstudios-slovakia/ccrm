@@ -19,6 +19,9 @@ try {
     }
     
     if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+        // Wiping the traces of an intrusion is itself a security event.
+        $cleared = (int)$pdo->query("SELECT COUNT(*) FROM `error_logs`")->fetchColumn();
+        ccrm_audit_log($pdo, $user, 'error_logs.clear', 'Cleared ' . $cleared . ' error log row(s)');
         $pdo->exec("DELETE FROM `error_logs`");
         echo json_encode(['success' => true, 'message' => 'Error logs cleared successfully.']);
         exit;

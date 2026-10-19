@@ -28,6 +28,22 @@ try {
 
 $action = $_GET['action'] ?? '';
 
+// Module RBAC (VULN-01). Being signed in is not enough: workflows run with
+// system privileges (send mail, change projects, create records, call the AI key)
+// and their logs hold lead/client payloads. Reading needs `automation` view;
+// every write and a manual run needs `automation` edit. Settings actions are
+// admin-only and check that themselves.
+require_once __DIR__ . '/read_scope.php';
+$automationScope = ccrm_read_scope($pdo, $sessionUser);
+$automationAllowed = ($_SERVER['REQUEST_METHOD'] === 'GET')
+    ? ccrm_can($automationScope, 'automation')
+    : ccrm_can_edit($automationScope, 'automation');
+if (!$automationAllowed) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Forbidden']);
+    exit;
+}
+
 // Helpers
 function generate_uuid() {
     return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
@@ -84,8 +100,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
             echo json_encode(['success' => true, 'workflows' => $workflows]);
         } catch (\Throwable $e) {
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }
@@ -115,8 +132,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
             echo json_encode(['success' => true, 'workflow' => $wf]);
         } catch (\Throwable $e) {
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }
@@ -140,8 +158,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
             echo json_encode(['success' => true, 'logs' => $logs]);
         } catch (\Throwable $e) {
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }
@@ -192,8 +211,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             echo json_encode(['success' => true, 'id' => $id]);
         } catch (\Throwable $e) {
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }
@@ -228,8 +248,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             echo json_encode(['success' => true, 'id' => $newId]);
         } catch (\Throwable $e) {
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }
@@ -248,8 +269,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$is_active, $id]);
             echo json_encode(['success' => true]);
         } catch (\Throwable $e) {
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }
@@ -280,9 +302,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             echo json_encode(['success' => true]);
         } catch (\Throwable $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }
@@ -325,8 +348,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = ccrm_execute_workflow($wf, $triggerPayload, $pdo);
             echo json_encode(['success' => true, 'result' => $result]);
         } catch (\Throwable $e) {
+            ccrm_log_exception($e);
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            echo json_encode(['success' => false, 'message' => 'An internal error occurred.']);
         }
         exit;
     }

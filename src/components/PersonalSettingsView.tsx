@@ -1294,8 +1294,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     {
                       mcpServers: {
                         ccrm: {
-                          url: `${origin}/api/mcp.php?token=${tokenPlaceholder}`,
-                          transport: "sse"
+                          url: `${origin}/api/mcp.php`,
+                          transport: "sse",
+                          headers: { "X-CCRM-MCP-KEY": tokenPlaceholder }
                         }
                       }
                     },

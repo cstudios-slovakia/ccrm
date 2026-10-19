@@ -51,16 +51,22 @@ try {
 }
 
 // 3. MCP Token Authentication
+// The key is read from a request HEADER (Authorization: Bearer <key>, or
+// X-CCRM-MCP-KEY, which also survives Apache setups that drop Authorization).
+// A key in the URL ends up in web-server, proxy and error logs (VULN-07), so
+// `?token=` is refused unless an operator who still has a URL-only client (a
+// connector that cannot send headers) opts in with
+// `define('CCRM_MCP_ALLOW_QUERY_TOKEN', true);` in config.php.
 $token = '';
-if (!empty($_GET['token'])) {
-    $token = trim((string)$_GET['token']);
-} elseif (!empty($_SERVER['HTTP_AUTHORIZATION'])) {
-    $authHeader = trim($_SERVER['HTTP_AUTHORIZATION']);
-    if (preg_match('/^Bearer\s+(.+)$/i', $authHeader, $matches)) {
-        $token = trim($matches[1]);
-    }
+$tokenFromQuery = false;
+$authHeader = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '')));
+if ($authHeader !== '' && preg_match('/^Bearer\s+(.+)$/i', $authHeader, $matches)) {
+    $token = trim($matches[1]);
 } elseif (!empty($_SERVER['HTTP_X_CCRM_MCP_KEY'])) {
     $token = trim((string)$_SERVER['HTTP_X_CCRM_MCP_KEY']);
+} elseif (defined('CCRM_MCP_ALLOW_QUERY_TOKEN') && CCRM_MCP_ALLOW_QUERY_TOKEN && !empty($_GET['token'])) {
+    $token = trim((string)$_GET['token']);
+    $tokenFromQuery = true;
 }
 
 if ($token === '') {
@@ -70,7 +76,7 @@ if ($token === '') {
         'jsonrpc' => '2.0',
         'error' => [
             'code' => -32001,
-            'message' => 'Unauthorized: Missing MCP access key. Provide ?token=ccrm_mcp_... or Authorization: Bearer <key>'
+            'message' => 'Unauthorized: Missing MCP access key. Send it as "Authorization: Bearer <key>" or the "X-CCRM-MCP-KEY" header.'
         ],
         'id' => null
     ]);
@@ -284,7 +290,8 @@ if ($method === 'GET') {
         header('X-Accel-Buffering: no');
 
         $sessionId = bin2hex(random_bytes(16));
-        $postUrl = '/api/mcp.php?token=' . urlencode($token) . '&sessionId=' . $sessionId;
+        // Never echo the key back in a URL unless the client authenticated that way.
+        $postUrl = '/api/mcp.php?' . ($tokenFromQuery ? 'token=' . urlencode($token) . '&' : '') . 'sessionId=' . $sessionId;
 
         echo "event: endpoint\n";
         echo "data: " . $postUrl . "\n\n";

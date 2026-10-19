@@ -28,10 +28,40 @@ require_once $configFile;
 
 // Secrets are masked in the sync GET, so re-validating saved settings posts the
 // mask. Substitute the stored values (a freshly typed secret is used as-is).
+//
+// A stored secret may only be tried against the server it was saved for
+// (VULN-11). If the posted host / URL / user differs from the stored one, a masked
+// secret is refused instead of substituted, so it can never be delivered to a
+// server the caller chose.
 try {
     $appPdo = get_db_connection();
     $storedCfg = ccrm_load_integrations_config($appPdo);
-    $data = ccrm_merge_secrets(is_array($data) ? $data : [], $storedCfg, ['mariaDbPassword', 'qdrantApiKey', 'pineconeApiKey']);
+    $data = is_array($data) ? $data : [];
+    $secretPins = [
+        'mariaDbPassword' => ['mariaDbHost', 'mariaDbPort', 'mariaDbUser'],
+        'qdrantApiKey'    => ['qdrantUrl'],
+        'pineconeApiKey'  => [], // always sent to api.pinecone.io
+    ];
+    $normalise = function ($v) {
+        return rtrim(strtolower(trim((string)$v)), '/');
+    };
+    $mergeKeys = [];
+    foreach ($secretPins as $secretKey => $pinFields) {
+        $sameTarget = true;
+        foreach ($pinFields as $pinField) {
+            if ($normalise($data[$pinField] ?? '') !== $normalise($storedCfg[$pinField] ?? '')) {
+                $sameTarget = false;
+                break;
+            }
+        }
+        if ($sameTarget) {
+            $mergeKeys[] = $secretKey;
+        } elseif (($data[$secretKey] ?? null) === CCRM_SECRET_MASK) {
+            echo json_encode(['success' => false, 'message' => 'Please re-enter the password / API key when changing the server.']);
+            exit;
+        }
+    }
+    $data = ccrm_merge_secrets($data, $storedCfg, $mergeKeys);
 } catch (\Throwable $e) {
     // If the app DB is unreachable, fall through with whatever was posted.
 }
@@ -47,7 +77,24 @@ if ($vectorDb === 'mariadb') {
         echo json_encode(['success' => false, 'message' => 'Host, Username, and Database Name are required.']);
         exit;
     }
-    
+
+    // The values go straight into a DSN, so refuse anything that could smuggle in
+    // extra DSN parameters, and never dial link-local / metadata addresses (VULN-13).
+    $host = (string)$host;
+    $port = (string)$port;
+    if (!preg_match('/^[A-Za-z0-9._\-]+$|^\[?[0-9A-Fa-f:.]+\]?$/', $host)
+        || !preg_match('/^\d{1,5}$/', $port)
+        || !preg_match('/^[A-Za-z0-9_$\-]+$/', (string)$name)) {
+        echo json_encode(['success' => false, 'message' => 'Invalid host, port or database name.']);
+        exit;
+    }
+    try {
+        ccrm_assert_not_special_host($host);
+    } catch (\InvalidArgumentException $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        exit;
+    }
+
     try {
         $dsn = "mysql:host=" . $host . ";port=" . $port . ";dbname=" . $name . ";charset=utf8mb4";
         $options = [
@@ -106,10 +153,29 @@ if ($vectorDb === 'qdrant') {
     }
     
     // Normalise URL
-    $qdrantUrl = rtrim($qdrantUrl, '/');
+    $qdrantUrl = rtrim((string)$qdrantUrl, '/');
+
+    // Only http(s): libcurl would otherwise also speak file://, gopher://, dict://
+    // ... (VULN-13). Link-local / metadata hosts are refused as well.
+    $qParts = parse_url($qdrantUrl);
+    $qScheme = is_array($qParts) ? strtolower((string)($qParts['scheme'] ?? '')) : '';
+    if (!is_array($qParts) || !in_array($qScheme, ['http', 'https'], true) || empty($qParts['host'])
+        || isset($qParts['user']) || isset($qParts['pass'])) {
+        echo json_encode(['success' => false, 'message' => 'Qdrant URL must be a plain http(s) URL.']);
+        exit;
+    }
+    try {
+        ccrm_assert_not_special_host((string)$qParts['host']);
+    } catch (\InvalidArgumentException $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        exit;
+    }
+
     $ch = curl_init($qdrantUrl . '/readyz');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
     
     $headers = [];
     if (!empty($qdrantApiKey)) {
