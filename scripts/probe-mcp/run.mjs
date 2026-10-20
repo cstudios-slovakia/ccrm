@@ -113,6 +113,10 @@ function setup() {
   docker('cp', apiDir + '.', `${WEB}:${SCRATCH_DIR}/api`);
   docker('exec', WEB, 'sh', '-c', `sed "s/define('DB_NAME', '[^']*')/define('DB_NAME', '${SCRATCH_DB}')/" /var/www/html/config.php > ${SCRATCH_DIR}/config.php`);
 
+  // The clone is a copy of the dev database, which may predate the current schema: bring it up to date
+  // the way a live request does (this is also what migrates the employee identity columns).
+  docker('exec', WEB, 'php', '-r', `require '${SCRATCH_DIR}/config.php'; require '${SCRATCH_DIR}/api/schema.php'; ccrm_apply_schema(new PDO('mysql:host='.DB_HOST.';port='.DB_PORT.';dbname='.DB_NAME.';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]));`);
+
   const roles = [role('ProbeNone', 'nothing'), role('ProbeViewer', 'view'), role('ProbeEditor', 'edit')];
   const statuses = [{ key: 'new', color: '#0ea5e9', group: 'new' }, { key: 'active', color: '#a855f7', group: 'in_progress' }, { key: 'on_hold', color: '#f59e0b', group: 'in_progress' }, { key: 'completed', color: '#10b981', group: 'completed' }, { key: 'cancelled', color: '#f43f5e', group: 'cancelled' }];
   const settings = {
@@ -139,7 +143,10 @@ function setup() {
        INSERT INTO warehouse_items (id,sku,name,min_stock,avg_purchase_price,default_sell_price) VALUES ('pi-1','PI-1','Probe item',5,110,210) ON DUPLICATE KEY UPDATE name=name;
        INSERT INTO warehouse_stock (warehouse_id,item_id,quantity,reserved_quantity) VALUES ('pw-1','pi-1',28,3) ON DUPLICATE KEY UPDATE quantity=28;
        DELETE FROM employee_salaries WHERE employee_id='pe-1'; DELETE FROM employee_vacations WHERE employee_id='pe-1'; DELETE FROM employees WHERE id='pe-1';
-       INSERT INTO employees (id,name,pin,salary_type,salary_amount,auto_expense,expense_category_id,salary_due_day,is_active) VALUES ('pe-1','Probe Employee','900101/1234','monthly',2000,1,'exp-root',15,1);`);
+       INSERT INTO employees (id,name,pin,salary_type,salary_amount,auto_expense,expense_category_id,salary_due_day,is_active) VALUES ('pe-1','Probe Employee','900101/1234','monthly',2000,1,'exp-root',15,1);
+       DELETE FROM employees WHERE id IN ('pe-2','pe-3','pe-4');
+       INSERT INTO employees (id,name,kind,position,department,is_active) VALUES ('pe-2','Probe Dodigital s.r.o.','contractor','agentúra','Marketing',1), ('pe-3','Probe Provízia','ledger',NULL,NULL,1);
+       INSERT INTO employees (id,name,is_active) VALUES ('pe-4','Probetomi',1);`);
 }
 
 function teardown() {
@@ -236,6 +243,57 @@ async function authorizationChecks() {
 }
 
 // ----------------------------------------------------------------------------- 2. parity
+async function employeeIdentityChecks() {
+  section('employee identity (name, kind, position, department)');
+  const A = TOKENS.admin;
+
+  // The one-off migration of rows that existed before the columns did.
+  const migrated = rows(`SELECT kind, first_name, last_name FROM employees WHERE id = 'emp-1'`)[0];
+  if (migrated) check('migration: "Ing. Michal Kováč" became an employee with first and last name', migrated[0] === 'employee' && migrated[1] === 'Ing. Michal' && migrated[2] === 'Kováč', JSON.stringify(migrated));
+
+  const list = await call(A, 'list_employees', {});
+  const byId = Object.fromEntries(list.map((e) => [e.id, e]));
+  check('list_employees returns first_name, last_name, kind, position and department', ['first_name', 'last_name', 'kind', 'position', 'department'].every((k) => k in byId['pe-1']), JSON.stringify(byId['pe-1']));
+  check('a contractor row carries company_name and no person name', byId['pe-2']?.kind === 'contractor' && byId['pe-2'].company_name === 'Probe Dodigital s.r.o.' && byId['pe-2'].first_name === null, JSON.stringify(byId['pe-2']));
+  check('kind=employee leaves out companies and accounting items', (await call(A, 'list_employees', { kind: 'employee' })).every((e) => e.kind === 'employee'), '');
+  check('kind=ledger returns only the accounting items', JSON.stringify((await call(A, 'list_employees', { kind: 'ledger' })).map((e) => e.id)) === '["pe-3"]', '');
+  check('an unknown kind is refused', isErr(await call(A, 'list_employees', { kind: 'bogus' }), /kind must be/), '');
+  check('filter by department', (await call(A, 'list_employees', { department: 'marketing' })).some((e) => e.id === 'pe-2'), '');
+  check('search finds a record by its position', (await call(A, 'list_employees', { search: 'agentúra' })).some((e) => e.id === 'pe-2'), '');
+
+  // create_employee
+  check('a person without a surname is refused', isErr(await call(A, 'create_employee', { first_name: 'Tomi' }), /first_name and last_name/), '');
+  check('a contractor without company_name is refused', isErr(await call(A, 'create_employee', { kind: 'contractor' }), /company_name/), '');
+  let r = await call(A, 'create_employee', { first_name: 'Probe', last_name: 'Programmer', position: 'programátor', department: 'Vývoj' });
+  check('create_employee builds the display name from first and last name', r.name === 'Probe Programmer' && r.kind === 'employee', JSON.stringify(r));
+  const made = rows(`SELECT name, first_name, last_name, kind, position, department FROM employees WHERE id = '${r.id}'`)[0];
+  check('create_employee stores the identity columns', JSON.stringify(made) === JSON.stringify(['Probe Programmer', 'Probe', 'Programmer', 'employee', 'programátor', 'Vývoj']), JSON.stringify(made));
+  r = await call(A, 'create_employee', { name: 'Probe Grafik' });
+  check('create_employee splits a plain "First Last" name', r.first_name === 'Probe' && r.last_name === 'Grafik', JSON.stringify(r));
+  check('a one-word name cannot be split', isErr(await call(A, 'create_employee', { name: 'Tomi' }), /first_name and last_name/), '');
+  r = await call(A, 'create_employee', { kind: 'contractor', company_name: 'Probe Agency s.r.o.', position: 'PPC špecialista' });
+  const co = rows(`SELECT name, first_name, kind FROM employees WHERE id = '${r.id}'`)[0];
+  check('a contractor is stored under its company name, without person names', co[0] === 'Probe Agency s.r.o.' && co[1] === 'NULL' && co[2] === 'contractor', JSON.stringify(co));
+  check('filter by position', (await call(A, 'list_employees', { position: 'PPC špecialista' })).some((e) => e.id === r.id), '');
+
+  // update_employee
+  check('a nickname-only record can get a position without completing the name', (await call(A, 'update_employee', { id: 'pe-4', position: 'telemarketing' })).success === true, '');
+  check('...and the name is left as it was', cell(`SELECT name FROM employees WHERE id = 'pe-4'`) === 'Probetomi', '');
+  check('completing only the first name is refused while the surname is missing', isErr(await call(A, 'update_employee', { id: 'pe-4', first_name: 'Tomáš' }), /first_name and last_name/), '');
+  await call(A, 'update_employee', { id: 'pe-4', first_name: 'Tomáš', last_name: 'Gazdag' });
+  check('first and last name together rebuild the display name', JSON.stringify(rows(`SELECT name, first_name, last_name FROM employees WHERE id = 'pe-4'`)[0]) === JSON.stringify(['Tomáš Gazdag', 'Tomáš', 'Gazdag']), '');
+  await call(A, 'update_employee', { id: 'pe-4', last_name: 'Novák' });
+  check('changing just the surname keeps the first name', cell(`SELECT name FROM employees WHERE id = 'pe-4'`) === 'Tomáš Novák', '');
+  await call(A, 'update_employee', { id: 'pe-4', position: '' });
+  check('an empty position clears it', cell(`SELECT position FROM employees WHERE id = 'pe-4'`) === 'NULL', '');
+  check('turning a person into a company needs a company name', isErr(await call(A, 'update_employee', { id: 'pe-1', kind: 'contractor' }), /company_name/), '');
+  check('an unknown employee is refused', isErr(await call(A, 'update_employee', { id: 'nope', position: 'x' }), /not found/), '');
+  const editorOk = await call(TOKENS.editor, 'update_employee', { id: 'pe-1', position: 'projektový manažér', department: 'Manažment' });
+  check('a role with employees=edit can set position and department (no pay toggle needed)', editorOk.success === true, JSON.stringify(editorOk));
+  const eList = await call(TOKENS.editor, 'list_employees', { position: 'projektový manažér' });
+  check('...and read them back without the personal / pay toggles', eList.length === 1 && eList[0].department === 'Manažment' && !('pin' in eList[0]), JSON.stringify(eList));
+}
+
 async function parityChecks() {
   section('parity with the TypeScript originals');
   const { aggregateOverviewTable } = await import(utils('financialOverviewTable.ts'));
@@ -624,6 +682,7 @@ async function intelChecks() {
 try {
   setup();
   await authorizationChecks();
+  await employeeIdentityChecks();
   await parityChecks();
   await writeChecks();
   await intelChecks();

@@ -234,8 +234,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       if (!name) continue;
       map.set(name.toLowerCase(), {
         value: name,
-        label: emp.role ? `${name} (${emp.role})` : name,
-        badge: emp.role || t("Employee", "Zamestnanec", "Alkalmazott"),
+        label: emp.position ? `${name} (${emp.position})` : name,
+        badge: emp.position || t("Employee", "Zamestnanec", "Alkalmazott"),
       });
     }
     for (const u of users) {

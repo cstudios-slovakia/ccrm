@@ -2074,6 +2074,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $rawEmp = [
                     'id' => $row['id'],
                     'name' => $row['name'],
+                    'firstName' => $row['first_name'] ?? null,
+                    'lastName' => $row['last_name'] ?? null,
+                    'kind' => $row['kind'] ?? 'employee',
+                    'position' => $row['position'] ?? null,
+                    'department' => $row['department'] ?? null,
                     'pin' => $row['pin'],
                     'email' => $row['email'],
                     'phone' => $row['phone'],
@@ -5576,14 +5581,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $canLinkEmpUsers = ccrm_can_link_employee_user($scope) && ccrm_column_exists($pdo, 'employees', 'user_id');
 
             $insEmp = $pdo->prepare("INSERT INTO `employees` (
-                `id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`,
+                `id`, `name`, `first_name`, `last_name`, `kind`, `position`, `department`, `pin`, `email`, `phone`, `address_street`, `address_city`,
                 `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`,
                 `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`,
                 `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `files_json`,
                 `is_active`, `notes`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                `name` = VALUES(`name`), `pin` = VALUES(`pin`), `email` = VALUES(`email`), `phone` = VALUES(`phone`),
+                `name` = VALUES(`name`), `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`),
+                `kind` = VALUES(`kind`), `position` = VALUES(`position`), `department` = VALUES(`department`),
+                `pin` = VALUES(`pin`), `email` = VALUES(`email`), `phone` = VALUES(`phone`),
                 `address_street` = VALUES(`address_street`), `address_city` = VALUES(`address_city`),
                 `address_zip` = VALUES(`address_zip`), `address_country` = VALUES(`address_country`),
                 `salary_type` = VALUES(`salary_type`), `salary_amount` = VALUES(`salary_amount`),
@@ -5606,9 +5613,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 };
                 $personal = $empRights['personal'];
                 $pay = $empRights['pay'];
+                // Identity fields: a client that does not send one (an older cached app) leaves
+                // the stored value alone. `name` is always the composed display name.
+                $idField = function (string $key, string $col) use ($emp, $keep) {
+                    if (!array_key_exists($key, $emp)) return $keep($col, null);
+                    $v = trim((string)$emp[$key]);
+                    return $v === '' ? null : $v;
+                };
+                $kind = array_key_exists('kind', $emp) ? (string)$emp['kind'] : (string)$keep('kind', 'employee');
+                if (!in_array($kind, CCRM_EMPLOYEE_KINDS, true)) $kind = 'employee';
+                $firstName = $kind === 'employee' ? $idField('firstName', 'first_name') : null;
+                $lastName = $kind === 'employee' ? $idField('lastName', 'last_name') : null;
+                $displayName = ccrm_compose_employee_name($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')));
                 $insEmp->execute([
                     $empId,
-                    $emp['name'] ?? 'Unnamed Employee',
+                    $displayName !== '' ? $displayName : 'Unnamed Employee',
+                    $firstName,
+                    $lastName,
+                    $kind,
+                    $idField('position', 'position'),
+                    $idField('department', 'department'),
                     $personal ? ($emp['pin'] ?? null) : $keep('pin', null),
                     $emp['email'] ?? null,
                     $personal ? ($emp['phone'] ?? null) : $keep('phone', null),

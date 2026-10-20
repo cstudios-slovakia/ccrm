@@ -1184,11 +1184,14 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 11: Employees, Salaries & Vacations
         [
             'name' => 'list_employees',
-            'description' => 'List company employees with compensation rates, contact details, vacation allowances and the app login they are linked to (user_id; null when none).',
+            'description' => 'List the staff roster. Every record has a kind (employee = a person, contractor = an outside company, ledger = a payroll-only line such as commission), first_name + last_name for a person or company_name for a contractor/ledger item, a job position and a department, plus compensation rates, contact details, vacation allowances and the app login it is linked to (user_id; null when none). The position is a job title; the app permission role (Admin, Project Manager...) is separate.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'search' => ['type' => 'string', 'description' => 'Search by name, email, PIN, or phone'],
+                    'search' => ['type' => 'string', 'description' => 'Search by name, position, department, email, PIN, or phone'],
+                    'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger'], 'description' => 'Only this kind. Use employee to leave out companies and accounting items.'],
+                    'position' => ['type' => 'string', 'description' => 'Only this exact position (case-insensitive), e.g. "programátor"'],
+                    'department' => ['type' => 'string', 'description' => 'Only this exact department (case-insensitive), e.g. "Marketing"'],
                     'active_only' => ['type' => 'boolean', 'description' => 'Filter by active employees only (default true)']
                 ]
             ]
@@ -1206,11 +1209,17 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'create_employee',
-            'description' => 'Register a new employee in the CRM roster.',
+            'description' => 'Register a new record in the staff roster. kind employee (default) needs first_name and last_name; contractor and ledger need company_name instead. Also set position (job title) and department where known.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'name' => ['type' => 'string', 'description' => 'Full name of employee'],
+                    'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger'], 'description' => 'employee = a person (default); contractor = an external supplier company; ledger = an accounting line such as commission'],
+                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee)'],
+                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee)'],
+                    'company_name' => ['type' => 'string', 'description' => 'Company or item name (kind contractor / ledger), e.g. "Dodigital s.r.o."'],
+                    'name' => ['type' => 'string', 'description' => 'Fallback when the parts are not split: "First Last" for an employee, the company name otherwise'],
+                    'position' => ['type' => 'string', 'description' => 'Job title, e.g. programátor, grafik, PPC špecialista, account manažér, telemarketing'],
+                    'department' => ['type' => 'string', 'description' => 'Department / team, e.g. Vývoj, Marketing, Manažment, Obchod'],
                     'pin' => ['type' => 'string', 'description' => 'Personal ID number / Rodné číslo / Tax ID'],
                     'email' => ['type' => 'string', 'description' => 'Email address'],
                     'phone' => ['type' => 'string', 'description' => 'Phone number'],
@@ -1228,12 +1237,18 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'update_employee',
-            'description' => 'Update an existing employee profile, salary rate, or contact information.',
+            'description' => 'Update an existing employee profile, kind, name, position, department, salary rate, or contact information. A record whose first or last name is still missing gets completed by passing first_name and last_name.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Employee ID'],
-                    'name' => ['type' => 'string', 'description' => 'Full name'],
+                    'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger']],
+                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee)'],
+                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee)'],
+                    'company_name' => ['type' => 'string', 'description' => 'Company or item name (kind contractor / ledger)'],
+                    'name' => ['type' => 'string', 'description' => 'Fallback display name: "First Last" for an employee, the company name otherwise'],
+                    'position' => ['type' => 'string', 'description' => 'Job title; an empty string clears it'],
+                    'department' => ['type' => 'string', 'description' => 'Department / team; an empty string clears it'],
                     'pin' => ['type' => 'string', 'description' => 'Personal ID number'],
                     'email' => ['type' => 'string', 'description' => 'Email address'],
                     'phone' => ['type' => 'string', 'description' => 'Phone number'],
@@ -1308,6 +1323,53 @@ function mcp_core_tool_definitions(): array {
             ]
         ]
     ];
+}
+
+/**
+ * The identity columns for a create or an update: kind, first/last name (a person) or the single
+ * company / item name, and the display name derived from them. $stored is the current row on an
+ * update. Returns null on an update that touches none of the name fields, so a legacy record whose
+ * name is still a nickname can have its position set without being forced to complete the name.
+ */
+function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
+    $touches = false;
+    foreach (['kind', 'first_name', 'last_name', 'company_name', 'name'] as $k) {
+        if (array_key_exists($k, $args)) $touches = true;
+    }
+    if ($stored !== null && !$touches) return null;
+
+    $kind = (string)($args['kind'] ?? $stored['kind'] ?? 'employee');
+    if (!in_array($kind, CCRM_EMPLOYEE_KINDS, true)) {
+        throw new \InvalidArgumentException("kind must be one of: " . implode(', ', CCRM_EMPLOYEE_KINDS) . ".");
+    }
+    $clean = static fn($v): ?string => ($v === null || trim((string)$v) === '') ? null : trim((string)$v);
+
+    if ($kind !== 'employee') {
+        $company = $clean($args['company_name'] ?? $args['name'] ?? null);
+        if ($company === null && $stored !== null && ($stored['kind'] ?? 'employee') !== 'employee') {
+            $company = $clean($stored['name'] ?? null);
+        }
+        if ($company === null) throw new \InvalidArgumentException("A {$kind} needs company_name.");
+        return ['kind' => $kind, 'first_name' => null, 'last_name' => null, 'name' => $company];
+    }
+
+    $first = array_key_exists('first_name', $args) ? $clean($args['first_name']) : $clean($stored['first_name'] ?? null);
+    $last = array_key_exists('last_name', $args) ? $clean($args['last_name']) : $clean($stored['last_name'] ?? null);
+    // Only a combined "First Last" was given: split it when that is unambiguous.
+    if (($first === null || $last === null) && !array_key_exists('first_name', $args) && !array_key_exists('last_name', $args) && $clean($args['name'] ?? null) !== null) {
+        $split = ccrm_split_person_name((string)$args['name']);
+        if ($split !== null) [$first, $last] = $split;
+    }
+    if ($first === null || $last === null) {
+        throw new \InvalidArgumentException("An employee needs both first_name and last_name (full name). For a company use kind contractor with company_name.");
+    }
+    return ['kind' => 'employee', 'first_name' => $first, 'last_name' => $last, 'name' => ccrm_compose_employee_name('employee', $first, $last, '')];
+}
+
+/** Add company_name for contractor / ledger rows, so a caller never has to guess which field holds it. */
+function mcp_label_employee(array $row): array {
+    if (($row['kind'] ?? 'employee') !== 'employee') $row['company_name'] = $row['name'] ?? null;
+    return $row;
 }
 
 function mcp_strip_keys(array $row, array $keys): array {
@@ -2406,21 +2468,32 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             if (!empty($args['search'])) {
                 $s = '%' . trim($args['search']) . '%';
                 if (mcp_can('employees.personal')) {
-                    $where[] = "(name LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
-                    $params = array_merge($params, [$s, $s, $s, $s]);
+                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
+                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s]);
                 } else {
                     // A search that matched on a PIN or phone would confirm one to someone who may not read it.
-                    $where[] = "(name LIKE ? OR email LIKE ?)";
-                    $params = array_merge($params, [$s, $s]);
+                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ?)";
+                    $params = array_merge($params, [$s, $s, $s, $s]);
+                }
+            }
+            if (!empty($args['kind'])) {
+                if (!in_array($args['kind'], CCRM_EMPLOYEE_KINDS, true)) throw new \Exception("kind must be one of: " . implode(', ', CCRM_EMPLOYEE_KINDS) . ".");
+                $where[] = "kind = ?";
+                $params[] = $args['kind'];
+            }
+            foreach (['position', 'department'] as $f) {
+                if (!empty($args[$f])) {
+                    $where[] = "`$f` = ?";
+                    $params[] = trim((string)$args[$f]);
                 }
             }
             if (!isset($args['active_only']) || !empty($args['active_only'])) {
                 $where[] = "is_active = 1";
             }
-            $stmt = $pdo->prepare("SELECT id, name, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
+            $stmt = $pdo->prepare("SELECT id, name, first_name, last_name, kind, `position`, `department`, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
             $stmt->execute($params);
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            return array_map('mcp_project_employee', $rows);
+            return array_map(static fn($r) => mcp_label_employee(mcp_project_employee($r)), $rows);
 
         case 'get_employee':
             $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ? LIMIT 1");
@@ -2434,7 +2507,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 $salStmt->execute([$args['id']]);
                 $emp['salaries'] = $salStmt->fetchAll(\PDO::FETCH_ASSOC);
             }
-            $emp = mcp_project_employee($emp);
+            $emp = mcp_label_employee(mcp_project_employee($emp));
 
             if (mcp_can('employees.vacations')) {
                 $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
@@ -2446,16 +2519,21 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         case 'create_employee':
             $id = 'emp-' . bin2hex(random_bytes(6));
-            $name = trim($args['name']);
-            if (empty($name)) throw new \Exception("Employee name is required");
+            $identity = mcp_resolve_employee_identity($args, null);
+            $name = $identity['name'];
 
             $ins = $pdo->prepare("INSERT INTO employees (
-                id, name, pin, email, phone, address_street, address_city, address_zip, address_country,
+                id, name, first_name, last_name, kind, `position`, `department`, pin, email, phone, address_street, address_city, address_zip, address_country,
                 salary_type, salary_amount, salary_due_day, auto_expense, expense_category_id, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
             $ins->execute([
                 $id,
                 $name,
+                $identity['first_name'],
+                $identity['last_name'],
+                $identity['kind'],
+                !empty($args['position']) ? trim((string)$args['position']) : null,
+                !empty($args['department']) ? trim((string)$args['department']) : null,
                 mcp_can('employees.personal') ? ($args['pin'] ?? null) : null,
                 $args['email'] ?? null,
                 mcp_can('employees.personal') ? ($args['phone'] ?? null) : null,
@@ -2471,7 +2549,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             ]);
 
             mcp_audit($pdo, $user, 'create_employee', "Created employee {$name} ({$id})");
-            return ['id' => $id, 'name' => $name, 'message' => "Employee created successfully."];
+            return ['id' => $id, 'name' => $name, 'kind' => $identity['kind'], 'first_name' => $identity['first_name'], 'last_name' => $identity['last_name'], 'message' => "Employee created successfully."];
 
         case 'update_employee':
             $id = $args['id'];
@@ -2492,10 +2570,28 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                     }
                 }
             }
-            foreach (['name', 'pin', 'email', 'phone', 'address_street', 'address_city', 'address_zip', 'salary_type'] as $f) {
+            foreach (['pin', 'email', 'phone', 'address_street', 'address_city', 'address_zip', 'salary_type'] as $f) {
                 if (isset($args[$f])) {
                     $fields[] = "`$f` = ?";
                     $params[] = $args[$f];
+                }
+            }
+            // Identity: kind, first/last name or company name (re-deriving the display name), position, department.
+            $curStmt = $pdo->prepare("SELECT name, first_name, last_name, kind FROM employees WHERE id = ? LIMIT 1");
+            $curStmt->execute([$id]);
+            $cur = $curStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$cur) throw new \Exception("Employee not found with ID: " . $id);
+            $identity = mcp_resolve_employee_identity($args, $cur);
+            if ($identity !== null) {
+                foreach (['name', 'first_name', 'last_name', 'kind'] as $f) {
+                    $fields[] = "`$f` = ?";
+                    $params[] = $identity[$f];
+                }
+            }
+            foreach (['position', 'department'] as $f) {
+                if (array_key_exists($f, $args)) {
+                    $fields[] = "`$f` = ?";
+                    $params[] = trim((string)$args[$f]) === '' ? null : trim((string)$args[$f]);
                 }
             }
             if (isset($args['salary_amount'])) {

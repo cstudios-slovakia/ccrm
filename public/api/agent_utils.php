@@ -1335,7 +1335,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     if ($allow('employees')) try {
         if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
-            $empStmt = $pdo->query("SELECT e.`id`, e.`name`, e.`email`, e.`phone`, e.`salary_type`, e.`salary_amount`, e.`salary_due_day`, e.`time_tracking_user_name`, e.`is_active`, e.`vacation_allowances_json`, u.`name` AS `linked_user_name` FROM `employees` e LEFT JOIN `users` u ON u.`id` = e.`user_id` WHERE e.`is_active` = 1 LIMIT 50");
+            $empStmt = $pdo->query("SELECT e.`id`, e.`name`, e.`kind`, e.`position`, e.`department`, e.`email`, e.`phone`, e.`salary_type`, e.`salary_amount`, e.`salary_due_day`, e.`time_tracking_user_name`, e.`is_active`, e.`vacation_allowances_json`, u.`name` AS `linked_user_name` FROM `employees` e LEFT JOIN `users` u ON u.`id` = e.`user_id` WHERE e.`is_active` = 1 LIMIT 50");
             $employeesAll = $empStmt->fetchAll(PDO::FETCH_ASSOC);
             if (!empty($employeesAll)) {
                 // The same field groups the sync GET projects: the roster for anyone with
@@ -1346,7 +1346,9 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $hrLeave = $allow('employees.vacations');
                 $hrBlock = "=== COMPANY EMPLOYEES ROSTER" . ($hrPay ? " & COMPENSATION" : "") . " ===\n";
                 foreach ($employeesAll as $emp) {
-                    $hrBlock .= "- Employee: " . $emp['name'] . " | Contact: " . ($emp['email'] ?: 'N/A') . ($hrPersonal ? " (" . ($emp['phone'] ?: 'N/A') . ")" : "") . "\n";
+                    $hrKind = ['contractor' => 'External supplier', 'ledger' => 'Accounting item'][$emp['kind'] ?? 'employee'] ?? 'Employee';
+                    $hrRole = trim(($emp['position'] ?? '') . (($emp['position'] ?? '') !== '' && ($emp['department'] ?? '') !== '' ? ', ' : '') . ($emp['department'] ?? ''));
+                    $hrBlock .= "- " . $hrKind . ": " . $emp['name'] . ($hrRole !== '' ? " (" . $hrRole . ")" : "") . " | Contact: " . ($emp['email'] ?: 'N/A') . ($hrPersonal ? " (" . ($emp['phone'] ?: 'N/A') . ")" : "") . "\n";
                     if ($hrPay) {
                         $hrBlock .= "  Rate: €" . number_format((float)$emp['salary_amount'], 2) . " / " . $emp['salary_type'] . " | Salary due day: " . ($emp['salary_due_day'] ? $emp['salary_due_day'] . 'th' : 'Company default') . "\n";
                     }

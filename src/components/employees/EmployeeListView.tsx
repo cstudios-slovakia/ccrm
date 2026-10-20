@@ -28,6 +28,7 @@ import type {
 } from "../../types";
 import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
 import { formatNumber } from "../../utils/currency";
+import { employeeKind, needsFullName, type EmployeeKind } from "../../utils/employeeIdentity";
 import { useUserPref } from "../../utils/userPrefs";
 import { applyManualOrder, newestFirst } from "../../utils/projectSort";
 import { moveRelative, type DropPosition } from "../../utils/reorder";
@@ -73,6 +74,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [kindFilter, setKindFilter] = useState<"all" | EmployeeKind>("all");
   /* The structure, a plain table or cards. DB-backed like the projects list's, so
      the choice follows the user to their next device. The structure is a table
      that always shows the hand-set order and is rearranged by dragging. */
@@ -114,17 +116,26 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
     return { total, active, totalMonthlyPayroll, onLeaveToday };
   }, [employees, vacations]);
 
+  const kindLabels: Record<EmployeeKind, string> = {
+    employee: t("Employees", "Zamestnanci", "Alkalmazottak"),
+    contractor: t("Suppliers", "Dodávatelia", "Beszállítók"),
+    ledger: t("Accounting items", "Účtovné položky", "Könyvelési tételek"),
+  };
+  /* The kind filter only appears once the roster holds something besides people. */
+  const hasOtherKinds = useMemo(() => employees.some((e) => employeeKind(e) !== "employee"), [employees]);
+
   // Filtered employees
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
       // Status filter
       if (statusFilter === "active" && emp.isActive === false) return false;
       if (statusFilter === "inactive" && emp.isActive !== false) return false;
+      if (kindFilter !== "all" && employeeKind(emp) !== kindFilter) return false;
 
       // Query filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchesName = emp.name.toLowerCase().includes(q);
+        const matchesName = [emp.name, emp.position, emp.department].some((v) => (v || "").toLowerCase().includes(q));
         const matchesEmail = (emp.email || "").toLowerCase().includes(q);
         const matchesPin = (emp.pin || "").toLowerCase().includes(q);
         const matchesPhone = (emp.phone || "").toLowerCase().includes(q);
@@ -133,7 +144,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
       return true;
     });
-  }, [employees, statusFilter, searchQuery]);
+  }, [employees, statusFilter, kindFilter, searchQuery]);
 
   /* Every employee in the structure: the hand-set order. Anyone it has never
      seen (added since the last drag) sits on top, like a new project does. */
@@ -297,6 +308,25 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               {t("Inactive", "Neaktívni", "Inaktív")}
             </button>
           </div>
+
+          {hasOtherKinds && (
+            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-ui border border-slate-200/40">
+              {(["all", "employee", "contractor", "ledger"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKindFilter(k)}
+                  className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
+                    kindFilter === k
+                      ? "bg-white text-slate-900 shadow-xs font-bold"
+                      : "text-slate-500 hover:text-slate-900 font-medium"
+                  }`}
+                >
+                  {k === "all" ? t("All types", "Všetky typy", "Minden típus") : kindLabels[k]}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* View Mode Switcher */}
@@ -442,9 +472,22 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                               {emp.name}
                             </a>
                             <div className="flex items-center gap-2 mt-0.5">
-                              {emp.role && (
+                              {employeeKind(emp) !== "employee" && (
+                                <span className="text-micro font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-1.5">
+                                  {kindLabels[employeeKind(emp)]}
+                                </span>
+                              )}
+                              {needsFullName(emp) && (
+                                <span
+                                  className="text-micro font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5"
+                                  title={t("First name and last name are missing", "Chýba meno alebo priezvisko", "Hiányzik a kereszt- vagy vezetéknév")}
+                                >
+                                  {t("Add full name", "Doplniť meno", "Név pótlása")}
+                                </span>
+                              )}
+                              {(emp.position || emp.department) && (
                                 <span className="text-caption font-medium text-slate-500 truncate block">
-                                  {emp.role}
+                                  {[emp.position, emp.department].filter(Boolean).join(" · ")}
                                 </span>
                               )}
                               {emp.pin && (
@@ -592,9 +635,9 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                         >
                           {emp.name}
                         </a>
-                        {emp.role ? (
+                        {emp.position || emp.department ? (
                           <span className="text-caption font-medium text-slate-500 truncate block">
-                            {emp.role}
+                            {[emp.position, emp.department].filter(Boolean).join(" · ")}
                           </span>
                         ) : emp.pin ? (
                           <span className="text-micro font-mono text-slate-400 block">{emp.pin}</span>

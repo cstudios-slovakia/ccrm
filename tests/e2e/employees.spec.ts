@@ -18,7 +18,7 @@ import { TEST_USER, buildSyncPayload } from './helpers/fixture';
 const EMPLOYEES = ['Anna Nováková', 'Boris Kováč', 'Cyril Horváth'].map((name, i) => ({
   id: `emp-qa-${i + 1}`,
   name,
-  role: 'QA',
+  position: 'QA',
   email: `qa${i + 1}@example.com`,
   salaryType: 'monthly',
   salaryAmount: 1500 + i * 100,
@@ -78,14 +78,32 @@ async function dragOnto(source: Locator, target: Locator, edge: 'top' | 'bottom'
 }
 
 test.describe('Employees', () => {
+  test('a person needs a first and a last name; positions are suggested from the roster', async ({ page }) => {
+    const store: MetaStore = { meta: new Map() };
+    await startSession(page);
+    await installBackend(page, store);
+    await gotoView(page, '#employees/new');
+
+    await page.getByPlaceholder('Peter', { exact: true }).fill('Tomáš');
+    await page.getByRole('button', { name: 'Vytvoriť zamestnanca' }).first().click();
+    await expect(page.getByText('Zadajte prosím meno aj priezvisko zamestnanca')).toBeVisible();
+
+    // What the roster already uses comes first; the defaults follow.
+    const options = await page.locator('datalist option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    expect(options[0]).toBe('QA');
+    expect(options).toContain('Programátor');
+  });
+
   test('a background sync does not reset the new-employee form', async ({ page }) => {
     const store: MetaStore = { meta: new Map() };
     await startSession(page);
     await installBackend(page, store);
     await gotoView(page, '#employees/new');
 
-    const name = page.getByPlaceholder('e.g. Ing. Michal Kováč, PhD.');
-    await name.fill('Ing. Test Zamestnanec');
+    const firstName = page.getByPlaceholder('Peter', { exact: true });
+    const lastName = page.getByPlaceholder('Varga', { exact: true });
+    await firstName.fill('Ing. Test');
+    await lastName.fill('Zamestnanec');
     await page.getByPlaceholder('+421 905 123 456').fill('+421 900 000 000');
 
     // Three full pulls, each carrying a new-but-equal employeeSettings object.
@@ -97,7 +115,8 @@ test.describe('Employees', () => {
       await page.waitForTimeout(300);
     }
 
-    await expect(name).toHaveValue('Ing. Test Zamestnanec');
+    await expect(firstName).toHaveValue('Ing. Test');
+    await expect(lastName).toHaveValue('Zamestnanec');
     await expect(page.getByPlaceholder('+421 905 123 456')).toHaveValue('+421 900 000 000');
   });
 

@@ -12,6 +12,8 @@
  *   older versions (checks information_schema instead of relying on try/catch).
  */
 
+require_once __DIR__ . '/employee_name.php';
+
 if (!function_exists('ccrm_schema_statements')) {
 
     function ccrm_schema_statements(): array {
@@ -835,7 +837,12 @@ if (!function_exists('ccrm_schema_statements')) {
             // Employees (Staff profile, contracts, salary rate, Toggl mapping)
             "CREATE TABLE IF NOT EXISTS `employees` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-              `name` VARCHAR(150) NOT NULL,
+              `name` VARCHAR(150) NOT NULL COMMENT 'Display name: first + last name, or the company / item name',
+              `first_name` VARCHAR(100) NULL,
+              `last_name` VARCHAR(100) NULL,
+              `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+              `position` VARCHAR(100) NULL COMMENT 'Job title, not the app permission role',
+              `department` VARCHAR(100) NULL,
               `user_id` VARCHAR(50) NULL UNIQUE,
               `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
               `email` VARCHAR(150) NULL,
@@ -1518,6 +1525,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 $pdo->exec("ALTER TABLE `employees` ADD COLUMN `user_id` VARCHAR(50) NULL AFTER `name`, ADD UNIQUE INDEX `uq_employees_user_id` (`user_id`), ADD CONSTRAINT `fk_employees_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL");
             }
         }
+        ccrm_migrate_employee_identity($pdo);
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
@@ -1622,6 +1630,43 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm] ccrm_migrate_orders: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Employees: first/last name, record kind (employee | contractor | ledger), position and department.
+     * `name` stays as the display name every other module reads. Existing rows are classified once,
+     * when the columns are added: a legal-form suffix makes a contractor, a commission line a ledger
+     * item, anything else an employee whose name is split when that is unambiguous.
+     */
+    function ccrm_migrate_employee_identity(PDO $pdo): void {
+        try {
+            $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasEmp === 0 || ccrm_column_exists($pdo, 'employees', 'kind')) return;
+
+            $pdo->exec("ALTER TABLE `employees`
+                ADD COLUMN `first_name` VARCHAR(100) NULL AFTER `name`,
+                ADD COLUMN `last_name` VARCHAR(100) NULL AFTER `first_name`,
+                ADD COLUMN `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' AFTER `last_name`,
+                ADD COLUMN `position` VARCHAR(100) NULL AFTER `kind`,
+                ADD COLUMN `department` VARCHAR(100) NULL AFTER `position`");
+
+            $company = '/(\bs\.\s?r\.\s?o\b\.?|\ba\.\s?s\b\.?|\bsro\b|\bspol\b|\bgmbh\b|\bltd\b|\bllc\b|\binc\b|\bkft\b|\bzrt\b)/iu';
+            $ledger = '/províz|provis|commission/iu';
+            $upd = $pdo->prepare("UPDATE `employees` SET `kind` = ?, `first_name` = ?, `last_name` = ? WHERE `id` = ?");
+            foreach ($pdo->query("SELECT `id`, `name` FROM `employees`")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $name = (string)$row['name'];
+                if (preg_match($ledger, $name)) {
+                    $upd->execute(['ledger', null, null, $row['id']]);
+                } elseif (preg_match($company, $name)) {
+                    $upd->execute(['contractor', null, null, $row['id']]);
+                } else {
+                    $split = ccrm_split_person_name($name);
+                    $upd->execute(['employee', $split[0] ?? null, $split[1] ?? null, $row['id']]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee identity migration skipped: ' . $e->getMessage());
         }
     }
 
@@ -1870,7 +1915,12 @@ if (!function_exists('ccrm_schema_statements')) {
             if ($hasEmp === 0) {
                 $pdo->exec("CREATE TABLE IF NOT EXISTS `employees` (
                   `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-                  `name` VARCHAR(150) NOT NULL,
+                  `name` VARCHAR(150) NOT NULL COMMENT 'Display name: first + last name, or the company / item name',
+                  `first_name` VARCHAR(100) NULL,
+                  `last_name` VARCHAR(100) NULL,
+                  `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+                  `position` VARCHAR(100) NULL COMMENT 'Job title, not the app permission role',
+                  `department` VARCHAR(100) NULL,
                   `user_id` VARCHAR(50) NULL UNIQUE,
                   `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
                   `email` VARCHAR(150) NULL,
@@ -2575,6 +2625,15 @@ if (!function_exists('ccrm_schema_statements')) {
 
             foreach ($emps as $e) {
                 $insEmp->execute($e);
+            }
+            $idUpd = $pdo->prepare("UPDATE `employees` SET `first_name` = ?, `last_name` = ?, `position` = ?, `department` = ? WHERE `id` = ?");
+            foreach ([
+                ['emp-1', 'Ing. Michal', 'Kováč', 'Chief Architect & Project Lead', 'Management'],
+                ['emp-2', 'Mgr. Zuzana', 'Horváthová', 'Senior UX/UI & Brand Strategist', 'Marketing'],
+                ['emp-3', 'Bc. Peter', 'Varga', 'Full-Stack Engineer & DevOps', 'Development'],
+                ['emp-4', 'Kristína', 'Balážová', 'Operations & Account Specialist', 'Sales'],
+            ] as $idRow) {
+                $idUpd->execute([$idRow[1], $idRow[2], $idRow[3], $idRow[4], $idRow[0]]);
             }
 
             // 2. Insert salaries for the current year (past months paid, current month by payday, rest planned)
