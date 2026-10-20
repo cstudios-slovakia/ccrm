@@ -281,6 +281,9 @@ function ccrm_passkey_create_registration_options(array $user, array $existingCr
         attestation: PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE,
         excludeCredentials: $excluded,
         timeout: 60000,
+        // Chrome and Edge go straight to Windows Hello / Touch ID instead of the
+        // phone-or-USB menu. Registration only: a login passkey may live on a phone.
+        hints: ['client-device'],
     );
 }
 
@@ -295,6 +298,23 @@ function ccrm_passkey_create_request_options(array $rp): PublicKeyCredentialRequ
         userVerification: AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_REQUIRED,
         timeout: 60000,
     );
+}
+
+/** How long after a password sign-in a passkey may be added without the password. */
+const CCRM_PW_AUTH_WINDOW_SECONDS = 300;
+
+/**
+ * True when this session was opened by a password sign-in no more than
+ * CCRM_PW_AUTH_WINDOW_SECONDS ago (login.php sets ccrm_pw_auth_at).
+ */
+function ccrm_pw_auth_recent(): bool {
+    ccrm_start_session();
+    $at = $_SESSION['ccrm_pw_auth_at'] ?? null;
+    if (!is_int($at)) {
+        return false;
+    }
+    $age = time() - $at;
+    return $age >= 0 && $age <= CCRM_PW_AUTH_WINDOW_SECONDS;
 }
 
 /**

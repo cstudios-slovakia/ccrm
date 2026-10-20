@@ -13,14 +13,8 @@ import type { Language } from "../utils/translations";
 import { PasswordInput } from "./PasswordInput";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { asLang } from "../utils/undoMessages";
-import {
-  isPasskeySupported,
-  defaultPasskeyName,
-  toCreationOptions,
-  creationCredentialToJson,
-  passkeyErrorKind,
-  formatAgo,
-} from "../utils/passkeys";
+import { isPasskeySupported, defaultPasskeyName, formatAgo } from "../utils/passkeys";
+import { registerPasskey } from "../utils/passkeyCeremony";
 
 export interface PasskeySettingsProps {
   systemLanguage: Language;
@@ -125,62 +119,22 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
     setFormError(null);
     setIsRegistering(true);
 
-    try {
-      // 1. Get registration options (verifying current password)
-      const optRes = await fetch("/api/passkeys.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "register_options",
-          password,
-        }),
-      });
+    const verificationFailed = t(
+      "Passkey verification failed.",
+      "Overenie prístupového kľúča zlyhalo.",
+      "A hozzáférési kulcs ellenőrzése sikertelen."
+    );
 
-      if (!optRes.ok) {
-        if (optRes.status === 403) {
+    try {
+      const result = await registerPasskey({ name, password });
+
+      switch (result.kind) {
+        case "cancelled":
+          return; // silent cancel
+        case "wrong-password":
           setFormError(t("Wrong password.", "Nesprávne heslo.", "Hibás jelszó."));
           return;
-        }
-        let msg = t(
-          "Passkey verification failed.",
-          "Overenie prístupového kľúča zlyhalo.",
-          "A hozzáférési kulcs ellenőrzése sikertelen."
-        );
-        try {
-          const optData = await optRes.json();
-          if (optData && typeof optData.message === "string") {
-            msg = optData.message;
-          }
-        } catch {
-          /* fallback */
-        }
-        setFormError(msg);
-        return;
-      }
-
-      const optData = await optRes.json();
-      if (!optData || !optData.success || !optData.options) {
-        setFormError(
-          t(
-            "Passkey verification failed.",
-            "Overenie prístupového kľúča zlyhalo.",
-            "A hozzáférési kulcs ellenőrzése sikertelen."
-          )
-        );
-        return;
-      }
-
-      // 2. Prompt client authenticator to create credential
-      const creationOptions = toCreationOptions(optData.options);
-      let cred: Credential | null = null;
-      try {
-        cred = await navigator.credentials.create({ publicKey: creationOptions });
-      } catch (err: unknown) {
-        const kind = passkeyErrorKind(err);
-        if (kind === "cancelled") {
-          return; // silent cancel
-        }
-        if (kind === "excluded") {
+        case "excluded":
           setFormError(
             t(
               "This device already has a passkey for your account.",
@@ -189,66 +143,26 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
             )
           );
           return;
+        case "ok": {
+          setShowAddPanel(false);
+          setName("");
+          setPassword("");
+          await loadPasskeys();
+
+          const successMsg = t("Passkey added.", "Prístupový kľúč bol pridaný.", "A hozzáférési kulcs hozzáadva.");
+          setSuccessMessage(successMsg);
+          const win = window as unknown as { showToast?: (m: string) => void };
+          if (typeof win.showToast === "function") {
+            win.showToast(successMsg);
+          }
+          setTimeout(() => {
+            setSuccessMessage(null);
+          }, 4000);
+          return;
         }
-        setFormError(
-          t(
-            "Passkey verification failed.",
-            "Overenie prístupového kľúča zlyhalo.",
-            "A hozzáférési kulcs ellenőrzése sikertelen."
-          )
-        );
-        return;
+        default:
+          setFormError(("message" in result && result.message) || verificationFailed);
       }
-
-      if (!cred) {
-        return;
-      }
-
-      // 3. Send attestation response to server
-      const verifyRes = await fetch("/api/passkeys.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "register_verify",
-          name: name.trim(),
-          credential: creationCredentialToJson(cred),
-        }),
-      });
-
-      const verifyData = await verifyRes.json();
-      if (verifyData && verifyData.success) {
-        setShowAddPanel(false);
-        setName("");
-        setPassword("");
-        await loadPasskeys();
-
-        const successMsg = t("Passkey added.", "Prístupový kľúč bol pridaný.", "A hozzáférési kulcs hozzáadva.");
-        setSuccessMessage(successMsg);
-        const win = window as unknown as { showToast?: (m: string) => void };
-        if (typeof win.showToast === "function") {
-          win.showToast(successMsg);
-        }
-        setTimeout(() => {
-          setSuccessMessage(null);
-        }, 4000);
-      } else {
-        setFormError(
-          verifyData?.message ||
-            t(
-              "Passkey verification failed.",
-              "Overenie prístupového kľúča zlyhalo.",
-              "A hozzáférési kulcs ellenőrzése sikertelen."
-            )
-        );
-      }
-    } catch {
-      setFormError(
-        t(
-          "Passkey verification failed.",
-          "Overenie prístupového kľúča zlyhalo.",
-          "A hozzáférési kulcs ellenőrzése sikertelen."
-        )
-      );
     } finally {
       setIsRegistering(false);
     }
@@ -279,9 +193,9 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
         </label>
         <p className="text-ui text-slate-500 font-medium mt-0.5">
           {t(
-            "Sign in with your fingerprint, face or device PIN instead of a password.",
-            "Prihláste sa odtlačkom prsta, tvárou alebo PIN-om zariadenia namiesto hesla.",
-            "Jelentkezzen be ujjlenyomattal, arccal vagy az eszköz PIN-kódjával jelszó helyett."
+            "A passkey lets you sign in with your fingerprint, your face or the device PIN instead of a password. It stays on the device, and this site never sees your biometric data.",
+            "Prístupový kľúč vám umožní prihlásiť sa odtlačkom prsta, tvárou alebo PIN-om zariadenia namiesto hesla. Zostáva uložený v zariadení a táto stránka nikdy nevidí vaše biometrické údaje.",
+            "A hozzáférési kulccsal ujjlenyomattal, arccal vagy az eszköz PIN-kódjával jelentkezhet be jelszó helyett. A kulcs az eszközön marad, ezt az oldalt pedig a biometrikus adatai soha nem érik el."
           )}
         </p>
       </div>

@@ -321,6 +321,28 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_pwreset_user` (`user_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // "Remember me" tokens: one row per remembered browser. Only the SHA-256 of
+            // the cookie's validator is stored. Kept in step with
+            // ccrm_remember_ensure_table() in api/auth.php, which creates it lazily for
+            // the auth endpoints that do not load this file. Runs on every schema apply
+            // (CREATE TABLE IF NOT EXISTS), so it doubles as the migration for existing databases.
+            "CREATE TABLE IF NOT EXISTS `user_remember_tokens` (
+              `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `user_id` VARCHAR(50) NOT NULL,
+              `selector` CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+              `validator_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'SHA-256 of the validator in the cookie',
+              `prev_validator_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT 'Validator before the last rotation, accepted for a short grace window',
+              `rotated_at` DATETIME NULL,
+              `created_at` DATETIME NOT NULL,
+              `expires_at` DATETIME NOT NULL,
+              `last_used_at` DATETIME NULL,
+              `user_agent` VARCHAR(255) NULL COMMENT 'For display and audit only',
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uniq_remember_selector` (`selector`),
+              INDEX `idx_remember_user` (`user_id`),
+              INDEX `idx_remember_expires` (`expires_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Custom Dynamic Dashboards
             "CREATE TABLE IF NOT EXISTS `custom_dashboards` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,

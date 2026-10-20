@@ -150,6 +150,10 @@ try {
 } catch (\Throwable $e) { /* ignore */ }
 
 $profile = ccrm_establish_login_session($pdo, $row, $remember);
+// Lets this session add a passkey without retyping the password for a few
+// minutes (passkeys.php register_options). Set after the call above, which
+// regenerates the session id and clears any older marker.
+$_SESSION['ccrm_pw_auth_at'] = time();
 ccrm_audit_log($pdo, ['id' => $row['id'], 'email' => $row['email']], 'auth.login_success', $remember ? 'remember me' : null);
 
 echo json_encode([

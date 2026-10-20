@@ -45,6 +45,20 @@ Maps permission levels to user roles.
 * `ip` VARCHAR(45)
 * `created_at` TIMESTAMP
 
+### `user_remember_tokens`
+One row per browser that ticked "Remember me" on the login screen. The `CCRM_REMEMBER` cookie holds `<selector>:<validator>`; the PHP session itself is an ordinary browser-session cookie and this token rebuilds it after the browser was closed. Created by `ccrm_apply_schema()` and, for endpoints that do not load it, lazily by `ccrm_remember_ensure_table()` in `api/auth.php`. All dates are database-clock values.
+* `id` BIGINT UNSIGNED [PK, AUTO_INCREMENT]
+* `user_id` VARCHAR(50) (the `users.id` it signs in; no foreign key. Rows are removed by `ccrm_remember_revoke_user()` on password change and user deletion, and a row whose user is gone is rejected on use)
+* `selector` CHAR(24) [UNIQUE] (random lookup key, hex)
+* `validator_hash` CHAR(64) (SHA-256 of the validator in the cookie; the validator itself is never stored)
+* `prev_validator_hash` CHAR(64) [NULLable] (validator before the last rotation; still accepted for 60 s so parallel requests carrying the old cookie are not treated as theft)
+* `rotated_at` DATETIME [NULLable] (last rotation; every restore rotates the validator)
+* `created_at` DATETIME (a token older than `users.sessions_valid_from` is rejected)
+* `expires_at` DATETIME (30 days, pushed forward on each rotation)
+* `last_used_at` DATETIME [NULLable]
+* `user_agent` VARCHAR(255) [NULLable] (display / audit only)
+* Indexes: `selector` (unique), `user_id`, `expires_at`
+
 ---
 
 ## 2. Customer Relations Management (CRM)

@@ -116,6 +116,9 @@ try {
         try {
             $pdo->exec("DELETE FROM `user_passkeys`;");
         } catch (\Throwable $e) { /* ignore if table does not exist */ }
+        try {
+            $pdo->exec("DELETE FROM `user_remember_tokens`;");
+        } catch (\Throwable $e) { /* ignore if table does not exist */ }
         $pdo->exec("DELETE FROM `system_settings`;");
 
         // Seed default Admin with a RANDOM password (never a known default like

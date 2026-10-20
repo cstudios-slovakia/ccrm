@@ -6,19 +6,12 @@ header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
 
 ccrm_start_session();
-if (!empty($_SESSION['ccrm_uid'])) {
-    $logoutPdo = ccrm_auth_pdo();
-    if ($logoutPdo !== null) {
-        ccrm_audit_log($logoutPdo, ['id' => $_SESSION['ccrm_uid'], 'email' => $_SESSION['ccrm_email'] ?? null], 'auth.logout');
-    }
+$logoutPdo = (!empty($_SESSION['ccrm_uid']) || isset($_COOKIE[CCRM_REMEMBER_COOKIE])) ? ccrm_auth_pdo() : null;
+if (!empty($_SESSION['ccrm_uid']) && $logoutPdo !== null) {
+    ccrm_audit_log($logoutPdo, ['id' => $_SESSION['ccrm_uid'], 'email' => $_SESSION['ccrm_email'] ?? null], 'auth.logout');
 }
-$_SESSION = [];
-if (ini_get('session.use_cookies')) {
-    $p = session_get_cookie_params();
-    setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
-}
-// Drop the "remember me" marker cookie too.
-setcookie('CCRM_REMEMBER', '', time() - 42000, '/');
-session_destroy();
+// Ends the session AND this browser's remembered login (token row + cookie);
+// leaving the token would sign the browser straight back in on the next request.
+ccrm_destroy_session($logoutPdo);
 
 echo json_encode(['success' => true]);

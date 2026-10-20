@@ -10,6 +10,8 @@ import {
   assertionCredentialToJson,
   passkeyErrorKind,
   formatAgo,
+  shouldOfferPasskeySetup,
+  type PasskeyOfferState,
 } from "./passkeys.ts";
 
 test("base64url round-trip handles characters producing +, / and = in standard base64", () => {
@@ -149,4 +151,42 @@ test("formatAgo formats seconds into localized relative strings", () => {
   // Handles null / undefined
   assert.equal(formatAgo(null, "en"), "");
   assert.equal(formatAgo(undefined, "en"), "");
+});
+
+const eligible: PasskeyOfferState = {
+  loginMethod: "password",
+  available: true,
+  platformAvailable: true,
+  onThisDevice: false,
+  dismissed: false,
+};
+
+test("shouldOfferPasskeySetup offers after a password login on a capable, unregistered device", () => {
+  assert.equal(shouldOfferPasskeySetup(eligible), true);
+});
+
+test("shouldOfferPasskeySetup stays quiet unless every condition holds", () => {
+  const blockers: Partial<PasskeyOfferState>[] = [
+    { loginMethod: "passkey" },
+    { loginMethod: "reset" },
+    { loginMethod: null },
+    { available: false },
+    { platformAvailable: false },
+    { onThisDevice: true },
+    { dismissed: true },
+  ];
+  for (const blocker of blockers) {
+    assert.equal(shouldOfferPasskeySetup({ ...eligible, ...blocker }), false, JSON.stringify(blocker));
+  }
+});
+
+test("toCreationOptions passes hints through untouched", () => {
+  const options = toCreationOptions({
+    challenge: "AQID",
+    rp: { name: "CCRM", id: "localhost" },
+    user: { id: "AQID", name: "a@b.c", displayName: "A" },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+    hints: ["client-device"],
+  });
+  assert.deepEqual((options as { hints?: string[] }).hints, ["client-device"]);
 });

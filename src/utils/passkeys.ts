@@ -42,6 +42,32 @@ export function bufferToB64u(b: ArrayBuffer): string {
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/** How the user got into the app; only a password login may offer passkey setup. */
+export type LoginMethod = "password" | "passkey" | "reset";
+
+export interface PasskeyOfferState {
+  loginMethod: LoginMethod | null;
+  /** The server has passkeys switched on (`status.available`). */
+  available: boolean;
+  /** This device has Windows Hello, Touch ID, Face ID or an Android fingerprint. */
+  platformAvailable: boolean;
+  /** A passkey was already registered or used on this device. */
+  onThisDevice: boolean;
+  /** The user picked "Don't ask again". */
+  dismissed: boolean;
+}
+
+/** Whether to offer "sign in with your fingerprint or face next time?" after a login */
+export function shouldOfferPasskeySetup(state: PasskeyOfferState): boolean {
+  return (
+    state.loginMethod === "password" &&
+    state.available &&
+    state.platformAvailable &&
+    !state.onThisDevice &&
+    !state.dismissed
+  );
+}
+
 /** Returns true if the client environment supports WebAuthn / Passkeys */
 export function isPasskeySupported(): boolean {
   return (
@@ -86,6 +112,8 @@ export interface ServerCreationOptionsJson {
   authenticatorSelection?: AuthenticatorSelectionCriteria;
   attestation?: AttestationConveyancePreference;
   extensions?: AuthenticationExtensionsClientInputs;
+  /** WebAuthn L3 `hints` (e.g. "client-device"). Not yet declared by every lib.dom. */
+  hints?: string[];
 }
 
 /** Converts server JSON options into browser PublicKeyCredentialCreationOptions */

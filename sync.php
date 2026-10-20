@@ -3544,6 +3544,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $delPkStmt->execute([$delUid]);
                         }
                     } catch (\Throwable $e) { /* ignore if table missing */ }
+                    // A removed account must not be signed back in by a remembered browser.
+                    foreach ($usersToDelete as $delUid) {
+                        ccrm_remember_revoke_user($pdo, (string)$delUid);
+                    }
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
                 }
             }

@@ -59,6 +59,7 @@ import { startViewSizeWatcher } from "./utils/viewSize";
 import { baselineOf, diffRecords, type RecordBaseline } from "./utils/syncDiff";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
+import { adoptableSessionUser } from "./utils/sessionUser";
 import { parseUnifiedEntryKey, pendingDeletionIds, pendingDeletionKeys, pendingDeletionRecords, unifiedEntryKey, withoutPendingDeletions } from "./utils/pendingDeletions";
 import { createUndoQueue } from "./utils/undoQueue";
 import { asLang, restoredMessage } from "./utils/undoMessages";
@@ -66,6 +67,8 @@ import { UndoToast } from "./components/ui/UndoToast";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
 import { ModuleSetupWizard } from "./components/ModuleSetupWizard";
+import { PasskeySetupOffer } from "./components/PasskeySetupOffer";
+import type { LoginMethod } from "./utils/passkeys";
 import { useModuleCatalog } from "./utils/moduleCatalog";
 import { countActive, shouldMarkModuleWizardPending, shouldShowModuleWizard } from "./utils/moduleWizard";
 import { fetchLicenseState } from "./utils/licenseApi";
@@ -899,6 +902,12 @@ function App() {
     const stored = sessionStorage.getItem("crm_current_user_rbac");
     return stored ? JSON.parse(stored) : null;
   });
+  // How this tab was signed in (null when the session was restored). The
+  // passkey setup offer is only made after a password login.
+  const [loginMethod, setLoginMethod] = useState<LoginMethod | null>(null);
+  useEffect(() => {
+    if (!currentUser) setLoginMethod(null);
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) {
@@ -2532,6 +2541,11 @@ ${log.payload || ''}
   // leads. Every ~12th tick we force a full pull regardless, so writes made
   // outside the SPA (cron agents, AI summaries) that don't bump the version
   // still surface within a minute.
+  // The server session outlives the tab ("Remember me"), the per-tab
+  // sessionStorage login does not. Only the first pull after the page loads may
+  // sign the tab back in from the server's session; a later pull that finds a
+  // session while the app shows the login screen must not (a logout in flight).
+  const sessionAdoptionOpenRef = useRef(true);
   useEffect(() => {
     // Nothing to poll for until the app is installed, and polling through an
     // install is actively harmful: `setup.php` writes config.php as part of a
@@ -2565,7 +2579,7 @@ ${log.payload || ''}
     const sameOr = <T,>(next: T) => (prev: T): T =>
       JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 
-    const applyServerData = (rawData: any) => {
+    const applyServerData = (rawData: any, adoptSession = false) => {
       // The server still holds records the user just deleted and can undo; applying
       // its answer as-is would bring them back on screen for the undo window.
       // `rawData` stays untouched for the delta baseline below, which must keep
@@ -2689,7 +2703,7 @@ ${log.payload || ''}
         // identity (personal settings, the language effect, the mail poller) then
         // reset itself every few seconds — which wiped forms while typing.
         setCurrentUser((prev) => {
-          if (!prev) return prev;
+          if (!prev) return adoptSession ? (adoptableSessionUser(data) ?? prev) : prev;
           const updatedMe = data.users.find((u: UserProfile) => u.email === prev.email);
           if (!updatedMe) return prev;
           const getNormUser = (u: UserProfile) => {
@@ -2954,9 +2968,10 @@ ${log.payload || ''}
       });
     };
 
-    const fetchFull = async () => {
+    const fetchFull = async (adoptSession = false) => {
       const pollStartTime = Date.now();
       const res = await fetch(`/sync.php?t=${Date.now()}`);
+      if (adoptSession && (res.ok || res.status === 401)) sessionAdoptionOpenRef.current = false;
       if (res.status === 401) {
         // Installed, but no valid session: show the login screen instead of
         // hanging on the loader forever.
@@ -2974,7 +2989,7 @@ ${log.payload || ''}
         return;
       }
       if (data && data.installed === true) {
-        applyServerData(data);
+        applyServerData(data, adoptSession);
         pullAfterConflictRef.current = false;
         if (typeof data.dataVersion !== "undefined") lastDataVersion = data.dataVersion;
       }
@@ -2983,7 +2998,7 @@ ${log.payload || ''}
     // Initial bootstrap is always a full pull.
     (async () => {
       try {
-        await fetchFull();
+        await fetchFull(sessionAdoptionOpenRef.current);
       } catch (err) {
         console.warn("Staging sync backend offline", err);
       } finally {
@@ -4213,7 +4228,8 @@ ${log.payload || ''}
       <LoginView 
         users={users}
         systemName={systemName}
-        onLoginSuccess={(user) => {
+        onLoginSuccess={(user, method) => {
+          setLoginMethod(method ?? null);
           setCurrentUser(user);
           // If a mutation was lost to an expired session, replay the latest
           // state now that we are authenticated again so the change is not lost.
@@ -4622,6 +4638,7 @@ ${log.payload || ''}
             }}
           />
         )}
+        <PasskeySetupOffer systemLanguage={userLanguage} loginMethod={loginMethod} />
         {toast && (
           <div role="status" aria-live="polite" className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
             <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border ${
