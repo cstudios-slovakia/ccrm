@@ -2334,8 +2334,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     );
 
     const [leadDefaultTab, setLeadDefaultTab] = useUserPref("leadDefaultTab");
-    const pinnedDetailTab: "timeline" | "tasks" = leadDefaultTab === "tasks" ? "tasks" : "timeline";
-    const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks">(pinnedDetailTab);
+    const pinnedDetailTab: "timeline" | "tasks" | "documents" =
+        leadDefaultTab === "tasks" || leadDefaultTab === "documents" ? leadDefaultTab : "timeline";
+    const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks" | "documents">(pinnedDetailTab);
     // A different lead opens on the pinned tab, not on whichever the last one was left on.
     useEffect(() => {
         setActiveDetailTab(pinnedDetailTab);
@@ -3200,6 +3201,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // True for event types that carry attached paperwork.
     const isDocumentEventType = (type: string | null): boolean =>
         !!type && (DOCUMENT_EVENT_TYPES as readonly string[]).includes(type);
+
+    // The Documents tab lists document events only. "proforma_invoice" can no
+    // longer be logged but old events of that type still belong here.
+    const isDocumentTimelineEvent = (e: { type: string }) =>
+        isDocumentEventType(e.type) || e.type === "proforma_invoice";
+    const shownFutureEvents =
+        activeDetailTab === "documents"
+            ? futureEvents.filter(isDocumentTimelineEvent)
+            : futureEvents;
+    const shownPastEvents =
+        activeDetailTab === "documents"
+            ? pastEvents.filter(isDocumentTimelineEvent)
+            : pastEvents;
+
+    // Switching tabs drops a half-chosen event type that the new tab cannot log.
+    useEffect(() => {
+        if (!logType) return;
+        const isDoc = isDocumentEventType(logType);
+        if (activeDetailTab === "documents" ? !isDoc : isDoc) setLogType(null);
+    }, [activeDetailTab]);
 
     // Every document attached to an event, newest format first. Events written
     // before multi-file support only have the single fileName/filePath pair, so
@@ -7443,19 +7464,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     {getTranslation(systemLanguage, "common.history_timeline")}</> },
                                 { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5 stroke-[2.5]" />, label: <>{" "}
                                     {t("Tasks", "Úlohy", "Feladatok")} ({activeLeadOpenTasksCount})</> },
+                                { key: "documents", icon: <ReceiptText className="h-4.5 w-4.5 stroke-[2.5]" />, label: <>{" "}
+                                    {t("Business documents", "Obchodné doklady", "Üzleti dokumentumok")}</> },
                               ]}
                             />
 
-                            {activeDetailTab === "timeline" && (
+                            {(activeDetailTab === "timeline" || activeDetailTab === "documents") && (
                                 <>
                                     {/* Logger form */}
                             <div>
                                 <h3 className="text-ui font-bold text-blue-700 mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
                                     <PencilLine className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" />{" "}
-                                    {getTranslation(
-                                        systemLanguage,
-                                        "common.log_event_lead",
-                                    )}
+                                    {activeDetailTab === "documents"
+                                        ? t(
+                                              "File a business document",
+                                              "Zaevidovať obchodný doklad",
+                                              "Üzleti dokumentum rögzítése",
+                                          )
+                                        : getTranslation(
+                                              systemLanguage,
+                                              "common.log_event_lead",
+                                          )}
                                 </h3>
 
                                 <form
@@ -7472,6 +7501,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </label>
                                         <div className="space-y-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
                                             {/* Communication events */}
+                                            {activeDetailTab === "timeline" && (
                                             <div className="grid grid-cols-5 gap-1.5">
                                                 {(
                                                     [
@@ -7509,9 +7539,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     );
                                                 })}
                                             </div>
+                                            )}
 
                                             {/* Business documents — each one accepts several PDFs. */}
-                                            <div className="pt-1.5 border-t border-slate-200">
+                                            {activeDetailTab === "documents" && (
+                                            <div>
                                                 <span className="block px-1 pb-1 type-overline text-slate-400">
                                                     {t(
                                                         "Business documents",
@@ -7556,6 +7588,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     )}
                                                 </div>
                                             </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -8187,7 +8220,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </div>
                                 )}
 
-                                {activeLeadTimeline.length === 0 ? (
+                                {shownFutureEvents.length + shownPastEvents.length === 0 ? (
                                     <div className="py-12 text-center text-slate-400">
                                         <div className="text-display mb-2 animate-bounce">
                                             📜
@@ -8211,7 +8244,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <div className="absolute left-4.25 ws-md:left-33 top-2 bottom-2 w-1 bg-blue-100 rounded-full"></div>
 
                                         {/* FUTURE EVENTS */}
-                                        {futureEvents.map((event) => {
+                                        {shownFutureEvents.map((event) => {
                                             const colors = getEventColors(
                                                 event.type,
                                             );
@@ -8581,7 +8614,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         })}
 
                                         {/* Today line marker */}
-                                        {futureEvents.length > 0 && (
+                                        {shownFutureEvents.length > 0 && (
                                             <div className="relative py-2 select-none animate-in fade-in duration-200">
                                                 <div
                                                     className="absolute inset-0 flex items-center"
@@ -8602,7 +8635,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         )}
 
                                         {/* PAST EVENTS */}
-                                        {pastEvents.map((event) => {
+                                        {shownPastEvents.map((event) => {
                                             const colors = getEventColors(
                                                 event.type,
                                             );

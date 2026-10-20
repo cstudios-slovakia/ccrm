@@ -10,8 +10,7 @@ export interface ClientAddress {
 // the lead.
 export const DOCUMENT_EVENT_TYPES = [
   "order",            // OBJEDNÁVKA
-  "proforma_invoice", // ZÁLOHOVÁ FAKTÚRA
-  "advance_receipt",  // DOKLAD O PRIJATOM PREDDAVKU
+  "advance_receipt", // DOKLAD O PRIJATOM PREDDAVKU
   "invoice",          // FAKTÚRA
   "delivery_note",    // DODACÍ LIST
 ] as const;
@@ -32,6 +31,9 @@ export type LeadEventType =
   // it), so it survives the sync round-trip like any other logged event and its
   // date/time stay editable afterwards.
   | "status_change"
+  // Written when a proforma is issued from Invoicing. It is not a hand-loggable
+  // document type, so it is not in DOCUMENT_EVENT_TYPES.
+  | "proforma_invoice"
   | DocumentEventType;
 
 // One file attached to a timeline event. Events can carry several (e.g. a batch
