@@ -757,7 +757,7 @@ sub-passes: list table, kanban, modals, detail).
 - Target: `Tabs`; chart full width (§6.5) with `typePx` text; at `ws-2xl` the
   weekly table sits beside the chart instead of behind the toggle.
 
-**Invoicing** (`#invoices`) — `InvoicingView.tsx`, `pdf/*`.
+**Price Offers** (`#invoices`) — `PriceOffersView.tsx`, `OfferSettings.tsx`, `DocumentPreviewModal.tsx`, `pdf/*`.
 - Now: closest to target (KPI, filters, table). Documents are paper.
 - Target: primitives; row actions per §6.5; document preview and print stay
   `.view-size-fixed`.

@@ -5,7 +5,7 @@
  * Required by mcp.php; the tool switch there delegates to these functions. Each one validates its
  * input, writes related rows in one transaction, and mirrors what the browser does:
  *
- *   invoices        src/utils/invoiceFinanceBridge.ts, documentNumbering.ts, InvoicingView.calculatedTotals
+ *   invoices        src/utils/invoiceFinanceBridge.ts, documentNumbering.ts, PriceOffersView.calculatedTotals
  *   stock           src/utils/warehousePricing.ts, WarehouseView purchase/sale handlers
  *   payroll         sync.php "Synchronize Employee Salaries & Auto-Expense Linkage"
  *   projects        src/utils/projects.ts finishedAtForStatus
@@ -354,7 +354,7 @@ function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
 }
 
 // ---------------------------------------------------------------------------
-// Invoices  (invoiceFinanceBridge.ts, InvoicingView.calculatedTotals)
+// Invoices  (invoiceFinanceBridge.ts, PriceOffersView.calculatedTotals)
 // ---------------------------------------------------------------------------
 
 /** The company's default VAT rate (Settings → Billing); nothing else from that setting is read. */

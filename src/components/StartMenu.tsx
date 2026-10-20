@@ -361,8 +361,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       },
       {
         id: "invoices",
-        label: t("Invoices & Price Offers", "Cenové ponuky & Faktúry", "Ajánlatok és számlák"),
-        description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a fakturácia", "Árajánlatok, PDF sablonok és számlázás"),
+        label: t("Price Offers", "Cenové ponuky", "Árajánlatok"),
+        description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a prepojenie na účtovníctvo", "Árajánlatok, PDF sablonok és könyvelési kapcsolat"),
         icon: Icons.FileText || Coins,
         color: "var(--color-indigo-500)",
         bgColor: "rgba(99, 102, 241, 0.12)",

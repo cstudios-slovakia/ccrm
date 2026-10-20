@@ -4,10 +4,11 @@ import {
   Settings, Save, Database, Trash2, ShieldAlert, Sliders,
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
-  Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles, Percent, RotateCcw
+  Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Percent, RotateCcw
 } from "lucide-react";
-import type { Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
+import type { Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
+import { keepStoredOfferDefaults } from "../utils/offerDefaults";
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
 import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD } from "../utils/payment";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
@@ -563,10 +564,6 @@ interface SettingsViewProps {
 
   companyBillingSettings?: CompanyBillingSettings | null;
   setCompanyBillingSettings?: React.Dispatch<React.SetStateAction<CompanyBillingSettings | null>>;
-  invoicingIntegrations?: ExternalInvoicingConfig | null;
-  setInvoicingIntegrations?: React.Dispatch<React.SetStateAction<ExternalInvoicingConfig | null>>;
-  aiCustomTemplates?: AiCustomTemplate[];
-  setAiCustomTemplates?: React.Dispatch<React.SetStateAction<AiCustomTemplate[]>>;
 
   /** Licence for this installation — drives the Licence tab and the seat limit. */
   licenseState?: LicenseState | null;
@@ -706,10 +703,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setFinancialMode,
   companyBillingSettings,
   setCompanyBillingSettings,
-  invoicingIntegrations,
-  setInvoicingIntegrations,
-  aiCustomTemplates = [],
-  setAiCustomTemplates,
   licenseState = null,
   onLicenseStateChange,
   customDashboards = [],
@@ -1523,45 +1516,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     (window as any).showToast?.(t("Error loading company details.", "Chyba pri načítaní údajov z registra.", "Hiba a cégadatok betöltésekor."), "error");
   };
 
-  // External Invoicing Integrations State
-  const [extInvoicingForm, setExtInvoicingForm] = React.useState<ExternalInvoicingConfig>({
-    superfaktura: {
-      enabled: invoicingIntegrations?.superfaktura?.enabled || false,
-      email: invoicingIntegrations?.superfaktura?.email || "",
-      apiKey: invoicingIntegrations?.superfaktura?.apiKey || "",
-      companyId: invoicingIntegrations?.superfaktura?.companyId || "",
-      sandbox: invoicingIntegrations?.superfaktura?.sandbox || false
-    },
-    idoklad: {
-      enabled: invoicingIntegrations?.idoklad?.enabled || false,
-      clientId: invoicingIntegrations?.idoklad?.clientId || "",
-      clientSecret: invoicingIntegrations?.idoklad?.clientSecret || "",
-      sandbox: invoicingIntegrations?.idoklad?.sandbox || false
-    }
-  });
-
-  React.useEffect(() => {
-    if (invoicingIntegrations) {
-      setExtInvoicingForm(invoicingIntegrations);
-    }
-  }, [invoicingIntegrations]);
-
-  const [testingSf, setTestingSf] = React.useState(false);
-  const [sfStatus, setSfStatus] = React.useState<{ success: boolean; message: string } | null>(null);
-  const [testingIdk, setTestingIdk] = React.useState(false);
-  const [idkStatus, setIdkStatus] = React.useState<{ success: boolean; message: string } | null>(null);
-
   const [isUploadingLogo, setIsUploadingLogo] = React.useState(false);
-  const [isUploadingPdf, setIsUploadingPdf] = React.useState(false);
-  const [pdfUploadStatus, setPdfUploadStatus] = React.useState<string | null>(null);
 
   const handleSaveBillingSettings = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    // The offer defaults are edited in the Price Offers module: keep whatever is
+    // stored there rather than the copy this form loaded.
     if (setCompanyBillingSettings) {
-      setCompanyBillingSettings(billingForm);
-    }
-    if (setInvoicingIntegrations) {
-      setInvoicingIntegrations(extInvoicingForm);
+      setCompanyBillingSettings(prev => keepStoredOfferDefaults(billingForm, prev));
     }
     (window as any).showToast(t("Invoicing settings saved successfully!", "Fakturačné nastavenia boli úspešne uložené!", "A számlázási beállítások sikeresen elmentve!"));
   };
@@ -1587,108 +1549,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       (window as any).showToast("Chyba pri nahrávaní loga: " + err.message, "error");
     } finally {
       setIsUploadingLogo(false);
-    }
-  };
-
-  const handleTestSuperfaktura = async () => {
-    setTestingSf(true);
-    setSfStatus(null);
-    try {
-      const res = await fetch("/api/superfaktura.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "test_connection",
-          email: extInvoicingForm.superfaktura?.email,
-          apiKey: extInvoicingForm.superfaktura?.apiKey,
-          companyId: extInvoicingForm.superfaktura?.companyId,
-          sandbox: extInvoicingForm.superfaktura?.sandbox
-        })
-      });
-      const data = await res.json();
-      setSfStatus(data);
-    } catch (err: any) {
-      setSfStatus({ success: false, message: "Sieťová chyba: " + err.message });
-    } finally {
-      setTestingSf(false);
-    }
-  };
-
-  const handleTestIdoklad = async () => {
-    setTestingIdk(true);
-    setIdkStatus(null);
-    try {
-      const res = await fetch("/api/idoklad.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "test_connection",
-          clientId: extInvoicingForm.idoklad?.clientId,
-          clientSecret: extInvoicingForm.idoklad?.clientSecret,
-          sandbox: extInvoicingForm.idoklad?.sandbox
-        })
-      });
-      const data = await res.json();
-      setIdkStatus(data);
-    } catch (err: any) {
-      setIdkStatus({ success: false, message: "Sieťová chyba: " + err.message });
-    } finally {
-      setTestingIdk(false);
-    }
-  };
-
-  const handleUploadAndGenerateAiTemplate = async (file: File) => {
-    setIsUploadingPdf(true);
-    setPdfUploadStatus(t("Uploading and analyzing PDF with AI...", "Nahrávam a analyzujem PDF pomocou AI...", "PDF feltöltése és elemzése AI-val..."));
-    // A missing endpoint answers with the server's HTML 404 page, and a bare
-    // res.json() turns that into "Unexpected token '<' ... is not valid JSON",
-    // which tells the user nothing. Name the endpoint and the status instead.
-    const readJson = async (res: Response, endpoint: string) => {
-      const body = await res.text();
-      try {
-        return JSON.parse(body);
-      } catch {
-        throw new Error(`${endpoint} (HTTP ${res.status})`);
-      }
-    };
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("eventId", "custom-template-pdf");
-      const uploadRes = await fetch("/upload.php", {
-        method: "POST",
-        body: formData
-      });
-      const uploadData = await readJson(uploadRes, "/upload.php");
-      if (!uploadData.success) {
-        // upload.php reports failures under `error`, not `message`.
-        throw new Error(uploadData.error || uploadData.message || "Upload failed");
-      }
-
-      const genRes = await fetch("/api/generate_pdf_template.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pdfName: file.name,
-          pdfUrl: uploadData.filePath,
-          pdfText: uploadData.extractedText || ""
-        })
-      });
-      const genData = await readJson(genRes, "/api/generate_pdf_template.php");
-      if (genData.success && genData.template) {
-        if (setAiCustomTemplates) {
-          setAiCustomTemplates(prev => [genData.template, ...prev]);
-        }
-        setPdfUploadStatus(null);
-        (window as any).showToast(t("AI Custom Template successfully generated and saved!", "Vlastná AI šablóna bola úspešne vygenerovaná a uložená!", "Egyedi AI sablon sikeresen létrehozva!"));
-      } else {
-        throw new Error(genData.message || "Template generation failed");
-      }
-    } catch (err: any) {
-      setPdfUploadStatus(null);
-      (window as any).showToast("Chyba pri generovaní AI šablóny: " + err.message, "error");
-    } finally {
-      setIsUploadingPdf(false);
     }
   };
 
@@ -3453,10 +3313,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div>
                   <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
                     <FileText className="h-4.5 w-4.5 text-indigo-600" />
-                    {t("Invoicing, Billing & PDF Templates", "Fakturácia, firemné údaje a PDF šablóny", "Számlázás, cégadatok és PDF sablonok")}
+                    {t("Invoicing & Company Billing", "Fakturácia a firemné údaje", "Számlázás és cégadatok")}
                   </h3>
                   <p className="text-ui text-slate-500 font-medium mt-0.5">
-                    {t("Configure your company billing identity, default warranty terms, SuperFaktura/iDoklad APIs, and AI custom templates.", "Nastavte firemné identifikačné údaje, predvolené texty záruk, SuperFaktúru/iDoklad a AI šablóny.", "Állítsa be a cég számlázási adatait, alapértelmezett garanciális feltételeit és AI sablonjait.")}
+                    {t("Configure your company billing identity, bank account, payment terms and VAT rates. Price offer defaults, connectors and AI templates are in the Price Offers module.", "Nastavte firemné identifikačné údaje, bankové spojenie, splatnosť a sadzby DPH. Predvolené texty ponúk, prepojenia a AI šablóny sú v module Cenové ponuky.", "Állítsa be a cég számlázási adatait, bankszámláját, fizetési feltételeit és ÁFA-kulcsait. Az ajánlatok alapértékei, kapcsolatai és AI sablonjai az Árajánlatok modulban találhatók.")}
                   </p>
                 </div>
 
@@ -3745,7 +3605,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="space-y-4 pt-4 border-t border-slate-100">
                 <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
                   <Database className="h-4 w-4 text-indigo-600" />
-                  3. {t("Bank Accounts & Default Terms", "Bankové spojenie a predvolené podmienky", "Bankszámla és alapértelmezett feltételek")}
+                  3. {t("Bank Account, Payment Terms & VAT", "Bankové spojenie, splatnosť a DPH", "Bankszámla, fizetési feltételek és ÁFA")}
                 </h4>
 
                 <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
@@ -3784,37 +3644,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Social Proof / Reference Clients", "Referenční klienti v pätičke ponuky", "Referenciák")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.defaultSocialProof || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, defaultSocialProof: e.target.value }))}
-                      placeholder={t("e.g. Client A · Client B · Client C", "napr. Klient A · Klient B · Klient C", "pl. A ügyfél · B ügyfél · C ügyfél")}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Default Warranty Guarantee Text", "Predvolená záruka", "Garancia szövege")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.defaultWarrantyText || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, defaultWarrantyText: e.target.value }))}
-                      placeholder={t("e.g. 10 years", "napr. 10 rokov", "pl. 10 év")}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-                </div>
-
-                {/* Remaining document defaults. Every field here pre-fills a new
-                    document in the Invoicing wizard, so leaving one blank simply
-                    means that block is omitted from the printed document. */}
                 {/* VAT Rates & Defaults Configuration */}
                 <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3960,342 +3789,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Default Project Duration", "Predvolená dĺžka realizácie", "Alapértelmezett időtartam")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.defaultDurationText || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, defaultDurationText: e.target.value }))}
-                      placeholder={t("e.g. 2–3 days", "napr. 2–3 dni", "pl. 2–3 nap")}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Default Start Date Text", "Predvolený termín nástupu", "Alapértelmezett kezdés")}
-                    </label>
-                    <input
-                      type="text"
-                      value={billingForm.defaultStartDateText || ""}
-                      onChange={e => setBillingForm(prev => ({ ...prev, defaultStartDateText: e.target.value }))}
-                      placeholder={t("e.g. by agreement", "napr. dohodou", "pl. megegyezés szerint")}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="type-overline text-slate-600 block mb-1">
-                    {t("Default Next Step / Call to Action", "Predvolený text „Ďalší krok“", "Alapértelmezett következő lépés")}
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={billingForm.defaultNextSteps || ""}
-                    onChange={e => setBillingForm(prev => ({ ...prev, defaultNextSteps: e.target.value }))}
-                    placeholder={t(
-                      "e.g. We would gladly send our technician for a free site survey…",
-                      "napr. Radi k vám pošleme nášho technika na bezplatnú obhliadku…",
-                      "pl. Szívesen kiküldjük technikusunkat egy ingyenes felmérésre…"
-                    )}
-                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui resize-y leading-relaxed"
-                  />
-                </div>
-
-                <div>
-                  <label className="type-overline text-slate-600 block mb-2">
-                    {t("Default Value Proposition Cards (4)", "Predvolené USP karty (4)", "Alapértelmezett USP kártyák (4)")}
-                  </label>
-                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
-                    {[0, 1, 2, 3].map(idx => {
-                      const card = billingForm.defaultUspCards?.[idx] || { title: "", subtitle: "" };
-                      const updateCard = (patch: { title?: string; subtitle?: string }) =>
-                        setBillingForm(prev => {
-                          const next = [0, 1, 2, 3].map(i => prev.defaultUspCards?.[i] || { title: "", subtitle: "" });
-                          next[idx] = { ...next[idx], ...patch };
-                          return { ...prev, defaultUspCards: next };
-                        });
-                      return (
-                        <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-1.5">
-                          <input
-                            type="text"
-                            value={card.title}
-                            onChange={e => updateCard({ title: e.target.value })}
-                            placeholder={t(`Benefit ${idx + 1}`, `Výhoda ${idx + 1}`, `${idx + 1}. előny`)}
-                            className="font-bold text-ui w-full bg-transparent border-b border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-0.5"
-                          />
-                          <input
-                            type="text"
-                            value={card.subtitle}
-                            onChange={e => updateCard({ subtitle: e.target.value })}
-                            placeholder={t("Short description", "Krátky popis", "Rövid leírás")}
-                            className="text-caption text-slate-500 w-full bg-transparent focus:outline-none py-0.5"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 4: External Invoicing Connectors */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                  <Share2 className="h-4 w-4 text-indigo-600" />
-                  4. {t("External Accounting APIs (SuperFaktúra & iDoklad)", "Externé účtovníctvo (SuperFaktúra a iDoklad)", "Külső számlázó integrációk")}
-                </h4>
-
-                <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
-                  {/* SuperFaktura Card */}
-                  <div className="p-5 bg-slate-50/80 border border-slate-200/90 rounded-2xl space-y-3.5">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                      <div className="font-bold text-ui text-slate-900 flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-blue-500"></span>
-                        SuperFaktúra API
-                      </div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={extInvoicingForm.superfaktura?.enabled || false}
-                          onChange={e => setExtInvoicingForm(prev => ({
-                            ...prev,
-                            superfaktura: { ...prev.superfaktura!, enabled: e.target.checked }
-                          }))}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                        />
-                        <span className="text-ui font-bold text-slate-700">{t("Active", "Aktívne", "Aktív")}</span>
-                      </label>
-                    </div>
-
-                    <div className="space-y-2.5">
-                      <div>
-                        <label className="type-overline text-slate-500 block mb-1">SuperFaktúra Email</label>
-                        <input
-                          type="email"
-                          value={extInvoicingForm.superfaktura?.email || ""}
-                          onChange={e => setExtInvoicingForm(prev => ({
-                            ...prev,
-                            superfaktura: { ...prev.superfaktura!, email: e.target.value }
-                          }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
-                          placeholder="vas@email.sk"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="type-overline text-slate-500 block mb-1">API Kľúč (API Key)</label>
-                        <input
-                          type="password"
-                          value={extInvoicingForm.superfaktura?.apiKey || ""}
-                          onChange={e => setExtInvoicingForm(prev => ({
-                            ...prev,
-                            superfaktura: { ...prev.superfaktura!, apiKey: e.target.value }
-                          }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
-                          placeholder="••••••••••••••••"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="type-overline text-slate-500 block mb-1">Company ID (Voliteľné)</label>
-                          <input
-                            type="text"
-                            value={extInvoicingForm.superfaktura?.companyId || ""}
-                            onChange={e => setExtInvoicingForm(prev => ({
-                              ...prev,
-                              superfaktura: { ...prev.superfaktura!, companyId: e.target.value }
-                            }))}
-                            className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
-                            placeholder="napr. 12345"
-                          />
-                        </div>
-                        <div className="flex items-center pt-5">
-                          <label className="flex items-center gap-1.5 cursor-pointer text-ui font-medium text-slate-600">
-                            <input
-                              type="checkbox"
-                              checked={extInvoicingForm.superfaktura?.sandbox || false}
-                              onChange={e => setExtInvoicingForm(prev => ({
-                                ...prev,
-                                superfaktura: { ...prev.superfaktura!, sandbox: e.target.checked }
-                              }))}
-                              className="rounded text-indigo-600"
-                            />
-                            Sandbox test
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 flex items-center justify-between">
-                        <button
-                          type="button"
-                          disabled={testingSf || !extInvoicingForm.superfaktura?.apiKey}
-                          onClick={handleTestSuperfaktura}
-                          className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-ui font-bold text-slate-700 shadow-sm cursor-pointer transition-all disabled:opacity-40"
-                        >
-                          {testingSf ? t("Testing...", "Testujem...", "Tesztelés...") : t("Test Connection", "Otestovať pripojenie", "Kapcsolat tesztelése")}
-                        </button>
-
-                        {sfStatus && (
-                          <span className={cn("text-ui font-bold", sfStatus.success ? "text-emerald-600" : "text-rose-600")}>
-                            {sfStatus.message}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* iDoklad Card */}
-                  <div className="p-5 bg-slate-50/80 border border-slate-200/90 rounded-2xl space-y-3.5">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                      <div className="font-bold text-ui text-slate-900 flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                        iDoklad API
-                      </div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={extInvoicingForm.idoklad?.enabled || false}
-                          onChange={e => setExtInvoicingForm(prev => ({
-                            ...prev,
-                            idoklad: { ...prev.idoklad!, enabled: e.target.checked }
-                          }))}
-                          className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                        />
-                        <span className="text-ui font-bold text-slate-700">{t("Active", "Aktívne", "Aktív")}</span>
-                      </label>
-                    </div>
-
-                    <div className="space-y-2.5">
-                      <div>
-                        <label className="type-overline text-slate-500 block mb-1">Client ID</label>
-                        <input
-                          type="text"
-                          value={extInvoicingForm.idoklad?.clientId || ""}
-                          onChange={e => setExtInvoicingForm(prev => ({
-                            ...prev,
-                            idoklad: { ...prev.idoklad!, clientId: e.target.value }
-                          }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
-                          placeholder="client-id-uuid"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="type-overline text-slate-500 block mb-1">Client Secret</label>
-                        <input
-                          type="password"
-                          value={extInvoicingForm.idoklad?.clientSecret || ""}
-                          onChange={e => setExtInvoicingForm(prev => ({
-                            ...prev,
-                            idoklad: { ...prev.idoklad!, clientSecret: e.target.value }
-                          }))}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
-                          placeholder="••••••••••••••••"
-                        />
-                      </div>
-
-                      <div className="pt-2 flex items-center justify-between">
-                        <button
-                          type="button"
-                          disabled={testingIdk || !extInvoicingForm.idoklad?.clientSecret}
-                          onClick={handleTestIdoklad}
-                          className="px-3 py-1.5 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-ui font-bold text-slate-700 shadow-sm cursor-pointer transition-all disabled:opacity-40"
-                        >
-                          {testingIdk ? t("Testing...", "Testujem...", "Tesztelés...") : t("Test Connection", "Otestovať pripojenie", "Kapcsolat tesztelése")}
-                        </button>
-
-                        {idkStatus && (
-                          <span className={cn("text-ui font-bold", idkStatus.success ? "text-emerald-600" : "text-rose-600")}>
-                            {idkStatus.message}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 5: AI Custom PDF Template Generator */}
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-2">
-                  <div>
-                    <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-purple-600" />
-                      5. {t("AI Custom PDF Template Generator", "AI Generátor vlastných PDF šablón", "AI egyedi PDF sablon generátor")}
-                    </h4>
-                    <p className="text-ui text-slate-500 mt-0.5">
-                      {t("Upload any sample quote/invoice PDF. AI will extract colors, styles, and generate a customized template with all mandatory fields guaranteed.", "Nahrajte ukážkové PDF cenovej ponuky. AI analyzuje dizajn a vytvorí šablónu s garanciou všetkých povinných údajov.", "Töltsön fel egy mintát, és az AI generál egy kompatibilis sablont.")}
-                    </p>
-                  </div>
-
-                  <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-ui font-bold shadow-md cursor-pointer transition-all flex items-center gap-2 shrink-0">
-                    <Plus className="h-4 w-4" />
-                    {isUploadingPdf ? t("Processing with AI...", "Analyzujem pomocou AI...", "Feldolgozás...") : t("Upload PDF & Generate Template", "Nahrať PDF a vygenerovať šablónu", "PDF feltöltése és generálás")}
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleUploadAndGenerateAiTemplate(file);
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {pdfUploadStatus && (
-                  <div className="p-3 bg-purple-50 border border-purple-200 text-purple-800 rounded-xl text-ui font-semibold flex items-center gap-2 animate-pulse">
-                    <Sparkles className="h-4 w-4 text-purple-600" />
-                    {pdfUploadStatus}
-                  </div>
-                )}
-
-                {/* Templates List */}
-                <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-4 pt-2">
-                  {aiCustomTemplates.map(template => (
-                    <div key={template.id} className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3 relative group">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="font-bold text-ui text-slate-900">{template.name}</div>
-                          <div className="text-caption text-slate-500">{template.description || "AI vygenerovaná šablóna"}</div>
-                        </div>
-                        <HoldToConfirmButton
-                            tone="danger"
-                            lang={userLanguage}
-                            what={template.name}
-                            onConfirm={() => {
-                            if (!setAiCustomTemplates) return;
-                            deleteRecordsWithUndo({
-                              collection: "aiCustomTemplates",
-                              allRecords: aiCustomTemplates,
-                              targets: [template],
-                              setRecords: setAiCustomTemplates,
-                              lang: userLanguage,
-                              entity: "template",
-                              titleOf: (x) => x.name,
-                            });
-                          }}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded-md"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </HoldToConfirmButton>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
-                        <span className="type-overline text-slate-400">{t("Palette:", "Paleta:", "Paletta:")}</span>
-                        <div className="flex items-center gap-1">
-                          <span className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: template.colors.primary }}></span>
-                          <span className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: template.colors.accent }}></span>
-                          <span className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: template.colors.secondary }}></span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
 
             </div>

@@ -1083,8 +1083,8 @@ export interface CompanyBillingSettings {
   swift: string;
   bankName: string;
   
-  // Default terms. Seeded into every new document by InvoicingView, so the names
-  // here must match the Settings → Invoicing form that writes them.
+  // Default terms. Seeded into every new price offer by PriceOffersView (offer texts), so the names
+  // here must match the forms that write them: Settings → Invoicing (identity, bank, VAT) and the Price Offers settings (offer texts).
   defaultPaymentDueDays: number;
   defaultVatRate: number;
   vatRates?: number[]; // Configured VAT rates for orders & invoices (defaults to [23, 19, 10, 5, 0])

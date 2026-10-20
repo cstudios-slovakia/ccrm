@@ -156,7 +156,7 @@ const AutomationView = safeLazy(() => import("./components/AutomationView").then
 const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").then(m => ({ default: m.SocialMediaView })));
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
-const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
+const PriceOffersView = safeLazy(() => import("./components/PriceOffersView").then(m => ({ default: m.PriceOffersView })));
 const EmployeesView = safeLazy(() => import("./components/employees/EmployeesView").then(m => ({ default: m.EmployeesView })));
 const OrdersView = safeLazy(() => import("./components/OrdersView").then(m => ({ default: m.OrdersView })));
 const TicketsView = safeLazy(() => import("./components/TicketsView").then(m => ({ default: m.TicketsView })));
@@ -379,9 +379,10 @@ function App() {
       penzugy: "financial",
       penzugyek: "financial",
       offers: "invoices",
-      invoice: "invoices",
-      szamlak: "invoices",
-      faktury: "invoices",
+      // Invoices are listed in the Documents registry, not in the Price Offers module.
+      invoice: "files",
+      szamlak: "files",
+      faktury: "files",
       kanban: "tasks",
       task: "tasks",
       meeting: "meetings",
@@ -1132,7 +1133,7 @@ ${log.payload || ''}
           viewName = getTranslation(userLanguage, "sidebar.employees");
           break;
         case "invoices":
-          viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
+          viewName = t("Price Offers", "Cenové ponuky", "Árajánlatok");
           break;
         case "orders":
           viewName = t("Orders", "Objednávky", "Rendelések");
@@ -3277,10 +3278,6 @@ ${log.payload || ''}
           setTicketSettings={setTicketSettings}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
-          invoicingIntegrations={invoicingIntegrations}
-          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
-          aiCustomTemplates={aiCustomTemplates}
-          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
           customDashboards={customDashboards}
@@ -3559,10 +3556,6 @@ ${log.payload || ''}
           setFinancialMode={updateFinancialModeAndSync}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
-          invoicingIntegrations={invoicingIntegrations}
-          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
-          aiCustomTemplates={aiCustomTemplates}
-          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
@@ -3781,16 +3774,20 @@ ${log.payload || ''}
         );
       case "invoices":
         return (
-          <InvoicingView
+          <PriceOffersView
             access={access.module("invoices")}
+            canConfigure={access.canEdit("general_config")}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
             leads={leads}
             setLeads={updateLeadsAndSync}
             warehouseItems={warehouseItems}
             companyBillingSettings={companyBillingSettings}
+            setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
             aiCustomTemplates={aiCustomTemplates}
+            setAiCustomTemplates={updateAiCustomTemplatesAndSync}
             invoicingIntegrations={invoicingIntegrations}
+            setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
             currentUser={activeUser}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
@@ -3860,6 +3857,10 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             currencyCode={currencyCode}
             access={access.module("files")}
+            invoicesOffers={invoicesOffers}
+            setInvoicesOffers={updateInvoicesOffersAndSync}
+            companyBillingSettings={companyBillingSettings}
+            aiCustomTemplates={aiCustomTemplates}
           />
         );
       case "personal-settings":

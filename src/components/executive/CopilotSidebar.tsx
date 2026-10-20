@@ -444,18 +444,25 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     ) {
       targetHash = "#financial";
     } else if (
+      typeLower === "offers" ||
+      typeLower === "price_offers" ||
+      targetLower === "offers" ||
+      targetLower === "ajanlatok" ||
+      targetLower === "ajánlatok"
+    ) {
+      // Price offers module (its route id is still "invoices").
+      targetHash = "#invoices";
+    } else if (
       typeLower === "invoices" || 
       typeLower === "invoice" || 
-      typeLower === "offers" ||
       targetLower === "invoices" ||
       targetLower === "invoice" ||
       targetLower === "szamlak" ||
       targetLower === "számlák" ||
       targetLower === "faktury"
     ) {
-      targetHash = cleanTarget && cleanTarget !== "invoices" && cleanTarget !== "invoice" && cleanTarget !== "offers" 
-        ? `#invoices?invoice=${encodeURIComponent(cleanTarget)}` 
-        : "#invoices";
+      // Invoices are listed in the Documents registry.
+      targetHash = "#files";
     } else if (typeLower === "tasks" || typeLower === "task" || targetLower === "tasks" || targetLower === "kanban" || targetLower === "feladatok") {
       targetHash = "#tasks";
     } else if (typeLower === "warehouse" || targetLower === "warehouse" || targetLower === "raktar" || targetLower === "raktár" || targetLower === "sklad") {

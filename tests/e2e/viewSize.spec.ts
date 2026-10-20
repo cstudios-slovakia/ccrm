@@ -41,7 +41,7 @@ const MODULES = [
   { name: 'Files', hash: '#files' },
   { name: 'Email', hash: '#email' },
   { name: 'Automation', hash: '#automation' },
-  { name: 'Invoicing', hash: '#invoices' },
+  { name: 'Price Offers', hash: '#invoices' },
   { name: 'Updates', hash: '#updates' },
   { name: 'Overview', hash: '#overview' },
   { name: 'Tasks', hash: '#tasks' },

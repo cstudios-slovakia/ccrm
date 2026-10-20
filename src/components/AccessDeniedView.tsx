@@ -35,7 +35,7 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
     leads: ["Leads", "Leady", "Érdeklődők"],
     clients: ["Clients", "Klienti", "Ügyfelek"],
     projects: ["Projects", "Projekty", "Projektek"],
-    invoices: ["Invoices & Offers", "Cenové ponuky & Faktúry", "Ajánlatok és számlák"],
+    invoices: ["Price Offers", "Cenové ponuky", "Árajánlatok"],
     warehouse: ["Warehouse", "Sklad", "Raktár"],
     financial: ["Financial Management", "Financie", "Pénzügyek"],
     meetings: ["Meetings", "Stretnutia", "Megbeszélések"],

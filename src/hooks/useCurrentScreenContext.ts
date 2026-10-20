@@ -119,9 +119,16 @@ export function useCurrentScreenContext(activeTab: string, language: Language = 
         };
       }
 
+      case "invoices":
+        return {
+          route,
+          category: "finances",
+          title: language === "sk" ? "Cenové ponuky" : language === "hu" ? "Árajánlatok" : "Price Offers",
+          summary: "The user is on the Price Offers module reviewing issued price offers, their status (draft, sent, approved, rejected), offered and approved volume, and win rate. Invoices are not here — they are listed in the Documents registry."
+        };
+
       case "finances":
-      case "financial":
-      case "invoices": {
+      case "financial": {
         const invoiceNum = params.get("invoice");
         return {
           route,

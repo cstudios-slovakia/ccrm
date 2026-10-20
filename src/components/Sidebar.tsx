@@ -977,7 +977,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6", isPurpleToGreen: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
-      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky" : systemLanguage === "hu" ? "Árajánlatok" : "Price Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
       { id: "orders", label: systemLanguage === "sk" ? "Objednávky" : systemLanguage === "hu" ? "Rendelések" : "Orders", icon: Icons.ShoppingCart || Coins, color: "#0284c7" },
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
