@@ -57,7 +57,12 @@ if (empty($host) || empty($dbname) || empty($user)) {
 // caller names — a network probe into whatever the server can reach, and an
 // oracle for guessing database credentials. It is still allowed before install
 // (the wizard needs it) and for admins afterwards.
-$isInstalled = file_exists($configFile) && @filesize($configFile) > 100;
+// config.php can live in the app root or in public/ (auth.php, mcp.php and `ccrm`
+// all look in both), so an install found in EITHER place counts as installed —
+// otherwise an instance whose config sits in the other directory looks fresh to
+// this wizard, which then drops its tables (VULN-25).
+$isInstalled = (file_exists($configFile) && @filesize($configFile) > 100)
+    || (file_exists(dirname(__DIR__) . '/public/config.php') && @filesize(dirname(__DIR__) . '/public/config.php') > 100);
 if ($isInstalled) {
     if ($installType !== 'test_only') {
         http_response_code(403);
@@ -129,6 +134,38 @@ function get_db_connection() {
 }
 ";
 
+
+// 2b. Pre-flight checks. Everything below drops and re-creates core tables, so
+// anything that can make the install fail LATER must be settled BEFORE the first
+// DROP: the old order wiped the database and only then discovered, 300 lines on,
+// that config.php could not be written, leaving a destroyed database and a wizard
+// that was still open (VULN-25).
+//  - config.php must be writable (the file itself, or its directory when new).
+if (file_exists($configFile) ? !is_writable($configFile) : !is_writable(dirname($configFile))) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'The server cannot write config.php. Fix the directory permissions, then run the setup again. Nothing has been changed.']);
+    exit;
+}
+//  - one setup at a time: two concurrent requests would drop each other's tables.
+$setupLock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ccrm-setup-' . md5(__DIR__) . '.lock', 'c');
+if ($setupLock === false || !flock($setupLock, LOCK_EX | LOCK_NB)) {
+    http_response_code(409);
+    echo json_encode(['success' => false, 'message' => 'Another setup is already running. Wait for it to finish.']);
+    exit;
+}
+//  - never wipe a database that already holds CRM users, unless the operator has
+//    deliberately created an ALLOW_SETUP_RESET file in the application folder.
+$targetHasUsers = false;
+try {
+    $targetHasUsers = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn() > 0;
+} catch (\Throwable $e) {
+    // no users table yet: a fresh database
+}
+if ($targetHasUsers && !file_exists(dirname($configFile) . '/ALLOW_SETUP_RESET')) {
+    http_response_code(409);
+    echo json_encode(['success' => false, 'message' => 'This database already contains CRM users, so the setup will not overwrite it. To reinstall on purpose, create an empty file named ALLOW_SETUP_RESET in the application folder and run the setup again (delete it afterwards).']);
+    exit;
+}
 
 // 3. Apply schema (single source of truth) and seed.
 try {

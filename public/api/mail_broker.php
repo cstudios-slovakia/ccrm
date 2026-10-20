@@ -60,7 +60,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'test_credentials') {
         $storedEmail = ccrm_decrypt_email_settings(
             (is_array($storedMeta) && isset($storedMeta['emailSettings'])) ? $storedMeta['emailSettings'] : []
         );
-        $settings = ccrm_merge_secrets(is_array($settings) ? $settings : [], $storedEmail, ccrm_email_secret_keys());
+
+        // The stored password may only be used against the server it was saved
+        // for (VULN-11). If the posted host, port, account or provider differ from
+        // the stored ones, substituting it would deliver the saved secret to
+        // whatever server the caller named — so the password must be typed again.
+        $sameTarget = true;
+        foreach (['provider', 'imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'imapUsername', 'smtpUsername', 'username', 'exchangeUrl'] as $pinField) {
+            $posted = strtolower(trim((string)($settings[$pinField] ?? '')));
+            $saved  = strtolower(trim((string)($storedEmail[$pinField] ?? '')));
+            if ($posted !== $saved) {
+                $sameTarget = false;
+                break;
+            }
+        }
+        if ($sameTarget) {
+            $settings = ccrm_merge_secrets(is_array($settings) ? $settings : [], $storedEmail, ccrm_email_secret_keys());
+        } else {
+            foreach (ccrm_email_secret_keys() as $secretKey) {
+                if (isset($settings[$secretKey]) && $settings[$secretKey] === CCRM_SECRET_MASK) {
+                    echo json_encode(['success' => false, 'error' => 'Please re-enter the password when changing the server, port or account.']);
+                    exit;
+                }
+            }
+        }
+    }
+
+    // SSRF guard (VULN-03): this endpoint opens connections to a host the caller
+    // typed. Only public hosts on standard mail ports are allowed.
+    try {
+        $isExchange = (($settings['provider'] ?? '') === 'exchange');
+        $imapPort = (int)($settings['imapPort'] ?? 0);
+        if ($imapPort <= 0 && $isExchange) {
+            $imapPort = 993;
+        }
+        $smtpPort = (int)($settings['smtpPort'] ?? 0);
+        if ($smtpPort <= 0 && $isExchange) {
+            $smtpPort = 587;
+        }
+        ccrm_validate_external_mail_target(ccrm_resolve_mail_host($settings, 'imap'), $imapPort);
+        ccrm_validate_external_mail_target(ccrm_resolve_mail_host($settings, 'smtp'), $smtpPort);
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
     }
 
     $result = test_mail_connections($settings);

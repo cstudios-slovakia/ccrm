@@ -3006,6 +3006,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ccrm_heal_project_type_tables($pdo, $payload['projects'], $ragPdo ?? null);
         }
 
+        // Column healing for older databases. Every one of these is an ALTER TABLE,
+        // i.e. DDL, which MySQL answers with an implicit COMMIT: run inside the
+        // transaction below they silently committed the writes before them,
+        // made a later failure impossible to roll back, and then made the final
+        // commit() throw "There is no active transaction" (VULN-25). They belong here.
+        if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
+            if (!ccrm_column_exists($pdo, 'project_types', 'has_tickets')) {
+                try { $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_tickets` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_files`"); } catch (\Throwable $e) {}
+            }
+        }
+        if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
+            if (!ccrm_column_exists($pdo, 'projects', 'value')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'invoice_date') && ccrm_column_exists($pdo, 'projects', 'deadline')) {
+                $pdo->exec("ALTER TABLE `projects` CHANGE COLUMN `deadline` `invoice_date` DATE NULL");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'completion_deadline')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
+            }
+        }
+
         $pdo->beginTransaction();
 
         // 4.1. Save system settings & configurations.
@@ -3524,9 +3546,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.2.5. Synchronize Project Types & Projects
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
-            if (!ccrm_column_exists($pdo, 'project_types', 'has_tickets')) {
-                try { $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_tickets` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_files`"); } catch (\Throwable $e) {}
-            }
+            // (`has_tickets` column healing runs before the transaction opens — see above.)
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
             $processedPtIds = [];
             $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `has_invoice_date`, `deadline_warning_days`, `deadline_required`, `has_files`, `has_tickets`, `file_fields_json`, `list_columns_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `has_invoice_date`=VALUES(`has_invoice_date`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `has_tickets`=VALUES(`has_tickets`), `file_fields_json`=VALUES(`file_fields_json`), `list_columns_json`=VALUES(`list_columns_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
@@ -3645,15 +3665,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
-            if (!ccrm_column_exists($pdo, 'projects', 'value')) {
-                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");
-            }
-            if (!ccrm_column_exists($pdo, 'projects', 'invoice_date') && ccrm_column_exists($pdo, 'projects', 'deadline')) {
-                $pdo->exec("ALTER TABLE `projects` CHANGE COLUMN `deadline` `invoice_date` DATE NULL");
-            }
-            if (!ccrm_column_exists($pdo, 'projects', 'completion_deadline')) {
-                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
-            }
+            // (`value` / `invoice_date` / `completion_deadline` column healing runs
+            // before the transaction opens — see above.)
             $existingProjRows = $pdo->query("SELECT `id`, `ticket_widget_enabled`, `ticket_public_hash` FROM `projects`")->fetchAll(PDO::FETCH_ASSOC);
             $existingProjIds = [];
             $existingProjMap = [];
@@ -6416,7 +6429,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $pdo->commit();
+        // Defensive: a statement that sneaks DDL back into the block would have ended
+        // the transaction already; committing nothing must not turn into a 500.
+        if ($pdo->inTransaction()) {
+            $pdo->commit();
+        }
 
         // Immediately process pending workflow queue items
         try {

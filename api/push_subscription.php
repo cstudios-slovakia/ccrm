@@ -31,12 +31,33 @@ try {
     ccrm_apply_schema($pdo);
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
+    ccrm_log_exception($e);
+    echo json_encode(['success' => false, 'error' => 'Database connection failed.']);
     exit;
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = $_GET['action'] ?? '';
+
+// Every method needs a signed-in user: a subscription is a URL the server later
+// POSTs to, and it receives that user's notifications, so neither may be
+// registered, tested or removed anonymously (VULN-10). The identity comes from
+// the session only; a userName / userEmail / userId in the body is ignored.
+$sessionUser = ccrm_require_auth();
+$userId = (string)$sessionUser['id'];
+$userName = '';
+$userEmail = (string)($sessionUser['email'] ?? '');
+try {
+    $nameStmt = $pdo->prepare("SELECT `name`, `email` FROM `users` WHERE `id` = ? LIMIT 1");
+    $nameStmt->execute([$userId]);
+    $userRow = $nameStmt->fetch(PDO::FETCH_ASSOC);
+    if ($userRow) {
+        $userName = trim((string)($userRow['name'] ?? ''));
+        $userEmail = trim((string)($userRow['email'] ?? $userEmail));
+    }
+} catch (\Throwable $e) {
+    ccrm_log_exception($e);
+}
 
 // 1. GET: Retrieve VAPID Public Key
 if ($method === 'GET' || $action === 'vapid_public_key') {
@@ -48,7 +69,8 @@ if ($method === 'GET' || $action === 'vapid_public_key') {
         ], JSON_UNESCAPED_SLASHES);
     } catch (\Throwable $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'error' => 'Could not load the push key.']);
     }
     exit;
 }
@@ -62,17 +84,8 @@ if (!is_array($body)) {
 
 // 2. POST: Test Notification Dispatch
 if ($method === 'POST' && $action === 'test') {
-    ccrm_start_session();
-    $sessionUser = ccrm_current_user();
-    $targetUser = $body['userName'] ?? ($sessionUser['name'] ?? null);
-    $targetEmail = $body['userEmail'] ?? ($sessionUser['email'] ?? null);
-
-    $userTarget = $targetUser ?: $targetEmail;
-    if (!$userTarget) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'Target user name or email is required.']);
-        exit;
-    }
+    // Only ever the caller's own devices, matched on the account id.
+    $userTarget = $userId;
 
     $title = 'CCRM Notification Test';
     $msg = 'Push notifications are working perfectly on this device! 🎉';
@@ -98,11 +111,13 @@ if ($method === 'POST') {
         exit;
     }
 
-    ccrm_start_session();
-    $sessionUser = ccrm_current_user();
-    $userId = $sessionUser['id'] ?? null;
-    $userName = trim((string)($body['userName'] ?? ($sessionUser['name'] ?? '')));
-    $userEmail = trim((string)($body['userEmail'] ?? ($sessionUser['email'] ?? '')));
+    $endpointError = ccrm_validate_push_endpoint($endpoint);
+    if ($endpointError !== null) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => $endpointError]);
+        exit;
+    }
+
     $userAgent = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
 
     $endpointHash = hash('sha256', $endpoint);
@@ -113,9 +128,9 @@ if ($method === 'POST') {
             "INSERT INTO `push_subscriptions` (`id`, `user_id`, `user_name`, `user_email`, `endpoint`, `endpoint_hash`, `p256dh`, `auth`, `user_agent`)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
-               `user_id` = COALESCE(VALUES(`user_id`), `user_id`),
-               `user_name` = COALESCE(NULLIF(VALUES(`user_name`), ''), `user_name`),
-               `user_email` = COALESCE(NULLIF(VALUES(`user_email`), ''), `user_email`),
+               `user_id` = VALUES(`user_id`),
+               `user_name` = VALUES(`user_name`),
+               `user_email` = VALUES(`user_email`),
                `p256dh` = VALUES(`p256dh`),
                `auth` = VALUES(`auth`),
                `user_agent` = VALUES(`user_agent`),
@@ -139,7 +154,8 @@ if ($method === 'POST') {
         ]);
     } catch (\Throwable $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'error' => 'Database error.']);
     }
     exit;
 }
@@ -155,8 +171,9 @@ if ($method === 'DELETE') {
 
     $endpointHash = hash('sha256', $endpoint);
     try {
-        $stmt = $pdo->prepare("DELETE FROM `push_subscriptions` WHERE `endpoint_hash` = ?");
-        $stmt->execute([$endpointHash]);
+        // Own subscriptions only (plus orphans that predate ownership checks).
+        $stmt = $pdo->prepare("DELETE FROM `push_subscriptions` WHERE `endpoint_hash` = ? AND (`user_id` = ? OR `user_id` IS NULL)");
+        $stmt->execute([$endpointHash, $userId]);
 
         echo json_encode([
             'success' => true,
@@ -164,7 +181,8 @@ if ($method === 'DELETE') {
         ]);
     } catch (\Throwable $e) {
         http_response_code(500);
-        echo json_encode(['success' => false, 'error' => 'Database error: ' . $e->getMessage()]);
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'error' => 'Database error.']);
     }
     exit;
 }

@@ -89,7 +89,8 @@ function ccrm_vec_schema(\PDO $vec): string {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         return '';
     } catch (\Throwable $e) {
-        return 'Could not prepare the vector index tables (MariaDB 11.8 or newer is required for VECTOR columns): ' . $e->getMessage();
+        error_log('[ccrm vector] schema: ' . $e->getMessage());
+        return 'Could not prepare the vector index tables (MariaDB 11.8 or newer is required for VECTOR columns). See the error log.';
     }
 }
 
@@ -202,7 +203,8 @@ function ccrm_vec_paged(\PDO $pdo, string $sql, string $idCol, callable $each): 
         ccrm_vec_paged_run($pdo, $sql, $idCol, $each);
     } catch (\Throwable $e) {
         // A schema difference in one table (an older install, a renamed column) must not stop the others.
-        $GLOBALS['ccrm_vec_warnings'][] = preg_replace('/\s+/', ' ', substr($sql, 0, 70)) . ' ... ' . $e->getMessage();
+        error_log('[ccrm vector] skipped source: ' . $e->getMessage());
+        $GLOBALS['ccrm_vec_warnings'][] = preg_replace('/\s+/', ' ', substr($sql, 0, 70)) . ' ... query failed';
     }
 }
 

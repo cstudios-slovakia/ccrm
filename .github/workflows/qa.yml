@@ -38,6 +38,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Fails the build when a dependency has a known high/critical advisory, so the
+      # lockfile cannot quietly drift back to a vulnerable version.
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
       - name: Type-check the app
         run: npx tsc -b
 

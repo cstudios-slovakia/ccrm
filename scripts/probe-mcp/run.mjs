@@ -62,8 +62,8 @@ const check = (name, ok, detail = '') => {
 const section = (t) => console.log(`\n== ${t}`);
 
 let rpcId = 1;
-async function rpc(method, params, token) {
-  const res = await fetch(`${ENDPOINT}?token=${encodeURIComponent(token)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params }) });
+async function rpc(method, params, token, keyHeaders = { 'X-CCRM-MCP-KEY': token }) {
+  const res = await fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json', ...keyHeaders }, body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method, params }) });
   return { status: res.status, headers: res.headers, body: await res.json().catch(() => null) };
 }
 async function call(token, tool, args = {}) {
@@ -210,6 +210,14 @@ async function authorizationChecks() {
   sql(`UPDATE users SET sessions_valid_from = NULL WHERE id = 'probe-editor';`);
   check('bad key is rejected (401)', (await rpc('tools/list', {}, 'nope')).status === 401, '');
   const res = await rpc('tools/list', {}, TOKENS.admin);
+  // The key may also arrive as X-API-Key (the claude.ai connector preset). Authorization: Bearer is
+  // not probed: this container's Apache drops that header before PHP sees it (the reason
+  // X-CCRM-MCP-KEY exists), so it cannot be tested here.
+  for (const [label, h] of [['X-CCRM-MCP-KEY', { 'X-CCRM-MCP-KEY': TOKENS.admin }], ['X-API-Key', { 'X-API-Key': TOKENS.admin }]]) {
+    check(`key sent as ${label} is accepted`, (await rpc('tools/list', {}, TOKENS.admin, h)).status === 200, '');
+  }
+  check('a bad X-API-Key is rejected (401)', (await rpc('tools/list', {}, 'nope', { 'X-API-Key': 'nope' })).status === 401, '');
+  check('no key header at all is rejected (401)', (await rpc('tools/list', {}, '', {})).status === 401, '');
   check('no wildcard CORS header', !res.headers.get('access-control-allow-origin'), res.headers.get('access-control-allow-origin'));
 
   // Errors do not leak SQL.

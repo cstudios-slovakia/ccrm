@@ -64,6 +64,7 @@ import { archiveLeadsWithUndo } from "../utils/leadActions";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { Chart as BundledChart } from "../utils/chartRuntime";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -197,11 +198,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
     const ctx = chartRef.current.getContext('2d');
     if (!ctx) return;
 
-    const ChartGlob = (window as any).Chart;
-    if (!ChartGlob) {
-      console.warn("Chart.js is not loaded yet");
-      return;
-    }
+    const ChartGlob: any = BundledChart;
 
     const fonts = chartFonts();
     chartInstanceRef.current = new ChartGlob(ctx, {

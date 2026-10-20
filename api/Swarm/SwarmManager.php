@@ -23,6 +23,7 @@ class SwarmManager {
     public function ensureRegistryTableExists(): void {
         $sql = "CREATE TABLE IF NOT EXISTS `swarm_simulations` (
             `id` VARCHAR(36) PRIMARY KEY,
+            `created_by` VARCHAR(50) NULL,
             `table_prefix` VARCHAR(50) NOT NULL,
             `title` VARCHAR(255) NOT NULL,
             `hypothesis` TEXT NOT NULL,
@@ -37,10 +38,53 @@ class SwarmManager {
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_swarm_status (`status`),
-            INDEX idx_swarm_created (`created_at`)
+            INDEX idx_swarm_created (`created_at`),
+            INDEX idx_swarm_owner (`created_by`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
 
         $this->pdo->exec($sql);
+
+        // Registries created before ownership existed have no `created_by` column.
+        try {
+            $has = $this->pdo->query("SHOW COLUMNS FROM `swarm_simulations` LIKE 'created_by'")->fetchAll();
+            if (!$has) {
+                $this->pdo->exec("ALTER TABLE `swarm_simulations` ADD COLUMN `created_by` VARCHAR(50) NULL AFTER `id`, ADD INDEX idx_swarm_owner (`created_by`)");
+            }
+        } catch (\Throwable $e) {
+            error_log('[swarm] could not add created_by: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Who owns a simulation and which CRM data sources it was grounded on, or null
+     * when it does not exist. A simulation's seed document and checkpoint carry
+     * whatever its creator was allowed to extract, so access follows the owner.
+     *
+     * @return array{created_by: ?string, sources: string[]}|null
+     */
+    public function getAccessInfo(string $simId): ?array {
+        $simId = self::sanitizeId($simId);
+        $stmt = $this->pdo->prepare("SELECT `created_by`, `checkpoint_state` FROM `swarm_simulations` WHERE `id` = ?");
+        $stmt->execute([$simId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        $state = !empty($row['checkpoint_state']) ? json_decode($row['checkpoint_state'], true) : [];
+        $sources = (is_array($state) && isset($state['crm_data_sources']) && is_array($state['crm_data_sources']))
+            ? array_values(array_filter($state['crm_data_sources'], 'is_string'))
+            : [];
+        return ['created_by' => $row['created_by'] !== null ? (string)$row['created_by'] : null, 'sources' => $sources];
+    }
+
+    /** How many simulations exist, overall or for one owner. */
+    public function countSimulations(?string $ownerId = null): int {
+        if ($ownerId === null) {
+            return (int)$this->pdo->query("SELECT COUNT(*) FROM `swarm_simulations`")->fetchColumn();
+        }
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM `swarm_simulations` WHERE `created_by` = ?");
+        $stmt->execute([$ownerId]);
+        return (int)$stmt->fetchColumn();
     }
 
     /**
@@ -54,7 +98,7 @@ class SwarmManager {
     /**
      * Creates a new simulation entry and sets up its isolated sharded tables.
      */
-    public function createSimulation(array $data): array {
+    public function createSimulation(array $data, ?string $ownerId = null): array {
         $rawId = $data['id'] ?? ('sim_' . substr(bin2hex(random_bytes(6)), 0, 10));
         $simId = self::sanitizeId($rawId);
         $prefix = 'sim' . preg_replace('/[^a-zA-Z0-9_]/', '', $simId) . '_';
@@ -84,8 +128,8 @@ class SwarmManager {
         // 2. Register into master table
         $stmt = $this->pdo->prepare("
             INSERT INTO `swarm_simulations` 
-            (`id`, `table_prefix`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, `total_rounds`, `status`, `checkpoint_state`)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (`id`, `created_by`, `table_prefix`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, `total_rounds`, `status`, `checkpoint_state`)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
                 `title` = VALUES(`title`),
                 `hypothesis` = VALUES(`hypothesis`),
@@ -96,7 +140,8 @@ class SwarmManager {
                 `status` = VALUES(`status`),
                 `checkpoint_state` = COALESCE(VALUES(`checkpoint_state`), `checkpoint_state`)
         ");
-        $stmt->execute([$simId, $prefix, $title, $hypothesis, $seedDoc, $lookbackMonths, $swarmScale, $totalRounds, $status, $checkpointJson]);
+        // `created_by` is set on insert only; the ON DUPLICATE branch never changes the owner.
+        $stmt->execute([$simId, $ownerId, $prefix, $title, $hypothesis, $seedDoc, $lookbackMonths, $swarmScale, $totalRounds, $status, $checkpointJson]);
 
         return [
             'success' => true,
@@ -278,7 +323,7 @@ class SwarmManager {
      */
     public function listSimulations(): array {
         $stmt = $this->pdo->query("
-            SELECT `id`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, 
+            SELECT `id`, `created_by`, `title`, `hypothesis`, `seed_document`, `lookback_months`, `swarm_scale`, 
                    `total_rounds`, `current_round`, `status`, `checkpoint_state`, `created_at`, `updated_at`
             FROM `swarm_simulations`
             ORDER BY `created_at` DESC

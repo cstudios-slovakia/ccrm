@@ -24,6 +24,21 @@ define('DB_PASS', 'your_database_password');
 // the address of the most recent successful sign-in.
 // define('CCRM_APP_URL', 'https://crm.example.sk/');
 
+// Optional switches. All are OFF by default (the secure setting); turn one on only
+// if you need what it allows.
+//
+// Outbound mail / push / vector-database connections refuse private, loopback and
+// link-local addresses (an attacker could otherwise aim them at your internal
+// network). Set this if your mail server lives on a private address (e.g. a mail
+// server on the LAN, or a Docker service name):
+// define('CCRM_ALLOW_PRIVATE_HOSTS', true);
+//
+// The MCP gateway (api/mcp.php) reads the access key from a request header
+// (Authorization: Bearer ..., X-CCRM-MCP-KEY, or X-API-Key with the raw key). A key in the URL (?token=...) is
+// written to access logs, so it is refused. Set this only for an old client that
+// cannot send headers:
+// define('CCRM_MCP_ALLOW_QUERY_TOKEN', true);
+
 try {
     $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4";
     $options = [

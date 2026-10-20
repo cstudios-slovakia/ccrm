@@ -54,10 +54,12 @@ if (!defined('CCRM_LOGIN_MAX_ATTEMPTS')) {
     define('CCRM_LOGIN_MAX_ATTEMPTS', 20);
 }
 $recentFailures = 0;
-$recordLoginFailure = function () use ($pdo, $clientIp, $email) {
+$recordLoginFailure = function (string $reason = 'bad password') use ($pdo, $clientIp, $email) {
     try {
         $pdo->prepare("INSERT INTO `login_attempts` (`ip`, `email`) VALUES (?, ?)")->execute([$clientIp, $email]);
     } catch (\Throwable $e) { /* ignore */ }
+    // Forensic trail (VULN-24). The attempted address is recorded, never the password.
+    ccrm_audit_log($pdo, ['id' => null, 'email' => mb_substr($email, 0, 255)], 'auth.login_failed', $reason);
 };
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS `login_attempts` (
@@ -78,6 +80,14 @@ try {
     $cntStmt->execute([$clientIp]);
     $recentFailures = (int)$cntStmt->fetchColumn();
     if ($recentFailures >= CCRM_LOGIN_MAX_ATTEMPTS) {
+        // Log the lockout once per window and address, not once per blocked request.
+        try {
+            $seen = $pdo->prepare("SELECT 1 FROM `audit_log` WHERE `action` = 'auth.lockout' AND `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE) LIMIT 1");
+            $seen->execute([$clientIp]);
+            if (!$seen->fetchColumn()) {
+                ccrm_audit_log($pdo, ['id' => null, 'email' => mb_substr($email, 0, 255)], 'auth.lockout', 'Too many failed logins from this address');
+            }
+        } catch (\Throwable $e) { /* never block the response on the audit trail */ }
         http_response_code(429);
         echo json_encode([
             'success' => false,
@@ -107,7 +117,7 @@ $genericError = [
 if (!$row) {
     // Constant-ish work factor to blunt user-enumeration timing.
     password_verify($password, '$2y$10$usesomesillystringforsalt0000000000000000000000000000');
-    $recordLoginFailure();
+    $recordLoginFailure('unknown account');
     http_response_code(401);
     echo json_encode($genericError);
     exit;
@@ -140,6 +150,7 @@ try {
 } catch (\Throwable $e) { /* ignore */ }
 
 $profile = ccrm_establish_login_session($pdo, $row, $remember);
+ccrm_audit_log($pdo, ['id' => $row['id'], 'email' => $row['email']], 'auth.login_success', $remember ? 'remember me' : null);
 
 echo json_encode([
     'success' => true,

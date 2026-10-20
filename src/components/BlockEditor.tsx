@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { cn } from "../utils/cn";
 import { getTranslation } from "../utils/translations";
+import { sanitizeRichHtml, htmlToText, escapeHtml } from "../utils/safeHtml";
 
 export interface EditorBlock {
   id: string;
@@ -64,10 +65,17 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
   const lastContentRef = useRef(content);
 
   useEffect(() => {
-    if (elementRef.current && elementRef.current.innerHTML !== content) {
-      elementRef.current.innerHTML = content;
-      lastContentRef.current = content;
+    const el = elementRef.current;
+    if (!el) return;
+    // Block content is shared workspace data (notes, AI/e-mail summaries), so it is
+    // sanitised before it reaches the DOM. Markup that came from this very element
+    // (the user typing) already equals the DOM and is left alone, so the caret stays.
+    if (el.innerHTML === content) return;
+    const safe = sanitizeRichHtml(content, "block");
+    if (el.innerHTML !== safe) {
+      el.innerHTML = safe;
     }
+    lastContentRef.current = safe;
   }, [content]);
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
@@ -344,10 +352,10 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, content: newContent } : b));
 
     // Check if user typed '/' to trigger formatting options popover
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = newContent;
-    const text = tempDiv.innerText || tempDiv.textContent || "";
-    
+    // Read the text out of an inert document: assigning stored markup to a detached
+    // element's innerHTML would still fire <img onerror> handlers.
+    const text = htmlToText(newContent);
+
     // Match '/' followed by characters at the end of the text
     const match = text.match(/\/([^\/\s]*)$/);
     if (match) {
@@ -435,17 +443,14 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
       if (b.id === id) {
         // Strip out the '/' character and query that triggered the menu (e.g. "/heading")
         let cleanContent = b.content;
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = cleanContent;
-        let text = tempDiv.innerText || tempDiv.textContent || "";
+        let text = htmlToText(cleanContent);
         const match = text.match(/\/([^\/\s]*)$/);
         if (match) {
           const index = text.lastIndexOf(match[0]);
           if (index !== -1) {
             text = text.slice(0, index);
           }
-          tempDiv.innerText = text;
-          cleanContent = tempDiv.innerHTML;
+          cleanContent = escapeHtml(text).replace(/\n/g, "<br>");
         }
         return { ...b, type, content: cleanContent, ...extra };
       }

@@ -41,6 +41,7 @@ import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { formatTimestampLocalized } from "../utils/localTime";
 import { LicenseSettings } from "./LicenseSettings";
+import { AuditLogSettings } from "./AuditLogSettings";
 import { linkedEmployeeOf } from "../utils/employeeLink";
 import { isAtSeatLimit } from "../utils/license";
 import type { LicenseState } from "../utils/license";
@@ -615,8 +616,12 @@ const SETTINGS_TABS = [
   { id: "social", permKey: "general_config" },
   { id: "ai", permKey: "ai_config" },
   { id: "errors", permKey: "general_config" },
+  { id: "audit", permKey: "general_config" },
   { id: "danger", permKey: "system_reset" }
 ] as const;
+
+// Tabs whose data endpoint is administrator-only on the server (api/audit_log.php).
+const ADMIN_ONLY_TABS: ReadonlySet<string> = new Set(["audit"]);
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   systemName,
@@ -1129,7 +1134,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects" | "tickets" | "orders" | "tasks">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "audit" | "projects" | "tickets" | "orders" | "tasks">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -2371,8 +2376,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Set default initial tab if permissions changed
   React.useEffect(() => {
     const tabs = SETTINGS_TABS;
-    const allowed = tabs.find(t => getPermission(t.permKey) !== "nothing");
-    if (allowed && !tabs.find(t => t.id === activeSubTab && getPermission(t.permKey) !== "nothing")) {
+    const visible = (t: (typeof SETTINGS_TABS)[number]) =>
+      getPermission(t.permKey) !== "nothing" && (!ADMIN_ONLY_TABS.has(t.id) || isAdminRoleName(currentUser?.role));
+    const allowed = tabs.find(visible);
+    if (allowed && !tabs.find(t => t.id === activeSubTab && visible(t))) {
       setActiveSubTab(allowed.id as any);
       window.location.hash = "settings/" + allowed.id;
     }
@@ -2981,7 +2988,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const allowedTabs = SETTINGS_TABS
     .filter(tab => tab.id !== "social" || SOCIAL_MEDIA_ENABLED)
     .map(tab => ({ ...tab, label: getTranslation(userLanguage, `settings.tab.${tab.id}`) }))
-    .filter(tab => getPermission(tab.permKey) !== "nothing");
+    .filter(tab => getPermission(tab.permKey) !== "nothing")
+    .filter(tab => !ADMIN_ONLY_TABS.has(tab.id) || isAdminRoleName(currentUser?.role));
   // Read-only alert component
   const renderReadOnlyBanner = (permKey: string) => {
     const isReadOnly = getPermission(permKey) === "view";
@@ -7988,6 +7996,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
           </div>
+        )}
+
+        {/* TAB: Audit log (administrators only) */}
+        {activeSubTab === "audit" && isAdminRoleName(currentUser?.role) && (
+          <AuditLogSettings language={userLanguage} />
         )}
 
         {/* Exception Detail Popup Modal */}

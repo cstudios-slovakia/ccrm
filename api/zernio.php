@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
@@ -9,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-ccrm_require_auth();
+$sessionUser = ccrm_require_auth();
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 if (!$action) {
@@ -18,6 +19,14 @@ if (!$action) {
     if (is_array($json)) {
         $action = $json['action'] ?? '';
     }
+}
+
+// Module RBAC (VULN-12). Every action runs on the organisation's stored Zernio
+// key, so a signed-in user without the Social Media module must not read its
+// accounts, posts, analytics or inbox, nor publish a reply. The key-handling
+// actions (validate / device auth) are admin-only and check that themselves.
+if (!in_array($action, ['validate', 'initiate_device_auth', 'poll_device_auth'], true)) {
+    ccrm_gate($sessionUser, 'social_media', $action === 'reply_comment' ? 'edit' : 'view');
 }
 
 function get_zernio_key(?string $providedKey = null): string {
@@ -55,8 +64,8 @@ if ($action === 'validate') {
     // Validating (and the device-auth pair below) reads or mints a Zernio API key,
     // which grants publish/delete rights on every connected social account. Same
     // admin gate every other integration-config endpoint uses. The read-only
-    // actions (get_accounts / get_posts / get_comments / get_analytics) stay on
-    // ccrm_require_auth so the section itself works for ordinary users.
+    // actions (get_accounts / get_posts / get_comments / get_analytics) need the
+    // Social Media module (gated above) so the section works for ordinary users.
     ccrm_require_admin();
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);

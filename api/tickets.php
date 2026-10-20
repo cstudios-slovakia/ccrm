@@ -241,6 +241,31 @@ function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $b
 /**
  * Poll IMAP inbox for support tickets and thread replies.
  */
+/**
+ * Ticket settings use their own field names (imapUser, imapEncryption, ...);
+ * the mail broker helpers (get_imap_mailbox_string, send_smtp_email) take the
+ * per-user mailbox shape (imapUsername, imapSecure, ...). Translate so the ticket
+ * desk can reuse them. `$overrides` replaces fields of the stored settings.
+ */
+function ccrm_ticket_broker_settings(array $s, array $overrides = []): array {
+    $s = array_replace($s, $overrides);
+    $imapEnc = strtolower((string)($s['imapEncryption'] ?? 'ssl'));
+    $smtpEnc = strtolower((string)($s['smtpEncryption'] ?? 'ssl'));
+    return [
+        'provider'     => 'custom',
+        'imapHost'     => (string)($s['imapHost'] ?? ''),
+        'imapPort'     => (int)($s['imapPort'] ?? 993),
+        'imapSecure'   => in_array($imapEnc, ['ssl', 'tls'], true) ? $imapEnc : 'none',
+        'imapUsername' => (string)($s['imapUser'] ?? ''),
+        'imapPassword' => (string)($s['imapPassword'] ?? ''),
+        'smtpHost'     => (string)($s['smtpHost'] ?? ''),
+        'smtpPort'     => (int)($s['smtpPort'] ?? 465),
+        'smtpSecure'   => in_array($smtpEnc, ['ssl', 'tls'], true) ? $smtpEnc : 'none',
+        'smtpUsername' => (string)($s['smtpUser'] ?? ''),
+        'smtpPassword' => (string)($s['smtpPassword'] ?? ''),
+    ];
+}
+
 function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
     $settings = ccrm_load_ticket_settings($pdo);
     if (!$force && empty($settings['imapEnabled'])) {
@@ -254,12 +279,12 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
     }
 
     $folder = !empty($settings['imapFolder']) ? (string)$settings['imapFolder'] : 'INBOX';
-    $mailbox = get_imap_mailbox_string(
-        (string)$settings['imapHost'],
-        (int)($settings['imapPort'] ?? 993),
-        (string)($settings['imapEncryption'] ?? 'ssl'),
-        $folder
-    );
+    try {
+        $mailbox = get_imap_mailbox_string(ccrm_ticket_broker_settings($settings), $folder);
+    } catch (\Throwable $e) {
+        ccrm_log_exception($e);
+        return ['success' => false, 'polled' => false, 'message' => 'IMAP settings are incomplete.'];
+    }
 
     $inbox = @imap_open($mailbox, (string)$settings['imapUser'], (string)$settings['imapPassword']);
     if (!$inbox) {
@@ -529,7 +554,9 @@ require_once $configFile;
 
 try {
     $pdo = get_db_connection();
-    ccrm_migrate_tickets($pdo);
+    // The public status board shares this entry point; only a signed-in caller may
+    // trigger the hash backfill (VULN-08).
+    ccrm_migrate_tickets($pdo, ccrm_current_user() !== null);
 } catch (\Throwable $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
@@ -659,6 +686,11 @@ require_once __DIR__ . '/read_scope.php';
 if (in_array($action, ['test_imap', 'poll_imap', 'send_email_reply'], true)) {
     ccrm_require_perm($pdo, $sessionUser, 'tickets', 'edit');
 }
+// The mailbox tester takes a host to connect to and can borrow the stored
+// password, so it is as privileged as saving the ticket settings: admin only.
+if ($action === 'test_imap') {
+    ccrm_require_admin();
+}
 
 if ($action === 'test_imap') {
     $savedSettings = ccrm_load_ticket_settings($pdo);
@@ -667,7 +699,18 @@ if ($action === 'test_imap') {
     $enc = trim((string)($input['imapEncryption'] ?? $savedSettings['imapEncryption'] ?? 'ssl'));
     $user = trim((string)($input['imapUser'] ?? $savedSettings['imapUser'] ?? ''));
     $pass = (string)($input['imapPassword'] ?? '');
-    if ($pass === '' || $pass === '••••••••') {
+    if ($pass === '' || $pass === '••••••••' || $pass === CCRM_SECRET_MASK) {
+        // The stored password may only be tried against the server it was saved
+        // for. Otherwise a caller could point the test at their own host and have
+        // the saved secret handed to it (VULN-11): a changed host, port or user
+        // needs the password typed again.
+        $sameTarget = strtolower($host) === strtolower(trim((string)($savedSettings['imapHost'] ?? '')))
+            && $port === (int)($savedSettings['imapPort'] ?? 993)
+            && strtolower($user) === strtolower(trim((string)($savedSettings['imapUser'] ?? '')));
+        if (!$sameTarget) {
+            echo json_encode(['success' => false, 'message' => 'Please re-enter the password when changing the server, port or user.']);
+            exit;
+        }
         $pass = (string)($savedSettings['imapPassword'] ?? '');
     }
 
@@ -680,7 +723,24 @@ if ($action === 'test_imap') {
         exit;
     }
 
-    $mailbox = get_imap_mailbox_string($host, $port, $enc, (string)($input['imapFolder'] ?? 'INBOX'));
+    // SSRF guard (VULN-03): public host, standard mail port only.
+    try {
+        ccrm_validate_external_mail_target($host, $port);
+        $mailbox = get_imap_mailbox_string(
+            ccrm_ticket_broker_settings($savedSettings, [
+                'imapHost' => $host, 'imapPort' => $port, 'imapEncryption' => $enc,
+                'imapUser' => $user, 'imapPassword' => $pass,
+            ]),
+            (string)($input['imapFolder'] ?? 'INBOX')
+        );
+    } catch (\InvalidArgumentException $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        exit;
+    } catch (\Throwable $e) {
+        ccrm_log_exception($e);
+        echo json_encode(['success' => false, 'message' => 'IMAP settings are incomplete.']);
+        exit;
+    }
     $conn = @imap_open($mailbox, $user, $pass, OP_HALFOPEN, 1);
     if ($conn) {
         imap_errors();
@@ -703,13 +763,36 @@ if ($action === 'poll_imap') {
 
 if ($action === 'send_email_reply') {
     $ticketId = trim((string)($input['ticketId'] ?? ''));
+    $ticketNumber = trim((string)($input['ticketNumber'] ?? ''));
     $body = trim((string)($input['body'] ?? ''));
-    $toEmail = trim((string)($input['toEmail'] ?? ''));
     $subject = trim((string)($input['subject'] ?? ''));
-    if ($ticketId === '' || $body === '' || $toEmail === '') {
+    if (($ticketId === '' && $ticketNumber === '') || $body === '') {
         echo json_encode(['success' => false, 'message' => 'Missing email reply fields.']);
         exit;
     }
+
+    // The recipient is the ticket's own reporter, read from the database, never
+    // an address the caller supplies (VULN-05): otherwise anyone with ticket-edit
+    // rights could send arbitrary mail from the support mailbox to anyone.
+    if ($ticketId !== '') {
+        $tStmt = $pdo->prepare("SELECT `ticket_number`, `title`, `reporter_email` FROM `tickets` WHERE `id` = ? LIMIT 1");
+        $tStmt->execute([$ticketId]);
+    } else {
+        $tStmt = $pdo->prepare("SELECT `ticket_number`, `title`, `reporter_email` FROM `tickets` WHERE UPPER(`ticket_number`) = UPPER(?) LIMIT 1");
+        $tStmt->execute([$ticketNumber]);
+    }
+    $ticketRow = $tStmt->fetch(PDO::FETCH_ASSOC);
+    $toEmail = $ticketRow ? trim((string)($ticketRow['reporter_email'] ?? '')) : '';
+    if (!$ticketRow || $toEmail === '' || !filter_var($toEmail, FILTER_VALIDATE_EMAIL)) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Ticket or reporter email not found.']);
+        exit;
+    }
+    $subject = trim(preg_replace('/[\r\n]+/', ' ', $subject));
+    if ($subject === '') {
+        $subject = 'Re: [' . $ticketRow['ticket_number'] . '] ' . $ticketRow['title'];
+    }
+    $subject = mb_substr($subject, 0, 200);
 
     $settings = ccrm_load_ticket_settings($pdo);
     if (empty($settings['smtpHost']) || empty($settings['smtpUser']) || empty($settings['smtpPassword'])) {
@@ -717,19 +800,19 @@ if ($action === 'send_email_reply') {
         exit;
     }
 
-    $smtpRes = send_smtp_email(
-        (string)$settings['smtpHost'],
-        (int)($settings['smtpPort'] ?? 465),
-        (string)($settings['smtpEncryption'] ?? 'ssl'),
-        (string)$settings['smtpUser'],
-        (string)$settings['smtpPassword'],
-        (string)($settings['fromEmail'] ?: $settings['smtpUser']),
-        (string)($settings['fromName'] ?: 'Support Desk'),
-        $toEmail,
-        $subject,
-        nl2br(htmlspecialchars($body, ENT_QUOTES, 'UTF-8'))
-    );
-    echo json_encode($smtpRes);
+    try {
+        $smtpRes = send_smtp_email(
+            ccrm_ticket_broker_settings($settings),
+            $toEmail,
+            $subject,
+            nl2br(htmlspecialchars(mb_substr($body, 0, 20000), ENT_QUOTES, 'UTF-8'))
+        );
+        echo json_encode(['success' => true] + (is_array($smtpRes) ? $smtpRes : []));
+    } catch (\Throwable $e) {
+        ccrm_log_exception($e);
+        http_response_code(502);
+        echo json_encode(['success' => false, 'message' => 'The email could not be sent.']);
+    }
     exit;
 }
 

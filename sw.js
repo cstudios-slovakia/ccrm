@@ -65,9 +65,22 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl = (event.notification.data && event.notification.data.url)
-    ? event.notification.data.url
-    : "/#tasks";
+  // The notification payload is data, not code: only a URL on this origin may be
+  // opened. Anything else (an absolute URL to another site, javascript:, data:) falls
+  // back to the tasks view instead of sending the user — or the focused CRM window —
+  // somewhere an attacker chose.
+  let targetUrl = "/#tasks";
+  try {
+    const requested = event.notification.data && event.notification.data.url;
+    if (requested) {
+      const parsed = new URL(requested, self.location.origin);
+      if (parsed.origin === self.location.origin) {
+        targetUrl = parsed.href;
+      }
+    }
+  } catch (_) {
+    // malformed URL: keep the default
+  }
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
