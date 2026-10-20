@@ -25,12 +25,24 @@ export function employeeKind(emp: Pick<Employee, "kind">): EmployeeKind {
   return emp.kind && EMPLOYEE_KINDS.includes(emp.kind) ? emp.kind : "employee";
 }
 
+/**
+ * A person saved before the name was split has only the display name. The edit form seeds from it so
+ * the name does not vanish: "first last" is split on the last word, a single word (a nickname such as
+ * "András") is the first name and the surname is left to fill in.
+ */
+function legacyPersonName(name: string | undefined): { firstName: string; lastName: string } {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { firstName: parts[0] ?? "", lastName: "" };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] };
+}
+
 export function identityOf(emp?: Employee | null): EmployeeIdentity {
   const kind = emp ? employeeKind(emp) : "employee";
+  const legacy = emp && kind === "employee" && !emp.firstName?.trim() && !emp.lastName?.trim() ? legacyPersonName(emp.name) : null;
   return {
     kind,
-    firstName: emp?.firstName ?? "",
-    lastName: emp?.lastName ?? "",
+    firstName: legacy?.firstName ?? emp?.firstName ?? "",
+    lastName: legacy?.lastName ?? emp?.lastName ?? "",
     name: kind === "employee" ? "" : emp?.name ?? "",
     position: emp?.position ?? "",
     department: emp?.department ?? "",

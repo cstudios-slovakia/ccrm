@@ -47,3 +47,12 @@ test("suggestions list the roster's own values first, most used first, then unus
   ];
   assert.deepEqual(fieldSuggestions(roster, "position", ["Programátor", "Telemarketing"]), ["programátor", "Grafik", "Telemarketing"]);
 });
+
+test("the edit form seeds a legacy name-only person from the display name", () => {
+  const nick = identityOf(emp({ name: "András" }));
+  assert.deepEqual([nick.firstName, nick.lastName], ["András", ""]);
+  const full = identityOf(emp({ name: "Ján Novák" }));
+  assert.deepEqual([full.firstName, full.lastName], ["Ján", "Novák"]);
+  const split = identityOf(emp({ name: "Peter Varga", firstName: "Peter", lastName: "Varga" }));
+  assert.deepEqual([split.firstName, split.lastName], ["Peter", "Varga"]);
+});
