@@ -11,7 +11,7 @@
 
 // 1. Headers & CORS
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-CCRM-MCP-KEY');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-CCRM-MCP-KEY, X-API-Key');
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
@@ -52,7 +52,9 @@ try {
 
 // 3. MCP Token Authentication
 // The key is read from a request HEADER (Authorization: Bearer <key>, or
-// X-CCRM-MCP-KEY, which also survives Apache setups that drop Authorization).
+// X-CCRM-MCP-KEY, which also survives Apache setups that drop Authorization, or
+// X-API-Key, the raw key with no "Bearer " prefix, which the claude.ai custom
+// connector offers as a preset header).
 // A key in the URL ends up in web-server, proxy and error logs (VULN-07), so
 // `?token=` is refused unless an operator who still has a URL-only client (a
 // connector that cannot send headers) opts in with
@@ -64,6 +66,8 @@ if ($authHeader !== '' && preg_match('/^Bearer\s+(.+)$/i', $authHeader, $matches
     $token = trim($matches[1]);
 } elseif (!empty($_SERVER['HTTP_X_CCRM_MCP_KEY'])) {
     $token = trim((string)$_SERVER['HTTP_X_CCRM_MCP_KEY']);
+} elseif (!empty($_SERVER['HTTP_X_API_KEY'])) {
+    $token = trim((string)$_SERVER['HTTP_X_API_KEY']);
 } elseif (defined('CCRM_MCP_ALLOW_QUERY_TOKEN') && CCRM_MCP_ALLOW_QUERY_TOKEN && !empty($_GET['token'])) {
     $token = trim((string)$_GET['token']);
     $tokenFromQuery = true;
@@ -76,7 +80,7 @@ if ($token === '') {
         'jsonrpc' => '2.0',
         'error' => [
             'code' => -32001,
-            'message' => 'Unauthorized: Missing MCP access key. Send it as "Authorization: Bearer <key>" or the "X-CCRM-MCP-KEY" header.'
+            'message' => 'Unauthorized: Missing MCP access key. Send it as "X-API-Key: <key>", "Authorization: Bearer <key>" or the "X-CCRM-MCP-KEY" header.'
         ],
         'id' => null
     ]);

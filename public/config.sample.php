@@ -34,7 +34,7 @@ define('DB_PASS', 'your_database_password');
 // define('CCRM_ALLOW_PRIVATE_HOSTS', true);
 //
 // The MCP gateway (api/mcp.php) reads the access key from a request header
-// (Authorization: Bearer ..., or X-CCRM-MCP-KEY). A key in the URL (?token=...) is
+// (Authorization: Bearer ..., X-CCRM-MCP-KEY, or X-API-Key with the raw key). A key in the URL (?token=...) is
 // written to access logs, so it is refused. Set this only for an old client that
 // cannot send headers:
 // define('CCRM_MCP_ALLOW_QUERY_TOKEN', true);
