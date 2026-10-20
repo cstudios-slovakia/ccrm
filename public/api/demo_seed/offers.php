@@ -11,7 +11,7 @@
  * "accepted" or "expired": accepted = 'approved', and an expired offer is a
  * 'sent' one whose valid_until has passed (the Invoicing list derives the label).
  *
- * Money follows InvoicingView.tsx exactly: a line's total_price is net
+ * Money follows PriceOffersView.tsx exactly: a line's total_price is net
  * (qty × unit_price × (1 − discount %)), subtotal = Σ net lines, VAT = Σ line
  * net × rate, total = subtotal + VAT; all rounded to cents.
  *

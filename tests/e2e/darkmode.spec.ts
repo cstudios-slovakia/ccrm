@@ -28,7 +28,7 @@ const MODULES = [
   { name: 'Files Manager', hash: '#files' },
   { name: 'Email Hub', hash: '#email' },
   { name: 'Automation', hash: '#automation' },
-  { name: 'Invoices & Price Offers', hash: '#invoices' },
+  { name: 'Price Offers', hash: '#invoices' },
   { name: 'Update Notes', hash: '#updates' },
   { name: 'Overview', hash: '#overview' },
   { name: 'Tasks', hash: '#tasks' },

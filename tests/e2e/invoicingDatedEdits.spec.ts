@@ -5,9 +5,10 @@ import { gotoView, startSession } from './helpers/appDriver';
  * Pins F11 and F12 of `docs/audits/derived-numbers-dated-edits-audit-2026-09-18.md`.
  *
  * F11: the 5-step wizard used to have no date input at all — every document
- * was issued "today", due/valid-until computed from today, with no way to
- * back-date an invoice for, say, a job finished last Friday. Step 1 now has
- * an "Issued on" field, and due date / valid-until are derived from it.
+ * was issued "today", valid-until computed from today, with no way to
+ * back-date an offer for, say, a job finished last Friday. Step 1 now has
+ * an "Issued on" field, and valid-until is derived from it. (Payment due
+ * dates went with the invoices, which no longer live in this module.)
  *
  * F12: `handleChangeStatus` used to write `{ ...o, status }` and nothing
  * else — a status change carried no date, so "invoiced this month" could
@@ -25,7 +26,6 @@ import { gotoView, startSession } from './helpers/appDriver';
 const LEAD_NAME = 'Novák Stavby';
 const BACK_DATED_ISSUE = '2026-08-01';
 // addDays(issuedAt, n) is a plain calendar add — no month straddled here.
-const EXPECTED_DUE_DATE = '2026-08-15'; // fixture has no defaultPaymentDueDays override, so the 14-day fallback applies
 const EXPECTED_VALID_UNTIL = '2026-08-31'; // the wizard's hard-coded 30 days
 
 /** Every invoicing document the app pushed to /sync.php, newest write winning per id. */
@@ -46,16 +46,16 @@ function recordSyncedOffers(page: Page) {
   return pushed;
 }
 
-async function openNewDocumentWizard(page: Page) {
+async function openNewOfferWizard(page: Page) {
   await gotoView(page, '#invoices');
-  await page.getByRole('button', { name: /New document|Nový doklad/ }).click();
+  await page.getByRole('button', { name: /New price offer|Nová cenová ponuka/ }).click();
   await expect(page.getByText(/Step 1 of 5|Krok 1 z 5/)).toBeVisible();
 }
 
 /** Fills the required fields of every step and issues the document. */
 async function fillAndIssue(page: Page, title: string, issuedOn?: string) {
-  // Step 1 — document type & format (price offer is the default selection).
-  const titleInput = page.locator('label:has-text("Document title"), label:has-text("Názov dokladu")').locator('xpath=following::input[1]');
+  // Step 1 — format & title.
+  const titleInput = page.locator('label:has-text("Offer title"), label:has-text("Názov ponuky")').locator('xpath=following::input[1]');
   await titleInput.fill(title);
 
   if (issuedOn) {
@@ -92,15 +92,15 @@ async function fillAndIssue(page: Page, title: string, issuedOn?: string) {
   await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
 }
 
-test.describe('Invoicing — dated edits (audit F11/F12)', () => {
-  test('F11: a document can be issued for a date other than today, and due/valid-until follow it', async ({
+test.describe('Price offers — dated edits (audit F11/F12)', () => {
+  test('F11: an offer can be issued for a date other than today, and valid-until follows it', async ({
     page
   }) => {
     await startSession(page);
     const pushed = recordSyncedOffers(page);
     const title = 'Ponuka — spätne datovaná';
 
-    await openNewDocumentWizard(page);
+    await openNewOfferWizard(page);
     await fillAndIssue(page, title, BACK_DATED_ISSUE);
 
     // The wizard closed and the document is in the list, dated the day it was issued.
@@ -120,18 +120,19 @@ test.describe('Invoicing — dated edits (audit F11/F12)', () => {
 
     const created = [...pushed.values()].find((o) => o.title === title)!;
     expect(created.issuedAt).toBe(BACK_DATED_ISSUE);
-    expect(created.dueDate).toBe(EXPECTED_DUE_DATE);
+    // A price offer has no payment due date — that belongs to invoices.
+    expect(created.dueDate ?? null).toBeNull();
     expect(created.validUntil).toBe(EXPECTED_VALID_UNTIL);
   });
 
-  test('F11: the issue date of an existing document can be changed, and due/valid-until move with it', async ({
+  test('F11: the issue date of an existing offer can be changed, and valid-until moves with it', async ({
     page
   }) => {
     await startSession(page);
     const pushed = recordSyncedOffers(page);
     const title = 'Ponuka — preplánovaná';
 
-    await openNewDocumentWizard(page);
+    await openNewOfferWizard(page);
     await fillAndIssue(page, title, BACK_DATED_ISSUE);
     const row = page.locator('tbody tr').filter({ hasText: title });
     await expect(row).toBeVisible();
@@ -152,19 +153,19 @@ test.describe('Invoicing — dated edits (audit F11/F12)', () => {
     await expect.poll(
       () => {
         const saved = [...pushed.values()].find((o) => o.title === title);
-        return saved && { issuedAt: saved.issuedAt, dueDate: saved.dueDate, validUntil: saved.validUntil };
+        return saved && { issuedAt: saved.issuedAt, validUntil: saved.validUntil };
       },
       { timeout: 10_000 }
-    ).toEqual({ issuedAt: '2026-08-05', dueDate: '2026-08-19', validUntil: '2026-09-04' });
+    ).toEqual({ issuedAt: '2026-08-05', validUntil: '2026-09-04' });
   });
 
-  test('F12: sent / approved / invoiced / cancelled carry the date they happened', async ({ page }) => {
+  test('F12: a status change carries the date it happened', async ({ page }) => {
     await startSession(page);
     const pushed = recordSyncedOffers(page);
     const title = 'Ponuka — zmena stavu';
     const today = new Date().toISOString().slice(0, 10);
 
-    await openNewDocumentWizard(page);
+    await openNewOfferWizard(page);
     await fillAndIssue(page, title);
 
     const row = page.locator('tbody tr').filter({ hasText: title });

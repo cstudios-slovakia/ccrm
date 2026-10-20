@@ -135,9 +135,9 @@ const LONG_DESCRIPTIONS: Record<(typeof SCREENSHOT_MODULE_IDS)[number], Triple> 
     "Kövesse a készletet egy vagy több raktárban: cikkeket, lejárati dátumos tételeket, beszállítókat, valamint minden bevételezést, kiadást és áthelyezést. A költségek automatikusan átlagolódnak, az alacsony készlet pedig könnyen észrevehető. Kapcsolja ki, ha nem tárol fizikai árut.",
   ],
   invoices: [
-    "Create price offers and invoices from branded PDF templates, send them to clients and follow their payment status. An offer can be turned into an invoice, and numbering and VAT are handled for you. Together with Financial it covers billing from quote to payment.",
-    "Vytvárajte cenové ponuky a faktúry z firemných PDF šablón, posielajte ich klientom a sledujte stav úhrady. Ponuku viete zmeniť na faktúru a číslovanie aj DPH sa vyriešia za vás. Spolu s Financiami pokryje celé vyúčtovanie od ponuky po platbu.",
-    "Készítsen árajánlatokat és számlákat arculatának megfelelő PDF-sablonokból, küldje el őket az ügyfeleknek, és kövesse a fizetési állapotukat. Az ajánlatból számla lehet, a sorszámozást és az áfát pedig automatikusan kezeli. A Pénzügyekkel együtt lefedi a számlázást az ajánlattól a kifizetésig.",
+    "Create price offers from branded PDF templates, send them to clients and follow their status from draft to approved. Numbering and VAT are handled for you, and offers can be issued through SuperFaktúra or iDoklad. Invoices are issued from orders and clients and are kept in the Documents registry.",
+    "Vytvárajte cenové ponuky z firemných PDF šablón, posielajte ich klientom a sledujte ich stav od návrhu po schválenie. Číslovanie aj DPH sa vyriešia za vás a ponuky viete vystaviť aj cez SuperFaktúru alebo iDoklad. Faktúry sa vystavujú z objednávok a od klientov a nájdete ich v Registri dokumentov.",
+    "Készítsen árajánlatokat arculatának megfelelő PDF-sablonokból, küldje el őket az ügyfeleknek, és kövesse az állapotukat a piszkozattól a jóváhagyásig. A sorszámozást és az áfát automatikusan kezeli, az ajánlatokat pedig a SuperFaktúrán vagy az iDokladon keresztül is kiállíthatja. A számlákat a rendelésekből és az ügyfelektől állíthatja ki, és a Dokumentumtárban találja őket.",
   ],
   orders: [
     "Handle orders from your e-shop and from commercial deals, including guest checkout, deliveries and a status pipeline from new to shipped. Every order links back to its client, so nothing gets lost between sale and delivery. Useful if customers buy products from you directly.",
@@ -303,8 +303,8 @@ export function buildModuleCatalog(
     {
       id: "invoices",
       category: "operations",
-      title: t("Invoices & Price Offers", "Cenové ponuky & Faktúry", "Ajánlatok és számlák"),
-      description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a fakturácia", "Árajánlatok, PDF sablonok és számlázás"),
+      title: t("Price Offers", "Cenové ponuky", "Árajánlatok"),
+      description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a prepojenie na účtovníctvo", "Árajánlatok, PDF sablonok és könyvelési kapcsolat"),
       longDescription: long("invoices"),
       screenshot: shot("invoices"),
       icon: FileText,

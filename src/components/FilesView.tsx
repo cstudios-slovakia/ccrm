@@ -3,7 +3,7 @@ import {
   FolderOpen, FileText, Search, Clock, User, Euro, 
   ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye, Lock, Briefcase
 } from "lucide-react";
-import type { Lead, Project, ProjectType, TimelineEvent } from "../types";
+import type { AiCustomTemplate, CompanyBillingSettings, InvoiceOffer, InvoiceOfferStatus, Lead, Project, ProjectType, TimelineEvent } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -22,6 +22,9 @@ import {
 } from "../utils/projectDocuments";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { DocumentPreviewModal } from "./DocumentPreviewModal";
+import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { todayLocal } from "../utils/localTime";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 
@@ -44,7 +47,19 @@ interface FilesViewProps {
   currencyCode?: string | null;
   /** Role access for the files module. `edit: false` renders the cabinet read-only. */
   access?: ModuleAccess;
+  /**
+   * Issued invoices and proformas are listed here next to the uploaded files.
+   * They are created from Orders and Clients; this view previews, prints,
+   * re-statuses and deletes them. Price offers are not listed — they belong to
+   * the Price Offers module.
+   */
+  invoicesOffers?: InvoiceOffer[];
+  setInvoicesOffers?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  companyBillingSettings?: CompanyBillingSettings | null;
+  aiCustomTemplates?: AiCustomTemplate[];
 }
+
+const DOCUMENT_STATUSES: InvoiceOfferStatus[] = ["draft", "sent", "approved", "rejected", "invoiced", "cancelled"];
 
 type RegistryRow = {
   id: string;
@@ -58,7 +73,9 @@ type RegistryRow = {
   uploadedAt: string;
   offerValue: number;
   summary: string;
-  source: "lead" | "project";
+  source: "lead" | "project" | "document";
+  /** Set for `source: "document"` rows — the invoice or proforma itself. */
+  document?: InvoiceOffer;
   slotId?: string;
   slotCustom?: boolean;
 };
@@ -72,12 +89,17 @@ export const FilesView: React.FC<FilesViewProps> = ({
   systemLanguage,
   currencyCode,
   access = FULL_MODULE_ACCESS,
+  invoicesOffers = [],
+  setInvoicesOffers,
+  companyBillingSettings,
+  aiCustomTemplates = [],
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const canEdit = access.edit;
   const canDelete = access.delete;
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
+  const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
 
   // The view takes no user prop, but every document it files lands on a lead
   // timeline and has to name the person who uploaded it.
@@ -375,6 +397,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
     file.filePath || `/uploads/${file.id}_${file.fileName}`;
 
   const previewRegistryFile = (file: RegistryRow) => {
+    if (file.source === "document" && file.document) {
+      setPreviewDocumentId(file.document.id);
+      return;
+    }
     if ((window as any).previewFile) {
       (window as any).previewFile(registryHref(file), file.fileName);
     }
@@ -385,6 +411,18 @@ export const FilesView: React.FC<FilesViewProps> = ({
   // the reference comes back with the server's message.
   const handleDeleteFile = (file: RegistryRow) => {
     if (!canDelete) return;
+    if (file.source === "document" && file.document && setInvoicesOffers) {
+      deleteRecordsWithUndo({
+        collection: "invoicesOffers",
+        allRecords: invoicesOffers,
+        targets: [file.document],
+        setRecords: setInvoicesOffers,
+        lang: systemLanguage,
+        entity: "invoice",
+        titleOf: (o) => o.documentNumber || o.title,
+      });
+      return;
+    }
     const isProjectFile = file.source === "project" && file.projectId && file.slotId && setProjects;
     const matches = (f: { path?: string; name?: string }) =>
       file.filePath ? String(f.path ?? "") === file.filePath : String(f.name ?? "") === file.fileName;
@@ -445,6 +483,30 @@ export const FilesView: React.FC<FilesViewProps> = ({
     });
   };
 
+  const previewDocument = useMemo(
+    () => (previewDocumentId ? invoicesOffers.find(d => d.id === previewDocumentId) ?? null : null),
+    [previewDocumentId, invoicesOffers]
+  );
+
+  const documentStatusLabel = (status: InvoiceOfferStatus) => {
+    switch (status) {
+      case "draft": return t("Draft", "Návrh", "Piszkozat");
+      case "sent": return t("Sent", "Odoslaná", "Elküldve");
+      case "approved": return t("Approved", "Schválená", "Jóváhagyva");
+      case "rejected": return t("Rejected", "Zamietnutá", "Elutasítva");
+      case "invoiced": return t("Invoiced", "Vyfakturovaná", "Kiszámlázva");
+      case "cancelled": return t("Cancelled", "Zrušená", "Törölve");
+      default: return status;
+    }
+  };
+
+  const handleChangeDocumentStatus = (documentId: string, status: InvoiceOfferStatus) => {
+    if (!canEdit || !setInvoicesOffers) return;
+    setInvoicesOffers(prev =>
+      prev.map(d => (d.id === documentId ? { ...d, status, statusChangedAt: todayLocal() } : d))
+    );
+  };
+
   // Dynamic files aggregator: scan client timelines and every project file slot
   const filesList = useMemo(() => {
     const files: RegistryRow[] = [];
@@ -472,6 +534,25 @@ export const FilesView: React.FC<FilesViewProps> = ({
       }
     });
 
+    invoicesOffers.forEach(doc => {
+      if (doc.type === "price_offer") return;
+      files.push({
+        id: `doc:${doc.id}`,
+        fileName: doc.documentNumber,
+        fileType: "invoice",
+        fileSize: "—",
+        filePath: "",
+        clientName: doc.clientName || "",
+        projectId: null,
+        projectName: "",
+        uploadedAt: doc.issuedAt || "",
+        offerValue: Number(doc.totalPrice) || 0,
+        summary: [doc.title, doc.subject].filter(Boolean).join(" — "),
+        source: "document",
+        document: doc,
+      });
+    });
+
     files.push(...collectProjectRegistryFiles(projects, projectTypes, leads, {
       untitledProject: t("Untitled project", "Projekt bez názvu", "Névtelen projekt"),
       unknownSize: t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret"),
@@ -479,7 +560,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
     // Sort files by upload date (Newest First)
     return files.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
-  }, [leads, projects, projectTypes, systemLanguage]);
+  }, [leads, projects, projectTypes, invoicesOffers, systemLanguage]);
 
   // Extract unique client names dynamically
   const clientNames = useMemo(() => {
@@ -505,7 +586,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   }, [filesList, searchQuery, selectedTypeFilter, selectedClientFilter]);
 
   // Helper to color-code files based on type
-  const getFileTypeProps = (type: RegistryFileType) => {
+  const getFileTypeProps = (type: RegistryFileType, document?: InvoiceOffer) => {
     switch (type) {
       case "offer":
         return {
@@ -526,7 +607,9 @@ export const FilesView: React.FC<FilesViewProps> = ({
           icon: <Receipt className="h-3.5 w-3.5" />,
           badgeClass: "bg-rose-50 text-rose-800 border-rose-200",
           iconContainer: "bg-rose-600 border-rose-700",
-          textLabel: t("Invoice", "Faktúra", "Számla")
+          textLabel: document?.type === "proforma"
+            ? t("Proforma", "Zálohová faktúra", "Előlegszámla")
+            : t("Invoice", "Faktúra", "Számla")
         };
       case "project":
         return {
@@ -678,7 +761,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                 </tr>
               ) : (
                 filteredFiles.map((file) => {
-                  const typeProps = getFileTypeProps(file.fileType);
+                  const typeProps = getFileTypeProps(file.fileType, file.document);
                   return (
                     <tr 
                       key={file.id}
@@ -803,6 +886,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                             <Eye className="h-3 w-3 stroke-[2.5]" />
                             <span>{getTranslation(systemLanguage, "files.btn_view")}</span>
                           </button>
+                          {file.source !== "document" && (
                           <a 
                             href={registryHref(file)}
                             download={file.fileName}
@@ -814,6 +898,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                             <Download className="h-3 w-3 stroke-[2.5]" />
                             <span>{systemLanguage === "sk" ? "Stiahnuť" : systemLanguage === "hu" ? "Letöltés" : "Download"}</span>
                           </a>
+                          )}
                           {canDelete && (
                             <HoldToConfirmButton
                                 tone="danger"
@@ -821,7 +906,9 @@ export const FilesView: React.FC<FilesViewProps> = ({
                                 what={file.fileName}
                                 onConfirm={() => handleDeleteFile(file)}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-150 active:scale-95"
-                                title={t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
+                                title={file.source === "document"
+                                  ? t("Delete document", "Odstrániť doklad", "Bizonylat törlése")
+                                  : t("Delete file permanently", "Natrvalo vymazať súbor", "Fájl végleges törlése")}
                             >
                               <Trash className="h-4 w-4 stroke-[2.2]" />
                             </HoldToConfirmButton>
@@ -1127,6 +1214,27 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
           </div>
         </div>
+      )}
+
+      {/* Issued invoice / proforma preview. Looked up live so a status change shows at once. */}
+      {previewDocument && (
+        <DocumentPreviewModal
+          document={previewDocument}
+          companySettings={companyBillingSettings}
+          aiCustomTemplates={aiCustomTemplates}
+          currency={currencyCode || "EUR"}
+          lang={systemLanguage}
+          onClose={() => setPreviewDocumentId(null)}
+          actions={canEdit && setInvoicesOffers ? (
+            <CustomSelect
+              size="sm"
+              align="right"
+              value={previewDocument.status}
+              onChange={next => handleChangeDocumentStatus(previewDocument.id, next as InvoiceOfferStatus)}
+              options={DOCUMENT_STATUSES.map(status => ({ value: status, label: documentStatusLabel(status) }))}
+            />
+          ) : undefined}
+        />
       )}
 
     </div>

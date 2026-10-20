@@ -87,7 +87,9 @@ and the pending registry keeps them out of pulls meanwhile.
 |---|---|---|---|
 | `FinancialManagementView` movement / recurring rule delete (×2) | finance record | delete | B (the recurring source's skipped dates restored too) |
 | `FinancialCategoriesManager` category delete | category + subcategories | delete | B (`financialCategories`); movements re-filed by Undo |
-| `InvoicingView` document delete | invoice / offer | delete | B (`invoicesOffers`); its ledger movement is kept until the window closes (`App.updateInvoicesOffersAndSync`) |
+| `PriceOffersView` offer delete | price offer | delete | B (`invoicesOffers`) |
+| `FilesView` issued invoice / proforma delete | invoice / proforma | delete | B (`invoicesOffers`); its ledger movement is kept until the window closes (`App.updateInvoicesOffersAndSync`) |
+| `OfferSettings` AI template delete | AI PDF template | delete | B (`aiCustomTemplates`) |
 
 ### Warehouse
 | Where | Entity | Action | Strategy |
@@ -141,7 +143,7 @@ tables, not per physical button.
 | `LeadsDatagrid` `handleUnpairProject` | unlinks a project from a lead; nothing is archived or deleted |
 | `LeadsDatagrid` / `FilesView` / `UnifiedEntryView` / `EmployeeFormModal`+`Screen` queued or draft file removal | file in an upload queue or an unsaved form |
 | `WarehouseView` issue / receipt / transfer row remove; item form image / category chips | rows of an unsaved stock document / unsaved product form |
-| `InvoicingView` line-item remove | line of a document being edited |
+| `PriceOffersView` line-item remove | line of an offer being edited |
 | `EmployeeSettingsModal` / `Screen` salary and vacation type remove, `SalaryCellDrawer` item remove | drafts persisted by the form's Save |
 | `SettingsView` remove logo | billing form draft |
 | `FinancialManagementView` "Reset to Auto" (weekly calibration) | resets a setting to its default |

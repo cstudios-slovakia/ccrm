@@ -6124,6 +6124,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 "profile.phone_number",
                                             )}
                                         </label>
+                                        {!isEditingLead && leadPhone.trim() ? (
+                                            <a
+                                                href={`tel:${leadPhone.replace(/[^\d+]/g, "")}`}
+                                                className="block w-full px-3 py-2 border-2 border-transparent text-blue-700 text-body font-bold hover:underline truncate"
+                                            >
+                                                {leadPhone}
+                                            </a>
+                                        ) : (
                                         <input
                                             type="tel"
                                             disabled={!isEditingLead}
@@ -6140,6 +6148,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
                                             }`}
                                         />
+                                        )}
                                     </div>
                                     <div className="space-y-1">
                                         <label className="type-overline text-slate-500">
@@ -6148,6 +6157,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 "profile.email_address",
                                             )}
                                         </label>
+                                        {!isEditingLead && leadEmail.trim() ? (
+                                            <a
+                                                href={`mailto:${leadEmail.trim()}`}
+                                                className="block w-full px-3 py-2 border-2 border-transparent text-blue-700 text-body font-bold hover:underline truncate"
+                                            >
+                                                {leadEmail}
+                                            </a>
+                                        ) : (
                                         <input
                                             type="email"
                                             disabled={!isEditingLead}
@@ -6164,6 +6181,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
                                             }`}
                                         />
+                                        )}
                                     </div>
                                 </div>
                                 {(leadClientType !== "person" || leadContactPerson) && (

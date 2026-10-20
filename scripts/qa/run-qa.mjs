@@ -82,7 +82,7 @@ const RULES = [
      would quietly run only the crawler. */
   [/^src\/components\/(ProjectsView|ProjectDetailsView)\./, ['Projects', 'Project rating', 'Project files', 'Project tasks']],
   [/^src\/components\/WarehouseView\./, ['Warehouse']],
-  [/^src\/components\/InvoicingView\./, ['Invoices & Price Offers', 'Financial Management']],
+  [/^src\/components\/(PriceOffersView|OfferSettings|DocumentPreviewModal)\./, ['Price Offers', 'Financial Management']],
   [/^src\/components\/FinancialManagementView\./, ['Financial Management']],
   [/^src\/components\/MeetingRoomView\./, ['Meeting Room']],
   [/^src\/components\/(FilesView|FilePreviewPane)\./, ['Files Manager', 'Documents Registry']],
