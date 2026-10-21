@@ -96,6 +96,12 @@ test.describe('Finance — future movements', () => {
     // No status picker and no delete: one action, the way back to the rule.
     const actions = charge.locator('td').last().getByRole('button');
     await expect(actions).toHaveCount(1);
+
+    // The checkbox column stays hidden until the user asks for it. A charge
+    // still cannot be ticked then: nothing of it is stored.
+    await expect(page.getByRole('checkbox', { name: /Select movement|Vybrať pohyb|Tétel kijelölése/ })).toHaveCount(0);
+    await page.getByRole('button', { name: /^(Select|Vybrať|Kijelölés)$/ }).click();
+    await expect(charge.getByRole('checkbox')).toBeDisabled();
     await actions.click();
 
     // It opens the rule itself for editing, never a form for a new movement.

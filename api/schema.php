@@ -2575,15 +2575,18 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Demo salary rows for the year of $now: past months paid, the current month paid once its payday
-     * has arrived, later months planned. Mirrors generateDefaultMockSalaries() in src/utils/mockEmployees.ts.
+     * One demo salary row per employee, for the month of $now (the install).
+     * Past and future months are not seeded: each row is posted to Finance as a
+     * payroll movement and would stay in the history after the sample staff is gone.
+     * The month is paid once its payday has arrived.
+     * Mirrors generateDefaultMockSalaries() in src/utils/mockEmployees.ts.
      *
      * @param array<int, array> $emps rows in the order used by ccrm_seed_default_employees()
      * @return array<int, array> rows ready for `employee_salaries`
      */
     function ccrm_demo_employee_salaries(array $emps, \DateTimeImmutable $now): array {
         $year = (int)$now->format('Y');
-        $nowIndex = $year * 12 + ((int)$now->format('n') - 1);
+        $m = (int)$now->format('n');
         $nowDay = (int)$now->format('j');
         $rows = [];
 
@@ -2591,47 +2594,44 @@ if (!function_exists('ccrm_schema_statements')) {
             $empId = $e[0];
             $base = (float)$e[10];
             $dueDay = (int)($e[11] ?: 15);
-            for ($m = 1; $m <= 12; $m++) {
-                $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
-                $periodKey = "{$year}-{$mStr}";
-                $periodIndex = $year * 12 + ($m - 1);
-                $isPaid = $periodIndex < $nowIndex || ($periodIndex === $nowIndex && $nowDay >= $dueDay - 1);
+            $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
+            $periodKey = "{$year}-{$mStr}";
+            $isPaid = $nowDay >= $dueDay - 1;
 
-                $bonus = $m === 6 ? 500.0 : ($m === 12 ? 800.0 : 0.0);
-                $overtime = (($empId === 'emp-3' || $empId === 'emp-2') && ($m + $empIdx) % 3 === 0)
-                    ? (float)(90 + (($m * 37 + $empIdx * 53) % 5) * 30) : 0.0;
-                $reimbursement = (($empId === 'emp-1' || $empId === 'emp-4') && ($m + $empIdx) % 4 === 1)
-                    ? (float)(45 + (($m * 29 + $empIdx * 17) % 4) * 20) : 0.0;
+            $bonus = $m === 6 ? 500.0 : ($m === 12 ? 800.0 : 0.0);
+            $overtime = (($empId === 'emp-3' || $empId === 'emp-2') && ($m + $empIdx) % 3 === 0)
+                ? (float)(90 + (($m * 37 + $empIdx * 53) % 5) * 30) : 0.0;
+            $reimbursement = (($empId === 'emp-1' || $empId === 'emp-4') && ($m + $empIdx) % 4 === 1)
+                ? (float)(45 + (($m * 29 + $empIdx * 17) % 4) * 20) : 0.0;
 
-                $lines = [['base', 'Základná mzda', $base]];
-                if ($bonus > 0) $lines[] = ['bonus', $m === 6 ? 'Polročné prémie' : 'Ročné prémie', $bonus];
-                if ($overtime > 0) $lines[] = ['overtime', 'Nadčasy', $overtime];
-                if ($reimbursement > 0) $lines[] = ['reimbursement', 'Cestovné / Diéty', $reimbursement];
+            $lines = [['base', 'Základná mzda', $base]];
+            if ($bonus > 0) $lines[] = ['bonus', $m === 6 ? 'Polročné prémie' : 'Ročné prémie', $bonus];
+            if ($overtime > 0) $lines[] = ['overtime', 'Nadčasy', $overtime];
+            if ($reimbursement > 0) $lines[] = ['reimbursement', 'Cestovné / Diéty', $reimbursement];
 
-                $items = [];
-                $total = 0.0;
-                foreach ($lines as [$catId, $catName, $amount]) {
-                    $items[] = ['categoryId' => $catId, 'categoryName' => $catName, 'salary' => $amount, 'paid' => $isPaid ? $amount : 0.0];
-                    $total += $amount;
-                }
-
-                $rows[] = [
-                    "sal-{$empId}-{$periodKey}",
-                    $empId,
-                    'monthly',
-                    $periodKey,
-                    $year,
-                    $m,
-                    json_encode($items),
-                    $total,
-                    $isPaid ? $total : 0.0,
-                    $isPaid ? 'paid' : 'pending',
-                    "{$year}-{$mStr}-" . str_pad((string)$dueDay, 2, '0', STR_PAD_LEFT),
-                    $isPaid ? "{$year}-{$mStr}-" . str_pad((string)($dueDay - 1), 2, '0', STR_PAD_LEFT) : null,
-                    'bank_transfer',
-                    $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy',
-                ];
+            $items = [];
+            $total = 0.0;
+            foreach ($lines as [$catId, $catName, $amount]) {
+                $items[] = ['categoryId' => $catId, 'categoryName' => $catName, 'salary' => $amount, 'paid' => $isPaid ? $amount : 0.0];
+                $total += $amount;
             }
+
+            $rows[] = [
+                "sal-{$empId}-{$periodKey}",
+                $empId,
+                'monthly',
+                $periodKey,
+                $year,
+                $m,
+                json_encode($items),
+                $total,
+                $isPaid ? $total : 0.0,
+                $isPaid ? 'paid' : 'pending',
+                "{$year}-{$mStr}-" . str_pad((string)$dueDay, 2, '0', STR_PAD_LEFT),
+                $isPaid ? "{$year}-{$mStr}-" . str_pad((string)($dueDay - 1), 2, '0', STR_PAD_LEFT) : null,
+                'bank_transfer',
+                $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy',
+            ];
         }
         return $rows;
     }
@@ -2683,7 +2683,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 $idUpd->execute([$idRow[1], $idRow[2], $idRow[3], $idRow[4], $idRow[0]]);
             }
 
-            // 2. Insert salaries for the current year (past months paid, current month by payday, rest planned)
+            // 2. Insert salaries for the install month only (paid once payday has arrived)
             $now = new \DateTimeImmutable('now');
             $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (`id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`, `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`, `payment_method`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             foreach (ccrm_demo_employee_salaries($emps, $now) as $row) {
