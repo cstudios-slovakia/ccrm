@@ -561,6 +561,13 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 employees={employees}
                 t={t}
                 language={systemLanguage}
+                country={addressCountry}
+                onRegistryAddress={rights.editPersonal ? (a) => {
+                  setAddressStreet(a.street || addressStreet);
+                  setAddressCity(a.city || addressCity);
+                  setAddressZip(a.zip || addressZip);
+                  setAddressCountry(a.country || addressCountry);
+                } : undefined}
               />
 
               {rights.editPersonal && (

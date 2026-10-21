@@ -863,6 +863,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `first_name` VARCHAR(100) NULL,
               `last_name` VARCHAR(100) NULL,
               `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+              `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
+              `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
+              `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',
               `position` VARCHAR(100) NULL COMMENT 'Job title, not the app permission role',
               `department` VARCHAR(100) NULL,
               `user_id` VARCHAR(50) NULL UNIQUE,
@@ -1548,6 +1551,7 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         }
         ccrm_migrate_employee_identity($pdo);
+        ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
@@ -1652,6 +1656,24 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm] ccrm_migrate_orders: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Employees: IČO / DIČ / IČ DPH of an external supplier (a company or a sole trader). Only
+     * `contractor` rows use them; they are filled from the business register in the employee form.
+     */
+    function ccrm_migrate_employee_company_ids(PDO $pdo): void {
+        try {
+            $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasEmp === 0 || ccrm_column_exists($pdo, 'employees', 'company_id')) return;
+
+            $pdo->exec("ALTER TABLE `employees`
+                ADD COLUMN `company_id` VARCHAR(32) NULL AFTER `kind`,
+                ADD COLUMN `tax_id` VARCHAR(32) NULL AFTER `company_id`,
+                ADD COLUMN `vat_id` VARCHAR(32) NULL AFTER `tax_id`");
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee company ids migration skipped: ' . $e->getMessage());
         }
     }
 
@@ -1941,6 +1963,9 @@ if (!function_exists('ccrm_schema_statements')) {
                   `first_name` VARCHAR(100) NULL,
                   `last_name` VARCHAR(100) NULL,
                   `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+                  `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
+                  `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
+                  `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',
                   `position` VARCHAR(100) NULL COMMENT 'Job title, not the app permission role',
                   `department` VARCHAR(100) NULL,
                   `user_id` VARCHAR(50) NULL UNIQUE,
@@ -4100,13 +4125,70 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Identity of the schema CODE: a hash of every file whose edit can change
+     * what ccrm_apply_schema() does. Stored in system_settings once the schema
+     * has been applied, so a request can tell "already done for this code".
+     */
+    function ccrm_schema_fingerprint(): string {
+        $parts = [];
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php'] as $file) {
+            $parts[] = is_file($file) ? md5_file($file) : '-';
+        }
+        return md5(implode('|', $parts));
+    }
+
+    /**
      * Create all tables (idempotent) and apply in-place migrations.
+     *
+     * The work is skipped when this database was already brought up to date by
+     * the same schema code. sync.php calls this on EVERY request, and the SPA
+     * polls it every 5 seconds: ~57 CREATE TABLE IF NOT EXISTS plus the
+     * migration checks cost about 2.3s per call on a Docker Desktop database
+     * (a plain SELECT is under 1ms), which made every probe slow, stacked the
+     * polls on top of each other and wrote a log line per request. Editing
+     * schema.php or a file it loads changes the fingerprint and re-runs it once.
      */
     function ccrm_apply_schema(PDO $pdo): void {
-        foreach (ccrm_schema_statements() as $sql) {
-            $pdo->exec($sql);
+        $fingerprint = ccrm_schema_fingerprint();
+        if (ccrm_schema_is_current($pdo, $fingerprint)) {
+            return;
         }
-        ccrm_apply_migrations($pdo);
+
+        // Single-flight. When the fingerprint changes (a deploy, an edit of
+        // schema.php) every open tab's poll arrives at once; run side by side
+        // their DDL queues on MySQL metadata locks and each request hangs for
+        // tens of seconds. One request applies the schema, the others wait here
+        // and then find it current.
+        $locked = false;
+        try {
+            $locked = (int)$pdo->query("SELECT GET_LOCK('ccrm_schema_apply', 60)")->fetchColumn() === 1;
+            if ($locked && ccrm_schema_is_current($pdo, $fingerprint)) {
+                return;
+            }
+
+            foreach (ccrm_schema_statements() as $sql) {
+                $pdo->exec($sql);
+            }
+            ccrm_apply_migrations($pdo);
+
+            $mark = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('SCHEMA_FINGERPRINT', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $mark->execute([$fingerprint]);
+        } finally {
+            if ($locked) {
+                $pdo->query("SELECT RELEASE_LOCK('ccrm_schema_apply')")->fetchColumn();
+            }
+        }
+    }
+
+    function ccrm_schema_is_current(PDO $pdo, string $fingerprint): bool {
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'SCHEMA_FINGERPRINT'");
+            $stmt->execute();
+            return $stmt->fetchColumn() === $fingerprint;
+        } catch (\Throwable $e) {
+            // system_settings does not exist yet (fresh database).
+            return false;
+        }
     }
 }
 

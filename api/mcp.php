@@ -1184,7 +1184,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 11: Employees, Salaries & Vacations
         [
             'name' => 'list_employees',
-            'description' => 'List the staff roster. Every record has a kind (employee = a person, contractor = an outside company, ledger = a payroll-only line such as commission), first_name + last_name for a person or company_name for a contractor/ledger item, a job position and a department, plus compensation rates, contact details, vacation allowances and the app login it is linked to (user_id; null when none). The position is a job title; the app permission role (Admin, Project Manager...) is separate.',
+            'description' => 'List the staff roster. Every record has a kind (employee = a person, contractor = an external supplier, a company or a sole trader, ledger = a payroll-only line such as commission), first_name + last_name for a person (the contact person of a contractor) or company_name for a contractor/ledger item, company_id (IČO), tax_id (DIČ) and vat_id (IČ DPH) of a contractor, a job position and a department, plus compensation rates, contact details, vacation allowances and the app login it is linked to (user_id; null when none). The position is a job title; the app permission role (Admin, Project Manager...) is separate.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1209,14 +1209,17 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'create_employee',
-            'description' => 'Register a new record in the staff roster. kind employee (default) needs first_name and last_name; contractor and ledger need company_name instead. Also set position (job title) and department where known.',
+            'description' => 'Register a new record in the staff roster. kind employee (default) needs first_name and last_name; contractor and ledger need company_name instead (a contractor, an external supplier that is a company or a sole trader, may also carry first_name / last_name of its contact person and its company_id / tax_id / vat_id). Also set position (job title) and department where known.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger'], 'description' => 'employee = a person (default); contractor = an external supplier company; ledger = an accounting line such as commission'],
-                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee)'],
-                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee)'],
-                    'company_name' => ['type' => 'string', 'description' => 'Company or item name (kind contractor / ledger), e.g. "Dodigital s.r.o."'],
+                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee; optional contact person of a contractor)'],
+                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee; optional contact person of a contractor)'],
+                    'company_name' => ['type' => 'string', 'description' => 'Company, trade or item name (kind contractor / ledger), e.g. "Dodigital s.r.o."'],
+                    'company_id' => ['type' => 'string', 'description' => 'IČO (kind contractor)'],
+                    'tax_id' => ['type' => 'string', 'description' => 'DIČ (kind contractor)'],
+                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH (kind contractor)'],
                     'name' => ['type' => 'string', 'description' => 'Fallback when the parts are not split: "First Last" for an employee, the company name otherwise'],
                     'position' => ['type' => 'string', 'description' => 'Job title, e.g. programátor, grafik, PPC špecialista, account manažér, telemarketing'],
                     'department' => ['type' => 'string', 'description' => 'Department / team, e.g. Vývoj, Marketing, Manažment, Obchod'],
@@ -1243,9 +1246,12 @@ function mcp_core_tool_definitions(): array {
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Employee ID'],
                     'kind' => ['type' => 'string', 'enum' => ['employee', 'contractor', 'ledger']],
-                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee)'],
-                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee)'],
-                    'company_name' => ['type' => 'string', 'description' => 'Company or item name (kind contractor / ledger)'],
+                    'first_name' => ['type' => 'string', 'description' => 'First name (kind employee; optional contact person of a contractor)'],
+                    'last_name' => ['type' => 'string', 'description' => 'Surname (kind employee; optional contact person of a contractor)'],
+                    'company_name' => ['type' => 'string', 'description' => 'Company, trade or item name (kind contractor / ledger)'],
+                    'company_id' => ['type' => 'string', 'description' => 'IČO (kind contractor); an empty string clears it'],
+                    'tax_id' => ['type' => 'string', 'description' => 'DIČ (kind contractor); an empty string clears it'],
+                    'vat_id' => ['type' => 'string', 'description' => 'IČ DPH (kind contractor); an empty string clears it'],
                     'name' => ['type' => 'string', 'description' => 'Fallback display name: "First Last" for an employee, the company name otherwise'],
                     'position' => ['type' => 'string', 'description' => 'Job title; an empty string clears it'],
                     'department' => ['type' => 'string', 'description' => 'Department / team; an empty string clears it'],
@@ -1350,7 +1356,13 @@ function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
             $company = $clean($stored['name'] ?? null);
         }
         if ($company === null) throw new \InvalidArgumentException("A {$kind} needs company_name.");
-        return ['kind' => $kind, 'first_name' => null, 'last_name' => null, 'name' => $company];
+        // A contractor (company or sole trader) keeps its contact person's name; a ledger item has none.
+        $first = $last = null;
+        if ($kind === 'contractor') {
+            $first = array_key_exists('first_name', $args) ? $clean($args['first_name']) : $clean($stored['first_name'] ?? null);
+            $last = array_key_exists('last_name', $args) ? $clean($args['last_name']) : $clean($stored['last_name'] ?? null);
+        }
+        return ['kind' => $kind, 'first_name' => $first, 'last_name' => $last, 'name' => $company];
     }
 
     $first = array_key_exists('first_name', $args) ? $clean($args['first_name']) : $clean($stored['first_name'] ?? null);
@@ -1364,6 +1376,29 @@ function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
         throw new \InvalidArgumentException("An employee needs both first_name and last_name (full name). For a company use kind contractor with company_name.");
     }
     return ['kind' => 'employee', 'first_name' => $first, 'last_name' => $last, 'name' => ccrm_compose_employee_name('employee', $first, $last, '')];
+}
+
+/**
+ * IČO / DIČ / IČ DPH columns for a create or an update. They belong to a contractor only: any other
+ * kind has them cleared, and a value passed for one is refused rather than silently dropped.
+ * $onlyGiven (an update) leaves a number the call did not mention alone.
+ *
+ * @return array<string,?string>
+ */
+function mcp_employee_company_ids(array $args, string $kind, bool $onlyGiven): array {
+    $out = [];
+    foreach (['company_id', 'tax_id', 'vat_id'] as $k) {
+        $given = array_key_exists($k, $args);
+        $v = $given ? trim((string)$args[$k]) : '';
+        if ($kind !== 'contractor') {
+            if ($v !== '') throw new \InvalidArgumentException("{$k} applies to kind contractor only.");
+            $out[$k] = null;
+            continue;
+        }
+        if ($onlyGiven && !$given) continue;
+        $out[$k] = $v === '' ? null : $v;
+    }
+    return $out;
 }
 
 /** Add company_name for contractor / ledger rows, so a caller never has to guess which field holds it. */
@@ -2468,12 +2503,12 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             if (!empty($args['search'])) {
                 $s = '%' . trim($args['search']) . '%';
                 if (mcp_can('employees.personal')) {
-                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
-                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s]);
+                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ? OR company_id LIKE ? OR tax_id LIKE ? OR vat_id LIKE ?)";
+                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s, $s, $s]);
                 } else {
                     // A search that matched on a PIN or phone would confirm one to someone who may not read it.
-                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ?)";
-                    $params = array_merge($params, [$s, $s, $s, $s]);
+                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR company_id LIKE ? OR tax_id LIKE ? OR vat_id LIKE ?)";
+                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s]);
                 }
             }
             if (!empty($args['kind'])) {
@@ -2490,7 +2525,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             if (!isset($args['active_only']) || !empty($args['active_only'])) {
                 $where[] = "is_active = 1";
             }
-            $stmt = $pdo->prepare("SELECT id, name, first_name, last_name, kind, `position`, `department`, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
+            $stmt = $pdo->prepare("SELECT id, name, first_name, last_name, kind, company_id, tax_id, vat_id, `position`, `department`, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
             $stmt->execute($params);
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             return array_map(static fn($r) => mcp_label_employee(mcp_project_employee($r)), $rows);
@@ -2523,15 +2558,19 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $name = $identity['name'];
 
             $ins = $pdo->prepare("INSERT INTO employees (
-                id, name, first_name, last_name, kind, `position`, `department`, pin, email, phone, address_street, address_city, address_zip, address_country,
+                id, name, first_name, last_name, kind, company_id, tax_id, vat_id, `position`, `department`, pin, email, phone, address_street, address_city, address_zip, address_country,
                 salary_type, salary_amount, salary_due_day, auto_expense, expense_category_id, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+            $companyIds = mcp_employee_company_ids($args, $identity['kind'], false);
             $ins->execute([
                 $id,
                 $name,
                 $identity['first_name'],
                 $identity['last_name'],
                 $identity['kind'],
+                $companyIds['company_id'],
+                $companyIds['tax_id'],
+                $companyIds['vat_id'],
                 !empty($args['position']) ? trim((string)$args['position']) : null,
                 !empty($args['department']) ? trim((string)$args['department']) : null,
                 mcp_can('employees.personal') ? ($args['pin'] ?? null) : null,
@@ -2587,6 +2626,14 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                     $fields[] = "`$f` = ?";
                     $params[] = $identity[$f];
                 }
+            }
+            // IČO / DIČ / IČ DPH: only a contractor has them; changing the kind away from it clears them.
+            $finalKind = $identity['kind'] ?? $cur['kind'] ?? 'employee';
+            $kindChanged = $identity !== null && $identity['kind'] !== ($cur['kind'] ?? 'employee');
+            $touchesIds = $kindChanged || array_intersect(['company_id', 'tax_id', 'vat_id'], array_keys($args));
+            foreach ($touchesIds ? mcp_employee_company_ids($args, $finalKind, !$kindChanged) : [] as $f => $v) {
+                $fields[] = "`$f` = ?";
+                $params[] = $v;
             }
             foreach (['position', 'department'] as $f) {
                 if (array_key_exists($f, $args)) {

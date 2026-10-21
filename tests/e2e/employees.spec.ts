@@ -88,10 +88,72 @@ test.describe('Employees', () => {
     await page.getByRole('button', { name: 'Vytvoriť zamestnanca' }).first().click();
     await expect(page.getByText('Zadajte prosím meno aj priezvisko zamestnanca')).toBeVisible();
 
-    // What the roster already uses comes first; the defaults follow.
-    const options = await page.locator('datalist option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-    expect(options[0]).toBe('QA');
+    // The position is the same searchable dropdown as the lead picker. What the roster already
+    // uses comes first, after the "none" row; the defaults follow.
+    const position = page.locator('label', { hasText: 'Pozícia' }).locator('..').getByRole('button');
+    await position.click();
+    const options = await page.getByRole('listbox').getByRole('option').allTextContents();
+    expect(options[1]).toBe('QA');
     expect(options).toContain('Programátor');
+
+    // Anything not on the list is typed into the search box and added with the "+".
+    await page.getByPlaceholder('Hľadať...', { exact: true }).fill('Dizajnér UX');
+    await page.getByRole('button', { name: 'Pridať napísanú pozíciu' }).click();
+    await expect(position).toContainText('Dizajnér UX');
+  });
+
+  test('an external supplier takes IČO / DIČ / IČ DPH from the register and keeps a contact person', async ({ page }) => {
+    const store: MetaStore = { meta: new Map() };
+    await startSession(page);
+    await installBackend(page, store);
+    // The business register: one company, found by its IČO.
+    await page.route('**/api/company_registry.php**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true, country: 'Slovakia', countryCode: 'SK', name: 'Dodigital s.r.o.', companyId: '48123456',
+          taxId: '2120123456', vatId: 'SK2120123456', street: 'Hlavná 1', city: 'Nitra', postalCode: '949 01',
+          contactPerson: 'Ing. Ján Novák', active: true,
+        }),
+      })
+    );
+    let pushed: { employees?: Record<string, unknown>[] } | null = null;
+    await page.route('**/sync.php**', async (route) => {
+      if (route.request().method() === 'POST') {
+        try {
+          const body = route.request().postDataJSON() as { employees?: Record<string, unknown>[] };
+          if (body?.employees?.some((e) => e.kind === 'contractor')) pushed = body;
+        } catch { /* not JSON */ }
+      }
+      return route.fallback();
+    });
+    await gotoView(page, '#employees/new');
+
+    // "External supplier" covers a company and a sole trader alike.
+    await page.getByRole('button', { name: 'Zamestnanec' }).first().click();
+    await page.getByRole('option', { name: 'Externý dodávateľ' }).click();
+    await expect(page.getByText('Názov firmy / obchodné meno')).toBeVisible();
+    await expect(page.getByText('Kontaktná osoba: meno')).toBeVisible();
+
+    await page.getByPlaceholder('48123456').fill('48123456');
+    await page.getByRole('button', { name: 'Načítať z registra' }).click();
+
+    await expect(page.getByPlaceholder('Dodigital s.r.o.')).toHaveValue('Dodigital s.r.o.');
+    await expect(page.locator('label', { hasText: /^DIČ$/ }).locator('..').locator('input')).toHaveValue('2120123456');
+    await expect(page.locator('label', { hasText: /^IČ DPH$/ }).locator('..').locator('input')).toHaveValue('SK2120123456');
+    await expect(page.getByPlaceholder('Peter', { exact: true })).toHaveValue('Ing. Ján');
+    await expect(page.getByPlaceholder('Varga', { exact: true })).toHaveValue('Novák');
+    // The registered address lands in the address card.
+    await expect(page.getByPlaceholder('e.g. Ružová dolina 25/B')).toHaveValue('Hlavná 1');
+
+    await page.getByRole('button', { name: 'Vytvoriť zamestnanca' }).first().click();
+    await expect.poll(() => pushed !== null).toBe(true);
+    const saved = pushed!.employees!.find((e) => e.kind === 'contractor')!;
+    expect(saved).toMatchObject({
+      name: 'Dodigital s.r.o.', firstName: 'Ing. Ján', lastName: 'Novák',
+      companyId: '48123456', taxId: '2120123456', vatId: 'SK2120123456',
+    });
   });
 
   test('a background sync does not reset the new-employee form', async ({ page }) => {

@@ -276,6 +276,18 @@ async function employeeIdentityChecks() {
   check('a contractor is stored under its company name, without person names', co[0] === 'Probe Agency s.r.o.' && co[1] === 'NULL' && co[2] === 'contractor', JSON.stringify(co));
   check('filter by position', (await call(A, 'list_employees', { position: 'PPC špecialista' })).some((e) => e.id === r.id), '');
 
+  // An external supplier (company or sole trader): contact person and IČO / DIČ / IČ DPH.
+  r = await call(A, 'create_employee', { kind: 'contractor', company_name: 'Probe Freelancer', first_name: 'Ján', last_name: 'Novák', company_id: '48123456', tax_id: '2120123456', vat_id: 'SK2120123456' });
+  const sup = rows(`SELECT name, first_name, last_name, company_id, tax_id, vat_id FROM employees WHERE id = '${r.id}'`)[0];
+  check('a contractor keeps its contact person and IČO / DIČ / IČ DPH', JSON.stringify(sup) === JSON.stringify(['Probe Freelancer', 'Ján', 'Novák', '48123456', '2120123456', 'SK2120123456']), JSON.stringify(sup));
+  const supRow = (await call(A, 'list_employees', { search: '48123456' })).find((e) => e.id === r.id);
+  check('list_employees returns the register numbers, and search finds a supplier by IČO', supRow?.company_id === '48123456' && supRow.tax_id === '2120123456' && supRow.vat_id === 'SK2120123456', JSON.stringify(supRow));
+  check('IČO on a person is refused rather than dropped', isErr(await call(A, 'create_employee', { first_name: 'Probe', last_name: 'Person', company_id: '1' }), /contractor only/), '');
+  await call(A, 'update_employee', { id: r.id, vat_id: '' });
+  check('an empty vat_id clears just that number', JSON.stringify(rows(`SELECT company_id, vat_id FROM employees WHERE id = '${r.id}'`)[0]) === JSON.stringify(['48123456', 'NULL']), '');
+  await call(A, 'update_employee', { id: r.id, kind: 'employee', first_name: 'Ján', last_name: 'Novák' });
+  check('turning a supplier into a person clears the register numbers', JSON.stringify(rows(`SELECT kind, company_id, tax_id FROM employees WHERE id = '${r.id}'`)[0]) === JSON.stringify(['employee', 'NULL', 'NULL']), '');
+
   // update_employee
   check('a nickname-only record can get a position without completing the name', (await call(A, 'update_employee', { id: 'pe-4', position: 'telemarketing' })).success === true, '');
   check('...and the name is left as it was', cell(`SELECT name FROM employees WHERE id = 'pe-4'`) === 'Probetomi', '');

@@ -896,6 +896,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                         t={t}
                         language={systemLanguage}
                         compact
+                        country={editCountry}
+                        onRegistryAddress={rights.editPersonal ? (a) => {
+                          setEditStreet(a.street || editStreet);
+                          setEditCity(a.city || editCity);
+                          setEditZip(a.zip || editZip);
+                          setEditCountry(a.country || editCountry);
+                        } : undefined}
                       />
                     </div>
 
@@ -1389,6 +1396,17 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <span>{t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és kapcsolat adatok")}</span>
                 </div>
 
+                {([
+                  ["IČO", employee.companyId],
+                  ["DIČ", employee.taxId],
+                  ["IČ DPH", employee.vatId],
+                ] as const).map(([name, id]) => id ? (
+                  <div key={name} className="flex items-center justify-between pl-5">
+                    <span className="text-slate-400">{name}:</span>
+                    <span className="font-mono text-slate-800 font-semibold">{id}</span>
+                  </div>
+                ) : null)}
+
                 {employee.pin && (
                   <div className="flex items-center justify-between pl-5">
                     <span className="text-slate-400">{t("PIN / RČ", "Rodné číslo", "Személyi szám")}:</span>
@@ -1420,7 +1438,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </div>
                 )}
 
-                {!employee.pin && !employee.email && !employee.phone && (
+                {!employee.pin && !employee.email && !employee.phone && !employee.companyId && !employee.taxId && !employee.vatId && (
                   <p className="text-ui text-slate-400 italic pl-5">
                     {t("No contact details specified", "Kontaktné údaje nezadané", "Nincsenek megadott elérhetőségek")}
                   </p>

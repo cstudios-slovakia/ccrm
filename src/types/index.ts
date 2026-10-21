@@ -1162,8 +1162,12 @@ export interface Employee {
   name: string;
   firstName?: string | null;
   lastName?: string | null;
-  /** employee = a person; contractor = an outside company; ledger = a payroll-only line such as commission. */
+  /** employee = a person; contractor = an external supplier (company or sole trader); ledger = a payroll-only line such as commission. */
   kind?: 'employee' | 'contractor' | 'ledger';
+  /** IČO, DIČ and IČ DPH of a contractor; null for the other kinds. */
+  companyId?: string | null;
+  taxId?: string | null;
+  vatId?: string | null;
   /** Job title (programmer, designer...). Not the app permission role — that lives on the linked user. */
   position?: string | null;
   department?: string | null;
