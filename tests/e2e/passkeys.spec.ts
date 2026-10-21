@@ -41,8 +41,8 @@ async function createResidentKey(page: Page) {
 const localFlag = (page: Page, key: string) => page.evaluate((k) => window.localStorage.getItem(k), key);
 
 /** Starts from the login screen: the mocks, minus the seeded admin session. */
-async function signedOut(page: Page) {
-  await startSession(page);
+async function signedOut(page: Page, mocks: Parameters<typeof startSession>[1] = {}) {
+  await startSession(page, mocks);
   // Registered after the fixture's seeding script, so it clears sessionStorage
   await page.addInitScript(() => {
     try {
@@ -52,6 +52,28 @@ async function signedOut(page: Page) {
       /* nothing seeded */
     }
   });
+  // The app adopts a live server session, so until a login request goes out the
+  // server must say there is none. Registered after the fixture's own route, so it answers first.
+  let loggedIn = false;
+  page.on('request', (req) => {
+    if (req.url().includes('/api/login.php') || (req.postData() || '').includes('"login_verify"')) loggedIn = true;
+  });
+  await page.route('**/sync.php**', (route) =>
+    route.request().method() === 'GET' && !loggedIn
+      ? route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ success: false }) })
+      : route.fallback(),
+  );
+}
+
+/** A passkey was made or used in this browser before: the login button is only offered then. */
+async function markDeviceHasPasskey(page: Page) {
+  await page.addInitScript((k) => {
+    try {
+      window.localStorage.setItem(k, '1');
+    } catch {
+      /* storage blocked */
+    }
+  }, DEVICE_MARKER);
 }
 
 /** Configures Chromium CDP virtual authenticator */
@@ -75,6 +97,7 @@ test.describe('Biometric login (passkeys)', () => {
   test('(a) login page shows the passkey button and divider and clicking it logs in to app shell', async ({ page }) => {
     await setupVirtualAuthenticator(page);
     await signedOut(page);
+    await markDeviceHasPasskey(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Pre-create a resident key on the virtual authenticator so navigator.credentials.get finds it
@@ -102,6 +125,50 @@ test.describe('Biometric login (passkeys)', () => {
 
     // Verify user lands in the app shell
     await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('(b2) a device with no passkey of its own does not offer the button, though the server supports passkeys', async ({ page }) => {
+    await setupVirtualAuthenticator(page);
+    await signedOut(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.locator('input[type="email"]').first()).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(page.getByRole('button', { name: PASSKEY_BUTTON })).toHaveCount(0);
+    await expect(
+      page.getByText(/Or continue with email|Alebo pokračujte e-mailom|Vagy folytassa e-mailben/),
+    ).toHaveCount(0);
+  });
+
+  test('(b3) removing the last passkey in personal settings takes the login button away', async ({ page }) => {
+    await setupVirtualAuthenticator(page);
+    await startSession(page);
+    await markDeviceHasPasskey(page);
+    await gotoView(page, '#personal-settings');
+
+    await page.getByRole('button', { name: /Add passkey|Pridať prístupový kľúč|Hozzáférési kulcs hozzáadása/ }).first().click();
+    await page.getByLabel(/Passkey name|Názov prístupového kľúča|A hozzáférési kulcs neve/).fill('Test Authenticator');
+    await page
+      .getByLabel(/Confirm with your current password|Potvrďte súčasným heslom|Erősítse meg a jelenlegi jelszavával/)
+      .fill('password');
+    await page.getByRole('button', { name: /Register passkey|Zaregistrovať prístupový kľúč|Hozzáférési kulcs regisztrálása/ }).click();
+    await expect(page.getByText('Test Authenticator')).toBeVisible({ timeout: 5000 });
+    expect(await localFlag(page, DEVICE_MARKER)).toBe('1');
+
+    await holdToConfirm(page.locator('button').filter({ has: page.locator('svg.lucide-trash-2') }).first());
+    await expect(page.getByText('Test Authenticator')).toHaveCount(0, { timeout: 5000 });
+    expect(await localFlag(page, DEVICE_MARKER)).toBeNull();
+  });
+
+  test('(b4) a stale device marker is dropped at the next password login, so the setup offer returns', async ({ page }) => {
+    await setupVirtualAuthenticator(page);
+    await signedOut(page);
+    await markDeviceHasPasskey(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await signInWithPassword(page);
+
+    await expect(page.getByRole('region', { name: OFFER_REGION })).toBeVisible({ timeout: 10_000 });
+    expect(await localFlag(page, DEVICE_MARKER)).toBeNull();
   });
 
   test('(b) with status.available: false the button and divider are absent', async ({ page }) => {
@@ -239,6 +306,7 @@ test.describe('Biometric login (passkeys)', () => {
   test('(g) passkey login does not trigger the offer', async ({ page }) => {
     await setupVirtualAuthenticator(page);
     await signedOut(page);
+    await markDeviceHasPasskey(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await createResidentKey(page);
 
@@ -252,15 +320,7 @@ test.describe('Biometric login (passkeys)', () => {
 
   test('(h) after the 5-minute window the offer asks for the password, rejects a wrong one, then registers', async ({ page }) => {
     await setupVirtualAuthenticator(page);
-    await startSession(page, { passkeyPwWindowMs: 0 });
-    await page.addInitScript(() => {
-      try {
-        window.sessionStorage.removeItem('crm_current_user_rbac');
-        window.sessionStorage.removeItem('crm_session_token');
-      } catch {
-        /* nothing seeded */
-      }
-    });
+    await signedOut(page, { passkeyPwWindowMs: 0 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await signInWithPassword(page);
 
@@ -284,6 +344,7 @@ test.describe('Biometric login (passkeys)', () => {
   test('(i) the passkey button works while an autofill (conditional) request is pending', async ({ page }) => {
     await setupVirtualAuthenticator(page);
     await signedOut(page);
+    await markDeviceHasPasskey(page);
     // Record every navigator.credentials.get so the test can see the pending
     // conditional request being retired before the modal one starts.
     await page.addInitScript(() => {

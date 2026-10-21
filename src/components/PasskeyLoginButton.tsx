@@ -4,6 +4,7 @@ import type { Language } from "../utils/translations";
 import type { UserProfile } from "../types";
 import { isPasskeySupported, passkeyErrorKind, type LoginMethod } from "../utils/passkeys";
 import {
+  isPasskeyOnThisDevice,
   fetchPasskeyStatus,
   getLoginOptions,
   platformAuthenticatorAvailable,
@@ -32,8 +33,10 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
   onBeforeModal,
   onAfterModal,
 }) => {
+  // Without a passkey made or used on this device the button would only open an empty
+  // OS prompt. A synced passkey on a fresh browser still signs in through email autofill.
   const [available, setAvailable] = useState<boolean | null>(() =>
-    isPasskeySupported() ? null : false
+    isPasskeySupported() && isPasskeyOnThisDevice() ? null : false
   );
   const [platformAvailable, setPlatformAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,7 +46,7 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
   useEffect(() => {
-    if (!isPasskeySupported()) {
+    if (!isPasskeySupported() || !isPasskeyOnThisDevice()) {
       return;
     }
 

@@ -45,8 +45,18 @@ const writeFlag = (key: string): void => {
   }
 };
 
+const clearFlag = (key: string): void => {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* blocked storage: nothing to clear */
+  }
+};
+
 export const isPasskeyOnThisDevice = (): boolean => readFlag(KEY_ON_THIS_DEVICE);
 export const markPasskeyOnThisDevice = (): void => writeFlag(KEY_ON_THIS_DEVICE);
+/** The account has no passkeys left, so the sign-in button has nothing to offer here. */
+export const clearPasskeyOnThisDevice = (): void => clearFlag(KEY_ON_THIS_DEVICE);
 export const isPasskeyOfferDismissed = (): boolean => readFlag(KEY_OFFER_DISMISSED);
 export const dismissPasskeyOffer = (): void => writeFlag(KEY_OFFER_DISMISSED);
 
@@ -85,6 +95,23 @@ export async function fetchPasskeyStatus(): Promise<boolean> {
     return !!(data && data.success && data.available);
   } catch {
     return false;
+  }
+}
+
+/**
+ * Drops a stale "passkey on this device" marker once the signed-in account has no
+ * passkeys at all (removed in Personal settings, or from another device). Signed-in only.
+ */
+export async function reconcilePasskeyMarker(): Promise<void> {
+  if (!isPasskeyOnThisDevice()) return;
+  try {
+    const res = await postAction({ action: "list" });
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.passkeys) && data.passkeys.length === 0) {
+      clearPasskeyOnThisDevice();
+    }
+  } catch {
+    /* offline: keep the marker */
   }
 }
 

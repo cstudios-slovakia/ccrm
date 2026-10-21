@@ -1004,15 +1004,6 @@ export async function installBackendMocks(
         }),
       }
     : baseUser;
-  await page.route('**/api/login.php', (route) => {
-    passkeyPwAuthAt = Date.now();
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: true, user: signedIn }),
-    });
-  });
-
   /** email -> the metadata_json the app last pushed for that user. */
   const pushedUserMeta = new Map<string, unknown>();
   /** project type id -> the listColumns the app last pushed for that type. */
@@ -1137,6 +1128,17 @@ export async function installBackendMocks(
       body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [] }),
     }),
   );
+
+  // After the catch-all above, which would otherwise shadow it: the sign-in
+  // screen needs `user` in the answer, not the catch-all's empty lists.
+  await page.route('**/api/login.php', (route) => {
+    passkeyPwAuthAt = Date.now();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, user: signedIn }),
+    });
+  });
 
   // Dashboard widgets query the analytics endpoint per widget, so this must be
   // registered AFTER the catch-all above: Playwright tries the most recently

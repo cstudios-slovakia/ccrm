@@ -10,6 +10,7 @@ import {
   isPasskeyOnThisDevice,
   markPasskeyOnThisDevice,
   platformAuthenticatorAvailable,
+  reconcilePasskeyMarker,
   registerPasskey,
 } from "../utils/passkeyCeremony";
 
@@ -37,7 +38,8 @@ export const PasskeySetupOffer: React.FC<PasskeySetupOfferProps> = ({ systemLang
   useEffect(() => {
     if (loginMethod !== "password") return;
     let active = true;
-    Promise.all([fetchPasskeyStatus(), platformAuthenticatorAvailable()]).then(([available, platformAvailable]) => {
+    // A marker left behind by a removed passkey would otherwise suppress the offer for good.
+    Promise.all([fetchPasskeyStatus(), platformAuthenticatorAvailable(), reconcilePasskeyMarker()]).then(([available, platformAvailable]) => {
       if (!active) return;
       setEligible(
         shouldOfferPasskeySetup({

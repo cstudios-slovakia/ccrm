@@ -14,7 +14,7 @@ import { PasswordInput } from "./PasswordInput";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { asLang } from "../utils/undoMessages";
 import { isPasskeySupported, defaultPasskeyName, formatAgo } from "../utils/passkeys";
-import { registerPasskey } from "../utils/passkeyCeremony";
+import { clearPasskeyOnThisDevice, registerPasskey } from "../utils/passkeyCeremony";
 
 export interface PasskeySettingsProps {
   systemLanguage: Language;
@@ -56,6 +56,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
       const data = await res.json();
       if (data && data.success && Array.isArray(data.passkeys)) {
         setPasskeys(data.passkeys);
+        if (data.passkeys.length === 0) clearPasskeyOnThisDevice();
       }
     } catch {
       /* ignore */
@@ -177,7 +178,9 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
       });
       const data = await res.json();
       if (data && data.success) {
-        setPasskeys((prev) => prev.filter((p) => p.id !== id));
+        const remaining = passkeys.filter((p) => p.id !== id);
+        setPasskeys(remaining);
+        if (remaining.length === 0) clearPasskeyOnThisDevice();
       }
     } catch {
       /* ignore */
