@@ -38,6 +38,32 @@ async function createResidentKey(page: Page) {
   });
 }
 
+/**
+ * A real browser leaves a conditional (autofill) request pending until the user picks a
+ * passkey or the page aborts it. Chromium's virtual authenticator has no autofill list, so it
+ * settles the request at once instead: it signs the app in by itself when a resident key
+ * exists, and rejects with NotAllowedError when none does. Either way the button under test
+ * is never reached. This keeps conditional requests pending until aborted, as a browser does,
+ * and records every `navigator.credentials.get` so a test can see the pending one retired.
+ * Modal requests still go to the virtual authenticator.
+ */
+async function keepConditionalRequestsPending(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __gets: Array<{ mediation: string | null; signal: AbortSignal | null }> };
+    w.__gets = [];
+    const original = navigator.credentials.get.bind(navigator.credentials);
+    navigator.credentials.get = (opts?: CredentialRequestOptions) => {
+      w.__gets.push({ mediation: opts?.mediation ?? null, signal: opts?.signal ?? null });
+      if (opts?.mediation !== 'conditional') return original(opts);
+      return new Promise<Credential | null>((_resolve, reject) => {
+        const abort = () => reject(new DOMException('The request was aborted.', 'AbortError'));
+        if (opts.signal?.aborted) abort();
+        else opts.signal?.addEventListener('abort', abort);
+      });
+    };
+  });
+}
+
 const localFlag = (page: Page, key: string) => page.evaluate((k) => window.localStorage.getItem(k), key);
 
 /** Starts from the login screen: the mocks, minus the seeded admin session. */
@@ -98,20 +124,11 @@ test.describe('Biometric login (passkeys)', () => {
     await setupVirtualAuthenticator(page);
     await signedOut(page);
     await markDeviceHasPasskey(page);
+    await keepConditionalRequestsPending(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     // Pre-create a resident key on the virtual authenticator so navigator.credentials.get finds it
-    await page.evaluate(async () => {
-      await navigator.credentials.create({
-        publicKey: {
-          challenge: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
-          rp: { name: 'CCRM', id: 'localhost' },
-          user: { id: new Uint8Array([1, 2, 3]), name: 'erik@crm.com', displayName: 'Erik' },
-          pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
-          authenticatorSelection: { residentKey: 'required', requireResidentKey: true },
-        },
-      });
-    });
+    await createResidentKey(page);
 
     const passkeyBtn = page.getByRole('button', {
       name: PASSKEY_BUTTON,
@@ -307,6 +324,7 @@ test.describe('Biometric login (passkeys)', () => {
     await setupVirtualAuthenticator(page);
     await signedOut(page);
     await markDeviceHasPasskey(page);
+    await keepConditionalRequestsPending(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await createResidentKey(page);
 
@@ -345,17 +363,9 @@ test.describe('Biometric login (passkeys)', () => {
     await setupVirtualAuthenticator(page);
     await signedOut(page);
     await markDeviceHasPasskey(page);
-    // Record every navigator.credentials.get so the test can see the pending
+    // Records every navigator.credentials.get so the test can see the pending
     // conditional request being retired before the modal one starts.
-    await page.addInitScript(() => {
-      const w = window as unknown as { __gets: Array<{ mediation: string | null; signal: AbortSignal | null }> };
-      w.__gets = [];
-      const original = navigator.credentials.get.bind(navigator.credentials);
-      navigator.credentials.get = (opts?: CredentialRequestOptions) => {
-        w.__gets.push({ mediation: opts?.mediation ?? null, signal: opts?.signal ?? null });
-        return original(opts);
-      };
-    });
+    await keepConditionalRequestsPending(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const conditionalSupported = await page.evaluate(
