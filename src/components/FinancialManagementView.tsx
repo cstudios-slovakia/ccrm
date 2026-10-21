@@ -873,6 +873,9 @@ interface FinancialManagementViewProps {
   access?: ModuleAccess;
 }
 
+/** How many ledger rows each scroll-in reveals. */
+const MOVEMENTS_PAGE_SIZE = 40;
+
 export const FinancialManagementView: React.FC<FinancialManagementViewProps> = ({
   financialRecords = [],
   setFinancialRecords: setFinancialRecordsRaw,
@@ -1225,7 +1228,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [movementsStartDate, setMovementsStartDate] = useState<string>("");
   const [movementsEndDate, setMovementsEndDate] = useState<string>("");
   const [movementsSortOrder, setMovementsSortOrder] = useState<"desc" | "asc">("desc");
-  const [movementsVisibleCount, setMovementsVisibleCount] = useState<number>(40);
+  const [movementsVisibleCount, setMovementsVisibleCount] = useState<number>(MOVEMENTS_PAGE_SIZE);
   // A filter seeded from the URL hash must not land hidden inside a collapsed
   // drawer — the user would see filtered results with no visible reason why.
   const [isMovementsAdvancedOpen, setIsMovementsAdvancedOpen] = useState<boolean>(
@@ -1241,7 +1244,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [showFutureMovements, setShowFutureMovements] = useState<boolean>(false);
   const [futureHorizonMonths, setFutureHorizonMonths] = useState<number>(1);
 
-  // Sentinel ref for infinite scroll
+  // The scroll box, and the row at its bottom that asks for the next page.
+  const movementsScrollRef = useRef<HTMLDivElement | null>(null);
   const movementsSentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Stored ledger rows the user has ticked. Forecast rows and recurring charges
@@ -1801,30 +1805,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     };
   }, [groupedMovementsByMonth, forecastSummary, filteredFutureMovements.length]);
 
-  // Infinite Scroll IntersectionObserver
+  // The ledger scrolls inside its own box, not the page. The sentinel has to
+  // live in that box, and the observer has to watch that box — a viewport
+  // observer never sees the table scroll. Re-arm after every page: the
+  // observer only reports a change in visibility, so a sentinel that stays on
+  // screen (the last short page) would otherwise spin forever.
   useEffect(() => {
     if (activeTab !== "movements") return;
+    if (movementsVisibleCount >= movementsSummary.rowCount) return;
+    const root = movementsScrollRef.current;
+    const sentinel = movementsSentinelRef.current;
+    if (!root || !sentinel) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          setMovementsVisibleCount((prev) => {
-            if (prev < movementsSummary.rowCount) {
-              return prev + 40;
-            }
-            return prev;
-          });
-        }
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setMovementsVisibleCount((prev) =>
+          prev < movementsSummary.rowCount ? prev + MOVEMENTS_PAGE_SIZE : prev
+        );
       },
-      { rootMargin: "300px" }
+      { root, rootMargin: "300px" }
     );
 
-    if (movementsSentinelRef.current) {
-      observer.observe(movementsSentinelRef.current);
-    }
-
+    observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [activeTab, movementsSummary.rowCount]);
+  }, [activeTab, movementsVisibleCount, movementsSummary.rowCount]);
 
   // Drop a tick when its movement has been deleted.
   useEffect(() => {
@@ -2043,7 +2048,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Reset visible count when filters change
   useEffect(() => {
-    setMovementsVisibleCount(40);
+    setMovementsVisibleCount(MOVEMENTS_PAGE_SIZE);
   }, [
     movementsSearch,
     movementsType,
@@ -7041,7 +7046,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </button>
               </div>
             )}
-            <div className="table-sticky-scroll scrollbar-thin">
+            <div ref={movementsScrollRef} className="table-sticky-scroll scrollbar-thin">
               <table className="w-full text-left text-ui border-collapse">
                 <thead className="bg-slate-50  text-slate-600  type-overline border-b border-slate-200  sticky top-0 z-20">
                   <tr>
@@ -7629,36 +7634,37 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   )}
                 </tbody>
               </table>
-            </div>
 
-            {/* Infinite Scroll Loading Sentinel */}
-            {movementsSummary.rowCount > 0 && (
-              <div
-                ref={movementsSentinelRef}
-                className="py-6 border-t border-slate-100  flex items-center justify-center text-ui text-slate-400 font-medium"
-              >
-                {movementsVisibleCount < movementsSummary.rowCount ? (
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
-                    <span>
+              {/* Next page. It sits inside the scroll box: the ledger does not
+                  grow the page, so a footer under the scrollbar never moves. */}
+              {movementsSummary.rowCount > 0 && (
+                <div
+                  ref={movementsSentinelRef}
+                  className="py-6 border-t border-slate-100  flex items-center justify-center text-ui text-slate-400 font-medium"
+                >
+                  {movementsVisibleCount < movementsSummary.rowCount ? (
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                      <span>
+                        {t(
+                          `Loading more movements... (showing ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} of ${movementsSummary.rowCount})`,
+                          `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} z ${movementsSummary.rowCount})`,
+                          `További mozgások betöltése... (${Math.min(movementsVisibleCount, movementsSummary.rowCount)} / ${movementsSummary.rowCount})`
+                        )}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">
                       {t(
-                        `Loading more movements... (showing ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} of ${movementsSummary.rowCount})`,
-                        `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} z ${movementsSummary.rowCount})`,
-                        `További mozgások betöltése... (${Math.min(movementsVisibleCount, movementsSummary.rowCount)} / ${movementsSummary.rowCount})`
+                        `✓ All ${movementsSummary.rowCount} movements loaded`,
+                        `✓ Všetkých ${movementsSummary.rowCount} pohybov načítaných`,
+                        `✓ Mind a(z) ${movementsSummary.rowCount} mozgás betöltve`
                       )}
                     </span>
-                  </div>
-                ) : (
-                  <span className="text-slate-400">
-                    {t(
-                      `✓ All ${movementsSummary.rowCount} movements loaded`,
-                      `✓ Všetkých ${movementsSummary.rowCount} pohybov načítaných`,
-                      `✓ Mind a(z) ${movementsSummary.rowCount} mozgás betöltve`
-                    )}
-                  </span>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {showMovementCheckboxes && selectedMovementRecords.length > 0 && typeof document !== "undefined" && createPortal(
