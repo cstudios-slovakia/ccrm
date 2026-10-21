@@ -109,6 +109,10 @@ import { clearErrorLogsWithUndo } from "./utils/errorLogs";
  */
 const AI_DEPENDENT_TABS = ["rag_ai", "automation", "meetings", "email"];
 
+// Upper bound for one /sync.php poll (probe or full pull). Past this the request
+// is abandoned so the next 5s tick can try again instead of waiting on a hung socket.
+const SYNC_REQUEST_TIMEOUT_MS = 30_000;
+
 // Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
 const safeLazy = <T extends ComponentType<any>>(importFn: () => Promise<{ default: T }>) =>
   lazy(async () => {
@@ -2970,7 +2974,7 @@ ${log.payload || ''}
 
     const fetchFull = async (adoptSession = false) => {
       const pollStartTime = Date.now();
-      const res = await fetch(`/sync.php?t=${Date.now()}`);
+      const res = await fetch(`/sync.php?t=${Date.now()}`, { signal: AbortSignal.timeout(SYNC_REQUEST_TIMEOUT_MS) });
       if (adoptSession && (res.ok || res.status === 401)) sessionAdoptionOpenRef.current = false;
       if (res.status === 401) {
         // Installed, but no valid session: show the login screen instead of
@@ -3009,13 +3013,20 @@ ${log.payload || ''}
       }
     })();
 
+    // setInterval does not wait for the async body. A backend that takes longer
+    // than the 5s period (a laptop under load, a cold database) would otherwise
+    // be handed a new poll every tick on top of the ones still running, and the
+    // pile-up is what turned "slow" into a wall of timeouts and resets.
+    let pollInFlight = false;
     const poller = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       const pollStartTime = Date.now();
       try {
         tick++;
         const forceFull = tick % 12 === 0;
         if (!forceFull) {
-          const probeRes = await fetch(`/sync.php?probe=1&t=${Date.now()}`);
+          const probeRes = await fetch(`/sync.php?probe=1&t=${Date.now()}`, { signal: AbortSignal.timeout(SYNC_REQUEST_TIMEOUT_MS) });
           if (probeRes.status === 401) {
             setIsInstalled(true);
             setCurrentUser(null);
@@ -3055,6 +3066,8 @@ ${log.payload || ''}
         await fetchFull();
       } catch (err) {
         // quiet fail on background polling
+      } finally {
+        pollInFlight = false;
       }
     }, 5000);
 
