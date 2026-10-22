@@ -418,8 +418,9 @@ if (!function_exists('ccrm_send_cors')) {
 
     /** Open the authenticated session for a users row and return the profile array login.php answers with. */
     function ccrm_establish_login_session(\PDO $pdo, array $row, bool $remember): array {
-        // The address an administrator reached the CRM at is the one mailed links
-        // should use. Other roles never get to choose it (see ccrm_remember_app_url).
+        // The first administrator sign-in on a fresh install may record the address
+        // mailed links should use. It never replaces one already stored, and a
+        // CCRM_APP_URL pin is left untouched (see ccrm_remember_app_url).
         ccrm_remember_app_url($pdo, $row);
 
         ccrm_begin_session($pdo, $row);
@@ -2218,21 +2219,34 @@ HTACCESS;
     }
 
     /**
-     * Remember the base URL an administrator just signed in through. The Host
-     * header is client-controlled, and the stored value ends up in password-reset
-     * links, so a non-admin's sign-in (any Viewer can send `Host: evil.example`)
-     * must never set or replace it. An operator can pin the value for good with
-     * CCRM_APP_URL in config.php, which wins over this.
+     * Record the base URL the first administrator signed in through, and only
+     * then. The Host header is client-controlled and the stored value is what
+     * password-reset links use when config.php has no CCRM_APP_URL, so:
+     *  - a non-admin never writes it,
+     *  - a value that is already stored is never replaced (an admin login
+     *    through a proxied Host must not move existing reset links),
+     *  - when CCRM_APP_URL is set, nothing is written at all. That constant
+     *    already wins in ccrm_app_base_url(); leaving a second copy in the
+     *    database would become the authority the moment the constant was removed.
      */
     function ccrm_remember_app_url(\PDO $pdo, ?array $user = null): void {
+        if (defined('CCRM_APP_URL') && is_string(CCRM_APP_URL) && CCRM_APP_URL !== '') return;
         if (strtolower(trim((string)($user['role'] ?? ''))) !== 'admin') return;
         $url = ccrm_request_base_url();
         if ($url === '') return;
         try {
             $cur = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'APP_BASE_URL'");
             $cur->execute();
-            if ($cur->fetchColumn() === $url) return;
-            $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('APP_BASE_URL', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+            $stored = $cur->fetchColumn();
+            if (is_string($stored) && trim($stored) !== '') return;
+            if ($stored === false) {
+                $pdo->prepare("INSERT IGNORE INTO `system_settings` (`key`, `value`) VALUES ('APP_BASE_URL', ?)")
+                    ->execute([$url]);
+                return;
+            }
+            // A blank row (NULL or '') may be filled once. A concurrent login
+            // that already wrote a real URL is left alone.
+            $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'APP_BASE_URL' AND (`value` IS NULL OR `value` = '')")
                 ->execute([$url]);
         } catch (\Throwable $e) { /* best effort — links fall back to the request */ }
     }

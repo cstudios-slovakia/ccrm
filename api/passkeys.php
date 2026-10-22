@@ -241,7 +241,7 @@ try {
                 }
 
                 if (!$ok) {
-                    ccrm_passkey_record_failure($pdo, $clientIp, $sessionUser['email']);
+                    ccrm_passkey_record_failure($pdo, $clientIp, $sessionUser['email'], 'Wrong password while adding a passkey');
                     http_response_code(403);
                     echo json_encode(['success' => false, 'message' => 'Wrong password.']);
                     exit;
