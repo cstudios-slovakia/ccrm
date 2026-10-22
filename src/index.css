@@ -55,6 +55,8 @@
   --animate-slide-out-top: slide-out-top 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-fade-in: fade-in 0.25s ease-out forwards;
   --animate-fade-out: fade-out 0.25s ease-out forwards;
+  /* Rose outline on a document block that failed Issue. Opacity stays put so the lines don't flicker. */
+  --animate-offer-section-alert: offer-section-alert 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 
   @keyframes slide-in-right {
     0% { transform: translate3d(100%, 0, 0); }
@@ -87,6 +89,10 @@
   @keyframes fade-out {
     0% { opacity: 1; }
     100% { opacity: 0; }
+  }
+  @keyframes offer-section-alert {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(244 63 94 / 0); }
+    50% { box-shadow: 0 0 0 4px rgb(244 63 94 / 0.35); }
   }
 }
 

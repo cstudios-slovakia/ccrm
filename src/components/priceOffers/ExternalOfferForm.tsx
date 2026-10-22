@@ -2,6 +2,7 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { ExternalInvoiceProvider, InvoiceOffer, InvoiceOfferItem } from "../../types";
 import type { Language } from "../../utils/translations";
+import { OFFER_SECTION_ALERT_CLASS, type OfferSectionAlert } from "../pdf/offerEditing";
 import { CustomSelect } from "../ui/CustomSelect";
 import { inputClass, labelClass } from "./styles";
 
@@ -23,6 +24,7 @@ interface ExternalOfferFormProps {
   currencySymbol: string;
   money: (value: unknown) => string;
   productPicker: React.ReactNode;
+  sectionAlert?: OfferSectionAlert | null;
 }
 
 const compactInput =
@@ -55,7 +57,8 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
   vatRates,
   currencySymbol,
   money,
-  productPicker
+  productPicker,
+  sectionAlert = null
 }) => {
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
 
@@ -134,7 +137,14 @@ export const ExternalOfferForm: React.FC<ExternalOfferFormProps> = ({
         {productPicker}
 
         {draft.items.length === 0 && (
-          <div className="p-5 text-center border border-dashed border-slate-200 rounded-2xl">
+          <div
+            {...(sectionAlert === "items" ? { "data-offer-items": "" } : {})}
+            className={
+              sectionAlert === "items"
+                ? `p-5 text-center border border-dashed border-slate-200 rounded-2xl ${OFFER_SECTION_ALERT_CLASS}`
+                : "p-5 text-center border border-dashed border-slate-200 rounded-2xl"
+            }
+          >
             <p className="text-ui text-slate-500">
               {t(
                 "No line items yet — pick one from the warehouse or add a custom item.",

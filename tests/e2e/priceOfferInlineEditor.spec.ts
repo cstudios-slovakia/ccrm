@@ -347,7 +347,14 @@ test.describe('Price offer inline editor', () => {
     await page.getByRole('option', { name: LEAD_NAME }).click();
     await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
     await expect(editor.locator('[data-offer-add-item]')).toBeFocused();
+    await expect(editor.locator('[data-offer-items]')).toHaveClass(/ring-rose-500/);
     await expect(editor).toHaveAttribute('data-offer-view', 'edit');
+
+    // Preview has no control to focus, so the same block is outlined on the document.
+    await editor.getByRole('tab', { name: /Preview|Náhľad/ }).click();
+    await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+    await expect(editor.locator('[data-offer-items]')).toHaveClass(/ring-rose-500/);
+    await expect(editor).toHaveAttribute('data-offer-view', 'preview');
   });
 
   test('picking a client fills the greeting and the recipient block', async ({ page }) => {

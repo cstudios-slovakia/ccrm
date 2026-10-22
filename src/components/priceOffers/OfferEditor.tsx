@@ -10,7 +10,7 @@ import type {
 import type { Language } from "../../utils/translations";
 import { DefaultOfferTemplate } from "../pdf/DefaultOfferTemplate";
 import { CustomAiOfferTemplate } from "../pdf/CustomAiOfferTemplate";
-import type { OfferEditing } from "../pdf/offerEditing";
+import type { OfferEditing, OfferSectionAlert } from "../pdf/offerEditing";
 import { ClientSelect } from "../ui/ClientSelect";
 import { CustomSelect } from "../ui/CustomSelect";
 import { ClientRegistryCompletion } from "./ClientRegistryCompletion";
@@ -151,17 +151,41 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
   const [view, setView] = useState<EditorView>("edit");
   const [warehouseQuery, setWarehouseQuery] = useState("");
   const [newClientOpen, setNewClientOpen] = useState(false);
-  const [clientAlert, setClientAlert] = useState(false);
+  const [sectionAlert, setSectionAlert] = useState<OfferSectionAlert | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const alertTimer = useRef<number | undefined>(undefined);
   const openedWith = useRef(draftSignature(seed, isExternal ? provider : ""));
 
   const dirty = draftSignature(draft, isExternal ? provider : "") !== openedWith.current;
   useEffect(() => {
     onDirtyChange(dirty);
   }, [dirty]);
-  useEffect(() => () => onDirtyChange(false), []);
+  useEffect(
+    () => () => {
+      onDirtyChange(false);
+      window.clearTimeout(alertTimer.current);
+    },
+    []
+  );
+
+  // The outline is rendered with the alert, so the scroll and focus wait until
+  // that block is actually in the document.
+  useEffect(() => {
+    if (!sectionAlert) return;
+    const root = bodyRef.current;
+    if (!root) return;
+    const section = root.querySelector<HTMLElement>(
+      sectionAlert === "client" ? "[data-offer-client-picker], [data-offer-client]" : "[data-offer-items]"
+    );
+    const control =
+      sectionAlert === "client"
+        ? section?.querySelector<HTMLElement>("button")
+        : root.querySelector<HTMLElement>("[data-offer-add-item]");
+    section?.scrollIntoView({ behavior: "smooth", block: "center" });
+    control?.focus({ preventScroll: true });
+  }, [sectionAlert]);
 
   // Bring the editor into view and put the cursor in the first field.
   useEffect(() => {
@@ -258,34 +282,30 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
   };
 
   // ------------------------------------------------------------- validation
-  const focusClientPicker = () => {
-    const holder = bodyRef.current?.querySelector<HTMLElement>("[data-offer-client-picker]");
-    const control = holder?.querySelector<HTMLElement>("button");
-    holder?.scrollIntoView({ behavior: "smooth", block: "center" });
-    control?.focus({ preventScroll: true });
-    setClientAlert(true);
-    window.setTimeout(() => setClientAlert(false), 2600);
+  /** Pulse the block the toast is talking about, on the document itself. */
+  const flashSection = (which: OfferSectionAlert) => {
+    setSectionAlert(which);
+    window.clearTimeout(alertTimer.current);
+    alertTimer.current = window.setTimeout(() => setSectionAlert(null), 2600);
   };
 
-  const focusAddItem = () => {
-    const control = bodyRef.current?.querySelector<HTMLElement>("[data-offer-add-item]");
-    control?.scrollIntoView({ behavior: "smooth", block: "center" });
-    control?.focus({ preventScroll: true });
-  };
+  const focusClientPicker = () => flashSection("client");
+  const focusAddItem = () => flashSection("items");
 
   const handleIssue = async () => {
     if (!canEdit || saving) return;
     const doc = buildOfferFromDraft(draft, assembleOptions);
-    // Validation never moves the user to another mode: in Edit the offending
-    // field is focused, in Preview there is nothing to focus and the toast says it.
+    // Validation never moves the user to another mode. The toast says what is
+    // missing, and the same block is outlined on the document — Edit, Preview
+    // and the external form.
     if (!doc) {
       toast(t("Please select a client / lead first.", "Najprv vyberte klienta alebo lead.", "Először válasszon ügyfelet."), "error");
-      if (view === "edit" || isExternal) focusClientPicker();
+      focusClientPicker();
       return;
     }
     if (!doc.items.length) {
       toast(t("Add at least one line item.", "Pridajte aspoň jednu položku.", "Adjon hozzá legalább egy tételt."), "error");
-      if (view === "edit" || isExternal) focusAddItem();
+      focusAddItem();
       return;
     }
     await onIssue(doc, provider);
@@ -303,7 +323,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       data-offer-client-picker
       className={cn(
         "inline-flex flex-nowrap items-center gap-1.5 rounded-lg align-middle transition-shadow",
-        clientAlert && "ring-2 ring-rose-500 ring-offset-2 animate-pulse"
+        sectionAlert === "client" && "ring-2 ring-rose-500 ring-offset-2 animate-pulse motion-reduce:animate-none"
       )}
     >
       {leads.length > 0 ? (
@@ -461,6 +481,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
         systemCurrency={currency}
         language={lang}
         editing={withEditing ? editing : undefined}
+        sectionAlert={sectionAlert}
       />
     ) : (
       <DefaultOfferTemplate
@@ -469,6 +490,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
         systemCurrency={currency}
         language={lang}
         editing={withEditing ? editing : undefined}
+        sectionAlert={sectionAlert}
       />
     );
 
@@ -600,6 +622,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
             currencySymbol={currencySymbol}
             money={money}
             productPicker={productPicker("app")}
+            sectionAlert={sectionAlert}
           />
         ) : (
           <div className="overflow-x-auto rounded-2xl bg-slate-100 p-3 ws-sm:p-4">

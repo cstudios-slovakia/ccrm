@@ -1,6 +1,16 @@
 import type { ReactNode } from "react";
 import type { InvoiceOffer, InvoiceOfferItem, UspCardItem } from "../../types";
 
+/** Which required block failed when Issue was clicked. */
+export type OfferSectionAlert = "client" | "items";
+
+/**
+ * Rose outline on the document block the toast is about.
+ * The ring stays solid; only the halo breathes, so the lines themselves don't fade.
+ */
+export const OFFER_SECTION_ALERT_CLASS =
+  "ring-2 ring-rose-500 ring-offset-2 rounded-lg animate-offer-section-alert motion-reduce:animate-none print:animate-none print:ring-0 print:shadow-none";
+
 /**
  * What an offer template needs to turn itself into an editor.
  *

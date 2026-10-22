@@ -3,7 +3,7 @@ import type { InvoiceOffer, CompanyBillingSettings, AiCustomTemplate, UspCardIte
 import type { Language } from "../../utils/translations";
 import { formatMoney } from "../../utils/currency";
 import { formatDateLocalized } from "../../utils/localTime";
-import type { OfferEditing } from "./offerEditing";
+import { OFFER_SECTION_ALERT_CLASS, type OfferEditing, type OfferSectionAlert } from "./offerEditing";
 import { OfferField, OfferInput } from "./OfferField";
 import {
   EditableEmptyItemsRow, EditableItemRow, EditableItemsFooter, EditableParameterCards,
@@ -18,6 +18,8 @@ interface CustomAiOfferTemplateProps {
   language?: Language;
   /** Turns the document into its own editor. Left out, it renders the finished document. */
   editing?: OfferEditing;
+  /** The required block that just failed Issue — drawn on the document next to the toast. */
+  sectionAlert?: OfferSectionAlert | null;
 }
 
 /** Never throws on a half-populated row coming back from sync. */
@@ -57,7 +59,8 @@ export const CustomAiOfferTemplate: React.FC<CustomAiOfferTemplateProps> = ({
   customTemplate,
   systemCurrency = "EUR",
   language = "sk",
-  editing
+  editing,
+  sectionAlert = null
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     language === "sk" ? sk : language === "hu" ? hu : en;
@@ -227,7 +230,16 @@ export const CustomAiOfferTemplate: React.FC<CustomAiOfferTemplateProps> = ({
             {editing ? (
               <span className="inline-block align-middle">{editing.renderClientPicker()}</span>
             ) : (
-              <span className="font-semibold text-slate-950">{offer.clientName}</span>
+              <span
+                {...(sectionAlert === "client" ? { "data-offer-client": "" } : {})}
+                className={
+                  sectionAlert === "client"
+                    ? `font-semibold text-slate-950 ${OFFER_SECTION_ALERT_CLASS}`
+                    : "font-semibold text-slate-950"
+                }
+              >
+                {offer.clientName}
+              </span>
             )}
           </div>
           <div>
@@ -385,7 +397,10 @@ export const CustomAiOfferTemplate: React.FC<CustomAiOfferTemplateProps> = ({
           </span>
         </h3>
 
-        <div className="overflow-x-auto mt-2">
+        <div
+          {...(sectionAlert === "items" ? { "data-offer-items": "" } : {})}
+          className={sectionAlert === "items" ? `overflow-x-auto mt-2 ${OFFER_SECTION_ALERT_CLASS}` : "overflow-x-auto mt-2"}
+        >
           <table className={`w-full text-left text-xs border-collapse${editing ? " min-w-[640px]" : ""}`}>
             <thead>
               <tr
