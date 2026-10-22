@@ -112,7 +112,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
-            aria-label="Close modal"
+            aria-label={t("Close", "Zavrieť", "Bezárás")}
           >
             <X className="w-5 h-5" />
           </button>

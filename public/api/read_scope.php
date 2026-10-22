@@ -11,6 +11,7 @@
  */
 
 require_once __DIR__ . '/permissions.php';
+require_once __DIR__ . '/employee_name.php';
 require_once __DIR__ . '/auth.php';
 
 /**
@@ -222,6 +223,14 @@ function ccrm_project_employee_row(array $row, array $scope): ?array {
     $projected = [
         'id' => $row['id'],
         'name' => $row['name'],
+        'firstName' => $row['firstName'] ?? $row['first_name'] ?? null,
+        'lastName' => $row['lastName'] ?? $row['last_name'] ?? null,
+        'kind' => $row['kind'] ?? 'employee',
+        'companyId' => $row['companyId'] ?? $row['company_id'] ?? null,
+        'taxId' => $row['taxId'] ?? $row['tax_id'] ?? null,
+        'vatId' => $row['vatId'] ?? $row['vat_id'] ?? null,
+        'position' => $row['position'] ?? null,
+        'department' => $row['department'] ?? null,
         'email' => $row['email'] ?? null,
         'isActive' => isset($row['isActive'])
             ? (bool)$row['isActive']

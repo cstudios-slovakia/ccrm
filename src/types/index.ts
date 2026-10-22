@@ -1158,8 +1158,19 @@ export interface Employee {
   id: string;
   /** The login this record is linked to (users.id). Set by a person, never derived from an e-mail. */
   userId?: string | null;
+  /** Display name: "first last" for a person, the company / item name otherwise. Derived on save. */
   name: string;
-  role?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  /** employee = a person; contractor = an external supplier (company or sole trader); ledger = a payroll-only line such as commission. */
+  kind?: 'employee' | 'contractor' | 'ledger';
+  /** IČO, DIČ and IČ DPH of a contractor; null for the other kinds. */
+  companyId?: string | null;
+  taxId?: string | null;
+  vatId?: string | null;
+  /** Job title (programmer, designer...). Not the app permission role — that lives on the linked user. */
+  position?: string | null;
+  department?: string | null;
   avatar?: string;
   performanceScore?: number;
   pin?: string | null;

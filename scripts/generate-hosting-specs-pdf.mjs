@@ -606,7 +606,7 @@ const htmlContent = `<!DOCTYPE html>
             <span>8B. High-Frequency Task Scheduler</span>
           </div>
           <p style="font-size: 8px; margin-bottom: 2px;">Triggers asynchronous queues & reminder dispatchers every 1 min:</p>
-          <pre style="margin: 0; font-size: 7.5px;">* * * * * curl -s -f "https://crm.yourdomain.sk/api/cron.php?token=TOKEN" >/dev/null 2>&1</pre>
+          <pre style="margin: 0; font-size: 7.5px;">* * * * * curl -s -f -H "X-Cron-Token: TOKEN" "https://crm.yourdomain.sk/api/cron.php" >/dev/null 2>&1</pre>
         </div>
       </div>
     </div>

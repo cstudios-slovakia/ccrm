@@ -2074,6 +2074,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $rawEmp = [
                     'id' => $row['id'],
                     'name' => $row['name'],
+                    'firstName' => $row['first_name'] ?? null,
+                    'lastName' => $row['last_name'] ?? null,
+                    'kind' => $row['kind'] ?? 'employee',
+                    'companyId' => $row['company_id'] ?? null,
+                    'taxId' => $row['tax_id'] ?? null,
+                    'vatId' => $row['vat_id'] ?? null,
+                    'position' => $row['position'] ?? null,
+                    'department' => $row['department'] ?? null,
                     'pin' => $row['pin'],
                     'email' => $row['email'],
                     'phone' => $row['phone'],
@@ -3539,6 +3547,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $delPkStmt->execute([$delUid]);
                         }
                     } catch (\Throwable $e) { /* ignore if table missing */ }
+                    // A removed account must not be signed back in by a remembered browser.
+                    foreach ($usersToDelete as $delUid) {
+                        ccrm_remember_revoke_user($pdo, (string)$delUid);
+                    }
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
                 }
             }
@@ -5576,14 +5588,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $canLinkEmpUsers = ccrm_can_link_employee_user($scope) && ccrm_column_exists($pdo, 'employees', 'user_id');
 
             $insEmp = $pdo->prepare("INSERT INTO `employees` (
-                `id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`,
+                `id`, `name`, `first_name`, `last_name`, `kind`, `company_id`, `tax_id`, `vat_id`, `position`, `department`, `pin`, `email`, `phone`, `address_street`, `address_city`,
                 `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`,
                 `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`,
                 `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `files_json`,
                 `is_active`, `notes`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                `name` = VALUES(`name`), `pin` = VALUES(`pin`), `email` = VALUES(`email`), `phone` = VALUES(`phone`),
+                `name` = VALUES(`name`), `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`),
+                `kind` = VALUES(`kind`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`),
+                `position` = VALUES(`position`), `department` = VALUES(`department`),
+                `pin` = VALUES(`pin`), `email` = VALUES(`email`), `phone` = VALUES(`phone`),
                 `address_street` = VALUES(`address_street`), `address_city` = VALUES(`address_city`),
                 `address_zip` = VALUES(`address_zip`), `address_country` = VALUES(`address_country`),
                 `salary_type` = VALUES(`salary_type`), `salary_amount` = VALUES(`salary_amount`),
@@ -5606,9 +5621,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 };
                 $personal = $empRights['personal'];
                 $pay = $empRights['pay'];
+                // Identity fields: a client that does not send one (an older cached app) leaves
+                // the stored value alone. `name` is always the composed display name.
+                $idField = function (string $key, string $col) use ($emp, $keep) {
+                    if (!array_key_exists($key, $emp)) return $keep($col, null);
+                    $v = trim((string)$emp[$key]);
+                    return $v === '' ? null : $v;
+                };
+                $kind = array_key_exists('kind', $emp) ? (string)$emp['kind'] : (string)$keep('kind', 'employee');
+                if (!in_array($kind, CCRM_EMPLOYEE_KINDS, true)) $kind = 'employee';
+                // A contractor keeps its contact person's name beside the trade name; a ledger item has none.
+                $firstName = $kind !== 'ledger' ? $idField('firstName', 'first_name') : null;
+                $lastName = $kind !== 'ledger' ? $idField('lastName', 'last_name') : null;
+                // IČO / DIČ / IČ DPH belong to an external supplier only.
+                $companyId = $kind === 'contractor' ? $idField('companyId', 'company_id') : null;
+                $taxId = $kind === 'contractor' ? $idField('taxId', 'tax_id') : null;
+                $vatId = $kind === 'contractor' ? $idField('vatId', 'vat_id') : null;
+                $displayName = ccrm_compose_employee_name($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')));
                 $insEmp->execute([
                     $empId,
-                    $emp['name'] ?? 'Unnamed Employee',
+                    $displayName !== '' ? $displayName : 'Unnamed Employee',
+                    $firstName,
+                    $lastName,
+                    $kind,
+                    $companyId,
+                    $taxId,
+                    $vatId,
+                    $idField('position', 'position'),
+                    $idField('department', 'department'),
                     $personal ? ($emp['pin'] ?? null) : $keep('pin', null),
                     $emp['email'] ?? null,
                     $personal ? ($emp['phone'] ?? null) : $keep('phone', null),

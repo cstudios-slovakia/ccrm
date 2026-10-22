@@ -293,7 +293,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     setEmployees(DEFAULT_MOCK_EMPLOYEES);
     // Anchored to today so the calendar and salary matrix open on populated months
     const now = new Date();
-    setSalaries(generateDefaultMockSalaries(now.getFullYear(), now));
+    setSalaries(generateDefaultMockSalaries(now));
     setVacations(generateDefaultMockVacations(now));
     if (!employeeSettings || !employeeSettings.salaryTypes?.length) {
       setEmployeeSettings(DEFAULT_MOCK_SETTINGS);

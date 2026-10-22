@@ -12,6 +12,8 @@
  *   older versions (checks information_schema instead of relying on try/catch).
  */
 
+require_once __DIR__ . '/employee_name.php';
+
 if (!function_exists('ccrm_schema_statements')) {
 
     function ccrm_schema_statements(): array {
@@ -317,6 +319,28 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               PRIMARY KEY (`token`),
               INDEX `idx_pwreset_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // "Remember me" tokens: one row per remembered browser. Only the SHA-256 of
+            // the cookie's validator is stored. Kept in step with
+            // ccrm_remember_ensure_table() in api/auth.php, which creates it lazily for
+            // the auth endpoints that do not load this file. Runs on every schema apply
+            // (CREATE TABLE IF NOT EXISTS), so it doubles as the migration for existing databases.
+            "CREATE TABLE IF NOT EXISTS `user_remember_tokens` (
+              `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `user_id` VARCHAR(50) NOT NULL,
+              `selector` CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+              `validator_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'SHA-256 of the validator in the cookie',
+              `prev_validator_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT 'Validator before the last rotation, accepted for a short grace window',
+              `rotated_at` DATETIME NULL,
+              `created_at` DATETIME NOT NULL,
+              `expires_at` DATETIME NOT NULL,
+              `last_used_at` DATETIME NULL,
+              `user_agent` VARCHAR(255) NULL COMMENT 'For display and audit only',
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uniq_remember_selector` (`selector`),
+              INDEX `idx_remember_user` (`user_id`),
+              INDEX `idx_remember_expires` (`expires_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Custom Dynamic Dashboards
@@ -835,7 +859,15 @@ if (!function_exists('ccrm_schema_statements')) {
             // Employees (Staff profile, contracts, salary rate, Toggl mapping)
             "CREATE TABLE IF NOT EXISTS `employees` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-              `name` VARCHAR(150) NOT NULL,
+              `name` VARCHAR(150) NOT NULL COMMENT 'Display name: first + last name, or the company / item name',
+              `first_name` VARCHAR(100) NULL,
+              `last_name` VARCHAR(100) NULL,
+              `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+              `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
+              `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
+              `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',
+              `position` VARCHAR(100) NULL COMMENT 'Job title, not the app permission role',
+              `department` VARCHAR(100) NULL,
               `user_id` VARCHAR(50) NULL UNIQUE,
               `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
               `email` VARCHAR(150) NULL,
@@ -1518,6 +1550,8 @@ if (!function_exists('ccrm_schema_statements')) {
                 $pdo->exec("ALTER TABLE `employees` ADD COLUMN `user_id` VARCHAR(50) NULL AFTER `name`, ADD UNIQUE INDEX `uq_employees_user_id` (`user_id`), ADD CONSTRAINT `fk_employees_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL");
             }
         }
+        ccrm_migrate_employee_identity($pdo);
+        ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
@@ -1622,6 +1656,61 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm] ccrm_migrate_orders: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Employees: IČO / DIČ / IČ DPH of an external supplier (a company or a sole trader). Only
+     * `contractor` rows use them; they are filled from the business register in the employee form.
+     */
+    function ccrm_migrate_employee_company_ids(PDO $pdo): void {
+        try {
+            $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasEmp === 0 || ccrm_column_exists($pdo, 'employees', 'company_id')) return;
+
+            $pdo->exec("ALTER TABLE `employees`
+                ADD COLUMN `company_id` VARCHAR(32) NULL AFTER `kind`,
+                ADD COLUMN `tax_id` VARCHAR(32) NULL AFTER `company_id`,
+                ADD COLUMN `vat_id` VARCHAR(32) NULL AFTER `tax_id`");
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee company ids migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Employees: first/last name, record kind (employee | contractor | ledger), position and department.
+     * `name` stays as the display name every other module reads. Existing rows are classified once,
+     * when the columns are added: a legal-form suffix makes a contractor, a commission line a ledger
+     * item, anything else an employee whose name is split when that is unambiguous.
+     */
+    function ccrm_migrate_employee_identity(PDO $pdo): void {
+        try {
+            $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasEmp === 0 || ccrm_column_exists($pdo, 'employees', 'kind')) return;
+
+            $pdo->exec("ALTER TABLE `employees`
+                ADD COLUMN `first_name` VARCHAR(100) NULL AFTER `name`,
+                ADD COLUMN `last_name` VARCHAR(100) NULL AFTER `first_name`,
+                ADD COLUMN `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' AFTER `last_name`,
+                ADD COLUMN `position` VARCHAR(100) NULL AFTER `kind`,
+                ADD COLUMN `department` VARCHAR(100) NULL AFTER `position`");
+
+            $company = '/(\bs\.\s?r\.\s?o\b\.?|\ba\.\s?s\b\.?|\bsro\b|\bspol\b|\bgmbh\b|\bltd\b|\bllc\b|\binc\b|\bkft\b|\bzrt\b)/iu';
+            $ledger = '/províz|provis|commission/iu';
+            $upd = $pdo->prepare("UPDATE `employees` SET `kind` = ?, `first_name` = ?, `last_name` = ? WHERE `id` = ?");
+            foreach ($pdo->query("SELECT `id`, `name` FROM `employees`")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $name = (string)$row['name'];
+                if (preg_match($ledger, $name)) {
+                    $upd->execute(['ledger', null, null, $row['id']]);
+                } elseif (preg_match($company, $name)) {
+                    $upd->execute(['contractor', null, null, $row['id']]);
+                } else {
+                    $split = ccrm_split_person_name($name);
+                    $upd->execute(['employee', $split[0] ?? null, $split[1] ?? null, $row['id']]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employee identity migration skipped: ' . $e->getMessage());
         }
     }
 
@@ -1870,7 +1959,15 @@ if (!function_exists('ccrm_schema_statements')) {
             if ($hasEmp === 0) {
                 $pdo->exec("CREATE TABLE IF NOT EXISTS `employees` (
                   `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-                  `name` VARCHAR(150) NOT NULL,
+                  `name` VARCHAR(150) NOT NULL COMMENT 'Display name: first + last name, or the company / item name',
+                  `first_name` VARCHAR(100) NULL,
+                  `last_name` VARCHAR(100) NULL,
+                  `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+                  `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
+                  `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
+                  `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',
+                  `position` VARCHAR(100) NULL COMMENT 'Job title, not the app permission role',
+                  `department` VARCHAR(100) NULL,
                   `user_id` VARCHAR(50) NULL UNIQUE,
                   `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
                   `email` VARCHAR(150) NULL,
@@ -2478,15 +2575,18 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Demo salary rows for the year of $now: past months paid, the current month paid once its payday
-     * has arrived, later months planned. Mirrors generateDefaultMockSalaries() in src/utils/mockEmployees.ts.
+     * One demo salary row per employee, for the month of $now (the install).
+     * Past and future months are not seeded: each row is posted to Finance as a
+     * payroll movement and would stay in the history after the sample staff is gone.
+     * The month is paid once its payday has arrived.
+     * Mirrors generateDefaultMockSalaries() in src/utils/mockEmployees.ts.
      *
      * @param array<int, array> $emps rows in the order used by ccrm_seed_default_employees()
      * @return array<int, array> rows ready for `employee_salaries`
      */
     function ccrm_demo_employee_salaries(array $emps, \DateTimeImmutable $now): array {
         $year = (int)$now->format('Y');
-        $nowIndex = $year * 12 + ((int)$now->format('n') - 1);
+        $m = (int)$now->format('n');
         $nowDay = (int)$now->format('j');
         $rows = [];
 
@@ -2494,47 +2594,44 @@ if (!function_exists('ccrm_schema_statements')) {
             $empId = $e[0];
             $base = (float)$e[10];
             $dueDay = (int)($e[11] ?: 15);
-            for ($m = 1; $m <= 12; $m++) {
-                $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
-                $periodKey = "{$year}-{$mStr}";
-                $periodIndex = $year * 12 + ($m - 1);
-                $isPaid = $periodIndex < $nowIndex || ($periodIndex === $nowIndex && $nowDay >= $dueDay - 1);
+            $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
+            $periodKey = "{$year}-{$mStr}";
+            $isPaid = $nowDay >= $dueDay - 1;
 
-                $bonus = $m === 6 ? 500.0 : ($m === 12 ? 800.0 : 0.0);
-                $overtime = (($empId === 'emp-3' || $empId === 'emp-2') && ($m + $empIdx) % 3 === 0)
-                    ? (float)(90 + (($m * 37 + $empIdx * 53) % 5) * 30) : 0.0;
-                $reimbursement = (($empId === 'emp-1' || $empId === 'emp-4') && ($m + $empIdx) % 4 === 1)
-                    ? (float)(45 + (($m * 29 + $empIdx * 17) % 4) * 20) : 0.0;
+            $bonus = $m === 6 ? 500.0 : ($m === 12 ? 800.0 : 0.0);
+            $overtime = (($empId === 'emp-3' || $empId === 'emp-2') && ($m + $empIdx) % 3 === 0)
+                ? (float)(90 + (($m * 37 + $empIdx * 53) % 5) * 30) : 0.0;
+            $reimbursement = (($empId === 'emp-1' || $empId === 'emp-4') && ($m + $empIdx) % 4 === 1)
+                ? (float)(45 + (($m * 29 + $empIdx * 17) % 4) * 20) : 0.0;
 
-                $lines = [['base', 'Základná mzda', $base]];
-                if ($bonus > 0) $lines[] = ['bonus', $m === 6 ? 'Polročné prémie' : 'Ročné prémie', $bonus];
-                if ($overtime > 0) $lines[] = ['overtime', 'Nadčasy', $overtime];
-                if ($reimbursement > 0) $lines[] = ['reimbursement', 'Cestovné / Diéty', $reimbursement];
+            $lines = [['base', 'Základná mzda', $base]];
+            if ($bonus > 0) $lines[] = ['bonus', $m === 6 ? 'Polročné prémie' : 'Ročné prémie', $bonus];
+            if ($overtime > 0) $lines[] = ['overtime', 'Nadčasy', $overtime];
+            if ($reimbursement > 0) $lines[] = ['reimbursement', 'Cestovné / Diéty', $reimbursement];
 
-                $items = [];
-                $total = 0.0;
-                foreach ($lines as [$catId, $catName, $amount]) {
-                    $items[] = ['categoryId' => $catId, 'categoryName' => $catName, 'salary' => $amount, 'paid' => $isPaid ? $amount : 0.0];
-                    $total += $amount;
-                }
-
-                $rows[] = [
-                    "sal-{$empId}-{$periodKey}",
-                    $empId,
-                    'monthly',
-                    $periodKey,
-                    $year,
-                    $m,
-                    json_encode($items),
-                    $total,
-                    $isPaid ? $total : 0.0,
-                    $isPaid ? 'paid' : 'pending',
-                    "{$year}-{$mStr}-" . str_pad((string)$dueDay, 2, '0', STR_PAD_LEFT),
-                    $isPaid ? "{$year}-{$mStr}-" . str_pad((string)($dueDay - 1), 2, '0', STR_PAD_LEFT) : null,
-                    'bank_transfer',
-                    $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy',
-                ];
+            $items = [];
+            $total = 0.0;
+            foreach ($lines as [$catId, $catName, $amount]) {
+                $items[] = ['categoryId' => $catId, 'categoryName' => $catName, 'salary' => $amount, 'paid' => $isPaid ? $amount : 0.0];
+                $total += $amount;
             }
+
+            $rows[] = [
+                "sal-{$empId}-{$periodKey}",
+                $empId,
+                'monthly',
+                $periodKey,
+                $year,
+                $m,
+                json_encode($items),
+                $total,
+                $isPaid ? $total : 0.0,
+                $isPaid ? 'paid' : 'pending',
+                "{$year}-{$mStr}-" . str_pad((string)$dueDay, 2, '0', STR_PAD_LEFT),
+                $isPaid ? "{$year}-{$mStr}-" . str_pad((string)($dueDay - 1), 2, '0', STR_PAD_LEFT) : null,
+                'bank_transfer',
+                $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy',
+            ];
         }
         return $rows;
     }
@@ -2576,8 +2673,17 @@ if (!function_exists('ccrm_schema_statements')) {
             foreach ($emps as $e) {
                 $insEmp->execute($e);
             }
+            $idUpd = $pdo->prepare("UPDATE `employees` SET `first_name` = ?, `last_name` = ?, `position` = ?, `department` = ? WHERE `id` = ?");
+            foreach ([
+                ['emp-1', 'Ing. Michal', 'Kováč', 'Chief Architect & Project Lead', 'Management'],
+                ['emp-2', 'Mgr. Zuzana', 'Horváthová', 'Senior UX/UI & Brand Strategist', 'Marketing'],
+                ['emp-3', 'Bc. Peter', 'Varga', 'Full-Stack Engineer & DevOps', 'Development'],
+                ['emp-4', 'Kristína', 'Balážová', 'Operations & Account Specialist', 'Sales'],
+            ] as $idRow) {
+                $idUpd->execute([$idRow[1], $idRow[2], $idRow[3], $idRow[4], $idRow[0]]);
+            }
 
-            // 2. Insert salaries for the current year (past months paid, current month by payday, rest planned)
+            // 2. Insert salaries for the install month only (paid once payday has arrived)
             $now = new \DateTimeImmutable('now');
             $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (`id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`, `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`, `payment_method`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             foreach (ccrm_demo_employee_salaries($emps, $now) as $row) {
@@ -4019,13 +4125,70 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Identity of the schema CODE: a hash of every file whose edit can change
+     * what ccrm_apply_schema() does. Stored in system_settings once the schema
+     * has been applied, so a request can tell "already done for this code".
+     */
+    function ccrm_schema_fingerprint(): string {
+        $parts = [];
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php'] as $file) {
+            $parts[] = is_file($file) ? md5_file($file) : '-';
+        }
+        return md5(implode('|', $parts));
+    }
+
+    /**
      * Create all tables (idempotent) and apply in-place migrations.
+     *
+     * The work is skipped when this database was already brought up to date by
+     * the same schema code. sync.php calls this on EVERY request, and the SPA
+     * polls it every 5 seconds: ~57 CREATE TABLE IF NOT EXISTS plus the
+     * migration checks cost about 2.3s per call on a Docker Desktop database
+     * (a plain SELECT is under 1ms), which made every probe slow, stacked the
+     * polls on top of each other and wrote a log line per request. Editing
+     * schema.php or a file it loads changes the fingerprint and re-runs it once.
      */
     function ccrm_apply_schema(PDO $pdo): void {
-        foreach (ccrm_schema_statements() as $sql) {
-            $pdo->exec($sql);
+        $fingerprint = ccrm_schema_fingerprint();
+        if (ccrm_schema_is_current($pdo, $fingerprint)) {
+            return;
         }
-        ccrm_apply_migrations($pdo);
+
+        // Single-flight. When the fingerprint changes (a deploy, an edit of
+        // schema.php) every open tab's poll arrives at once; run side by side
+        // their DDL queues on MySQL metadata locks and each request hangs for
+        // tens of seconds. One request applies the schema, the others wait here
+        // and then find it current.
+        $locked = false;
+        try {
+            $locked = (int)$pdo->query("SELECT GET_LOCK('ccrm_schema_apply', 60)")->fetchColumn() === 1;
+            if ($locked && ccrm_schema_is_current($pdo, $fingerprint)) {
+                return;
+            }
+
+            foreach (ccrm_schema_statements() as $sql) {
+                $pdo->exec($sql);
+            }
+            ccrm_apply_migrations($pdo);
+
+            $mark = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('SCHEMA_FINGERPRINT', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $mark->execute([$fingerprint]);
+        } finally {
+            if ($locked) {
+                $pdo->query("SELECT RELEASE_LOCK('ccrm_schema_apply')")->fetchColumn();
+            }
+        }
+    }
+
+    function ccrm_schema_is_current(PDO $pdo, string $fingerprint): bool {
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'SCHEMA_FINGERPRINT'");
+            $stmt->execute();
+            return $stmt->fetchColumn() === $fingerprint;
+        } catch (\Throwable $e) {
+            // system_settings does not exist yet (fresh database).
+            return false;
+        }
     }
 }
 

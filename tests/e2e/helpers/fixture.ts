@@ -985,9 +985,16 @@ export async function installBackendMocks(
     themeMode?: 'system' | 'light' | 'dark';
     /** Further accounts of the workspace, on top of the two seeded ones. */
     extraUsers?: (typeof TEST_USER)[];
+    /**
+     * How long after a password sign-in the passkeys mock lets a passkey be added
+     * without the password (api/passkeys.php allows 300 s). 0 closes the window.
+     */
+    passkeyPwWindowMs?: number;
   } = {},
 ) {
   const baseUser = options.user ?? TEST_USER;
+  /** When the last *password* sign-in happened; a passkey sign-in clears it. */
+  let passkeyPwAuthAt: number | null = null;
   const signedIn = options.themeMode
     ? {
         ...baseUser,
@@ -997,14 +1004,6 @@ export async function installBackendMocks(
         }),
       }
     : baseUser;
-  await page.route('**/api/login.php', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: true, user: signedIn }),
-    }),
-  );
-
   /** email -> the metadata_json the app last pushed for that user. */
   const pushedUserMeta = new Map<string, unknown>();
   /** project type id -> the listColumns the app last pushed for that type. */
@@ -1129,6 +1128,17 @@ export async function installBackendMocks(
       body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [] }),
     }),
   );
+
+  // After the catch-all above, which would otherwise shadow it: the sign-in
+  // screen needs `user` in the answer, not the catch-all's empty lists.
+  await page.route('**/api/login.php', (route) => {
+    passkeyPwAuthAt = Date.now();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, user: signedIn }),
+    });
+  });
 
   // Dashboard widgets query the analytics endpoint per widget, so this must be
   // registered AFTER the catch-all above: Playwright tries the most recently
@@ -1320,6 +1330,23 @@ export async function installBackendMocks(
     }
 
     if (action === 'register_options') {
+      const password = typeof body.password === 'string' ? body.password : '';
+      const windowMs = options.passkeyPwWindowMs ?? 300_000;
+      const recentPasswordSignIn = passkeyPwAuthAt !== null && Date.now() - passkeyPwAuthAt <= windowMs;
+      if (password === '' && !recentPasswordSignIn) {
+        return route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: false, message: 'Password is required.' }),
+        });
+      }
+      if (password !== '' && password === 'wrong-password') {
+        return route.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: false, message: 'Wrong password.' }),
+        });
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1340,6 +1367,7 @@ export async function installBackendMocks(
             },
             attestation: 'none',
             timeout: 60000,
+            hints: ['client-device'],
             excludeCredentials: pushedPasskeys.map((p) => ({ type: 'public-key', id: p.id })),
           },
         }),
@@ -1364,6 +1392,7 @@ export async function installBackendMocks(
     }
 
     if (action === 'register_verify') {
+      passkeyPwAuthAt = null; // the sign-in confirmation is single-use
       const credId = body?.credential?.id || ('pk-' + (pushedPasskeys.length + 1));
       pushedPasskeys.push({
         id: credId,
@@ -1389,6 +1418,7 @@ export async function installBackendMocks(
     }
 
     if (action === 'login_verify') {
+      passkeyPwAuthAt = null; // a passkey sign-in never opens the password window
       return route.fulfill({
         status: 200,
         contentType: 'application/json',

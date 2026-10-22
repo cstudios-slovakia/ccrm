@@ -1628,7 +1628,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="grid grid-cols-3 gap-2.5 pt-1">
               {[
                 { count: 15, label: t('15 (Fast)', '15 (Rýchly)', '15 (Gyors)') },
-                { count: 30, label: t('30 (Standard) ⭐', '30 (Štandard) ⭐', '30 (Standard) ⭐') },
+                { count: 30, label: t('30 (Standard) ⭐', '30 (Štandard) ⭐', '30 (Szabvány) ⭐') },
                 { count: 60, label: t('60 (Deep)', '60 (Hĺbkový)', '60 (Mély)') }
               ].map(opt => (
                 <button

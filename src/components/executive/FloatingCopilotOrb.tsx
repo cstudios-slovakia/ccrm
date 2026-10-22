@@ -167,7 +167,7 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
       }`}
       role="button"
       tabIndex={0}
-      aria-label="Open AI Executive Copilot"
+      aria-label={t("Open AI executive copilot", "Otvoriť AI výkonného kopilota", "AI vezetői másodpilóta megnyitása")}
     >
       <div className="relative group">
         {/* Ambient Subtle Floating Halo */}

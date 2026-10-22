@@ -1116,7 +1116,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               type="button"
               onClick={handleAnimatedClose}
               className="hidden sm:flex p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
-              title="Close (ESC)"
+              title={t("Close (ESC)", "Zavrieť (ESC)", "Bezárás (ESC)")}
             >
               <X className="h-4 w-4" />
             </button>

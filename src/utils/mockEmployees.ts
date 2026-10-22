@@ -4,7 +4,11 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
   {
     id: "emp-1",
     name: "Ing. Michal Kováč",
-    role: "Chief Architect & Project Lead",
+    firstName: "Ing. Michal",
+    lastName: "Kováč",
+    kind: "employee",
+    position: "Chief Architect & Project Lead",
+    department: "Management",
     pin: "880415/7231",
     email: "michal.kovac@cstudios.sk",
     phone: "+421 905 442 811",
@@ -32,7 +36,11 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
   {
     id: "emp-2",
     name: "Mgr. Zuzana Horváthová",
-    role: "Senior UX/UI & Brand Strategist",
+    firstName: "Mgr. Zuzana",
+    lastName: "Horváthová",
+    kind: "employee",
+    position: "Senior UX/UI & Brand Strategist",
+    department: "Marketing",
     pin: "925708/6519",
     email: "zuzana.horvath@cstudios.sk",
     phone: "+421 918 631 904",
@@ -60,7 +68,11 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
   {
     id: "emp-3",
     name: "Bc. Peter Varga",
-    role: "Full-Stack Engineer & DevOps",
+    firstName: "Bc. Peter",
+    lastName: "Varga",
+    kind: "employee",
+    position: "Full-Stack Engineer & DevOps",
+    department: "Development",
     pin: "950122/8104",
     email: "peter.varga@cstudios.sk",
     phone: "+421 944 205 789",
@@ -88,7 +100,11 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
   {
     id: "emp-4",
     name: "Kristína Balážová",
-    role: "Operations & Account Specialist",
+    firstName: "Kristína",
+    lastName: "Balážová",
+    kind: "employee",
+    position: "Operations & Account Specialist",
+    department: "Sales",
     pin: "975319/7820",
     email: "kristina.balaz@cstudios.sk",
     phone: "+421 907 334 112",
@@ -117,8 +133,9 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
 
 // ---------------------------------------------------------------------------
 // Date helpers — demo data is anchored to "now" (the moment the module is first
-// seeded, i.e. when the CRM is installed) so the calendar and the salary matrix
-// are populated around the current month instead of a hardcoded year.
+// seeded, i.e. when the CRM is installed). Leave is spread around that month.
+// Payroll is that month only: each salary row is posted to Finance, and a year
+// of them stays in the movement history after the sample staff is gone.
 // ---------------------------------------------------------------------------
 
 const pad2 = (n: number): string => String(n).padStart(2, "0");
@@ -146,68 +163,64 @@ const spanEnd = (start: Date, workdays: number): Date => {
   return out;
 };
 
-export const generateDefaultMockSalaries = (
-  year: number = new Date().getFullYear(),
-  now: Date = new Date()
-): EmployeeSalary[] => {
+/** One salary row per sample employee, for the month of `now` (the install). */
+export const generateDefaultMockSalaries = (now: Date = new Date()): EmployeeSalary[] => {
   const salaries: EmployeeSalary[] = [];
-  const nowIndex = now.getFullYear() * 12 + now.getMonth();
+  const year = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const monthStr = pad2(m);
+  const periodKey = `${year}-${monthStr}`;
 
   DEFAULT_MOCK_EMPLOYEES.forEach((emp, empIdx) => {
     const dueDay = emp.salaryDueDay || 15;
-    for (let m = 1; m <= 12; m++) {
-      const monthStr = pad2(m);
-      const periodKey = `${year}-${monthStr}`;
-      const periodIndex = year * 12 + (m - 1);
-      // Past months are paid; the current month is paid once its payday has arrived.
-      const isPaid = periodIndex < nowIndex || (periodIndex === nowIndex && now.getDate() >= dueDay - 1);
+    // Paid once this month's payday has arrived; otherwise it stays planned.
+    const isPaid = now.getDate() >= dueDay - 1;
 
-      const baseSalary = emp.salaryAmount || 2500;
-      // Bonus in June (half-year) and Dec (year-end)
-      const bonus = m === 6 ? 500 : m === 12 ? 800 : 0;
-      // A little variety so the matrix and the salary history are not a flat wall of identical rows:
-      // overtime for the engineer / designer in busy months, travel reimbursements for operations / lead.
-      const overtime = (emp.id === "emp-3" || emp.id === "emp-2") && (m + empIdx) % 3 === 0
-        ? 90 + ((m * 37 + empIdx * 53) % 5) * 30
-        : 0;
-      const reimbursement = (emp.id === "emp-1" || emp.id === "emp-4") && (m + empIdx) % 4 === 1
-        ? 45 + ((m * 29 + empIdx * 17) % 4) * 20
-        : 0;
+    const baseSalary = emp.salaryAmount || 2500;
+    // Bonus in June (half-year) and Dec (year-end), only when that is the install month.
+    const bonus = m === 6 ? 500 : m === 12 ? 800 : 0;
+    // A little variety so the matrix is not four identical rows:
+    // overtime for the engineer / designer, travel reimbursements for operations / lead.
+    const overtime = (emp.id === "emp-3" || emp.id === "emp-2") && (m + empIdx) % 3 === 0
+      ? 90 + ((m * 37 + empIdx * 53) % 5) * 30
+      : 0;
+    const reimbursement = (emp.id === "emp-1" || emp.id === "emp-4") && (m + empIdx) % 4 === 1
+      ? 45 + ((m * 29 + empIdx * 17) % 4) * 20
+      : 0;
 
-      const items = [
-        { categoryId: "base", categoryName: "Základná mzda", amount: baseSalary },
-        ...(bonus > 0
-          ? [{ categoryId: "bonus", categoryName: m === 6 ? "Polročné prémie" : "Ročné prémie", amount: bonus }]
-          : []),
-        ...(overtime > 0 ? [{ categoryId: "overtime", categoryName: "Nadčasy", amount: overtime }] : []),
-        ...(reimbursement > 0
-          ? [{ categoryId: "reimbursement", categoryName: "Cestovné / Diéty", amount: reimbursement }]
-          : [])
-      ];
-      const total = items.reduce((sum, it) => sum + it.amount, 0);
+    const items = [
+      { categoryId: "base", categoryName: "Základná mzda", amount: baseSalary },
+      ...(bonus > 0
+        ? [{ categoryId: "bonus", categoryName: m === 6 ? "Polročné prémie" : "Ročné prémie", amount: bonus }]
+        : []),
+      ...(overtime > 0 ? [{ categoryId: "overtime", categoryName: "Nadčasy", amount: overtime }] : []),
+      ...(reimbursement > 0
+        ? [{ categoryId: "reimbursement", categoryName: "Cestovné / Diéty", amount: reimbursement }]
+        : [])
+    ];
+    const total = items.reduce((sum, it) => sum + it.amount, 0);
 
-      salaries.push({
-        id: `sal-${emp.id}-${periodKey}`,
-        employeeId: emp.id,
-        periodType: "monthly",
-        periodKey,
-        year,
-        periodNumber: m,
-        items: items.map((it) => ({
-          categoryId: it.categoryId,
-          categoryName: it.categoryName,
-          salary: it.amount,
-          paid: isPaid ? it.amount : 0
-        })),
-        totalSalary: total,
-        totalPaid: isPaid ? total : 0,
-        status: isPaid ? "paid" : "pending",
-        dueDate: `${year}-${monthStr}-${pad2(dueDay)}`,
-        paymentDate: isPaid ? `${year}-${monthStr}-${pad2(dueDay - 1)}` : null,
-        paymentMethod: "bank_transfer",
-        note: isPaid ? "Úhrada cez SEPA prevod" : "Plánovaný náklad mzdy"
-      });
-    }
+    salaries.push({
+      id: `sal-${emp.id}-${periodKey}`,
+      employeeId: emp.id,
+      periodType: "monthly",
+      periodKey,
+      year,
+      periodNumber: m,
+      items: items.map((it) => ({
+        categoryId: it.categoryId,
+        categoryName: it.categoryName,
+        salary: it.amount,
+        paid: isPaid ? it.amount : 0
+      })),
+      totalSalary: total,
+      totalPaid: isPaid ? total : 0,
+      status: isPaid ? "paid" : "pending",
+      dueDate: `${year}-${monthStr}-${pad2(dueDay)}`,
+      paymentDate: isPaid ? `${year}-${monthStr}-${pad2(dueDay - 1)}` : null,
+      paymentMethod: "bank_transfer",
+      note: isPaid ? "Úhrada cez SEPA prevod" : "Plánovaný náklad mzdy"
+    });
   });
 
   return salaries;

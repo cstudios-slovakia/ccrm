@@ -379,6 +379,8 @@ if ($action === 'reset') {
     // password — previously their session survived the reset untouched.
     $pdo->prepare("UPDATE `users` SET `password_hash` = ?, `sessions_valid_from` = NOW() WHERE `id` = ?")
         ->execute([$hash, $row['user_id']]);
+    // Remembered logins signed in with the old password; they must not outlive it.
+    ccrm_remember_revoke_user($pdo, (string)$row['user_id']);
     // Burn the token (and any siblings) so it cannot be reused.
     $pdo->prepare("DELETE FROM `password_resets` WHERE `user_id` = ?")->execute([$row['user_id']]);
     $pdo->commit();
@@ -392,17 +394,10 @@ if ($action === 'reset') {
     $userStmt->execute([$row['user_id']]);
     $user = $userStmt->fetch(PDO::FETCH_ASSOC);
     if ($user) {
-        ccrm_start_session(false);
-        session_regenerate_id(true);
-        $_SESSION['ccrm_uid']   = $user['id'];
-        $_SESSION['ccrm_role']  = $user['role'];
-        $_SESSION['ccrm_email'] = $user['email'];
-        try {
-            $_SESSION['ccrm_issued_at'] = $pdo->query("SELECT NOW()")->fetchColumn() ?: null;
-        } catch (\Throwable $e) {
-            $_SESSION['ccrm_issued_at'] = null;
-        }
-        $_SESSION['ccrm_checked_at'] = time();
+        ccrm_begin_session($pdo, $user);
+        // This browser may hold a remember-me cookie for the old password; its row was
+        // just deleted above, so drop the cookie too. The reset itself does not remember.
+        ccrm_remember_clear_cookie();
         echo json_encode([
             'success' => true,
             'user' => [

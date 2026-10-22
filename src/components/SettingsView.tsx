@@ -1546,7 +1546,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         (window as any).showToast(data.message || t("Upload failed", "Nahrávanie zlyhalo", "Feltöltés sikertelen"), "error");
       }
     } catch (err: any) {
-      (window as any).showToast("Chyba pri nahrávaní loga: " + err.message, "error");
+      (window as any).showToast(t(
+        "Error uploading the logo: ",
+        "Chyba pri nahrávaní loga: ",
+        "Hiba a logó feltöltésekor: "
+      ) + (err?.message || ""), "error");
     } finally {
       setIsUploadingLogo(false);
     }

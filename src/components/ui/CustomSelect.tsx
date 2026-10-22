@@ -54,6 +54,12 @@ interface CustomSelectProps {
   addNewLabel?: string;
   /** Icon of the add-new button. Defaults to a plain plus. */
   addNewIcon?: React.ReactNode;
+  /**
+   * Free-text values: the add-new button (and Enter, when nothing matches) takes what is typed in
+   * the search box as a new value. Left disabled while the box is empty or already matches an option.
+   * Use it in place of `onAddNew` for lists that grow as people type, like positions.
+   */
+  onCreate?: (text: string) => void;
   /** Inline style applied to the trigger button — for dynamic per-instance colors (e.g. status pipeline colors) that can't be expressed as Tailwind classes. */
   style?: React.CSSProperties;
   /** Size the trigger to its label. The closed control shows the whole label. */
@@ -95,9 +101,9 @@ const PANEL_Z = 100001;
 
 /** The select is a leaf reused across trees that do not pass the language down. */
 const SEARCH_COPY = {
-  en: { search: "Search...", noMatches: "No matches", noOptions: "No options", addNew: "Add new", more: "Show {n} more" },
-  sk: { search: "Hľadať...", noMatches: "Žiadne výsledky", noOptions: "Žiadne možnosti", addNew: "Pridať nový", more: "Zobraziť ďalších {n}" },
-  hu: { search: "Keresés...", noMatches: "Nincs találat", noOptions: "Nincs lehetőség", addNew: "Új hozzáadása", more: "Még {n} megjelenítése" },
+  en: { search: "Search...", noMatches: "No matches", noOptions: "No options", addNew: "Add new", more: "Show {n} more", use: "Use “{q}”" },
+  sk: { search: "Hľadať...", noMatches: "Žiadne výsledky", noOptions: "Žiadne možnosti", addNew: "Pridať nový", more: "Zobraziť ďalších {n}", use: "Použiť „{q}“" },
+  hu: { search: "Keresés...", noMatches: "Nincs találat", noOptions: "Nincs lehetőség", addNew: "Új hozzáadása", more: "Még {n} megjelenítése", use: "„{q}” használata" },
 } as const;
 
 /**
@@ -119,7 +125,8 @@ export const DropdownSearchRow: React.FC<{
   onAddNew?: () => void;
   addNewLabel?: string;
   addNewIcon?: React.ReactNode;
-}> = ({ value, onChange, placeholder, onKeyDown, inputRef, autoFocus, onAddNew, addNewLabel, addNewIcon }) => {
+  addNewDisabled?: boolean;
+}> = ({ value, onChange, placeholder, onKeyDown, inputRef, autoFocus, onAddNew, addNewLabel, addNewIcon, addNewDisabled }) => {
   const copy = SEARCH_COPY[getStoredLanguage()];
   const label = addNewLabel ?? copy.addNew;
   return (
@@ -144,12 +151,13 @@ export const DropdownSearchRow: React.FC<{
             type="button"
             title={label}
             aria-label={label}
+            disabled={addNewDisabled}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onAddNew();
             }}
-            className="shrink-0 flex h-7.5 w-7.5 items-center justify-center rounded-lg border border-accent/20 bg-accent/10 text-accent transition-all hover:bg-accent/20 active:scale-95 cursor-pointer"
+            className="shrink-0 flex h-7.5 w-7.5 items-center justify-center rounded-lg border border-accent/20 bg-accent/10 text-accent transition-all hover:bg-accent/20 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:bg-accent/10"
           >
             {addNewIcon ?? <Plus className="h-4 w-4" />}
           </button>
@@ -178,6 +186,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   onAddNew,
   addNewLabel,
   addNewIcon,
+  onCreate,
   style,
   fitLabel = false,
 }) => {
@@ -217,6 +226,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       })()
     : null;
   const opts = sections ? [...ungrouped, ...sections.flatMap((s) => s.visible)] : matching;
+  // What the add-new button would create: the typed text, unless an option already is that text.
+  const typed = query.trim();
+  const creatable =
+    onCreate && typed && !allOpts.some((o) => foldText(optionSearchText(o).trim()) === foldText(typed)) ? typed : "";
 
   const updatePosition = () => {
     const el = triggerRef.current;
@@ -373,8 +386,20 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       setHighlighted((h) => Math.max(h - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      pick(opts[highlighted]);
+      if (creatable && opts.length === 0) create();
+      else pick(opts[highlighted]);
     }
+  };
+
+  /** Takes the typed text as the new value. */
+  const create = () => {
+    if (!creatable || !onCreate) return;
+    flushSync(() => {
+      setIsOpen(false);
+      setQuery("");
+    });
+    triggerRef.current?.focus();
+    onCreate(creatable);
   };
 
   const sizeClasses = size === "sm" ? "px-2.5 py-1.5 text-ui gap-1" : "px-3.5 py-2.5 text-body gap-1.5";
@@ -458,8 +483,11 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     placeholder={searchPlaceholder ?? copy.search}
                     addNewLabel={addNewLabel}
                     addNewIcon={addNewIcon}
+                    addNewDisabled={onCreate ? !creatable : undefined}
                     onAddNew={
-                      onAddNew
+                      onCreate
+                        ? create
+                        : onAddNew
                         ? () => {
                             // The panel has to go first: what opens next is a modal.
                             setIsOpen(false);
@@ -474,10 +502,24 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     the search box and its add-new button are controls beside
                     the list, and a listbox may only contain options. */}
                 <div role="listbox" className="flex-1 overflow-y-auto py-1.5">
-                  {opts.length === 0 && (
+                  {opts.length === 0 && !creatable && (
                     <div className="px-3.5 py-2.5 text-body text-slate-400 italic">
                       {needle ? copy.noMatches : copy.noOptions}
                     </div>
+                  )}
+                  {creatable && (
+                    <button
+                      type="button"
+                      data-testid="select-create"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        create();
+                      }}
+                      className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-semibold text-accent transition-colors hover:bg-accent/10 cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5 shrink-0" />
+                      <span className="flex-1 truncate">{copy.use.replace("{q}", creatable)}</span>
+                    </button>
                   )}
                   {(() => {
                     const renderOption = (opt: DropdownOption, i: number, keyPrefix = "") => (

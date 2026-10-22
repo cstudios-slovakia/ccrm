@@ -45,6 +45,20 @@ Maps permission levels to user roles.
 * `ip` VARCHAR(45)
 * `created_at` TIMESTAMP
 
+### `user_remember_tokens`
+One row per browser that ticked "Remember me" on the login screen. The `CCRM_REMEMBER` cookie holds `<selector>:<validator>`; the PHP session itself is an ordinary browser-session cookie and this token rebuilds it after the browser was closed. Created by `ccrm_apply_schema()` and, for endpoints that do not load it, lazily by `ccrm_remember_ensure_table()` in `api/auth.php`. All dates are database-clock values.
+* `id` BIGINT UNSIGNED [PK, AUTO_INCREMENT]
+* `user_id` VARCHAR(50) (the `users.id` it signs in; no foreign key. Rows are removed by `ccrm_remember_revoke_user()` on password change and user deletion, and a row whose user is gone is rejected on use)
+* `selector` CHAR(24) [UNIQUE] (random lookup key, hex)
+* `validator_hash` CHAR(64) (SHA-256 of the validator in the cookie; the validator itself is never stored)
+* `prev_validator_hash` CHAR(64) [NULLable] (validator before the last rotation; still accepted for 60 s so parallel requests carrying the old cookie are not treated as theft)
+* `rotated_at` DATETIME [NULLable] (last rotation; every restore rotates the validator)
+* `created_at` DATETIME (a token older than `users.sessions_valid_from` is rejected)
+* `expires_at` DATETIME (30 days, pushed forward on each rotation)
+* `last_used_at` DATETIME [NULLable]
+* `user_agent` VARCHAR(255) [NULLable] (display / audit only)
+* Indexes: `selector` (unique), `user_id`, `expires_at`
+
 ---
 
 ## 2. Customer Relations Management (CRM)
@@ -471,7 +485,15 @@ Core financial movement records representing current and planned/future incomes,
 ### `employees`
 Staff profiles, compensation baseline, Toggl Track integration mapping, and employment contracts/documents.
 * `id` VARCHAR(50) [PK] (e.g. `emp-1727650000000-abcd`)
-* `name` VARCHAR(150) (Employee full name)
+* `name` VARCHAR(150) (Display name every other module reads: `first_name` + `last_name` for a person, the single company / item name for a contractor or ledger item. Derived on save by `ccrm_compose_employee_name()`)
+* `first_name` VARCHAR(100) [NULLable] (Person's first name; titles such as `Ing.` may stay with it. NULL on a legacy record still named by a nickname. On a `contractor` it is the optional contact person, a sole trader's own name)
+* `last_name` VARCHAR(100) [NULLable] (Person's surname; the contact person's on a `contractor`)
+* `kind` VARCHAR(20) (Default `employee`: `employee` = a person on the payroll, `contractor` = an external supplier, a company or a sole trader (živnostník), `ledger` = a payroll-only accounting line such as commission. A `ledger` row has no first / last name)
+* `company_id` VARCHAR(32) [NULLable] (IČO of a `contractor`, filled from the Slovak / Czech business register; NULL for the other kinds)
+* `tax_id` VARCHAR(32) [NULLable] (DIČ of a `contractor`)
+* `vat_id` VARCHAR(32) [NULLable] (IČ DPH of a `contractor`)
+* `position` VARCHAR(100) [NULLable] (Job title, free text with suggestions: programmer, designer, PPC specialist... Not the app permission role, which lives on the linked `users.role`)
+* `department` VARCHAR(100) [NULLable] (Department / team, free text with suggestions: Development, Marketing, Management, Sales)
 * `pin` VARCHAR(50) [NULLable] (Personal identification number / Rodné číslo / Tax ID)
 * `email` VARCHAR(150) [NULLable]
 * `phone` VARCHAR(50) [NULLable]

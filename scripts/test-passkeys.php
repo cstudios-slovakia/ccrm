@@ -195,7 +195,31 @@ $_SESSION['ccrm_pk'] = [
 $consumedReg = ccrm_passkey_consume_challenge('register', PublicKeyCredentialCreationOptions::class, 'user-valid-id');
 assert_test($consumedReg instanceof PublicKeyCredentialCreationOptions, 'Registration challenge consumed with matching user ID');
 
-// 6. AAGUID lookup tests
+// 6. Hints: registration prefers the local device, login never does
+assert_test($regOptions->hints === ['client-device'], 'Registration options carry the client-device hint');
+assert_test(($browserArray['hints'] ?? null) === ['client-device'], 'Browser registration options expose hints');
+assert_test(!isset($loginBrowserArray['hints']), 'Login options carry no hints');
+$_SESSION = [];
+ccrm_passkey_store_challenge('register', $regOptions, 'user-hints');
+$roundTrip = ccrm_passkey_consume_challenge('register', PublicKeyCredentialCreationOptions::class, 'user-hints');
+assert_test($roundTrip->hints === ['client-device'], 'Hints survive the session round trip used by register_verify');
+
+// 7. Recent password sign-in window (register_options without a password)
+$_SESSION = [];
+assert_test(ccrm_pw_auth_recent() === false, 'No password marker means no window');
+$_SESSION['ccrm_pw_auth_at'] = time();
+assert_test(ccrm_pw_auth_recent() === true, 'Fresh password sign-in opens the window');
+$_SESSION['ccrm_pw_auth_at'] = time() - 299;
+assert_test(ccrm_pw_auth_recent() === true, 'Window is still open at 299 s');
+$_SESSION['ccrm_pw_auth_at'] = time() - 301;
+assert_test(ccrm_pw_auth_recent() === false, 'Window is closed after 300 s');
+$_SESSION['ccrm_pw_auth_at'] = time() + 600;
+assert_test(ccrm_pw_auth_recent() === false, 'A marker dated in the future is rejected');
+$_SESSION['ccrm_pw_auth_at'] = '1';
+assert_test(ccrm_pw_auth_recent() === false, 'A non-integer marker is rejected');
+$_SESSION = [];
+
+// 8. AAGUID lookup tests
 assert_test(ccrm_passkey_aaguid_name('08987058-cadc-4b81-b6e1-30de50dcbe96') === 'Windows Hello', 'Windows Hello AAGUID recognized');
 assert_test(ccrm_passkey_aaguid_name('ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4') === 'Google Password Manager', 'Google Password Manager AAGUID recognized');
 assert_test(ccrm_passkey_aaguid_name('bada5566-a7aa-401f-bd96-45619a55120d') === '1Password', '1Password AAGUID recognized');

@@ -220,19 +220,42 @@ function ccrm_passkey_check_throttle(\PDO $pdo, string $clientIp): bool {
         $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM `login_attempts` WHERE `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE)");
         $cntStmt->execute([$clientIp]);
         $recentFailures = (int)$cntStmt->fetchColumn();
-        return ($recentFailures < CCRM_LOGIN_MAX_ATTEMPTS);
+        if ($recentFailures >= CCRM_LOGIN_MAX_ATTEMPTS) {
+            ccrm_passkey_audit_lockout($pdo, $clientIp);
+            return false;
+        }
+        return true;
     } catch (\Throwable $e) {
         return true; // Fail-open
     }
 }
 
 /**
- * Record a failure in login_attempts.
+ * One lockout row per address per window, matching login.php. A burst of
+ * passkey failures must not write a row on every blocked request.
  */
-function ccrm_passkey_record_failure(\PDO $pdo, string $clientIp, ?string $email = null): void {
+function ccrm_passkey_audit_lockout(\PDO $pdo, string $clientIp, ?string $email = null): void {
+    if (!function_exists('ccrm_audit_log')) return;
+    try {
+        $seen = $pdo->prepare("SELECT 1 FROM `audit_log` WHERE `action` = 'auth.lockout' AND `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE) LIMIT 1");
+        $seen->execute([$clientIp]);
+        if ($seen->fetchColumn()) return;
+        $actorEmail = ($email !== null && $email !== '') ? mb_substr($email, 0, 255) : null;
+        ccrm_audit_log($pdo, ['id' => null, 'email' => $actorEmail], 'auth.lockout', 'Too many failed passkey attempts from this address');
+    } catch (\Throwable $e) { /* never block the response on the audit trail */ }
+}
+
+/**
+ * Record a passkey failure in login_attempts and in the audit log (VULN-24).
+ * The password, the credential, and the assertion are never written.
+ */
+function ccrm_passkey_record_failure(\PDO $pdo, string $clientIp, ?string $email = null, string $detail = 'Passkey sign-in failed'): void {
     try {
         $pdo->prepare("INSERT INTO `login_attempts` (`ip`, `email`) VALUES (?, ?)")->execute([$clientIp, $email]);
     } catch (\Throwable $e) { /* ignore */ }
+    if (!function_exists('ccrm_audit_log')) return;
+    $actorEmail = ($email !== null && $email !== '') ? mb_substr($email, 0, 255) : null;
+    ccrm_audit_log($pdo, ['id' => null, 'email' => $actorEmail], 'auth.2fa_failed', $detail);
 }
 
 /**
@@ -281,6 +304,9 @@ function ccrm_passkey_create_registration_options(array $user, array $existingCr
         attestation: PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE,
         excludeCredentials: $excluded,
         timeout: 60000,
+        // Chrome and Edge go straight to Windows Hello / Touch ID instead of the
+        // phone-or-USB menu. Registration only: a login passkey may live on a phone.
+        hints: ['client-device'],
     );
 }
 
@@ -295,6 +321,23 @@ function ccrm_passkey_create_request_options(array $rp): PublicKeyCredentialRequ
         userVerification: AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_REQUIRED,
         timeout: 60000,
     );
+}
+
+/** How long after a password sign-in a passkey may be added without the password. */
+const CCRM_PW_AUTH_WINDOW_SECONDS = 300;
+
+/**
+ * True when this session was opened by a password sign-in no more than
+ * CCRM_PW_AUTH_WINDOW_SECONDS ago (login.php sets ccrm_pw_auth_at).
+ */
+function ccrm_pw_auth_recent(): bool {
+    ccrm_start_session();
+    $at = $_SESSION['ccrm_pw_auth_at'] ?? null;
+    if (!is_int($at)) {
+        return false;
+    }
+    $age = time() - $at;
+    return $age >= 0 && $age <= CCRM_PW_AUTH_WINDOW_SECONDS;
 }
 
 /**

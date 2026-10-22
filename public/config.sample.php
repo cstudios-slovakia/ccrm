@@ -20,8 +20,11 @@ define('DB_USER', 'your_database_user');
 define('DB_PASS', 'your_database_password');
 
 // Optional: the address users open the CRM at, e.g. 'https://crm.example.sk/'.
-// Links in e-mails (password reset, task reminders) use it. Without it they use
-// the address of the most recent successful sign-in.
+// When this is set, links in e-mails (password reset, task reminders) use it
+// and nothing else: not the browser's Host header, and not the APP_BASE_URL
+// row in the database. An admin login records that row only when this constant
+// is absent AND the database has no value yet (the first sign-in on a new
+// install). A value already stored is never replaced.
 // define('CCRM_APP_URL', 'https://crm.example.sk/');
 
 // Optional switches. All are OFF by default (the secure setting); turn one on only

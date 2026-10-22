@@ -36,6 +36,8 @@ import type {
 import { employeeFileHref } from "../../utils/employeeFiles";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import { LinkedUserPicker } from "./LinkedUserPicker";
+import { EmployeeIdentityFields } from "./EmployeeIdentityFields";
+import { employeeKind, identityComplete, identityFields, identityOf, type EmployeeIdentity } from "../../utils/employeeIdentity";
 import { VacationRequestModal } from "./VacationRequestModal";
 import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
@@ -368,8 +370,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   }, [initialEditMode, rights.edit]);
 
   // Form field states for in-place editing
-  const [editName, setEditName] = useState<string>(employee.name || "");
-  const [editRole, setEditRole] = useState<string>(employee.role || "");
+  const [editIdentity, setEditIdentity] = useState<EmployeeIdentity>(() => identityOf(employee));
   const [editUserId, setEditUserId] = useState<string | null>(employee.userId ?? null);
   const [editPin, setEditPin] = useState<string>(employee.pin || "");
   const [editEmail, setEditEmail] = useState<string>(employee.email || "");
@@ -415,8 +416,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
   // Sync form fields when employee prop changes
   const resetEditFields = () => {
-    setEditName(employee.name || "");
-    setEditRole(employee.role || "");
+    setEditIdentity(identityOf(employee));
     setEditUserId(employee.userId ?? null);
     setEditPin(employee.pin || "");
     setEditEmail(employee.email || "");
@@ -596,16 +596,19 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   };
 
   const handleSaveCard = () => {
-    if (!editName.trim()) {
-      setCardSaveError(t("Employee name is required", "Meno zamestnanca je povinné", "A munkatárs neve kötelező"));
+    if (!identityComplete(editIdentity)) {
+      setCardSaveError(
+        editIdentity.kind === "employee"
+          ? t("First name and last name are required", "Meno aj priezvisko sú povinné", "A kereszt- és vezetéknév kötelező")
+          : t("Name is required", "Názov je povinný", "A név kötelező")
+      );
       return;
     }
     setIsSavingCard(true);
     try {
       const updated: Employee = {
         ...employee,
-        name: editName.trim(),
-        role: editRole.trim() || undefined,
+        ...identityFields(editIdentity),
         email: editEmail.trim() || null,
         isActive: editIsActive,
         timeTrackingUserId: editTimeTrackingUserId || null,
@@ -793,9 +796,21 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             >
               {employee.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
             </span>
-            {employee.role && (
+            {employeeKind(employee) !== "employee" && (
+              <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full type-overline">
+                {employeeKind(employee) === "contractor"
+                  ? t("External supplier", "Externý dodávateľ", "Külső beszállító")
+                  : t("Accounting item", "Účtovná položka", "Könyvelési tétel")}
+              </span>
+            )}
+            {employee.position && (
               <span className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2.5 py-0.5 rounded-full type-overline">
-                {employee.role}
+                {employee.position}
+              </span>
+            )}
+            {employee.department && (
+              <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full type-overline">
+                {employee.department}
               </span>
             )}
           </>
@@ -873,32 +888,25 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </div>
 
                   <div className="space-y-2 text-ui">
-                    <div>
-                      <label className="type-overline text-slate-500 block mb-0.5">
-                        {t("Full Name", "Celé meno", "Teljes név")} *
-                      </label>
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
-                        placeholder="Bc. Peter Varga"
+                    <div className="grid grid-cols-2 gap-2">
+                      <EmployeeIdentityFields
+                        value={editIdentity}
+                        onChange={(patch) => setEditIdentity((cur) => ({ ...cur, ...patch }))}
+                        employees={employees}
+                        t={t}
+                        language={systemLanguage}
+                        compact
+                        country={editCountry}
+                        onRegistryAddress={rights.editPersonal ? (a) => {
+                          setEditStreet(a.street || editStreet);
+                          setEditCity(a.city || editCity);
+                          setEditZip(a.zip || editZip);
+                          setEditCountry(a.country || editCountry);
+                        } : undefined}
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
-                          {t("Role / Position", "Pozícia", "Pozíció")}
-                        </label>
-                        <input
-                          type="text"
-                          value={editRole}
-                          onChange={(e) => setEditRole(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
-                          placeholder="Developer"
-                        />
-                      </div>
                       {rights.editPersonal && (
                       <div>
                         <label className="type-overline text-slate-500 block mb-0.5">
@@ -1314,9 +1322,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       </span>
                     </div>
 
-                    {employee.role && (
+                    {(employee.position || employee.department) && (
                       <p className="text-ui text-slate-500 font-medium truncate mt-0.5">
-                        {employee.role}
+                        {[employee.position, employee.department].filter(Boolean).join(" · ")}
                       </p>
                     )}
 
@@ -1388,6 +1396,17 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <span>{t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és kapcsolat adatok")}</span>
                 </div>
 
+                {([
+                  ["IČO", employee.companyId],
+                  ["DIČ", employee.taxId],
+                  ["IČ DPH", employee.vatId],
+                ] as const).map(([name, id]) => id ? (
+                  <div key={name} className="flex items-center justify-between pl-5">
+                    <span className="text-slate-400">{name}:</span>
+                    <span className="font-mono text-slate-800 font-semibold">{id}</span>
+                  </div>
+                ) : null)}
+
                 {employee.pin && (
                   <div className="flex items-center justify-between pl-5">
                     <span className="text-slate-400">{t("PIN / RČ", "Rodné číslo", "Személyi szám")}:</span>
@@ -1419,7 +1438,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </div>
                 )}
 
-                {!employee.pin && !employee.email && !employee.phone && (
+                {!employee.pin && !employee.email && !employee.phone && !employee.companyId && !employee.taxId && !employee.vatId && (
                   <p className="text-ui text-slate-400 italic pl-5">
                     {t("No contact details specified", "Kontaktné údaje nezadané", "Nincsenek megadott elérhetőségek")}
                   </p>

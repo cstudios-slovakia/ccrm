@@ -25,6 +25,8 @@ import type { Employee, EmployeeFile, EmployeeSettings, FinancialCategory, RoleP
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import { LinkedUserPicker } from "./LinkedUserPicker";
 import { employeeFileHref } from "../../utils/employeeFiles";
+import { EmployeeIdentityFields } from "./EmployeeIdentityFields";
+import { identityComplete, identityFields, identityOf, type EmployeeIdentity } from "../../utils/employeeIdentity";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
 interface EmployeeFormScreenProps {
@@ -60,7 +62,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
   const [linkedUserId, setLinkedUserId] = useState<string | null>(employee?.userId ?? null);
 
   // Form State
-  const [name, setName] = useState<string>("");
+  const [identity, setIdentity] = useState<EmployeeIdentity>(() => identityOf(employee));
   const [pin, setPin] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [phone, setPhone] = useState<string>("");
@@ -186,7 +188,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     initializedForRef.current = initKey;
 
     if (employee) {
-      setName(employee.name || "");
+      setIdentity(identityOf(employee));
       setPin(employee.pin || "");
       setEmail(employee.email || "");
       setPhone(employee.phone || "");
@@ -213,7 +215,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
       setIsActive(employee.isActive !== undefined ? !!employee.isActive : true);
     } else {
       // Default blank form
-      setName("");
+      setIdentity(identityOf(null));
       setPin("");
       setEmail("");
       setPhone("");
@@ -369,9 +371,11 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
-    if (!name.trim()) {
+    if (!identityComplete(identity)) {
       setValidationError(
-        t("Please enter the employee's full name", "Zadajte prosím meno a priezvisko zamestnanca", "Kérjük, adja meg az alkalmazott teljes nevét")
+        identity.kind === "employee"
+          ? t("Please enter the employee's first name and last name", "Zadajte prosím meno aj priezvisko zamestnanca", "Kérjük, adja meg az alkalmazott kereszt- és vezetéknevét")
+          : t("Please enter a name", "Zadajte prosím názov", "Kérjük, adjon meg egy nevet")
       );
       return;
     }
@@ -381,7 +385,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     const updatedEmployee: Employee = {
       ...employee,
       id: empId,
-      name: name.trim(),
+      ...identityFields(identity),
       email: email.trim(),
       ...(rights.editPersonal
         ? {
@@ -548,24 +552,23 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
             </div>
 
             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4 pt-1">
-              <div className="ws-sm:col-span-2">
-                <label className="block text-ui font-bold text-slate-600 mb-1.5">
-                  {t("Full Name & Titles *", "Meno, priezvisko a tituly *", "Teljes név és titulus *")}
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      if (validationError) setValidationError(null);
-                    }}
-                    placeholder="e.g. Ing. Michal Kováč, PhD."
-                    className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
-                  />
-                </div>
-              </div>
+              <EmployeeIdentityFields
+                value={identity}
+                onChange={(patch) => {
+                  setIdentity((cur) => ({ ...cur, ...patch }));
+                  if (validationError) setValidationError(null);
+                }}
+                employees={employees}
+                t={t}
+                language={systemLanguage}
+                country={addressCountry}
+                onRegistryAddress={rights.editPersonal ? (a) => {
+                  setAddressStreet(a.street || addressStreet);
+                  setAddressCity(a.city || addressCity);
+                  setAddressZip(a.zip || addressZip);
+                  setAddressCountry(a.country || addressCountry);
+                } : undefined}
+              />
 
               {rights.editPersonal && (
               <div>

@@ -2,18 +2,27 @@ import React, { useEffect, useState } from "react";
 import { Fingerprint, Loader2, AlertCircle } from "lucide-react";
 import type { Language } from "../utils/translations";
 import type { UserProfile } from "../types";
+import { isPasskeySupported, passkeyErrorKind, type LoginMethod } from "../utils/passkeys";
 import {
-  isPasskeySupported,
-  toRequestOptions,
-  assertionCredentialToJson,
-  passkeyErrorKind,
-} from "../utils/passkeys";
+  isPasskeyOnThisDevice,
+  fetchPasskeyStatus,
+  getLoginOptions,
+  platformAuthenticatorAvailable,
+  verifyLoginAssertion,
+} from "../utils/passkeyCeremony";
 
 export interface PasskeyLoginButtonProps {
   systemLanguage: Language;
   rememberMe: boolean;
-  onLoginSuccess: (user: UserProfile) => void;
+  onLoginSuccess: (user: UserProfile, method: LoginMethod) => void;
   disabled?: boolean;
+  /**
+   * Called before the modal ceremony: the screen aborts its pending autofill
+   * (conditional) request, because the server keeps a single challenge per session.
+   */
+  onBeforeModal?: () => Promise<void>;
+  /** Called when the modal ceremony ended without signing in, so autofill can resume. */
+  onAfterModal?: () => void;
 }
 
 export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
@@ -21,10 +30,15 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
   rememberMe,
   onLoginSuccess,
   disabled = false,
+  onBeforeModal,
+  onAfterModal,
 }) => {
+  // Without a passkey made or used on this device the button would only open an empty
+  // OS prompt. A synced passkey on a fresh browser still signs in through email autofill.
   const [available, setAvailable] = useState<boolean | null>(() =>
-    isPasskeySupported() ? null : false
+    isPasskeySupported() && isPasskeyOnThisDevice() ? null : false
   );
+  const [platformAvailable, setPlatformAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,27 +46,17 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
   useEffect(() => {
-    if (!isPasskeySupported()) {
+    if (!isPasskeySupported() || !isPasskeyOnThisDevice()) {
       return;
     }
 
     let isMounted = true;
-    fetch("/api/passkeys.php", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "status" }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (isMounted) {
-          setAvailable(!!(data && data.success && data.available));
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setAvailable(false);
-        }
-      });
+    fetchPasskeyStatus().then((ok) => {
+      if (isMounted) setAvailable(ok);
+    });
+    platformAuthenticatorAvailable().then((ok) => {
+      if (isMounted) setPlatformAvailable(ok);
+    });
 
     return () => {
       isMounted = false;
@@ -63,22 +67,28 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
     return null;
   }
 
+  const failedMessage = () =>
+    tr(
+      "Passkey sign-in failed. Try again or use your email and password.",
+      "Prihlásenie prístupovým kľúčom zlyhalo. Skúste znova alebo použite e-mail a heslo.",
+      "A hozzáférési kulcsos bejelentkezés sikertelen. Próbálja újra, vagy használja az e-mailt és a jelszót."
+    );
+
   const handlePasskeyLogin = async () => {
     if (disabled || isLoading) return;
 
     setError(null);
     setIsLoading(true);
+    let signedIn = false;
 
     try {
-      // 1. Fetch login options
-      const optRes = await fetch("/api/passkeys.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "login_options" }),
-      });
+      // The pending autofill request owns the session's only challenge; retire it first.
+      await onBeforeModal?.();
 
-      if (!optRes.ok) {
-        if (optRes.status === 429) {
+      // 1. Fetch login options
+      const opts = await getLoginOptions();
+      if (!opts.ok) {
+        if (opts.throttled) {
           setError(
             tr(
               "Too many login attempts. Please wait a few minutes and try again.",
@@ -88,53 +98,20 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
           );
           return;
         }
-        let msg = tr(
-          "Passkey sign-in failed. Try again or use your email and password.",
-          "Prihlásenie prístupovým kľúčom zlyhalo. Skúste znova alebo použite e-mail a heslo.",
-          "A hozzáférési kulcsos bejelentkezés sikertelen. Próbálja újra, vagy használja az e-mailt és a jelszót."
-        );
-        try {
-          const optData = await optRes.json();
-          if (optData && typeof optData.message === "string") {
-            msg = optData.message;
-          }
-        } catch {
-          /* fallback */
-        }
-        setError(msg);
-        return;
-      }
-
-      const optData = await optRes.json();
-      if (!optData || !optData.success || !optData.options) {
-        setError(
-          tr(
-            "Passkey sign-in failed. Try again or use your email and password.",
-            "Prihlásenie prístupovým kľúčom zlyhalo. Skúste znova alebo použite e-mail a heslo.",
-            "A hozzáférési kulcsos bejelentkezés sikertelen. Próbálja újra, vagy használja az e-mailt és a jelszót."
-          )
-        );
+        setError(opts.message ?? failedMessage());
         return;
       }
 
       // 2. Browser biometric prompt
-      const requestOptions = toRequestOptions(optData.options);
       let cred: Credential | null = null;
       try {
-        cred = await navigator.credentials.get({ publicKey: requestOptions });
+        cred = await navigator.credentials.get({ publicKey: opts.options });
       } catch (err: unknown) {
-        const kind = passkeyErrorKind(err);
-        if (kind === "cancelled") {
+        if (passkeyErrorKind(err) === "cancelled") {
           // User cancelled prompt -> do nothing
           return;
         }
-        setError(
-          tr(
-            "Passkey sign-in failed. Try again or use your email and password.",
-            "Prihlásenie prístupovým kľúčom zlyhalo. Skúste znova alebo použite e-mail a heslo.",
-            "A hozzáférési kulcsos bejelentkezés sikertelen. Próbálja újra, vagy használja az e-mailt és a jelszót."
-          )
-        );
+        setError(failedMessage());
         return;
       }
 
@@ -143,38 +120,18 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
       }
 
       // 3. Verify assertion with server
-      const verifyRes = await fetch("/api/passkeys.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "login_verify",
-          credential: assertionCredentialToJson(cred),
-          remember: rememberMe,
-        }),
-      });
-
-      const verifyData = await verifyRes.json();
-      if (verifyData && verifyData.success && verifyData.user) {
-        onLoginSuccess(verifyData.user as UserProfile);
+      const user = await verifyLoginAssertion(cred, rememberMe);
+      if (user) {
+        signedIn = true;
+        onLoginSuccess(user, "passkey");
       } else {
-        setError(
-          tr(
-            "Passkey sign-in failed. Try again or use your email and password.",
-            "Prihlásenie prístupovým kľúčom zlyhalo. Skúste znova alebo použite e-mail a heslo.",
-            "A hozzáférési kulcsos bejelentkezés sikertelen. Próbálja újra, vagy használja az e-mailt és a jelszót."
-          )
-        );
+        setError(failedMessage());
       }
     } catch {
-      setError(
-        tr(
-          "Passkey sign-in failed. Try again or use your email and password.",
-          "Prihlásenie prístupovým kľúčom zlyhalo. Skúste znova alebo použite e-mail a heslo.",
-          "A hozzáférési kulcsos bejelentkezés sikertelen. Próbálja újra, vagy használja az e-mailt és a jelszót."
-        )
-      );
+      setError(failedMessage());
     } finally {
       setIsLoading(false);
+      if (!signedIn) onAfterModal?.();
     }
   };
 
@@ -202,7 +159,13 @@ export const PasskeyLoginButton: React.FC<PasskeyLoginButtonProps> = ({
           <>
             <Fingerprint className="h-4.5 w-4.5 text-indigo-600 stroke-[2.2]" />
             <span>
-              {tr("Sign in with a passkey", "Prihlásiť sa prístupovým kľúčom", "Bejelentkezés hozzáférési kulccsal")}
+              {platformAvailable
+                ? tr(
+                    "Sign in with fingerprint or face",
+                    "Prihlásiť sa odtlačkom prsta alebo tvárou",
+                    "Bejelentkezés ujjlenyomattal vagy arcfelismeréssel"
+                  )
+                : tr("Sign in with a passkey", "Prihlásiť sa prístupovým kľúčom", "Bejelentkezés hozzáférési kulccsal")}
             </span>
           </>
         )}

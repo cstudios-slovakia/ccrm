@@ -40,34 +40,38 @@ if (!function_exists('ccrm_send_cors')) {
         }
     }
 
-    /** Lifetime (seconds) of a "remember me" session — 30 days. */
+    /** Lifetime (seconds) of a "remember me" token — 30 days. */
     if (!defined('CCRM_REMEMBER_LIFETIME')) {
         define('CCRM_REMEMBER_LIFETIME', 60 * 60 * 24 * 30);
     }
 
     /**
+     * Seconds a validator that was just rotated away is still accepted. On boot
+     * the SPA fires several requests in parallel, all carrying the same cookie;
+     * whichever is served first rotates it and the others must not log the user
+     * out for presenting the value they were sent with.
+     */
+    if (!defined('CCRM_REMEMBER_GRACE_SECONDS')) {
+        define('CCRM_REMEMBER_GRACE_SECONDS', 60);
+    }
+
+    /**
      * Start (or resume) a hardened session.
      *
-     * When $remember is true (or the non-sensitive CCRM_REMEMBER marker cookie
-     * is present from a previous "remember me" login) the session cookie and the
-     * server-side garbage-collection window are extended to CCRM_REMEMBER_LIFETIME
-     * so the user stays signed in across browser restarts. Otherwise the session
-     * is a normal browser-session cookie that dies when the browser closes.
+     * The session cookie is a plain browser-session cookie: it dies when the
+     * browser closes. "Remember me" is NOT a long-lived PHP session. PHP deletes
+     * session files after session.gc_maxlifetime (24 minutes by default, applied
+     * by Debian's sessionclean cron and by any other request that happens to run
+     * GC), and an ini_set() only holds for the request that makes it, so a 30-day
+     * cookie ended up pointing at a file that was long gone. A remembered login is
+     * a separate token (ccrm_remember_restore) that re-creates the session.
      */
-    function ccrm_start_session(?bool $remember = null): void {
+    function ccrm_start_session(): void {
         if (session_status() === PHP_SESSION_ACTIVE) {
             return;
         }
-        if ($remember === null) {
-            $remember = (($_COOKIE['CCRM_REMEMBER'] ?? '') === '1');
-        }
-        $lifetime = $remember ? CCRM_REMEMBER_LIFETIME : 0;
-        if ($remember) {
-            // Keep the server-side session file alive for the whole window.
-            @ini_set('session.gc_maxlifetime', (string)CCRM_REMEMBER_LIFETIME);
-        }
         session_set_cookie_params([
-            'lifetime' => $lifetime,
+            'lifetime' => 0,
             'path'     => '/',
             'httponly' => true,
             'samesite' => 'Lax',
@@ -115,8 +119,19 @@ if (!function_exists('ccrm_send_cors')) {
         }
     }
 
-    /** Drop the current session entirely (used when it is no longer valid). */
-    function ccrm_destroy_session(): void {
+    /**
+     * Drop the current session entirely (used when it is no longer valid).
+     *
+     * The remembered login goes with it: the next request would otherwise find
+     * the token, rebuild the very session that was just retired (account deleted,
+     * password changed) and make the retirement a no-op. Pass the connection to
+     * delete the token row as well; without one only the cookie is cleared.
+     */
+    function ccrm_destroy_session(?\PDO $pdo = null): void {
+        if ($pdo !== null) {
+            ccrm_remember_delete_presented($pdo);
+        }
+        ccrm_remember_clear_cookie();
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $p = session_get_cookie_params();
@@ -125,15 +140,266 @@ if (!function_exists('ccrm_send_cors')) {
         @session_destroy();
     }
 
-    /** Open the authenticated session for a users row and return the profile array login.php answers with. */
-    function ccrm_establish_login_session(\PDO $pdo, array $row, bool $remember): array {
-        // The address an administrator reached the CRM at is the one mailed links
-        // should use. Other roles never get to choose it (see ccrm_remember_app_url).
-        ccrm_remember_app_url($pdo, $row);
+    /** Cookie that carries the persistent "remember me" token: `<selector>:<validator>`. */
+    if (!defined('CCRM_REMEMBER_COOKIE')) {
+        define('CCRM_REMEMBER_COOKIE', 'CCRM_REMEMBER');
+    }
 
-        // Establish the authenticated session (extended lifetime when "remember me").
-        ccrm_start_session($remember);
+    /**
+     * The table behind "remember me": one row per remembered browser.
+     *
+     * The cookie holds a random selector (the lookup key) and a random validator.
+     * Only the SHA-256 of the validator is stored, so a database leak does not
+     * hand out usable cookies. Every restore rotates the validator; the previous
+     * hash is kept for CCRM_REMEMBER_GRACE_SECONDS (see that constant).
+     *
+     * Also declared in api/schema.php; keep the two in step. Created lazily here
+     * because the auth endpoints do not always load schema.php (the same way
+     * ccrm_passkeys_ensure_table does it). A no-op inside a transaction: DDL
+     * commits implicitly in MySQL.
+     */
+    function ccrm_remember_ensure_table(\PDO $pdo): void {
+        static $done = false;
+        if ($done || $pdo->inTransaction()) {
+            return;
+        }
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `user_remember_tokens` (
+          `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          `user_id` VARCHAR(50) NOT NULL,
+          `selector` CHAR(24) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+          `validator_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'SHA-256 of the validator in the cookie',
+          `prev_validator_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT 'Validator before the last rotation, accepted for a short grace window',
+          `rotated_at` DATETIME NULL,
+          `created_at` DATETIME NOT NULL,
+          `expires_at` DATETIME NOT NULL,
+          `last_used_at` DATETIME NULL,
+          `user_agent` VARCHAR(255) NULL COMMENT 'For display and audit only',
+          PRIMARY KEY (`id`),
+          UNIQUE KEY `uniq_remember_selector` (`selector`),
+          INDEX `idx_remember_user` (`user_id`),
+          INDEX `idx_remember_expires` (`expires_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $done = true;
+    }
+
+    /** Attributes the remember cookie is set (and cleared) with; they must match or the browser keeps the old one. */
+    function ccrm_remember_cookie_options(int $expires): array {
+        return [
+            'expires'  => $expires,
+            'path'     => '/',
+            'httponly' => true,
+            'samesite' => 'Lax',
+            'secure'   => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+        ];
+    }
+
+    function ccrm_remember_set_cookie(string $selector, string $validator): void {
+        $value = $selector . ':' . $validator;
+        setcookie(CCRM_REMEMBER_COOKIE, $value, ccrm_remember_cookie_options(time() + CCRM_REMEMBER_LIFETIME));
+        $_COOKIE[CCRM_REMEMBER_COOKIE] = $value; // later code in this request sees the new value
+    }
+
+    /** Remove the remember cookie from the browser, if it sent one (the legacy `1` marker included). */
+    function ccrm_remember_clear_cookie(): void {
+        if (!isset($_COOKIE[CCRM_REMEMBER_COOKIE])) {
+            return;
+        }
+        setcookie(CCRM_REMEMBER_COOKIE, '', ccrm_remember_cookie_options(time() - 42000));
+        unset($_COOKIE[CCRM_REMEMBER_COOKIE]);
+    }
+
+    /**
+     * The selector and validator the browser sent, or null when there is no
+     * well-formed token. The old implementation set the cookie to `1`; that and
+     * anything else malformed counts as no token.
+     */
+    function ccrm_remember_presented(): ?array {
+        $raw = $_COOKIE[CCRM_REMEMBER_COOKIE] ?? '';
+        if (!is_string($raw) || !preg_match('/^([a-f0-9]{24}):([a-f0-9]{64})$/', $raw, $m)) {
+            return null;
+        }
+        return ['selector' => $m[1], 'validator' => $m[2]];
+    }
+
+    /** Delete the row of the token this browser presented. Best-effort, and safe inside a transaction. */
+    function ccrm_remember_delete_presented(\PDO $pdo): void {
+        $presented = ccrm_remember_presented();
+        if ($presented === null) {
+            return;
+        }
+        try {
+            $pdo->prepare("DELETE FROM `user_remember_tokens` WHERE `selector` = ?")->execute([$presented['selector']]);
+        } catch (\Throwable $e) {
+            // No table yet means no token to delete.
+        }
+    }
+
+    /**
+     * Delete every remembered login of a user (password change, account removal).
+     * Never runs DDL, so it is safe inside the sync transaction.
+     */
+    function ccrm_remember_revoke_user(\PDO $pdo, string $userId): void {
+        try {
+            $pdo->prepare("DELETE FROM `user_remember_tokens` WHERE `user_id` = ?")->execute([$userId]);
+        } catch (\Throwable $e) {
+            // Table missing: nothing was ever remembered.
+        }
+    }
+
+    /**
+     * Remember this browser: insert a token row and set the cookie. A failure is
+     * logged and swallowed — the login itself has already succeeded and must not
+     * be undone by the convenience feature.
+     */
+    function ccrm_remember_issue(\PDO $pdo, string $userId): void {
+        try {
+            ccrm_remember_ensure_table($pdo);
+            // A fresh login replaces whatever token this browser held.
+            ccrm_remember_delete_presented($pdo);
+
+            $selector  = bin2hex(random_bytes(12));
+            $validator = bin2hex(random_bytes(32));
+            $agent = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+            $agent = function_exists('mb_substr') ? mb_substr($agent, 0, 255) : substr($agent, 0, 255);
+            // Dates come from the DB clock, like every other comparison on them.
+            $pdo->prepare(
+                "INSERT INTO `user_remember_tokens`
+                   (`user_id`, `selector`, `validator_hash`, `created_at`, `expires_at`, `last_used_at`, `user_agent`)
+                 VALUES (?, ?, ?, NOW(), NOW() + INTERVAL ? SECOND, NOW(), ?)"
+            )->execute([$userId, $selector, hash('sha256', $validator), CCRM_REMEMBER_LIFETIME, $agent !== '' ? $agent : null]);
+            $pdo->exec("DELETE FROM `user_remember_tokens` WHERE `expires_at` < NOW()");
+
+            ccrm_remember_set_cookie($selector, $validator);
+        } catch (\Throwable $e) {
+            error_log('[ccrm auth] could not issue a remember-me token: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Sign the browser back in from its remember cookie. Returns true when a
+     * session was established. Called by ccrm_current_user() only when the PHP
+     * session holds no login.
+     *
+     * Why a request is refused is never reported to the caller: every failure
+     * is the same "not signed in".
+     */
+    function ccrm_remember_restore(): bool {
+        $presented = ccrm_remember_presented();
+        if ($presented === null) {
+            ccrm_remember_clear_cookie(); // legacy `1` or garbage
+            return false;
+        }
+        $pdo = ccrm_auth_pdo();
+        if ($pdo === null) {
+            return false;
+        }
+
+        try {
+            // Expiry, grace window and "retired by a password change" are all
+            // decided by the database against its own clock (PHP is pinned to
+            // another timezone than MySQL, see ccrm_current_user()).
+            $stmt = $pdo->prepare(
+                "SELECT t.`id`, t.`user_id`, t.`validator_hash`, t.`prev_validator_hash`,
+                        (t.`expires_at` <= NOW()) AS `expired`,
+                        (t.`rotated_at` IS NOT NULL AND t.`rotated_at` >= NOW() - INTERVAL ? SECOND) AS `in_grace`,
+                        (u.`id` IS NULL) AS `no_user`,
+                        (u.`sessions_valid_from` IS NOT NULL AND u.`sessions_valid_from` > t.`created_at`) AS `retired`
+                   FROM `user_remember_tokens` t
+                   LEFT JOIN `users` u ON u.`id` = t.`user_id`
+                  WHERE t.`selector` = ? LIMIT 1"
+            );
+            $stmt->execute([CCRM_REMEMBER_GRACE_SECONDS, $presented['selector']]);
+            $token = $stmt->fetch(\PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            // Table missing or database down. Fail closed: never sign anyone in on an error.
+            return false;
+        }
+
+        $drop = function () use ($pdo, $presented): void {
+            try {
+                $pdo->prepare("DELETE FROM `user_remember_tokens` WHERE `selector` = ?")->execute([$presented['selector']]);
+            } catch (\Throwable $e) { /* best-effort */ }
+            ccrm_remember_clear_cookie();
+        };
+
+        if (!$token) {
+            ccrm_remember_clear_cookie();
+            return false;
+        }
+
+        $hash = hash('sha256', $presented['validator']);
+        $isCurrent  = hash_equals((string)$token['validator_hash'], $hash);
+        $isPrevious = !$isCurrent && !empty($token['in_grace']) && $token['prev_validator_hash'] !== null
+            && hash_equals((string)$token['prev_validator_hash'], $hash);
+        if (!$isCurrent && !$isPrevious) {
+            // The selector exists but the validator is wrong, and not merely the one
+            // we rotated away a moment ago: the cookie was copied, or this is a stale
+            // copy of it. Burn this token only — wiping all of the user's tokens would
+            // let one stale tab log out every device.
+            $drop();
+            ccrm_audit_log($pdo, ['id' => $token['user_id'], 'email' => null], 'auth.remember_reject', 'Remember-me token presented with a wrong validator');
+            return false;
+        }
+        if (!empty($token['expired']) || !empty($token['no_user']) || !empty($token['retired'])) {
+            $drop();
+            return false;
+        }
+
+        try {
+            $userStmt = $pdo->prepare("SELECT * FROM `users` WHERE `id` = ? LIMIT 1");
+            $userStmt->execute([$token['user_id']]);
+            $user = $userStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$user) {
+                $drop();
+                return false;
+            }
+
+            ccrm_begin_session($pdo, $user);
+
+            // Rotate once per burst: a value that was only just rotated in is
+            // accepted as it is. The compare-and-swap in the WHERE makes a request
+            // that lost the race to a parallel one leave the cookie alone — the
+            // winner's Set-Cookie is the value that is actually stored.
+            $rotated = false;
+            if ($isCurrent && empty($token['in_grace'])) {
+                $newValidator = bin2hex(random_bytes(32));
+                $upd = $pdo->prepare(
+                    "UPDATE `user_remember_tokens`
+                        SET `prev_validator_hash` = `validator_hash`, `validator_hash` = ?,
+                            `rotated_at` = NOW(), `expires_at` = NOW() + INTERVAL ? SECOND, `last_used_at` = NOW()
+                      WHERE `id` = ? AND `validator_hash` = ?"
+                );
+                $upd->execute([hash('sha256', $newValidator), CCRM_REMEMBER_LIFETIME, $token['id'], $token['validator_hash']]);
+                if ($upd->rowCount() === 1) {
+                    ccrm_remember_set_cookie($presented['selector'], $newValidator);
+                    $rotated = true;
+                }
+            }
+            if ($rotated) {
+                ccrm_audit_log($pdo, ['id' => $user['id'], 'email' => $user['email']], 'auth.remember_restore');
+            } else {
+                $pdo->prepare("UPDATE `user_remember_tokens` SET `last_used_at` = NOW() WHERE `id` = ?")->execute([$token['id']]);
+            }
+            return true;
+        } catch (\Throwable $e) {
+            error_log('[ccrm auth] remember-me restore failed: ' . $e->getMessage());
+            // If the session was already opened, take it back: an error must not leave a half-built login behind.
+            $_SESSION = [];
+            return false;
+        }
+    }
+
+    /**
+     * Put a users row into the PHP session: the part every way of signing in
+     * shares (password, passkey, password reset, remember-me restore).
+     */
+    function ccrm_begin_session(\PDO $pdo, array $row): void {
+        ccrm_start_session();
         session_regenerate_id(true);
+        // Only a password sign-in earns the "recently confirmed by password" marker,
+        // and login.php sets it after this call. Clearing it here keeps a passkey or
+        // password-reset sign-in from inheriting one left over from an earlier login.
+        unset($_SESSION['ccrm_pw_auth_at']);
         $_SESSION['ccrm_uid']   = $row['id'];
         $_SESSION['ccrm_role']  = $row['role'];
         $_SESSION['ccrm_email'] = $row['email'];
@@ -148,27 +414,24 @@ if (!function_exists('ccrm_send_cors')) {
             $_SESSION['ccrm_issued_at'] = null;
         }
         $_SESSION['ccrm_checked_at'] = time();
+    }
 
-        // Persist (or clear) the non-sensitive marker cookie so later requests keep
-        // the right session lifetime. This cookie is NOT a credential — auth still
-        // relies entirely on the server-side session.
-        $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+    /** Open the authenticated session for a users row and return the profile array login.php answers with. */
+    function ccrm_establish_login_session(\PDO $pdo, array $row, bool $remember): array {
+        // The first administrator sign-in on a fresh install may record the address
+        // mailed links should use. It never replaces one already stored, and a
+        // CCRM_APP_URL pin is left untouched (see ccrm_remember_app_url).
+        ccrm_remember_app_url($pdo, $row);
+
+        ccrm_begin_session($pdo, $row);
+
+        // "Remember me" is a persistent token that re-creates the session after the
+        // browser was closed. Logging in without it forgets any token this browser held.
         if ($remember) {
-            setcookie('CCRM_REMEMBER', '1', [
-                'expires'  => time() + CCRM_REMEMBER_LIFETIME,
-                'path'     => '/',
-                'httponly' => true,
-                'samesite' => 'Lax',
-                'secure'   => $secure,
-            ]);
-        } elseif (isset($_COOKIE['CCRM_REMEMBER'])) {
-            setcookie('CCRM_REMEMBER', '', [
-                'expires'  => time() - 42000,
-                'path'     => '/',
-                'httponly' => true,
-                'samesite' => 'Lax',
-                'secure'   => $secure,
-            ]);
+            ccrm_remember_issue($pdo, (string)$row['id']);
+        } else {
+            ccrm_remember_delete_presented($pdo);
+            ccrm_remember_clear_cookie();
         }
 
         return [
@@ -246,12 +509,17 @@ if (!function_exists('ccrm_send_cors')) {
 
     function ccrm_current_user(): ?array {
         ccrm_start_session();
-        if (empty($_SESSION['ccrm_uid'])) {
-            return null;
-        }
-        // A cross-origin write is never allowed to use the session cookie.
+        // A cross-origin write is never allowed to use the session cookie, and the
+        // remember-me cookie is no different: check before it can rebuild a session.
         if (ccrm_is_cross_site_mutation()) {
             return null;
+        }
+        if (empty($_SESSION['ccrm_uid'])) {
+            // No login in the PHP session (browser restarted, or the file was
+            // collected): a remembered browser signs itself back in here.
+            if (!ccrm_remember_restore()) {
+                return null;
+            }
         }
 
         // The role was copied into the session at login and never re-read, so a
@@ -290,11 +558,11 @@ if (!function_exists('ccrm_send_cors')) {
 
                     if (!$row) {
                         // Account deleted — the session must not outlive it.
-                        ccrm_destroy_session();
+                        ccrm_destroy_session($pdo);
                         return null;
                     }
                     if (!empty($row['session_retired'])) {
-                        ccrm_destroy_session();
+                        ccrm_destroy_session($pdo);
                         return null;
                     }
 
@@ -319,6 +587,8 @@ if (!function_exists('ccrm_send_cors')) {
     /**
      * Retire every session issued before now for a user — call after any password
      * change. Safe to call when the column is missing on an un-migrated database.
+     * Remembered logins go too: they would otherwise sign the old password's
+     * holder straight back in.
      */
     function ccrm_invalidate_user_sessions(\PDO $pdo, string $userId): void {
         try {
@@ -327,6 +597,7 @@ if (!function_exists('ccrm_send_cors')) {
         } catch (\Throwable $e) {
             error_log('[ccrm auth] could not invalidate sessions for ' . $userId . ': ' . $e->getMessage());
         }
+        ccrm_remember_revoke_user($pdo, $userId);
     }
 
     /**
@@ -1948,21 +2219,34 @@ HTACCESS;
     }
 
     /**
-     * Remember the base URL an administrator just signed in through. The Host
-     * header is client-controlled, and the stored value ends up in password-reset
-     * links, so a non-admin's sign-in (any Viewer can send `Host: evil.example`)
-     * must never set or replace it. An operator can pin the value for good with
-     * CCRM_APP_URL in config.php, which wins over this.
+     * Record the base URL the first administrator signed in through, and only
+     * then. The Host header is client-controlled and the stored value is what
+     * password-reset links use when config.php has no CCRM_APP_URL, so:
+     *  - a non-admin never writes it,
+     *  - a value that is already stored is never replaced (an admin login
+     *    through a proxied Host must not move existing reset links),
+     *  - when CCRM_APP_URL is set, nothing is written at all. That constant
+     *    already wins in ccrm_app_base_url(); leaving a second copy in the
+     *    database would become the authority the moment the constant was removed.
      */
     function ccrm_remember_app_url(\PDO $pdo, ?array $user = null): void {
+        if (defined('CCRM_APP_URL') && is_string(CCRM_APP_URL) && CCRM_APP_URL !== '') return;
         if (strtolower(trim((string)($user['role'] ?? ''))) !== 'admin') return;
         $url = ccrm_request_base_url();
         if ($url === '') return;
         try {
             $cur = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'APP_BASE_URL'");
             $cur->execute();
-            if ($cur->fetchColumn() === $url) return;
-            $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('APP_BASE_URL', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+            $stored = $cur->fetchColumn();
+            if (is_string($stored) && trim($stored) !== '') return;
+            if ($stored === false) {
+                $pdo->prepare("INSERT IGNORE INTO `system_settings` (`key`, `value`) VALUES ('APP_BASE_URL', ?)")
+                    ->execute([$url]);
+                return;
+            }
+            // A blank row (NULL or '') may be filled once. A concurrent login
+            // that already wrote a real URL is left alone.
+            $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'APP_BASE_URL' AND (`value` IS NULL OR `value` = '')")
                 ->execute([$url]);
         } catch (\Throwable $e) { /* best effort — links fall back to the request */ }
     }

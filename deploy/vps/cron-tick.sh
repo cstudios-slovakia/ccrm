@@ -10,5 +10,9 @@ token="$(grep -E '^CCRM_CRON_TOKEN=' .env | cut -d= -f2- || true)"
 [ -n "$token" ] || exit 0   # not configured yet
 
 # Call Apache inside the container directly: no TLS round trip, no Caddy.
+# The token goes in a header. A ?token= query string is written to Apache's
+# access log on every minute (VULN-07).
 docker compose exec -T web curl -fsS -m 55 -o /dev/null \
-  -H 'Host: localhost' "http://127.0.0.1/api/cron.php?token=${token}"
+  -H 'Host: localhost' \
+  -H "X-Cron-Token: ${token}" \
+  "http://127.0.0.1/api/cron.php"

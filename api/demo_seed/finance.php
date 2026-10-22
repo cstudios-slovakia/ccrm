@@ -14,8 +14,9 @@
  *    advertising, weekly consumables, yearly insurance, a service contract that
  *    earns money). A recurring movement is ONE row — the reports derive every
  *    past charge from the rule — so each rule starts ~6 months back.
- *  - Monthly payroll and employer contributions (amounts taken from the seeded
- *    employee_salaries when they exist).
+ *  - Payroll and employer contributions for the install month only (amounts
+ *    taken from the seeded employee_salaries when they exist). Earlier months
+ *    are not written: those rows stay in the movement history.
  *  - Income invoices: the proforma/invoice documents of offers.php appear here
  *    with matching numbers and amounts; plus partner invoices, a partially paid
  *    one, an overdue one and planned future invoices that, together with the
@@ -180,31 +181,31 @@ function demo_seed_finance(PDO $pdo): void {
         ]);
     }
 
-    for ($k = 5; $k >= 0; $k--) {
-        $payDay = $monthDay($k, 15);
-        $label = substr($payDay, 5, 2) . '/' . substr($payDay, 0, 4);
-        $gross = $salaryByPeriod[substr($payDay, 0, 7)] ?? $baseTotal;
-        $done = $isPast($payDay);
-        if (!$salaryRows) {
-            // No salary rows to link to (no employees seeded): a plain monthly total.
-            $add([
-                'type' => 'expense', 'subtype' => 'salary', 'title' => $T(['en' => "Salaries $label", 'sk' => "Mzdy $label", 'hu' => "Bérek $label"]),
-                'description' => $T(['en' => 'Monthly payroll of the four employees.', 'sk' => 'Mesačná výplata štyroch zamestnancov.', 'hu' => 'A négy munkatárs havi bére.']),
-                'category' => 'fc-exp-pay-salaries', 'planned' => $gross, 'real' => $done ? $gross : 0.0, 'status' => $done ? 'paid' : 'planned',
-                'issue' => $payDay, 'due' => $payDay, 'paid' => $done ? date('Y-m-d', strtotime($payDay . ' -1 day')) : null,
-                'tax_rate' => 0,
-            ]);
-        }
-        $levies = round($gross * 0.352, 2);
-        $levyDay = $monthDay($k, 22);
-        $levyDone = $isPast($levyDay);
+    // Install month only. A run of past payroll rows stays in Finance after the sample staff is gone.
+    $k = 0;
+    $payDay = $monthDay($k, 15);
+    $label = substr($payDay, 5, 2) . '/' . substr($payDay, 0, 4);
+    $gross = $salaryByPeriod[substr($payDay, 0, 7)] ?? $baseTotal;
+    $done = $isPast($payDay);
+    if (!$salaryRows) {
+        // No salary rows to link to (no employees seeded): a plain monthly total.
         $add([
-            'type' => 'expense', 'subtype' => 'salary', 'title' => $T(['en' => "Social and health contributions $label", 'sk' => "Odvody do poisťovní $label", 'hu' => "Társadalombiztosítási járulékok $label"]),
-            'description' => $T(['en' => 'Employer contributions for the month.', 'sk' => 'Odvody zamestnávateľa za mesiac.', 'hu' => 'A munkáltatói járulékok a hónapra.']),
-            'category' => 'fc-exp-pay-salaries', 'planned' => $levies, 'real' => $levyDone ? $levies : 0.0, 'status' => $levyDone ? 'paid' : 'planned',
-            'issue' => $levyDay, 'due' => $levyDay, 'paid' => $levyDone ? $levyDay : null, 'tax_rate' => 0,
+            'type' => 'expense', 'subtype' => 'salary', 'title' => $T(['en' => "Salaries $label", 'sk' => "Mzdy $label", 'hu' => "Bérek $label"]),
+            'description' => $T(['en' => 'Monthly payroll of the four employees.', 'sk' => 'Mesačná výplata štyroch zamestnancov.', 'hu' => 'A négy munkatárs havi bére.']),
+            'category' => 'fc-exp-pay-salaries', 'planned' => $gross, 'real' => $done ? $gross : 0.0, 'status' => $done ? 'paid' : 'planned',
+            'issue' => $payDay, 'due' => $payDay, 'paid' => $done ? date('Y-m-d', strtotime($payDay . ' -1 day')) : null,
+            'tax_rate' => 0,
         ]);
     }
+    $levies = round($gross * 0.352, 2);
+    $levyDay = $monthDay($k, 22);
+    $levyDone = $isPast($levyDay);
+    $add([
+        'type' => 'expense', 'subtype' => 'salary', 'title' => $T(['en' => "Social and health contributions $label", 'sk' => "Odvody do poisťovní $label", 'hu' => "Társadalombiztosítási járulékok $label"]),
+        'description' => $T(['en' => 'Employer contributions for the month.', 'sk' => 'Odvody zamestnávateľa za mesiac.', 'hu' => 'A munkáltatói járulékok a hónapra.']),
+        'category' => 'fc-exp-pay-salaries', 'planned' => $levies, 'real' => $levyDone ? $levies : 0.0, 'status' => $levyDone ? 'paid' : 'planned',
+        'issue' => $levyDay, 'due' => $levyDay, 'paid' => $levyDone ? $levyDay : null, 'tax_rate' => 0,
+    ]);
 
     // --- 3. Income invoices ---------------------------------------------------------------------------
     // 3a. The proforma and invoice documents of the offers module, with their numbers.

@@ -75,6 +75,13 @@ The order when finishing a change:
   client; where it is empty the app still falls back to matching by name. Use
   `src/utils/leadClient.ts` instead of comparing names, and see the ROADMAP item
   "Clients and leads are still one table" before touching client grouping.
+- `sync.php` calls `ccrm_apply_schema()` on **every** request, including the 5s
+  `?probe=1` poll. It is gated by a fingerprint of `api/schema.php`,
+  `employee_name.php` and `lead_client_backfill.php` (`ccrm_schema_fingerprint()`),
+  so an unchanged schema costs one SELECT instead of ~2.3s of DDL. Keep schema and
+  migration code inside those files; if a migration `require`s another file, add
+  it to the fingerprint or edits to it will never re-run. Never put per-request
+  work into a migration, and never call DDL from the poll path.
 - The backend source is `public/`; the repo-root copies (`sync.php`, `api/`) are
   mirrored by `npm run sync:backend`. Edit `public/`, then sync.
 - The production server has **no build step**. The compiled frontend is built

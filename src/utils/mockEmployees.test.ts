@@ -118,27 +118,38 @@ test("demo vacations: stay within each employee's allowance per type and year", 
   }
 });
 
-test("demo salaries: months before the current one are paid, later ones pending", () => {
-  const now = new Date(2026, 9, 6); // 6 Oct: payday (15th) not reached yet
-  const salaries = generateDefaultMockSalaries(2026, now);
-  assert.equal(salaries.length, DEFAULT_MOCK_EMPLOYEES.length * 12);
-  for (const s of salaries) {
-    const expected = s.periodNumber <= 9 ? "paid" : "pending";
-    assert.equal(s.status, expected, `${s.id}`);
-    assert.equal(s.totalPaid, expected === "paid" ? s.totalSalary : 0, `${s.id}`);
+test("demo salaries: only the install month is seeded", () => {
+  for (const now of SAMPLE_DATES) {
+    const salaries = generateDefaultMockSalaries(now);
+    const prefix = monthPrefix(now, 0);
+    assert.equal(salaries.length, DEFAULT_MOCK_EMPLOYEES.length, ymd(now));
+    for (const s of salaries) {
+      assert.equal(s.periodKey, prefix, s.id);
+      assert.equal(s.year, now.getFullYear(), s.id);
+      assert.equal(s.periodNumber, now.getMonth() + 1, s.id);
+    }
   }
 });
 
-test("demo salaries: the current month flips to paid once payday arrives", () => {
-  const before = generateDefaultMockSalaries(2026, new Date(2026, 9, 13));
-  const after = generateDefaultMockSalaries(2026, new Date(2026, 9, 14));
-  assert.ok(before.filter((s) => s.periodNumber === 10).every((s) => s.status === "pending"));
-  assert.ok(after.filter((s) => s.periodNumber === 10).every((s) => s.status === "paid"));
+test("demo salaries: the install month is pending until payday, then paid", () => {
+  const before = generateDefaultMockSalaries(new Date(2026, 9, 6)); // payday is the 15th
+  const onEve = generateDefaultMockSalaries(new Date(2026, 9, 13));
+  const onPaydayEve = generateDefaultMockSalaries(new Date(2026, 9, 14));
+  assert.ok(before.every((s) => s.status === "pending" && s.totalPaid === 0));
+  assert.ok(onEve.every((s) => s.status === "pending" && s.totalPaid === 0));
+  assert.ok(onPaydayEve.every((s) => s.status === "paid" && s.totalPaid === s.totalSalary));
+});
+
+test("demo salaries: December keeps the year-end bonus, other months do not", () => {
+  const dec = generateDefaultMockSalaries(new Date(2026, 11, 1));
+  assert.ok(dec.every((s) => s.items.some((it) => it.categoryId === "bonus" && it.salary === 800)));
+  const oct = generateDefaultMockSalaries(new Date(2026, 9, 6));
+  assert.ok(oct.every((s) => s.items.every((it) => it.categoryId !== "bonus")));
 });
 
 test("demo salaries: totals equal the sum of their items", () => {
   const now = new Date(2026, 9, 6);
-  const salaries = generateDefaultMockSalaries(2026, now);
+  const salaries = generateDefaultMockSalaries(now);
   for (const s of salaries) {
     const sum = s.items.reduce((acc, it) => acc + (it.salary ?? 0), 0);
     assert.equal(s.totalSalary, sum, s.id);

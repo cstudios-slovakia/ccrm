@@ -4,11 +4,12 @@ import { gotoView, startSession } from './helpers/appDriver';
 /**
  * Pins F11 and F12 of `docs/audits/derived-numbers-dated-edits-audit-2026-09-18.md`.
  *
- * F11: the 5-step wizard used to have no date input at all — every document
- * was issued "today", valid-until computed from today, with no way to
- * back-date an offer for, say, a job finished last Friday. Step 1 now has
- * an "Issued on" field, and valid-until is derived from it. (Payment due
- * dates went with the invoices, which no longer live in this module.)
+ * F11: the price offer editor (once a 5-step wizard) used to have no date
+ * input at all — every document was issued "today", valid-until computed from
+ * today, with no way to back-date an offer for, say, a job finished last
+ * Friday. The document's own date is now an input, and valid-until is derived
+ * from it. (Payment due dates went with the invoices, which no longer live in
+ * this module.)
  *
  * F12: `handleChangeStatus` used to write `{ ...o, status }` and nothing
  * else — a status change carried no date, so "invoiced this month" could
@@ -20,13 +21,13 @@ import { gotoView, startSession } from './helpers/appDriver';
  * the same pattern `projectRating.spec.ts` uses for `rating`.
  *
  * The QA dataset runs in Slovak and has no seeded invoicing documents, so
- * each test creates its own through the real wizard.
+ * each test creates its own through the real editor.
  */
 
 const LEAD_NAME = 'Novák Stavby';
 const BACK_DATED_ISSUE = '2026-08-01';
 // addDays(issuedAt, n) is a plain calendar add — no month straddled here.
-const EXPECTED_VALID_UNTIL = '2026-08-31'; // the wizard's hard-coded 30 days
+const EXPECTED_VALID_UNTIL = '2026-08-31'; // the editor's hard-coded 30 days
 
 /** Every invoicing document the app pushed to /sync.php, newest write winning per id. */
 function recordSyncedOffers(page: Page) {
@@ -46,49 +47,35 @@ function recordSyncedOffers(page: Page) {
   return pushed;
 }
 
-async function openNewOfferWizard(page: Page) {
+/** The date in the document's own header — the only input that carries the issue date. */
+const issuedOnInput = (page: Page) => page.getByLabel(/^(Issued on|Dátum vystavenia)$/);
+
+/** Opens the inline editor on the Standard template from the "New price offer" menu. */
+async function openNewOfferEditor(page: Page) {
   await gotoView(page, '#invoices');
   await page.getByRole('button', { name: /New price offer|Nová cenová ponuka/ }).click();
-  await expect(page.getByText(/Step 1 of 5|Krok 1 z 5/)).toBeVisible();
+  await page.getByRole('menuitem', { name: /Standard template|Štandardná šablóna/ }).click();
+  await expect(page.locator('[data-offer-editor]')).toBeVisible();
 }
 
-/** Fills the required fields of every step and issues the document. */
+/** Fills the required fields of the document in place and issues it. */
 async function fillAndIssue(page: Page, title: string, issuedOn?: string) {
-  // Step 1 — format & title.
-  const titleInput = page.locator('label:has-text("Offer title"), label:has-text("Názov ponuky")').locator('xpath=following::input[1]');
-  await titleInput.fill(title);
+  const editor = page.locator('[data-offer-editor]');
 
-  if (issuedOn) {
-    const issuedOnInput = page
-      .locator('label:has-text("Issued on"), label:has-text("Dátum vystavenia")')
-      .locator('xpath=following::input[@type="date"][1]');
-    await issuedOnInput.fill(issuedOn);
-  }
+  // Title — the first field of the document.
+  await editor.locator('[data-offer-field="title"] input').fill(title);
 
-  await page.getByRole('button', { name: /Continue|Pokračovať/ }).click();
+  if (issuedOn) await issuedOnInput(page).fill(issuedOn);
 
-  // Step 2 — client.
-  await expect(page.getByText(/Step 2 of 5|Krok 2 z 5/)).toBeVisible();
+  // Client — the picker sits in the recipient block.
   await page.getByRole('button', { name: /Select a client|Vyberte klienta/ }).click();
   await page.getByRole('option', { name: new RegExp(LEAD_NAME) }).click();
-  await page.getByRole('button', { name: /Continue|Pokračovať/ }).click();
 
-  // Step 3 — at least one line item, or issuing is refused.
-  await expect(page.getByText(/Step 3 of 5|Krok 3 z 5/)).toBeVisible();
+  // At least one line item, or issuing is refused.
   await page.getByRole('button', { name: /Custom item|Vlastná položka/ }).click();
   await page.getByPlaceholder(/Item name|Názov položky/).fill('Konzultácia');
-  const unitPriceInput = page
-    .locator('label:has-text("Unit price"), label:has-text("Jedn. cena")')
-    .locator('xpath=following::input[1]');
-  await unitPriceInput.fill('100');
-  await page.getByRole('button', { name: /Continue|Pokračovať/ }).click();
+  await page.getByRole('spinbutton', { name: /Unit price|Jedn\. cena/ }).fill('100');
 
-  // Step 4 — parameters, nothing required.
-  await expect(page.getByText(/Step 4 of 5|Krok 4 z 5/)).toBeVisible();
-  await page.getByRole('button', { name: /Continue|Pokračovať/ }).click();
-
-  // Step 5 — live preview & issue.
-  await expect(page.getByText(/Step 5 of 5|Krok 5 z 5/)).toBeVisible();
   await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
 }
 
@@ -100,11 +87,11 @@ test.describe('Price offers — dated edits (audit F11/F12)', () => {
     const pushed = recordSyncedOffers(page);
     const title = 'Ponuka — spätne datovaná';
 
-    await openNewOfferWizard(page);
+    await openNewOfferEditor(page);
     await fillAndIssue(page, title, BACK_DATED_ISSUE);
 
-    // The wizard closed and the document is in the list, dated the day it was issued.
-    await expect(page.getByText(/Step 5 of 5|Krok 5 z 5/)).toHaveCount(0);
+    // The editor closed and the document is in the list, dated the day it was issued.
+    await expect(page.locator('[data-offer-editor]')).toHaveCount(0);
     const row = page.locator('tbody tr').filter({ hasText: title });
     await expect(row).toBeVisible();
 
@@ -132,22 +119,15 @@ test.describe('Price offers — dated edits (audit F11/F12)', () => {
     const pushed = recordSyncedOffers(page);
     const title = 'Ponuka — preplánovaná';
 
-    await openNewOfferWizard(page);
+    await openNewOfferEditor(page);
     await fillAndIssue(page, title, BACK_DATED_ISSUE);
     const row = page.locator('tbody tr').filter({ hasText: title });
     await expect(row).toBeVisible();
 
     // Reopen it, move the issue date by four days and save — nothing else.
     await row.getByTitle(/^(Edit|Upraviť)$/).click();
-    const issuedOnInput = page
-      .locator('label:has-text("Issued on"), label:has-text("Dátum vystavenia")')
-      .locator('xpath=following::input[@type="date"][1]');
-    await expect(issuedOnInput).toHaveValue(BACK_DATED_ISSUE);
-    await issuedOnInput.fill('2026-08-05');
-    for (let step = 2; step <= 5; step++) {
-      await page.getByRole('button', { name: /Continue|Pokračovať/ }).click();
-      await expect(page.getByText(new RegExp(`Step ${step} of 5|Krok ${step} z 5`))).toBeVisible();
-    }
+    await expect(issuedOnInput(page)).toHaveValue(BACK_DATED_ISSUE);
+    await issuedOnInput(page).fill('2026-08-05');
     await page.getByRole('button', { name: /Save changes|Uložiť zmeny/ }).click();
 
     await expect.poll(
@@ -165,7 +145,7 @@ test.describe('Price offers — dated edits (audit F11/F12)', () => {
     const title = 'Ponuka — zmena stavu';
     const today = new Date().toISOString().slice(0, 10);
 
-    await openNewOfferWizard(page);
+    await openNewOfferEditor(page);
     await fillAndIssue(page, title);
 
     const row = page.locator('tbody tr').filter({ hasText: title });

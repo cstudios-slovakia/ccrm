@@ -218,28 +218,34 @@ try {
         case 'register_options':
             $sessionUser = ccrm_require_auth();
             $password = (string)($data['password'] ?? '');
-            if ($password === '') {
+            // No password is needed right after a password sign-in (the offer shown
+            // by the app). Left in the session until register_verify succeeds, so a
+            // cancelled OS prompt can be retried.
+            $viaSession = $password === '' && ccrm_pw_auth_recent();
+            if ($password === '' && !$viaSession) {
                 http_response_code(400);
                 echo json_encode(['success' => false, 'message' => 'Password is required.']);
                 exit;
             }
 
-            $uStmt = $pdo->prepare("SELECT `password_hash` FROM `users` WHERE `id` = ? LIMIT 1");
-            $uStmt->execute([$sessionUser['id']]);
-            $storedHash = (string)$uStmt->fetchColumn();
+            if (!$viaSession) {
+                $uStmt = $pdo->prepare("SELECT `password_hash` FROM `users` WHERE `id` = ? LIMIT 1");
+                $uStmt->execute([$sessionUser['id']]);
+                $storedHash = (string)$uStmt->fetchColumn();
 
-            $ok = false;
-            if (ccrm_is_hash($storedHash)) {
-                $ok = password_verify($password, $storedHash);
-            } else {
-                $ok = hash_equals($storedHash, $password);
-            }
+                $ok = false;
+                if (ccrm_is_hash($storedHash)) {
+                    $ok = password_verify($password, $storedHash);
+                } else {
+                    $ok = hash_equals($storedHash, $password);
+                }
 
-            if (!$ok) {
-                ccrm_passkey_record_failure($pdo, $clientIp, $sessionUser['email']);
-                http_response_code(403);
-                echo json_encode(['success' => false, 'message' => 'Wrong password.']);
-                exit;
+                if (!$ok) {
+                    ccrm_passkey_record_failure($pdo, $clientIp, $sessionUser['email'], 'Wrong password while adding a passkey');
+                    http_response_code(403);
+                    echo json_encode(['success' => false, 'message' => 'Wrong password.']);
+                    exit;
+                }
             }
 
             if (!ccrm_passkey_check_throttle($pdo, $clientIp)) {
@@ -260,6 +266,7 @@ try {
             $rp = ccrm_passkey_rp();
             $options = ccrm_passkey_create_registration_options($sessionUser, $existingIds, $rp);
             ccrm_passkey_store_challenge('register', $options, $sessionUser['id']);
+            $_SESSION['ccrm_pk']['via'] = $viaSession ? 'session' : 'password';
 
             echo json_encode([
                 'success' => true,
@@ -289,6 +296,8 @@ try {
                 exit;
             }
 
+            // Read before the challenge is consumed (consuming unsets ccrm_pk)
+            $confirmedBy = (string)($_SESSION['ccrm_pk']['via'] ?? 'password');
             $storedOptions = ccrm_passkey_consume_challenge('register', \Webauthn\PublicKeyCredentialCreationOptions::class, $sessionUser['id']);
             $rp = ccrm_passkey_rp();
 
@@ -329,7 +338,9 @@ try {
                 $aaguid,
             ]);
 
-            ccrm_audit_log($pdo, $sessionUser, 'passkey.register', $name);
+            ccrm_audit_log($pdo, $sessionUser, 'passkey.register', $confirmedBy === 'session' ? $name . ' (confirmed by sign-in)' : $name);
+            // The sign-in confirmation is single-use
+            unset($_SESSION['ccrm_pw_auth_at']);
 
             echo json_encode(['success' => true]);
             exit;

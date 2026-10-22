@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Coins, TrendingUp, TrendingDown,
   Plus, Search, Calendar, CheckCircle2,
@@ -8,11 +9,11 @@ import {
   X, Globe,
   ChevronDown, ChevronUp, ChevronRight,
   CalendarClock, Hourglass, Telescope,
-  Landmark, Check, Pencil,
+  Landmark, Check, CheckSquare, Pencil,
   CalendarDays, Target, Maximize2, Minimize2, History,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
   SlidersHorizontal,
-  Copy, Sparkles, UserPlus, ChevronLeft, Settings
+  Copy, Sparkles, UserPlus, ChevronLeft, Settings, Tags
 } from "lucide-react";
 import type {
   FinancialRecord,
@@ -215,6 +216,9 @@ const SvgTextPill: React.FC<{
 
 const FORECAST_ROW_CLASS =
   "bg-violet-50/70 hover:bg-violet-100/70 border-l-[3px] border-dashed border-l-violet-400 transition-colors group";
+
+const MOVEMENT_CHECKBOX_CLASS =
+  "h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0 block";
 
 /**
  * A charge a recurring rule has already made. It is settled money, so it reads
@@ -869,6 +873,9 @@ interface FinancialManagementViewProps {
   access?: ModuleAccess;
 }
 
+/** How many ledger rows each scroll-in reveals. */
+const MOVEMENTS_PAGE_SIZE = 40;
+
 export const FinancialManagementView: React.FC<FinancialManagementViewProps> = ({
   financialRecords = [],
   setFinancialRecords: setFinancialRecordsRaw,
@@ -1221,7 +1228,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [movementsStartDate, setMovementsStartDate] = useState<string>("");
   const [movementsEndDate, setMovementsEndDate] = useState<string>("");
   const [movementsSortOrder, setMovementsSortOrder] = useState<"desc" | "asc">("desc");
-  const [movementsVisibleCount, setMovementsVisibleCount] = useState<number>(40);
+  const [movementsVisibleCount, setMovementsVisibleCount] = useState<number>(MOVEMENTS_PAGE_SIZE);
   // A filter seeded from the URL hash must not land hidden inside a collapsed
   // drawer — the user would see filtered results with no visible reason why.
   const [isMovementsAdvancedOpen, setIsMovementsAdvancedOpen] = useState<boolean>(
@@ -1237,8 +1244,18 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [showFutureMovements, setShowFutureMovements] = useState<boolean>(false);
   const [futureHorizonMonths, setFutureHorizonMonths] = useState<number>(1);
 
-  // Sentinel ref for infinite scroll
+  // The scroll box, and the row at its bottom that asks for the next page.
+  const movementsScrollRef = useRef<HTMLDivElement | null>(null);
   const movementsSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Stored ledger rows the user has ticked. Forecast rows and recurring charges
+  // are derived, so they are not selectable — there is no record to update.
+  // The checkbox column stays hidden until the user asks for it.
+  const [movementSelectMode, setMovementSelectMode] = useState(false);
+  const [selectedMovementIds, setSelectedMovementIds] = useState<Set<string>>(new Set());
+  const [movementBulkMenu, setMovementBulkMenu] = useState<"status" | "category" | null>(null);
+  const [movementCategoryQuery, setMovementCategoryQuery] = useState("");
+  const movementBulkToolbarRef = useRef<HTMLDivElement>(null);
 
   // Helper to get breadcrumbs for any category ID, guarded against a cyclic
   // `parentId` chain (see F14) by the shared, cycle-guarded walker.
@@ -1788,34 +1805,250 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     };
   }, [groupedMovementsByMonth, forecastSummary, filteredFutureMovements.length]);
 
-  // Infinite Scroll IntersectionObserver
+  // The ledger scrolls inside its own box, not the page. The sentinel has to
+  // live in that box, and the observer has to watch that box — a viewport
+  // observer never sees the table scroll. Re-arm after every page: the
+  // observer only reports a change in visibility, so a sentinel that stays on
+  // screen (the last short page) would otherwise spin forever.
   useEffect(() => {
     if (activeTab !== "movements") return;
+    if (movementsVisibleCount >= movementsSummary.rowCount) return;
+    const root = movementsScrollRef.current;
+    const sentinel = movementsSentinelRef.current;
+    if (!root || !sentinel) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          setMovementsVisibleCount((prev) => {
-            if (prev < movementsSummary.rowCount) {
-              return prev + 40;
-            }
-            return prev;
-          });
-        }
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setMovementsVisibleCount((prev) =>
+          prev < movementsSummary.rowCount ? prev + MOVEMENTS_PAGE_SIZE : prev
+        );
       },
-      { rootMargin: "300px" }
+      { root, rootMargin: "300px" }
     );
 
-    if (movementsSentinelRef.current) {
-      observer.observe(movementsSentinelRef.current);
-    }
-
+    observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [activeTab, movementsSummary.rowCount]);
+  }, [activeTab, movementsVisibleCount, movementsSummary.rowCount]);
+
+  // Drop a tick when its movement has been deleted.
+  useEffect(() => {
+    setSelectedMovementIds((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(financialRecords.map((r) => r.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (live.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [financialRecords]);
+
+  useEffect(() => {
+    if (!movementBulkMenu) return;
+    const onDown = (e: MouseEvent) => {
+      if (movementBulkToolbarRef.current && !movementBulkToolbarRef.current.contains(e.target as Node)) {
+        setMovementBulkMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [movementBulkMenu]);
+
+  const canSelectMovements = canEdit || canDelete;
+  const showMovementCheckboxes = canSelectMovements && movementSelectMode;
+
+  const exitMovementSelectMode = () => {
+    setMovementSelectMode(false);
+    setSelectedMovementIds(new Set());
+    setMovementBulkMenu(null);
+  };
+
+  const selectableMovementIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const group of groupedMovementsByMonth) {
+      for (const row of group.rows) {
+        if (row.kind === "record") ids.push(row.record.id);
+      }
+    }
+    return ids;
+  }, [groupedMovementsByMonth]);
+
+  const selectedMovementRecords = useMemo(
+    () => financialRecords.filter((r) => selectedMovementIds.has(r.id)),
+    [financialRecords, selectedMovementIds]
+  );
+
+  const allSelectableMovementsSelected =
+    selectableMovementIds.length > 0 && selectableMovementIds.every((id) => selectedMovementIds.has(id));
+  const someSelectableMovementsSelected =
+    !allSelectableMovementsSelected && selectableMovementIds.some((id) => selectedMovementIds.has(id));
+
+  const toggleMovementIds = (ids: string[], select: boolean) => {
+    setSelectedMovementIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (select) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const categoryPathLabel = (catId: string | null): string | null => {
+    if (!catId) return null;
+    const names = getCategoryBreadcrumbs(catId).map((c) => c.name);
+    return names.length > 0 ? names.join(" > ") : null;
+  };
+
+  const handleBulkMovementStatus = (nextStatus: FinancialStatus) => {
+    if (!canEdit || selectedMovementRecords.length === 0) return;
+    const today = todayLocal();
+    const patches = new Map<string, Partial<FinancialRecord>>();
+    let skipped = 0;
+    for (const rec of selectedMovementRecords) {
+      if (rec.isRecurring && nextStatus === "cancelled") {
+        patches.set(rec.id, pauseRecurringRule(rec, today));
+        continue;
+      }
+      if (rec.status === nextStatus) continue;
+      if (nextStatus === "paid") {
+        const amountReal = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
+        if (!(amountReal > 0)) {
+          skipped += 1;
+          continue;
+        }
+        patches.set(rec.id, {
+          status: "paid",
+          amountReal,
+          paidDate: rec.paidDate || today,
+          recurringAmountHistory: rec.isRecurring
+            ? recurringAmountHistoryAfterChange(
+                rec,
+                { amountPlanned: rec.amountPlanned || 0, amountReal },
+                lastRecurringOccurrenceOnOrBefore(rec, today)
+              )
+            : rec.recurringAmountHistory
+        });
+        continue;
+      }
+      patches.set(rec.id, { status: nextStatus });
+    }
+    if (patches.size > 0) {
+      const now = new Date().toISOString();
+      setFinancialRecords((prev) =>
+        prev.map((r) => (patches.has(r.id) ? { ...r, ...patches.get(r.id), updatedAt: now } : r))
+      );
+    }
+    setMovementBulkMenu(null);
+    const updated = patches.size;
+    (window as any).showToast?.(
+      skipped > 0
+        ? t(
+            `${updated} updated, ${skipped} skipped — no amount to settle`,
+            `${updated} zmenených, ${skipped} preskočených — nie je čo uhradiť`,
+            `${updated} frissítve, ${skipped} kihagyva — nincs rendezhető összeg`
+          )
+        : t(
+            `${updated} ${updated === 1 ? "movement updated" : "movements updated"}`,
+            updated === 1 ? "1 pohyb zmenený" : updated < 5 ? `${updated} pohyby zmenené` : `${updated} pohybov zmenených`,
+            `${updated} tétel frissítve`
+          )
+    );
+  };
+
+  const handleBulkMovementCategory = (catId: string | null) => {
+    if (!canEdit || selectedMovementRecords.length === 0) return;
+    const cat = catId ? financialCategories.find((c) => c.id === catId) ?? null : null;
+    if (catId && !cat) return;
+    const ids = new Set(
+      selectedMovementRecords.filter((r) => !cat || r.type === cat.type).map((r) => r.id)
+    );
+    const skipped = selectedMovementRecords.length - ids.size;
+    if (ids.size === 0) {
+      setMovementBulkMenu(null);
+      (window as any).showToast?.(
+        t(
+          "That category does not match the selected movements.",
+          "Táto kategória nesedí k vybraným pohybom.",
+          "Ez a kategória nem illik a kijelölt tételekhez."
+        )
+      );
+      return;
+    }
+    const path = categoryPathLabel(catId);
+    const now = new Date().toISOString();
+    setFinancialRecords((prev) =>
+      prev.map((r) => (ids.has(r.id) ? { ...r, categoryId: catId, categoryPath: path, updatedAt: now } : r))
+    );
+    setMovementBulkMenu(null);
+    const updated = ids.size;
+    (window as any).showToast?.(
+      skipped > 0
+        ? t(
+            `Category set on ${updated}, ${skipped} skipped — different type`,
+            `Kategória nastavená na ${updated}, ${skipped} preskočených — iný typ`,
+            `Kategória beállítva ${updated} tételen, ${skipped} kihagyva — más típus`
+          )
+        : t(
+            updated === 1 ? "Category updated" : `Category updated on ${updated} movements`,
+            updated === 1 ? "Kategória zmenená" : `Kategória zmenená na ${updated} pohyboch`,
+            updated === 1 ? "Kategória frissítve" : `Kategória frissítve ${updated} tételen`
+          )
+    );
+  };
+
+  const handleBulkDeleteMovements = () => {
+    if (!canDelete || selectedMovementRecords.length === 0) return;
+    const targets = selectedMovementRecords;
+    const standIns = targets.filter((t) => t.recurringSourceId && t.recurringOccurrenceDate);
+    const sourcesBefore = standIns
+      .map((s) => financialRecords.find((r) => r.id === s.recurringSourceId))
+      .filter((r): r is FinancialRecord => !!r);
+    deleteRecordsWithUndo({
+      collection: "financialRecords",
+      allRecords: financialRecords,
+      targets,
+      setRecords: setFinancialRecords,
+      lang: userLanguage,
+      entity: "record",
+      titleOf: (r) => r.title,
+      onApplied: () => {
+        setMovementBulkMenu(null);
+        setSelectedMovementIds(new Set());
+      },
+      applyExtra: () => {
+        if (standIns.length === 0) return;
+        setFinancialRecords((prev) =>
+          prev.map((r) => {
+            const skips = standIns.filter((s) => s.recurringSourceId === r.id);
+            if (skips.length === 0) return r;
+            let next = r;
+            for (const s of skips) {
+              next = { ...next, recurringSkippedDates: unskipRecurringDate(next, s.recurringOccurrenceDate!) };
+            }
+            return next;
+          })
+        );
+      },
+      revertExtra: () => {
+        if (sourcesBefore.length === 0) return;
+        const byId = new Map(sourcesBefore.map((s) => [s.id, s]));
+        setFinancialRecords((prev) =>
+          prev.map((r) => {
+            const before = byId.get(r.id);
+            return before ? { ...r, recurringSkippedDates: before.recurringSkippedDates } : r;
+          })
+        );
+      }
+    });
+  };
 
   // Reset visible count when filters change
   useEffect(() => {
-    setMovementsVisibleCount(40);
+    setMovementsVisibleCount(MOVEMENTS_PAGE_SIZE);
   }, [
     movementsSearch,
     movementsType,
@@ -6787,10 +7020,51 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           {/* GROUPED MOVEMENTS LEDGER TABLE */}
           <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
-            <div className="table-sticky-scroll scrollbar-thin">
+            {canSelectMovements && (
+              <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => (movementSelectMode ? exitMovementSelectMode() : setMovementSelectMode(true))}
+                  aria-pressed={movementSelectMode}
+                  title={t(
+                    "Tick stored movements to change their status or category, or to delete them. A payment drawn from a recurring rule is not stored on its own, so it cannot be ticked.",
+                    "Zaškrtnite uložené pohyby a hromadne zmeňte stav, kategóriu alebo ich vymažte. Platba z pravidelného pohybu nie je uložená samostatne, preto sa nedá zaškrtnúť.",
+                    "Jelölje ki a mentett tételeket állapot, kategória vagy törlés módosításához. Ismétlődő szabályból származó fizetés nincs külön mentve, ezért nem jelölhető."
+                  )}
+                  className={`px-2.5 py-1 text-ui font-bold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors border ${
+                    movementSelectMode
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <CheckSquare className="h-3.5 w-3.5" />
+                  <span>
+                    {movementSelectMode
+                      ? t("Cancel", "Zrušiť", "Mégse")
+                      : t("Select", "Vybrať", "Kijelölés")}
+                  </span>
+                </button>
+              </div>
+            )}
+            <div ref={movementsScrollRef} className="table-sticky-scroll scrollbar-thin">
               <table className="w-full text-left text-ui border-collapse">
                 <thead className="bg-slate-50  text-slate-600  type-overline border-b border-slate-200  sticky top-0 z-20">
                   <tr>
+                    {showMovementCheckboxes && (
+                      <th className="py-3 pl-4 pr-1 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allSelectableMovementsSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someSelectableMovementsSelected;
+                          }}
+                          onChange={() => toggleMovementIds(selectableMovementIds, !allSelectableMovementsSelected)}
+                          disabled={selectableMovementIds.length === 0}
+                          aria-label={t("Select all movements", "Vybrať všetky pohyby", "Összes tétel kijelölése")}
+                          className={MOVEMENT_CHECKBOX_CLASS}
+                        />
+                      </th>
+                    )}
                     <th className="py-3 px-4 w-32.5">{t("Date", "Dátum", "Dátum")}</th>
                     <th className="py-3 px-4 min-w-55">{t("Title & Reference", "Názov & Referencia", "Megnevezés & Hivatkozás")}</th>
                     <th className="py-3 px-4 min-w-55">{t("Category Hierarchy", "Hierarchia kategórie", "Kategória hierarchia")}</th>
@@ -6804,7 +7078,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <tbody className="divide-y divide-slate-100  font-medium">
                   {movementsSummary.rowCount === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-slate-400 font-medium space-y-2">
+                      <td colSpan={showMovementCheckboxes ? 8 : 7} className="py-16 text-center text-slate-400 font-medium space-y-2">
                         <Coins className="h-10 w-10 text-slate-300  mx-auto" />
                         <p className="text-body font-bold text-slate-700 ">
                           {t("No financial movements found", "Neboli nájdené žiadne finančné pohyby", "Nincs találat a megadott szűrők alapján")}
@@ -6831,6 +7105,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         // of looking like any other month of history.
                         const settledInGroup = group.rows.length - group.forecastCount;
                         const isForecastOnlyMonth = settledInGroup === 0 && group.forecastCount > 0;
+                        const monthRecordIds = group.rows.filter((row) => row.kind === "record").map((row) => row.record.id);
+                        const allMonthSelected = monthRecordIds.length > 0 && monthRecordIds.every((id) => selectedMovementIds.has(id));
+                        const someMonthSelected = !allMonthSelected && monthRecordIds.some((id) => selectedMovementIds.has(id));
 
                         return (
                           <React.Fragment key={"month-grp-" + group.monthKey}>
@@ -6840,6 +7117,22 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                 ? "bg-violet-100/90  border-violet-300 "
                                 : "bg-slate-100/90  border-slate-300 "
                             }`}>
+                              {showMovementCheckboxes && (
+                                <td className="py-2.5 pl-4 pr-1 w-10">
+                                  {monthRecordIds.length > 0 && (
+                                    <input
+                                      type="checkbox"
+                                      checked={allMonthSelected}
+                                      ref={(el) => {
+                                        if (el) el.indeterminate = someMonthSelected;
+                                      }}
+                                      onChange={() => toggleMovementIds(monthRecordIds, !allMonthSelected)}
+                                      aria-label={t("Select movements in this month", "Vybrať pohyby v tomto mesiaci", "A hónap tételeinek kijelölése")}
+                                      className={MOVEMENT_CHECKBOX_CLASS}
+                                    />
+                                  )}
+                                </td>
+                              )}
                               <td colSpan={7} className="py-2.5 px-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div className="flex items-center gap-2">
@@ -6933,6 +7226,25 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                                 return (
                                   <tr key={row.key} data-forecast="true" className={FORECAST_ROW_CLASS}>
+                                    {showMovementCheckboxes && (
+                                      <td className="py-3 pl-4 pr-1 w-10">
+                                        <input
+                                          type="checkbox"
+                                          disabled
+                                          aria-label={t(
+                                            "Expected only — nothing is stored yet, so it cannot be selected",
+                                            "Len očakávané — zatiaľ nič nie je uložené, preto sa nedá vybrať",
+                                            "Csak várható — még nincs mentve, ezért nem jelölhető ki"
+                                          )}
+                                          title={t(
+                                            "Expected only — nothing is stored yet, so it cannot be selected",
+                                            "Len očakávané — zatiaľ nič nie je uložené, preto sa nedá vybrať",
+                                            "Csak várható — még nincs mentve, ezért nem jelölhető ki"
+                                          )}
+                                          className={`${MOVEMENT_CHECKBOX_CLASS} opacity-40 cursor-not-allowed`}
+                                        />
+                                      </td>
+                                    )}
                                     {/* 1. The day the money is expected, and how far off that is */}
                                     <td className="py-3 px-4 whitespace-nowrap">
                                       <div className="font-bold text-violet-900 ">
@@ -7107,6 +7419,25 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                                 return (
                                   <tr key={row.key} data-recurring-charge="true" className={RECURRING_CHARGE_ROW_CLASS}>
+                                    {showMovementCheckboxes && (
+                                      <td className="py-3 pl-4 pr-1 w-10">
+                                        <input
+                                          type="checkbox"
+                                          disabled
+                                          aria-label={t(
+                                            "Drawn from a recurring rule, not stored on its own. Open it and save this payment to select it.",
+                                            "Vychádza z pravidelného pohybu, nie je uložený samostatne. Otvorte ho a uložte túto platbu, potom sa dá vybrať.",
+                                            "Ismétlődő szabályból származik, nincs külön mentve. Nyissa meg és mentse ezt a fizetést, utána kijelölhető."
+                                          )}
+                                          title={t(
+                                            "Drawn from a recurring rule, not stored on its own. Open it and save this payment to select it.",
+                                            "Vychádza z pravidelného pohybu, nie je uložený samostatne. Otvorte ho a uložte túto platbu, potom sa dá vybrať.",
+                                            "Ismétlődő szabályból származik, nincs külön mentve. Nyissa meg és mentse ezt a fizetést, utána kijelölhető."
+                                          )}
+                                          className={`${MOVEMENT_CHECKBOX_CLASS} opacity-40 cursor-not-allowed`}
+                                        />
+                                      </td>
+                                    )}
                                     {/* 1. The day the rule charged */}
                                     <td className="py-3 px-4 whitespace-nowrap">
                                       <div className="font-bold text-slate-800 ">
@@ -7174,11 +7505,26 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               // not counted in the month (see pastRecurringCharges.ts).
                               const isUncountedRuleRow = pastRecurring.uncountedIds.has(rec.id);
 
+                              const isMovementSelected = selectedMovementIds.has(rec.id);
+
                               return (
                                 <tr
                                   key={row.key}
-                                  className="hover:bg-slate-50/80  transition-colors group"
+                                  className={`transition-colors group ${
+                                    isMovementSelected ? "bg-indigo-50/80" : "hover:bg-slate-50/80"
+                                  }`}
                                 >
+                                  {showMovementCheckboxes && (
+                                    <td className="py-3 pl-4 pr-1 w-10">
+                                      <input
+                                        type="checkbox"
+                                        checked={isMovementSelected}
+                                        onChange={() => toggleMovementIds([rec.id], !isMovementSelected)}
+                                        aria-label={t("Select movement", "Vybrať pohyb", "Tétel kijelölése")}
+                                        className={MOVEMENT_CHECKBOX_CLASS}
+                                      />
+                                    </td>
+                                  )}
                                   {/* 1. Date (status lives in its own editable column) */}
                                   <td className="py-3 px-4 whitespace-nowrap">
                                     <div className="font-bold text-slate-800 ">
@@ -7288,37 +7634,225 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   )}
                 </tbody>
               </table>
-            </div>
 
-            {/* Infinite Scroll Loading Sentinel */}
-            {movementsSummary.rowCount > 0 && (
-              <div
-                ref={movementsSentinelRef}
-                className="py-6 border-t border-slate-100  flex items-center justify-center text-ui text-slate-400 font-medium"
-              >
-                {movementsVisibleCount < movementsSummary.rowCount ? (
-                  <div className="flex items-center gap-2">
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
-                    <span>
+              {/* Next page. It sits inside the scroll box: the ledger does not
+                  grow the page, so a footer under the scrollbar never moves. */}
+              {movementsSummary.rowCount > 0 && (
+                <div
+                  ref={movementsSentinelRef}
+                  className="py-6 border-t border-slate-100  flex items-center justify-center text-ui text-slate-400 font-medium"
+                >
+                  {movementsVisibleCount < movementsSummary.rowCount ? (
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                      <span>
+                        {t(
+                          `Loading more movements... (showing ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} of ${movementsSummary.rowCount})`,
+                          `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} z ${movementsSummary.rowCount})`,
+                          `További mozgások betöltése... (${Math.min(movementsVisibleCount, movementsSummary.rowCount)} / ${movementsSummary.rowCount})`
+                        )}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">
                       {t(
-                        `Loading more movements... (showing ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} of ${movementsSummary.rowCount})`,
-                        `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} z ${movementsSummary.rowCount})`,
-                        `További mozgások betöltése... (${Math.min(movementsVisibleCount, movementsSummary.rowCount)} / ${movementsSummary.rowCount})`
+                        `✓ All ${movementsSummary.rowCount} movements loaded`,
+                        `✓ Všetkých ${movementsSummary.rowCount} pohybov načítaných`,
+                        `✓ Mind a(z) ${movementsSummary.rowCount} mozgás betöltve`
                       )}
                     </span>
-                  </div>
-                ) : (
-                  <span className="text-slate-400">
-                    {t(
-                      `✓ All ${movementsSummary.rowCount} movements loaded`,
-                      `✓ Všetkých ${movementsSummary.rowCount} pohybov načítaných`,
-                      `✓ Mind a(z) ${movementsSummary.rowCount} mozgás betöltve`
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {showMovementCheckboxes && selectedMovementRecords.length > 0 && typeof document !== "undefined" && createPortal(
+            <div
+              ref={movementBulkToolbarRef}
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+            >
+              <div className="flex items-center gap-2">
+                <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-ui font-bold px-2.5 py-1 rounded-xl">
+                  {userLanguage === "sk"
+                    ? selectedMovementRecords.length === 1
+                      ? "1 vybraný"
+                      : selectedMovementRecords.length < 5
+                        ? `${selectedMovementRecords.length} vybrané`
+                        : `${selectedMovementRecords.length} vybraných`
+                    : userLanguage === "hu"
+                      ? `${selectedMovementRecords.length} kiválasztva`
+                      : `${selectedMovementRecords.length} selected`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleMovementIds(selectableMovementIds, !allSelectableMovementsSelected)}
+                  className="text-caption font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  {allSelectableMovementsSelected
+                    ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
+                    : t(
+                        `Select all visible (${selectableMovementIds.length})`,
+                        `Vybrať všetky zobrazené (${selectableMovementIds.length})`,
+                        `Összes látható kijelölése (${selectableMovementIds.length})`
+                      )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedMovementIds(new Set());
+                    setMovementBulkMenu(null);
+                  }}
+                  title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="h-5 w-px bg-slate-700/80 hidden sm:block" />
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {canEdit && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setMovementBulkMenu(movementBulkMenu === "status" ? null : "status")}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
+                    >
+                      <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
+                      <span>{t("Status", "Stav", "Státusz")}</span>
+                      <ChevronDown className="h-3 w-3 text-slate-400" />
+                    </button>
+                    {movementBulkMenu === "status" && (
+                      <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-44 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                        {MOVEMENT_STATUSES.filter((s) => s !== "partially_paid").map((status) => (
+                          <button
+                            key={status}
+                            type="button"
+                            onClick={() => handleBulkMovementStatus(status)}
+                            title={
+                              status === "paid"
+                                ? t(
+                                    "Marks each movement paid at its planned amount",
+                                    "Každý pohyb označí ako uhradený plánovanou sumou",
+                                    "Minden tételt a tervezett összeggel fizetettnek jelöl"
+                                  )
+                                : status === "cancelled"
+                                  ? t(
+                                      "A recurring rule is paused instead of cancelled",
+                                      "Pravidelný pohyb sa pozastaví, nie zruší",
+                                      "Az ismétlődő tétel szünetel, nem törlődik"
+                                    )
+                                  : undefined
+                            }
+                            className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                          >
+                            <span className={`h-2 w-2 rounded-full shrink-0 ${MOVEMENT_STATUS_DOT[status]}`} />
+                            <span>{movementStatusLabel(status)}</span>
+                          </button>
+                        ))}
+                      </div>
                     )}
-                  </span>
+                  </div>
+                )}
+
+                {canEdit && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMovementCategoryQuery("");
+                        setMovementBulkMenu(movementBulkMenu === "category" ? null : "category");
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
+                    >
+                      <Tags className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>{t("Category", "Kategória", "Kategória")}</span>
+                      <ChevronDown className="h-3 w-3 text-slate-400" />
+                    </button>
+                    {movementBulkMenu === "category" && (
+                      <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-56 max-h-72 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                        <input
+                          type="text"
+                          value={movementCategoryQuery}
+                          onChange={(e) => setMovementCategoryQuery(e.target.value)}
+                          placeholder={t("Search categories…", "Hľadať kategóriu…", "Kategória keresése…")}
+                          className="w-full mb-1 px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-ui text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleBulkMovementCategory(null)}
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+                        >
+                          {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+                        </button>
+                        {(() => {
+                          const query = movementCategoryQuery.trim().toLowerCase();
+                          const types: FinancialType[] =
+                            selectedMovementRecords.some((r) => r.type === "income") &&
+                            selectedMovementRecords.some((r) => r.type === "expense")
+                              ? ["income", "expense"]
+                              : selectedMovementRecords.some((r) => r.type === "income")
+                                ? ["income"]
+                                : ["expense"];
+                          const rows = types.flatMap((type) => {
+                            const out: FinancialCategory[] = [];
+                            const walk = (parentId: string | null) => {
+                              for (const child of categoryChildren(financialCategories, type, parentId)) {
+                                out.push(child);
+                                walk(child.id);
+                              }
+                            };
+                            walk(null);
+                            return out;
+                          }).filter((cat) => !query || cat.name.toLowerCase().includes(query));
+                          if (rows.length === 0) {
+                            return (
+                              <p className="px-2.5 py-2 text-caption text-slate-500">
+                                {t("No categories", "Žiadne kategórie", "Nincs kategória")}
+                              </p>
+                            );
+                          }
+                          return rows.map((cat) => (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => handleBulkMovementCategory(cat.id)}
+                              className={`w-full text-left py-1.5 pr-2.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer ${
+                                cat.level === 1 ? "pl-2.5" : cat.level === 2 ? "pl-5" : "pl-8"
+                              }`}
+                            >
+                              <span
+                                className="h-2 w-2 rounded-full shrink-0"
+                                style={{ backgroundColor: cat.color || (cat.type === "expense" ? "#f43f5e" : "#10b981") }}
+                              />
+                              <span className="truncate">{cat.name}</span>
+                            </button>
+                          ));
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {canDelete && (
+                  <HoldToConfirmButton
+                    tone="danger"
+                    lang={userLanguage}
+                    what={t("selected movements", "vybrané pohyby", "kijelölt tételek")}
+                    onConfirm={handleBulkDeleteMovements}
+                    title={t("Delete selected movements", "Vymazať vybrané pohyby", "Kijelölt tételek törlése")}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-900/40 text-rose-300 hover:text-rose-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-rose-700/50"
+                    icon={<Trash2 className="h-3.5 w-3.5 text-rose-400" />}
+                  >
+                    <span>{t("Delete", "Vymazať", "Törlés")}</span>
+                  </HoldToConfirmButton>
                 )}
               </div>
-            )}
-          </div>
+            </div>,
+            document.body
+          )}
         </div>
       )}
 

@@ -505,6 +505,202 @@ $configJson = json_encode([
 
   const INIT = <?php echo $configJson; ?>;
   const CFG = INIT.config || {};
+  const uiLang = (function () {
+    const code = String(navigator.language || 'en').toLowerCase();
+    if (code.indexOf('sk') === 0) return 'sk';
+    if (code.indexOf('hu') === 0) return 'hu';
+    return 'en';
+  })();
+  const UI = ({
+    en: {
+      button: 'Support',
+      support: 'Support',
+      subtitle: 'Report an issue or follow up on an existing ticket.',
+      tabNew: 'New ticket',
+      tabList: 'Existing tickets',
+      name: 'Name',
+      namePh: 'Your name',
+      emailPh: 'you@email.com',
+      subject: 'Subject *',
+      subjectPh: 'Short description of the problem...',
+      type: 'Type',
+      typeBug: 'Bug',
+      typeQuestion: 'Question',
+      typeFeature: 'Feature request',
+      typeIncident: 'Incident',
+      priority: 'Priority',
+      prioNormal: 'Normal',
+      prioLow: 'Low',
+      prioHigh: 'High',
+      prioCritical: 'Critical',
+      description: 'Description',
+      descPh: 'Describe what happened... (you can also paste a screenshot with Ctrl+V)',
+      capture: '📸 Capture screen',
+      upload: '📎 Upload image',
+      logs: function (n) { return 'Attach technical info and console errors (' + n + ')'; },
+      submit: 'Send ticket',
+      removeShot: 'Remove screenshot',
+      shotAlt: 'Screenshot',
+      captureUnsupported: 'This browser cannot capture the screen directly. Upload a file or use Ctrl+V.',
+      createdTitle: 'Ticket created',
+      createdSub: 'Your request was recorded. You can follow its status or add more detail at any time.',
+      received: 'RECEIVED',
+      viewTicket: 'View ticket and conversation →',
+      createAnother: '+ Create another ticket',
+      subjectRequired: 'Please fill in the ticket subject.',
+      emailRequired: 'This project requires an authorised e-mail.',
+      sendError: 'Could not send the ticket.',
+      connectError: 'Could not reach the support server.',
+      loading: 'Loading tickets...',
+      loadError: 'Could not load tickets.',
+      statusChange: '🔄 Status change',
+      client: 'Client',
+      back: '← Back to tickets',
+      refresh: 'Refresh',
+      noMessages: 'No messages.',
+      followup: 'Add a message',
+      followupPh: 'Write a reply or extra detail for this ticket...',
+      sendReply: 'Send reply',
+      errorGeneric: 'Error',
+      connectionError: 'Connection error.',
+      emptyList: 'No tickets for this project yet.',
+      statusLinkLabel: 'Public status board:',
+      statusLink: 'Open status page ↗',
+      msgCount: function (n) { return n + (n === 1 ? ' message' : ' messages'); }
+    },
+    sk: {
+      button: 'Podpora',
+      support: 'Podpora',
+      subtitle: 'Nahláste problém alebo odpovedzte na existujúci tiket.',
+      tabNew: 'Nový tiket',
+      tabList: 'Existujúce tikety',
+      name: 'Meno',
+      namePh: 'Vaše meno',
+      emailPh: 'vas@email.sk',
+      subject: 'Predmet *',
+      subjectPh: 'Stručný popis problému...',
+      type: 'Typ',
+      typeBug: 'Chyba',
+      typeQuestion: 'Otázka',
+      typeFeature: 'Požiadavka',
+      typeIncident: 'Výpadok',
+      priority: 'Priorita',
+      prioNormal: 'Normálna',
+      prioLow: 'Nízka',
+      prioHigh: 'Vysoká',
+      prioCritical: 'Kritická',
+      description: 'Popis',
+      descPh: 'Popíšte, čo sa stalo... (screenshot môžete vložiť aj cez Ctrl+V)',
+      capture: '📸 Zachytiť obrazovku',
+      upload: '📎 Nahrať obrázok',
+      logs: function (n) { return 'Priložiť technické info a chyby konzoly (' + n + ')'; },
+      submit: 'Odoslať tiket',
+      removeShot: 'Odstrániť screenshot',
+      shotAlt: 'Snímka obrazovky',
+      captureUnsupported: 'Váš prehliadač nepodporuje priame zachytenie obrazovky. Použite nahratie súboru alebo Ctrl+V.',
+      createdTitle: 'Tiket bol vytvorený',
+      createdSub: 'Vaša požiadavka bola zaznamenaná. Stav riešenia môžete kedykoľvek sledovať alebo doplniť.',
+      received: 'PRIJATÉ',
+      viewTicket: 'Zobraziť tiket a komunikáciu →',
+      createAnother: '+ Vytvoriť ďalší tiket',
+      subjectRequired: 'Prosím vyplňte predmet tiketu.',
+      emailRequired: 'Pre tento projekt je vyžadovaný autorizovaný e-mail.',
+      sendError: 'Chyba pri odosielaní.',
+      connectError: 'Nepodarilo sa spojiť so serverom podpory.',
+      loading: 'Načítavam tikety...',
+      loadError: 'Nepodarilo sa načítať tikety.',
+      statusChange: '🔄 Zmena stavu',
+      client: 'Klient',
+      back: '← Späť na zoznam tiketov',
+      refresh: 'Obnoviť',
+      noMessages: 'Žiadne správy.',
+      followup: 'Doplniť správu',
+      followupPh: 'Napíšte odpoveď alebo doplnenie k tiketu...',
+      sendReply: 'Odoslať odpoveď',
+      errorGeneric: 'Chyba',
+      connectionError: 'Chyba spojenia.',
+      emptyList: 'Zatiaľ žiadne tikety pre tento projekt.',
+      statusLinkLabel: 'Verejný prehľad stavov:',
+      statusLink: 'Otvoriť status stránku ↗',
+      msgCount: function (n) {
+        if (n === 1) return '1 správa';
+        if (n >= 2 && n <= 4) return n + ' správy';
+        return n + ' správ';
+      }
+    },
+    hu: {
+      button: 'Támogatás',
+      support: 'Támogatás',
+      subtitle: 'Jelentsen problémát, vagy írjon egy meglévő jegyhez.',
+      tabNew: 'Új jegy',
+      tabList: 'Meglévő jegyek',
+      name: 'Név',
+      namePh: 'Az Ön neve',
+      emailPh: 'on@email.hu',
+      subject: 'Tárgy *',
+      subjectPh: 'A probléma rövid leírása...',
+      type: 'Típus',
+      typeBug: 'Hiba',
+      typeQuestion: 'Kérdés',
+      typeFeature: 'Fejlesztési kérés',
+      typeIncident: 'Incidens',
+      priority: 'Prioritás',
+      prioNormal: 'Normál',
+      prioLow: 'Alacsony',
+      prioHigh: 'Magas',
+      prioCritical: 'Kritikus',
+      description: 'Leírás',
+      descPh: 'Írja le, mi történt... (képernyőképet Ctrl+V-vel is beilleszthet)',
+      capture: '📸 Képernyő rögzítése',
+      upload: '📎 Kép feltöltése',
+      logs: function (n) { return 'Technikai adatok és konzolhibák csatolása (' + n + ')'; },
+      submit: 'Jegy küldése',
+      removeShot: 'Képernyőkép törlése',
+      shotAlt: 'Képernyőkép',
+      captureUnsupported: 'Ez a böngésző nem tudja közvetlenül rögzíteni a képernyőt. Töltsön fel fájlt, vagy használja a Ctrl+V-t.',
+      createdTitle: 'A jegy létrejött',
+      createdSub: 'A kérés rögzítve. Az állapotot bármikor követheti, vagy kiegészítheti.',
+      received: 'BEÉRKEZETT',
+      viewTicket: 'Jegy és beszélgetés megnyitása →',
+      createAnother: '+ Újabb jegy',
+      subjectRequired: 'Kérjük, töltse ki a jegy tárgyát.',
+      emailRequired: 'Ehhez a projekthez engedélyezett e-mail szükséges.',
+      sendError: 'A jegy küldése sikertelen.',
+      connectError: 'Nem sikerült kapcsolódni a támogatási szerverhez.',
+      loading: 'Jegyek betöltése...',
+      loadError: 'A jegyek betöltése sikertelen.',
+      statusChange: '🔄 Állapotváltozás',
+      client: 'Ügyfél',
+      back: '← Vissza a jegyekhez',
+      refresh: 'Frissítés',
+      noMessages: 'Nincs üzenet.',
+      followup: 'Üzenet hozzáadása',
+      followupPh: 'Írjon választ vagy kiegészítést a jegyhez...',
+      sendReply: 'Válasz küldése',
+      errorGeneric: 'Hiba',
+      connectionError: 'Kapcsolódási hiba.',
+      emptyList: 'Ehhez a projekthez még nincs jegy.',
+      statusLinkLabel: 'Nyilvános státusztábla:',
+      statusLink: 'Státuszoldal megnyitása ↗',
+      msgCount: function (n) { return n + ' üzenet'; }
+    }
+  })[uiLang];
+  function widgetStatusText(st) {
+    if (!st) return '';
+    if (uiLang === 'hu') return st.labelHu || st.labelEn || st.labelSk || st.key || '';
+    if (uiLang === 'en') return st.labelEn || st.labelSk || st.labelHu || st.key || '';
+    return st.labelSk || st.labelEn || st.labelHu || st.key || '';
+  }
+  function widgetPriority(value) {
+    const key = String(value || 'normal').toLowerCase();
+    if (key === 'low') return UI.prioLow;
+    if (key === 'high') return UI.prioHigh;
+    if (key === 'critical') return UI.prioCritical;
+    return UI.prioNormal;
+  }
+  const buttonLabel = (!CFG.buttonLabel || CFG.buttonLabel === 'Podpora / Support') ? UI.button : CFG.buttonLabel;
+  const panelSubtitle = (!CFG.subtitle || CFG.subtitle === 'Nahláste problém alebo odpovedzte na existujúci tiket.') ? UI.subtitle : CFG.subtitle;
+  const panelTitle = (!CFG.title || CFG.title === (INIT.projectName + ' — Support')) ? (INIT.projectName + ' — ' + UI.support) : CFG.title;
   const capturedErrors = [];
   const MAX_ERRORS = 25;
 
@@ -866,67 +1062,67 @@ $configJson = json_encode([
   container.innerHTML = `
     <button class="ktw-launcher" id="ktw-launcher" type="button">
       <span class="ktw-launcher-icon" id="ktw-launcher-icon">💬</span>
-      <span>${escapeHtml(CFG.buttonLabel || 'Support')}</span>
+      <span>${escapeHtml(buttonLabel || UI.button)}</span>
       <span class="ktw-badge" id="ktw-err-badge">0</span>
     </button>
     <div class="ktw-panel" id="ktw-panel">
       <div class="ktw-header">
         <div>
-          <h3 class="ktw-title">${escapeHtml(CFG.title || (INIT.projectName + ' Support'))}</h3>
-          <p class="ktw-subtitle">${escapeHtml(CFG.subtitle || 'Report an issue or follow up on existing tickets')}</p>
+          <h3 class="ktw-title">${escapeHtml(panelTitle || (INIT.projectName + ' ' + UI.support))}</h3>
+          <p class="ktw-subtitle">${escapeHtml(panelSubtitle || UI.subtitle)}</p>
         </div>
         <button class="ktw-close" id="ktw-close" type="button">✕</button>
       </div>
       <div class="ktw-tabs">
-        <button class="ktw-tab active" data-tab="new" type="button">Nový tiket / Report</button>
-        <button class="ktw-tab" data-tab="list" type="button">Existujúce tikety / Follow-up</button>
+        <button class="ktw-tab active" data-tab="new" type="button">${escapeHtml(UI.tabNew)}</button>
+        <button class="ktw-tab" data-tab="list" type="button">${escapeHtml(UI.tabList)}</button>
       </div>
       <div class="ktw-body" id="ktw-body-new">
         <div id="ktw-new-form-view">
           <div id="ktw-new-feedback"></div>
           <div class="ktw-row">
             <div class="ktw-field">
-              <label class="ktw-label">Meno / Name</label>
-              <input class="ktw-input" id="ktw-name" placeholder="Vaše meno" />
+              <label class="ktw-label">${escapeHtml(UI.name)}</label>
+              <input class="ktw-input" id="ktw-name" placeholder="${escapeHtml(UI.namePh)}" />
             </div>
             <div class="ktw-field">
               <label class="ktw-label">E-mail ${CFG.requireEmail ? '*' : ''}</label>
-              <input class="ktw-input" id="ktw-email" type="email" placeholder="vas@email.sk" />
+              <input class="ktw-input" id="ktw-email" type="email" placeholder="${escapeHtml(UI.emailPh)}" />
             </div>
           </div>
           <div class="ktw-field">
-            <label class="ktw-label">Predmet / Subject *</label>
-            <input class="ktw-input" id="ktw-subject" placeholder="Stručný popis problému..." />
+            <label class="ktw-label">${escapeHtml(UI.subject)}</label>
+            <input class="ktw-input" id="ktw-subject" placeholder="${escapeHtml(UI.subjectPh)}" />
           </div>
           <div class="ktw-row">
             <div class="ktw-field">
-              <label class="ktw-label">Typ / Type</label>
+              <label class="ktw-label">${escapeHtml(UI.type)}</label>
               <select class="ktw-select" id="ktw-type">
-                <option value="bug">Chyba / Bug</option>
-                <option value="question">Otázka / Question</option>
-                <option value="feature_request">Požiadavka / Feature</option>
-                <option value="incident">Výpadok / Incident</option>
+                <option value="bug">${escapeHtml(UI.typeBug)}</option>
+                <option value="question">${escapeHtml(UI.typeQuestion)}</option>
+                <option value="feature_request">${escapeHtml(UI.typeFeature)}</option>
+                <option value="incident">${escapeHtml(UI.typeIncident)}</option>
               </select>
             </div>
             <div class="ktw-field">
-              <label class="ktw-label">Priorita / Priority</label>
+              <label class="ktw-label">${escapeHtml(UI.priority)}</label>
               <select class="ktw-select" id="ktw-priority">
-                <option value="normal">Normálna / Normal</option>
-                <option value="low">Nízka / Low</option>
-                <option value="high">Vysoká / High</option>
-                <option value="critical">Kritická / Critical</option>
+                <option value="normal">${escapeHtml(UI.prioNormal)}</option>
+                <option value="low">${escapeHtml(UI.prioLow)}</option>
+                <option value="high">${escapeHtml(UI.prioHigh)}</option>
+                <option value="critical">${escapeHtml(UI.prioCritical)}</option>
               </select>
             </div>
           </div>
           <div class="ktw-field">
-            <label class="ktw-label">Popis / Description</label>
-            <textarea class="ktw-textarea" id="ktw-desc" placeholder="Popíšte čo sa stalo... (Môžete tiež vložiť screenshot cez Ctrl+V)"></textarea>
+            <label class="ktw-label">${escapeHtml(UI.description)}</label>
+            <textarea class="ktw-textarea" id="ktw-desc" placeholder="${escapeHtml(UI.descPh)}"></textarea>
           </div>
           <div class="ktw-field">
             <div class="ktw-row">
-              <button class="ktw-btn-secondary" id="ktw-capture-btn" type="button">📸 Zachytiť obrazovku</button>
+              <button class="ktw-btn-secondary" id="ktw-capture-btn" type="button">${escapeHtml(UI.capture)}</button>
               <label class="ktw-btn-secondary" style="text-align:center;margin:0;">
-                📎 Nahrať obrázok
+                ${escapeHtml(UI.upload)}
                 <input type="file" id="ktw-file-input" accept="image/*" style="display:none;" />
               </label>
             </div>
@@ -934,18 +1130,18 @@ $configJson = json_encode([
           </div>
           <div class="ktw-field" style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;">
             <input type="checkbox" id="ktw-attach-logs" checked />
-            <label for="ktw-attach-logs" id="ktw-logs-label">Priložiť technické info a chyby konzoly (0)</label>
+            <label for="ktw-attach-logs" id="ktw-logs-label">${escapeHtml(UI.logs(0))}</label>
           </div>
-          <button class="ktw-btn" id="ktw-submit-btn" type="button">Odoslať tiket</button>
+          <button class="ktw-btn" id="ktw-submit-btn" type="button">${escapeHtml(UI.submit)}</button>
         </div>
         <div class="ktw-success-screen" id="ktw-new-success-view"></div>
       </div>
       <div class="ktw-body" id="ktw-body-list" style="display:none;">
-        <div id="ktw-list-container">Načítavam tikety...</div>
+        <div id="ktw-list-container">${escapeHtml(UI.loading)}</div>
       </div>
       <div class="ktw-footer">
-        <span style="color:#94a3b8;">Verejný prehľad stavov:</span>
-        <a class="ktw-link" href="${escapeHtml(safeHttpUrl(INIT.publicStatusUrl))}" target="_blank" rel="noopener noreferrer">Otvoriť status stránku ↗</a>
+        <span style="color:#94a3b8;">${escapeHtml(UI.statusLinkLabel)}</span>
+        <a class="ktw-link" href="${escapeHtml(safeHttpUrl(INIT.publicStatusUrl))}" target="_blank" rel="noopener noreferrer">${escapeHtml(UI.statusLink)}</a>
       </div>
     </div>
   `;
@@ -974,7 +1170,7 @@ $configJson = json_encode([
       }
     }
     if (lbl) {
-      lbl.textContent = 'Priložiť technické info a chyby konzoly (' + capturedErrors.length + ')';
+      lbl.textContent = UI.logs(capturedErrors.length);
     }
   }
 
@@ -986,8 +1182,8 @@ $configJson = json_encode([
     }
     holder.innerHTML = `
       <div class="ktw-shot-preview">
-        <img src="${currentScreenshot}" alt="Screenshot" />
-        <button type="button" id="ktw-remove-shot" class="ktw-btn-secondary" style="display:block;margin-top:4px;padding:3px 8px;font-size:11px;">Odstrániť screenshot</button>
+        <img src="${currentScreenshot}" alt="${escapeHtml(UI.shotAlt)}" />
+        <button type="button" id="ktw-remove-shot" class="ktw-btn-secondary" style="display:block;margin-top:4px;padding:3px 8px;font-size:11px;">${escapeHtml(UI.removeShot)}</button>
       </div>
     `;
     $('ktw-remove-shot').onclick = function() {
@@ -1040,7 +1236,7 @@ $configJson = json_encode([
   // Screen capture via getDisplayMedia
   $('ktw-capture-btn').onclick = async function() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      alert('Váš prehliadač nepodporuje priame zachytenie obrazovky. Použite nahratie súboru alebo Ctrl+V.');
+      alert(UI.captureUnsupported);
       return;
     }
     try {
@@ -1101,20 +1297,19 @@ $configJson = json_encode([
     successView.style.display = 'flex';
     const tNum = escapeHtml(ticket.ticketNumber || 'TCK-NEW');
     const tSubj = escapeHtml(ticket.subject || ticket.title || fallbackSubject || '');
-    const tPrio = escapeHtml((ticket.priority || 'normal').toUpperCase());
     successView.innerHTML = `
       <div class="ktw-success-icon">✓</div>
-      <h4 class="ktw-success-title">Tiket bol vytvorený!</h4>
-      <p class="ktw-success-sub">Vaša požiadavka bola úspešne zaznamenaná. Stav riešenia môžete kedykoľvek sledovať alebo doplniť.</p>
+      <h4 class="ktw-success-title">${escapeHtml(UI.createdTitle)}</h4>
+      <p class="ktw-success-sub">${escapeHtml(UI.createdSub)}</p>
       <div class="ktw-success-card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
           <span class="ktw-success-num">${tNum}</span>
-          <span class="ktw-status-pill" style="background:rgba(16,185,129,0.16);color:#34d399;border:1px solid rgba(16,185,129,0.35);">PRIJATÉ • ${tPrio}</span>
+          <span class="ktw-status-pill" style="background:rgba(16,185,129,0.16);color:#34d399;border:1px solid rgba(16,185,129,0.35);">${escapeHtml(UI.received)} • ${escapeHtml(widgetPriority(ticket.priority))}</span>
         </div>
         <div style="font-size:14px;font-weight:700;color:#f8fafc;line-height:1.35;">${tSubj}</div>
       </div>
-      <button type="button" class="ktw-btn" id="ktw-view-created-btn" style="margin-bottom:8px;">Zobraziť tiket a komunikáciu →</button>
-      <button type="button" class="ktw-btn-secondary" id="ktw-create-another-btn" style="width:100%;padding:9px 14px;">+ Vytvoriť ďalší tiket</button>
+      <button type="button" class="ktw-btn" id="ktw-view-created-btn" style="margin-bottom:8px;">${escapeHtml(UI.viewTicket)}</button>
+      <button type="button" class="ktw-btn-secondary" id="ktw-create-another-btn" style="width:100%;padding:9px 14px;">${escapeHtml(UI.createAnother)}</button>
     `;
 
     $('ktw-create-another-btn').onclick = function() {
@@ -1146,11 +1341,11 @@ $configJson = json_encode([
     fb.innerHTML = '';
 
     if (!subject) {
-      fb.innerHTML = '<div class="ktw-alert err">Prosím vyplňte predmet tiketu.</div>';
+      fb.innerHTML = '<div class="ktw-alert err">' + escapeHtml(UI.subjectRequired) + '</div>';
       return;
     }
     if (CFG.requireEmail && !email) {
-      fb.innerHTML = '<div class="ktw-alert err">Pre tento projekt je vyžadovaný autorizovaný e-mail.</div>';
+      fb.innerHTML = '<div class="ktw-alert err">' + escapeHtml(UI.emailRequired) + '</div>';
       return;
     }
 
@@ -1192,7 +1387,7 @@ $configJson = json_encode([
       });
       const data = await res.json();
       if (!data.success) {
-        fb.innerHTML = '<div class="ktw-alert err">' + (data.message || 'Chyba pri odosielaní.') + '</div>';
+        fb.innerHTML = '<div class="ktw-alert err">' + escapeHtml(data.message || UI.sendError) + '</div>';
       } else {
         $('ktw-subject').value = '';
         $('ktw-desc').value = '';
@@ -1201,7 +1396,7 @@ $configJson = json_encode([
         showCreatedScreen(data.ticket || {}, subject);
       }
     } catch (err) {
-      fb.innerHTML = '<div class="ktw-alert err">Nepodarilo sa spojiť so serverom podpory.</div>';
+      fb.innerHTML = '<div class="ktw-alert err">' + escapeHtml(UI.connectError) + '</div>';
     } finally {
       $('ktw-submit-btn').disabled = false;
     }
@@ -1214,19 +1409,19 @@ $configJson = json_encode([
 
   async function fetchExistingTickets() {
     const box = $('ktw-list-container');
-    box.innerHTML = '<div style="color:#94a3b8;font-size:12px;">Načítavam tikety...</div>';
+    box.innerHTML = '<div style="color:#94a3b8;font-size:12px;">' + escapeHtml(UI.loading) + '</div>';
     try {
       const res = await fetch(INIT.endpointUrl + '?action=list&project=' + encodeURIComponent(INIT.projectId));
       const data = await res.json();
       if (!data.success) {
-        box.innerHTML = '<div class="ktw-alert err">' + escapeHtml(data.message || 'Chyba načítania.') + '</div>';
+        box.innerHTML = '<div class="ktw-alert err">' + escapeHtml(data.message || UI.loadError) + '</div>';
         return;
       }
       loadedTickets = data.tickets || [];
       loadedStatuses = data.statuses || [];
       renderTicketsView();
     } catch (err) {
-      box.innerHTML = '<div class="ktw-alert err">Nepodarilo sa načítať tikety.</div>';
+      box.innerHTML = '<div class="ktw-alert err">' + escapeHtml(UI.loadError) + '</div>';
     }
   }
 
@@ -1279,8 +1474,8 @@ $configJson = json_encode([
         const isAgent = !isStatusUpdate && m.authorType === 'agent';
         const msgClass = isStatusUpdate ? 'status' : (isAgent ? 'agent' : 'client');
         const headerLabel = isStatusUpdate
-          ? '🔄 Zmena stavu'
-          : (isAgent ? ('💬 ' + (m.authorName || 'Podpora')) : (m.authorName || 'Klient'));
+          ? UI.statusChange
+          : (isAgent ? ('💬 ' + (m.authorName || UI.support)) : (m.authorName || UI.client));
         return `
           <div class="ktw-msg ${msgClass}">
             <div style="display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;margin-bottom:3px;">
@@ -1294,25 +1489,25 @@ $configJson = json_encode([
 
       box.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
-          <button type="button" class="ktw-btn-secondary" id="ktw-back-btn" style="flex:1;">← Späť na zoznam tiketov</button>
-          <button type="button" class="ktw-btn-secondary" id="ktw-refresh-btn" style="width:auto;padding:8px 12px;" title="Obnoviť">↻</button>
+          <button type="button" class="ktw-btn-secondary" id="ktw-back-btn" style="flex:1;">${escapeHtml(UI.back)}</button>
+          <button type="button" class="ktw-btn-secondary" id="ktw-refresh-btn" style="width:auto;padding:8px 12px;" title="${escapeHtml(UI.refresh)}">↻</button>
         </div>
         <div style="margin-bottom:10px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
             <span style="font-size:11px;font-weight:700;color:#94a3b8;">${escapeHtml(t.ticketNumber)}</span>
-            <span class="ktw-status-pill" style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}55;">${escapeHtml(st.labelSk || st.labelEn || t.status)}</span>
+            <span class="ktw-status-pill" style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}55;">${escapeHtml(widgetStatusText(st) || t.status)}</span>
           </div>
           <div style="font-size:14px;font-weight:700;margin-top:4px;">${escapeHtml(t.subject)}</div>
         </div>
         <div style="max-height:220px;overflow-y:auto;margin-bottom:10px;">
-          ${msgsHtml || '<div style="font-size:12px;color:#94a3b8;">Žiadne správy.</div>'}
+          ${msgsHtml || ('<div style="font-size:12px;color:#94a3b8;">' + escapeHtml(UI.noMessages) + '</div>')}
         </div>
         <div id="ktw-followup-fb"></div>
         <div class="ktw-field">
-          <label class="ktw-label">Doplniť správu / Follow-up</label>
-          <textarea class="ktw-textarea" id="ktw-followup-body" placeholder="Napíšte odpoveď alebo doplnenie k tiketu..."></textarea>
+          <label class="ktw-label">${escapeHtml(UI.followup)}</label>
+          <textarea class="ktw-textarea" id="ktw-followup-body" placeholder="${escapeHtml(UI.followupPh)}"></textarea>
         </div>
-        <button type="button" class="ktw-btn" id="ktw-followup-send">Odoslať odpoveď</button>
+        <button type="button" class="ktw-btn" id="ktw-followup-send">${escapeHtml(UI.sendReply)}</button>
       `;
 
       $('ktw-back-btn').onclick = function() {
@@ -1336,14 +1531,14 @@ $configJson = json_encode([
             body: JSON.stringify({
               projectId: INIT.projectId,
               ticketId: t.id,
-              authorName: $('ktw-name').value.trim() || 'Klient',
+              authorName: $('ktw-name').value.trim() || UI.client,
               authorEmail: $('ktw-email').value.trim(),
               body: body
             })
           });
           const data = await res.json();
           if (!data.success) {
-            fb.innerHTML = '<div class="ktw-alert err">' + escapeHtml(data.message || 'Chyba') + '</div>';
+            fb.innerHTML = '<div class="ktw-alert err">' + escapeHtml(data.message || UI.errorGeneric) + '</div>';
           } else {
             t.messages = t.messages || [];
             t.messages.push(data.message);
@@ -1351,7 +1546,7 @@ $configJson = json_encode([
             renderTicketsView();
           }
         } catch (err) {
-          fb.innerHTML = '<div class="ktw-alert err">Chyba spojenia.</div>';
+          fb.innerHTML = '<div class="ktw-alert err">' + escapeHtml(UI.connectionError) + '</div>';
         } finally {
           if ($('ktw-followup-send')) $('ktw-followup-send').disabled = false;
         }
@@ -1360,7 +1555,7 @@ $configJson = json_encode([
     }
 
     if (!loadedTickets.length) {
-      box.innerHTML = '<div style="color:#94a3b8;font-size:12px;text-align:center;padding:24px 0;">Zatiaľ žiadne tikety pre tento projekt.</div>';
+      box.innerHTML = '<div style="color:#94a3b8;font-size:12px;text-align:center;padding:24px 0;">' + escapeHtml(UI.emptyList) + '</div>';
       return;
     }
 
@@ -1370,11 +1565,11 @@ $configJson = json_encode([
         <div class="ktw-ticket-card" data-ticket-id="${escapeHtml(t.id)}">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:11px;font-weight:700;color:#94a3b8;">${escapeHtml(t.ticketNumber)}</span>
-            <span class="ktw-status-pill" style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}55;">${escapeHtml(st.labelSk || t.status)}</span>
+            <span class="ktw-status-pill" style="background:${st.color}22;color:${st.color};border:1px solid ${st.color}55;">${escapeHtml(widgetStatusText(st) || t.status)}</span>
           </div>
           <div style="font-size:13px;font-weight:600;color:#f8fafc;">${escapeHtml(t.subject)}</div>
           <div style="font-size:11px;color:#64748b;margin-top:4px;display:flex;justify-content:space-between;">
-            <span>💬 ${(t.messages || []).length} správ</span>
+            <span>💬 ${escapeHtml(UI.msgCount((t.messages || []).length))}</span>
             <span>${escapeHtml((t.updatedAt || '').slice(0, 16))}</span>
           </div>
         </div>

@@ -2266,12 +2266,12 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                     <table className="w-full text-left border-collapse min-w-200">
                       <thead className="sticky top-0 z-20 bg-slate-50">
                         <tr className="border-b border-slate-200 type-overline text-slate-400">
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3">Post Content</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Likes</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Comments</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Shares</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Clicks</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">Impressions</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3">{t("Post content", "Obsah príspevku", "Bejegyzés tartalma")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">{t("Likes", "Páči sa", "Kedvelések")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">{t("Comments", "Komentáre", "Hozzászólások")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">{t("Shares", "Zdieľania", "Megosztások")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">{t("Clicks", "Kliknutia", "Kattintások")}</th>
+                          <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-center">{t("Impressions", "Zobrazenia", "Megjelenések")}</th>
                           <th className="sticky top-0 z-10 bg-slate-50 py-2.5 px-3 text-right">ER %</th>
                         </tr>
                       </thead>

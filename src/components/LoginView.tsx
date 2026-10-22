@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LogIn,
   Key,
@@ -22,6 +22,8 @@ import type { Language } from "../utils/translations";
 import { ShanShuiBackground } from "./ShanShuiBackground";
 import { LoginInfoPanel } from "./LoginInfoPanel";
 import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
+import { isPasskeySupported, type LoginMethod } from "../utils/passkeys";
+import { createConditionalLogin, type ConditionalLogin } from "../utils/passkeyCeremony";
 import { passwordRules, PASSWORD_MIN_LENGTH } from "../utils/passwordRules";
 import {
   getCurrentLoginTheme,
@@ -30,7 +32,7 @@ import {
 
 interface LoginViewProps {
   users: UserProfile[];
-  onLoginSuccess: (user: UserProfile) => void;
+  onLoginSuccess: (user: UserProfile, method?: LoginMethod) => void;
   systemName: string;
   systemLanguage: Language;
   isDemoMode: boolean;
@@ -91,6 +93,38 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   const tr = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+  // --- Passkeys in the email field's autofill (conditional mediation) ---
+  // Handlers read through refs so the one controller made on mount never goes stale.
+  const conditionalRef = useRef<ConditionalLogin | null>(null);
+  const rememberMeRef = useRef(rememberMe);
+  rememberMeRef.current = rememberMe;
+  const onLoginSuccessRef = useRef(onLoginSuccess);
+  onLoginSuccessRef.current = onLoginSuccess;
+  const verifyFailedMessageRef = useRef("");
+  verifyFailedMessageRef.current = tr(
+    "Passkey sign-in failed. Try again or use your email and password.",
+    "Prihlásenie prístupovým kľúčom zlyhalo. Skúste znova alebo použite e-mail a heslo.",
+    "A hozzáférési kulcsos bejelentkezés sikertelen. Próbálja újra, vagy használja az e-mailt és a jelszót."
+  );
+
+  useEffect(() => {
+    if (!isPasskeySupported()) return;
+    const conditional = createConditionalLogin({
+      getRemember: () => rememberMeRef.current,
+      onSuccess: (user) => onLoginSuccessRef.current(user, "passkey"),
+      onVerifyFailed: () => {
+        setError(verifyFailedMessageRef.current);
+        conditional.start();
+      },
+    });
+    conditionalRef.current = conditional;
+    conditional.start();
+    return () => {
+      conditional.dispose();
+      conditionalRef.current = null;
+    };
+  }, []);
 
   // Discover whether email-based reset is possible, and pick up a reset token
   // from the link the user followed (e.g. /?reset_token=...).
@@ -180,6 +214,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const authenticate = async (loginEmail: string, loginPassword: string) => {
     setError(null);
     setIsLoading(true);
+    // A pending autofill request would leave a stale challenge behind
+    conditionalRef.current?.suspend();
+    let signedIn = false;
     try {
       const res = await fetch("/api/login.php", {
         method: "POST",
@@ -188,7 +225,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data && data.success && data.user) {
-        onLoginSuccess(data.user as UserProfile);
+        signedIn = true;
+        onLoginSuccess(data.user as UserProfile, "password");
         return;
       }
       if (res.status === 429 || (data && data.locked)) {
@@ -214,6 +252,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       setError(tr("Could not reach the server. Check your connection and try again.", "Server neodpovedá. Skontrolujte pripojenie a skúste to znova.", "A kiszolgáló nem érhető el. Ellenőrizze a kapcsolatot, és próbálja újra."));
     } finally {
       setIsLoading(false);
+      if (!signedIn) conditionalRef.current?.start();
     }
   };
 
@@ -336,6 +375,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
             rememberMe={rememberMe}
             onLoginSuccess={onLoginSuccess}
             disabled={isLoading}
+            onBeforeModal={() => conditionalRef.current?.suspend() ?? Promise.resolve()}
+            onAfterModal={() => conditionalRef.current?.start()}
           />
 
           {/* Credentials Form */}
@@ -351,6 +392,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <input
                   type="email"
                   required
+                  autoComplete="username webauthn"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={tr("e.g. alex@crm.com", "napr. alex@crm.com", "pl. alex@crm.com")}
@@ -368,6 +410,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
                 <PasswordInput
                   required
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -501,7 +544,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         {resetSignedInUser ? (
                           <button
                             type="button"
-                            onClick={() => onLoginSuccess(resetSignedInUser)}
+                            onClick={() => onLoginSuccess(resetSignedInUser, "reset")}
                             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl type-overline transition-all flex items-center justify-center gap-1.5"
                           >
                             <LogIn className="h-3.5 w-3.5" /> {tr("Continue to CCRM", "Pokračovať do CCRM", "Tovább a CCRM-be")}
