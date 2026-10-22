@@ -3,12 +3,20 @@ import type { InvoiceOffer, CompanyBillingSettings, UspCardItem } from "../../ty
 import type { Language } from "../../utils/translations";
 import { formatMoney } from "../../utils/currency";
 import { formatDateLocalized } from "../../utils/localTime";
+import type { OfferEditing } from "./offerEditing";
+import { OfferField, OfferInput } from "./OfferField";
+import {
+  EditableEmptyItemsRow, EditableItemRow, EditableItemsFooter, EditableParameterCards,
+  EditableUspGrid, IdentityHint, PriceRangeEditor, hasNoUspText
+} from "./OfferEditableParts";
 
 interface DefaultOfferTemplateProps {
   offer: InvoiceOffer;
   companySettings?: CompanyBillingSettings | null;
   systemCurrency?: string | null;
   language?: Language;
+  /** Turns the document into its own editor. Left out, it renders the finished document. */
+  editing?: OfferEditing;
 }
 
 /** Never throws on a half-populated row coming back from sync. */
@@ -27,10 +35,15 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
   offer,
   companySettings,
   systemCurrency = "EUR",
-  language = "sk"
+  language = "sk",
+  editing
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     language === "sk" ? sk : language === "hu" ? hu : en;
+
+  /** `onChange` for a text field: present only while editing, which is what flips `OfferField` into a control. */
+  const edit = (key: keyof InvoiceOffer) =>
+    editing ? (next: string) => editing.onChange({ [key]: next } as Partial<InvoiceOffer>) : undefined;
 
   const currency = offer.currency || systemCurrency || "EUR";
   const money = (value: unknown, decimals = 2) =>
@@ -84,9 +97,15 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
   ].filter(Boolean);
 
   const hasParameters = Boolean(offer.durationText || offer.startDateText || offer.warrantyText);
+  const hasContact = Boolean(phone || phoneSecondary || email || website);
+  const hasFooterIdentity = Boolean(companyName || registryLine.length > 0 || socialProof);
+  const editableUspCards = editing ? offer.uspCards || [] : uspCards;
 
   return (
-    <div className="view-size-fixed print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-2xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
+    <div
+      {...(editing ? { "data-offer-editing": "" } : {})}
+      className="view-size-fixed print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-2xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text"
+    >
       {/* 1. Brand & contact */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-100 gap-4">
         <div className="flex items-center gap-3.5 min-w-0">
@@ -104,9 +123,11 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
             {companySubtitle && (
               <p className="text-[10px] font-bold tracking-widest text-slate-500 uppercase truncate">{companySubtitle}</p>
             )}
+            <IdentityHint editing={editing} empty={!companyName} />
           </div>
         </div>
 
+        {editing && !hasContact && <IdentityHint editing={editing} empty className="shrink-0" />}
         {(phone || email || website) && (
           <div className="text-left md:text-right text-xs text-slate-600 space-y-0.5 shrink-0">
             {(phone || phoneSecondary) && (
@@ -138,26 +159,67 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
       {/* 2. Title, subject & metadata */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mt-8 pb-4 border-b-2 border-slate-900 gap-4">
         <div className="min-w-0">
-          <h2 className="text-2xl font-black tracking-tight text-slate-950">
-            {offer.title || t("Price offer", "Cenová ponuka", "Árajánlat")}
-          </h2>
-          {offer.subject && <p className="text-sm font-semibold text-slate-600 mt-0.5">{offer.subject}</p>}
+          <OfferField
+            as="h2"
+            name="title"
+            value={editing ? offer.title : offer.title || t("Price offer", "Cenová ponuka", "Árajánlat")}
+            placeholder={t("Price offer", "Cenová ponuka", "Árajánlat")}
+            onChange={edit("title")}
+            className="text-2xl font-black tracking-tight text-slate-950"
+          />
+          <OfferField
+            name="subject"
+            value={offer.subject}
+            placeholder={t("Subject of the offer, e.g. Flat roof renovation", "Predmet ponuky, napr. Rekonštrukcia plochej strechy", "Az ajánlat tárgya, pl. Lapostető felújítás")}
+            onChange={edit("subject")}
+            className="text-sm font-semibold text-slate-600 mt-0.5"
+          />
         </div>
 
         <div className="text-left sm:text-right text-xs space-y-1 bg-slate-50 p-3 sm:p-0 rounded-xl sm:bg-transparent w-full sm:w-auto shrink-0">
           <div>
             <span className="font-bold text-slate-700">{t("Client", "Klient", "Ügyfél")}:</span>{" "}
-            <span className="font-semibold text-slate-950">{offer.clientName}</span>
+            {editing ? (
+              <span className="inline-block align-middle">{editing.renderClientPicker()}</span>
+            ) : (
+              <span className="font-semibold text-slate-950">{offer.clientName}</span>
+            )}
           </div>
           <div>
             <span className="font-bold text-slate-700">{t("Date", "Dátum", "Dátum")}:</span>{" "}
-            <span className="font-medium text-slate-800">{formatDateLocalized(offer.issuedAt, language)}</span>
+            {editing ? (
+              <OfferInput
+                type="date"
+                value={offer.issuedAt}
+                aria-label={t("Issued on", "Dátum vystavenia", "Kiállítás dátuma")}
+                onChange={e => editing.onChange({ issuedAt: e.target.value })}
+                className="w-32 font-medium text-slate-800 text-right"
+              />
+            ) : (
+              <span className="font-medium text-slate-800">{formatDateLocalized(offer.issuedAt, language)}</span>
+            )}
           </div>
-          {offer.location && (
+          {editing ? (
             <div>
               <span className="font-bold text-slate-700">{t("Site", "Lokalita", "Helyszín")}:</span>{" "}
-              <span className="font-medium text-slate-800">{offer.location}</span>
+              <OfferField
+                as="span"
+                name="location"
+                value={offer.location}
+                placeholder={t("e.g. Bratislava", "napr. Bratislava", "pl. Bratislava")}
+                onChange={edit("location")}
+                className="font-medium text-slate-800"
+                editClassName="inline-block w-32 align-top"
+                inputClassName="text-right"
+              />
             </div>
+          ) : (
+            offer.location && (
+              <div>
+                <span className="font-bold text-slate-700">{t("Site", "Lokalita", "Helyszín")}:</span>{" "}
+                <span className="font-medium text-slate-800">{offer.location}</span>
+              </div>
+            )
           )}
           {offer.documentNumber && (
             <div>
@@ -196,17 +258,31 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
             .join(" · ")}
         </div>
       )}
+      {editing?.renderClientExtras?.()}
 
       {/* 4. Greeting & intro */}
-      {(offer.greetingNote || offer.introNote) && (
+      {(editing || offer.greetingNote || offer.introNote) && (
         <div className="mt-6 space-y-2.5 text-slate-700">
-          {offer.greetingNote && <p className="font-semibold text-slate-900">{offer.greetingNote}</p>}
-          {offer.introNote && <p className="whitespace-pre-line">{offer.introNote}</p>}
+          <OfferField
+            name="greeting"
+            value={offer.greetingNote}
+            placeholder={t("Greeting, e.g. Dear Mr. Novák,", "Oslovenie, napr. Dobrý deň, pán Novák,", "Megszólítás, pl. Tisztelt Kovács úr!")}
+            onChange={edit("greetingNote")}
+            className="font-semibold text-slate-900"
+          />
+          <OfferField
+            name="intro"
+            multiline
+            preLine
+            value={offer.introNote}
+            placeholder={t("Opening paragraph — a few words that build trust", "Úvodný odsek — pár viet, ktoré budujú dôveru", "Bevezető bekezdés — néhány mondat, ami bizalmat épít")}
+            onChange={edit("introNote")}
+          />
         </div>
       )}
 
       {/* 5. Value proposition cards */}
-      {uspCards.length > 0 && (
+      {(editing || uspCards.length > 0) && (
         <div className="mt-8">
           <div className="flex items-center gap-2 pb-2 border-b border-orange-500/80">
             <h3 className="font-bold text-slate-950 text-sm">
@@ -216,24 +292,49 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-4">
-            {uspCards.slice(0, 4).map((card, idx) => (
-              <div key={idx} className="bg-slate-50/80 border border-slate-200/90 rounded-xl p-3.5">
-                <div className="font-bold text-slate-950 text-xs flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-orange-500 shrink-0" />
-                  {card.title}
+          {editing ? (
+            <EditableUspGrid
+              cards={editableUspCards}
+              editing={editing}
+              cardClassName="bg-slate-50/80 border border-slate-200/90 rounded-xl p-3.5"
+              dotClassName="h-2 w-2 rounded-full bg-orange-500 shrink-0"
+            />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-4">
+              {uspCards.slice(0, 4).map((card, idx) => (
+                <div key={idx} className="bg-slate-50/80 border border-slate-200/90 rounded-xl p-3.5">
+                  <div className="font-bold text-slate-950 text-xs flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-orange-500 shrink-0" />
+                    {card.title}
+                  </div>
+                  {card.subtitle && (
+                    <div className="text-[11.5px] text-slate-600 mt-1 leading-snug">{card.subtitle}</div>
+                  )}
                 </div>
-                {card.subtitle && (
-                  <div className="text-[11.5px] text-slate-600 mt-1 leading-snug">{card.subtitle}</div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {offer.reassuranceNote && (
-            <div className="mt-4 p-3 bg-slate-100/70 rounded-xl text-xs text-slate-700 font-medium text-center">
-              {offer.reassuranceNote}
+              ))}
             </div>
+          )}
+
+          {editing ? (
+            <div className="mt-4 p-3 bg-slate-100/70 rounded-xl text-xs text-slate-700 font-medium text-center">
+              <OfferField
+                as="div"
+                name="reassurance"
+                multiline
+                value={offer.reassuranceNote}
+                placeholder={t("Reassurance note, e.g. quality guaranteed in writing", "Text o garancii kvality, napr. kvalita písomne zaručená", "Minőségi garancia szövege")}
+                onChange={edit("reassuranceNote")}
+              />
+              {hasNoUspText(editableUspCards) && (
+                <p className="mt-1 text-[10px] italic font-normal text-slate-400">{editing.copy.uspNeedsCard}</p>
+              )}
+            </div>
+          ) : (
+            offer.reassuranceNote && (
+              <div className="mt-4 p-3 bg-slate-100/70 rounded-xl text-xs text-slate-700 font-medium text-center">
+                {offer.reassuranceNote}
+              </div>
+            )
           )}
         </div>
       )}
@@ -248,7 +349,7 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
         </h3>
 
         <div className="overflow-x-auto mt-2">
-          <table className="w-full text-left text-xs border-collapse">
+          <table className={`w-full text-left text-xs border-collapse${editing ? " min-w-[640px]" : ""}`}>
             <thead>
               {/* Paper, not screen: a solid dark band reads as UI chrome in a
                   document and costs a strip of toner on every copy. The weight
@@ -263,7 +364,21 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {offer.items?.length ? (
+              {editing ? (
+                offer.items?.length ? (
+                  offer.items.map((item, idx) => (
+                    <EditableItemRow
+                      key={item.id || idx}
+                      item={item}
+                      editing={editing}
+                      money={money}
+                      rowClassName={idx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}
+                    />
+                  ))
+                ) : (
+                  <EditableEmptyItemsRow editing={editing} />
+                )
+              ) : offer.items?.length ? (
                 offer.items.map((item, idx) => (
                   <tr key={item.id || idx} className={idx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}>
                     <td className="p-2.5 font-bold text-slate-900 align-top">
@@ -297,6 +412,7 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
             </tbody>
           </table>
         </div>
+        {editing && <EditableItemsFooter editing={editing} />}
 
         {/* Net / VAT recap — a VAT-registered issuer must show the split */}
         <div className="flex justify-end mt-3">
@@ -324,9 +440,21 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
           {formattedPrice}
         </div>
       </div>
+      {editing && <PriceRangeEditor offer={offer} editing={editing} />}
 
       {/* 8. Key parameters */}
-      {hasParameters && (
+      {editing ? (
+        <EditableParameterCards
+          offer={offer}
+          editing={editing}
+          labels={{
+            duration: t("DURATION", "DĹŽKA REALIZÁCIE", "IDŐTARTAM"),
+            startDate: t("START DATE", "TERMÍN NÁSTUPU", "KEZDÉS"),
+            warranty: t("WARRANTY", "ZÁRUKA", "GARANCIA")
+          }}
+          cardClassName="bg-slate-50 border border-slate-200/80 rounded-xl p-3"
+        />
+      ) : hasParameters && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 text-center">
           {[
             [offer.durationText, t("DURATION", "DĹŽKA REALIZÁCIE", "IDŐTARTAM")],
@@ -344,24 +472,47 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
       )}
 
       {/* 9. Next steps */}
-      {offer.nextStepsNote && (
+      {(editing || offer.nextStepsNote) && (
         <div className="mt-6 p-4 bg-orange-50/60 border border-orange-200/80 rounded-xl text-slate-800 space-y-1 text-xs">
           <span className="font-black text-orange-950 uppercase tracking-wider text-[11px] block">
             {t("Next step", "Ďalší krok", "Következő lépés")}:
           </span>
-          <p className="whitespace-pre-line">{offer.nextStepsNote}</p>
+          <OfferField
+            name="nextSteps"
+            multiline
+            preLine
+            value={offer.nextStepsNote}
+            placeholder={t("Next step — what should the client do now?", "Ďalší krok — čo má klient urobiť teraz?", "Következő lépés — mit tegyen most az ügyfél?")}
+            onChange={edit("nextStepsNote")}
+          />
         </div>
       )}
 
       {/* 10. Sign-off */}
       <div className="mt-6 flex flex-wrap justify-between items-end gap-3 text-xs text-slate-700">
         <div>
-          {offer.closingNote && <p>{offer.closingNote}</p>}
+          <OfferField
+            name="closing"
+            multiline
+            value={offer.closingNote}
+            placeholder={t("Closing note", "Záverečný text", "Záró szöveg")}
+            onChange={edit("closingNote")}
+          />
           <p className="font-semibold text-slate-900 mt-2">
             {t("Kind regards,", "S úctou a pozdravom,", "Tisztelettel,")}
           </p>
-          {(offer.signOffTeam || companyName) && (
-            <p className="font-bold text-slate-950 text-sm">{offer.signOffTeam || companyName}</p>
+          {editing ? (
+            <OfferField
+              name="signOff"
+              value={offer.signOffTeam}
+              placeholder={companyName || t("Your team", "Váš tím", "Az Ön csapata")}
+              onChange={edit("signOffTeam")}
+              className="font-bold text-slate-950 text-sm"
+            />
+          ) : (
+            (offer.signOffTeam || companyName) && (
+              <p className="font-bold text-slate-950 text-sm">{offer.signOffTeam || companyName}</p>
+            )
           )}
         </div>
 
@@ -373,6 +524,7 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
       </div>
 
       {/* 11. Footer: billing identity & references */}
+      {editing && !hasFooterIdentity && <IdentityHint editing={editing} empty className="mt-8 pt-4 border-t border-slate-200" />}
       {(companyName || registryLine.length > 0 || socialProof) && (
         <div className="mt-8 pt-4 border-t border-slate-200 text-[11px] text-slate-500 space-y-1.5">
           <div className="flex flex-wrap justify-between gap-2 font-medium text-slate-600">
