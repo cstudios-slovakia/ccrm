@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
   ShoppingCart,
   Search,
@@ -116,6 +118,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const canEdit = getPermission("orders") === "edit";
   const canDelete = canEdit && getPermission("orders.delete") === "edit";
 
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [activeGroupFilter, setActiveGroupFilter] = useState<string>("all");
   const [customerTypeFilter, setCustomerTypeFilter] = useState<string>("all");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("all");
@@ -824,10 +827,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       </div>
 
       {/* 5. ORDERS TABLE */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-        <div className="table-sticky-scroll">
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
+        <div ref={tableWrapRef} className="table-page-wrap">
           <table className="w-full text-left text-ui border-collapse min-w-220">
-            <thead className="sticky top-0 z-20 bg-slate-50">
+            <thead className="table-page-sticky-head">
               <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
                 <th className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</th>
                 <th className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</th>
@@ -1115,6 +1118,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             </tbody>
           </table>
         </div>
+        <StickyHScrollbar target={tableWrapEl} />
       </div>
     </div>
   );

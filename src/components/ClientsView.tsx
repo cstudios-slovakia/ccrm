@@ -64,6 +64,8 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { Chart as BundledChart } from "../utils/chartRuntime";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -334,7 +336,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
     const flushTable = (key: string) => {
       if (tableRows.length > 0) {
         elements.push(
-          <div key={`table-${key}`} className="table-sticky-scroll my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
+          <div key={`table-${key}`} className="overflow-x-auto my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
             <table className="min-w-full divide-y divide-slate-200 text-caption">
               <thead className="bg-slate-50">
                 <tr>
@@ -485,6 +487,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const canCreateTask = taskAccess ? taskAccess.create : canEdit;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
@@ -5244,7 +5247,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="table-sticky-scroll border border-slate-200 rounded-2xl">
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl">
                       <table className="w-full text-left text-ui">
                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                           <tr>
@@ -6102,13 +6105,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       </div>
 
       {/* 3. Clients Data Grid Table */}
-      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden">
-        <div className="overflow-x-auto ws-lg:table-sticky-scroll scrollbar-thin">
+      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-clip">
+        <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
           <table className="w-full border-collapse text-left block ws-lg:table">
-            <thead className="hidden ws-lg:table-header-group">
+            <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
               <tr className="bg-white text-emerald-700 type-overline select-none">
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 rounded-tl-[24px] border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-6 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6123,7 +6126,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "phone" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "phone" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "phone" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6138,7 +6141,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "email" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "email" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "email" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6153,7 +6156,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "city" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "city" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "city" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6168,7 +6171,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "clientType" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "clientType" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "clientType" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6183,7 +6186,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "owner" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "owner" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "owner" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6198,7 +6201,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 text-center border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 text-center border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "leadsCount" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6213,7 +6216,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 text-right border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "totalValue" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-6 text-right border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "totalValue" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "totalValue" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6227,7 +6230,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {renderSortIcon("totalValue")}
                   </button>
                 </th>
-                <th className="sticky top-0 right-0 bg-white z-20 py-3.5 px-4 rounded-tr-[24px] border-b-2 border-l border-slate-100 w-12">
+                <th className="sticky right-0 bg-white z-20 py-3.5 px-4 border-b-2 border-l border-slate-100 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>
               </tr>
@@ -6400,6 +6403,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </tbody>
           </table>
         </div>
+        <StickyHScrollbar target={tableWrapEl} />
 
         {/* Pagination controls */}
         {processedClients.length > 50 && (

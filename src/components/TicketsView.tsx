@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import {
   Ticket as TicketIcon,
   Plus,
@@ -318,6 +319,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   );
 
   // Filters & view state
+  const [boardEl, setBoardEl] = useState<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [kpiBucket, setKpiBucket] = useState<
     "all_open" | "unassigned" | "waiting_client" | "sla_risk" | "resolved" | "all"
@@ -4622,7 +4624,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           </div>
         ) : (
           /* Kanban Board View (Drag & Drop + Quick Status Move) */
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
+          <div>
+          <div ref={setBoardEl} className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
             {orderedStatuses.map((st) => {
               const stKey = st.key || st.id;
               const colTickets = filteredTickets.filter(
@@ -4812,6 +4815,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 </div>
               );
             })}
+          </div>
+          <StickyHScrollbar target={boardEl} />
           </div>
         )}
       </div>

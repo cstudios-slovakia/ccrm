@@ -594,10 +594,39 @@ Changes to a primitive go in their own commit.
 | `Surface` | Card: `rounded-3xl bg-white border border-slate-200/80 shadow-sm`, padding `p-4 ws-sm:p-6` (or `none` for tables). `tone="inset"` = second level: `rounded-2xl bg-slate-50 p-4`, no shadow. **Maximum two levels.** |
 | `SplitLayout` | Slots `nav?`, `aside?`, `rail?`, children = main. Stacked below `ws-lg`. `ws-lg`: `grid-cols-[--spacing(64)_minmax(0,1fr)]` (nav) or `[--spacing(104)_minmax(0,1fr)]` (aside). `ws-2xl`: adds `rail` as a third column `--spacing(88)`; below `ws-2xl` the rail's content renders inside main (as a tab or a section). Panes are `min-w-0`; long panes are sticky (`sticky top-0 self-start max-h-[calc(100dvh-…)] overflow-auto`). |
 | `FormGrid` / `Field` | `grid gap-x-6 gap-y-4`; 1 column, `ws-md:grid-cols-2`, `ws-2xl:grid-cols-3` for forms with 8+ fields. `Field span="full"` for textareas, rich text and wide controls. Label above the control (`type-label`), hint/error below (`type-meta`). |
-| `DataTable` styles | `table-header` (`type-overline whitespace-nowrap`), `table-cell` (`text-ui py-3 px-4`), `table-cell-num` (`text-right tabular-nums`), sticky header row. A `priority` prop per column: `low` = `hidden ws-xl:table-cell`, `optional` = `hidden ws-2xl:table-cell`. |
+| `DataTable` styles | `table-header` (`type-overline whitespace-nowrap`), `table-cell` (`text-ui py-3 px-4`), `table-cell-num` (`text-right tabular-nums`), and a head row that pins to the page (see "List heads pin to the page" below). A `priority` prop per column: `low` = `hidden ws-xl:table-cell`, `optional` = `hidden ws-2xl:table-cell`. |
 | `EmptyState` | Centred in its pane, `max-w-measure`, icon `size-10`, `type-card-title` + `type-body` + one action. |
 | `Drawer` | Right-side panel: `w-(--drawer-sm\|md\|lg) max-w-full`, full width on phones. Title `type-panel-title`. Uses viewport breakpoints (it is portaled outside the workspace). |
 | `Modal` | `max-w-lg` / `max-w-2xl` / `max-w-4xl` (containers scale with the view size); on phones a full-width sheet anchored to the bottom. |
+
+#### List heads pin to the page
+
+The page (`main.workspace`) is the only vertical scroller: **no block inside a view gets
+a vertical scrollbar of its own**, and a list's head row pins to the top of the
+workspace, just under the app header, while the rows scroll beneath it. Only real
+list/table views get a pinned head. A small table inside a panel, drawer or detail
+card is a plain `overflow-x-auto` table with no sticky head.
+
+`position: sticky` binds to the nearest ancestor that is a scroll container, and
+`overflow-x: auto` silently makes `overflow-y` a scroller too, so a table in a
+sideways-scrolling wrapper cannot stick to the page with CSS alone. Every pinned list
+therefore uses the same three pieces:
+
+| Piece | Where | Does |
+|---|---|---|
+| `table-page-sticky-head` | on the `<thead>` | Opaque `<th>` cells, `position: sticky` at the top of the workspace, and a hairline under the head (an inset shadow: a `border-collapse` border stays behind when a cell sticks). Square corners on purpose; the card rounds the head at rest. |
+| `table-page-wrap` + `useStickyTableHead()` | on the table's wrapper | The hook marks the wrapper `data-hscroll="false"` when the table fits its card — the wrapper becomes `overflow: visible` and CSS sticks the head natively — or `"true"` when it is wider, where the wrapper scrolls sideways and the hook translates the `<thead>` to follow the page instead. |
+| `<StickyHScrollbar target={wrapEl} />` | right after the wrapper, inside the card | A proxy sideways scrollbar pinned to the bottom of the workspace while the table's own bar is below the fold; hidden when the native bar is on screen, hidden on touch. |
+
+Rules that keep it working: the card around a table that rounds its corners uses
+`overflow-clip`, never `overflow-hidden` (clip does not create a scroll container); a
+`<th>` never sets its own `top-*`, `rounded-t*` or a translucent background; both
+sticky offsets are measured from the workspace's content box, which is why the CSS
+subtracts `var(--gutter)`. Verify in a browser: no element between the `<th>` and
+`main.workspace` may scroll vertically (`tests/e2e/stickyTableHead.spec.ts`).
+
+Other things that stay put while the page scrolls, and nothing else: the app header, the
+side navigation panes, the Tasks calendar beside My Tasks and the Tasks create bar.
 
 ### 6.3 Which breakpoints to use
 

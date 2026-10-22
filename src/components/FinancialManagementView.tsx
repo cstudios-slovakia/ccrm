@@ -92,6 +92,8 @@ import {
 } from "../utils/pastRecurringCharges";
 import { PageHeader, Tabs } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
@@ -1244,9 +1246,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [showFutureMovements, setShowFutureMovements] = useState<boolean>(false);
   const [futureHorizonMonths, setFutureHorizonMonths] = useState<number>(1);
 
-  // The scroll box, and the row at its bottom that asks for the next page.
-  const movementsScrollRef = useRef<HTMLDivElement | null>(null);
+  // The ledger table's wrapper, and the row under it that asks for the next page.
+  const [movementsWrapRef, movementsWrapEl] = useStickyTableHead();
   const movementsSentinelRef = useRef<HTMLDivElement | null>(null);
+  const [recurringWrapRef, recurringWrapEl] = useStickyTableHead();
+  const [periodWrapRef, periodWrapEl] = useStickyTableHead();
+  const [breakdownWrapRef, breakdownWrapEl] = useStickyTableHead();
 
   // Stored ledger rows the user has ticked. Forecast rows and recurring charges
   // are derived, so they are not selectable — there is no record to update.
@@ -1805,16 +1810,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     };
   }, [groupedMovementsByMonth, forecastSummary, filteredFutureMovements.length]);
 
-  // The ledger scrolls inside its own box, not the page. The sentinel has to
-  // live in that box, and the observer has to watch that box — a viewport
-  // observer never sees the table scroll. Re-arm after every page: the
-  // observer only reports a change in visibility, so a sentinel that stays on
-  // screen (the last short page) would otherwise spin forever.
+  // The page scrolls, not the ledger, so the observer watches the page scroller
+  // (`main.workspace`). Re-arm after every page: the observer only reports a
+  // change in visibility, so a sentinel that stays on screen (the last short
+  // page) would otherwise spin forever.
   useEffect(() => {
     if (activeTab !== "movements") return;
     if (movementsVisibleCount >= movementsSummary.rowCount) return;
-    const root = movementsScrollRef.current;
     const sentinel = movementsSentinelRef.current;
+    const root = sentinel?.closest<HTMLElement>(".workspace");
     if (!root || !sentinel) return;
 
     const observer = new IntersectionObserver(
@@ -1829,7 +1833,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [activeTab, movementsVisibleCount, movementsSummary.rowCount]);
+  }, [activeTab, movementsVisibleCount, movementsSummary.rowCount, movementsWrapEl]);
 
   // Drop a tick when its movement has been deleted.
   useEffect(() => {
@@ -6010,18 +6014,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* Data Table (Breakdown of past + future periods) */}
                   {isWeeklyTableOpen && (
-                    <div className="mt-3 table-sticky-scroll rounded-2xl border border-slate-200  animate-in fade-in duration-200">
+                    <div className="mt-3 overflow-clip rounded-2xl border border-slate-200  animate-in fade-in duration-200">
+                      <div ref={breakdownWrapRef} className="table-page-wrap">
                       <table className="w-full text-left text-ui">
-                        <thead className="bg-slate-50 type-overline text-slate-500 border-b border-slate-200 sticky top-0 z-20">
+                        <thead className="table-page-sticky-head type-overline text-slate-500 border-b border-slate-200">
                           <tr>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{activeResolution === "month" || financialMode === "simplified" ? t("Month / Period", "Mesiac / Obdobie", "Hónap / Időszak") : t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Type", "Typ", "Típus")}</th>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Cumulative Income", "Príjmy", "Bevételek")}</th>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Cumulative Expense", "Výdavky", "Kiadások")}</th>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{activeResolution === "month" || financialMode === "simplified" ? t("Monthly Net Flow", "Mesačný čistý tok", "Havi nettó folyam") : t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right text-emerald-600">{financialMode === "simplified" ? t("🏦 Cumulative Balance", "🏦 Kumulatívny stav", "🏦 Kumulált egyenleg") : t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-center">{financialMode === "simplified" ? t("Action", "Akcia", "Művelet") : t("Calibration", "Nastavenie", "Kalibráció")}</th>
-                            <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-center">{financialMode === "simplified" ? t("Items", "Položky", "Tételek") : t("Movements", "Pohyby", "Tételek")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4">{activeResolution === "month" || financialMode === "simplified" ? t("Month / Period", "Mesiac / Obdobie", "Hónap / Időszak") : t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Type", "Typ", "Típus")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Cumulative Income", "Príjmy", "Bevételek")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Cumulative Expense", "Výdavky", "Kiadások")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{activeResolution === "month" || financialMode === "simplified" ? t("Monthly Net Flow", "Mesačný čistý tok", "Havi nettó folyam") : t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right text-emerald-600">{financialMode === "simplified" ? t("🏦 Cumulative Balance", "🏦 Kumulatívny stav", "🏦 Kumulált egyenleg") : t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4 text-center">{financialMode === "simplified" ? t("Action", "Akcia", "Művelet") : t("Calibration", "Nastavenie", "Kalibráció")}</th>
+                            <th className="sticky z-10 bg-slate-50 py-3 px-4 text-center">{financialMode === "simplified" ? t("Items", "Položky", "Tételek") : t("Movements", "Pohyby", "Tételek")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100  font-medium">
@@ -6109,6 +6114,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           ))}
                         </tbody>
                       </table>
+                      </div>
+                      <StickyHScrollbar target={breakdownWrapEl} />
                     </div>
                   )}
                 </div>
@@ -6246,7 +6253,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {!showSettings && activeTab === "table" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* THE MATRIX DATA TABLE CONTAINER */}
-          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
+          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-clip">
             {/* Sleek Single-Line Table Toolbar */}
             <div className="px-3 ws-sm:px-5 py-2.5 ws-sm:py-3 border-b border-slate-100  flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-2.5 ws-sm:gap-3 bg-slate-50/50 ">
               {/* Category Search Filter */}
@@ -6409,10 +6416,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <span className="font-bold text-slate-700">{tableGranularity.toUpperCase()} • {tableYear}</span>
             </div>
 
-            <div className="table-sticky-scroll scrollbar-thin overscroll-x-contain">
+            <div ref={periodWrapRef} className="table-page-wrap scrollbar-thin overscroll-x-contain">
               <table className="w-full text-left text-ui border-collapse">
                 {/* Sticky Header */}
-                <thead className="bg-slate-50  sticky top-0 z-30 shadow-xs border-b border-slate-200 ">
+                <thead className="table-page-sticky-head border-b border-slate-200 ">
                   <tr>
                     <th className="w-35 min-w-35 max-w-35 ws-sm:w-80 ws-sm:min-w-80 ws-sm:max-w-80 py-2.5 ws-sm:py-3 px-2 ws-sm:px-4 sticky left-0 bg-slate-100  z-40 type-overline text-slate-600  border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                       <span className="hidden ws-sm:inline">
@@ -6582,6 +6589,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </tbody>
               </table>
             </div>
+            <StickyHScrollbar target={periodWrapEl} />
           </div>
         </div>
       )}
@@ -7019,7 +7027,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
 
           {/* GROUPED MOVEMENTS LEDGER TABLE */}
-          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
+          <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-clip">
             {canSelectMovements && (
               <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-slate-50">
                 <button
@@ -7046,9 +7054,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </button>
               </div>
             )}
-            <div ref={movementsScrollRef} className="table-sticky-scroll scrollbar-thin">
+            <div ref={movementsWrapRef} className="table-page-wrap scrollbar-thin">
               <table className="w-full text-left text-ui border-collapse">
-                <thead className="bg-slate-50  text-slate-600  type-overline border-b border-slate-200  sticky top-0 z-20">
+                <thead className="table-page-sticky-head text-slate-600  type-overline border-b border-slate-200">
                   <tr>
                     {showMovementCheckboxes && (
                       <th className="py-3 pl-4 pr-1 w-10">
@@ -7635,8 +7643,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </tbody>
               </table>
 
-              {/* Next page. It sits inside the scroll box: the ledger does not
-                  grow the page, so a footer under the scrollbar never moves. */}
+              {/* Next page: reached by scrolling the page to the end of the ledger. */}
               {movementsSummary.rowCount > 0 && (
                 <div
                   ref={movementsSentinelRef}
@@ -7665,6 +7672,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
               )}
             </div>
+            <StickyHScrollbar target={movementsWrapEl} />
           </div>
 
           {showMovementCheckboxes && selectedMovementRecords.length > 0 && typeof document !== "undefined" && createPortal(
@@ -8103,18 +8111,18 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
 
           {/* RECURRING EXPENSES TABLE */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm">
-            <div className="table-sticky-scroll scrollbar-thin rounded-3xl">
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
+            <div ref={recurringWrapRef} className="table-page-wrap scrollbar-thin">
               <table className="w-full text-left text-ui border-collapse">
-                <thead className="bg-slate-50 text-slate-600 type-overline border-b border-slate-200 sticky top-0 z-20">
+                <thead className="table-page-sticky-head text-slate-600 type-overline border-b border-slate-200">
                   <tr>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-55 rounded-tl-3xl">{t("Recurring Movement & Description", "Pravidelný pohyb & Popis", "Rendszeres tétel & Leírás")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-55">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-50">{t("Category Path", "Hierarchia kategórie", "Kategória útvonal")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 min-w-37.5">{t("Linked Entity", "Prepojenie", "Kapcsolódó elem")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 w-40 text-right">{t("Cost / Month", "Suma / Mesiac", "Összeg / Hó")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 w-27.5 text-center">{t("Status", "Stav", "Állapot")}</th>
-                    <th className="sticky top-0 right-0 z-30 bg-slate-50 py-3.5 px-4 w-27.5 text-right rounded-tr-3xl">{t("Actions", "Akcie", "Műveletek")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3.5 px-4 min-w-55">{t("Recurring Movement & Description", "Pravidelný pohyb & Popis", "Rendszeres tétel & Leírás")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3.5 px-4 min-w-55">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3.5 px-4 min-w-50">{t("Category Path", "Hierarchia kategórie", "Kategória útvonal")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3.5 px-4 min-w-37.5">{t("Linked Entity", "Prepojenie", "Kapcsolódó elem")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3.5 px-4 w-40 text-right">{t("Cost / Month", "Suma / Mesiac", "Összeg / Hó")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3.5 px-4 w-27.5 text-center">{t("Status", "Stav", "Állapot")}</th>
+                    <th className="sticky right-0 z-30 bg-slate-50 py-3.5 px-4 w-27.5 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>
 
@@ -8385,6 +8393,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </tbody>
               </table>
             </div>
+            <StickyHScrollbar target={recurringWrapEl} />
           </div>
         </div>
       )}

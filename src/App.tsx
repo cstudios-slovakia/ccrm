@@ -4560,11 +4560,7 @@ ${log.payload || ''}
                 <AiKeyBanner
                   integrationsConfig={integrationsConfig}
                   language={userLanguage}
-                  // Sticky, because these views size themselves to the viewport
-                  // and scroll their own content into view on mount (the RAG
-                  // chat jumps to the newest message), which scrolled a plain
-                  // banner straight off the top of the workspace.
-                  className="mb-4 sticky top-0 z-30 backdrop-blur-sm"
+                  className="mb-4"
                 />
               )}
               {/* Per-view boundary: a render error in one module (a single CRM tab)

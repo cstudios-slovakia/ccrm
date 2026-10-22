@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from "react";
+import { StickyHScrollbar } from "../ui/StickyHScrollbar";
+import { useStickyTableHead } from "../../hooks/useStickyTableHead";
 import {
   Clock,
   Calendar,
@@ -126,6 +128,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
   onLinkTogglUser,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>("matrix");
+  const [matrixWrapRef, matrixWrapEl] = useStickyTableHead();
   const [dailyFilter, setDailyFilter] = useState<"all" | "worked" | "weekdays">("all");
   const [hoveredDayDate, setHoveredDayDate] = useState<string | null>(null);
 
@@ -538,31 +541,31 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
       {/* 3. VIEW 1: TIMESHEET CALENDAR MATRIX (Adapted to CCRM Brand Theme) */}
       {viewMode === "matrix" && (
-        <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/95 dark:bg-[#12161f]/95 shadow-glass">
-          <div className="table-sticky-scroll rounded-3xl">
+        <div className="glass-panel overflow-clip rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/95 dark:bg-[#12161f]/95 shadow-glass">
+          <div ref={matrixWrapRef} className="table-page-wrap">
             <table className="w-full min-w-190 border-collapse text-left">
               {/* Table Header */}
-              <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-[#161b26]">
+              <thead className="table-page-sticky-head">
                 <tr className="bg-slate-50/90 dark:bg-black/40 border-b border-slate-200/90 dark:border-white/10 text-ui font-bold text-slate-600 dark:text-slate-300">
-                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("MON", "PO", "HÉ")}
                   </th>
-                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("TUE", "UT", "KE")}
                   </th>
-                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("WED", "ST", "SZE")}
                   </th>
-                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("THU", "ŠT", "CSÜ")}
                   </th>
-                  <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
+                  <th className="sticky z-10 bg-slate-50 dark:bg-[#161b26] py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("FRI", "PI", "PÉ")}
                   </th>
-                  <th className="sticky top-0 z-10 py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/80 dark:bg-black/35 w-[11.5%]">
+                  <th className="sticky z-10 py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/80 dark:bg-black/35 w-[11.5%]">
                     {t("SAT", "SO", "SZO")}
                   </th>
-                  <th className="sticky top-0 z-10 py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/80 dark:bg-black/35 w-[11.5%]">
+                  <th className="sticky z-10 py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/80 dark:bg-black/35 w-[11.5%]">
                     {t("SUN", "NE", "VAS")}
                   </th>
                   <th className="py-3.5 px-4 text-center bg-gradient-to-r from-slate-100/90 to-[#c29b62]/10 dark:from-black/40 dark:to-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] border-l border-slate-200/90 dark:border-white/10 w-[19.5%]">
@@ -716,6 +719,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
               </tfoot>
             </table>
           </div>
+          <StickyHScrollbar target={matrixWrapEl} />
         </div>
       )}
 
@@ -857,9 +861,9 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             </div>
           </div>
 
-          <div className="table-sticky-scroll">
+          <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 z-20 bg-slate-50 dark:bg-[#161b26]">
+              <thead className="bg-slate-50 dark:bg-[#161b26]">
                 <tr className="border-b border-slate-200/80 dark:border-slate-800 type-overline text-slate-500">
                   <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3">{t("Date", "Dátum", "Dátum")}</th>
                   <th className="sticky top-0 z-10 bg-slate-50 dark:bg-[#161b26] py-2.5 px-3">{t("Weekday", "Deň", "Nap")}</th>

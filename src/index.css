@@ -1753,16 +1753,66 @@ dialog[open]::backdrop {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, --spacing(--value(integer))), 1fr));
 }
 
-/* Type recipes (no colour — colours stay raw palette classes). */
-/* A list table whose head stays put. `position: sticky` sticks to the nearest
-   scrolling ancestor, and an `overflow-x: auto` wrapper silently becomes one
-   (overflow-y computes to auto), so without a height bound the head never sticks
-   to the page. Bounding the wrapper makes the table its own scroller, with the
-   head pinned inside it. */
-@utility table-sticky-scroll {
-  overflow: auto;
-  max-height: max(24rem, calc(100dvh - 12rem));
+/* Page-sticky list head. The page (`main.workspace`) is the only vertical
+   scroller, and a list's head row pins to its top edge, just under the app
+   header, while the rows scroll beneath it.
+
+   `position: sticky` binds to the nearest ancestor with `overflow: auto |
+   scroll | hidden` on either axis, and `overflow-x: auto` silently turns
+   `overflow-y` into `auto` too. So a table in a sideways-scrolling wrapper can
+   never stick to the page with CSS alone. Two modes cover both cases:
+
+   - The table FITS its card: `.table-page-wrap[data-hscroll="false"]` is
+     `overflow: visible`, so no scroll container sits between the <th> and
+     `main.workspace` and the CSS below sticks the head natively. A card that
+     rounds its corners must use `overflow-clip` (clips without becoming a
+     scroller), never `overflow-hidden`.
+   - The table is WIDER than its card: the wrapper keeps `overflow-x: auto`,
+     and the hook lays a copy of the head (`.table-page-head-mirror`) over the
+     real one, just outside the wrapper, where it sticks to the page natively.
+     <StickyHScrollbar> keeps the sideways scrollbar in reach. (Moving the real
+     head per scroll step, from a listener or a scroll-driven animation, lands
+     a frame late on some machines: the head slides away and snaps back.)
+
+   The hook sets `data-hscroll` on the wrapper (see hooks/useStickyTableHead.ts).
+   Both classes live in the components layer so any utility on a <th> (its own
+   background, a `right-0 z-30` actions column) still wins. The line under the
+   head is an inset shadow because a `border-collapse` border stays behind when
+   the cell sticks. Square corners on purpose: a rounded stuck head would show
+   rows in the corner gap; the card's own `overflow-clip` rounds it at rest. */
+@layer components {
+  .table-page-wrap {
+    overflow-x: auto;
+  }
+  .table-page-wrap[data-hscroll="false"] {
+    overflow: visible;
+  }
+  .table-page-sticky-head {
+    position: relative;
+    z-index: 25;
+  }
+  /* Wide table: the hook sizes this copy to the wrapper's visible width and
+     keeps its scrollLeft in step. It hides its overflow, so a `right-0` actions
+     column in it sticks to its right edge, as it does in the wrapper. One
+     above the real head, which it covers at rest and must take the clicks of. */
+  .table-page-head-mirror {
+    position: sticky;
+    top: calc(var(--gutter) * -1);
+    z-index: 26;
+    overflow: hidden;
+  }
+  .table-page-sticky-head th {
+    position: sticky;
+    /* Sticky offsets are measured from the scroller's content box, so the
+       workspace's own padding would leave a gap above the stuck head. */
+    top: calc(var(--gutter) * -1);
+    z-index: 20;
+    background-color: var(--color-slate-50);
+    box-shadow: inset 0 -1px 0 var(--color-slate-200);
+  }
 }
+
+/* Type recipes (no colour — colours stay raw palette classes). */
 @utility type-overline     { font-size: var(--text-micro);    line-height: var(--text-micro--line-height);    font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 @utility type-label        { font-size: var(--text-caption);  line-height: var(--text-caption--line-height);  font-weight: 600; }
 @utility type-meta         { font-size: var(--text-caption);  line-height: var(--text-caption--line-height);  font-weight: 500; }

@@ -3,11 +3,12 @@ import { gotoView, startSession } from './helpers/appDriver';
 import { buildSyncPayload } from './helpers/fixture';
 
 /**
- * The movements ledger pages inside its own scroll box. The first page is 40
- * rows; the rest arrive only when that box is scrolled to the footer. A footer
- * parked under the scrollbar, watched against the window, never sees that
- * scroll — and once it is already on screen the observer does not ask again,
- * so the last short page never appears.
+ * The movements ledger pages as the page scrolls. The first page is 40 rows;
+ * the rest arrive only when the page (`main.workspace`, the one vertical
+ * scroller) reaches the footer under the table. The window itself never
+ * scrolls, so a footer watched against the viewport never sees that scroll —
+ * and once it is already on screen the observer does not ask again, so the
+ * last short page never appears.
  */
 
 const TOTAL = 47;
@@ -60,17 +61,20 @@ test('scrolling the ledger loads the rows past the first page', async ({ page })
     timeout: 20_000,
   });
 
-  const scroller = page.locator('.table-sticky-scroll').filter({ hasText: NEWEST });
-  await expect(scroller.getByText(NEWEST)).toBeVisible();
-  await expect(scroller.getByText(OLDEST)).toHaveCount(0);
-  await expect(scroller.getByText(/showing 40 of 47|zobrazených 40 z 47|40 \/ 47/)).toHaveCount(1);
+  const ledger = page.locator('.table-page-wrap').filter({ hasText: NEWEST });
+  await expect(ledger.getByText(NEWEST)).toBeVisible();
+  await expect(ledger.getByText(OLDEST)).toHaveCount(0);
+  await expect(ledger.getByText(/showing 40 of 47|zobrazených 40 z 47|40 \/ 47/)).toHaveCount(1);
 
-  await scroller.evaluate((el) => {
-    el.scrollTop = el.scrollHeight;
+  // No box of its own: the page is what scrolls.
+  expect(await ledger.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+  await page.evaluate(() => {
+    const main = document.querySelector('main.workspace') as HTMLElement;
+    main.scrollTop = main.scrollHeight;
   });
 
-  await expect(scroller.getByText(/All 47 movements loaded|Všetkých 47 pohybov|47 mozgás betöltve/)).toBeVisible({
+  await expect(ledger.getByText(/All 47 movements loaded|Všetkých 47 pohybov|47 mozgás betöltve/)).toBeVisible({
     timeout: 10_000,
   });
-  await expect(scroller.getByText(OLDEST)).toBeVisible();
+  await expect(ledger.getByText(OLDEST)).toBeVisible();
 });

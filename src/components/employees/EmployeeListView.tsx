@@ -37,6 +37,8 @@ import { useDragAutoScroll } from "../../hooks/useDragAutoScroll";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { asLang } from "../../utils/undoMessages";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
+import { StickyHScrollbar } from "../ui/StickyHScrollbar";
+import { useStickyTableHead } from "../../hooks/useStickyTableHead";
 
 interface EmployeeListViewProps {
   employees: Employee[];
@@ -72,6 +74,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   systemCurrency = "€",
   rights = FULL_EMPLOYEE_RIGHTS
 }) => {
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [kindFilter, setKindFilter] = useState<"all" | EmployeeKind>("all");
@@ -398,7 +401,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
       ) : viewMode === "table" || isStructure ? (
         /* TABLE VIEW — the structure is the same table, in its hand-set order, with rows to drag */
-        <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden">
+        <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-clip">
           {isStructure && (
             <p className="px-4 py-2.5 text-caption text-slate-500 border-b border-slate-200/60 bg-[#c29b62]/5">
               {t(
@@ -408,17 +411,17 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               )}
             </p>
           )}
-          <div className="table-sticky-scroll">
+          <div ref={tableWrapRef} className="table-page-wrap">
             <table className="w-full text-left text-ui border-collapse">
-              <thead className="sticky top-0 z-20 bg-slate-50">
+              <thead className="table-page-sticky-head">
                 <tr className="border-b border-slate-200/80 bg-slate-50 text-slate-500 type-overline">
-                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
-                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
-                  {rights.salaries && <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
-                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
-                  {rights.files && <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
-                  <th className="sticky top-0 z-10 bg-slate-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
-                  <th className="sticky top-0 right-0 z-30 py-3.5 px-4 text-right bg-slate-50 border-l border-slate-200/80">{t("Actions", "Akcie", "Műveletek")}</th>
+                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
+                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
+                  {rights.salaries && <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
+                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
+                  {rights.files && <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
+                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                  <th className="sticky right-0 z-30 py-3.5 px-4 text-right bg-slate-50 border-l border-slate-200/80">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -600,6 +603,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               </tbody>
             </table>
           </div>
+          <StickyHScrollbar target={tableWrapEl} />
         </div>
       ) : (
         /* CARDS GRID VIEW */
