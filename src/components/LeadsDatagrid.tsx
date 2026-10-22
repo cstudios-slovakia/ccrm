@@ -88,6 +88,7 @@ import {
     AlertTriangle,
     Building2,
     Heart,
+    ShoppingCart,
 } from "lucide-react";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { EntityTasksPanel } from "./EntityTasksPanel";
@@ -895,6 +896,12 @@ interface LeadsDatagridProps {
      */
     access?: ModuleAccess;
     /**
+     * What the current user may do with orders. The "New order" button on a lead
+     * needs `edit`; without this prop it is not shown (orders default to "nothing",
+     * so the lead's own `canEdit` says nothing about them).
+     */
+    orderAccess?: ModuleAccess;
+    /**
      * What the server enforces on `tasks` — separate from `access` above, which
      * is the *leads* module's answer. Every task this screen creates as a side
      * effect (a locking follow-up, a future-event reminder) writes into a
@@ -1084,6 +1091,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
     access = FULL_MODULE_ACCESS,
+    orderAccess,
     taskAccess,
     divisions = ["Cstudios", "Cstudios Budapest"],
     divisionColors = {},
@@ -5472,6 +5480,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     )}
                   </>}
                   actions={<>
+                    {orderAccess?.edit && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                // Created in the Orders module with this lead prefilled; saving or going
+                                // back returns here.
+                                const back = `leads/${activeLead.id}`;
+                                window.location.hash = `orders/new?customer=${encodeURIComponent(activeLead.id)}&from=${encodeURIComponent(back)}`;
+                            }}
+                            className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                            title={t("Place new order for this lead", "Vystaviť novú objednávku pre tento lead", "Új rendelés feladása ehhez a leadhez")}
+                        >
+                            <ShoppingCart className="h-4 w-4 stroke-[2.5]" />
+                            <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
+                        </button>
+                    )}
                     <FavoriteHeartButton
                         entityId={activeLead.id}
                         type="lead"

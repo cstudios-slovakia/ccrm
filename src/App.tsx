@@ -27,6 +27,7 @@ import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listId
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
+import { isClientRecord, recordHref } from "./utils/clientRecord";
 import { hasLaunchIntent } from "./utils/launchIntent";
 import { useAppBadge } from "./utils/appBadge";
 import { countBadgeTasks } from "./utils/taskBadge";
@@ -3201,7 +3202,7 @@ ${log.payload || ''}
       );
     }
 
-    const { route: activeRoute } = parseAppHash(activeTab);
+    const { route: activeRoute, params: routeParams } = parseAppHash(activeTab);
 
     if (activeRoute.startsWith("public-tickets/")) {
       const publicHash = decodeURIComponent(activeRoute.slice("public-tickets/".length));
@@ -3472,6 +3473,7 @@ ${log.payload || ''}
           leadStateParents={leadStateParents}
           initialSelectedLeadId={leadId}
           access={access.module("leads")}
+          orderAccess={access.module("orders")}
           projectManagerColors={projectManagerColors}
           leadCategories={leadCategories}
           divisions={divisions}
@@ -3644,6 +3646,7 @@ ${log.payload || ''}
           <LeadsDatagrid 
             systemName={systemName}
             access={access.module("leads")}
+            orderAccess={access.module("orders")}
             leads={leads}
             setLeads={updateLeadsAndSync}
             leadStates={orderedLeadStates}
@@ -3829,8 +3832,13 @@ ${log.payload || ''}
           />
         );
       case "orders": {
-        const subOrderId = (activeRoute.startsWith("orders/") && activeRoute.length > "orders/".length)
+        const subOrder = (activeRoute.startsWith("orders/") && activeRoute.length > "orders/".length)
           ? decodeURIComponent(activeRoute.slice("orders/".length))
+          : undefined;
+        // `orders/new?customer=<leads row id>&from=<page to return to>` opens a prefilled draft.
+        const subOrderId = subOrder === "new" ? undefined : subOrder;
+        const newOrderRequest = subOrder === "new"
+          ? { customerId: routeParams.get("customer"), from: routeParams.get("from"), key: activeTab }
           : undefined;
         return (
           <OrdersView
@@ -3863,16 +3871,21 @@ ${log.payload || ''}
             getPermission={getPermission}
             companyBillingSettings={companyBillingSettings}
             initialSelectedOrderId={subOrderId}
+            newOrderRequest={newOrderRequest}
             onOpenSettings={() => {
               window.location.hash = "settings/orders";
               setActiveTab("settings/orders");
             }}
             onOpenClient={(clientId) => {
               const cl = leads.find(l => l.id === clientId);
-              if (cl) {
-                window.location.hash = `clients/${encodeURIComponent(cl.name)}`;
-                setActiveTab(`clients/${encodeURIComponent(cl.name)}`);
+              if (!cl) return;
+              // An order attached to a plain lead opens that lead, not an empty client page.
+              if (!isClientRecord(cl)) {
+                window.location.hash = recordHref(cl);
+                return;
               }
+              window.location.hash = `clients/${encodeURIComponent(cl.name)}`;
+              setActiveTab(`clients/${encodeURIComponent(cl.name)}`);
             }}
           />
         );

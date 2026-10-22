@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ShoppingCart,
   Search,
@@ -42,12 +42,12 @@ import {
   orderStatusLabel,
   orderStatusColor,
   calculateOrderTotals,
-  generateOrderNumber,
-  defaultOrderStatus,
+  buildOrderDraft,
 } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
-import { getDefaultPaymentMethod } from "../utils/payment";
+import { isClientRecord } from "../utils/clientRecord";
+import { contactDetailsFor, resolveLinkedClient } from "../utils/leadClient";
 import { formatMoney } from "../utils/currency";
 import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } from "../utils/localTime";
 import { invoiceMovementId } from "../utils/invoiceFinanceBridge";
@@ -75,7 +75,16 @@ export interface OrdersViewProps {
   onOpenSettings?: () => void;
   companyBillingSettings?: CompanyBillingSettings | null;
   initialSelectedOrderId?: string;
+  /**
+   * Open the editor on a new draft for a customer (`#orders/new?customer=…&from=…`).
+   * `key` identifies the request so the draft is built once, not on every sync poll.
+   */
+  newOrderRequest?: { customerId: string | null; from: string | null; key: string };
 }
+
+/** Where a new order may send the user back to: a client or lead page, nothing else. */
+const safeReturnRoute = (from: string | null | undefined): string | null =>
+  from && /^(clients\/|client-|leads\/|lead-)/.test(from) ? from : null;
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
   orders,
@@ -97,7 +106,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   onOpenClient,
   onOpenSettings,
   companyBillingSettings,
-  initialSelectedOrderId
+  initialSelectedOrderId,
+  newOrderRequest
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -115,9 +125,44 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // Active editing or creating order (separate full-page view)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
+  // Page a new order came from, and the record its timeline note goes to.
+  const [returnRoute, setReturnRoute] = useState<string | null>(null);
+  const newOrderOriginRef = useRef<{ orderId: string; originId: string | null } | null>(null);
+  const handledNewOrderKeyRef = useRef<string | null>(null);
+
+  // Open a prefilled draft for `#orders/new?customer=<leads row id>`. Built once per
+  // request: the 5 s sync poll replaces `orders` and `leads`, and rebuilding the draft
+  // then would wipe what the user has typed.
+  useEffect(() => {
+    if (!newOrderRequest || !canEdit || handledNewOrderKeyRef.current === newOrderRequest.key) return;
+    const { customerId, from, key } = newOrderRequest;
+    const origin = customerId ? leads.find(l => l.id === customerId) ?? null : null;
+    // The record may simply not have loaded yet; only give up on it once leads exist.
+    if (customerId && !origin && leads.length === 0) return;
+    handledNewOrderKeyRef.current = key;
+
+    // A client record takes the order itself; a lead hands it to its client when it
+    // has one, and otherwise carries it (Order.clientId may reference any leads row).
+    const linkedClient = origin && !isClientRecord(origin) ? resolveLinkedClient(origin, leads) : null;
+    const attachTo = origin && isClientRecord(origin) ? origin : linkedClient ?? origin;
+    const draft = buildOrderDraft({
+      attachTo,
+      origin,
+      contact: origin ? contactDetailsFor(origin, leads, linkedClient) : null,
+      statuses: orderStatuses,
+      billingSettings: companyBillingSettings,
+      currency: systemCurrency,
+      existingOrders: orders,
+      today: todayLocal(),
+    });
+    newOrderOriginRef.current = { orderId: draft.id, originId: origin?.id ?? null };
+    setReturnRoute(safeReturnRoute(from));
+    setEditingOrder(draft);
+  }, [newOrderRequest, canEdit, leads, orders, orderStatuses, companyBillingSettings, systemCurrency]);
+
   // Auto-open order if requested via deep link / initialSelectedOrderId
   useEffect(() => {
-    if (initialSelectedOrderId && orders.length > 0) {
+    if (initialSelectedOrderId && initialSelectedOrderId !== "new" && orders.length > 0) {
       const match = orders.find(
         o => o.id === initialSelectedOrderId || o.orderNumber === initialSelectedOrderId
       );
@@ -367,16 +412,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       setEditingOrder(updatedOrder);
     }
 
-    // Persist order update to server
-    try {
-      await fetch("/api/orders.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedOrder)
-      });
-    } catch (e) {
-      console.error("Failed to sync updated order to /api/orders.php", e);
-    }
+    // The order is persisted by the state sync (setOrders -> sync.php).
 
     // 4. If a client is attached, add timeline event to client
     if (targetClientId) {
@@ -433,19 +469,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   };
 
   // Change status directly from card dropdown
-  const handleChangeStatus = async (order: Order, newStatus: string) => {
+  const handleChangeStatus = (order: Order, newStatus: string) => {
     if (!canEdit || order.status === newStatus) return;
     const updated = { ...order, status: newStatus };
     setOrders(prev => prev.map(o => o.id === order.id ? updated : o));
-    try {
-      await fetch("/api/orders.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updated)
-      });
-    } catch (e) {
-      console.error("Failed to sync order status update", e);
-    }
   };
 
   // Filtered orders list
@@ -542,40 +569,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   // Open modal for create
   const handleOpenCreate = () => {
-    const newOrd: Order = {
-      id: `ord_${Date.now()}`,
-      orderNumber: generateOrderNumber("OBJ", orders.length + 1),
-      type: "sales",
-      status: defaultOrderStatus(orderStatuses),
-      customerType: "client",
-      clientId: null,
-      delivery: {
-        recipient: "",
-        street: "",
-        city: "",
-        zip: "",
-        country: "SK",
-        phone: ""
-      },
-      billing: {
-        name: "",
-        street: "",
-        city: "",
-        zip: "",
-        country: "SK"
-      },
-      paymentMethod: getDefaultPaymentMethod(companyBillingSettings),
-      paymentStatus: "unpaid",
-      currency: systemCurrency || "EUR",
-      itemsNetAmount: 0,
-      servicesNetAmount: 0,
-      totalNetAmount: 0,
-      totalTaxAmount: 0,
-      totalGrossAmount: 0,
-      orderDate: new Date().toISOString().split("T")[0],
-      items: []
-    };
-    setEditingOrder(newOrd);
+    setEditingOrder(buildOrderDraft({
+      attachTo: null,
+      statuses: orderStatuses,
+      billingSettings: companyBillingSettings,
+      currency: systemCurrency,
+      existingOrders: orders,
+      today: todayLocal(),
+    }));
   };
 
   // Open separate view for edit
@@ -584,7 +585,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   };
 
   // Save order from detail view
-  const handleSaveOrder = async (orderToSave: Order) => {
+  const handleSaveOrder = (orderToSave: Order) => {
     // Recalculate totals
     const totals = calculateOrderTotals(orderToSave.items || []);
     const completeOrder: Order = {
@@ -592,24 +593,55 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       ...totals
     };
 
+    const isNew = !orders.some(o => o.id === completeOrder.id);
+
     setOrders(prev => {
       const exists = prev.some(o => o.id === completeOrder.id);
       if (exists) return prev.map(o => o.id === completeOrder.id ? completeOrder : o);
       return [completeOrder, ...prev];
     });
 
-    setEditingOrder(null);
-
-    try {
-      await fetch("/api/orders.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(completeOrder)
+    // One note, on the record the user started from (else the one the order is attached to).
+    const noteTargetId = newOrderOriginRef.current?.orderId === completeOrder.id
+      ? newOrderOriginRef.current.originId
+      : null;
+    const timelineLeadId = noteTargetId || completeOrder.clientId;
+    if (isNew && timelineLeadId && onAddTimelineEvent) {
+      onAddTimelineEvent(timelineLeadId, {
+        id: `event_ord_${Date.now()}`,
+        type: "note",
+        timestamp: nowLocalStamp(),
+        title: t(
+          `Order created: ${completeOrder.orderNumber}`,
+          `Vytvorená nová objednávka: ${completeOrder.orderNumber}`,
+          `Új rendelés létrehozva: ${completeOrder.orderNumber}`
+        ),
+        content: `${t("Total amount", "Celková suma", "Végösszeg")}: ${formatMoney(completeOrder.totalGrossAmount, completeOrder.currency || systemCurrency || "EUR", userLanguage)} (${(completeOrder.items || []).length} ${t("items", "položiek", "tétel")})`,
+        author: currentUser?.name || "System"
       });
-      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-      toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
-    } catch (e) {
-      console.error("Failed to save order to backend", e);
+    }
+
+    // The order itself is persisted by the state sync (setOrders -> sync.php).
+    const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+    toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
+
+    if (returnRoute || window.location.hash.startsWith("#orders/new")) {
+      leaveEditor();
+    } else {
+      setEditingOrder(null);
+    }
+  };
+
+  // Close the editor: back to the page a new order was started from, else the Orders list.
+  const leaveEditor = () => {
+    const back = returnRoute;
+    setEditingOrder(null);
+    setReturnRoute(null);
+    newOrderOriginRef.current = null;
+    if (back) {
+      window.location.hash = back;
+    } else if (window.location.hash.startsWith("#orders/")) {
+      window.location.hash = "orders";
     }
   };
 
@@ -619,12 +651,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       <OrderDetailView
         order={editingOrder}
         onSave={handleSaveOrder}
-        onClose={() => {
-          setEditingOrder(null);
-          if (window.location.hash.startsWith("#orders/")) {
-            window.location.hash = "orders";
-          }
-        }}
+        onClose={leaveEditor}
         onDelete={handleDeleteOrder}
         onConvertGuest={handleConvertGuest}
         onFulfillWarehouse={handleFulfillWarehouse}
@@ -640,6 +667,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         canDelete={canDelete}
         onOpenClient={onOpenClient}
         companyBillingSettings={companyBillingSettings}
+        backLabel={returnRoute
+          ? returnRoute.startsWith("lead")
+            ? t("Back to lead", "Späť na lead", "Vissza a leadhez")
+            : t("Back to client", "Späť na klienta", "Vissza az ügyfélhez")
+          : undefined}
       />
     );
   }

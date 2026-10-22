@@ -1,4 +1,6 @@
-import type { OrderItem } from "../types";
+import type { CompanyBillingSettings, Lead, Order, OrderItem } from "../types";
+import { getDefaultPaymentMethod } from "./payment.ts";
+import { getAvailableShippingMethods } from "./shipping.ts";
 
 export type OrderStatusGroup = "new" | "processing" | "shipped" | "delivered" | "cancelled";
 
@@ -177,6 +179,101 @@ export const generateOrderNumber = (prefix = "OBJ", sequence = 1, date = new Dat
   const year = date.getFullYear();
   const seqStr = String(sequence).padStart(4, "0");
   return `${prefix}-${year}-${seqStr}`;
+};
+
+/**
+ * The next free order number for the year of `date`. Counts up from the highest
+ * number already issued that year rather than from how many orders exist: deleting
+ * an order used to make `orders.length + 1` land on a number that was still taken,
+ * and `orders.order_number` is UNIQUE, so the second save was rejected.
+ */
+export const nextOrderNumber = (
+  existing: ReadonlyArray<Pick<Order, "orderNumber">>,
+  prefix = "OBJ",
+  date = new Date()
+): string => {
+  const pattern = new RegExp(`^${prefix}-${date.getFullYear()}-(\\d+)$`);
+  let highest = 0;
+  for (const { orderNumber } of existing) {
+    const seq = Number(pattern.exec(orderNumber || "")?.[1]);
+    if (seq > highest) highest = seq;
+  }
+  return generateOrderNumber(prefix, highest + 1, date);
+};
+
+export interface BuildOrderDraftOptions {
+  /** Record the order is attached to (becomes `clientId`). Null gives the empty draft. */
+  attachTo: Lead | null;
+  /** The lead or client the user started from; fills fields the attached record leaves empty. */
+  origin?: Lead | null;
+  /** Recipient and phone to put on the delivery address. */
+  contact?: { phone: string; contactPerson: string } | null;
+  statuses: readonly OrderStatusDef[];
+  billingSettings?: CompanyBillingSettings | null;
+  currency: string;
+  /** Orders that already exist, so the new number cannot repeat one. */
+  existingOrders: ReadonlyArray<Pick<Order, "orderNumber">>;
+  /** YYYY-MM-DD. Injected so the result is deterministic. */
+  today: string;
+  id?: string;
+}
+
+/** A new, unsaved sales order, prefilled from the customer it is attached to. */
+export const buildOrderDraft = (opts: BuildOrderDraftOptions): Order => {
+  const { attachTo, origin, contact } = opts;
+  const first = (...values: Array<string | null | undefined>): string =>
+    values.find((v) => typeof v === "string" && v.trim() !== "") ?? "";
+
+  const name = first(attachTo?.name, origin?.name);
+  const street = first(attachTo?.address?.street, origin?.address?.street);
+  const city = first(attachTo?.city, attachTo?.address?.city, origin?.city, origin?.address?.city);
+  const zip = first(attachTo?.address?.postalCode, origin?.address?.postalCode);
+  const country = first(attachTo?.address?.country, origin?.address?.country) || "SK";
+
+  const order: Order = {
+    id: opts.id ?? `ord_${Date.now()}`,
+    orderNumber: nextOrderNumber(opts.existingOrders, "OBJ", new Date(`${opts.today}T00:00:00`)),
+    type: "sales",
+    status: defaultOrderStatus(opts.statuses),
+    customerType: "client",
+    clientId: attachTo?.id ?? null,
+    delivery: {
+      recipient: attachTo
+        ? first(contact?.contactPerson, attachTo.contactPerson, origin?.contactPerson, name)
+        : "",
+      street,
+      city,
+      zip,
+      country,
+      phone: attachTo ? first(contact?.phone, attachTo.phone, origin?.phone) : "",
+    },
+    billing: {
+      name,
+      street,
+      city,
+      zip,
+      country,
+      ...(attachTo
+        ? {
+            ico: first(attachTo.companyId, origin?.companyId),
+            dic: first(attachTo.taxId, origin?.taxId),
+            icDph: first(attachTo.vatId, origin?.vatId),
+          }
+        : {}),
+    },
+    paymentMethod: getDefaultPaymentMethod(opts.billingSettings),
+    paymentStatus: "unpaid",
+    currency: opts.currency || "EUR",
+    itemsNetAmount: 0,
+    servicesNetAmount: 0,
+    totalNetAmount: 0,
+    totalTaxAmount: 0,
+    totalGrossAmount: 0,
+    orderDate: opts.today,
+    items: [],
+  };
+  if (attachTo) order.shippingMethod = getAvailableShippingMethods(opts.billingSettings)[0] || "Kuriér";
+  return order;
 };
 
 export const formatCarrierTrackingUrl = (carrier?: string, trackingNumber?: string): string | null => {

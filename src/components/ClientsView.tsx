@@ -13,11 +13,10 @@ import {
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
-import { orderStatusColor, orderStatusLabel, generateOrderNumber, calculateOrderTotals, defaultOrderStatus } from "../utils/orders";
+import { orderStatusColor, orderStatusLabel, calculateOrderTotals } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
-import { getDefaultPaymentMethod } from "../utils/payment";
+import { isClientRecord } from "../utils/clientRecord";
 import { applyClientProfile } from "../utils/leadClient";
-import { getAvailableShippingMethods } from "../utils/shipping";
 import { getDefaultVatRate } from "../utils/vat";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
@@ -1656,67 +1655,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
+  // New orders are created in the Orders module with this client prefilled, and
+  // come back to this client's Orders tab. The order attaches to the profile's own
+  // client record; a profile without one falls back to the same-name / first lead row.
   const handleOpenCreateOrder = () => {
     if (!activeClient) return;
-    const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) 
-      || activeClient.associatedLeads?.[0];
-    const targetLeadId = matchedLead?.id || activeClient.associatedLeads?.[0]?.id || "";
-
-    const recipientName = activeClient.contactPerson || matchedLead?.contactPerson || activeClient.name || "";
-    const billingName = activeClient.name || matchedLead?.name || "";
-    const street = activeClient.street || matchedLead?.address?.street || "";
-    const city = activeClient.city || matchedLead?.city || matchedLead?.address?.city || "";
-    const zip = activeClient.postalCode || matchedLead?.address?.postalCode || "";
-    const country = activeClient.country || matchedLead?.address?.country || "SK";
-    const phone = activeClient.phone || matchedLead?.phone || "";
-    const ico = activeClient.companyId || matchedLead?.companyId || (matchedLead as any)?.ico || "";
-    const dic = activeClient.taxId || matchedLead?.taxId || (matchedLead as any)?.dic || "";
-    const icDph = activeClient.vatId || matchedLead?.vatId || (matchedLead as any)?.icDph || "";
-
-    const availableShipping = getAvailableShippingMethods(companyBillingSettings);
-    const defaultShipping = availableShipping[0] || "Kuriér";
-    const defaultPayment = getDefaultPaymentMethod(companyBillingSettings);
-
-    const newOrd: Order = {
-      id: `ord_${Date.now()}`,
-      orderNumber: generateOrderNumber("OBJ", (orders?.length || 0) + 1),
-      type: "sales",
-      status: defaultOrderStatus(orderStatuses),
-      customerType: "client",
-      clientId: targetLeadId || null,
-      delivery: {
-        recipient: recipientName,
-        street,
-        city,
-        zip,
-        country,
-        phone
-      },
-      billing: {
-        name: billingName,
-        street,
-        city,
-        zip,
-        country,
-        ico,
-        dic,
-        icDph
-      },
-      shippingMethod: defaultShipping,
-      paymentMethod: defaultPayment,
-      paymentStatus: "unpaid",
-      currency: currencyCode || "EUR",
-      itemsNetAmount: 0,
-      servicesNetAmount: 0,
-      totalNetAmount: 0,
-      totalTaxAmount: 0,
-      totalGrossAmount: 0,
-      orderDate: todayLocal(),
-      items: []
-    };
-
-    setActiveDetailTab("orders");
-    setEditingOrder(newOrd);
+    const associated = activeClient.associatedLeads || [];
+    const target =
+      associated.find(isClientRecord) ||
+      leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) ||
+      associated[0];
+    if (!target) return;
+    const back = `clients/${encodeURIComponent(activeClient.name)}?tab=orders`;
+    window.location.hash = `orders/new?customer=${encodeURIComponent(target.id)}&from=${encodeURIComponent(back)}`;
   };
 
   const handleOpenEditOrder = (order: Order) => {
@@ -1730,53 +1681,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ...totals
     };
 
-    const isNew = !orders?.some(o => o.id === completeOrder.id);
-
-    setOrders?.(prev => {
-      const exists = prev.some(o => o.id === completeOrder.id);
-      if (exists) return prev.map(o => (o.id === completeOrder.id ? completeOrder : o));
-      return [completeOrder, ...prev];
-    });
-
-    if (isNew && activeClient) {
-      const newEvent: TimelineEvent = {
-        id: `event_ord_${Date.now()}`,
-        type: "note",
-        timestamp: nowLocalStamp(),
-        title: t(
-          `Order created: ${completeOrder.orderNumber}`,
-          `Vytvorená nová objednávka: ${completeOrder.orderNumber}`,
-          `Új rendelés létrehozva: ${completeOrder.orderNumber}`
-        ),
-        content: `${t("Total amount", "Celková suma", "Végösszeg")}: ${formatMoney(completeOrder.totalGrossAmount, completeOrder.currency || currencyCode || "EUR", systemLanguage)} (${(completeOrder.items || []).length} ${t("items", "položiek", "tétel")})`,
-        author: propCurrentUser?.name || "System"
-      };
-
-      setLeads(prev => prev.map(lead => {
-        if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
-          const currentTimeline = lead.timeline || [];
-          return {
-            ...lead,
-            timeline: [newEvent, ...currentTimeline]
-          };
-        }
-        return lead;
-      }));
-    }
+    setOrders?.(prev => prev.map(o => (o.id === completeOrder.id ? completeOrder : o)));
 
     setEditingOrder(null);
 
-    try {
-      await fetch("/api/orders.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(completeOrder)
-      });
-      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-      toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
-    } catch (e) {
-      console.error("Failed to save order to backend", e);
-    }
+    // The order itself is persisted by the state sync (setOrders -> sync.php).
+    const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+    toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
   };
 
   const handleDeleteOrder = async (orderToDelete: Order) => {
@@ -1957,23 +1868,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setOrders?.(prev => prev.map(o => (o.id === updatedOrder.id ? updatedOrder : o)));
     setEditingOrder(updatedOrder);
 
-    try {
-      await fetch("/api/orders.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedOrder)
-      });
-      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-      toast?.(
-        t(
-          `Invoice ${newInvoiceNumber} created for order!`,
-          `Faktúra ${newInvoiceNumber} bola úspešne vystavená!`,
-          `A(z) ${newInvoiceNumber} számla sikeresen kiállítva!`
-        )
-      );
-    } catch (e) {
-      console.error("Failed to update order with invoice", e);
-    }
+    // The order itself is persisted by the state sync (setOrders -> sync.php).
+    const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+    toast?.(
+      t(
+        `Invoice ${newInvoiceNumber} created for order!`,
+        `Faktúra ${newInvoiceNumber} bola úspešne vystavená!`,
+        `A(z) ${newInvoiceNumber} számla sikeresen kiállítva!`
+      )
+    );
   };
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
