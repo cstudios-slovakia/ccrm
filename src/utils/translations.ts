@@ -910,7 +910,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.social": "📱 Sociálne siete (Zernio)",
     "settings.tab.danger": "⚠️ Reset systému",
     "settings.tab.errors": "⚠️ Chybové záznamy",
-    "settings.tab.audit": "🔐 Audit log",
+    "settings.tab.audit": "🔐 Auditný záznam",
     "settings.tab.license": "🔑 Licencia",
 
     // Viditeľnosť modulov

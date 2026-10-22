@@ -305,7 +305,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       },
       {
         value: "incident" as TicketType,
-        label: t("Incident", "Incident", "Incidens"),
+        label: t("Incident", "Výpadok", "Incidens"),
         icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />,
       },
       {
@@ -3142,7 +3142,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           </a>
                           <img
                             src={selectedTicket.screenshotPath}
-                            alt="Ticket screenshot"
+                            alt={t("Ticket screenshot", "Snímka obrazovky tiketu", "A jegy képernyőképe")}
                             className="mt-1.5 rounded-xl border border-slate-700 max-h-44 object-contain bg-black/40"
                           />
                         </div>

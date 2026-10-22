@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Hash, User, Briefcase, FolderKanban, Target } from "lucide-react";
 import type { MentionEntity } from "./TaskPillText";
+import { getStoredLanguage } from "../utils/translations";
 
 interface TaskTagMentionInputProps {
     value: string;
@@ -39,6 +40,8 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     mentionEntities = [],
     onAssignEntity,
 }) => {
+    const lang = getStoredLanguage();
+    const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
     const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -347,7 +350,7 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
             {mode === "mention" && mentionSuggestions.length > 0 && (
                 <div className="absolute left-0 top-full mt-1.5 z-50 w-80 max-h-64 overflow-y-auto bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
                     <div className="px-2.5 py-1 type-overline text-slate-500 border-b border-slate-100 flex items-center justify-between">
-                        <span>Mention & Assign Entity</span>
+                        <span>{t("Mention & assign", "Spomenúť a priradiť", "Említés és hozzárendelés")}</span>
                         <span className="text-micro text-slate-400 font-normal">
                             Tab / Enter
                         </span>

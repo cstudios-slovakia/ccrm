@@ -141,7 +141,7 @@ const BUILTIN_TICKET_TYPE_LABELS: Record<TicketType, [string, string, string]> =
   bug: ["Bug / Error", "Chyba / Bug", "Hiba / Bug"],
   question: ["Question", "Otázka", "Kérdés"],
   feature_request: ["Feature Request", "Požiadavka", "Fejlesztési kérés"],
-  incident: ["Incident", "Incident", "Incidens"],
+  incident: ["Incident", "Výpadok", "Incidens"],
   billing: ["Billing", "Fakturácia", "Számlázás"],
 };
 

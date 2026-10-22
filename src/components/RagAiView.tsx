@@ -156,7 +156,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatHistories, setChatHistories] = useState<Record<string, Message[]>>({});
   const [inputText, setInputText] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState<"all" | "csuite" | "custom">("all");
 
@@ -219,7 +219,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Scroll the message list only. `scrollIntoView` scrolls every scrollable
+    // ancestor, which dragged the whole workspace down on mount.
+    const list = messagesRef.current;
+    if (list) list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -1148,7 +1151,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 min-w-0 overflow-y-auto p-4 ws-md:p-6 space-y-4 scrollbar-thin bg-slate-50/20">
+          <div ref={messagesRef} className="flex-1 min-w-0 overflow-y-auto p-4 ws-md:p-6 space-y-4 scrollbar-thin bg-slate-50/20">
             {messages.map((msg) => {
               const isAgent = msg.sender === "agent";
               return (
@@ -1255,7 +1258,6 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Input Form */}
@@ -1436,15 +1438,15 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     onChange={(e) => setDecisionDomain(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500 bg-white"
                   >
-                    <option value="strategy">Strategy / CSO</option>
-                    <option value="finance">Finance / CFO</option>
-                    <option value="people">People & HR / CHRO</option>
-                    <option value="legal">Legal & GC</option>
-                    <option value="operations">Operations / COO</option>
-                    <option value="marketing">Marketing / CMO</option>
-                    <option value="product">Product / CPO</option>
-                    <option value="governance">Board & Governance</option>
-                    <option value="general">General Executive</option>
+                    <option value="strategy">{t("Strategy / CSO", "Stratégia / CSO", "Stratégia / CSO")}</option>
+                    <option value="finance">{t("Finance / CFO", "Financie / CFO", "Pénzügy / CFO")}</option>
+                    <option value="people">{t("People & HR / CHRO", "Ľudia a HR / CHRO", "Emberek és HR / CHRO")}</option>
+                    <option value="legal">{t("Legal & GC", "Právo", "Jogi terület")}</option>
+                    <option value="operations">{t("Operations / COO", "Prevádzka / COO", "Működés / COO")}</option>
+                    <option value="marketing">{t("Marketing / CMO", "Marketing / CMO", "Marketing / CMO")}</option>
+                    <option value="product">{t("Product / CPO", "Produkt / CPO", "Termék / CPO")}</option>
+                    <option value="governance">{t("Board & governance", "Predstavenstvo a správa", "Igazgatóság és irányítás")}</option>
+                    <option value="general">{t("General executive", "Všeobecné vedenie", "Általános vezetés")}</option>
                   </select>
                 </div>
 

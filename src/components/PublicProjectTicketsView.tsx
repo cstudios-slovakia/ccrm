@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { TicketHtmlContent } from "./ui/TicketRichHtmlEditor";
 import { ticketTypeColor, ticketTypeLabel } from "../utils/tickets";
+import type { Language } from "../utils/translations";
 
 interface PublicTicketMessage {
   id: string;
@@ -48,7 +49,16 @@ interface PublicStatusDef {
   sortOrder: number;
 }
 
-export const PublicProjectTicketsView: React.FC<{ hash: string; language?: string }> = ({ hash }) => {
+const asLanguage = (value?: string): Language =>
+  value === "sk" || value === "hu" ? value : "en";
+
+export const PublicProjectTicketsView: React.FC<{ hash: string; language?: string }> = ({
+  hash,
+  language,
+}) => {
+  const lang = asLanguage(language);
+  const t = (en: string, sk: string, hu: string) =>
+    lang === "sk" ? sk : lang === "hu" ? hu : en;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string>("");
@@ -68,15 +78,30 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
       );
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data.message || data.error || "Invalid or expired public ticket status link.");
+        setError(
+          data.message ||
+            data.error ||
+            t(
+              "Invalid or expired public ticket status link.",
+              "Odkaz na verejný prehľad tiketov je neplatný alebo expiroval.",
+              "A nyilvános jegystátusz-hivatkozás érvénytelen vagy lejárt.",
+            ),
+        );
       } else {
-        setProjectName(data.project?.name || "Project");
+        setProjectName(data.project?.name || t("Project", "Projekt", "Projekt"));
         setClientName(data.project?.clientName || null);
         setStatuses(Array.isArray(data.statuses) ? data.statuses : []);
         setTickets(Array.isArray(data.tickets) ? data.tickets : []);
       }
     } catch (e: any) {
-      setError(e?.message || "Failed to load ticket status board.");
+      setError(
+        e?.message ||
+          t(
+            "Failed to load ticket status board.",
+            "Prehľad stavov tiketov sa nepodarilo načítať.",
+            "A jegystátusz-tábla betöltése sikertelen.",
+          ),
+      );
     } finally {
       setLoading(false);
     }
@@ -124,12 +149,34 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
     });
   }, [tickets, statusFilter, search]);
 
+  const statusText = (st?: PublicStatusDef | null, fallback?: string) => {
+    if (!st) return fallback || "";
+    if (lang === "hu") return st.labelHu || st.labelEn || st.labelSk || fallback || st.key;
+    if (lang === "sk") return st.labelSk || st.labelEn || st.labelHu || fallback || st.key;
+    return st.labelEn || st.labelSk || st.labelHu || fallback || st.key;
+  };
+
+  const priorityLabel = (priority: string) => {
+    const key = (priority || "").toLowerCase();
+    if (key === "low") return t("Low", "Nízka", "Alacsony");
+    if (key === "high") return t("High", "Vysoká", "Magas");
+    if (key === "critical") return t("Critical", "Kritická", "Kritikus");
+    if (key === "normal") return t("Normal", "Normálna", "Normál");
+    return priority;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="flex items-center gap-3 text-slate-600 font-heading font-bold">
           <RefreshCw className="w-5 h-5 animate-spin text-indigo-600" />
-          <span>Loading project ticket statuses...</span>
+          <span>
+            {t(
+              "Loading project ticket statuses...",
+              "Načítavam stavy tiketov projektu...",
+              "A projekt jegyeinek állapotai töltődnek...",
+            )}
+          </span>
         </div>
       </div>
     );
@@ -143,7 +190,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
             <ShieldAlert className="w-6 h-6" />
           </div>
           <h1 className="font-heading font-extrabold text-title-sm text-slate-900">
-            Status Board Unavailable
+            {t("Status board unavailable", "Prehľad stavov nie je dostupný", "A státusztábla nem érhető el")}
           </h1>
           <p className="text-caption text-slate-500">{error}</p>
         </div>
@@ -162,7 +209,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
             </div>
             <div>
               <div className="text-micro font-bold uppercase tracking-wider text-indigo-600">
-                Live Support Status Board
+                {t("Live support status board", "Živý prehľad stavov podpory", "Élő támogatási státusztábla")}
               </div>
               <h1 className="font-heading font-extrabold text-title-md text-slate-900">
                 {projectName}
@@ -178,7 +225,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
             className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-caption font-bold text-slate-700 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Refresh</span>
+            <span>{t("Refresh", "Obnoviť", "Frissítés")}</span>
           </button>
         </div>
 
@@ -189,7 +236,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
               {counts.total}
             </div>
             <div className="text-micro font-bold uppercase tracking-wider text-slate-400">
-              Total Tickets
+              {t("Total tickets", "Tikety spolu", "Összes jegy")}
             </div>
           </div>
           <div className="bg-white rounded-2xl border border-indigo-200 p-4">
@@ -198,7 +245,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
               <span>{counts.open}</span>
             </div>
             <div className="text-micro font-bold uppercase tracking-wider text-slate-400">
-              Open / In Progress
+              {t("Open / in progress", "Otvorené / v riešení", "Nyitott / folyamatban")}
             </div>
           </div>
           <div className="bg-white rounded-2xl border border-emerald-200 p-4">
@@ -207,7 +254,7 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
               <span>{counts.resolved}</span>
             </div>
             <div className="text-micro font-bold uppercase tracking-wider text-slate-400">
-              Resolved
+              {t("Resolved", "Vyriešené", "Megoldva")}
             </div>
           </div>
         </div>
@@ -220,7 +267,11 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by ticket number or subject..."
+              placeholder={t(
+                "Search by ticket number or subject...",
+                "Hľadať podľa čísla alebo predmetu tiketu...",
+                "Keresés jegyszám vagy tárgy szerint...",
+              )}
               className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 text-caption font-semibold"
             />
           </div>
@@ -229,10 +280,10 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
             onChange={(e) => setStatusFilter(e.target.value)}
             className="h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-700"
           >
-            <option value="all">All Statuses</option>
+            <option value="all">{t("All statuses", "Všetky stavy", "Minden állapot")}</option>
             {statuses.map((s) => (
               <option key={s.key} value={s.key}>
-                {s.labelEn || s.key}
+                {statusText(s, s.key)}
               </option>
             ))}
           </select>
@@ -242,16 +293,20 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-2xs">
           {filtered.length === 0 ? (
             <div className="p-12 text-center text-slate-400 text-caption font-semibold">
-              No tickets found for this project.
+              {t(
+                "No tickets found for this project.",
+                "Pre tento projekt sa nenašli žiadne tikety.",
+                "Ehhez a projekthez nem található jegy.",
+              )}
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
               {filtered.map((tk) => {
                 const st = statusMap.get(tk.status);
                 const color = st?.color || "#6366f1";
-                const label = st?.labelEn || tk.status;
+                const label = statusText(st, tk.status);
                 const tColor = ticketTypeColor(tk.type);
-                const tLabel = ticketTypeLabel(tk.type, "en");
+                const tLabel = ticketTypeLabel(tk.type, lang);
                 const isExpanded = expandedId === tk.id;
 
                 return (
@@ -283,10 +338,12 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                             {tLabel}
                           </span>
                           <span className="text-micro font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                            {tk.priority}
+                            {priorityLabel(tk.priority)}
                           </span>
                           <span className="text-micro text-slate-400">
-                            Reported by <strong>{tk.reporterName || "Client"}</strong> on{" "}
+                            {t("Reported by", "Nahlásil(a)", "Bejelentő:")}{" "}
+                            <strong>{tk.reporterName || t("Client", "Klient", "Ügyfél")}</strong>
+                            {" · "}
                             {String(tk.createdAt || "").slice(0, 16)}
                           </span>
                         </div>
@@ -320,11 +377,18 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                       <div className="pt-3 border-t border-slate-100 space-y-2.5">
                         <div className="text-micro font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                           <MessageSquare className="w-3.5 h-3.5" />
-                          <span>Updates & Conversation ({(tk.messages || []).length})</span>
+                          <span>
+                            {t("Updates & conversation", "Aktualizácie a konverzácia", "Frissítések és beszélgetés")}{" "}
+                            ({(tk.messages || []).length})
+                          </span>
                         </div>
                         {(tk.messages || []).length === 0 ? (
                           <div className="text-caption text-slate-400 italic">
-                            No public messages recorded yet.
+                            {t(
+                              "No public messages recorded yet.",
+                              "Zatiaľ nie sú žiadne verejné správy.",
+                              "Még nincs nyilvános üzenet.",
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-2">
@@ -346,17 +410,20 @@ export const PublicProjectTicketsView: React.FC<{ hash: string; language?: strin
                                   <div className="flex items-center justify-between text-micro text-slate-500 mb-1">
                                     <div className="flex items-center gap-2">
                                       <strong className="text-slate-800">
-                                        {m.authorName || (isAgent ? "Support" : "Client")}
+                                        {m.authorName ||
+                                          (isAgent
+                                            ? t("Support", "Podpora", "Támogatás")
+                                            : t("Client", "Klient", "Ügyfél"))}
                                       </strong>
                                       {isStatusUpdate && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold uppercase bg-purple-100 text-purple-800 border border-purple-300">
                                           <RefreshCw className="w-2.5 h-2.5" />
-                                          Status Update
+                                          {t("Status update", "Zmena stavu", "Állapotváltozás")}
                                         </span>
                                       )}
                                       {isAgent && (
                                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold uppercase bg-indigo-100 text-indigo-700 border border-indigo-200">
-                                          Support Reply
+                                          {t("Support reply", "Odpoveď podpory", "Támogatási válasz")}
                                         </span>
                                       )}
                                     </div>

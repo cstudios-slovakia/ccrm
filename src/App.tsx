@@ -1663,8 +1663,11 @@ ${log.payload || ''}
         console.error("sync.php push failed", res.status, serverMsg);
         if (typeof (window as any).showToast === "function") {
           (window as any).showToast(
-            `Change not saved (server ${res.status}). Please try again.` +
-            (serverMsg ? ` — ${String(serverMsg).slice(0, 140)}` : "")
+            t(
+              `Change not saved (server ${res.status}). Please try again.`,
+              `Zmena sa neuložila (server ${res.status}). Skúste to znova.`,
+              `A módosítás nem mentődött el (szerver: ${res.status}). Próbálja újra.`
+            ) + (serverMsg ? ` — ${String(serverMsg).slice(0, 140)}` : "")
           );
         }
       }

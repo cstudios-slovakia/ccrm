@@ -228,7 +228,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               <span className="text-body font-bold text-slate-400">{systemCurrency}</span>
             </span>
             <span className="text-micro text-slate-400 font-medium">
-              {t("Due around", "Splatnosť okolo", "Esedékes:")} {settings.salaryDueDay ?? 15}. {t("of month", "v mesiaci", "")}
+              {t("Due around", "Splatnosť okolo", "Esedékes:")} {settings.salaryDueDay ?? 15}. {t("of month", "v mesiaci", "a hónapban")}
             </span>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center shadow-xs">

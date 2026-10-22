@@ -105,7 +105,7 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
       <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
           <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-            <ScrollText className="h-4.5 w-4.5 text-indigo-600" /> {t("Audit log", "Audit log", "Audit napló")}
+            <ScrollText className="h-4.5 w-4.5 text-indigo-600" /> {t("Audit log", "Auditný záznam", "Audit napló")}
           </h3>
           <div className="flex gap-2">
             <button

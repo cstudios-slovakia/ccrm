@@ -1,4 +1,5 @@
 import React from "react";
+import { getStoredLanguage } from "./translations";
 import { FileText, User, Folder, CheckSquare, Receipt, Calendar, Sparkles, ExternalLink, ArrowRight } from "lucide-react";
 
 export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, url }) => {
@@ -54,7 +55,12 @@ export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, ur
       type="button"
       onClick={handleEntityClick}
       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-caption font-bold transition-all cursor-pointer hover:scale-[1.03] active:scale-95 mx-1 my-0.5 select-none shadow-2xs group ${colorStyles}`}
-      title={`Open ${displayLabel} in CRM`}
+      title={(() => {
+        const lang = getStoredLanguage();
+        const verb = lang === "sk" ? "Otvoriť" : lang === "hu" ? "Megnyitás" : "Open";
+        const where = lang === "sk" ? "v CRM" : lang === "hu" ? "a CRM-ben" : "in CRM";
+        return `${verb} ${displayLabel} ${where}`;
+      })()}
     >
       <Icon className={`h-3 w-3 shrink-0 ${iconColor} group-hover:scale-110 transition-transform`} />
       <span className="truncate max-w-60">{displayLabel}</span>
@@ -98,7 +104,13 @@ export const FilePill: React.FC<{ fileName: string }> = ({ fileName }) => {
       }
     } else {
       if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(`File "${fileName}" not registered in database`);
+        const lang = getStoredLanguage();
+        const message = lang === "sk"
+          ? `Súbor „${fileName}“ nie je v databáze`
+          : lang === "hu"
+            ? `A(z) „${fileName}” fájl nincs az adatbázisban`
+            : `File "${fileName}" is not in the database`;
+        (window as any).showToast(message);
       }
     }
   };

@@ -366,7 +366,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
 
                 <div className="space-y-2.5">
                   <div>
-                    <label className={labelClass}>SuperFaktúra Email</label>
+                    <label className={labelClass}>{t("SuperFaktúra email", "E-mail SuperFaktúry", "SuperFaktúra e-mail")}</label>
                     <input
                       type="email"
                       value={integrations.superfaktura.email}
@@ -376,7 +376,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                     />
                   </div>
                   <div>
-                    <label className={labelClass}>API Key</label>
+                    <label className={labelClass}>{t("API key", "API kľúč", "API kulcs")}</label>
                     <input
                       type="password"
                       value={integrations.superfaktura.apiKey}
@@ -456,7 +456,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
 
                 <div className="space-y-2.5">
                   <div>
-                    <label className={labelClass}>Client ID</label>
+                    <label className={labelClass}>{t("Client ID", "ID klienta", "Ügyfél-azonosító")}</label>
                     <input
                       type="text"
                       value={integrations.idoklad.clientId}
@@ -466,7 +466,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                     />
                   </div>
                   <div>
-                    <label className={labelClass}>Client Secret</label>
+                    <label className={labelClass}>{t("Client secret", "Tajomstvo klienta", "Ügyfél titkos kulcs")}</label>
                     <input
                       type="password"
                       value={integrations.idoklad.clientSecret}

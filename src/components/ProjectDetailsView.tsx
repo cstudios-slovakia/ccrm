@@ -4533,16 +4533,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {t("No invoices issued for this project yet.", "K tomuto projektu zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez a projekthez.")}
                   </div>
                 ) : (
-                  <div className="table-sticky-scroll">
+                  <div className="overflow-x-auto">
                     <table className="w-full text-left text-ui">
-                      <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
+                      <thead className="bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Invoice # & Title", "Číslo FA a popis", "Számlaszám és tétel")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Uhradené (€)", "Fizetett (€)")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold">{t("Invoice # & Title", "Číslo FA a popis", "Számlaszám és tétel")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Uhradené (€)", "Fizetett (€)")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">
@@ -4623,16 +4623,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {t("No expenses logged for this project yet.", "K tomuto projektu zatiaľ neboli zaevidované žiadne výdavky.", "Még nincsenek kiadások rögzítve.")}
                   </div>
                 ) : (
-                  <div className="table-sticky-scroll">
+                  <div className="overflow-x-auto">
                     <table className="w-full text-left text-ui">
-                      <thead className="sticky top-0 z-20 bg-slate-50 text-slate-400 border-b border-slate-200">
+                      <thead className="bg-slate-50 text-slate-400 border-b border-slate-200">
                         <tr>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold">{t("Expense Title & Category", "Názov a kategória", "Megnevezés és kategória")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Zaplatené (€)", "Kifizetett (€)")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
-                          <th className="sticky top-0 z-10 bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold">{t("Expense Title & Category", "Názov a kategória", "Megnevezés és kategória")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-right">{t("Planned (€)", "Plánované (€)", "Tervezett (€)")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-right">{t("Real (€)", "Zaplatené (€)", "Kifizetett (€)")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-center">{t("Status", "Stav", "Állapot")}</th>
+                          <th className="bg-slate-50 py-2 px-3 font-semibold text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200/60 font-semibold text-slate-700">

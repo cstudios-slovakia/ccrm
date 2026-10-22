@@ -1205,10 +1205,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         // A workflow deleted under an open undo window is still on the server.
         setWorkflows((data.workflows || []).filter((w: any) => !hiddenWorkflowIdsRef.current.has(w.id)));
       } else {
-        showToast(data.message || "Failed to fetch workflows", "error");
+        showToast(data.message || t("Failed to fetch workflows", "Nepodarilo sa načítať workflow", "A munkafolyamatok betöltése sikertelen"), "error");
       }
     } catch (err) {
-      showToast("Error loading workflows", "error");
+      showToast(t("Error loading workflows", "Chyba pri načítaní workflow", "Hiba a munkafolyamatok betöltésekor"), "error");
     } finally {
       setLoading(false);
     }
@@ -1297,7 +1297,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         showToast(data.message || "Failed to save settings", "error");
       }
     } catch (err) {
-      showToast("Error saving settings", "error");
+      showToast(t("Error saving settings", "Chyba pri ukladaní nastavení", "Hiba a beállítások mentésekor"), "error");
     } finally {
       setSavingSettings(false);
     }
@@ -1321,7 +1321,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         showToast(data.message || "Failed to clone workflow", "error");
       }
     } catch (err) {
-      showToast("Error duplicating workflow", "error");
+      showToast(t("Error duplicating workflow", "Chyba pri duplikovaní workflow", "Hiba a munkafolyamat másolásakor"), "error");
     }
   };
 
@@ -1342,7 +1342,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         fetchWorkflows();
       }
     } catch (err) {
-      showToast("Error toggling status", "error");
+      showToast(t("Error toggling status", "Chyba pri zmene stavu", "Hiba az állapot váltásakor"), "error");
     }
   };
 
@@ -1435,7 +1435,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         setLogs(data.logs || []);
       }
     } catch (err) {
-      showToast("Error loading logs", "error");
+      showToast(t("Error loading logs", "Chyba pri načítaní záznamov", "Hiba a naplók betöltésekor"), "error");
     }
   };
 
@@ -1473,7 +1473,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         showToast(data.message || "Failed to save workflow", "error");
       }
     } catch (err) {
-      showToast("Error saving workflow", "error");
+      showToast(t("Error saving workflow", "Chyba pri ukladaní workflow", "Hiba a munkafolyamat mentésekor"), "error");
     }
   };
 
@@ -1786,7 +1786,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         showToast(data.message || "Test run failed", "error");
       }
     } catch (err) {
-      showToast("Error triggering test run", "error");
+      showToast(t("Error triggering test run", "Chyba pri spustení testu", "Hiba a tesztfuttatás indításakor"), "error");
     }
   };
 

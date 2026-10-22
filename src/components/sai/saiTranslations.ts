@@ -21,7 +21,7 @@ export const SAI_TRANSLATIONS = {
       sk: 'Vyberte si medzi okamžitou bezplatnou ukážkou a ostrou simuláciou cez OpenAI.',
       hu: 'Válasszon az azonnali ingyenes bemutató vagy az éles OpenAI szimuláció között.'
     },
-    demoTitle: { en: 'Demo Test', sk: 'Demo test', hu: 'Demo teszt' },
+    demoTitle: { en: 'Demo Test', sk: 'Demonštračný test', hu: 'Demo teszt' },
     demoCost: { en: '$0.00', sk: '0.00 €', hu: '0.00 €' },
     demoDesc: { 
       en: 'Instant synthetic simulation on demonstration data. Zero OpenAI API costs, completes in seconds.',

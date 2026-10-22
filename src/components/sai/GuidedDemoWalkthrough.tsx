@@ -253,7 +253,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-body font-bold tracking-tight text-white">{t("Interactive SAI Process Walkthrough", "Interaktívna prehliadka procesu SAI", "Interaktívna SAI folyamatbemutató")}</h2>
+              <h2 className="text-body font-bold tracking-tight text-white">{t("Interactive SAI Process Walkthrough", "Interaktívna prehliadka procesu SAI", "Interaktív SAI folyamatbemutató")}</h2>
               <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                 {t("Live Simulation Showcase", "Živá ukážka simulácie", "Élő szimulációs bemutató")}
               </span>
@@ -391,31 +391,31 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                       1
                     </div>
                     <div>
-                      <h3 className="text-title-sm font-bold text-slate-900">Definujte strategický scenár & hypotézu</h3>
-                      <p className="text-ui text-slate-500">Aké obchodné rozhodnutie si chcete otestovať pred jeho zverejnením?</p>
+                      <h3 className="text-title-sm font-bold text-slate-900">{t("Define the strategic scenario & hypothesis", "Definujte strategický scenár a hypotézu", "Határozza meg a stratégiai forgatókönyvet és a hipotézist")}</h3>
+                      <p className="text-ui text-slate-500">{t("Which business decision do you want to test before you publish it?", "Aké obchodné rozhodnutie si chcete otestovať pred jeho zverejnením?", "Melyik üzleti döntést szeretné tesztelni a közzététel előtt?")}</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-ui font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                    Krok 1 zo 6
+                    {t("Step 1 of 6", "Krok 1 zo 6", "1. lépés / 6")}
                   </span>
                 </div>
 
                 <div className="space-y-4 text-ui">
                   <div>
                     <label className="text-slate-700 block mb-1.5 type-overline">
-                      Názov strategického návrhu
+                      {t("Strategic proposal title", "Názov strategického návrhu", "A stratégiai javaslat neve")}
                     </label>
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 font-semibold text-slate-800">
-                      Reštrukturalizácia balíka Enterprise (Simulácia 25% úpravy cien)
+                      {t("Enterprise tier restructuring (25% price-change simulation)", "Reštrukturalizácia balíka Enterprise (simulácia 25% úpravy cien)", "Enterprise csomag átszervezése (25%-os árváltozás szimulációja)")}
                     </div>
                   </div>
 
                   <div>
                     <label className="text-slate-700 block mb-1.5 type-overline">
-                      Strategická hypotéza & Rozhodnutie
+                      {t("Strategic hypothesis & decision", "Strategická hypotéza a rozhodnutie", "Stratégiai hipotézis és döntés")}
                     </label>
                     <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 font-medium text-indigo-900 leading-relaxed min-h-17.5">
-                      {typedProposal || "Písanie zadania..."}
+                      {typedProposal || t("Writing the brief...", "Písanie zadania...", "A feladat írása...")}
                       <span className="inline-block w-1.5 h-4 bg-indigo-600 ml-1 animate-pulse align-middle" />
                     </div>
                   </div>
@@ -424,28 +424,28 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-1.5 text-slate-500 font-bold text-caption mb-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        <span>Časový horizont CRM</span>
+                        <span>{t("CRM time horizon", "Časový horizont CRM", "CRM időhorizont")}</span>
                       </div>
-                      <span className="text-body font-bold text-slate-900">12 mesiacov</span>
-                      <span className="text-micro text-slate-400 block">Čerpá z minulých vyhratých/prehratých obchodov</span>
+                      <span className="text-body font-bold text-slate-900">{t("12 months", "12 mesiacov", "12 hónap")}</span>
+                      <span className="text-micro text-slate-400 block">{t("Drawn from past won and lost deals", "Čerpá z minulých vyhratých a prehratých obchodov", "Korábbi megnyert és elvesztett üzletekből")}</span>
                     </div>
 
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-1.5 text-slate-500 font-bold text-caption mb-1">
                         <Users className="w-3.5 h-3.5" />
-                        <span>Veľkosť roju</span>
+                        <span>{t("Swarm size", "Veľkosť roju", "Raj mérete")}</span>
                       </div>
-                      <span className="text-body font-bold text-slate-900">20 autonómnych persón</span>
-                      <span className="text-micro text-slate-400 block">Nákupcovia, konkurencia & regulátori</span>
+                      <span className="text-body font-bold text-slate-900">{t("20 autonomous personas", "20 autonómnych persón", "20 autonóm perszóna")}</span>
+                      <span className="text-micro text-slate-400 block">{t("Buyers, competitors & regulators", "Nákupcovia, konkurencia a regulátori", "Vevők, versenytársak és szabályozók")}</span>
                     </div>
 
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-1.5 text-slate-500 font-bold text-caption mb-1">
                         <Clock className="w-3.5 h-3.5" />
-                        <span>Simulačné kolá</span>
+                        <span>{t("Simulation rounds", "Simulačné kolá", "Szimulációs körök")}</span>
                       </div>
-                      <span className="text-body font-bold text-slate-900">3 kolá (24h cyklus)</span>
-                      <span className="text-micro text-slate-400 block">Modeluje denný a nočný režim</span>
+                      <span className="text-body font-bold text-slate-900">{t("3 rounds (24h cycle)", "3 kolá (24h cyklus)", "3 kör (24 órás ciklus)")}</span>
+                      <span className="text-micro text-slate-400 block">{t("Models day and night behaviour", "Modeluje denný a nočný režim", "A nappali és éjszakai működést modellezi")}</span>
                     </div>
                   </div>
                 </div>
@@ -455,7 +455,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     onClick={handleNextStep}
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-ui shadow-md transition flex items-center gap-2 cursor-pointer"
                   >
-                    <span>Prejsť na predbežný odhad</span>
+                    <span>{t("Continue to the estimate", "Prejsť na predbežný odhad", "Tovább az előzetes becsléshez")}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -473,55 +473,55 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                       2
                     </div>
                     <div>
-                      <h3 className="text-title-sm font-bold text-slate-900">Predbežný odhad nákladov a bezpečnosti</h3>
-                      <p className="text-ui text-slate-500">Výpočet objemu tokenov & overenie bezpečnostných limitov pred spustením LLM</p>
+                      <h3 className="text-title-sm font-bold text-slate-900">{t("Preflight cost & safety estimate", "Predbežný odhad nákladov a bezpečnosti", "Előzetes költség- és biztonságbecslés")}</h3>
+                      <p className="text-ui text-slate-500">{t("Token volume and safety limits before the model runs", "Výpočet objemu tokenov a overenie bezpečnostných limitov pred spustením modelu", "Tokenmennyiség és biztonsági limitek a modell indítása előtt")}</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-ui font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    Krok 2 zo 6
+                    {t("Step 2 of 6", "Krok 2 zo 6", "2. lépés / 6")}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 ws-md:grid-cols-4 gap-3 text-ui">
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">Objem vstupu</span>
+                    <span className="text-caption text-slate-500 font-bold block">{t("Input volume", "Objem vstupu", "Bemenet mennyisége")}</span>
                     <span className="text-title font-bold text-slate-900 mt-1 block">~42,500</span>
-                    <span className="text-micro text-slate-400">Ontológia + Persóny</span>
+                    <span className="text-micro text-slate-400">{t("Ontology + personas", "Ontológia + persóny", "Ontológia + perszónák")}</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">Generované ťahy</span>
-                    <span className="text-title font-bold text-indigo-600 mt-1 block">~48 volaní</span>
-                    <span className="text-micro text-slate-400">Filtrované nočným spánkom</span>
+                    <span className="text-caption text-slate-500 font-bold block">{t("Generated moves", "Generované ťahy", "Generált lépések")}</span>
+                    <span className="text-title font-bold text-indigo-600 mt-1 block">{t("~48 calls", "~48 volaní", "~48 hívás")}</span>
+                    <span className="text-micro text-slate-400">{t("Filtered by the night cycle", "Filtrované nočným cyklom", "Éjszakai ciklussal szűrve")}</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">Cena GPT-5.6 Terra</span>
+                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-5.6 Terra price", "Cena GPT-5.6 Terra", "GPT-5.6 Terra ára")}</span>
                     <span className="text-title font-bold text-indigo-600 mt-1 block">0.064 €</span>
-                    <span className="text-micro text-slate-400">1.50 € / 1M tokenov (Hĺbková analýza)</span>
+                    <span className="text-micro text-slate-400">{t("1.50 € / 1M tokens (deep analysis)", "1.50 € / 1M tokenov (hĺbková analýza)", "1.50 € / 1M token (mély elemzés)")}</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">Cena GPT-5.6 Luna</span>
+                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-5.6 Luna price", "Cena GPT-5.6 Luna", "GPT-5.6 Luna ára")}</span>
                     <span className="text-title font-bold text-purple-600 mt-1 block">0.011 €</span>
-                    <span className="text-micro text-slate-400">0.25 € / 1M tokenov (Cenovo optimalizovaný)</span>
+                    <span className="text-micro text-slate-400">{t("0.25 € / 1M tokens (cost-optimised)", "0.25 € / 1M tokenov (cenovo optimalizovaný)", "0.25 € / 1M token (árra optimalizált)")}</span>
                   </div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
                   <div className="flex items-center gap-2 text-emerald-800 font-bold text-ui">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Bezpečnostné overenia v poriadku</span>
+                    <span>{t("Safety checks passed", "Bezpečnostné overenia v poriadku", "A biztonsági ellenőrzések rendben")}</span>
                   </div>
                   <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-2 text-caption text-emerald-900">
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Rozpočtový strop obmedzený na 5.00 €</span>
+                      <span>{t("Budget cap limited to 5.00 €", "Rozpočtový strop obmedzený na 5.00 €", "Költségkeret 5.00 €-ra korlátozva")}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Osobné údaje anonymizované</span>
+                      <span>{t("Personal data anonymised", "Osobné údaje anonymizované", "Személyes adatok anonimizálva")}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>Cirkadiánny cyklus aktívny</span>
+                      <span>{t("Circadian cycle active", "Cirkadiánny cyklus aktívny", "Cirkadián ciklus aktív")}</span>
                     </div>
                   </div>
                 </div>
@@ -531,13 +531,13 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     onClick={handlePrevStep}
                     className="px-4 py-2 rounded-xl text-ui font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer"
                   >
-                    ← Späť na scenár
+                    ← {t("Back to the scenario", "Späť na scenár", "Vissza a forgatókönyvhöz")}
                   </button>
                   <button
                     onClick={handleNextStep}
                     className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-md transition flex items-center gap-2 cursor-pointer"
                   >
-                    <span>Autorizovať & Syntetizovať persóny roju</span>
+                    <span>{t("Authorise & synthesise swarm personas", "Autorizovať a syntetizovať persóny roju", "Engedélyezés és a raj perszónáinak szintetizálása")}</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -556,11 +556,15 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-indigo-600" />
                       <h4 className="text-ui font-bold text-slate-800">
-                        Prúd načítaných persón z CRM ({DEMO_AGENTS.length} agentov)
+                        {t(
+                          `CRM persona feed (${DEMO_AGENTS.length} agents)`,
+                          `Prúd načítaných persón z CRM (${DEMO_AGENTS.length} agentov)`,
+                          `CRM-ből betöltött perszónák (${DEMO_AGENTS.length} ágens)`,
+                        )}
                       </h4>
                     </div>
                     <span className="text-micro font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      Ukotvené v obchodoch CRM
+                      {t("Grounded in CRM deals", "Ukotvené v obchodoch CRM", "CRM üzletekhez kötve")}
                     </span>
                   </div>
 
@@ -590,7 +594,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : 'bg-slate-100 text-slate-600 border border-slate-200'
                           }`}>
-                            {agent.stance === 'opposing' ? 'Nesúhlasný' : agent.stance === 'supportive' ? 'Podporujúci' : 'Neutrálny'}
+                            {agent.stance === 'opposing' ? t('Opposing', 'Nesúhlasný', 'Ellenző') : agent.stance === 'supportive' ? t('Supportive', 'Podporujúci', 'Támogató') : t('Neutral', 'Neutrálny', 'Semleges')}
                           </span>
                         </div>
                         <p className="text-caption text-slate-600 pl-10 leading-relaxed italic">
@@ -607,11 +611,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <div className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-purple-600" />
                       <h4 className="text-ui font-bold text-slate-800">
-                        Dynamický graf znalostí & Vzájomné vzťahy
+                        {t("Dynamic knowledge graph & relationships", "Dynamický graf znalostí a vzájomné vzťahy", "Dinamikus tudásgráf és kapcsolatok")}
                       </h4>
                     </div>
                     <span className="text-micro font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                      5 uzlov / 4 dynamické väzby
+                      {t("5 nodes / 4 dynamic links", "5 uzlov / 4 dynamické väzby", "5 csomópont / 4 dinamikus kapcsolat")}
                     </span>
                   </div>
 
@@ -634,18 +638,18 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <Play className="w-5 h-5 fill-white animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-body font-bold text-slate-900">Krok 4: Prebieha autonómna trhová simulácia</h3>
-                    <p className="text-ui text-slate-500">Persóny diskutujú, vznášajú námietky a reagujú na navrhované zmeny v reálnom čase</p>
+                    <h3 className="text-body font-bold text-slate-900">{t("Step 4: autonomous market simulation in progress", "Krok 4: prebieha autonómna trhová simulácia", "4. lépés: autonóm piaci szimuláció folyamatban")}</h3>
+                    <p className="text-ui text-slate-500">{t("Personas debate, raise objections and react to the proposed changes in real time", "Persóny diskutujú, vznášajú námietky a reagujú na navrhované zmeny v reálnom čase", "A perszónák vitatkoznak, kifogásokat emelnek, és valós időben reagálnak a javasolt változásokra")}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-ui">
                   <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="type-overline text-slate-400 block">Simulovaný čas</span>
+                    <span className="type-overline text-slate-400 block">{t("Simulated time", "Simulovaný čas", "Szimulált idő")}</span>
                     <span className="font-bold text-slate-700">14:00 CET</span>
                   </div>
                   <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="type-overline text-slate-400 block">Virálna odozva</span>
+                    <span className="type-overline text-slate-400 block">{t("Viral response", "Virálna odozva", "Virális visszhang")}</span>
                     <span className="font-bold text-purple-600">{currentMetric.viralIndex}%</span>
                   </div>
                 </div>
@@ -658,9 +662,9 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
                     <span className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
                       <MessageSquare className="w-4 h-4 text-indigo-600" />
-                      Autonómny sociálny kanál ({warRoomPosts.length} príspevkov)
+                      {t("Autonomous social feed", "Autonómny sociálny kanál", "Autonóm közösségi folyam")} ({warRoomPosts.length} {t("posts", "príspevkov", "bejegyzés")})
                     </span>
-                    <span className="text-micro font-bold text-slate-400">Priebežné streamovanie</span>
+                    <span className="text-micro font-bold text-slate-400">{t("Live streaming", "Priebežné streamovanie", "Folyamatos közvetítés")}</span>
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pt-3 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
@@ -682,7 +686,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                           <span className={`px-2 py-0.5 rounded-full type-overline shrink-0 ${
                             post.sentimentScore > 0.2 ? 'bg-emerald-50 text-emerald-700' : post.sentimentScore < -0.2 ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {post.sentimentScore > 0.2 ? 'Podporujúci' : post.sentimentScore < -0.2 ? 'Nesúhlasný' : 'Neutrálny'}
+                            {post.sentimentScore > 0.2 ? t('Supportive', 'Podporujúci', 'Támogató') : post.sentimentScore < -0.2 ? t('Opposing', 'Nesúhlasný', 'Ellenző') : t('Neutral', 'Neutrálny', 'Semleges')}
                           </span>
                         </div>
                         <div className="text-ui text-slate-700 mt-1 leading-relaxed">
@@ -710,8 +714,8 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <h3 className="text-title font-bold text-slate-900">Syntéza hlavného spravodajského analytika</h3>
-                  <p className="text-ui text-slate-500">Spracovanie dialógu z 3 kôl do strategických zistení a odpovedí na námietky</p>
+                  <h3 className="text-title font-bold text-slate-900">{t("Lead intelligence analyst synthesis", "Syntéza hlavného spravodajského analytika", "Vezető hírszerzési elemző szintézise")}</h3>
+                  <p className="text-ui text-slate-500">{t("Turning 3 rounds of debate into strategic findings and objection replies", "Spracovanie dialógu z 3 kôl do strategických zistení a odpovedí na námietky", "3 kör vita feldolgozása stratégiai megállapításokká és kifogásválaszokká")}</p>
                 </div>
 
                 {/* Progress bar */}
@@ -726,25 +730,25 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span>Kritické riziká</span>
+                      <span>{t("Critical risks", "Kritické riziká", "Kritikus kockázatok")}</span>
                     </div>
-                    <p className="text-caption text-slate-500 mt-1">Identifikované sankcie za výpadky a požiadavka na suverenitu dát v EÚ.</p>
+                    <p className="text-caption text-slate-500 mt-1">{t("Identified outage penalties and an EU data-sovereignty requirement.", "Identifikované sankcie za výpadky a požiadavka na suverenitu dát v EÚ.", "Azonosított kiesési kötbérek és EU-s adatszuverenitási követelmény.")}</p>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span>Ťahy konkurencie</span>
+                      <span>{t("Competitor moves", "Ťahy konkurencie", "Versenytársi lépések")}</span>
                     </div>
-                    <p className="text-caption text-slate-500 mt-1">Zmapované protiútoky konkurencie ponúkajúcej migračné zľavy.</p>
+                    <p className="text-caption text-slate-500 mt-1">{t("Mapped competitor counter-offers that include migration discounts.", "Zmapované protiútoky konkurencie ponúkajúcej migračné zľavy.", "Feltérképezett versenytársi ellentámadások migrációs kedvezményekkel.")}</p>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      <span>Obchodné argumenty</span>
+                      <span>{t("Sales arguments", "Obchodné argumenty", "Értékesítési érvek")}</span>
                     </div>
-                    <p className="text-caption text-slate-500 mt-1">Pripravené odpovede na námietky pre obchodný tím.</p>
+                    <p className="text-caption text-slate-500 mt-1">{t("Objection replies prepared for the sales team.", "Pripravené odpovede na námietky pre obchodný tím.", "A kifogásokra kész válaszok az értékesítő csapatnak.")}</p>
                   </div>
                 </div>
 
@@ -752,7 +756,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                   onClick={handleNextStep}
                   className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-md transition inline-flex items-center gap-2 cursor-pointer"
                 >
-                  <span>Zobraziť manažérsky briefing & Chatbota</span>
+                  <span>{t("Show the executive briefing & chatbot", "Zobraziť manažérsky briefing a chatbota", "Vezetői eligazítás és chatbot megjelenítése")}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -766,7 +770,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 report={DEMO_STRATEGIC_REPORT}
                 agents={DEMO_AGENTS}
                 posts={DEMO_POSTS}
-                hypothesis="Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, 99.9% SLA a dedikovaná podpora cez WhatsApp."
+                hypothesis={t(
+                  "Enterprise tier restructuring: +25% price increase, 99.9% SLA and dedicated WhatsApp support.",
+                  "Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, 99.9% SLA a dedikovaná podpora cez WhatsApp.",
+                  "Enterprise csomag átszervezése: +25% áremelés, 99.9% SLA és dedikált WhatsApp támogatás."
+                )}
                 isDemoMode={true}
                 onOpenAgentDirectory={() => handleSelectStep(4)}
               />

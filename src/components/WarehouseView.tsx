@@ -6674,10 +6674,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </span>
                 <h2 className="type-metric text-slate-900 mt-0.5">
                   {selectedMovementForPrint.type === "inward"
-                    ? t("PRÍJEMKA TOVARU", "PRÍJEMKA TOVARU", "BEVÉTELEZÉSI BIZONYLAT")
+                    ? t("GOODS RECEIPT", "PRÍJEMKA TOVARU", "BEVÉTELEZÉSI BIZONYLAT")
                     : selectedMovementForPrint.type === "outward"
-                    ? t("DODACÍ LIST / VÝDAJKA", "DODACÍ LIST / VÝDAJKA", "SZÁLLÍTÓLEVÉL / KIADÁS")
-                    : t("PREVODKA", "PREVODKA", "ÁTADÁSI BIZONYLAT")}
+                    ? t("DELIVERY NOTE / ISSUE", "DODACÍ LIST / VÝDAJKA", "SZÁLLÍTÓLEVÉL / KIADÁS")
+                    : t("TRANSFER NOTE", "PREVODKA", "ÁTADÁSI BIZONYLAT")}
                 </h2>
                 <div className="text-body font-mono font-bold text-blue-900 mt-1">
                   {selectedMovementForPrint.documentNumber}

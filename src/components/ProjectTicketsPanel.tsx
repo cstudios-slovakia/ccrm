@@ -912,8 +912,8 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
                   }
                   className="w-full px-3 py-2 text-caption rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-semibold"
                 >
-                  <option value="standard">Standard</option>
-                  <option value="priority">Priority / Pro</option>
+                  <option value="standard">{tr("Štandard", "Standard", "Normál")}</option>
+                  <option value="priority">{tr("Priorita / Pro", "Priority / Pro", "Prioritás / Pro")}</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
               </div>

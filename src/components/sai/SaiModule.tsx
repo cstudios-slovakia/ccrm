@@ -820,7 +820,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                   SAI
                 </h1>
                 <span className="px-2 py-0.5 rounded-full type-overline bg-purple-100 text-purple-700 border border-purple-200">
-                  Swarm Artificial Intelligence
+                  {t("Swarm artificial intelligence", "Rojová umelá inteligencia", "Raj-alapú mesterséges intelligencia")}
                 </span>
               </div>
               <p className="text-ui text-slate-500 font-medium">
@@ -848,7 +848,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                   className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Activity className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>War Room</span>
+                  <span>{t("War Room", "War Room", "Élő War Room")}</span>
                 </button>
               )}
               {activeSimulationId && activeReport && (
