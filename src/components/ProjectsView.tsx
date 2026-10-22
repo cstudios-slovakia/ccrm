@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X, PanelRightOpen } from "lucide-react";
@@ -1221,6 +1223,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   // A long list scrolls under the pointer while a row is dragged near an edge.
   const resultsRef = useRef<HTMLDivElement | null>(null);
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   useDragAutoScroll(projectDrag.draggedId !== null, resultsRef);
 
   // Cards glide to their new slots after a drop (or a re-sort) instead of jumping.
@@ -2188,16 +2191,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               )}
             </div>
           ) : viewMode === "list" || isStructure ? (
-            <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6">
-              <div className="overflow-x-auto ws-lg:table-sticky-scroll scrollbar-thin rounded-3xl">
+            <div ref={resultsRef} className="glass-panel overflow-clip rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6">
+              <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
                 <table className="w-full text-left border-collapse min-w-0 ws-lg:min-w-210">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a
                       column is, and whether it is here at all, is decided in one
                       place. See utils/projectColumns.ts. */}
-                  <thead className="hidden ws-lg:table-header-group sticky top-0 z-20">
-                    <tr className="border-b border-slate-200 bg-slate-50/95 backdrop-blur-xs">
-                      <th className="sticky top-0 left-0 z-20 bg-slate-50/95 backdrop-blur-xs px-3 py-3 w-10 text-center rounded-tl-3xl border-b border-slate-200">
+                  <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <th className="sticky left-0 z-20 bg-slate-50 px-3 py-3 w-10 text-center border-b border-slate-200">
                         <button
                           type="button"
                           onClick={handleSelectAllVisible}
@@ -2223,7 +2226,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           return (
                             <th
                               key={col.key}
-                              className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
+                              className="bg-slate-50 px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
                             >
                               {columnLabel(col)}
                             </th>
@@ -2233,7 +2236,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           <th
                             key={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
-                            className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
+                            className="bg-slate-50 px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
                           >
                             <button
                               type="button"
@@ -2252,7 +2255,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           </th>
                         );
                       })}
-                      <th className="sticky top-0 right-0 bg-slate-50/95 backdrop-blur-xs z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-slate-200 rounded-tr-3xl" />
+                      <th className="sticky right-0 bg-slate-50 z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-slate-200" />
                     </tr>
                   </thead>
                   <tbody>
@@ -2672,6 +2675,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   )}
                 </table>
               </div>
+              <StickyHScrollbar target={tableWrapEl} />
             </div>
           ) : (
             <div

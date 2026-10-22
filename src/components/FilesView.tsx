@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { 
   FolderOpen, FileText, Search, Clock, User, Euro, 
   ArrowRight, Download, Handshake, Receipt, Plus, X, UploadCloud, File, Trash, Loader2, Eye, Lock, Briefcase
@@ -98,6 +100,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const canEdit = access.edit;
   const canDelete = access.delete;
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState("");
   const [previewDocumentId, setPreviewDocumentId] = useState<string | null>(null);
 
@@ -734,19 +737,19 @@ export const FilesView: React.FC<FilesViewProps> = ({
       </div>
 
       {/* 3. Files Datagrid Table (Amber Light Brown styled) */}
-      <div className="glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-xl overflow-hidden">
-        <div className="table-sticky-scroll scrollbar-thin">
+      <div className="glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-xl overflow-clip">
+        <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
           <table className="w-full border-collapse text-left min-w-195">
-            <thead>
+            <thead className="table-page-sticky-head">
               <tr className="bg-white text-amber-800 type-overline">
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_filename")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_type")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_client")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_project")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_date")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_size")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_value")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tr-[24px] text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_actions")}</th>
+                <th className="sticky bg-white z-10 py-4 px-6 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_filename")}</th>
+                <th className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_type")}</th>
+                <th className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_client")}</th>
+                <th className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_project")}</th>
+                <th className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_date")}</th>
+                <th className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_size")}</th>
+                <th className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_value")}</th>
+                <th className="sticky bg-white z-10 py-4 px-6 text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_actions")}</th>
               </tr>
             </thead>
 
@@ -923,6 +926,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
             </tbody>
           </table>
         </div>
+        <StickyHScrollbar target={tableWrapEl} />
 
         <div className="bg-amber-50/10 border-t-2 border-amber-100 p-4 flex items-center justify-between type-overline text-slate-500">
           <div className="flex items-center gap-1.5">

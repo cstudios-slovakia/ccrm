@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon, Bot, Bell, Volume2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import { PasskeySettings } from "./PasskeySettings";
@@ -76,6 +78,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
     (SUB_TABS as readonly string[]).includes(initialSubTab ?? "") ? (initialSubTab as SubTab) : "profile"
   );
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
@@ -1028,14 +1031,14 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
                 </div>
               ) : (
-                <div className="table-sticky-scroll">
+                <div ref={tableWrapRef} className="table-page-wrap">
                   <table className="w-full text-left text-ui border-collapse">
-                    <thead className="sticky top-0 z-20 bg-slate-50">
+                    <thead className="table-page-sticky-head">
                       <tr className="border-b border-slate-200 text-slate-500 type-overline">
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">URI</th>
-                        <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
+                        <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
+                        <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
+                        <th className="sticky z-10 bg-slate-50 py-3 px-4">URI</th>
+                        <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1069,6 +1072,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   </table>
                 </div>
               )}
+              <StickyHScrollbar target={tableWrapEl} />
             </div>
           )}
 

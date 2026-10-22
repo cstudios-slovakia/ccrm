@@ -2233,8 +2233,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       {/* VIEW STATE 3: CREATE NEW MEETING */}
       {viewState === "new" && (
         <div className="w-full flex flex-col items-center bg-slate-100/50 -mx-4 px-4 py-6 ws-md:p-8 min-h-screen">
-          {/* FLOATING STICKY HEADER CARD */}
-          <div className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-md rounded-[20px] p-3 mb-8 w-full max-w-5xl flex flex-wrap items-center justify-between gap-4 transition-all">
+          {/* HEADER CARD */}
+          <div className="bg-white border border-slate-200/80 shadow-md rounded-[20px] p-3 mb-8 w-full max-w-5xl flex flex-wrap items-center justify-between gap-4 transition-all">
             {/* Left controls: Back, Date */}
             <div className="flex items-center gap-3">
               <button

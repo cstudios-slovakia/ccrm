@@ -13,11 +13,10 @@ import {
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
-import { orderStatusColor, orderStatusLabel, generateOrderNumber, calculateOrderTotals, defaultOrderStatus } from "../utils/orders";
+import { orderStatusColor, orderStatusLabel, calculateOrderTotals } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
-import { getDefaultPaymentMethod } from "../utils/payment";
+import { isClientRecord } from "../utils/clientRecord";
 import { applyClientProfile } from "../utils/leadClient";
-import { getAvailableShippingMethods } from "../utils/shipping";
 import { getDefaultVatRate } from "../utils/vat";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
@@ -65,6 +64,8 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { Chart as BundledChart } from "../utils/chartRuntime";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -335,7 +336,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
     const flushTable = (key: string) => {
       if (tableRows.length > 0) {
         elements.push(
-          <div key={`table-${key}`} className="table-sticky-scroll my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
+          <div key={`table-${key}`} className="overflow-x-auto my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
             <table className="min-w-full divide-y divide-slate-200 text-caption">
               <thead className="bg-slate-50">
                 <tr>
@@ -486,6 +487,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const canCreateTask = taskAccess ? taskAccess.create : canEdit;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
@@ -1656,67 +1658,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
+  // New orders are created in the Orders module with this client prefilled, and
+  // come back to this client's Orders tab. The order attaches to the profile's own
+  // client record; a profile without one falls back to the same-name / first lead row.
   const handleOpenCreateOrder = () => {
     if (!activeClient) return;
-    const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) 
-      || activeClient.associatedLeads?.[0];
-    const targetLeadId = matchedLead?.id || activeClient.associatedLeads?.[0]?.id || "";
-
-    const recipientName = activeClient.contactPerson || matchedLead?.contactPerson || activeClient.name || "";
-    const billingName = activeClient.name || matchedLead?.name || "";
-    const street = activeClient.street || matchedLead?.address?.street || "";
-    const city = activeClient.city || matchedLead?.city || matchedLead?.address?.city || "";
-    const zip = activeClient.postalCode || matchedLead?.address?.postalCode || "";
-    const country = activeClient.country || matchedLead?.address?.country || "SK";
-    const phone = activeClient.phone || matchedLead?.phone || "";
-    const ico = activeClient.companyId || matchedLead?.companyId || (matchedLead as any)?.ico || "";
-    const dic = activeClient.taxId || matchedLead?.taxId || (matchedLead as any)?.dic || "";
-    const icDph = activeClient.vatId || matchedLead?.vatId || (matchedLead as any)?.icDph || "";
-
-    const availableShipping = getAvailableShippingMethods(companyBillingSettings);
-    const defaultShipping = availableShipping[0] || "Kuriér";
-    const defaultPayment = getDefaultPaymentMethod(companyBillingSettings);
-
-    const newOrd: Order = {
-      id: `ord_${Date.now()}`,
-      orderNumber: generateOrderNumber("OBJ", (orders?.length || 0) + 1),
-      type: "sales",
-      status: defaultOrderStatus(orderStatuses),
-      customerType: "client",
-      clientId: targetLeadId || null,
-      delivery: {
-        recipient: recipientName,
-        street,
-        city,
-        zip,
-        country,
-        phone
-      },
-      billing: {
-        name: billingName,
-        street,
-        city,
-        zip,
-        country,
-        ico,
-        dic,
-        icDph
-      },
-      shippingMethod: defaultShipping,
-      paymentMethod: defaultPayment,
-      paymentStatus: "unpaid",
-      currency: currencyCode || "EUR",
-      itemsNetAmount: 0,
-      servicesNetAmount: 0,
-      totalNetAmount: 0,
-      totalTaxAmount: 0,
-      totalGrossAmount: 0,
-      orderDate: todayLocal(),
-      items: []
-    };
-
-    setActiveDetailTab("orders");
-    setEditingOrder(newOrd);
+    const associated = activeClient.associatedLeads || [];
+    const target =
+      associated.find(isClientRecord) ||
+      leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) ||
+      associated[0];
+    if (!target) return;
+    const back = `clients/${encodeURIComponent(activeClient.name)}?tab=orders`;
+    window.location.hash = `orders/new?customer=${encodeURIComponent(target.id)}&from=${encodeURIComponent(back)}`;
   };
 
   const handleOpenEditOrder = (order: Order) => {
@@ -1730,53 +1684,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ...totals
     };
 
-    const isNew = !orders?.some(o => o.id === completeOrder.id);
-
-    setOrders?.(prev => {
-      const exists = prev.some(o => o.id === completeOrder.id);
-      if (exists) return prev.map(o => (o.id === completeOrder.id ? completeOrder : o));
-      return [completeOrder, ...prev];
-    });
-
-    if (isNew && activeClient) {
-      const newEvent: TimelineEvent = {
-        id: `event_ord_${Date.now()}`,
-        type: "note",
-        timestamp: nowLocalStamp(),
-        title: t(
-          `Order created: ${completeOrder.orderNumber}`,
-          `Vytvorená nová objednávka: ${completeOrder.orderNumber}`,
-          `Új rendelés létrehozva: ${completeOrder.orderNumber}`
-        ),
-        content: `${t("Total amount", "Celková suma", "Végösszeg")}: ${formatMoney(completeOrder.totalGrossAmount, completeOrder.currency || currencyCode || "EUR", systemLanguage)} (${(completeOrder.items || []).length} ${t("items", "položiek", "tétel")})`,
-        author: propCurrentUser?.name || "System"
-      };
-
-      setLeads(prev => prev.map(lead => {
-        if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
-          const currentTimeline = lead.timeline || [];
-          return {
-            ...lead,
-            timeline: [newEvent, ...currentTimeline]
-          };
-        }
-        return lead;
-      }));
-    }
+    setOrders?.(prev => prev.map(o => (o.id === completeOrder.id ? completeOrder : o)));
 
     setEditingOrder(null);
 
-    try {
-      await fetch("/api/orders.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(completeOrder)
-      });
-      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-      toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
-    } catch (e) {
-      console.error("Failed to save order to backend", e);
-    }
+    // The order itself is persisted by the state sync (setOrders -> sync.php).
+    const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+    toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
   };
 
   const handleDeleteOrder = async (orderToDelete: Order) => {
@@ -1957,23 +1871,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setOrders?.(prev => prev.map(o => (o.id === updatedOrder.id ? updatedOrder : o)));
     setEditingOrder(updatedOrder);
 
-    try {
-      await fetch("/api/orders.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedOrder)
-      });
-      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-      toast?.(
-        t(
-          `Invoice ${newInvoiceNumber} created for order!`,
-          `Faktúra ${newInvoiceNumber} bola úspešne vystavená!`,
-          `A(z) ${newInvoiceNumber} számla sikeresen kiállítva!`
-        )
-      );
-    } catch (e) {
-      console.error("Failed to update order with invoice", e);
-    }
+    // The order itself is persisted by the state sync (setOrders -> sync.php).
+    const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+    toast?.(
+      t(
+        `Invoice ${newInvoiceNumber} created for order!`,
+        `Faktúra ${newInvoiceNumber} bola úspešne vystavená!`,
+        `A(z) ${newInvoiceNumber} számla sikeresen kiállítva!`
+      )
+    );
   };
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
@@ -5341,7 +5247,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="table-sticky-scroll border border-slate-200 rounded-2xl">
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl">
                       <table className="w-full text-left text-ui">
                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                           <tr>
@@ -6199,13 +6105,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       </div>
 
       {/* 3. Clients Data Grid Table */}
-      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden">
-        <div className="overflow-x-auto ws-lg:table-sticky-scroll scrollbar-thin">
+      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-clip">
+        <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
           <table className="w-full border-collapse text-left block ws-lg:table">
-            <thead className="hidden ws-lg:table-header-group">
+            <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
               <tr className="bg-white text-emerald-700 type-overline select-none">
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 rounded-tl-[24px] border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-6 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6220,7 +6126,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "phone" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "phone" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "phone" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6235,7 +6141,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "email" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "email" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "email" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6250,7 +6156,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "city" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "city" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "city" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6265,7 +6171,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "clientType" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "clientType" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "clientType" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6280,7 +6186,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "owner" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "owner" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "owner" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6295,7 +6201,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 text-center border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-4 text-center border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "leadsCount" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6310,7 +6216,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </button>
                 </th>
                 <th
-                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 text-right border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "totalValue" ? "bg-emerald-50/40" : ""}`}
+                  className={`sticky bg-white z-10 py-3.5 px-6 text-right border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "totalValue" ? "bg-gradient-to-b from-emerald-50/40 to-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "totalValue" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
                   <button
@@ -6324,7 +6230,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {renderSortIcon("totalValue")}
                   </button>
                 </th>
-                <th className="sticky top-0 right-0 bg-white z-20 py-3.5 px-4 rounded-tr-[24px] border-b-2 border-l border-slate-100 w-12">
+                <th className="sticky right-0 bg-white z-20 py-3.5 px-4 border-b-2 border-l border-slate-100 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>
               </tr>
@@ -6497,6 +6403,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </tbody>
           </table>
         </div>
+        <StickyHScrollbar target={tableWrapEl} />
 
         {/* Pagination controls */}
         {processedClients.length > 50 && (

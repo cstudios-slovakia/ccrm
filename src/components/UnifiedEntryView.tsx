@@ -17,6 +17,8 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { unifiedEntryKey } from "../utils/pendingDeletions";
 import { singleMessage } from "../utils/undoMessages";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -52,6 +54,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setRowsRaw(updater);
   };
   const [searchQuery, setSearchQuery] = useState("");
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
 
   // Modals / Editors state
   const [isEditing, setIsEditing] = useState(false);
@@ -956,7 +959,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
       </div>
 
       {/* Main Grid / Rows table */}
-      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden">
+      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-clip">
         {currentFolderRows.length === 0 ? (
           <div className="p-12 text-center text-slate-400">
             <span className="text-display">🗂️</span>
@@ -971,9 +974,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             </p>
           </div>
         ) : (
-          <div className="table-sticky-scroll">
+          <div ref={tableWrapRef} className="table-page-wrap">
             <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 z-20 bg-slate-50">
+              <thead className="table-page-sticky-head">
                 <tr className="border-b border-slate-100 bg-slate-50/50 type-overline text-slate-400 select-none">
                   <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
                   {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}
@@ -1273,6 +1276,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             </table>
           </div>
         )}
+        <StickyHScrollbar target={tableWrapEl} />
       </div>
 
       {/* New / Edit Row Modal Dialog (Folders and Entries Unified) */}

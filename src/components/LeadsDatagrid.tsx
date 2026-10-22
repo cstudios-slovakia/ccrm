@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
@@ -88,6 +90,7 @@ import {
     AlertTriangle,
     Building2,
     Heart,
+    ShoppingCart,
 } from "lucide-react";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { EntityTasksPanel } from "./EntityTasksPanel";
@@ -895,6 +898,12 @@ interface LeadsDatagridProps {
      */
     access?: ModuleAccess;
     /**
+     * What the current user may do with orders. The "New order" button on a lead
+     * needs `edit`; without this prop it is not shown (orders default to "nothing",
+     * so the lead's own `canEdit` says nothing about them).
+     */
+    orderAccess?: ModuleAccess;
+    /**
      * What the server enforces on `tasks` — separate from `access` above, which
      * is the *leads* module's answer. Every task this screen creates as a side
      * effect (a locking follow-up, a future-event reminder) writes into a
@@ -1084,6 +1093,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
     access = FULL_MODULE_ACCESS,
+    orderAccess,
     taskAccess,
     divisions = ["Cstudios", "Cstudios Budapest"],
     divisionColors = {},
@@ -1705,6 +1715,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // database — it used to sit in sessionStorage, so it was forgotten the moment
     // the tab was closed and never followed the user to another device.
     const [viewMode, setViewMode] = useUserPref("leadsViewMode");
+    const [tableWrapRef, tableWrapEl] = useStickyTableHead();
+    // The board scrolls sideways; its proxy scrollbar needs the element.
+    const [boardEl, setBoardEl] = useState<HTMLElement | null>(null);
 
     // Compact mode switcher
     const [compactMode, setCompactMode] = useUserPref("leadsCompactMode");
@@ -5472,6 +5485,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     )}
                   </>}
                   actions={<>
+                    {orderAccess?.edit && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                // Created in the Orders module with this lead prefilled; saving or going
+                                // back returns here.
+                                const back = `leads/${activeLead.id}`;
+                                window.location.hash = `orders/new?customer=${encodeURIComponent(activeLead.id)}&from=${encodeURIComponent(back)}`;
+                            }}
+                            className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                            title={t("Place new order for this lead", "Vystaviť novú objednávku pre tento lead", "Új rendelés feladása ehhez a leadhez")}
+                        >
+                            <ShoppingCart className="h-4 w-4 stroke-[2.5]" />
+                            <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
+                        </button>
+                    )}
                     <FavoriteHeartButton
                         entityId={activeLead.id}
                         type="lead"
@@ -9844,7 +9873,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         key="state"
                         className={`hidden ws-lg:table-cell px-0 ws-lg:px-4 ${cellPy}`}
                     >
-                        <div className="flex flex-col ws-lg:flex-row ws-lg:items-center justify-between gap-3 w-full">
+                        <div className="flex flex-col ws-lg:flex-row ws-lg:flex-wrap ws-lg:items-center justify-between gap-x-3 gap-y-1.5 w-full">
                             <div className="flex items-center gap-1 shrink-0">
                                 <StatusSelector
                                     status={lead.status}
@@ -10871,11 +10900,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 )}
 
                 {viewMode === "list" ? (
-                    <div className="overflow-x-auto ws-lg:table-sticky-scroll scrollbar-thin">
+                    <div>
+                    <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
                         <table className="w-full border-collapse text-left block ws-lg:table">
-                            <thead className="hidden ws-lg:table-header-group">
+                            <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
                                 <tr className="bg-white text-blue-600 type-overline">
-                                    <th className="sticky top-0 bg-white z-10 py-4 px-3 w-12 rounded-tl-[24px] border-b-2 border-slate-100 text-center">
+                                    <th className="sticky bg-white z-10 py-4 px-3 w-12 border-b-2 border-slate-100 text-center">
                                         <button
                                             type="button"
                                             onClick={handleSelectAllVisible}
@@ -10895,49 +10925,49 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         switch (col.key) {
                                             case "client":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.client")}
                                                     </th>
                                                 );
                                             case "created":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {systemLanguage === "sk" ? "Dátum vytvorenia" : systemLanguage === "hu" ? "Létrehozás dátuma" : "Date Created"}
                                                     </th>
                                                 );
                                             case "city":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.city")}
                                                     </th>
                                                 );
                                             case "type":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.type")}
                                                     </th>
                                                 );
                                             case "source":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.source")}
                                                     </th>
                                                 );
                                             case "pm":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.pm")}
                                                     </th>
                                                 );
                                             case "value":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-4 text-right border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 text-right border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.value")}
                                                     </th>
                                                 );
                                             case "state":
                                                 return (
-                                                    <th key={col.key} className="sticky top-0 bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.state")}
                                                     </th>
                                                 );
@@ -10945,7 +10975,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 return null;
                                         }
                                     })}
-                                    <th className="sticky top-0 bg-white py-4 px-6 rounded-tr-[24px] text-center w-28 border-b-2 border-slate-100 right-0 z-20 border-l">
+                                    <th className="sticky bg-white py-4 px-6 text-center w-28 border-b-2 border-slate-100 right-0 z-20 border-l">
                                         {getTranslation(
                                             systemLanguage,
                                             "leads.table.actions",
@@ -11912,8 +11942,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </tbody>
                         </table>
                     </div>
+                    <StickyHScrollbar target={tableWrapEl} />
+                    </div>
                 ) : (
-                    <div className="flex flex-row gap-5 overflow-x-auto p-5 pb-6 items-stretch min-h-145 scrollbar-thin select-none bg-slate-50/20">
+                    <div>
+                    <div ref={setBoardEl} className="flex flex-row gap-5 overflow-x-auto p-5 pb-6 items-stretch min-h-145 scrollbar-thin select-none bg-slate-50/20">
                         {stateGroupedLeads
                             .filter((group) =>
                                 resolvedVisibleStates.includes(
@@ -12462,6 +12495,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </React.Fragment>
                                 );
                             })}
+                    </div>
+                    <StickyHScrollbar target={boardEl} />
                     </div>
                 )}
                 <div className="bg-blue-50/20 border-t border-blue-50 p-4 flex items-center justify-between type-overline text-slate-400">

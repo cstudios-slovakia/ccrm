@@ -3569,7 +3569,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             <h3
                 className={`text-title font-extrabold flex items-center gap-2.5 select-none [&_svg]:h-5 [&_svg]:w-5 ${tone.title}`}
             >
-                {opts.icon} {opts.title} ({opts.tasks.length})
+                {opts.icon}
+                <span>
+                    {opts.title}{" "}
+                    {/* Google Sans draws a lone "(1)".."(9)" as a circled digit, so
+                        the buckets disagreed ("Zmeškané ①" next to "Dnes (0)").
+                        Ligatures off keeps every count a plain "(n)". */}
+                    <span className="[font-variant-ligatures:none] [font-feature-settings:'calt'_0,'liga'_0]">
+                        ({opts.tasks.length})
+                    </span>
+                </span>
             </h3>
         );
 
@@ -3916,7 +3925,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     right. Below lg the two stack into a single column. */}
                 <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 ws-lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] ws-xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] ws-2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
-                    <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible ws-lg:h-full ws-lg:overflow-y-auto ws-lg:pr-2 pb-2 ws-lg:pb-8 scrollbar-thin">
+                    <div className="flex flex-col min-w-0 min-h-0 h-auto ws-lg:pr-2 pb-2 ws-lg:pb-8">
                         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
                             {/* Header bar with discreet toggle switch & number input to show closed tasks */}
                             <ClosedTasksToggleBar
@@ -3998,9 +4007,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         how the right half is drawn — both halves still describe
                         exactly the tasks the filter bar selected. */}
                     <div
-                        className={`flex flex-col min-w-0 min-h-0 h-auto space-y-4 overflow-visible ws-lg:h-full ws-lg:pr-2 pb-2 ws-lg:pb-0 ${
-                            isGlobalCalendar ? "" : "lg:overflow-y-auto"
-                        }`}
+                        className="flex flex-col min-w-0 min-h-0 h-auto space-y-4 ws-lg:pr-2 pb-2 ws-lg:pb-0"
                     >
                         <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
                             <h3 className="text-ui font-bold text-slate-600 flex items-center gap-2 select-none">
@@ -4402,7 +4409,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }`}
         >
             {/* Create New Task Section: Sticky action bar matching column width */}
-            <div className={`w-full shrink-0 ${isAddDrawerOpen ? "relative" : "sticky top-0 z-20"}`}>
+            <div className={`w-full shrink-0 ${isAddDrawerOpen ? "relative" : "sticky top-[calc(var(--gutter)*-1)] z-20"}`}>
                 {isAddDrawerOpen && taskAccess.create ? (
                     <QuickTaskModal
                         inline
@@ -4690,7 +4697,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         };
 
         return (
-            <div className="flex flex-col h-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
+            <div className="flex flex-col flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-clip animate-in fade-in duration-300">
                 {/* Header & Controls */}
                 <div className="p-4 ws-sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
                     <div className="flex items-center justify-between flex-wrap gap-2">
@@ -4788,8 +4795,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
                 </div>
 
-                {/* Timeline scroll area */}
-                <div className="flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-6">
+                {/* The page scrolls; the timeline does not get a scroll box of its own. */}
+                <div className="flex-1 p-4 ws-sm:p-6 space-y-6">
                     {dateGroups.length === 0 ? (
                         <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                             <History className="h-8 w-8 text-slate-300 mb-2" />
@@ -4804,7 +4811,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         dateGroups.map((group) => (
                             <div key={group.dateStr} className="space-y-3">
                                 {/* Date Group Header */}
-                                <div className="sticky top-0 z-10 py-1 bg-white/95 backdrop-blur-sm flex items-center gap-2">
+                                <div className="py-1 flex items-center gap-2">
                                     <span className="type-overline text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
                                         {formatDateHeading(group.dateStr)}
                                     </span>
@@ -4992,7 +4999,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     return (
         <div
-            className={`w-full ${viewMode === "archive" || viewMode === "calendar" ? "h-auto shrink-0" : "lg:h-[calc(100vh-8rem)] h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
+            className={`w-full ${viewMode === "archive" || viewMode === "calendar" ? "h-auto shrink-0" : "h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
         >
             {/* HEADER */}
             <PageHeader
@@ -5361,7 +5368,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {renderActiveFilterChips({ className: "mb-4" })}
 
                     {archiveView === "calendar" ? (
-                        <div className="h-140 ws-lg:h-[calc(100vh-22rem)] ws-lg:min-h-130 flex flex-col rounded-3xl border border-slate-200 overflow-hidden bg-white">
+                        <div className="min-h-140 flex flex-col rounded-3xl border border-slate-200 overflow-clip bg-white">
                             {archiveTab === "done"
                                 ? renderCalendarPanel({
                                       anchor: archiveCalendarDate,
@@ -5468,7 +5475,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()
             ) : calendarScope === "hide" ? (
-                <div className="flex-1 min-h-0 overflow-y-auto">
+                <div className="flex-1 min-h-0">
                     {renderMyTaskListColumn(true)}
                 </div>
             ) : (
@@ -5478,11 +5485,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     {/* RIGHT COLUMN: CALENDAR OR TIMELINE VIEW */}
                     {calendarScope === "timeline" ? (
-                        <div className="flex flex-col ws-lg:h-full h-auto min-h-140 ws-lg:min-h-0 ws-lg:overflow-hidden overflow-visible">
+                        <div className="flex flex-col h-auto min-h-140">
                             {renderTimelineView()}
                         </div>
                     ) : (
-                        <div className="flex flex-col h-auto self-start ws-lg:sticky ws-lg:top-4 bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
+                        <div className="flex flex-col h-auto self-start ws-lg:sticky ws-lg:top-[calc(1rem-var(--gutter))] bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
                             {renderCalendarPanel({
                                 anchor: currentDate,
                                 scope: calendarScope,

@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from "react";
+import { StickyHScrollbar } from "../ui/StickyHScrollbar";
+import { useStickyTableHead } from "../../hooks/useStickyTableHead";
 import {
   ChevronLeft,
   ChevronRight,
@@ -34,6 +36,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
   onSelectEmployee
 }) => {
   const currentYear = new Date().getFullYear();
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [onlyActive, setOnlyActive] = useState<boolean>(true);
   const [displayMetric, setDisplayMetric] = useState<"paid" | "remaining">("paid");
@@ -270,23 +273,23 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
       </div>
 
       {/* Main Salaries Matrix Table */}
-      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-        <div className="table-sticky-scroll rounded-3xl">
+      <div className="glass-panel overflow-clip rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+        <div ref={tableWrapRef} className="table-page-wrap">
           <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 z-20">
+            <thead className="table-page-sticky-head">
               <tr className="border-b border-slate-200/80 bg-slate-50 text-ui font-bold text-slate-500">
-                <th className="py-3.5 px-4 sticky top-0 left-0 z-30 bg-slate-100 border-r-2 border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)] min-w-50 rounded-tl-3xl">
+                <th className="py-3.5 px-4 sticky left-0 z-30 bg-slate-100 border-r-2 border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)] min-w-50">
                   {t("Employee", "Zamestnanec", "Alkalmazott")}
                 </th>
                 {monthNames.map((mName, idx) => (
                   <th
                     key={idx}
-                    className="sticky top-0 z-10 bg-slate-50 py-3.5 px-2 text-center min-w-27.5 border-r border-slate-200/60 font-semibold"
+                    className="sticky z-10 bg-slate-50 py-3.5 px-2 text-center min-w-27.5 border-r border-slate-200/60 font-semibold"
                   >
                     <span>{mName}</span>
                   </th>
                 ))}
-                <th className="sticky top-0 right-0 z-30 py-3.5 px-4 text-right min-w-35 bg-slate-100 font-bold border-l-2 border-slate-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)] rounded-tr-3xl">
+                <th className="sticky right-0 z-30 py-3.5 px-4 text-right min-w-35 bg-slate-100 font-bold border-l-2 border-slate-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)]">
                   <span>{t("Year Total", "Spolu Rok", "Év összesen")}</span>
                   <span className="block type-overline text-slate-400">
                     {displayMetric === "paid"
@@ -463,6 +466,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
             </tfoot>
           </table>
         </div>
+        <StickyHScrollbar target={tableWrapEl} />
       </div>
 
       {/* CELL EDIT DRAWER / MODAL */}

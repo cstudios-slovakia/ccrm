@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
   FileText, Search, Eye, Trash2, Pencil,
   AlertCircle, Layers, TrendingUp, Award, Lock, Settings
@@ -116,6 +118,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   // so a hidden control cannot be resurrected through a stale reference.
   const canEdit = access.edit;
   const canDelete = access.delete;
+  const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [showSettings, setShowSettings] = useState(false);
   const currency = systemCurrency || "EUR";
   const money = (value: unknown, decimals = 2) =>
@@ -644,18 +647,18 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
       </div>
 
       {/* 5. DOCUMENTS TABLE */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm">
-        <div className="table-sticky-scroll rounded-3xl">
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
+        <div ref={tableWrapRef} className="table-page-wrap">
           <table className="w-full text-left text-ui border-collapse min-w-195">
-            <thead className="sticky top-0 z-20">
+            <thead className="table-page-sticky-head">
               <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
-                <th className="sticky top-0 z-10 bg-slate-50 p-4 rounded-tl-3xl">{t("Offer no.", "Číslo ponuky", "Ajánlatszám")}</th>
-                <th className="sticky top-0 z-10 bg-slate-50 p-4">{t("Title & template", "Názov a šablóna", "Cím és sablon")}</th>
-                <th className="sticky top-0 z-10 bg-slate-50 p-4">{t("Client / lead", "Klient / Lead", "Ügyfél / Lead")}</th>
-                <th className="sticky top-0 z-10 bg-slate-50 p-4">{t("Issued", "Vystavené", "Kiállítva")}</th>
-                <th className="sticky top-0 z-10 bg-slate-50 p-4 text-right">{t("Amount", "Suma", "Összeg")}</th>
-                <th className="sticky top-0 z-10 bg-slate-50 p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
-                <th className="sticky top-0 right-0 z-30 bg-slate-50 p-4 text-right border-l border-slate-200/60 rounded-tr-3xl">{t("Actions", "Akcie", "Műveletek")}</th>
+                <th className="sticky z-10 bg-slate-50 p-4">{t("Offer no.", "Číslo ponuky", "Ajánlatszám")}</th>
+                <th className="sticky z-10 bg-slate-50 p-4">{t("Title & template", "Názov a šablóna", "Cím és sablon")}</th>
+                <th className="sticky z-10 bg-slate-50 p-4">{t("Client / lead", "Klient / Lead", "Ügyfél / Lead")}</th>
+                <th className="sticky z-10 bg-slate-50 p-4">{t("Issued", "Vystavené", "Kiállítva")}</th>
+                <th className="sticky z-10 bg-slate-50 p-4 text-right">{t("Amount", "Suma", "Összeg")}</th>
+                <th className="sticky z-10 bg-slate-50 p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                <th className="sticky right-0 z-30 bg-slate-50 p-4 text-right border-l border-slate-200/60">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -788,6 +791,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             </tbody>
           </table>
         </div>
+        <StickyHScrollbar target={tableWrapEl} />
       </div>
 
 

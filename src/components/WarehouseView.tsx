@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
   Package,
   Boxes,
@@ -153,6 +155,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Active Tab
   type TabType = "items" | "movements" | "warehouses" | "suppliers" | "batches" | "analytics";
   const [activeSubTab, setActiveSubTab] = useState<TabType>("items");
+  const [issueWrapRef, issueWrapEl] = useStickyTableHead();
+  const [itemsWrapRef, itemsWrapEl] = useStickyTableHead();
 
   // Filters
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("all");
@@ -2404,7 +2408,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
 
             {/* LINE ITEMS DATA GRID */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
               <div className="p-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShoppingCart className="w-4 h-4 text-blue-700" />
@@ -2417,19 +2421,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </span>
               </div>
 
-              <div className="table-sticky-scroll">
+              <div ref={issueWrapRef} className="table-page-wrap">
                 <table className="w-full text-left text-ui text-slate-600 min-w-210">
-                  <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200/80 type-overline text-slate-500">
+                  <thead className="table-page-sticky-head border-b border-slate-200/80 type-overline text-slate-500">
                     <tr>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-10 text-center">#</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 min-w-55">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-36 min-w-32.5">{t("Quantity", "Množstvo", "Mennyiség")}</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-3 min-w-35">{t("Note", "Poznámka", "Megjegyzés")}</th>
-                      <th className="sticky top-0 z-10 bg-slate-100 py-3 px-2 w-10 text-center"></th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-10 text-center">#</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 min-w-55">{t("Product & Stock", "Tovar a skladový stav", "Termék & Készlet")}</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-36 min-w-32.5">{t("Quantity", "Množstvo", "Mennyiség")}</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Base Price", "Cenníková cena", "Alapár")}</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-center">{t("Discount %", "Zľava %", "Kedvezmény %")}</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Sale Price", "Predajná cena", "Eladási ár")}</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 w-32 text-right">{t("Line Total", "Spolu s DPH", "Összesen")}</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-3 min-w-35">{t("Note", "Poznámka", "Megjegyzés")}</th>
+                      <th className="sticky z-10 bg-slate-100 py-3 px-2 w-10 text-center"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2648,6 +2652,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   </tbody>
                 </table>
               </div>
+              <StickyHScrollbar target={issueWrapEl} />
 
               {/* TABLE FOOTER */}
               <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-col ws-sm:flex-row items-center justify-between gap-3">
@@ -3723,7 +3728,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </div>
                     </div>
 
-                    <div className="table-sticky-scroll">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-left text-ui min-w-170">
                         <thead className="bg-slate-50 text-slate-500 type-overline border-b border-slate-100">
                           <tr>
@@ -3887,7 +3892,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 {t("No active lots in this warehouse. Inventory tracked as unbatched bulk stock.", "V tomto sklade nie sú zaevidované žiadne konkrétne šarže. Tovar sa eviduje ako voľná zásoba.", "Ezen a raktáron nincsenek aktív tételek.")}
                               </div>
                             ) : (
-                              <div className="table-sticky-scroll rounded-2xl border border-slate-100">
+                              <div className="overflow-x-auto rounded-2xl border border-slate-100">
                                 <table className="w-full text-left text-ui">
                                   <thead className="bg-slate-50 text-slate-400 type-overline">
                                     <tr>
@@ -4020,7 +4025,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       )}
                     </div>
                   ) : (
-                    <div className="table-sticky-scroll rounded-2xl border border-slate-100">
+                    <div className="overflow-x-auto rounded-2xl border border-slate-100">
                       <table className="w-full text-left text-ui min-w-170">
                         <thead className="bg-slate-50 text-slate-400 type-overline">
                           <tr>
@@ -4922,20 +4927,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           </div>
 
           {/* Items Data Grid */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm">
-            <div className="table-sticky-scroll rounded-2xl">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-clip">
+            <div ref={itemsWrapRef} className="table-page-wrap">
               <table className="w-full text-left text-ui text-slate-600 min-w-210">
-                <thead className="sticky top-0 z-20 bg-slate-50 border-b border-slate-200/80 type-overline text-slate-500">
+                <thead className="table-page-sticky-head border-b border-slate-200/80 type-overline text-slate-500">
                   <tr>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 rounded-tl-2xl">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</th>
-                    <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</th>
-                    <th className="sticky top-0 right-0 z-30 bg-slate-50 py-3 px-4 text-right rounded-tr-2xl">{t("Actions", "Akcie", "Műveletek")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</th>
+                    <th className="sticky z-10 bg-slate-50 py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</th>
+                    <th className="sticky right-0 z-30 bg-slate-50 py-3 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -5125,6 +5130,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 </tbody>
               </table>
             </div>
+            <StickyHScrollbar target={itemsWrapEl} />
           </div>
         </div>
       )}
@@ -5286,7 +5292,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         <h4 className="type-overline text-slate-500 mb-2">
                           {t("Movement Line Items", "Položky dokladu", "Tételek")}
                         </h4>
-                        <div className="table-sticky-scroll">
+                        <div className="overflow-x-auto">
                           <table className="w-full text-left text-ui">
                             <thead>
                               <tr className="border-b border-slate-200 text-slate-400 type-overline">

@@ -72,8 +72,7 @@ export const AiKeyBanner: React.FC<AiKeyBannerProps> = ({
 
   return (
     <div
-      // `bg-white` under the gradient keeps the panel opaque: callers pin this
-      // banner with `sticky`, and a translucent one let the view scroll through it.
+      // `bg-white` under the gradient keeps the panel opaque over the page.
       className={`animate-fade-in relative overflow-hidden rounded-3xl border border-amber-200 bg-white bg-gradient-to-r from-amber-50 via-amber-50 to-amber-50/40 p-4 sm:p-5 shadow-sm transition-shadow duration-300 hover:shadow-md ${className}`}
     >
       {/* Stacked rather than side-by-side: this banner is dropped into columns
