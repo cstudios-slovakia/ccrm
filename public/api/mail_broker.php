@@ -149,6 +149,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'send_test') {
     exit;
 }
 
+// 1c. The stored body of a message the background job filed (api/mail_filing.php). It is
+// readable by everyone who may see e-mail on a timeline, whatever mailbox it came from,
+// so it never needs the caller's own mailbox. The check is the same one that hides e-mail
+// events from a role without the `email` permission in the sync.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_filed_mail') {
+    require_once __DIR__ . '/read_scope.php';
+    $scopeUser = ccrm_current_user();
+    $scope = $scopeUser ? ccrm_read_scope($pdo, $scopeUser) : [];
+    if (!$scopeUser || !ccrm_can($scope, 'email')) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'No access to e-mail.']);
+        exit;
+    }
+    $eventId = (string)($_GET['id'] ?? '');
+    $stmt = $pdo->prepare(
+        "SELECT te.`id`, te.`title`, te.`content`, te.`mail_account`, te.`mail_owner`, b.`body`, b.`attachments_json`
+         FROM `timeline_events` te JOIN `filed_mail_bodies` b ON b.`event_id` = te.`id`
+         WHERE te.`id` = ? AND te.`type` = 'email' AND te.`hidden` = 0"
+    );
+    $stmt->execute([$eventId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'No stored body for this message.']);
+        exit;
+    }
+    $attachments = !empty($row['attachments_json']) ? json_decode($row['attachments_json'], true) : [];
+    echo json_encode([
+        'success' => true,
+        'email' => [
+            'uid' => $row['id'],
+            'html' => '',
+            'text' => (string)$row['body'],
+            'attachments' => is_array($attachments) ? $attachments : [],
+            'stored' => true,
+            'mail_account' => $row['mail_account'],
+        ],
+    ]);
+    exit;
+}
+
 // 2. The mailbox to operate on is ALWAYS the authenticated session user's own.
 // SECURITY: the old X-User-Email header let any logged-in user open, read, send
 // from or delete another user's mailbox just by supplying their address (IDOR).
@@ -761,21 +802,21 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     $pdo = $GLOBALS['pdo'];
                     $matchedLeadId = null;
 
-                    if (!empty($fromAddress)) {
-                        $leadStmt = $pdo->prepare("SELECT `id` FROM `leads` WHERE LOWER(`email`) = ? LIMIT 1");
-                        $leadStmt->execute([strtolower($fromAddress)]);
-                        $matchedLeadId = $leadStmt->fetchColumn();
+                    // The same matcher the background filing job uses (mail_filing.php), so the
+                    // two always agree on which record a message belongs to: the counterparty's
+                    // address, then the address the caller searched for.
+                    require_once __DIR__ . '/mail_filing.php';
+                    $matchAddresses = ccrm_mail_counterparties(
+                        ccrm_mail_addresses_in($fromHeader),
+                        ccrm_mail_addresses_in($toHeader),
+                        [],
+                        $mailboxAddresses,
+                        (bool)$isOutgoing
+                    );
+                    if (!empty($searchEmail)) {
+                        $matchAddresses[] = strtolower(trim($searchEmail));
                     }
-                    if (!$matchedLeadId && !empty($toAddress)) {
-                        $leadStmt = $pdo->prepare("SELECT `id` FROM `leads` WHERE LOWER(`email`) = ? LIMIT 1");
-                        $leadStmt->execute([strtolower($toAddress)]);
-                        $matchedLeadId = $leadStmt->fetchColumn();
-                    }
-                    if (!$matchedLeadId && !empty($searchEmail)) {
-                        $leadStmt = $pdo->prepare("SELECT `id` FROM `leads` WHERE LOWER(`email`) = ? LIMIT 1");
-                        $leadStmt->execute([strtolower($searchEmail)]);
-                        $matchedLeadId = $leadStmt->fetchColumn();
-                    }
+                    $matchedLeadId = ccrm_mail_match_row(ccrm_mail_address_index($pdo), $matchAddresses);
 
                     if ($matchedLeadId) {
                         $eventId = $mailEventId;
@@ -802,32 +843,31 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                             }
                         }
 
-                        $checkStmt = $pdo->prepare("SELECT * FROM `timeline_events` WHERE `id` = ?");
-                        $checkStmt->execute([$eventId]);
-                        $existingRow = $checkStmt->fetch(PDO::FETCH_ASSOC);
-                        if (!$existingRow) {
-                            $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `is_outgoing`, `author`) VALUES (?, ?, 'email', ?, ?, ?, ?, ?)");
-                            $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content, $isOutgoing, $eventAuthor]);
-                        } else {
-                            // `lead_id` is refreshed too. It used to be left alone,
-                            // so once a row existed the message stayed filed against
-                            // whichever lead claimed it first — which, with the old
-                            // colliding ids, was regularly the wrong customer. It
-                            // also kept a message pinned to the old lead after a
-                            // customer's address moved to another record.
-                            //
-                            // `timestamp` and `title` are NOT rewritten: they are
-                            // the user's to correct from the lead timeline (sync.php
-                            // applies that edit), and re-reading the mailbox used to
-                            // put the old values straight back.
-                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `lead_id` = ?, `is_outgoing` = ?, `author` = ? WHERE `id` = ?");
-                            $upStmt->execute([$matchedLeadId, $isOutgoing, $eventAuthor, $eventId]);
-                            // Removed from the lead timeline by the user. The row is
-                            // kept as a tombstone so this read does not re-file the
-                            // message; tell the client to leave its live copy out.
-                            if (!empty($existingRow['hidden'])) {
-                                $emailsMap[$o->uid]['timeline_hidden'] = true;
-                            }
+                        // One store for both paths (see ccrm_mail_store_event): it inserts, or
+                        // refreshes what the message owns without touching the title and
+                        // timestamp the user may have corrected; a removed entry stays a
+                        // tombstone so this read does not file it again; and a message that is
+                        // already on this timeline from another mailbox is not filed twice.
+                        $stored = ccrm_mail_store_event($pdo, [
+                            'lead_id' => $matchedLeadId,
+                            'event_id' => $eventId,
+                            'timestamp' => $timestamp,
+                            'title' => mb_substr($title, 0, 255, 'UTF-8'),
+                            'content' => $content,
+                            'is_outgoing' => (bool)$isOutgoing,
+                            'author' => $eventAuthor,
+                            // The mailbox is this user's own: they read it live, everyone else
+                            // reads the stored body, if the background job has filed one.
+                            'mail_account' => $imapUser,
+                            'mail_owner' => $accountEmail !== '' ? $accountEmail : null,
+                            'message_id' => isset($o->message_id) ? mb_substr(trim($o->message_id), 0, 255, 'UTF-8') : '',
+                            'body' => null,
+                            'attachments' => [],
+                        ]);
+                        // Removed by the user, or already filed from another mailbox: the client
+                        // leaves its live copy out.
+                        if ($stored === 'hidden' || $stored === 'duplicate') {
+                            $emailsMap[$o->uid]['timeline_hidden'] = true;
                         }
                     }
                 }

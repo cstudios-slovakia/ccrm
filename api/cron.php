@@ -15,7 +15,7 @@ require_once $configFile;
 
 try {
     $pdo = get_db_connection();
-} catch (\Throwable $e) {
+} catch (Throwable $e) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
     exit;
@@ -96,7 +96,7 @@ try {
             $ins->execute([$wf['id'], json_encode($payload)]);
         }
     }
-} catch (\Throwable $e) {
+} catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
@@ -104,7 +104,7 @@ try {
 $taskReminders = null;
 try {
     $taskReminders = ccrm_process_task_reminders($pdo);
-} catch (\Throwable $e) {
+} catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
@@ -113,7 +113,18 @@ $ticketPollResult = null;
 try {
     require_once __DIR__ . '/tickets.php';
     $ticketPollResult = ccrm_poll_ticket_imap($pdo, false);
-} catch (\Throwable $e) {
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 2c. Background mail filing: read every company mailbox and every user's mailbox and
+// file mail from or to a known customer onto that customer's timeline (api/mail_filing.php).
+// Bounded by time and message count; a broken mailbox is recorded, never fatal.
+$mailFiling = null;
+try {
+    require_once __DIR__ . '/mail_filing.php';
+    $mailFiling = ccrm_run_mail_filing($pdo);
+} catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
@@ -125,8 +136,14 @@ try {
         'message' => 'Queue processed successfully.',
         'taskReminders' => $taskReminders,
         'ticketPoll' => $ticketPollResult,
+        'mailFiling' => $mailFiling === null ? null : [
+            'ran' => $mailFiling['ran'] ?? false,
+            'seen' => $mailFiling['seen'] ?? 0,
+            'filed' => $mailFiling['filed'] ?? 0,
+            'errors' => $mailFiling['errors'] ?? 0,
+        ],
     ]);
-} catch (\Throwable $e) {
+} catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Queue processing failed.']);

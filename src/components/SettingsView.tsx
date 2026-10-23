@@ -20,6 +20,7 @@ import { ProjectSettings } from "./ProjectSettings";
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
 import { PriceLevelSettings } from "./PriceLevelSettings";
+import { CompanyMailboxSettings } from "./CompanyMailboxSettings";
 import type { PriceLevel } from "../utils/priceLevels";
 import { TicketSettings } from "./TicketSettings";
 import { OrderStatusSettings } from "./OrderStatusSettings";
@@ -6634,6 +6635,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </form>
               </div>
             </div>
+
+            {/* Shared mailboxes read by the background filing job. The server refuses everyone but admins. */}
+            {isAdminRoleName(currentUser?.role) && (
+              <CompanyMailboxSettings users={users} userLanguage={userLanguage} />
+            )}
           </div>
         )}
 

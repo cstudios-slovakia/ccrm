@@ -60,6 +60,13 @@ export interface TimelineEvent {
   // the first entry so events written before this existed still render.
   attachments?: TimelineAttachment[];
   isOutgoing?: boolean;
+  // Mail entries only: the mailbox the message was read from (a label such as "Info"),
+  // whose personal mailbox that is (the login e-mail; absent for a company mailbox),
+  // and whether the background job stored a readable body (read on demand through
+  // mail_broker.php?action=get_filed_mail, never carried by the sync).
+  mailAccount?: string;
+  mailOwner?: string;
+  hasStoredBody?: boolean;
   audioFile?: string; // path to audio recording file
   transcription?: string; // RAG or speech-to-text transcript
   // Who produced this entry — the user who logged the note, sent the mail or

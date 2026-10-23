@@ -13,6 +13,7 @@ import {
     resolveLinkedClient,
 } from "../utils/leadClient";
 import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
+import { FiledMailBody, MailAccountBadge } from "./FiledMail";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo, deleteLeadsWithUndo } from "../utils/leadActions";
 import { deleteTasksWithUndo } from "../utils/taskActions";
@@ -8794,6 +8795,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         @{" "}
                                                                         {pmName}
                                                                     </span>
+                                                                    <MailAccountBadge event={event} language={systemLanguage} />
                                                                     {/* Imported mail is correctable too: sync.php
                                                                         applies the edit, and a delete hides the
                                                                         entry without touching the mailbox. */}
@@ -9159,6 +9161,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 })()}
                                                             </TimelineCollapsible>
                                                         )}
+                                                        <FiledMailBody event={event} language={systemLanguage} />
 
                                                         {/* Attached documents. Events logged before multi-file
                                 support carry a single fileName/filePath pair, so

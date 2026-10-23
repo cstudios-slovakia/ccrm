@@ -132,6 +132,12 @@ Interaction history logged against leads (emails, call logs, meetings).
 
 ## 3. Tasks & Team Management
 
+Mail the background job filed (api/mail_filing.php) and the live read share these columns on `type = 'email'` rows:
+* `mail_account` VARCHAR(150) [NULLable] (label of the mailbox the message was read from, e.g. `Info`)
+* `mail_owner` VARCHAR(255) [NULLable] (login e-mail of the user whose personal mailbox it is; NULL for a company mailbox)
+* `mail_has_body` TINYINT(1) (a readable body is stored in `filed_mail_bodies`)
+* `mail_message_id` VARCHAR(255) [NULLable] (RFC 5322 Message-ID, so one mail in two mailboxes is filed once; indexed with `lead_id` as `idx_te_mail_msgid`)
+
 ### `tasks`
 General system and operational tasks.
 * `id` VARCHAR(50) [PK]
@@ -216,6 +222,30 @@ AI-generated summaries of email threads.
 * Primary Key: (`user_email`, `folder`, `email_uid`)
 
 ---
+
+### `company_mailboxes`
+Shared IMAP / SMTP mailboxes an admin defines (Settings → E-mail → Company mailboxes), read by the background job.
+* `id` VARCHAR(50) [PK] (`cmb-…`)
+* `name` VARCHAR(150), `address` VARCHAR(255) [UNIQUE]
+* `settings_json` MEDIUMTEXT (the IMAP / SMTP profile in the shape of a user's `emailSettings`; `imapPassword` / `smtpPassword` encrypted `enc:v1:`; never sent to the browser)
+* `is_active` TINYINT(1), `owner_user_id` VARCHAR(50) [NULLable] (optional person it belongs to)
+* `backfill_since` DATE [NULLable] (mail older than this is not filed; NULL = everything)
+* `last_run_at`, `last_success_at` DATETIME [NULLable], `last_error` TEXT [NULLable] (what an admin sees when a mailbox cannot be read)
+* `created_at`, `updated_at` TIMESTAMP
+
+### `mail_sync_state`
+Where the filing job stopped, per mailbox and folder, so a run is incremental.
+* `mailbox_key` VARCHAR(100) + `folder` VARCHAR(190) [PK] (`c:<company mailbox id>` or `u:<user id>`)
+* `uid_validity` BIGINT [NULLable] (a changed value means the server renumbered the folder: the state is reset)
+* `last_uid` BIGINT (high-water mark: everything above it is new)
+* `backfill_upper_uid` BIGINT [NULLable], `backfill_done` TINYINT(1) (the newest-first catch-up of mail that was already there; the next chunk is everything below the first)
+* `filed_count` INT, `last_run_at` DATETIME, `last_error` TEXT [NULLable]
+
+### `filed_mail_bodies`
+The readable plain-text body of a filed message, apart from `timeline_events` because the sync reads that whole table on every load. Read on demand through `mail_broker.php?action=get_filed_mail` by anyone who may see e-mail on a timeline.
+* `event_id` VARCHAR(50) [PK] (= `timeline_events.id`)
+* `body` MEDIUMTEXT, `attachments_json` TEXT (names and sizes only; the files stay on the mail server)
+* `created_at` TIMESTAMP
 
 ## 6. Projects & Lifecycles
 

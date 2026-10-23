@@ -58,6 +58,8 @@ import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
+import { FiledMailBody, MailAccountBadge } from "./FiledMail";
+import { fetchFiledMail, shouldReadStoredBody } from "../utils/filedMail";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo } from "../utils/leadActions";
@@ -2603,6 +2605,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       
       const currentUserStr = sessionStorage.getItem("crm_current_user_rbac");
       const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+
+      // Mail the background job filed from a mailbox the viewer does not own (a company
+      // mailbox, a colleague's) is read from the stored body: there is no such mailbox to ask.
+      if (shouldReadStoredBody(event, currentUser?.email)) {
+        const filed = await fetchFiledMail(event.id);
+        setTimelineEmailDetailBody({ uid, html: "", text: filed.text, attachments: filed.attachments.map((a, i) => ({ part_num: String(i), name: a.name, size: a.size, type: "", stored: true })) });
+        return;
+      }
       
       const res = await fetch(
         `/api/mail_broker.php?action=get_email_detail&folder=${folder}&uid=${uid}`,
@@ -4625,6 +4635,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                               </>
                                             )}
                                           </span>
+                                          <MailAccountBadge event={event} language={systemLanguage} />
                                           <span 
                                             className="inline-flex items-center gap-1 type-overline px-2.5 py-0.5 rounded-full border shadow-sm text-white"
                                             style={{ backgroundColor: pmColor, borderColor: pmColor }}
@@ -4711,6 +4722,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     );
                                   })()}
                                   </TimelineCollapsible>
+                                  <FiledMailBody event={event} language={systemLanguage} />
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (

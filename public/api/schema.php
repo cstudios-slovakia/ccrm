@@ -1564,6 +1564,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_invoice_status_changed_at($pdo);
         ccrm_migrate_invoice_status_varchar($pdo);
         ccrm_migrate_warehouse_item_fields($pdo);
+        ccrm_migrate_mail_filing($pdo);
         ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
@@ -1982,6 +1983,93 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm] schema: warehouse item fields migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Company mailboxes and background mail filing (1.12.72).
+     *
+     *  - `company_mailboxes`: shared mailboxes an admin defines (info@, steel@, ...),
+     *    optionally with an owner. The whole IMAP / SMTP profile sits in `settings_json`
+     *    in the same shape (and with the same encrypted secrets) as a user's
+     *    `emailSettings`, so the mail_broker.php helpers read it unchanged.
+     *  - `mail_sync_state`: one row per mailbox and folder, so a filing run is
+     *    incremental: `last_uid` is the high-water mark of what the live read has seen,
+     *    `backfill_upper_uid` / `backfill_done` track the newest-first catch-up of the
+     *    mail that was already there. `uid_validity` resets both when the server
+     *    renumbers a folder.
+     *  - `filed_mail_bodies`: the readable plain-text body (and attachment names) of a
+     *    filed message, kept apart from `timeline_events` because the sync reads that
+     *    whole table on every load.
+     *  - `timeline_events.mail_account` / `mail_owner` / `mail_has_body` /
+     *    `mail_message_id`: which mailbox a message came from (a label), whose personal
+     *    mailbox that is (so only they read it live), whether a stored body exists, and
+     *    the Message-ID that stops one mail in two mailboxes being filed twice.
+     * Idempotent: every step checks the live schema first.
+     */
+    function ccrm_migrate_mail_filing(PDO $pdo): void {
+        try {
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS `company_mailboxes` (
+                  `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `name` VARCHAR(150) NOT NULL,
+                  `address` VARCHAR(255) NOT NULL,
+                  `settings_json` MEDIUMTEXT NOT NULL COMMENT 'IMAP / SMTP profile, secrets encrypted (enc:v1:)',
+                  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                  `owner_user_id` VARCHAR(50) NULL COMMENT 'Optional person this mailbox belongs to',
+                  `backfill_since` DATE NULL COMMENT 'Do not file mail older than this; NULL = everything',
+                  `last_run_at` DATETIME NULL,
+                  `last_success_at` DATETIME NULL,
+                  `last_error` TEXT NULL,
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  UNIQUE INDEX `uq_company_mailbox_address` (`address`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS `mail_sync_state` (
+                  `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user id>',
+                  `folder` VARCHAR(190) NOT NULL,
+                  `uid_validity` BIGINT NULL,
+                  `last_uid` BIGINT NOT NULL DEFAULT 0,
+                  `backfill_upper_uid` BIGINT NULL COMMENT 'The next backfill chunk is everything below this UID',
+                  `backfill_done` TINYINT(1) NOT NULL DEFAULT 0,
+                  `filed_count` INT NOT NULL DEFAULT 0,
+                  `last_run_at` DATETIME NULL,
+                  `last_error` TEXT NULL,
+                  PRIMARY KEY (`mailbox_key`, `folder`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS `filed_mail_bodies` (
+                  `event_id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `body` MEDIUMTEXT NULL,
+                  `attachments_json` TEXT NULL COMMENT 'Names and sizes only; the files stay on the mail server',
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+            if (ccrm_table_exists($pdo, 'timeline_events')) {
+                $columns = [
+                    'mail_account'    => "VARCHAR(150) NULL COMMENT 'Label of the mailbox the message was read from'",
+                    'mail_owner'      => "VARCHAR(255) NULL COMMENT 'Login e-mail of the user whose personal mailbox it is; NULL for a company mailbox'",
+                    'mail_has_body'   => "TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'A readable body is stored in filed_mail_bodies'",
+                    'mail_message_id' => "VARCHAR(255) NULL COMMENT 'RFC 5322 Message-ID, to file one mail once'",
+                ];
+                foreach ($columns as $name => $definition) {
+                    if (!ccrm_column_exists($pdo, 'timeline_events', $name)) {
+                        $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `{$name}` {$definition}");
+                    }
+                }
+                $hasIndex = (int)$pdo->query(
+                    "SELECT COUNT(*) FROM information_schema.STATISTICS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'timeline_events' AND INDEX_NAME = 'idx_te_mail_msgid'"
+                )->fetchColumn() > 0;
+                if (!$hasIndex) {
+                    $pdo->exec("ALTER TABLE `timeline_events` ADD INDEX `idx_te_mail_msgid` (`lead_id`, `mail_message_id`(100))");
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: mail filing migration skipped: ' . $e->getMessage());
         }
     }
 

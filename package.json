@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "test": "npm run test:unit && npm run test:qa",
     "test:unit": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "test:mail-filing": "php scripts/test-mail-filing.php",
     "test:warehouse-fields": "php scripts/test-warehouse-fields.php",
     "test:offer-statuses": "php scripts/test-offer-statuses.php",
     "test:pipeline-extras": "php scripts/test-pipeline-extras.php",

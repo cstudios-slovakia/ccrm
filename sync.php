@@ -1035,6 +1035,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             // is fetched from when the card is opened.
             if ($te['type'] === 'email') {
                 $event['isOutgoing'] = !empty($te['is_outgoing']);
+                // Which mailbox it was read from (a label), whose personal mailbox that is
+                // (only they open it live), and whether the background job stored a readable
+                // body. The body itself is fetched on demand (mail_broker.php?action=get_filed_mail):
+                // this whole table is read on every load.
+                if (!empty($te['mail_account'])) {
+                    $event['mailAccount'] = $te['mail_account'];
+                }
+                if (!empty($te['mail_owner'])) {
+                    $event['mailOwner'] = $te['mail_owner'];
+                }
+                if (!empty($te['mail_has_body'])) {
+                    $event['hasStoredBody'] = true;
+                }
             }
             // Who produced the entry. Absent on anything nobody triggered in the CRM
             // (incoming mail, public-form inquiries) and on everything written before
