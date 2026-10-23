@@ -1936,6 +1936,17 @@ if (!function_exists('ccrm_schema_statements')) {
      *    five fixed columns; the levels themselves are the PRICE_LEVELS setting.
      */
     function ccrm_migrate_warehouse_item_fields(PDO $pdo): void {
+        // The client's price level goes first and in its own try: it is the column
+        // the lead sync writes on every save, so a failure in the catalogue steps
+        // below (the schema is then marked current and never retried) must not
+        // leave `leads` without it.
+        try {
+            if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'price_level_id')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `price_level_id` VARCHAR(50) NULL COMMENT 'The price level this client buys on (PRICE_LEVELS setting)'");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: leads.price_level_id migration skipped: ' . $e->getMessage());
+        }
         try {
             $hasItems = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_items'")->fetchColumn() > 0;
             if ($hasItems) {
@@ -1977,9 +1988,6 @@ if (!function_exists('ccrm_schema_statements')) {
                     error_log('[ccrm] schema: warehouse_item_prices created without its foreign key: ' . $fkError->getMessage());
                     $pdo->exec(sprintf($priceTable, ''));
                 }
-            }
-            if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'price_level_id')) {
-                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `price_level_id` VARCHAR(50) NULL COMMENT 'The price level this client buys on (PRICE_LEVELS setting)'");
             }
         } catch (\Throwable $e) {
             error_log('[ccrm] schema: warehouse item fields migration skipped: ' . $e->getMessage());
