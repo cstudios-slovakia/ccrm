@@ -25,8 +25,10 @@ import type {
   FinancialSimplifiedTable,
   Project,
   Lead,
-  UserProfile
+  UserProfile,
+  CompanyBillingSettings
 } from "../types";
+import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
 import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { FinancialCategoriesManager } from "./FinancialCategoriesManager";
@@ -869,6 +871,8 @@ interface FinancialManagementViewProps {
   users: UserProfile[];
   userLanguage: Language;
   currencyCode?: string | null;
+  /** Settings → Billing: the VAT rates a record can carry and the one a new record starts with. */
+  companyBillingSettings?: CompanyBillingSettings | null;
   onOpenProject?: (projectId: string) => void;
   onOpenClient?: (clientId: string) => void;
   /** Role access for the financial module. `edit: false` renders the view read-only. */
@@ -893,12 +897,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   leads = [],
   userLanguage,
   currencyCode,
+  companyBillingSettings,
   onOpenProject,
   onOpenClient,
   access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const defaultVatRate = getDefaultVatRate(companyBillingSettings);
+  const availableVatRates = getAvailableVatRates(companyBillingSettings);
   const canEdit = access.edit;
   const canDelete = access.delete;
   const setFinancialRecords: typeof setFinancialRecordsRaw = (updater) => {
@@ -1193,7 +1200,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [formProjectId, setFormProjectId] = useState("");
   const [formClientId, setFormClientId] = useState("");
   const [formInvoiceNumber, setFormInvoiceNumber] = useState("");
-  const [formTaxRate, setFormTaxRate] = useState<number>(20);
+  const [formTaxRate, setFormTaxRate] = useState<number>(defaultVatRate);
 
   // Recurrence Form fields
   const [formIsRecurring, setFormIsRecurring] = useState(false);
@@ -2126,7 +2133,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormProjectId("");
     setFormClientId("");
     setFormInvoiceNumber("");
-    setFormTaxRate(20);
+    setFormTaxRate(defaultVatRate);
     setFormIsRecurring(true);
     setFormRecurringFreq("monthly");
     setFormMonthlyType("day_of_month");
@@ -2372,7 +2379,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         recurringStartDate: todayLocal(),
         projectId: null,
         clientId: null,
-        taxRate: 20,
+        taxRate: defaultVatRate,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       },
@@ -2395,7 +2402,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         recurringStartDate: todayLocal(),
         projectId: null,
         clientId: null,
-        taxRate: 20,
+        taxRate: defaultVatRate,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       },
@@ -2418,7 +2425,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         recurringStartDate: todayLocal(),
         projectId: null,
         clientId: null,
-        taxRate: 20,
+        taxRate: defaultVatRate,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       },
@@ -2441,7 +2448,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         recurringStartDate: todayLocal(),
         projectId: null,
         clientId: null,
-        taxRate: 20,
+        taxRate: defaultVatRate,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }
@@ -3708,7 +3715,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormProjectId("");
     setFormClientId("");
     setFormInvoiceNumber(type === "income" ? `FA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}` : "");
-    setFormTaxRate(20);
+    setFormTaxRate(defaultVatRate);
     setFormIsRecurring(false);
     setFormRecurringFreq("monthly");
     setFormWeeklyDay(1);
@@ -3744,7 +3751,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormProjectId(rec.projectId || "");
     setFormClientId(rec.clientId || "");
     setFormInvoiceNumber(rec.invoiceNumber || "");
-    setFormTaxRate(rec.taxRate ?? 20);
+    setFormTaxRate(rec.taxRate ?? defaultVatRate);
     setFormIsRecurring(rec.isRecurring || false);
     setFormRecurringFreq(rec.recurringFrequency || "monthly");
 
@@ -3785,7 +3792,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormProjectId(base.projectId || "");
     setFormClientId(base.clientId || "");
     setFormInvoiceNumber(existing?.invoiceNumber || "");
-    setFormTaxRate(base.taxRate ?? 20);
+    setFormTaxRate(base.taxRate ?? defaultVatRate);
     setFormPaymentMethod(base.paymentMethod || "bank_transfer");
     setFormIsRecurring(false);
     setFormAmountAppliesFrom("");
@@ -3891,7 +3898,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       projectId: rule.projectId || null,
       clientId: rule.clientId || null,
       invoiceNumber: formInvoiceNumber.trim() || null,
-      taxRate: existing?.taxRate ?? rule.taxRate ?? 20,
+      taxRate: existing?.taxRate ?? rule.taxRate ?? defaultVatRate,
       attachments: existing?.attachments || [],
       createdBy: existing?.createdBy || (window as any).ccrmCurrentUser?.email || "Admin",
       createdAt: existing?.createdAt || now,
@@ -4298,21 +4305,36 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </div>
       </div>
 
-      {/* 3. Category */}
-      <div>
-        <label className={FORM_LABEL}>
-          {t("Category", "Kategória", "Kategória")}
-        </label>
-        <SearchableCategorySelect
-          value={formCategoryId}
-          onChange={(catId) => setFormCategoryId(catId === "all" ? "" : catId)}
-          categories={financialCategories}
-          filterType={formType}
-          allowAll={false}
-          size="md"
-          placeholder={t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon kategóriát --")}
-          t={t}
-        />
+      {/* 3. Category & VAT rate */}
+      <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
+        <div className="ws-sm:col-span-2">
+          <label className={FORM_LABEL}>
+            {t("Category", "Kategória", "Kategória")}
+          </label>
+          <SearchableCategorySelect
+            value={formCategoryId}
+            onChange={(catId) => setFormCategoryId(catId === "all" ? "" : catId)}
+            categories={financialCategories}
+            filterType={formType}
+            allowAll={false}
+            size="md"
+            placeholder={t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon kategóriát --")}
+            t={t}
+          />
+        </div>
+        <div>
+          <label className={FORM_LABEL}>
+            {t("VAT rate", "Sadzba DPH", "ÁFA-kulcs")}
+          </label>
+          <CustomSelect
+            value={String(formTaxRate)}
+            onChange={(val) => setFormTaxRate(parseFloat(val) || 0)}
+            options={(availableVatRates.includes(formTaxRate) ? availableVatRates : [formTaxRate, ...availableVatRates].sort((a, b) => b - a)).map((rate) => ({
+              value: String(rate),
+              label: `${rate} %`
+            }))}
+          />
+        </div>
       </div>
 
       {/* 4. Status & dates — a rule has a start and an end instead */}

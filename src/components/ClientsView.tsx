@@ -1970,7 +1970,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       formValues.isRecurring = false;
       formValues.projectId = null;
       formValues.clientId = clientIdVal;
-      formValues.taxRate = 20;
+      formValues.taxRate = getDefaultVatRate(companyBillingSettings);
       formValues.createdBy = (window as any).ccrmCurrentUser?.email || "Admin";
       formValues.createdAt = new Date().toISOString();
     }

@@ -4,7 +4,7 @@ import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X, PanelRightOpen } from "lucide-react";
-import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
+import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract, CompanyBillingSettings } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
@@ -152,6 +152,8 @@ interface ProjectsViewProps {
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   currencyCode?: string | null;
+  /** Settings → Billing: the default VAT rate a finance record added from a project starts with. */
+  companyBillingSettings?: CompanyBillingSettings | null;
   /** Every task; a project's Tasks tab lists and creates the ones linked to it. */
   tasks?: Task[];
   setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
@@ -192,6 +194,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   financialCategories = [],
   setFinancialCategories,
   currencyCode,
+  companyBillingSettings,
   tasks,
   setTasks,
   taskStates,
@@ -1645,6 +1648,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         financialCategories={financialCategories}
         setFinancialCategories={setFinancialCategories}
         currencyCode={currencyCode}
+        companyBillingSettings={companyBillingSettings}
         canEdit={canEdit}
         canDelete={canDelete}
         financeAccess={financeAccess}
@@ -2955,6 +2959,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           financialCategories={financialCategories}
           setFinancialCategories={setFinancialCategories}
           currencyCode={currencyCode}
+          companyBillingSettings={companyBillingSettings}
           canEdit={canEdit}
           canDelete={canDelete}
           financeAccess={financeAccess}

@@ -383,7 +383,7 @@ test("F13: the 'monthly' warehouse KPIs count only this month's movements", () =
 // gross or net.
 // ==========================================================================
 
-test("F14: the finance form exposes the VAT rate it stores, or does not store one", { skip: "component-level — product decision: either render a VAT input and use it (net/gross) or drop the field" }, () => {});
+test("F14: the finance form exposes the VAT rate it stores, or does not store one", { skip: "component-level — the finance form now renders a VAT-rate picker (Settings → Billing rates) and new records start at the company default rate; net/gross is still unlabelled" }, () => {});
 
 // ==========================================================================
 // F15 — derivePaidDate stamps the UTC day (financialRecordMerge.ts:32) while

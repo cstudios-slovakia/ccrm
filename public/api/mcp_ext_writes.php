@@ -359,11 +359,7 @@ function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
 
 /** The company's default VAT rate (Settings → Billing); nothing else from that setting is read. */
 function mcp_default_vat_rate(\PDO $pdo): float {
-    $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'COMPANY_BILLING_SETTINGS'");
-    $stmt->execute();
-    $s = json_decode((string)$stmt->fetchColumn(), true);
-    $r = is_array($s) ? (float)($s['defaultVatRate'] ?? 0) : 0.0;
-    return $r > 0 ? $r : 20.0;
+    return ccrm_default_vat_rate($pdo);
 }
 
 /** Is an invoice's linked ledger movement settled (money recorded against it)? */
@@ -446,7 +442,7 @@ function mcp_do_create_invoice(\PDO $pdo, array $user, array $args): array {
                      VALUES (?, 'income', 'invoice', ?, ?, ?, 0, ?, 'pending', ?, ?, ?, ?, ?, 'bank_transfer', ?)"
                 )->execute([
                     'fr-inv-' . $invId, $docNum . ' — ' . $clientName, $title, $total, $currency, $issuedAt, $dueDate, $clientId, $docNum,
-                    $subtotal > 0 ? round($vatTotal / $subtotal * 100) : 20, $user['name'],
+                    $subtotal > 0 ? round($vatTotal / $subtotal * 100) : ccrm_default_vat_rate($pdo), $user['name'],
                 ]);
             }
         });

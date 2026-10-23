@@ -381,7 +381,7 @@ switch ($method) {
                         $item['unit'] ?? 'ks',
                         $item['unit_price'] ?? 0.0000,
                         $item['discount_percent'] ?? 0.00,
-                        $item['tax_rate'] ?? 20.00,
+                        $item['tax_rate'] ?? ccrm_default_vat_rate($pdo),
                         $item['total_net_amount'] ?? 0.00,
                         $item['total_gross_amount'] ?? 0.00,
                         $item['fulfilled_quantity'] ?? 0.00,

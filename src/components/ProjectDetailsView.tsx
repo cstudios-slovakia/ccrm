@@ -11,8 +11,9 @@ import {
 import type {
   Project, ProjectType, Lead, UserProfile,
   ProjectTimelineEvent, ProjectGanttRow, ProjectCustomFileField, ProjectUploadedFile,
-  FinancialRecord, FinancialCategory, FinancialStatus, FinancialType
+  FinancialRecord, FinancialCategory, FinancialStatus, FinancialType, CompanyBillingSettings
 } from "../types";
+import { getDefaultVatRate } from "../utils/vat";
 import { getTranslation, type Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
 import {
@@ -67,6 +68,8 @@ interface ProjectDetailsViewProps {
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   currencyCode?: string | null;
+  /** Settings → Billing: the default VAT rate a finance record added here starts with. */
+  companyBillingSettings?: CompanyBillingSettings | null;
   onClose: () => void;
   /** Called with `close: false` on every change — the view has no Save
       button and saves itself in place, leaving the card open. */
@@ -143,6 +146,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   setFinancialRecords,
   financialCategories = [],
   currencyCode,
+  companyBillingSettings,
   onClose,
   onSave,
   onDelete,
@@ -887,7 +891,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       isRecurring: false,
       projectId: project.id,
       clientId: associatedClientId || associatedLeadId || null,
-      taxRate: 20,
+      taxRate: getDefaultVatRate(companyBillingSettings),
       createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
       createdAt: new Date().toISOString(),
     });
@@ -968,7 +972,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       formValues.isRecurring = false;
       formValues.projectId = project.id;
       formValues.clientId = associatedClientId || associatedLeadId || null;
-      formValues.taxRate = 20;
+      formValues.taxRate = getDefaultVatRate(companyBillingSettings);
       formValues.createdBy = (window as any).ccrmCurrentUser?.email || "Admin";
       formValues.createdAt = new Date().toISOString();
     }

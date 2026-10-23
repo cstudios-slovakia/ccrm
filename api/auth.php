@@ -1132,6 +1132,34 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * The company's default VAT rate (Settings → Billing): what a line or a finance
+     * record starts with when nothing says otherwise. Mirrors getDefaultVatRate() in
+     * src/utils/vat.ts, so 23 (the app's standard rate) until one is set. Read once per request.
+     */
+    function ccrm_default_vat_rate(?\PDO $pdo): float {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $cached = 23.0;
+        if ($pdo !== null) {
+            try {
+                $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'COMPANY_BILLING_SETTINGS'");
+                $stmt->execute();
+                $settings = json_decode((string)$stmt->fetchColumn(), true);
+                $rate = is_array($settings) ? ($settings['defaultVatRate'] ?? null) : null;
+                // 0 % is a real choice (a company that is not a VAT payer), so only a missing or out-of-range value falls back.
+                if (is_numeric($rate) && $rate >= 0 && $rate <= 100) {
+                    $cached = round((float)$rate, 2);
+                }
+            } catch (\Throwable $e) {
+                // keep the standard rate
+            }
+        }
+        return $cached;
+    }
+
+    /**
      * A stored price-level list (Settings → Price levels), cleaned up the same way
      * normalizePriceLevels() does it in src/utils/warehousePricing.ts: unique
      * non-empty ids, a trimmed non-empty name (unique ignoring case). Unreadable

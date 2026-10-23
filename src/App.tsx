@@ -3752,6 +3752,7 @@ ${log.payload || ''}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             currencyCode={currencyCode}
+            companyBillingSettings={companyBillingSettings}
             tasks={tasks}
             setTasks={updateTasksAndSync}
             taskStates={taskStates}
@@ -3836,6 +3837,7 @@ ${log.payload || ''}
             users={users}
             userLanguage={userLanguage}
             currencyCode={currencyCode}
+            companyBillingSettings={companyBillingSettings}
             onOpenProject={(projId) => {
               window.location.hash = `projects/${projId}`;
               setActiveTab(`projects/${projId}`);
