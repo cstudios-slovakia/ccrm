@@ -23,6 +23,7 @@ import {
   uploadDiskName,
   type RegistryFileType,
 } from "../utils/projectDocuments";
+import { collectLeadOfferFiles, detachTimelineFile } from "../utils/timelineFiles";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
@@ -78,6 +79,8 @@ type RegistryRow = {
   offerValue: number;
   summary: string;
   source: "lead" | "project" | "document";
+  /** The timeline event a lead file belongs to. The row is one file, not the event. */
+  eventId?: string;
   /** Set for `source: "document"` rows — the invoice or proforma itself. */
   document?: InvoiceOffer;
   slotId?: string;
@@ -449,23 +452,34 @@ export const FilesView: React.FC<FilesViewProps> = ({
         setProjects!(prev => prev.map(p => p.id !== file.projectId ? p
           : restoreProjectUploadedFile(p, file.slotId!, Boolean(file.slotCustom), removedFile, index)));
       };
-    } else {
-      // Where the event sat on each lead, so Undo puts it back in the same place.
-      const removed = new Map<string, { event: TimelineEvent; index: number }>();
+    } else if (file.eventId) {
+      // One attachment. The price offer (or whichever event filed it) stays,
+      // even when this was its last file — a file is not required for the event.
+      const snapshots = new Map<string, TimelineEvent>();
       leads.forEach(lead => {
-        const index = (lead.timeline || []).findIndex(event => event.id === file.id);
-        if (index >= 0) removed.set(lead.id, { event: (lead.timeline || [])[index], index });
+        const event = (lead.timeline || []).find(item => item.id === file.eventId);
+        if (event) snapshots.set(lead.id, event);
       });
-      apply = () => setLeads((prevLeads: Lead[]) => prevLeads.map(lead =>
-        lead.timeline ? { ...lead, timeline: lead.timeline.filter(event => event.id !== file.id) } : lead
-      ));
-      revert = () => setLeads((prevLeads: Lead[]) => prevLeads.map(lead => {
-        const hit = removed.get(lead.id);
-        if (!hit || (lead.timeline || []).some(event => event.id === file.id)) return lead;
-        const next = [...(lead.timeline || [])];
-        next.splice(Math.min(hit.index, next.length), 0, hit.event);
-        return { ...lead, timeline: next };
+      const target = { path: file.filePath, name: file.fileName };
+      apply = () => setLeads((prevLeads: Lead[]) => prevLeads.map(lead => {
+        if (!snapshots.has(lead.id) || !lead.timeline) return lead;
+        return {
+          ...lead,
+          timeline: lead.timeline.map(event =>
+            event.id === file.eventId ? detachTimelineFile(event, target) : event
+          ),
+        };
       }));
+      revert = () => setLeads((prevLeads: Lead[]) => prevLeads.map(lead => {
+        const snap = snapshots.get(lead.id);
+        if (!snap || !lead.timeline) return lead;
+        return {
+          ...lead,
+          timeline: lead.timeline.map(event => event.id === snap.id ? snap : event),
+        };
+      }));
+    } else {
+      return;
     }
 
     runUndoable({
@@ -501,32 +515,17 @@ export const FilesView: React.FC<FilesViewProps> = ({
     );
   };
 
-  // Dynamic files aggregator: scan client timelines and every project file slot
+  // Dynamic files aggregator: every file on an offer event, then issued
+  // invoices and every project file slot. An offer with several attachments
+  // (a document and two images) is one event and several rows.
   const filesList = useMemo(() => {
-    const files: RegistryRow[] = [];
-
-    leads.forEach(lead => {
-      if (lead.timeline && lead.timeline.length > 0) {
-        lead.timeline.forEach(event => {
-          if (event.type === "offer" && event.fileName) {
-            files.push({
-              id: event.id,
-              fileName: event.fileName,
-              fileType: event.fileType || "offer",
-              fileSize: event.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret"),
-              filePath: event.filePath || `/uploads/${event.id}_${event.fileName}`,
-              clientName: lead.name,
-              projectId: null,
-              projectName: "",
-              uploadedAt: event.timestamp,
-              offerValue: event.amount || 0,
-              summary: event.content || "",
-              source: "lead",
-            });
-          }
-        });
-      }
-    });
+    const unknownSize = t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret");
+    const files: RegistryRow[] = collectLeadOfferFiles(leads, unknownSize).map(row => ({
+      ...row,
+      projectId: null,
+      projectName: "",
+      source: "lead" as const,
+    }));
 
     invoicesOffers.forEach(doc => {
       if (doc.type === "price_offer") return;

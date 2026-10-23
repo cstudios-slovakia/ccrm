@@ -67,6 +67,7 @@ import { archiveLeadsWithUndo } from "../utils/leadActions";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { detachTimelineFile, timelineEventFiles } from "../utils/timelineFiles";
 import { Chart as BundledChart } from "../utils/chartRuntime";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
@@ -4152,7 +4153,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     count: (activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length,
                   },
                   { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
-                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: activeClient.timeline.filter(e => e.fileName).length },
+                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: (activeClient.timeline || []).reduce((n, event) => n + timelineEventFiles(event).length, 0) },
                   { key: "tickets", icon: <TicketIcon className="h-4.5 w-4.5" />, label: t("Tickets", "Tikety", "Jegyek"), count: clientTickets.length || undefined },
                 ]}
               />
@@ -4922,13 +4923,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </form>
                   </div>
 
-                  {/* Attached Documents List */}
+                  {/* Attached Documents List — one row per file, not per event. */}
+                  {(() => {
+                    const attachedFiles = (activeClient.timeline || []).flatMap(event =>
+                      timelineEventFiles(event).map((attached, index) => ({ event, attached, index }))
+                    );
+                    return (
                   <div className="space-y-4">
                     <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                      <FileText className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attached Client Documents", "Pripojené dokumenty klienta", "Csatolt ügyféldokumentumok")} ({activeClient.timeline.filter(e => e.fileName).length})
+                      <FileText className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attached Client Documents", "Pripojené dokumenty klienta", "Csatolt ügyféldokumentumok")} ({attachedFiles.length})
                     </h3>
 
-                    {activeClient.timeline.filter(e => e.fileName).length === 0 ? (
+                    {attachedFiles.length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
                         <div className="text-display mb-2">📁</div>
                         <div className="font-bold text-slate-700 uppercase tracking-wider">{t("No files attached to this client", "K tomuto klientovi nie sú pripojené žiadne súbory", "Nincs fájl csatolva ehhez az ügyfélhez")}</div>
@@ -4936,17 +4942,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3">
-                        {activeClient.timeline.filter(e => e.fileName).map((file) => {
+                        {attachedFiles.map(({ event, attached, index }) => {
+                          const href = attached.path || `/uploads/${event.id}_${attached.name}`;
                           return (
                             <div 
-                              key={file.id} 
+                              key={`${event.id}::${index}::${href}`} 
                               className="p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-md flex items-center justify-between gap-4 hover:border-slate-300 transition-all group"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className={`h-10 w-10 rounded-xl flex items-center justify-center border shrink-0 transition-transform group-hover:scale-105 ${
-                                  file.fileType === "contract"
+                                  event.fileType === "contract"
                                     ? "bg-amber-50 text-amber-700 border-amber-200"
-                                    : file.fileType === "invoice"
+                                    : event.fileType === "invoice"
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                     : "bg-blue-50 text-blue-700 border-blue-200"
                                 }`}>
@@ -4954,30 +4961,30 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 </div>
                                 <div className="flex flex-col min-w-0">
                                   <span className="text-ui font-bold text-slate-800 truncate">
-                                    {file.fileName}
+                                    {attached.name}
                                   </span>
                                   <span className="type-overline text-slate-400 flex items-center gap-1.5 mt-0.5">
                                     <span className={`px-1.5 py-0.5 rounded text-micro border font-bold ${
-                                      file.fileType === "contract"
+                                      event.fileType === "contract"
                                         ? "bg-amber-100/50 text-amber-800 border-amber-200"
-                                        : file.fileType === "invoice"
+                                        : event.fileType === "invoice"
                                         ? "bg-emerald-100/50 text-emerald-800 border-emerald-200"
                                         : "bg-blue-100/50 text-blue-800 border-blue-200"
                                     }`}>
-                                      {file.fileType || t("document", "dokument", "dokumentum")}
+                                      {event.fileType || t("document", "dokument", "dokumentum")}
                                     </span>
-                                    &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {formatDateLocalized(file.timestamp, systemLanguage)}
+                                    &bull; {attached.size || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {formatDateLocalized(event.timestamp, systemLanguage)}
                                   </span>
                                   <p className="text-micro text-slate-500 font-bold mt-1 leading-normal italic line-clamp-1">
-                                    "{file.content}"
+                                    "{event.content}"
                                   </p>
                                 </div>
                               </div>
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <a
-                                  href={file.attachments?.[0]?.path || (file as any).filePath || `/uploads/${file.id}_${file.fileName}`}
-                                  download={file.fileName}
+                                  href={href}
+                                  download={attached.name}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all text-slate-600 hover:text-slate-900 shadow-sm flex items-center justify-center cursor-pointer"
@@ -4988,31 +4995,37 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 <HoldToConfirmButton
                                     tone="danger"
                                     lang={systemLanguage}
-                                    what={file.fileName || file.title}
+                                    what={attached.name || event.title}
                                     onConfirm={() => {
                                     const clientKey = activeClient.name.trim().toLowerCase();
-                                    // Where the event sat on each lead of the profile, so Undo
-                                    // puts it back in the same place and touches nothing else.
-                                    const removed = new Map<string, { event: TimelineEvent; index: number }>();
+                                    // The event stays. Undo puts this one file back on it.
+                                    const snapshots = new Map<string, TimelineEvent>();
                                     leads.forEach(lead => {
                                       if (lead.name.trim().toLowerCase() !== clientKey) return;
-                                      const index = (lead.timeline || []).findIndex(evt => evt.id === file.id);
-                                      if (index >= 0) removed.set(lead.id, { event: (lead.timeline || [])[index], index });
+                                      const found = (lead.timeline || []).find(evt => evt.id === event.id);
+                                      if (found) snapshots.set(lead.id, found);
                                     });
+                                    const target = { path: href, name: attached.name };
                                     runUndoable({
-                                      message: singleMessage(systemLanguage, "file", "delete", file.fileName || file.title),
+                                      message: singleMessage(systemLanguage, "file", "delete", attached.name || event.title),
                                       undoLabel: undoLabel(systemLanguage),
                                       apply: () => setLeads(prev => prev.map(lead =>
-                                        removed.has(lead.id)
-                                          ? { ...lead, timeline: (lead.timeline || []).filter(evt => evt.id !== file.id) }
+                                        snapshots.has(lead.id)
+                                          ? {
+                                              ...lead,
+                                              timeline: (lead.timeline || []).map(evt =>
+                                                evt.id === event.id ? detachTimelineFile(evt, target) : evt
+                                              ),
+                                            }
                                           : lead
                                       )),
                                       revert: () => setLeads(prev => prev.map(lead => {
-                                        const hit = removed.get(lead.id);
-                                        if (!hit || (lead.timeline || []).some(evt => evt.id === file.id)) return lead;
-                                        const next = [...(lead.timeline || [])];
-                                        next.splice(Math.min(hit.index, next.length), 0, hit.event);
-                                        return { ...lead, timeline: next };
+                                        const snap = snapshots.get(lead.id);
+                                        if (!snap) return lead;
+                                        return {
+                                          ...lead,
+                                          timeline: (lead.timeline || []).map(evt => evt.id === snap.id ? snap : evt),
+                                        };
                                       })),
                                     });
                                   }}
@@ -5028,6 +5041,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
                     )}
                   </div>
+                    );
+                  })()}
 
 
                 </div>
