@@ -469,7 +469,7 @@ async function writeChecks() {
   check('a negative quantity is refused', isErr(await call(A, 'create_invoice', { client_id: leadId, title: 'Bad', items: [{ title: 'X', quantity: -1, unit_price: 1 }] }), /at least/), '');
   check('a refused invoice leaves no orphan header', Number(cell(`SELECT COUNT(*) FROM invoices_offers WHERE title='Bad'`)) === 0, '');
   check('approving an invoice is refused (changes the books)', isErr(await call(A, 'update_invoice_status', { id: inv.id, status: 'approved' }), /only be set in the app/), '');
-  check('marking an invoice paid is refused', isErr(await call(A, 'update_invoice_status', { id: inv.id, status: 'paid' }), /only be set in the app/), '');
+  check('a status the invoice list does not have is refused and the valid ones are listed', isErr(await call(A, 'update_invoice_status', { id: inv.id, status: 'paid' }), /Unknown invoice status.*invoiced/), '');
   check('an invoice can be sent', (await call(A, 'update_invoice_status', { id: inv.id, status: 'sent' })).success === true, '');
   await call(A, 'update_invoice_status', { id: inv.id, status: 'cancelled' });
   check('cancelling cancels the unsettled ledger movement', cell(`SELECT status FROM financial_records WHERE id='fr-inv-${inv.id}'`) === 'cancelled', '');

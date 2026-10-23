@@ -49,6 +49,7 @@ import {
 } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
+import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { isClientRecord } from "../utils/clientRecord";
 import { contactDetailsFor, resolveLinkedClient } from "../utils/leadClient";
 import { formatMoney } from "../utils/currency";
@@ -69,6 +70,8 @@ export interface OrdersViewProps {
   setWarehouseMovements?: React.Dispatch<React.SetStateAction<WarehouseMovement[]>>;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  /** Settings → Invoice statuses: an issued invoice starts in the first settled / open one. */
+  invoiceStatuses?: OfferStatusDef[];
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: (recs: FinancialRecord[] | ((prev: FinancialRecord[]) => FinancialRecord[])) => void;
   onAddTimelineEvent?: (leadId: string, event: TimelineEvent) => void;
@@ -101,6 +104,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   warehouses = [],
   setWarehouseMovements,
   invoicesOffers: _invoicesOffers = [],
+  invoiceStatuses,
   setInvoicesOffers,
   financialRecords: _financialRecords = [],
   setFinancialRecords,
@@ -359,7 +363,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       subject: `${t("Order", "Objednávka", "Rendelés")} ${order.orderNumber}`,
       type: "invoice",
       mode: "default",
-      status: order.paymentStatus === "paid" ? "invoiced" : "sent",
+      status: issuedInvoiceStatus(order.paymentStatus === "paid", invoiceStatuses),
       clientId: targetClientId,
       leadId: targetClientId || "",
       clientName,

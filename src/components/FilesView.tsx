@@ -13,6 +13,7 @@ import type { ModuleAccess } from "../utils/permissions";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
 import { formatMoney } from "../utils/currency";
+import { DEFAULT_INVOICE_STATUS_DEFS, offerStatusOptions, type OfferStatusDef } from "../utils/offerStatuses";
 import { nowLocalStamp, formatTimestampLocalized } from "../utils/localTime";
 import {
   asUploadedFiles,
@@ -57,11 +58,11 @@ interface FilesViewProps {
    */
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  /** The configurable statuses of proformas and invoices (Price offers → Settings → Invoice statuses). */
+  invoiceStatuses?: OfferStatusDef[];
   companyBillingSettings?: CompanyBillingSettings | null;
   aiCustomTemplates?: AiCustomTemplate[];
 }
-
-const DOCUMENT_STATUSES: InvoiceOfferStatus[] = ["draft", "sent", "approved", "rejected", "invoiced", "cancelled"];
 
 type RegistryRow = {
   id: string;
@@ -93,6 +94,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   access = FULL_MODULE_ACCESS,
   invoicesOffers = [],
   setInvoicesOffers,
+  invoiceStatuses = DEFAULT_INVOICE_STATUS_DEFS as OfferStatusDef[],
   companyBillingSettings,
   aiCustomTemplates = [],
 }) => {
@@ -490,18 +492,6 @@ export const FilesView: React.FC<FilesViewProps> = ({
     () => (previewDocumentId ? invoicesOffers.find(d => d.id === previewDocumentId) ?? null : null),
     [previewDocumentId, invoicesOffers]
   );
-
-  const documentStatusLabel = (status: InvoiceOfferStatus) => {
-    switch (status) {
-      case "draft": return t("Draft", "Návrh", "Piszkozat");
-      case "sent": return t("Sent", "Odoslaná", "Elküldve");
-      case "approved": return t("Approved", "Schválená", "Jóváhagyva");
-      case "rejected": return t("Rejected", "Zamietnutá", "Elutasítva");
-      case "invoiced": return t("Invoiced", "Vyfakturovaná", "Kiszámlázva");
-      case "cancelled": return t("Cancelled", "Zrušená", "Törölve");
-      default: return status;
-    }
-  };
 
   const handleChangeDocumentStatus = (documentId: string, status: InvoiceOfferStatus) => {
     if (!canEdit || !setInvoicesOffers) return;
@@ -1235,7 +1225,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
               align="right"
               value={previewDocument.status}
               onChange={next => handleChangeDocumentStatus(previewDocument.id, next as InvoiceOfferStatus)}
-              options={DOCUMENT_STATUSES.map(status => ({ value: status, label: documentStatusLabel(status) }))}
+              options={offerStatusOptions(t, invoiceStatuses, previewDocument.status)}
             />
           ) : undefined}
         />

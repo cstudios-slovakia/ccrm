@@ -18,6 +18,7 @@ import { OrderDetailView } from "./OrderDetailView";
 import { isClientRecord } from "../utils/clientRecord";
 import { applyClientProfile } from "../utils/leadClient";
 import { getDefaultVatRate } from "../utils/vat";
+import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
@@ -108,6 +109,8 @@ interface ClientsViewProps {
   setWarehouseMovements?: (movements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => void;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: (invoices: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
+  /** Settings → Invoice statuses: an issued invoice starts in the first settled / open one. */
+  invoiceStatuses?: OfferStatusDef[];
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   /** Customer categories (the Categories panel of the client register). */
@@ -460,6 +463,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   warehouses = [],
   setWarehouseMovements,
   invoicesOffers: _invoicesOffers = [],
+  invoiceStatuses,
   priceLevels = [],
   setInvoicesOffers,
   financialCategories = [],
@@ -1844,7 +1848,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       subject: `${t("Order", "Objednávka", "Rendelés")} ${order.orderNumber}`,
       type: "invoice",
       mode: "default",
-      status: order.paymentStatus === "paid" ? "invoiced" : "sent",
+      status: issuedInvoiceStatus(order.paymentStatus === "paid", invoiceStatuses),
       clientId: targetClientId,
       leadId: targetClientId || "",
       clientName,

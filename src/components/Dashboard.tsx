@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import type { Lead, Project, ProjectType, FinancialRecord, InvoiceOffer, ProjectStatus } from "../types";
 import { getTranslation } from "../utils/translations";
+import { isLiveInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney, currencyForRegion } from "../utils/currency";
 import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
@@ -34,6 +35,8 @@ interface DashboardProps {
   projectTypes?: ProjectType[];
   financialRecords?: FinancialRecord[];
   invoicesOffers?: InvoiceOffer[];
+  /** Settings → Invoice statuses: which invoices still count as billed. */
+  invoiceStatuses?: OfferStatusDef[];
 }
 
 interface Campaign {
@@ -264,7 +267,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   projects = [],
   projectTypes = [],
   financialRecords = [],
-  invoicesOffers = []
+  invoicesOffers = [],
+  invoiceStatuses
 }) => {
   const projectStatuses = useProjectStatuses();
   // Inline translation helper for short UI strings
@@ -363,7 +367,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         } else {
           if (invoicesOffers && invoicesOffers.length > 0) {
             const pInvoices = invoicesOffers.filter(
-              (io) => p.leadId && io.leadId === p.leadId && io.type === "invoice" && io.status !== "cancelled"
+              (io) => p.leadId && io.leadId === p.leadId && io.type === "invoice" && isLiveInvoiceStatus(io.status, invoiceStatuses)
             );
             pInvoiced = pInvoices.reduce((sum, io) => sum + (Number(io.totalPrice) || 0), 0);
           }
@@ -405,7 +409,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         rows: statusRows,
       };
     });
-  }, [projects, projectTypes, projectStatuses, leads, financialRecords, invoicesOffers, defaultCurrency, t]);
+  }, [projects, projectTypes, projectStatuses, leads, financialRecords, invoicesOffers, invoiceStatuses, defaultCurrency, t]);
 
   const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
     const list: StatusStatGroup[] = [];

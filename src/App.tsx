@@ -9,7 +9,7 @@ import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAs
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
 import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
-import { normalizeOfferStatusDefs, type OfferStatusDef } from "./utils/offerStatuses";
+import { normalizeInvoiceStatusDefs, normalizeOfferStatusDefs, type OfferStatusDef } from "./utils/offerStatuses";
 import { normalizePriceLevels, type PriceLevel } from "./utils/priceLevels";
 import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
@@ -225,6 +225,7 @@ const computeSettingsSig = (s: any): string => {
     // nothing stored, and that must compare equal to the built-ins it is shown.
     normalizeProjectStatusDefs(s.projectStatuses),
     normalizeOfferStatusDefs(s.offerStatuses),
+    normalizeInvoiceStatusDefs(s.invoiceStatuses),
     normalizePriceLevels(s.priceLevels),
     normalizeOrderStatusDefs(s.orderStatuses),
     normalizeTicketStatuses(s.ticketStatuses),
@@ -317,6 +318,7 @@ function App() {
   const financialModeRef = useRef<FinancialOperatingMode>("connected");
   const financialSimplifiedTableRef = useRef<FinancialSimplifiedTable>({});
   const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
+  const invoiceStatusesRef = useRef<OfferStatusDef[]>(normalizeInvoiceStatusDefs(null));
   const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
   const employeesRef = useRef<Employee[]>([]);
   const employeeSalariesRef = useRef<EmployeeSalary[]>([]);
@@ -777,6 +779,7 @@ function App() {
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDef[]>(() => normalizeProjectStatusDefs(null));
   // The price-offer statuses, configured in Price offers → Settings → Offer statuses.
   const [offerStatuses, setOfferStatuses] = useState<OfferStatusDef[]>(() => normalizeOfferStatusDefs(null));
+  const [invoiceStatuses, setInvoiceStatuses] = useState<OfferStatusDef[]>(() => normalizeInvoiceStatusDefs(null));
   // The named price lists (Settings → Invoicing → Price levels) items carry a price for and clients buy on.
   const [priceLevels, setPriceLevels] = useState<PriceLevel[]>(() => normalizePriceLevels(null));
 
@@ -1245,6 +1248,7 @@ ${log.payload || ''}
   financialModeRef.current = financialMode;
   financialSimplifiedTableRef.current = financialSimplifiedTable;
   companyBillingSettingsRef.current = companyBillingSettings;
+  invoiceStatusesRef.current = invoiceStatuses;
   invoicingIntegrationsRef.current = invoicingIntegrations;
   employeesRef.current = employees;
   employeeSalariesRef.current = employeeSalaries;
@@ -1388,6 +1392,7 @@ ${log.payload || ''}
         taskSettings,
         projectStatuses,
         offerStatuses,
+        invoiceStatuses,
         priceLevels,
         orderStatuses,
         ticketStatuses,
@@ -1953,7 +1958,7 @@ ${log.payload || ''}
     const heldInvoices = (pendingDeletionRecords("invoicesOffers") as InvoiceOffer[])
       .filter((inv) => !next.some((o) => o.id === inv.id));
     ledgerStaleRef.current = heldInvoices.length > 0;
-    const nextRecords = reconcileInvoiceMovements(prev, heldInvoices.length ? [...next, ...heldInvoices] : next, prevRecords);
+    const nextRecords = reconcileInvoiceMovements(prev, heldInvoices.length ? [...next, ...heldInvoices] : next, prevRecords, undefined, invoiceStatusesRef.current);
     if (nextRecords !== prevRecords) {
       financialRecordsRef.current = nextRecords;
       setFinancialRecords(nextRecords);
@@ -2498,6 +2503,7 @@ ${log.payload || ''}
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
       projectStatuses,
       offerStatuses,
+      invoiceStatuses,
       priceLevels,
       orderStatuses,
       ticketStatuses,
@@ -2530,7 +2536,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2892,6 +2898,10 @@ ${log.payload || ''}
         });
         setOfferStatuses((prev) => {
           const next = normalizeOfferStatusDefs(s.offerStatuses);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setInvoiceStatuses((prev) => {
+          const next = normalizeInvoiceStatusDefs(s.invoiceStatuses);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
         setPriceLevels((prev) => {
@@ -3369,6 +3379,7 @@ ${log.payload || ''}
             projectTypes={projectTypes}
             financialRecords={financialRecords}
             invoicesOffers={invoicesOffers}
+            invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
           />
@@ -3442,6 +3453,7 @@ ${log.payload || ''}
           setWarehouseMovements={updateWarehouseMovementsAndSync}
           invoicesOffers={invoicesOffers}
           setInvoicesOffers={updateInvoicesOffersAndSync}
+          invoiceStatuses={invoiceStatuses}
           projectManagers={projectManagers}
           projectManagerColors={projectManagerColors}
           leadSources={leadSources}
@@ -3773,6 +3785,7 @@ ${log.payload || ''}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
+            invoiceStatuses={invoiceStatuses}
             access={access.module("clients")}
             financeAccess={access.module("financial")}
             taskAccess={taskAccess}
@@ -3842,6 +3855,8 @@ ${log.payload || ''}
             priceLevels={priceLevels}
             offerStatuses={offerStatuses}
             setOfferStatuses={setOfferStatuses}
+            invoiceStatuses={invoiceStatuses}
+            setInvoiceStatuses={setInvoiceStatuses}
             access={access.module("invoices")}
             canConfigure={access.canEdit("general_config")}
             invoicesOffers={invoicesOffers}
@@ -3885,6 +3900,7 @@ ${log.payload || ''}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
+            invoiceStatuses={invoiceStatuses}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             onAddTimelineEvent={(leadId, event) => {
@@ -3937,6 +3953,7 @@ ${log.payload || ''}
             access={access.module("files")}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
+            invoiceStatuses={invoiceStatuses}
             companyBillingSettings={companyBillingSettings}
             aiCustomTemplates={aiCustomTemplates}
           />
@@ -4030,6 +4047,7 @@ ${log.payload || ''}
             projectTypes={projectTypes}
             financialRecords={financialRecords}
             invoicesOffers={invoicesOffers}
+            invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
           />
@@ -4052,6 +4070,7 @@ ${log.payload || ''}
             projectTypes={projectTypes}
             financialRecords={financialRecords}
             invoicesOffers={invoicesOffers}
+            invoiceStatuses={invoiceStatuses}
           />
         );
       case "rag_ai":

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { FinancialRecord, InvoiceOffer } from "../types";
 import { invoiceMovementId, reconcileInvoiceMovements } from "./invoiceFinanceBridge.ts";
+import type { OfferStatusDef } from "./offerStatuses.ts";
 
 const NOW = "2026-09-18T10:00:00.000Z";
 
@@ -127,4 +128,27 @@ test("re-activating a cancelled invoice brings its movement back", () => {
   const out = reconcileInvoiceMovements([doc], [{ ...doc, status: "sent" }], [], NOW);
   assert.equal(out.length, 1);
   assert.equal(out[0].status, "pending");
+});
+
+test("a configured status decides by its group whether an invoice is expected income", () => {
+  const statuses: OfferStatusDef[] = [
+    { key: "prep", color: "#64748b", group: "draft" },
+    { key: "issued", color: "#3b82f6", group: "open" },
+    { key: "paid_in_full", color: "#10b981", group: "won" },
+    { key: "written_off", color: "#f43f5e", group: "lost" },
+    { key: "void", color: "#f43f5e", group: "cancelled" },
+  ];
+  for (const key of ["prep", "issued", "paid_in_full"]) {
+    assert.equal(reconcileInvoiceMovements([], [invoice({ status: key })], [], NOW, statuses).length, 1, key);
+  }
+  for (const key of ["written_off", "void"]) {
+    assert.equal(reconcileInvoiceMovements([], [invoice({ status: key })], [], NOW, statuses).length, 0, key);
+  }
+  // the built-in key names mean nothing once the list does not hold them
+  assert.equal(reconcileInvoiceMovements([], [invoice({ status: "cancelled" })], [], NOW, statuses).length, 1);
+});
+
+test("an invoice with nothing to tax gets no invented VAT rate", () => {
+  const [m] = reconcileInvoiceMovements([], [invoice({ subtotal: 0, vatAmount: 0, totalPrice: 0 })], [], NOW);
+  assert.equal(m.taxRate, 0);
 });

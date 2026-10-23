@@ -20,6 +20,9 @@ interface OfferSettingsProps {
   /** The configurable price-offer statuses and the documents that carry them. */
   offerStatuses: OfferStatusDef[];
   setOfferStatuses?: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
+  /** The one configurable list proformas and invoices share, edited below the offer statuses. */
+  invoiceStatuses: OfferStatusDef[];
+  setInvoiceStatuses?: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
   documents: InvoiceOffer[];
   setDocuments?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
   lang: Language;
@@ -66,6 +69,8 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   setAiCustomTemplates,
   offerStatuses,
   setOfferStatuses,
+  invoiceStatuses,
+  setInvoiceStatuses,
   documents,
   setDocuments,
   lang,
@@ -626,6 +631,18 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
         <OfferStatusSettings
           statuses={offerStatuses}
           setStatuses={setOfferStatuses}
+          documents={documents}
+          setDocuments={setDocuments}
+          userLanguage={lang}
+          canEdit={canEdit}
+        />
+      )}
+
+      {setInvoiceStatuses && (
+        <OfferStatusSettings
+          kind="invoice"
+          statuses={invoiceStatuses}
+          setStatuses={setInvoiceStatuses}
           documents={documents}
           setDocuments={setDocuments}
           userLanguage={lang}

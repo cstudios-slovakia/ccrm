@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DEFAULT_INVOICE_STATUS_DEFS,
   DEFAULT_OFFER_STATUS_DEFS,
   defaultOfferStatus,
   firstOfferStatusOf,
   isLostOfferStatus,
+  issuedInvoiceStatus,
   isWonOfferStatus,
+  normalizeInvoiceStatusDefs,
   normalizeOfferStatusDefs,
   offerStatusBadgeStyle,
   offerStatusGroup,
@@ -170,4 +173,65 @@ test("generated keys are ASCII snake case and never collide", () => {
   assert.equal(offerStatusKeyFor("Sent", ["sent", "sent_2"]), "sent_3");
   assert.equal(offerStatusKeyFor("???", []), "status");
   assert.ok(offerStatusKeyFor("a".repeat(120), []).length <= 50);
+});
+
+// ── invoices and proformas: a list of their own ──────────────────────────────
+
+test("an invoice list nobody edited is the six statuses invoices always had, with invoiced selectable", () => {
+  for (const raw of [undefined, null, [], "x"]) {
+    assert.deepEqual(keys(normalizeInvoiceStatusDefs(raw)), ["draft", "sent", "invoiced", "approved", "rejected", "cancelled"]);
+  }
+  // unlike on an offer, `invoiced` is a real choice here: what a paid order's invoice starts in
+  assert.deepEqual(offerStatusOptions(en, DEFAULT_INVOICE_STATUS_DEFS).map((o) => o.value), [
+    "draft", "sent", "invoiced", "approved", "rejected", "cancelled",
+  ]);
+  assert.equal(firstOfferStatusOf("won", DEFAULT_INVOICE_STATUS_DEFS), "invoiced");
+  assert.equal(firstOfferStatusOf("open", DEFAULT_INVOICE_STATUS_DEFS), "sent");
+});
+
+test("the invoice built-ins group the way the finance bridge used to read their keys", () => {
+  const g = (k: string) => offerStatusGroup(k, DEFAULT_INVOICE_STATUS_DEFS);
+  assert.equal(g("cancelled"), "cancelled");
+  assert.equal(g("rejected"), "lost");
+  assert.equal(g("invoiced"), "won");
+  assert.equal(g("sent"), "open");
+});
+
+test("`invoiced` is named for what it is on an invoice, and for what it was on an offer", () => {
+  assert.equal(offerStatusLabel("invoiced", en, DEFAULT_INVOICE_STATUS_DEFS), "Invoiced");
+  assert.equal(offerStatusLabel("invoiced", sk, DEFAULT_INVOICE_STATUS_DEFS), "Vyfakturovaná");
+  assert.equal(offerStatusLabel("invoiced", en, DEFAULT_OFFER_STATUS_DEFS), "Approved (invoiced)");
+});
+
+test("an edited invoice list keeps its custom statuses and the invoice built-in colours", () => {
+  const defs = normalizeInvoiceStatusDefs([
+    { key: "draft" },
+    { key: "paid", label: "Zaplatená", color: "#00ff00", group: "won" },
+    { key: "invoiced", color: "nonsense" },
+  ]);
+  assert.deepEqual(keys(defs), ["draft", "paid", "invoiced"]);
+  assert.equal(defs.find((d) => d.key === "invoiced")?.color, "#10b981");
+  assert.equal(defs.find((d) => d.key === "invoiced")?.legacy, undefined);
+  assert.equal(offerStatusLabel("paid", en, defs), "Zaplatená");
+});
+
+test("an invoice list with nowhere to start falls back to the invoice built-ins, not the offer ones", () => {
+  const defs = normalizeInvoiceStatusDefs([{ key: "sent", group: "open" }]);
+  assert.deepEqual(keys(defs), ["draft", "sent", "invoiced", "approved", "rejected", "cancelled"]);
+});
+
+test("an invoice issued from an order starts settled when the order is paid, else waiting for the money", () => {
+  assert.equal(issuedInvoiceStatus(true), "invoiced");
+  assert.equal(issuedInvoiceStatus(false), "sent");
+  const custom = normalizeInvoiceStatusDefs([
+    { key: "prep", group: "draft" },
+    { key: "issued", label: "Vystavená", group: "open" },
+    { key: "paid", label: "Zaplatená", group: "won" },
+  ]);
+  assert.equal(issuedInvoiceStatus(true, custom), "paid");
+  assert.equal(issuedInvoiceStatus(false, custom), "issued");
+  // nothing of the group in the list: the keys invoices always used
+  const bare = normalizeInvoiceStatusDefs([{ key: "prep", group: "draft" }]);
+  assert.equal(issuedInvoiceStatus(true, bare), "invoiced");
+  assert.equal(issuedInvoiceStatus(false, bare), "sent");
 });

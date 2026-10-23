@@ -992,14 +992,32 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
-     * A stored offer-status list, cleaned up the same way normalizeOfferStatusDefs()
-     * does it in src/utils/offerStatuses.ts: unique non-empty keys, a known group,
-     * a hex colour, kept in group order — and the built-ins whenever the list is
-     * unreadable or has no (non-legacy) draft status for a new offer to start in.
+     * The statuses every installation starts with for a proforma or an invoice
+     * (they share one list). Mirrors DEFAULT_INVOICE_STATUS_DEFS in
+     * src/utils/offerStatuses.ts. Unlike for an offer, `invoiced` is a real,
+     * selectable status here (it is what a paid order's invoice starts in).
      */
-    function ccrm_normalize_offer_statuses($raw): array {
+    function ccrm_default_invoice_status_defs(): array {
+        return [
+            ['key' => 'draft', 'color' => '#64748b', 'group' => 'draft'],
+            ['key' => 'sent', 'color' => '#3b82f6', 'group' => 'open'],
+            ['key' => 'invoiced', 'color' => '#10b981', 'group' => 'won'],
+            ['key' => 'approved', 'color' => '#10b981', 'group' => 'won'],
+            ['key' => 'rejected', 'color' => '#f43f5e', 'group' => 'lost'],
+            ['key' => 'cancelled', 'color' => '#f43f5e', 'group' => 'cancelled'],
+        ];
+    }
+
+    /**
+     * A stored status list (offers, or proformas and invoices), cleaned up the same
+     * way normalizeOfferStatusDefs() does it in src/utils/offerStatuses.ts: unique
+     * non-empty keys, a known group, a hex colour, kept in group order — and the
+     * built-ins (`$defaults`, the offer ones unless given) whenever the list is
+     * unreadable or has no (non-legacy) draft status for a new document to start in.
+     */
+    function ccrm_normalize_offer_statuses($raw, ?array $defaults = null): array {
         $groups = ['draft', 'open', 'won', 'lost', 'cancelled'];
-        $defaults = ccrm_default_offer_status_defs();
+        $defaults = $defaults ?? ccrm_default_offer_status_defs();
         if (!is_array($raw)) {
             return $defaults;
         }
@@ -1062,6 +1080,36 @@ if (!function_exists('ccrm_send_cors')) {
         $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
         $cached = ccrm_normalize_offer_statuses($decoded);
         return $cached;
+    }
+
+    /** The stored proforma / invoice statuses (Price offers → Settings), read once per request. */
+    function ccrm_invoice_status_defs(?\PDO $pdo = null): array {
+        static $cached = null;
+        if ($pdo === null) {
+            return $cached ?? ccrm_default_invoice_status_defs();
+        }
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INVOICE_STATUSES'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_offer_statuses($decoded, ccrm_default_invoice_status_defs());
+        return $cached;
+    }
+
+    /** The group a proforma / invoice status belongs to, or null for a key the list does not know. */
+    function ccrm_invoice_status_group(string $status, ?\PDO $pdo = null): ?string {
+        foreach (ccrm_invoice_status_defs($pdo) as $d) {
+            if ($d['key'] === $status) return $d['group'];
+        }
+        return null;
     }
 
     /** The group a price-offer status belongs to, or null for a key the list does not know. */
