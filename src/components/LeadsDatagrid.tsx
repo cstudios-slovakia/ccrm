@@ -22,6 +22,7 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { createPortal } from "react-dom";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { useFavorites } from "../utils/favorites";
+import { FAVORITES_GROUP, pinFavoriteLeads } from "../utils/favoriteLeads";
 import { LeadListViewMenu } from "./LeadListViewMenu";
 import {
     resolveLeadColumns,
@@ -1057,7 +1058,7 @@ function LeadFilterToolbarControls({
 }
 
 /** Filters that sit on the first row while they fit, then drop to the expanded row. Time, then type, then the rest in their previous order. */
-const LEAD_OVERFLOW_FILTERS = ["time", "type", "division", "rating", "archive", "city", "source"] as const;
+const LEAD_OVERFLOW_FILTERS = ["time", "type", "division", "rating", "archive", "city", "source", "favoritesFirst"] as const;
 type LeadOverflowFilter = (typeof LEAD_OVERFLOW_FILTERS)[number];
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -2034,6 +2035,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return selectedCity !== "all";
             case "source":
                 return selectedSource !== "all";
+            case "favoritesFirst":
+                // A display choice, not a filter: no "filters are active" dot.
+                return false;
         }
     };
 
@@ -5061,12 +5065,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         // Now filter by visibility settings
         if (leadSort.key === "state") {
             // For state-grouped mode, we filter the groups/columns themselves
-            return rawGrouped.filter((group) =>
+            const visible = rawGrouped.filter((group) =>
                 resolvedVisibleStates.includes(group.state.toLowerCase()),
             );
+            return favoritesFirst
+                ? pinFavoriteLeads(visible, isFavorite, false)
+                : visible;
         } else {
             // For other sorting modes, we filter individual leads in each group, and hide empty groups
-            return rawGrouped
+            const visible = rawGrouped
                 .map((group) => ({
                     ...group,
                     leads: group.leads.filter((lead) => {
@@ -5079,6 +5086,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     }),
                 }))
                 .filter((group) => group.leads.length > 0);
+            return favoritesFirst
+                ? pinFavoriteLeads(visible, isFavorite, true)
+                : visible;
         }
     }, [
         processedLeads,
@@ -5086,8 +5096,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         leadSort,
         resolvedVisibleStates,
         leadStateParents,
+        favoritesFirst,
+        isFavorite,
         t,
     ]);
+
+    // Kanban columns: the stages, with the favorites as a column of their own first.
+    const kanbanColumns = useMemo(() => {
+        const columns = stateGroupedLeads.filter((group) =>
+            resolvedVisibleStates.includes(group.state.toLowerCase()),
+        );
+        return favoritesFirst ? pinFavoriteLeads(columns, isFavorite, false) : columns;
+    }, [stateGroupedLeads, resolvedVisibleStates, favoritesFirst, isFavorite]);
 
     // Order all major states and their associated substates sequentially for the progress bar
     const orderedAllStates = useMemo(() => {
@@ -10664,6 +10684,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 />
                         </div>
                 );
+            case "favoritesFirst":
+                return (
+                        <label
+                            className={`shrink-0 w-max h-10 flex items-center gap-2 rounded-xl border px-2.5 text-ui font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                                favoritesFirst
+                                    ? "bg-rose-50 border-rose-200 text-rose-700"
+                                    : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                            }`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={favoritesFirst}
+                                onChange={(e) => setFavoritesFirst(e.target.checked)}
+                                className="h-3.5 w-3.5 accent-rose-500 cursor-pointer"
+                            />
+                            <Heart className={`h-3.5 w-3.5 shrink-0 ${favoritesFirst ? "fill-rose-500 text-rose-500" : "text-slate-400"}`} />
+                            <span>{t("Show favorite leads always as first", "Obľúbené leady vždy ako prvé", "Kedvenc leadek mindig elöl")}</span>
+                        </label>
+                );
             default:
                 return null;
         }
@@ -10992,6 +11031,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                             <tbody className="divide-y-0 ws-lg:divide-y ws-lg:divide-blue-50 text-ui block ws-lg:table-row-group">
                                 {groupedLeads.map((group) => {
+                                    const isFavoritesGroup =
+                                        group.state === FAVORITES_GROUP;
                                     const stateColor =
                                         group.colorOverride ||
                                         getSafeStateColor(group.state);
@@ -11011,7 +11052,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <React.Fragment key={group.state}>
                                             {/* State/PM Group Header Row */}
                                             {(leadSort.key === "state" ||
-                                                leadSort.key === "pm") && (
+                                                leadSort.key === "pm" ||
+                                                isFavoritesGroup) && (
                                                 <tr
                                                     onClick={() =>
                                                         toggleGroupCollapse(group.state)
@@ -11054,7 +11096,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         color: stateColor,
                                                                     }}
                                                                 >
-                                                                    {leadSort.key ===
+                                                                    {isFavoritesGroup ? (
+                                                                        <span className="inline-flex items-center gap-1.5">
+                                                                            <Heart className="h-3.5 w-3.5 fill-current" />
+                                                                            {t("Favorites", "Obľúbené", "Kedvencek")}
+                                                                        </span>
+                                                                    ) : leadSort.key ===
                                                                     "pm"
                                                                         ? `${t("Project Manager", "Projektový manažér", "Projektmenedzser")}: ${group.state}`
                                                                         : group.state}
@@ -11102,7 +11149,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     color: stateColor,
                                                                 }}
                                                             >
-                                                                {leadSort.key ===
+                                                                {isFavoritesGroup
+                                                                    ? t(
+                                                                          "FAVORITES VALUE",
+                                                                          "HODNOTA OBĽÚBENÝCH",
+                                                                          "KEDVENCEK ÉRTÉKE",
+                                                                      )
+                                                                    : leadSort.key ===
                                                                 "pm"
                                                                     ? t(
                                                                           "MANAGER VALUE",
@@ -11180,10 +11233,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 backgroundColor:
                                                                                     isInlineEditing
                                                                                         ? `${leadColor}15`
-                                                                                        : hoveredLeadId ===
-                                                                                            lead.id
-                                                                                          ? `${leadColor}12`
-                                                                                          : `${leadColor}06`,
+                                                                                        : isFavoritesGroup
+                                                                                          ? `${stateColor}${hoveredLeadId === lead.id ? "22" : "12"}`
+                                                                                          : hoveredLeadId ===
+                                                                                              lead.id
+                                                                                            ? `${leadColor}12`
+                                                                                            : `${leadColor}06`,
                                                                             }}
                                                                         >
                                                                             {/* ============================================================ */}
@@ -11953,16 +12008,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 ) : (
                     <div>
                     <div ref={setBoardEl} className="flex flex-row gap-5 overflow-x-auto p-5 pb-6 items-stretch min-h-145 scrollbar-thin select-none bg-slate-50/20">
-                        {stateGroupedLeads
-                            .filter((group) =>
-                                resolvedVisibleStates.includes(
-                                    group.state.toLowerCase(),
-                                ),
-                            )
+                        {kanbanColumns
                             .map((group, index) => {
-                                const stateColor = getSafeStateColor(
-                                    group.state,
-                                );
+                                const isFavoritesGroup =
+                                    group.state === FAVORITES_GROUP;
+                                const stateColor =
+                                    group.colorOverride ||
+                                    getSafeStateColor(group.state);
                                 const totalVal = group.leads.reduce(
                                     (sum, l) => sum + l.value,
                                     0,
@@ -11982,6 +12034,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         )}
                                         <div
                                             onDragOver={(e) => {
+                                                // Favorites are not a state: nothing to drop onto.
+                                                if (isFavoritesGroup) return;
                                                 e.preventDefault();
                                                 setDragOverColumn(columnState);
                                             }}
@@ -11991,21 +12045,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             onDrop={(e) => {
                                                 e.preventDefault();
                                                 setDragOverColumn(null);
-                                                if (draggedLeadId) {
+                                                if (draggedLeadId && !isFavoritesGroup) {
                                                     handleLeadDrop(
                                                         draggedLeadId,
                                                         group.state,
                                                     );
                                                 }
                                             }}
-                                            className={`flex flex-col min-w-71.25 max-w-80 flex-1 rounded-[26px] bg-slate-50/40 border-2 transition-all duration-300 ${
+                                            className={`flex flex-col min-w-71.25 max-w-80 flex-1 rounded-[26px] border-2 transition-all duration-300 ${
+                                                isFavoritesGroup
+                                                    ? "bg-rose-50/60"
+                                                    : "bg-slate-50/40"
+                                            } ${
                                                 compactMode
                                                     ? "p-2.5 gap-2"
                                                     : "p-4 gap-4"
                                             } ${
                                                 isOver
                                                     ? "border-dashed border-blue-400 bg-blue-50/15 scale-[0.99] shadow-inner"
-                                                    : "border-slate-100"
+                                                    : isFavoritesGroup
+                                                      ? "border-rose-100"
+                                                      : "border-slate-100"
                                             }`}
                                         >
                                             {/* Column Header */}
@@ -12019,7 +12079,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         }}
                                                     />
                                                     <span className="type-overline text-slate-800">
-                                                        {group.state}
+                                                        {isFavoritesGroup
+                                                            ? t("Favorites", "Obľúbené", "Kedvencek")
+                                                            : group.state}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
@@ -12352,8 +12414,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                         {/* Card Substate Selector Dropdown */}
                                                                         {(() => {
+                                                                            // The card's own stage: the favorites
+                                                                            // column holds leads of every stage.
+                                                                            const ownStatus =
+                                                                                lead.status.toLowerCase();
                                                                             const activeMain =
-                                                                                group.state.toLowerCase();
+                                                                                leadStateParents[ownStatus]?.toLowerCase() ??
+                                                                                ownStatus;
                                                                             const activeSubstates =
                                                                                 leadStates.filter(
                                                                                     (

@@ -89,6 +89,8 @@ export interface UserPrefs {
   leadsListColumns: StoredLeadColumn[] | null;
   /** Leads screen: extra filters (type, division, rating, archive, city, source, offer date) are open. */
   leadsShowFilters: boolean;
+  /** Leads screen: the user's favorite leads sit in a group of their own above the rest. */
+  leadsFavoritesFirst: boolean;
   /**
    * Projects screen: which project statuses are shown. `null` means "never chosen",
    * which falls back to every active (non-closed) status.
@@ -240,6 +242,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsSortSettings: null,
   leadsListColumns: null,
   leadsShowFilters: false,
+  leadsFavoritesFirst: false,
   projectsVisibleStatuses: null,
   projectsEquationView: "detail",
   projectsEquationCounts: true,
