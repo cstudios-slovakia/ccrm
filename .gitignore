@@ -133,3 +133,6 @@ __pycache__/
 
 # Stray 10 MB export that was served from the web root (VULN-20); keep it out of git.
 /presentation.zip
+
+# Villatesta migration: extracted customer data (personal data, never commit)
+scripts/import/villatesta/out/
