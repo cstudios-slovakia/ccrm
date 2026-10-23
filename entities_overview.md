@@ -478,6 +478,16 @@ Core financial movement records representing current and planned/future incomes,
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
+### `invoices_offers`
+Price offers, proformas and invoices in one table (`type`), with their line items in `invoice_offer_items`. Only the columns that carry rules are listed here; see `api/schema.php` for the rest.
+* `id` VARCHAR(50) [PK]
+* `document_number` VARCHAR(100) (e.g. `CP-2026-001` for an offer, `FA-2026-001` for an invoice)
+* `type` ENUM('price_offer', 'proforma', 'invoice')
+* `status` VARCHAR(50) (was an ENUM until 1.12.70). For a **price offer** it is a key of the configurable `OFFER_STATUSES` setting (Price offers → Settings → Offer statuses); code reasons about the status's *group* (`draft`, `open`, `won`, `lost`, `cancelled`), never the key. Proformas and invoices keep the fixed built-ins `draft`, `sent`, `approved`, `rejected`, `invoiced`, `cancelled`. An unknown key must still render (raw, neutral badge).
+* `status_changed_at` DATE [NULLable] (Day the status last changed, client-stamped)
+
+The `OFFER_STATUSES` setting (in `system_settings`) is a JSON list of `{key, label?, color, group, legacy?}`, normalized by `ccrm_normalize_offer_statuses()` (PHP) and `normalizeOfferStatusDefs()` (`src/utils/offerStatuses.ts`). Unset means the six built-ins; `invoiced` is built in as a `legacy` status (won, kept for offers that carry it, not offered in a picker).
+
 ---
 
 ## 10. Human Resources & Employees

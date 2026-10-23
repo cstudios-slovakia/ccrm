@@ -51,6 +51,8 @@ interface OfferEditorProps {
   currentUser: UserProfile | null;
   canEdit: boolean;
   canConfigure: boolean;
+  /** The status a new offer starts in: the first draft status of the configured list. */
+  defaultStatus?: string;
   /** Leaves for Settings → Offer settings. The view decides about unsaved changes. */
   onOpenOfferSettings: () => void;
   nextDocumentNumber: () => string;
@@ -95,6 +97,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
   currentUser,
   canEdit,
   canConfigure,
+  defaultStatus,
   onOpenOfferSettings,
   nextDocumentNumber,
   saving,
@@ -139,7 +142,8 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
         ? t(`The ${cbs.companyName} team`, `Tím ${cbs.companyName}`, `A ${cbs.companyName} csapata`)
         : "",
       currency,
-      settings: cbs
+      settings: cbs,
+      status: defaultStatus
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

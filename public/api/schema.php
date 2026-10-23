@@ -773,7 +773,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `sign_off_team` VARCHAR(150) NULL,
               `custom_template_id` VARCHAR(50) NULL,
               `custom_template_style_json` TEXT NULL,
-              `status` ENUM('draft', 'sent', 'approved', 'rejected', 'invoiced', 'cancelled') NOT NULL DEFAULT 'draft',
+              `status` VARCHAR(50) NOT NULL DEFAULT 'draft' COMMENT 'Price offers: a key of OFFER_STATUSES. Proformas and invoices: draft, sent, approved, rejected, invoiced, cancelled',
               `status_changed_at` DATE NULL COMMENT 'Day the status last changed (client-stamped)',
               `issued_at` DATE NOT NULL,
               `valid_until` DATE NULL,
@@ -1556,6 +1556,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
         ccrm_migrate_invoice_status_changed_at($pdo);
+        ccrm_migrate_invoice_status_varchar($pdo);
         ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
@@ -1887,6 +1888,26 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm] schema: status_changed_at migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * `invoices_offers`.`status`: an ENUM of six fixed values until 1.12.70, when
+     * price offers got a configurable status list (OFFER_STATUSES) and so need to
+     * store any key. Widened to VARCHAR(50); the existing values keep their text,
+     * so no row is rewritten. Idempotent: only runs while the column is still an ENUM.
+     */
+    function ccrm_migrate_invoice_status_varchar(PDO $pdo): void {
+        try {
+            $type = $pdo->query(
+                "SELECT `DATA_TYPE` FROM `information_schema`.`COLUMNS`
+                 WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'invoices_offers' AND `COLUMN_NAME` = 'status'"
+            )->fetchColumn();
+            if ($type === 'enum') {
+                $pdo->exec("ALTER TABLE `invoices_offers` MODIFY COLUMN `status` VARCHAR(50) NOT NULL DEFAULT 'draft'");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: invoices_offers.status migration skipped: ' . $e->getMessage());
         }
     }
 

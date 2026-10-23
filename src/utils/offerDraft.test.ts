@@ -226,3 +226,17 @@ test("date helpers stay on the local calendar", () => {
   assert.equal(daysBetween("2026-08-01", "2026-08-05"), 4);
   assert.equal(addDays("garbage", 3), "garbage");
 });
+
+test("a new offer starts in the configured draft status, and keeps it on save", () => {
+  const plain = seed();
+  assert.equal(plain.status, "draft");
+  const custom = seed({ status: "vypracovanie" });
+  assert.equal(custom.status, "vypracovanie");
+  assert.equal(buildOfferFromDraft(custom, baseOptions)!.status, "vypracovanie");
+});
+
+test("an offer being edited keeps its own status, even one the list no longer knows", () => {
+  const saved = { ...buildOfferFromDraft(seed(), baseOptions)!, status: "imported_state" } as InvoiceOffer;
+  const draft = draftFromOffer(saved, { defaultTitle: "Cenová ponuka", todayIso: "2026-08-01", fallbackTemplateId: "tpl-1" });
+  assert.equal(buildOfferFromDraft(draft, { ...baseOptions, existing: saved })!.status, "imported_state");
+});

@@ -475,6 +475,28 @@ async function writeChecks() {
   check('cancelling cancels the unsettled ledger movement', cell(`SELECT status FROM financial_records WHERE id='fr-inv-${inv.id}'`) === 'cancelled', '');
   check('a cancelled document cannot be reopened', isErr(await call(A, 'update_invoice_status', { id: inv.id, status: 'sent' }), /cannot be changed/), '');
 
+  // price offers: their statuses are configurable (OFFER_STATUSES) and are judged by group
+  const OFFER_STATUSES = [
+    { key: 'draft', color: '#64748b', group: 'draft' },
+    { key: 'precenenie', label: 'Precenenie', color: '#f59e0b', group: 'open' },
+    { key: 'uzavreta_vyhra', label: 'Uzavretá', color: '#10b981', group: 'won' },
+    { key: 'uzavreta_prehra', label: 'Bez objednávky', color: '#f43f5e', group: 'lost' },
+    { key: 'cancelled', color: '#f43f5e', group: 'cancelled' },
+  ];
+  sql(`INSERT INTO system_settings (\`key\`, \`value\`) VALUES ('OFFER_STATUSES', ${sq(JSON.stringify(OFFER_STATUSES))}) ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`);
+  const offerRow = (id, status) => `(${sq(id)}, ${sq('CP-PROBE-' + id)}, 'price_offer', ${sq(leadId)}, 'Probe', 'T', 'S', ${sq(status)}, CURDATE())`;
+  const metricsBefore = await call(A, 'get_invoicing_metrics', {});
+  sql(`INSERT INTO invoices_offers (id, document_number, type, lead_id, client_name, title, subject, status, issued_at) VALUES ${[offerRow('po-a', 'draft'), offerRow('po-w', 'uzavreta_vyhra'), offerRow('po-l', 'uzavreta_prehra')].join(', ')}`);
+  check('an offer can be moved to a configured status of the open group', (await call(A, 'update_invoice_status', { id: 'po-a', status: 'precenenie' })).success === true, '');
+  check('an offer status of the won group is a verdict left to the app', isErr(await call(A, 'update_invoice_status', { id: 'po-a', status: 'uzavreta_vyhra' }), /only be set in the app/), '');
+  check('an unknown offer status is refused and the valid ones are listed', isErr(await call(A, 'update_invoice_status', { id: 'po-a', status: 'bogus' }), /Unknown offer status.*precenenie/), '');
+  check('an offer can be cancelled, and then stays cancelled', (await call(A, 'update_invoice_status', { id: 'po-a', status: 'cancelled' })).success === true
+    && isErr(await call(A, 'update_invoice_status', { id: 'po-a', status: 'precenenie' }), /cannot be changed/), '');
+  const metricsAfter = await call(A, 'get_invoicing_metrics', {});
+  check('the win rate counts offers by status group (one custom won, one custom lost)', metricsAfter.offers_decided - metricsBefore.offers_decided === 2, `${metricsBefore.offers_decided} -> ${metricsAfter.offers_decided}`);
+  sql(`DELETE FROM invoices_offers WHERE id IN ('po-a', 'po-w', 'po-l')`);
+  sql(`DELETE FROM system_settings WHERE \`key\` = 'OFFER_STATUSES'`);
+
   // expenses
   check('a paid expense is refused', isErr(await call(A, 'record_expense', { title: 'E', amount: 10, issue_date: '2026-10-01', status: 'paid' }), /planned.*pending/), '');
   check('an income category is refused for an expense', isErr(await call(A, 'record_expense', { title: 'E', amount: 10, issue_date: '2026-10-01', category_id: 'inc-child' }), /income category/), '');

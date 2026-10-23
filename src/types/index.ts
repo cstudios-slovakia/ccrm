@@ -968,7 +968,12 @@ export interface ProjectRevenueAnalysis {
 
 export type InvoiceOfferType = 'price_offer' | 'proforma' | 'invoice';
 export type InvoiceOfferMode = 'default' | 'custom' | 'external';
-export type InvoiceOfferStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'invoiced' | 'cancelled';
+/**
+ * A status key. Proformas and invoices use the six built-ins (draft, sent, approved,
+ * rejected, invoiced, cancelled); a price offer's status is a key from the configurable list (utils/offerStatuses.ts),
+ * so any string must be tolerated.
+ */
+export type InvoiceOfferStatus = string;
 export type ExternalInvoiceProvider = 'superfaktura' | 'idoklad';
 
 export interface InvoiceOfferItem {

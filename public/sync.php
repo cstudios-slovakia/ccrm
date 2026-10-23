@@ -1303,6 +1303,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $projectStatuses = ccrm_normalize_project_statuses(
         isset($settings['PROJECT_STATUSES']) ? json_decode($settings['PROJECT_STATUSES'], true) : null
     );
+    // The price-offer statuses (Price offers → Settings). Same contract.
+    $offerStatuses = ccrm_normalize_offer_statuses(
+        isset($settings['OFFER_STATUSES']) ? json_decode($settings['OFFER_STATUSES'], true) : null
+    );
     // Settings → Tasks. Normalized on the way out for the same reason.
     $taskSettings = ccrm_normalize_task_settings(
         isset($settings['TASK_SETTINGS']) ? json_decode($settings['TASK_SETTINGS'], true) : null
@@ -2711,6 +2715,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'taskStateColors' => $taskStateColors,
             'taskSettings' => $taskSettings,
             'projectStatuses' => $projectStatuses,
+            'offerStatuses' => $offerStatuses,
             'ticketStatuses' => $ticketStatuses,
             'ticketSettings' => $ticketSettings,
             'integrationsConfig' => $integrationsConfig,
@@ -3174,6 +3179,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'PROJECT_STATUSES' => isset($s['projectStatuses']) && is_array($s['projectStatuses'])
                     ? json_encode(ccrm_normalize_project_statuses($s['projectStatuses']), JSON_UNESCAPED_UNICODE)
                     : null,
+                // Same contract as PROJECT_STATUSES: omitted means unchanged.
+                'OFFER_STATUSES' => isset($s['offerStatuses']) && is_array($s['offerStatuses'])
+                    ? json_encode(ccrm_normalize_offer_statuses($s['offerStatuses']), JSON_UNESCAPED_UNICODE)
+                    : null,
                 'TICKET_STATUSES' => $canEditTickets && isset($s['ticketStatuses']) && is_array($s['ticketStatuses'])
                     ? json_encode(array_values($s['ticketStatuses']), JSON_UNESCAPED_UNICODE)
                     : null,
@@ -3196,7 +3205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
                     'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
-                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'TASK_SETTINGS',
+                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'TASK_SETTINGS',
                     'TICKET_STATUSES', 'TICKET_SETTINGS',
                 ]);
             }

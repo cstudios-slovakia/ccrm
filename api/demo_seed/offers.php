@@ -6,8 +6,9 @@
  * own 'demo-%' rows, then insert. Ids come from demo_id('offers', n); dates from
  * demo_d()/demo_dt(); text from demo_t([...], demo_lang($pdo)).
  *
- * 8 price offers + 2 proforma + 2 invoices. The schema's status enum is
- * draft | sent | approved | rejected | invoiced | cancelled — there is no
+ * 8 price offers + 2 proforma + 2 invoices. The seed uses the built-in status
+ * keys draft | sent | approved | rejected | invoiced | cancelled (the defaults of
+ * OFFER_STATUSES, which an installation may rename or extend) — there is no
  * "accepted" or "expired": accepted = 'approved', and an expired offer is a
  * 'sent' one whose valid_until has passed (the Invoicing list derives the label).
  *

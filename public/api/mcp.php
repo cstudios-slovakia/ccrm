@@ -913,7 +913,7 @@ function mcp_core_tool_definitions(): array {
                 'type' => 'object',
                 'properties' => [
                     'type' => ['type' => 'string', 'description' => 'Type: invoice, price_offer, proforma (default: all types)'],
-                    'status' => ['type' => 'string', 'description' => 'Status: draft, sent, approved, rejected, invoiced, cancelled'],
+                    'status' => ['type' => 'string', 'description' => 'Status. Invoices and proformas: draft, sent, approved, rejected, invoiced, cancelled. Price offers use the statuses configured in the app (Price offers → Settings), so any key of that list is valid; the defaults are the same six.'],
                     'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
                     'search' => ['type' => 'string', 'description' => 'Search document number or client name'],
                     'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
@@ -965,12 +965,12 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'update_invoice_status',
-            'description' => 'Set a document to draft, sent or cancelled. Approving, invoicing and settling money cannot be done through MCP (they change the books). Cancelling an invoice cancels its unsettled ledger movement; money already recorded stays.',
+            'description' => 'Set a document to draft, sent or cancelled. For a price offer, "sent" means any configured status of the open group (and "draft"/"cancelled" the draft/cancelled groups), given by its key. Approving, invoicing and settling money cannot be done through MCP (they change the books). Cancelling an invoice cancels its unsettled ledger movement; money already recorded stays.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Invoice ID'],
-                    'status' => ['type' => 'string', 'enum' => ['draft', 'sent', 'cancelled'], 'description' => 'New status']
+                    'status' => ['type' => 'string', 'description' => 'New status: draft, sent or cancelled; for a price offer, the key of a configured status in the draft, open or cancelled group']
                 ],
                 'required' => ['id', 'status']
             ]
