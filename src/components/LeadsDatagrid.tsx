@@ -2677,14 +2677,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [logContent, setLogContent] = useState("");
     const [logAmount, setLogAmount] = useState("");
     const [logTime, setLogTime] = useState("");
-    const [logFileName, setLogFileName] = useState("");
-    const [logFileSize, setLogFileSize] = useState("");
     const [logFileType, setLogFileType] = useState<
         "offer" | "contract" | "invoice"
     >("offer");
-    const [logFileObject, setLogFileObject] = useState<File | null>(null);
-    // Documents attached to a business-document event. Several PDFs can be filed
-    // under one event (e.g. a batch of advance invoices).
+    // Documents attached to an offer or business-document event. Several files can
+    // be filed under one event (e.g. a batch of advance invoices).
     const [logDocumentFiles, setLogDocumentFiles] = useState<File[]>([]);
     const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
 
@@ -3553,79 +3550,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }
 
         const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
-        let finalFileName =
-            logType === "offer" && logFileName ? logFileName : undefined;
-        let finalFileSize =
-            logType === "offer" && logFileSize ? logFileSize : undefined;
+        let finalFileName: string | undefined;
+        let finalFileSize: string | undefined;
         let finalFilePath: string | undefined;
         let finalAttachments: TimelineAttachment[] | undefined;
-
-        // Handle physical file upload to backend if present
-        if (logType === "offer" && logFileObject) {
-            try {
-                const formData = new FormData();
-                formData.append("file", logFileObject);
-                formData.append("eventId", eventId);
-
-                const uploadRes = await fetch("/upload.php", {
-                    method: "POST",
-                    body: formData,
-                });
-
-                if (!uploadRes.ok) {
-                    const errData = await uploadRes.json().catch(() => ({}));
-                    throw new Error(
-                        errData.error ||
-                            t(
-                                "Failed to upload file",
-                                "Nahranie súboru zlyhalo",
-                                "A fájl feltöltése sikertelen",
-                            ),
-                    );
-                }
-
-                const uploadData = await uploadRes.json();
-                if (uploadData.success) {
-                    finalFileName = uploadData.fileName || logFileObject.name;
-                    finalFilePath = uploadData.filePath;
-                    // `filePath` has no column of its own — only attachments_json
-                    // survives a sync round trip. Without this the stored path is
-                    // lost on the next reload and the preview has to guess the URL
-                    // back from the event id and the file name.
-                    if (uploadData.filePath) {
-                        finalAttachments = [
-                            {
-                                name: finalFileName || logFileObject.name,
-                                size: finalFileSize || (logFileObject.size / 1024 / 1024).toFixed(2) + " MB",
-                                path: uploadData.filePath,
-                            },
-                        ];
-                    }
-                    // The server only returns extracted text when it is genuinely readable
-                    // (its quality filter drops binary/metadata noise from any format,
-                    // including PDFs), so append whatever comes back. Garbage arrives empty.
-                    if (uploadData.extractedText) {
-                        contentString = `${contentString}\n\n--- Document Content ---\n${uploadData.extractedText}`;
-                    }
-                }
-            } catch (err: any) {
-                console.error(err);
-                (window as any).showToast(
-                    err.message ||
-                        t(
-                            "Failed to upload document file!",
-                            "Nahranie dokumentu zlyhalo!",
-                            "A dokumentum feltöltése sikertelen!",
-                        ),
-                );
-                return;
-            }
-        }
 
         // Business-document events can carry several files. They are uploaded one by
         // one under a per-file id prefix so two documents with the same name cannot
         // overwrite each other on disk.
-        if (isDocumentEventType(logType) && logDocumentFiles.length > 0) {
+        if (
+            (isDocumentEventType(logType) || logType === "offer") &&
+            logDocumentFiles.length > 0
+        ) {
             setIsUploadingDocuments(true);
             try {
                 const uploaded: TimelineAttachment[] = [];
@@ -3800,9 +3736,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setLogContent("");
         setLogAmount("");
         setLogTime("");
-        setLogFileName("");
-        setLogFileSize("");
-        setLogFileObject(null);
         setLogDocumentFiles([]);
         setLogType(null);
 
@@ -7784,180 +7717,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-ui"
                                                             />
                                                         </div>
-                                                        <div className="space-y-1 animate-in slide-in-from-left duration-200">
-                                                            <label className="type-overline text-slate-500">
-                                                                {getTranslation(
-                                                                    systemLanguage,
-                                                                    "logger.attach_doc",
-                                                                )}
-                                                            </label>
-                                                            <div className="flex items-center gap-2">
-                                                                <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer type-overline shadow-sm select-none shrink-0">
-                                                                    <FolderOpen className="h-4 w-4" />
-                                                                    <span>
-                                                                        {getTranslation(
-                                                                            systemLanguage,
-                                                                            "logger.choose_file",
-                                                                        )}
-                                                                    </span>
-                                                                    <input
-                                                                        type="file"
-                                                                        className="hidden"
-                                                                        onChange={(
-                                                                            e,
-                                                                        ) => {
-                                                                            const file =
-                                                                                e
-                                                                                    .target
-                                                                                    .files?.[0];
-                                                                            if (
-                                                                                file
-                                                                            ) {
-                                                                                const MAX_MB = 64;
-                                                                                if (
-                                                                                    file.size >
-                                                                                    MAX_MB *
-                                                                                        1024 *
-                                                                                        1024
-                                                                                ) {
-                                                                                    (
-                                                                                        window as any
-                                                                                    ).showToast?.(
-                                                                                        t(
-                                                                                            `File is too large (max ${MAX_MB} MB).`,
-                                                                                            `Súbor je príliš veľký (max ${MAX_MB} MB).`,
-                                                                                            `A fájl túl nagy (max ${MAX_MB} MB).`,
-                                                                                        ),
-                                                                                    );
-                                                                                    e.target.value =
-                                                                                        "";
-                                                                                    return;
-                                                                                }
-                                                                                setLogFileName(
-                                                                                    file.name,
-                                                                                );
-                                                                                setLogFileSize(
-                                                                                    (
-                                                                                        file.size /
-                                                                                        1024 /
-                                                                                        1024
-                                                                                    ).toFixed(
-                                                                                        2,
-                                                                                    ) +
-                                                                                        " MB",
-                                                                                );
-                                                                                setLogFileObject(
-                                                                                    file,
-                                                                                );
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={getTranslation(
-                                                                        systemLanguage,
-                                                                        "logger.no_file",
-                                                                    )}
-                                                                    value={
-                                                                        logFileName
-                                                                            ? `${logFileName} (${logFileSize})`
-                                                                            : ""
-                                                                    }
-                                                                    readOnly
-                                                                    className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-micro text-slate-500 font-bold"
-                                                                />
-                                                                {logFileName && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            setLogFileName(
-                                                                                "",
-                                                                            );
-                                                                            setLogFileSize(
-                                                                                "",
-                                                                            );
-                                                                            setLogFileObject(
-                                                                                null,
-                                                                            );
-                                                                        }}
-                                                                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl animate-in fade-in"
-                                                                    >
-                                                                        <X className="h-4 w-4" />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {logFileName && (
-                                                            <div className="ws-md:col-span-2 space-y-1.5 animate-in slide-in-from-top-2 duration-200 border-t border-slate-100 pt-3">
-                                                                <label className="type-overline text-slate-500">
-                                                                    {getTranslation(
-                                                                        systemLanguage,
-                                                                        "logger.specify_type",
-                                                                    )}
-                                                                </label>
-                                                                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
-                                                                    {(
-                                                                        [
-                                                                            "offer",
-                                                                            "contract",
-                                                                            "invoice",
-                                                                        ] as const
-                                                                    ).map(
-                                                                        (
-                                                                            type,
-                                                                        ) => (
-                                                                            <button
-                                                                                key={
-                                                                                    type
-                                                                                }
-                                                                                type="button"
-                                                                                onClick={() =>
-                                                                                    setLogFileType(
-                                                                                        type,
-                                                                                    )
-                                                                                }
-                                                                                className={`py-1.5 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
-                                                                                    logFileType ===
-                                                                                    type
-                                                                                        ? "bg-amber-700 text-white border border-amber-800 shadow"
-                                                                                        : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
-                                                                                }`}
-                                                                            >
-                                                                                <span>
-                                                                                    {type ===
-                                                                                        "offer" &&
-                                                                                        getTranslation(
-                                                                                            systemLanguage,
-                                                                                            "logger.type.offer",
-                                                                                        )}
-                                                                                    {type ===
-                                                                                        "contract" &&
-                                                                                        getTranslation(
-                                                                                            systemLanguage,
-                                                                                            "logger.type.contract",
-                                                                                        )}
-                                                                                    {type ===
-                                                                                        "invoice" &&
-                                                                                        getTranslation(
-                                                                                            systemLanguage,
-                                                                                            "logger.type.invoice",
-                                                                                        )}
-                                                                                </span>
-                                                                            </button>
-                                                                        ),
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        )}
                                                     </>
                                                 )}
 
                                                 {/* Business documents: several files per event. */}
-                                                {isDocumentEventType(
-                                                    logType,
-                                                ) && (
+                                                {(isDocumentEventType(logType) ||
+                                                    logType === "offer") && (
                                                     <div className="ws-md:col-span-2 space-y-2 animate-in slide-in-from-left duration-200">
                                                         <label className="type-overline text-slate-500">
                                                             {t(
@@ -8122,6 +7887,70 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     ),
                                                                 )}
                                                             </ul>
+                                                        )}
+                                                        {logType === "offer" &&
+                                                            logDocumentFiles.length >
+                                                                0 && (
+                                                            <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200 border-t border-slate-100 pt-3">
+                                                                <label className="type-overline text-slate-500">
+                                                                    {getTranslation(
+                                                                        systemLanguage,
+                                                                        "logger.specify_type",
+                                                                    )}
+                                                                </label>
+                                                                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
+                                                                    {(
+                                                                        [
+                                                                            "offer",
+                                                                            "contract",
+                                                                            "invoice",
+                                                                        ] as const
+                                                                    ).map(
+                                                                        (
+                                                                            type,
+                                                                        ) => (
+                                                                            <button
+                                                                                key={
+                                                                                    type
+                                                                                }
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    setLogFileType(
+                                                                                        type,
+                                                                                    )
+                                                                                }
+                                                                                className={`py-1.5 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
+                                                                                    logFileType ===
+                                                                                    type
+                                                                                        ? "bg-amber-700 text-white border border-amber-800 shadow"
+                                                                                        : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                                }`}
+                                                                            >
+                                                                                <span>
+                                                                                    {type ===
+                                                                                        "offer" &&
+                                                                                        getTranslation(
+                                                                                            systemLanguage,
+                                                                                            "logger.type.offer",
+                                                                                        )}
+                                                                                    {type ===
+                                                                                        "contract" &&
+                                                                                        getTranslation(
+                                                                                            systemLanguage,
+                                                                                            "logger.type.contract",
+                                                                                        )}
+                                                                                    {type ===
+                                                                                        "invoice" &&
+                                                                                        getTranslation(
+                                                                                            systemLanguage,
+                                                                                            "logger.type.invoice",
+                                                                                        )}
+                                                                                </span>
+                                                                            </button>
+                                                                        ),
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 )}
