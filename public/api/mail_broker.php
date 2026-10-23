@@ -175,6 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_filed_mail') {
         echo json_encode(['success' => false, 'error' => 'No stored body for this message.']);
         exit;
     }
+    require_once __DIR__ . '/mail_attachments.php';
     $attachments = !empty($row['attachments_json']) ? json_decode($row['attachments_json'], true) : [];
     echo json_encode([
         'success' => true,
@@ -182,11 +183,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_filed_mail') {
             'uid' => $row['id'],
             'html' => '',
             'text' => (string)$row['body'],
-            'attachments' => is_array($attachments) ? $attachments : [],
+            // Name, size and whether the file was kept (opened with get_filed_mail_attachment, by position).
+            'attachments' => ccrm_mail_attachments_for_client($attachments),
             'stored' => true,
             'mail_account' => $row['mail_account'],
         ],
     ]);
+    exit;
+}
+
+// 1d. One attachment of a filed message, streamed after the same check as the body. The
+// request names the message and the attachment's position in its list, never a path.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_filed_mail_attachment') {
+    require_once __DIR__ . '/read_scope.php';
+    require_once __DIR__ . '/mail_attachments.php';
+    $scopeUser = ccrm_current_user();
+    $scope = $scopeUser ? ccrm_read_scope($pdo, $scopeUser) : [];
+    if (!$scopeUser || !ccrm_can($scope, 'email')) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'No access to e-mail.']);
+        exit;
+    }
+    $stmt = $pdo->prepare(
+        "SELECT b.`attachments_json` FROM `timeline_events` te JOIN `filed_mail_bodies` b ON b.`event_id` = te.`id`
+         WHERE te.`id` = ? AND te.`type` = 'email' AND te.`hidden` = 0"
+    );
+    $stmt->execute([(string)($_GET['id'] ?? '')]);
+    $json = $stmt->fetchColumn();
+    $list = $json ? json_decode((string)$json, true) : [];
+    $index = filter_var($_GET['n'] ?? null, FILTER_VALIDATE_INT);
+    $entry = ($index !== false && $index !== null && is_array($list) && isset($list[$index]) && is_array($list[$index])) ? $list[$index] : null;
+    $path = $entry ? ccrm_mail_attachment_path($entry['key'] ?? null) : null;
+    if ($path === null) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'This attachment was not kept.']);
+        exit;
+    }
+    $displayName = ccrm_safe_upload_name((string)($entry['name'] ?? '')) ?? 'attachment';
+    $contentType = ccrm_mail_attachment_content_type($displayName);
+    // Only formats a browser shows without running anything of the sender's open in the tab.
+    $inline = in_array($contentType, ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp'], true) && empty($_GET['download']);
+    header('Content-Type: ' . $contentType);
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Security-Policy: default-src \'none\'; sandbox');
+    header('Cache-Control: private, no-store');
+    header('Content-Length: ' . (string)filesize($path));
+    $asciiName = preg_replace('/[^A-Za-z0-9._\- ]+/', '_', $displayName);
+    header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $asciiName . '"; filename*=UTF-8\'\'' . rawurlencode($displayName));
+    readfile($path);
     exit;
 }
 

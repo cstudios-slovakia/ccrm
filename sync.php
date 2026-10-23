@@ -4351,6 +4351,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 if (!empty($te['hidden'])) {
                                     $hideMailTe = $pdo->prepare("UPDATE `timeline_events` SET `hidden` = 1 WHERE `id` = ? AND `lead_id` = ?");
                                     $hideMailTe->execute([$teId, $leadId]);
+                                    // A removed message keeps only its tombstone: the stored body and
+                                    // the attachment files go with it.
+                                    if ($hideMailTe->rowCount() > 0) {
+                                        require_once __DIR__ . '/api/mail_attachments.php';
+                                        ccrm_mail_purge_filed($pdo, $teId);
+                                    }
                                     continue;
                                 }
                                 $updMailTe->execute([

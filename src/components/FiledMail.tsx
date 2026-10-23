@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Inbox, Paperclip } from "lucide-react";
 import type { TimelineEvent } from "../types";
 import type { Language } from "../utils/translations";
-import { fetchFiledMail, type FiledMailBody as FiledMailBodyData } from "../utils/filedMail";
+import { fetchFiledMail, filedMailAttachmentUrl, type FiledMailBody as FiledMailBodyData } from "../utils/filedMail";
 
 /*
   Mail that the background job filed onto a timeline (api/mail_filing.php) comes from a
@@ -76,10 +76,32 @@ export const FiledMailBody: React.FC<{ event: TimelineEvent; language: Language 
               {state.body.text || tr(language, "No message content.", "Správa nemá obsah.", "Az üzenetnek nincs tartalma.")}
               {state.body.attachments.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-slate-100 space-y-0.5 text-slate-500" data-testid="filed-mail-attachments">
-                  {state.body.attachments.map((a, i) => (
-                    <div key={`${a.name}-${i}`} className="flex items-center gap-1.5">
+                  {state.body.attachments.map((a) => (
+                    <div key={`${a.name}-${a.index}`} className="flex items-center gap-1.5">
                       <Paperclip className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{a.name}</span>
+                      {a.stored ? (
+                        <a
+                          href={filedMailAttachmentUrl(event.id, a.index)}
+                          target="_blank"
+                          rel="noreferrer"
+                          data-testid="filed-mail-attachment-link"
+                          className="truncate text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
+                        >
+                          {a.name}
+                        </a>
+                      ) : (
+                        <span
+                          className="truncate"
+                          title={tr(
+                            language,
+                            "This file was not kept (too large, an unsupported type or an embedded image). Open the message in the mailbox it came from.",
+                            "Tento súbor sa neuložil (je príliš veľký, nepodporovaný typ alebo vložený obrázok). Otvorte správu v schránke, z ktorej prišla.",
+                            "Ezt a fájlt nem őriztük meg (túl nagy, nem támogatott típus vagy beágyazott kép). Nyissa meg az üzenetet abban a postafiókban, ahonnan érkezett.",
+                          )}
+                        >
+                          {a.name}
+                        </span>
+                      )}
                       {a.size > 0 && <span className="text-slate-400 shrink-0">({Math.max(1, Math.round(a.size / 1024))} kB)</span>}
                     </div>
                   ))}

@@ -137,7 +137,7 @@ async function seedFiledMail(page: Page) {
       requested.stored.push(url.searchParams.get('id') ?? '');
       return route.fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify({ success: true, email: { uid: 'x', html: '', text: 'Dobrý deň, potrebujeme 120 m² krytiny.', attachments: [{ name: 'vykres.pdf', size: 4096 }], stored: true, mail_account: 'Info' } }),
+        body: JSON.stringify({ success: true, email: { uid: 'x', html: '', text: 'Dobrý deň, potrebujeme 120 m² krytiny.', attachments: [{ name: 'vykres.pdf', size: 4096, stored: true }, { name: 'zaznam.mov', size: 9_000_000, stored: false }], stored: true, mail_account: 'Info' } }),
       });
     }
     if (action === 'get_email_detail') {
@@ -167,6 +167,11 @@ test.describe('Mail filed by the background job', () => {
     await body.getByRole('button', { name: 'Zobraziť správu' }).click();
     await expect(body).toContainText('potrebujeme 120 m² krytiny');
     await expect(body.getByTestId('filed-mail-attachments')).toContainText('vykres.pdf');
+    // a kept file opens from the server by message and position; one that was not kept is only a name
+    const links = body.getByTestId('filed-mail-attachment-link');
+    await expect(links).toHaveCount(1);
+    await expect(links.first()).toHaveAttribute('href', '/api/mail_broker.php?action=get_filed_mail_attachment&id=email-inbox-aaaaaaaaaaaa-11&n=0');
+    await expect(body.getByTestId('filed-mail-attachments')).toContainText('zaznam.mov');
     expect(requests.stored).toEqual(['email-inbox-aaaaaaaaaaaa-11']);
     await body.getByRole('button', { name: 'Skryť správu' }).click();
     await expect(body).not.toContainText('potrebujeme 120 m²');

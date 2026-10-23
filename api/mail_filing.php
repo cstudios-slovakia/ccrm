@@ -38,6 +38,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mail_broker.php';
+require_once __DIR__ . '/mail_attachments.php';
 
 const CCRM_MAIL_RUN_MAX_SECONDS = 45;
 const CCRM_MAIL_RUN_MAX_MESSAGES = 300;
@@ -158,7 +159,9 @@ function ccrm_mail_clean_body(string $text): array {
  * Stores one message on a timeline. Returns 'filed', 'updated', 'hidden' (the user removed
  * it; the tombstone stays) or 'duplicate' (the same Message-ID is already on that timeline).
  * `$m`: lead_id, event_id, timestamp, title, content, is_outgoing, author, mail_account,
- * mail_owner, message_id, body (text|null), attachments (list), truncated.
+ * mail_owner, message_id, body (text|null), attachments (the list to store, or a callable that
+ * takes the list stored before and returns it, called only when the message is actually filed),
+ * truncated.
  */
 function ccrm_mail_store_event(PDO $pdo, array $m): string {
     $existing = $pdo->prepare("SELECT `id`, `hidden`, `mail_has_body` FROM `timeline_events` WHERE `id` = ?");
@@ -198,14 +201,30 @@ function ccrm_mail_store_event(PDO $pdo, array $m): string {
         $result = 'updated';
     }
     if ($hasBody) {
-        $pdo->prepare(
-            "INSERT INTO `filed_mail_bodies` (`event_id`, `body`, `attachments_json`) VALUES (?, ?, ?)
-             ON DUPLICATE KEY UPDATE `body` = VALUES(`body`), `attachments_json` = VALUES(`attachments_json`)"
-        )->execute([
-            $m['event_id'],
-            $m['body'] . (!empty($m['truncated']) ? "\n\n[…]" : ''),
-            $m['attachments'] ? json_encode($m['attachments'], JSON_UNESCAPED_UNICODE) : null,
-        ]);
+        // The attachments are a callable when the files still have to be fetched: that is
+        // deferred until here so a hidden or duplicate message never leaves files behind.
+        $before = $pdo->prepare("SELECT `attachments_json` FROM `filed_mail_bodies` WHERE `event_id` = ?");
+        $before->execute([$m['event_id']]);
+        $previous = json_decode((string)$before->fetchColumn(), true);
+        $previous = is_array($previous) ? $previous : [];
+        $attachments = $m['attachments'] instanceof \Closure ? ($m['attachments'])($previous) : $m['attachments'];
+        $keys = ccrm_mail_attachment_keys($attachments);
+        try {
+            $pdo->prepare(
+                "INSERT INTO `filed_mail_bodies` (`event_id`, `body`, `attachments_json`) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE `body` = VALUES(`body`), `attachments_json` = VALUES(`attachments_json`)"
+            )->execute([
+                $m['event_id'],
+                $m['body'] . (!empty($m['truncated']) ? "\n\n[…]" : ''),
+                $attachments ? json_encode($attachments, JSON_UNESCAPED_UNICODE) : null,
+            ]);
+        } catch (\Throwable $e) {
+            // Files nothing points to would never be cleaned up.
+            ccrm_mail_attachment_delete(array_diff($keys, ccrm_mail_attachment_keys($previous)));
+            throw $e;
+        }
+        // Files an earlier read kept that this one did not carry over.
+        ccrm_mail_attachment_delete(array_diff(ccrm_mail_attachment_keys($previous), $keys));
     }
     return $result;
 }
@@ -241,18 +260,21 @@ function ccrm_mail_process_uid(PDO $pdo, $stream, int $uid, array $ctx): string 
     $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . ($to[0] ?? '') . ">\nSubject: " . $subject;
 
     $bodyRaw = '';
-    $attachments = [];
+    $structure = null;
     try {
         $bodyRaw = fetch_email_body_text($stream, $msgNo);
         $structure = @imap_fetchstructure($stream, $msgNo);
-        if ($structure) {
-            foreach (get_attachments_from_structure($structure) as $a) {
-                $attachments[] = ['name' => $a['name'], 'size' => (int)$a['size']];
-            }
-        }
     } catch (\Throwable $e) {
         // A message whose body cannot be read is still worth a timeline entry.
     }
+    // Fetched only once the message is known to be filed (see ccrm_mail_store_event).
+    $attachments = function (array $previous) use ($stream, $msgNo, $structure) {
+        try {
+            return ccrm_mail_keep_attachments($stream, $msgNo, $structure, $previous);
+        } catch (\Throwable $e) {
+            return $previous; // keep what an earlier read stored rather than lose it
+        }
+    };
     list($body, $truncated) = ccrm_mail_clean_body((string)$bodyRaw);
 
     return ccrm_mail_store_event($pdo, [

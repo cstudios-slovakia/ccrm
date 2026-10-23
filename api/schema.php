@@ -2044,7 +2044,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 "CREATE TABLE IF NOT EXISTS `filed_mail_bodies` (
                   `event_id` VARCHAR(50) NOT NULL PRIMARY KEY,
                   `body` MEDIUMTEXT NULL,
-                  `attachments_json` TEXT NULL COMMENT 'Names and sizes only; the files stay on the mail server',
+                  `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,part,key?}; key names the file kept under uploads/private/mail/ (api/mail_attachments.php)',
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );

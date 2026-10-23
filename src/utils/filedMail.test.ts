@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchFiledMail, isOwnMailbox, shouldReadStoredBody } from "./filedMail.ts";
+import { fetchFiledMail, filedMailAttachmentUrl, isOwnMailbox, shouldReadStoredBody } from "./filedMail.ts";
 
 test("an entry is the viewer's own when its owner is their login, ignoring case and spaces", () => {
   assert.equal(isOwnMailbox({ mailOwner: "Peter@Villatesta.sk" }, " peter@villatesta.sk "), true);
@@ -34,17 +34,41 @@ const withFetch = async (response: { ok: boolean; status: number; body: unknown 
   }
 };
 
-test("the stored body is read as text with its attachment names", async () => {
+test("the stored body is read as text with its attachments and whether each file was kept", async () => {
   await withFetch(
-    { ok: true, status: 200, body: { success: true, email: { text: "Dobrý deň", attachments: [{ name: "ponuka.pdf", size: 2048 }, { size: 1 }], mail_account: "Info" } } },
+    {
+      ok: true,
+      status: 200,
+      body: {
+        success: true,
+        email: {
+          text: "Dobrý deň",
+          attachments: [{ name: "ponuka.pdf", size: 2048, stored: true }, { size: 1 }, { name: "video.mov", size: 99, stored: false }],
+          mail_account: "Info",
+        },
+      },
+    },
     async () => {
       assert.deepEqual(await fetchFiledMail("email-inbox-abc-1"), {
         text: "Dobrý deň",
-        attachments: [{ name: "ponuka.pdf", size: 2048 }],
+        // An unreadable entry is skipped but the ones after it keep their server position.
+        attachments: [
+          { name: "ponuka.pdf", size: 2048, stored: true, index: 0 },
+          { name: "video.mov", size: 99, stored: false, index: 2 },
+        ],
         mailAccount: "Info",
       });
     },
   );
+});
+
+test("a kept attachment is opened by message and position, never by path", () => {
+  assert.equal(
+    filedMailAttachmentUrl("email-inbox-abc-1", 2),
+    "/api/mail_broker.php?action=get_filed_mail_attachment&id=email-inbox-abc-1&n=2",
+  );
+  assert.ok(filedMailAttachmentUrl("a b", 0, true).endsWith("&download=1"));
+  assert.ok(filedMailAttachmentUrl("a b", 0).includes("id=a%20b"));
 });
 
 test("a refusal comes back as an error with the server's reason", async () => {
