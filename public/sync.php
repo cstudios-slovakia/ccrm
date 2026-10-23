@@ -12,6 +12,7 @@
  */
 require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/schema.php';
+require_once __DIR__ . '/api/warehouse_item_fields.php';
 require_once __DIR__ . '/api/task_reminders.php';
 require_once __DIR__ . '/api/read_scope.php';
 
@@ -509,6 +510,13 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         $incClient = ($inc['clientId'] ?? '') !== '' ? $inc['clientId'] : null;
         $dbClient = ($db['client_id'] ?? '') !== '' ? $db['client_id'] : null;
         if ($incClient !== $dbClient) return false;
+    }
+
+    // Same "no opinion" rule for the price level an older bundle never sends.
+    if (array_key_exists('priceLevelId', $inc)) {
+        $incLevel = ($inc['priceLevelId'] ?? '') !== '' ? $inc['priceLevelId'] : null;
+        $dbLevel = ($db['price_level_id'] ?? '') !== '' ? $db['price_level_id'] : null;
+        if ($incLevel !== $dbLevel) return false;
     }
 
     if (array_key_exists('ticketAllowedEmails', $inc)) {
@@ -1084,6 +1092,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'vatId' => $row['vat_id'] ?? '',
                 'vatValidationResult' => isset($row['vat_validation_result']) && !empty($row['vat_validation_result']) ? json_decode($row['vat_validation_result'], true) : null,
                 'contactPerson' => $row['contact_person'] ?? '',
+                'priceLevelId' => ($row['price_level_id'] ?? '') !== '' ? $row['price_level_id'] : null,
                 'website' => $row['website'] ?? '',
                 'address' => [
                     'street' => $row['street'] ?? '',
@@ -1302,6 +1311,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // out, so an install that never opened the editor gets the built-ins.
     $projectStatuses = ccrm_normalize_project_statuses(
         isset($settings['PROJECT_STATUSES']) ? json_decode($settings['PROJECT_STATUSES'], true) : null
+    );
+    // Settings → Price levels: the named price lists items carry a price for. Same contract.
+    $priceLevels = ccrm_normalize_price_levels(
+        isset($settings['PRICE_LEVELS']) ? json_decode($settings['PRICE_LEVELS'], true) : null
     );
     // The price-offer statuses (Price offers → Settings). Same contract.
     $offerStatuses = ccrm_normalize_offer_statuses(
@@ -1767,8 +1780,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
 
             if ($pdo->query("SHOW TABLES LIKE 'warehouse_items'")->rowCount() > 0) {
+                // One price per (item, price level), read in a single pass.
+                $itemLevelPrices = [];
+                if ($pdo->query("SHOW TABLES LIKE 'warehouse_item_prices'")->rowCount() > 0) {
+                    foreach ($pdo->query("SELECT `item_id`, `price_level_id`, `price` FROM `warehouse_item_prices`") as $pr) {
+                        $itemLevelPrices[$pr['item_id']][$pr['price_level_id']] = (float)$pr['price'];
+                    }
+                }
                 $itemStmt = $pdo->query("SELECT * FROM `warehouse_items` ORDER BY `name` ASC");
                 while ($row = $itemStmt->fetch()) {
+                    $altCodes = isset($row['alt_codes_json']) && $row['alt_codes_json'] !== '' ? json_decode($row['alt_codes_json'], true) : [];
                     $warehouseItems[] = [
                         'id' => $row['id'],
                         'sku' => $row['sku'],
@@ -1785,6 +1806,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                         'defaultSellPrice' => (float)($row['default_sell_price'] ?? 0),
                         'avgPurchasePrice' => (float)($row['avg_purchase_price'] ?? 0),
                         'lastPurchasePrice' => (float)($row['last_purchase_price'] ?? 0),
+                        'vatRate' => isset($row['vat_rate']) ? (float)$row['vat_rate'] : null,
+                        // An empty map must travel as {} (an empty PHP array encodes as []).
+                        'priceLevels' => ($itemLevelPrices[$row['id']] ?? []) ?: (object)[],
+                        'packQuantity' => isset($row['pack_quantity']) ? (float)$row['pack_quantity'] : null,
+                        'packUnit' => $row['pack_unit'] ?? null,
+                        'externalSource' => $row['external_source'] ?? null,
+                        'externalId' => $row['external_id'] ?? null,
+                        'altCodes' => is_array($altCodes) ? array_values($altCodes) : [],
+                        'weightKg' => isset($row['weight_kg']) ? (float)$row['weight_kg'] : null,
                         'createdAt' => $row['created_at'],
                     ];
                 }
@@ -2716,6 +2746,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'taskSettings' => $taskSettings,
             'projectStatuses' => $projectStatuses,
             'offerStatuses' => $offerStatuses,
+            'priceLevels' => $priceLevels,
             'ticketStatuses' => $ticketStatuses,
             'ticketSettings' => $ticketSettings,
             'integrationsConfig' => $integrationsConfig,
@@ -3179,6 +3210,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'PROJECT_STATUSES' => isset($s['projectStatuses']) && is_array($s['projectStatuses'])
                     ? json_encode(ccrm_normalize_project_statuses($s['projectStatuses']), JSON_UNESCAPED_UNICODE)
                     : null,
+                // Omitted means unchanged, like the lists above.
+                'PRICE_LEVELS' => isset($s['priceLevels']) && is_array($s['priceLevels'])
+                    ? json_encode(ccrm_normalize_price_levels($s['priceLevels']), JSON_UNESCAPED_UNICODE)
+                    : null,
                 // Same contract as PROJECT_STATUSES: omitted means unchanged.
                 'OFFER_STATUSES' => isset($s['offerStatuses']) && is_array($s['offerStatuses'])
                     ? json_encode(ccrm_normalize_offer_statuses($s['offerStatuses']), JSON_UNESCAPED_UNICODE)
@@ -3205,7 +3240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
                     'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
-                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'TASK_SETTINGS',
+                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'PRICE_LEVELS', 'TASK_SETTINGS',
                     'TICKET_STATUSES', 'TICKET_SETTINGS',
                 ]);
             }
@@ -4167,6 +4202,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ccrm_date_only($l['createdAt'] ?? null)
                 ]);
 
+                // The client's price level. Written on its own and only when the payload
+                // names it: a bundle that predates price levels must not clear it.
+                if (array_key_exists('priceLevelId', $l)) {
+                    $pdo->prepare("UPDATE `leads` SET `price_level_id` = ? WHERE `id` = ?")
+                        ->execute([($l['priceLevelId'] ?? '') !== '' ? (string)$l['priceLevelId'] : null, $leadId]);
+                }
+
                 // Automatic project creation (Projects → Settings). Runs before
                 // the workflow triggers below on purpose, so an automation
                 // reacting to `lead_created` already finds the project it may
@@ -5117,11 +5159,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (float)($item['avgPurchasePrice'] ?? 0),
                     (float)($item['lastPurchasePrice'] ?? 0)
                 ]);
+                ccrm_write_warehouse_item_extras($pdo, $itemId, $item);
                 $processedItemIds[] = $itemId;
             }
 
             $itemsToDelete = $isDeltaSync ? $deletionsFor('warehouseItems', $existingItemIds) : array_diff($existingItemIds, $processedItemIds);
             if (!empty($itemsToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseItems')) {
+                // The price table cascades from the item; this covers a table created without that key.
+                ccrm_delete_item_prices($pdo, $itemsToDelete);
                 ccrm_delete_omitted($pdo, 'warehouse_items', $itemsToDelete, null, [], false, $isDeltaSync);
             }
         }

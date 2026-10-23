@@ -391,7 +391,8 @@ if ($allow('unified_entries')) try {
 // 5. WAREHOUSE PRODUCTS & INVENTORY
 if ($allow('warehouse')) try {
     $stmt = $pdo->query("
-        SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`default_location`, wi.`description`
+        SELECT wi.`id`, wi.`name`, wi.`sku`, wi.`barcode`, wi.`category`, wi.`unit`, wi.`default_sell_price`, wi.`default_location`, wi.`description`,
+               wi.`alt_codes_json`, wi.`external_id`
         FROM `warehouse_items` wi
     ");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -412,8 +413,16 @@ if ($allow('warehouse')) try {
             $row['barcode'] ?? '',
             $catStr,
             $row['default_location'] ?? '',
-            $row['description'] ?? ''
+            $row['description'] ?? '',
+            // codes beside the SKU (supplier / manufacturer) and the id in the outside system
+            $row['external_id'] ?? '',
         ];
+        $altCodes = !empty($row['alt_codes_json']) ? json_decode($row['alt_codes_json'], true) : [];
+        if (is_array($altCodes)) {
+            foreach ($altCodes as $altCode) {
+                $fieldsToMatch[] = (string)$altCode;
+            }
+        }
         
         $maxScore = 0;
         foreach ($fieldsToMatch as $f) {

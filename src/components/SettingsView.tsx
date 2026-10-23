@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Percent, RotateCcw
 } from "lucide-react";
-import type { Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
+import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
 import { keepStoredOfferDefaults } from "../utils/offerDefaults";
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
@@ -19,6 +19,8 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
+import { PriceLevelSettings } from "./PriceLevelSettings";
+import type { PriceLevel } from "../utils/priceLevels";
 import { TicketSettings } from "./TicketSettings";
 import { OrderStatusSettings } from "./OrderStatusSettings";
 import { ShippingMethodSettings } from "./ShippingMethodSettings";
@@ -537,8 +539,13 @@ interface SettingsViewProps {
   settingsActionId?: string | null;
 
   // Record stores — used to cascade a rename onto existing leads/tasks so they are not orphaned.
+  leads?: Lead[];
   setLeads?: React.Dispatch<React.SetStateAction<Lead[]>>;
   setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
+  /** Price levels (Invoicing tab), with the items and clients that use them. */
+  priceLevels?: PriceLevel[];
+  setPriceLevels?: React.Dispatch<React.SetStateAction<PriceLevel[]>>;
+  warehouseItems?: WarehouseItem[];
 
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
@@ -684,8 +691,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   initialSubTab = "branding",
   settingsAction = null,
   settingsActionId = null,
+  leads: leadRows = [],
   setLeads,
   setTasks,
+  priceLevels,
+  setPriceLevels,
+  warehouseItems = [],
   projectTypes,
   setProjectTypes,
   projectStatuses,
@@ -3796,6 +3807,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
             </div>
+
+            {priceLevels && setPriceLevels && (
+              <PriceLevelSettings
+                levels={priceLevels}
+                setLevels={setPriceLevels}
+                warehouseItems={warehouseItems}
+                leads={leadRows}
+                setLeads={setLeads}
+                userLanguage={userLanguage}
+                canEdit={getPermission("general_config") === "edit"}
+              />
+            )}
           </div>
         )}
 

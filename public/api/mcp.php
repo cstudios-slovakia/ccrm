@@ -1046,7 +1046,12 @@ function mcp_core_tool_definitions(): array {
                     'category' => ['type' => 'string', 'description' => 'Category name'],
                     'unit' => ['type' => 'string', 'description' => 'Unit of measure (default "ks")'],
                     'min_stock' => ['type' => 'number', 'description' => 'Minimum stock alert threshold'],
-                    'default_sell_price' => ['type' => 'number', 'description' => 'Default selling price']
+                    'default_sell_price' => ['type' => 'number', 'description' => 'Default selling price'],
+                    'vat_rate' => ['type' => 'number', 'description' => 'VAT rate of this item in percent; leave out to use the company default'],
+                    'pack_quantity' => ['type' => 'number', 'description' => 'Units (of "unit") in one package'],
+                    'pack_unit' => ['type' => 'string', 'description' => 'Package label, e.g. "bal"'],
+                    'weight_kg' => ['type' => 'number', 'description' => 'Weight of one unit in kg'],
+                    'alt_codes' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Codes beside the SKU (supplier code, manufacturer code); searchable']
                 ],
                 'required' => ['sku', 'name']
             ]
@@ -2250,7 +2255,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             }
             if (!empty($args['search'])) {
                 $term = '%' . $args['search'] . '%';
-                $where[] = "(i.name LIKE ? OR i.sku LIKE ? OR i.barcode LIKE ?)";
+                $where[] = "(i.name LIKE ? OR i.sku LIKE ? OR i.barcode LIKE ? OR i.alt_codes_json LIKE ? OR i.external_id LIKE ?)";
+                $params[] = $term;
+                $params[] = $term;
                 $params[] = $term;
                 $params[] = $term;
                 $params[] = $term;
@@ -2264,6 +2271,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
 
             $sql = "SELECT i.id, i.sku, i.barcode, i.name, i.category, i.unit, i.min_stock, i.default_sell_price, i.avg_purchase_price,
+                           i.vat_rate, i.pack_quantity, i.pack_unit, i.weight_kg, i.external_source, i.external_id, i.alt_codes_json,
                            COALESCE(SUM(s.quantity), 0) as current_stock
                     FROM warehouse_items i
                     LEFT JOIN warehouse_stock s ON i.id = s.item_id
@@ -2275,7 +2283,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return array_map('mcp_inventory_row', $stmt->fetchAll(\PDO::FETCH_ASSOC));
 
         case 'get_inventory_item':
             $stmt = $pdo->prepare("SELECT * FROM warehouse_items WHERE id = ?");
@@ -2293,6 +2301,17 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             );
             $stkStmt->execute([$args['id']]);
             $item['stock_breakdown'] = $stkStmt->fetchAll(\PDO::FETCH_ASSOC);
+            $item = mcp_inventory_row($item);
+            // One price per price level (Settings → Price levels), named; default_sell_price stays the fallback.
+            $priceStmt = $pdo->prepare("SELECT price_level_id, price FROM warehouse_item_prices WHERE item_id = ?");
+            $priceStmt->execute([$args['id']]);
+            $byLevel = $priceStmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+            $item['price_levels'] = [];
+            foreach (ccrm_price_levels($pdo) as $level) {
+                if (isset($byLevel[$level['id']])) {
+                    $item['price_levels'][] = ['id' => $level['id'], 'name' => $level['name'], 'price' => (float)$byLevel[$level['id']]];
+                }
+            }
 
             return $item;
 
@@ -2305,15 +2324,31 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $unit = $args['unit'] ?? 'ks';
             $minStock = mcp_number($args, 'min_stock', false, 0) ?? 0.0;
             $sellPrice = mcp_number($args, 'default_sell_price', false, 0) ?? 0.0;
+            $vatRate = mcp_number($args, 'vat_rate', false, 0);
+            if ($vatRate !== null && $vatRate > 100) throw new \InvalidArgumentException("'vat_rate' must be between 0 and 100.");
+            $packQty = mcp_number($args, 'pack_quantity', false, 0);
+            $weight = mcp_number($args, 'weight_kg', false, 0);
+            $altCodes = [];
+            foreach ((array)($args['alt_codes'] ?? []) as $code) {
+                $code = trim((string)$code);
+                if ($code !== '' && !in_array(mb_strtolower($code), array_map('mb_strtolower', $altCodes), true)) $altCodes[] = mb_substr($code, 0, 100);
+            }
             $dupSku = $pdo->prepare("SELECT 1 FROM warehouse_items WHERE sku = ?");
             $dupSku->execute([$sku]);
             if ($dupSku->fetchColumn()) throw new \InvalidArgumentException("SKU {$sku} already exists.");
 
             $stmt = $pdo->prepare(
-                "INSERT INTO warehouse_items (id, sku, name, description, category, unit, min_stock, default_sell_price)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO warehouse_items (id, sku, name, description, category, unit, min_stock, default_sell_price, vat_rate, pack_quantity, pack_unit, weight_kg, alt_codes_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->execute([$id, $sku, $name, $desc, $cat, $unit, $minStock, $sellPrice]);
+            $stmt->execute([
+                $id, $sku, $name, $desc, $cat, $unit, $minStock, $sellPrice, $vatRate,
+                ($packQty !== null && $packQty > 0) ? $packQty : null,
+                isset($args['pack_unit']) && trim((string)$args['pack_unit']) !== '' ? mb_substr(trim((string)$args['pack_unit']), 0, 30) : null,
+                $weight,
+                // slashes stay unescaped, so a code like BR/100 is found by a plain LIKE
+                $altCodes ? json_encode($altCodes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
+            ]);
 
             // Link to default warehouse
             $whStmt = $pdo->query("SELECT id FROM warehouses WHERE is_default = 1 LIMIT 1");

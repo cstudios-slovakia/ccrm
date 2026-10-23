@@ -73,8 +73,13 @@ export function customLine(id: string, vatRate: number): InvoiceOfferItem {
   };
 }
 
-export function warehouseLine(id: string, product: WarehouseItem, vatRate: number): InvoiceOfferItem {
-  const unitPrice = num(product.defaultSellPrice);
+/**
+ * A line for a warehouse product. `unitPrice` is the price resolved for this
+ * customer (their price level, else the default); it falls back to the product's
+ * default sell price when the caller has no opinion.
+ */
+export function warehouseLine(id: string, product: WarehouseItem, vatRate: number, unitPrice?: number): InvoiceOfferItem {
+  unitPrice = num(unitPrice ?? product.defaultSellPrice);
   return {
     id,
     warehouseItemId: product.id,

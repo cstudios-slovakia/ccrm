@@ -99,6 +99,7 @@ Main table representing potential deals, customers, and client accounts.
 * `ownership_type` VARCHAR(50)
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
 * `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
+* `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
 * `contact_person` VARCHAR(100)
 
 ### `client_adjustment_migration`
@@ -375,7 +376,20 @@ Master catalog of goods, products, raw materials, and supplies.
 * `default_sell_price` DECIMAL(12,2)
 * `avg_purchase_price` DECIMAL(12,4) (Weighted average purchase price - WAP)
 * `last_purchase_price` DECIMAL(12,2)
+* `vat_rate` DECIMAL(5,2) [NULLable] (VAT of this item in percent; NULL = use the company default from the billing settings. Prefilled on offer, order and invoice lines, still editable per line)
+* `pack_quantity` DECIMAL(15,4) [NULLable] (Units of `unit` in one package, e.g. 1.44 m²) and `pack_unit` VARCHAR(30) [NULLable] (package label, e.g. `bal`)
+* `external_source` VARCHAR(50) + `external_id` VARCHAR(100) [NULLable] (The record in an outside system, e.g. `mrp` / `39`. UNIQUE together as `uq_item_external`, so a lookup is one index probe and two items never claim one external record; several items may have neither. Read-only in the UI: what an ERP / MRP sync or an import upserts by)
+* `alt_codes_json` TEXT [NULLable] (JSON list of codes beside the SKU: supplier code, manufacturer code. Searched wherever items are searched: warehouse list, item pickers, universal search, MCP)
+* `weight_kg` DECIMAL(12,3) [NULLable]
 * `created_at` TIMESTAMP
+
+### `warehouse_item_prices`
+One price per item and price level; `warehouse_items.default_sell_price` stays the base / fallback. A zero or missing price means "not set".
+* `item_id` VARCHAR(50) [PK part, FK to `warehouse_items.id`, ON DELETE CASCADE]
+* `price_level_id` VARCHAR(50) [PK part] (An `id` of the `PRICE_LEVELS` setting)
+* `price` DECIMAL(15,4)
+
+The `PRICE_LEVELS` setting (in `system_settings`, edited in Settings → Invoicing → Price levels) is a JSON list of `{id, name}` in display order, normalized by `ccrm_normalize_price_levels()` (PHP) and `normalizePriceLevels()` (`src/utils/priceLevels.ts`). `leads.price_level_id` VARCHAR(50) [NULLable] is the level a client buys on; picking an item for that client uses the level's price and falls back to `default_sell_price` (`resolveSellPrice()`, `ccrm_resolve_sell_price()`).
 
 ### `warehouse_stock`
 Current inventory balances partitioned per warehouse location.

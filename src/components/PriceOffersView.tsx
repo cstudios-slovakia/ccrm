@@ -30,6 +30,7 @@ import { getAvailableVatRates } from "../utils/vat";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { num } from "../utils/offerDraft";
+import type { PriceLevel } from "../utils/priceLevels";
 import {
   DEFAULT_OFFER_STATUS_DEFS,
   defaultOfferStatus,
@@ -52,6 +53,8 @@ interface PriceOffersViewProps {
   setInvoicesOffers: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
   /** The configurable price-offer statuses (Settings → Offer statuses). Defaults to the six built-ins. */
   offerStatuses?: OfferStatusDef[];
+  /** The configured price levels, so a product is priced on the customer's level. */
+  priceLevels?: PriceLevel[];
   setOfferStatuses?: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
@@ -96,6 +99,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   invoicesOffers: allDocuments = [],
   setInvoicesOffers,
   offerStatuses = DEFAULT_OFFER_STATUS_DEFS as OfferStatusDef[],
+  priceLevels = [],
   setOfferStatuses,
   leads = [],
   setLeads,
@@ -548,6 +552,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           enabledProviders={enabledProviders}
           invoicingIntegrations={invoicingIntegrations}
           availableVatRates={availableVatRates}
+          priceLevels={priceLevels}
           currency={currency}
           currentUser={currentUser}
           canEdit={canEdit}

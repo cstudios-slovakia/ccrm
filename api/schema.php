@@ -1145,6 +1145,12 @@ if (!function_exists('ccrm_schema_statements')) {
     /**
      * True if $column exists on $table in the current database.
      */
+    function ccrm_table_exists(PDO $pdo, string $table): bool {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?");
+        $stmt->execute([$table]);
+        return (int)$stmt->fetchColumn() > 0;
+    }
+
     function ccrm_column_exists(PDO $pdo, string $table, string $column): bool {
         $stmt = $pdo->prepare(
             "SELECT COUNT(*) FROM information_schema.COLUMNS
@@ -1557,6 +1563,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_list_ids($pdo);
         ccrm_migrate_invoice_status_changed_at($pdo);
         ccrm_migrate_invoice_status_varchar($pdo);
+        ccrm_migrate_warehouse_item_fields($pdo);
         ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
@@ -1908,6 +1915,73 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm] schema: invoices_offers.status migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Richer product data (1.12.71): a VAT rate per item, per-level prices, a
+     * package size, an external (ERP / MRP) reference, alternative codes and a
+     * weight on `warehouse_items`; the price level a client buys on on `leads`.
+     * Every column is nullable, so items and clients that predate this load and
+     * save exactly as before. Idempotent: each step checks the live schema first.
+     *
+     *  - `external_source` + `external_id` are UNIQUE together; MySQL lets several
+     *    rows hold NULL in a unique index, so the rule is "unique when both are set"
+     *    and a lookup by it is one index probe (what an MRP sync or an import upserts by).
+     *  - `alt_codes_json` is a JSON list of codes beside the SKU (supplier code,
+     *    manufacturer code), searched with LIKE: a catalogue of a few thousand
+     *    items does not need a child table for that.
+     *  - `warehouse_item_prices` holds one price per (item, price level) instead of
+     *    five fixed columns; the levels themselves are the PRICE_LEVELS setting.
+     */
+    function ccrm_migrate_warehouse_item_fields(PDO $pdo): void {
+        try {
+            $hasItems = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_items'")->fetchColumn() > 0;
+            if ($hasItems) {
+                $columns = [
+                    'vat_rate'        => "DECIMAL(5,2) NULL COMMENT 'NULL = use the company default VAT'",
+                    'pack_quantity'   => "DECIMAL(15,4) NULL COMMENT 'Units (unit) in one package'",
+                    'pack_unit'       => "VARCHAR(30) NULL COMMENT 'Package label, e.g. bal'",
+                    'external_source' => "VARCHAR(50) NULL COMMENT 'Outside system the item came from, e.g. mrp'",
+                    'external_id'     => "VARCHAR(100) NULL COMMENT 'Id of the item in that system'",
+                    'alt_codes_json'  => "TEXT NULL COMMENT 'JSON list of codes beside the SKU'",
+                    'weight_kg'       => "DECIMAL(12,3) NULL",
+                ];
+                foreach ($columns as $name => $definition) {
+                    if (!ccrm_column_exists($pdo, 'warehouse_items', $name)) {
+                        $pdo->exec("ALTER TABLE `warehouse_items` ADD COLUMN `{$name}` {$definition}");
+                    }
+                }
+                $hasIndex = (int)$pdo->query(
+                    "SELECT COUNT(*) FROM information_schema.STATISTICS
+                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouse_items' AND INDEX_NAME = 'uq_item_external'"
+                )->fetchColumn() > 0;
+                if (!$hasIndex) {
+                    $pdo->exec("ALTER TABLE `warehouse_items` ADD UNIQUE INDEX `uq_item_external` (`external_source`, `external_id`)");
+                }
+                $priceTable = "CREATE TABLE IF NOT EXISTS `warehouse_item_prices` (
+                      `item_id` VARCHAR(50) NOT NULL,
+                      `price_level_id` VARCHAR(50) NOT NULL,
+                      `price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+                      PRIMARY KEY (`item_id`, `price_level_id`),
+                      INDEX `idx_item_price_level` (`price_level_id`)%s
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+                try {
+                    $pdo->exec(sprintf($priceTable, ",
+                      FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE CASCADE"));
+                } catch (\Throwable $fkError) {
+                    // A catalogue table with another collation cannot be referenced. The prices
+                    // matter more than the cascade, so create the table without the key; the sync
+                    // then removes an item's prices itself when it deletes the item.
+                    error_log('[ccrm] schema: warehouse_item_prices created without its foreign key: ' . $fkError->getMessage());
+                    $pdo->exec(sprintf($priceTable, ''));
+                }
+            }
+            if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'price_level_id')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `price_level_id` VARCHAR(50) NULL COMMENT 'The price level this client buys on (PRICE_LEVELS setting)'");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: warehouse item fields migration skipped: ' . $e->getMessage());
         }
     }
 

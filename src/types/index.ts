@@ -161,6 +161,8 @@ export interface Lead {
   dissolutionDate?: string;
   region?: string;
   district?: string;
+  /** The price level this client buys on (Settings → Price levels); empty = the items' default sell price. */
+  priceLevelId?: string | null;
   
   // Interactive Timeline Logs
   timeline?: TimelineEvent[];
@@ -777,6 +779,19 @@ export interface WarehouseItem {
   defaultSellPrice: number;
   avgPurchasePrice: number; // Weighted Average Purchase price (WAP)
   lastPurchasePrice: number;
+  /** VAT rate of this item; null/absent = use the company default (Settings → Invoicing). */
+  vatRate?: number | null;
+  /** Price per price level (Settings → Price levels), keyed by level id. `defaultSellPrice` is the fallback. */
+  priceLevels?: Record<string, number>;
+  /** Units (`unit`) in one package, e.g. 1.44 m² per pack; with an optional package label ("bal"). */
+  packQuantity?: number | null;
+  packUnit?: string | null;
+  /** The record in an outside system (an ERP / MRP) this item came from: read-only, what syncs and imports upsert by. */
+  externalSource?: string | null;
+  externalId?: string | null;
+  /** Codes beside the SKU (supplier code, manufacturer code); searched wherever items are. */
+  altCodes?: string[];
+  weightKg?: number | null;
   createdAt?: string;
 }
 

@@ -3,6 +3,7 @@ import { Package, Search } from "lucide-react";
 import type { WarehouseItem } from "../../types";
 import type { Language } from "../../utils/translations";
 import { cn } from "../../utils/cn";
+import { appliedPriceLevel, matchesItemQuery, packHint, resolveSellPrice, type PriceLevel } from "../../utils/priceLevels";
 
 interface WarehouseProductPickerProps {
   lang: Language;
@@ -12,6 +13,9 @@ interface WarehouseProductPickerProps {
   onQueryChange: (next: string) => void;
   onPick: (product: WarehouseItem) => void;
   money: (value: unknown) => string;
+  /** The customer's price level and the configured levels: the listed price is theirs, not the default. */
+  priceLevelId?: string | null;
+  priceLevels?: readonly PriceLevel[];
   /** `paper` sits inside the printed document and inherits its type; `app` is ordinary app chrome. */
   variant?: "paper" | "app";
 }
@@ -30,6 +34,8 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
   onQueryChange,
   onPick,
   money,
+  priceLevelId = null,
+  priceLevels = [],
   variant = "app"
 }) => {
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
@@ -37,10 +43,9 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
 
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const pool = q
-      ? products.filter(w => w.name.toLowerCase().includes(q) || (w.sku || "").toLowerCase().includes(q))
-      : products;
+    const q = query.trim();
+    // Found by name, SKU, barcode, an alternative code or the external id.
+    const pool = q ? products.filter(w => matchesItemQuery(w, q)) : products;
     return pool.slice(0, 12);
   }, [products, query]);
 
@@ -94,8 +99,13 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
                   <Package className="size-3.5 shrink-0 text-indigo-500" />
                   <span className="truncate">{wh.name}</span>
                 </span>
-                <span className="shrink-0 text-slate-400">
-                  {money(wh.defaultSellPrice)}/{wh.unit}
+                <span className="shrink-0 text-right text-slate-400">
+                  <span title={appliedPriceLevel(wh, priceLevelId, priceLevels)?.name}>
+                    {money(resolveSellPrice(wh, priceLevelId, priceLevels))}/{wh.unit}
+                  </span>
+                  {packHint(wh, t("pack", "bal", "csomag")) && (
+                    <span className="block text-micro">{packHint(wh, t("pack", "bal", "csomag"))}</span>
+                  )}
                 </span>
               </button>
             ))

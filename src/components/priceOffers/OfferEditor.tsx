@@ -17,6 +17,7 @@ import { ClientRegistryCompletion } from "./ClientRegistryCompletion";
 import { ExternalOfferForm } from "./ExternalOfferForm";
 import { NewClientModal } from "./NewClientModal";
 import { WarehouseProductPicker } from "./WarehouseProductPicker";
+import { clientPriceLevelId, resolveItemVatRate, resolveSellPrice, type PriceLevel } from "../../utils/priceLevels";
 import { formatMoney, resolveCurrencySymbol } from "../../utils/currency";
 import { todayLocal, formatDateLocalized } from "../../utils/localTime";
 import { getDefaultVatRate } from "../../utils/vat";
@@ -47,6 +48,8 @@ interface OfferEditorProps {
   enabledProviders: ExternalInvoiceProvider[];
   invoicingIntegrations?: ExternalInvoicingConfig | null;
   availableVatRates: number[];
+  /** The configured price levels: a product is priced on the customer's level. */
+  priceLevels?: PriceLevel[];
   currency: string;
   currentUser: UserProfile | null;
   canEdit: boolean;
@@ -93,6 +96,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
   enabledProviders,
   invoicingIntegrations,
   availableVatRates,
+  priceLevels = [],
   currency,
   currentUser,
   canEdit,
@@ -252,10 +256,21 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       ...prev,
       items: [...prev.items, customLine(newLineId(), getDefaultVatRate(companyBillingSettings))]
     }));
+  // The customer's price level (their own, else their client record's) prices the product;
+  // the product's own VAT rate is prefilled, falling back to the company default. Both stay editable on the line.
+  const customerPriceLevelId = clientPriceLevelId(lead, leads);
   const addWarehouseProduct = (product: WarehouseItem) =>
     setDraft(prev => ({
       ...prev,
-      items: [...prev.items, warehouseLine(newLineId(), product, getDefaultVatRate(companyBillingSettings))]
+      items: [
+        ...prev.items,
+        warehouseLine(
+          newLineId(),
+          product,
+          resolveItemVatRate(product, companyBillingSettings),
+          resolveSellPrice(product, customerPriceLevelId, priceLevels)
+        )
+      ]
     }));
 
   const updateUsp = (index: number, patch: Partial<InvoiceOffer["uspCards"][number]>) =>
@@ -369,6 +384,8 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       onQueryChange={setWarehouseQuery}
       onPick={addWarehouseProduct}
       money={money}
+      priceLevelId={customerPriceLevelId}
+      priceLevels={priceLevels}
       variant={variant}
     />
   );

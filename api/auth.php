@@ -1084,6 +1084,71 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * A stored price-level list (Settings → Price levels), cleaned up the same way
+     * normalizePriceLevels() does it in src/utils/warehousePricing.ts: unique
+     * non-empty ids, a trimmed non-empty name (unique ignoring case). Unreadable
+     * input is an empty list — an installation that never opened the editor has no levels.
+     */
+    function ccrm_normalize_price_levels($raw): array {
+        if (!is_array($raw)) return [];
+        $ids = [];
+        $names = [];
+        $out = [];
+        foreach ($raw as $item) {
+            if (!is_array($item)) continue;
+            $id = trim((string)($item['id'] ?? ''));
+            $name = mb_substr(trim((string)($item['name'] ?? '')), 0, 60);
+            $nameKey = mb_strtolower($name);
+            if ($id === '' || mb_strlen($id) > 50 || $name === '' || isset($ids[$id]) || isset($names[$nameKey])) continue;
+            $ids[$id] = true;
+            $names[$nameKey] = true;
+            $out[] = ['id' => $id, 'name' => $name];
+        }
+        return $out;
+    }
+
+    /** The configured price levels, read once per request. */
+    function ccrm_price_levels(?\PDO $pdo = null): array {
+        static $cached = null;
+        if ($pdo === null) {
+            return $cached ?? [];
+        }
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'PRICE_LEVELS'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_price_levels($decoded);
+        return $cached;
+    }
+
+    /**
+     * The unit sell price of an item for a customer on `$levelId`: that level's
+     * price when the level still exists and the item has a positive price on it,
+     * else the item's default sell price. Mirrors resolveSellPrice() in
+     * src/utils/warehousePricing.ts. `$levelPrices` is [level id => price].
+     */
+    function ccrm_resolve_sell_price(float $defaultSellPrice, array $levelPrices, ?string $levelId, array $levels): float {
+        if ($levelId !== null && $levelId !== '') {
+            foreach ($levels as $l) {
+                if ($l['id'] === $levelId) {
+                    $price = (float)($levelPrices[$levelId] ?? 0);
+                    if ($price > 0) return $price;
+                    break;
+                }
+            }
+        }
+        return $defaultSellPrice;
+    }
+
+    /**
      * Normalize an automatic-project-creation config blob to its canonical shape.
      *
      *   enabled        false — no project is created (the historical behaviour)
