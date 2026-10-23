@@ -853,6 +853,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           projects={projectsForPicker}
           users={users}
           taskStates={taskStates}
+          taskStateColors={taskStateColors}
           systemLanguage={userLanguage}
           currentUser={currentUser}
           currentUserName={myName}

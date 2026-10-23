@@ -4113,6 +4113,7 @@ ${log.payload || ''}
             leads={leads}
             taskStates={taskStates}
             leadStates={orderedLeadStates}
+            leadStateColors={leadStateColors}
             leadSources={leadSources}
             projectTypes={projectTypes}
             setAppTab={setActiveTab}

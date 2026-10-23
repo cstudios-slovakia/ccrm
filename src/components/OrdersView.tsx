@@ -564,13 +564,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const orderStatusOptions = useMemo(() => {
     return orderStatuses.map(s => ({
       value: s.key,
-      label: (
-        <span className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-          <span>{orderStatusLabel(s.key, t, orderStatuses)}</span>
-        </span>
-      ),
-      searchText: orderStatusLabel(s.key, t, orderStatuses)
+      label: orderStatusLabel(s.key, t, orderStatuses),
+      color: orderStatusColor(s.key, orderStatuses),
     }));
   }, [orderStatuses, userLanguage]);
 

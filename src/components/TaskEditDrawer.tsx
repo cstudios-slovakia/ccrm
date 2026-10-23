@@ -148,6 +148,8 @@ interface TaskEditDrawerProps {
     tickets?: Ticket[];
     users: UserProfile[];
     taskStates: string[];
+    /** Colour of each state from the task-state settings, keyed by state name; paints the status dropdown. */
+    taskStateColors?: Record<string, string>;
     systemLanguage: Language;
     /** Recorded as `completedBy` when the status is moved to a done state here. */
     currentUserName: string;
@@ -184,6 +186,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     tickets = [],
     users,
     taskStates,
+    taskStateColors = {},
     systemLanguage,
     currentUserName,
     currentUser,
@@ -614,7 +617,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         completedAt: done ? localStampStr(new Date()) : undefined,
                                     });
                                 }}
-                                options={taskStates.map((st) => ({ value: st, label: taskStateLabel(st, t) }))}
+                                options={taskStates.map((st) => ({ value: st, label: taskStateLabel(st, t), color: taskStateColors[st] || "#64748b" }))}
                             />
                         </div>
 

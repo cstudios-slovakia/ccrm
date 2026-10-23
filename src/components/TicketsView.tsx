@@ -1639,12 +1639,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           userLanguage,
                           ticketStatuses,
                         ),
-                        icon: (
-                          <span
-                            className="h-2 w-2 rounded-full shrink-0 inline-block"
-                            style={{ backgroundColor: dotColor }}
-                          />
-                        ),
+                        color: dotColor,
                       };
                     })}
                   />

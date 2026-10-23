@@ -2915,7 +2915,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         );
                                     }}
                                     className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] type-overline !py-0.5 !px-2 truncate"
-                                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
+                                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st), color: taskStateColors[st] || "#64748b" }))}
                                 />
                             </div>
 
@@ -5520,6 +5520,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     tickets={tickets}
                     users={users}
                     taskStates={taskStates}
+                    taskStateColors={taskStateColors}
                     systemLanguage={systemLanguage}
                     currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}

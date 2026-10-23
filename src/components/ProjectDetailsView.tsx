@@ -2124,11 +2124,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 className="!font-black"
                 style={projectStatusBadgeStyle(status, projectStatuses)}
                 icon={<span className="h-2 w-2 rounded-full shrink-0 inline-block" style={projectStatusDotStyle(status, projectStatuses)} />}
-                options={projectStatusOptions(t, projectStatuses).map(o => ({
-                  value: o.value,
-                  label: o.label,
-                  icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={projectStatusDotStyle(o.value, projectStatuses)} />,
-                }))}
+                options={projectStatusOptions(t, projectStatuses)}
               />
             </div>
 

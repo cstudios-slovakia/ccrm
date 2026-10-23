@@ -418,6 +418,7 @@ const LeadStatusSelector: React.FC<LeadStatusSelectorProps> = ({
                 options={majorStates.map((state) => ({
                     value: state.toLowerCase(),
                     label: state,
+                    color: getStateColor(state),
                 }))}
             />
             {hasSubstates && (
@@ -445,7 +446,8 @@ const LeadStatusSelector: React.FC<LeadStatusSelectorProps> = ({
                         },
                         ...activeSubstates.map((sub) => ({
                             value: sub.toLowerCase(),
-                            label: `↳ ${sub}`,
+                            label: sub,
+                            color: getStateColor(sub),
                         })),
                     ]}
                 />
@@ -6990,6 +6992,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     (st) => ({
                                                                         value: st,
                                                                         label: st,
+                                                                        color: taskStateColors[st] || "#64748b",
                                                                     }),
                                                                 )}
                                                             />

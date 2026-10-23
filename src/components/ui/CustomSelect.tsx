@@ -9,6 +9,12 @@ export interface DropdownOption {
   value: string;
   label: React.ReactNode;
   icon?: React.ReactNode;
+  /**
+   * The colour this option carries in a settings list (a status, stage or type). It draws a dot
+   * before the label, and sets the whole list in capitals, in the panel and in the closed control
+   * alike, so every dropdown of coloured values reads the same.
+   */
+  color?: string;
   disabled?: boolean;
   /** Text the search box matches against — needed when `label` is not a plain string. */
   searchText?: string;
@@ -65,6 +71,11 @@ interface CustomSelectProps {
   /** Size the trigger to its label. The closed control shows the whole label. */
   fitLabel?: boolean;
 }
+
+/** The dot that carries an option's colour. */
+const ColorDot: React.FC<{ color: string }> = ({ color }) => (
+  <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+);
 
 function normalizeOptions(options: RawOption[]): DropdownOption[] {
   return options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
@@ -202,6 +213,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
 
   const allOpts = normalizeOptions(options);
   const selected = allOpts.find((o) => o.value === value);
+  // A list of coloured values is set in capitals throughout, its "All" and "None" entries included.
+  const capitals = allOpts.some((o) => o.color);
   const showSearch = searchable ?? allOpts.length >= SEARCH_THRESHOLD;
   const copy = SEARCH_COPY[getStoredLanguage()];
   const needle = showSearch ? foldText(query.trim()) : "";
@@ -435,8 +448,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         }
       >
         <span className={`flex items-center gap-1.5 ${fitLabel ? "whitespace-nowrap" : "min-w-0 truncate"}`}>
-          {icon ?? selected?.icon}
-          <span className={`${fitLabel ? "whitespace-nowrap" : "truncate"} ${!selected ? "text-slate-400 font-medium" : ""}`}>
+          {icon ?? selected?.icon ?? (selected?.color ? <ColorDot color={selected.color} /> : null)}
+          <span
+            className={`${fitLabel ? "whitespace-nowrap" : "truncate"} ${!selected ? "text-slate-400 font-medium" : ""} ${
+              capitals && selected ? "uppercase tracking-wide" : ""
+            }`}
+          >
             {selected ? selected.label : placeholder}
           </span>
         </span>
@@ -544,8 +561,14 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                             : "text-slate-700"
                         }`}
                       >
-                        {opt.icon}
-                        <span className={`flex-1 ${fitLabel ? "whitespace-nowrap" : "truncate"}`}>{opt.label}</span>
+                        {opt.icon ?? (opt.color ? <ColorDot color={opt.color} /> : null)}
+                        <span
+                          className={`flex-1 ${fitLabel ? "whitespace-nowrap" : "truncate"} ${
+                            capitals ? "uppercase tracking-wide" : ""
+                          }`}
+                        >
+                          {opt.label}
+                        </span>
                         {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
                       </button>
                     );

@@ -41,6 +41,7 @@ import type {
 } from "../types";
 import type { Language } from "../utils/translations";
 import { EntityHeader } from "./layout";
+import { CustomSelect } from "./ui/CustomSelect";
 import {
   orderStatusLabel,
   orderStatusColor,
@@ -479,21 +480,21 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
         badges={
           <>
             {/* Status Dropdown / Badge */}
-            <div className="relative inline-flex items-center">
-              <select
+            <div className="inline-flex items-center">
+              <CustomSelect
+                size="sm"
+                fitLabel
                 value={formData.status}
                 disabled={!canEdit}
-                onChange={e => setFormData({ ...formData, status: e.target.value })}
-                className="appearance-none pl-3 pr-7 py-1 rounded-full text-micro font-bold text-white shadow-sm cursor-pointer focus:outline-none transition-all"
+                onChange={status => setFormData({ ...formData, status })}
+                className="!rounded-full !py-1 !font-bold !text-white !border-transparent"
                 style={{ backgroundColor: orderStatusColor(formData.status, orderStatuses) }}
-              >
-                {orderStatuses.map(st => (
-                  <option key={st.key} value={st.key} className="bg-slate-900 text-white">
-                    {orderStatusLabel(st.key, t, orderStatuses)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 size-3 text-white pointer-events-none" />
+                options={orderStatuses.map(st => ({
+                  value: st.key,
+                  label: orderStatusLabel(st.key, t, orderStatuses),
+                  color: orderStatusColor(st.key, orderStatuses),
+                }))}
+              />
             </div>
 
             {/* Customer Type Badge */}

@@ -399,8 +399,8 @@ export const projectStatusOrder = (
 export const projectStatusOptions = (
   t: (en: string, sk: string, hu: string) => string,
   statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
-): { value: ProjectStatus; label: string }[] =>
-  statuses.map((d) => ({ value: d.key, label: projectStatusLabel(d.key, t, statuses) }));
+): { value: ProjectStatus; label: string; color: string }[] =>
+  statuses.map((d) => ({ value: d.key, label: projectStatusLabel(d.key, t, statuses), color: projectStatusColor(d.key, statuses) }));
 
 /** What a status means, or null for one the list does not know. */
 export const projectStatusGroup = (
