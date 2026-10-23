@@ -91,7 +91,8 @@ function vt_put_event(PDO $pdo, string $ownerId, array $e, string $fallbackTs): 
     $row = [
         'id' => $e['id'], 'lead_id' => $ownerId, 'type' => $e['type'], 'timestamp' => vt_ts($e['timestamp'] ?? '', $fallbackTs),
         'title' => vt_cut(trim((string)($e['title'] ?? '')) !== '' ? $e['title'] : 'Záznam', 250),
-        'content' => vt_cut($e['content'] ?? null, 60000), 'attachments_json' => $att,
+        // '' not NULL: the lead timeline calls content.trim() on notes, and the app itself never stores NULL here
+        'content' => vt_cut($e['content'] ?? '', 60000) ?? '', 'attachments_json' => $att,
         'is_outgoing' => !empty($e['isOutgoing']) ? 1 : 0, 'author' => $e['author'] ?? null,
     ];
     vt_upsert($pdo, 'timeline_events', $row, ['hidden']);
