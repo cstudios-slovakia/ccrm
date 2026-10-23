@@ -60,6 +60,9 @@ import { formatMoney } from "../utils/currency";
 import { formatDateLocalized, formatTimestampLocalized, todayLocal, nowLocalDateTime } from "../utils/localTime";
 import { isoDaysBetween } from "../utils/recurringExpenses";
 import { nextWeightedAveragePrice } from "../utils/warehousePricing";
+import { matchesItemQuery, packHint, type PriceLevel } from "../utils/priceLevels";
+import { emptyExtrasForm, extrasFormFromItem, extrasFromForm, type ItemExtrasForm } from "../utils/warehouseItemForm";
+import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
 import { nextDocumentNumber } from "../utils/documentNumbering";
 import type { Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
@@ -87,6 +90,7 @@ import type {
   WarehouseBatch,
   WarehouseMovement,
   WarehouseMovementItem,
+  CompanyBillingSettings,
   Lead,
   UserProfile
 } from "../types";
@@ -114,6 +118,10 @@ interface WarehouseViewProps {
   users?: UserProfile[];
   onAddTimelineEvent?: (leadId: string, event: any) => void;
   access?: ModuleAccess;
+  /** The configured price levels (Settings → Invoicing): each product can carry a price per level. */
+  priceLevels?: PriceLevel[];
+  /** Where the VAT rates and the company default VAT come from. */
+  companyBillingSettings?: CompanyBillingSettings | null;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -134,6 +142,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   setWarehouseMovements: setWarehouseMovementsRaw,
   leads,
   users = [],
+  priceLevels = [],
+  companyBillingSettings,
   onAddTimelineEvent: onAddTimelineEventRaw,
   access = FULL_MODULE_ACCESS
 }) => {
@@ -245,7 +255,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           imageUrl: item.imageUrl || "",
           defaultSellPrice: item.defaultSellPrice,
           avgPurchasePrice: item.avgPurchasePrice,
-          description: item.description || ""
+          description: item.description || "",
+          extras: extrasFormFromItem(item)
         };
         const seeded = seededItemFormRef.current;
         seededItemFormRef.current = { id: selectedProductDetailId, form: fresh };
@@ -367,6 +378,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     defaultSellPrice: number;
     avgPurchasePrice: number;
     description: string;
+    /** VAT, price levels, package size, weight and alternative codes, as typed. */
+    extras: ItemExtrasForm;
   }>({
     name: "",
     sku: "",
@@ -380,8 +393,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     imageUrl: "",
     defaultSellPrice: 0,
     avgPurchasePrice: 0,
-    description: ""
+    description: "",
+    extras: emptyExtrasForm()
   });
+
+  // VAT choices of the product form: the configured rates, and the default shown on the "company default" option.
+  const vatRatesForForm = useMemo(() => getAvailableVatRates(companyBillingSettings), [companyBillingSettings]);
+  const defaultVatForForm = useMemo(() => getDefaultVatRate(companyBillingSettings), [companyBillingSettings]);
 
   // Form states for Supplier Modal
   const [supplierForm, setSupplierForm] = useState<{
@@ -590,12 +608,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchName = item.name.toLowerCase().includes(q);
-        const matchSku = item.sku.toLowerCase().includes(q);
-        const matchBarcode = item.barcode?.toLowerCase().includes(q);
+        // name, SKU, barcode, alternative codes and the external id (see matchesItemQuery)
+        const matchItem = matchesItemQuery(item, q);
         const itemCats = getItemCategories(item);
         const matchCat = itemCats.some(c => c.toLowerCase().includes(q)) || (item.category?.toLowerCase().includes(q));
-        if (!matchName && !matchSku && !matchBarcode && !matchCat) return false;
+        if (!matchItem && !matchCat) return false;
       }
 
       return true;
@@ -746,7 +763,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       imageUrl: "",
       defaultSellPrice: 0,
       avgPurchasePrice: 0,
-      description: ""
+      description: "",
+      extras: emptyExtrasForm()
     });
     setIsProductCardLocked(false);
     setIsCategoryDropdownOpen(false);
@@ -771,7 +789,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       imageUrl: item.imageUrl || "",
       defaultSellPrice: item.defaultSellPrice,
       avgPurchasePrice: item.avgPurchasePrice,
-      description: item.description || ""
+      description: item.description || "",
+      extras: extrasFormFromItem(item)
     });
     setIsProductCardLocked(true);
     setIsCategoryDropdownOpen(false);
@@ -1177,7 +1196,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         // no date, no movement and no trace — once stock exists it can only
         // move through a dated purchase/receipt/revaluation.
         avgPurchasePrice: hasStockOnHand ? editingItem.avgPurchasePrice : (Number(itemForm.avgPurchasePrice) || 0),
-        description: itemForm.description.trim() || null
+        description: itemForm.description.trim() || null,
+        ...extrasFromForm(itemForm.extras)
       };
 
       setWarehouseItems(prev => prev.map(it => it.id === editingItem.id ? updated : it));
@@ -1204,6 +1224,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         avgPurchasePrice: Number(itemForm.avgPurchasePrice) || 0,
         lastPurchasePrice: Number(itemForm.avgPurchasePrice) || 0,
         description: itemForm.description.trim() || null,
+        ...extrasFromForm(itemForm.extras),
         createdAt: new Date().toISOString().slice(0, 19).replace("T", " ")
       };
 
@@ -1932,6 +1953,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       ? warehouseItems.filter(i => 
           i.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
           i.sku.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+          matchesItemQuery(i, productSearchQuery) ||
           (i.barcode && i.barcode.includes(productSearchQuery)) ||
           (i.category && i.category.toLowerCase().includes(productSearchQuery.toLowerCase()))
         ).slice(0, 10)
@@ -3200,6 +3222,137 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   />
                   <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 </div>
+              </div>
+
+
+              {/* 3b. VAT, PRICE LEVELS, PACKAGING, WEIGHT, ALTERNATIVE CODES, EXTERNAL REFERENCE */}
+              <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/50 p-3" data-testid="item-extras">
+                <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block type-overline text-slate-700 mb-1">
+                      {t("VAT rate", "Sadzba DPH", "ÁFA-kulcs")}
+                    </label>
+                    <select
+                      disabled={isProductCardLocked}
+                      value={itemForm.extras.vatRate}
+                      onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, vatRate: e.target.value } }))}
+                      aria-label={t("VAT rate of this product", "Sadzba DPH tovaru", "A termék ÁFA-kulcsa")}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    >
+                      <option value="">{t("Company default", "Predvolená firmy", "Cég alapértelmezése")} ({defaultVatForForm} %)</option>
+                      {vatRatesForForm.map(r => (
+                        <option key={r} value={String(r)}>{r} %</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block type-overline text-slate-700 mb-1">
+                      {t("Weight (kg)", "Hmotnosť (kg)", "Tömeg (kg)")}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      disabled={isProductCardLocked}
+                      value={itemForm.extras.weightKg}
+                      onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, weightKg: e.target.value } }))}
+                      placeholder="0.000"
+                      aria-label={t("Weight in kilograms", "Hmotnosť v kilogramoch", "Tömeg kilogrammban")}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block type-overline text-slate-700 mb-1">
+                      {t("Units per package", "Počet jednotiek v balení", "Egységek csomagonként")}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      disabled={isProductCardLocked}
+                      value={itemForm.extras.packQuantity}
+                      onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, packQuantity: e.target.value } }))}
+                      placeholder={`1.44 ${itemForm.unit}`}
+                      aria-label={t("Units per package", "Počet jednotiek v balení", "Egységek csomagonként")}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block type-overline text-slate-700 mb-1">
+                      {t("Package label", "Názov balenia", "Csomag megnevezése")}
+                    </label>
+                    <input
+                      type="text"
+                      disabled={isProductCardLocked}
+                      value={itemForm.extras.packUnit}
+                      onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, packUnit: e.target.value } }))}
+                      placeholder={t("e.g. pack", "napr. bal", "pl. csomag")}
+                      aria-label={t("Package label", "Názov balenia", "Csomag megnevezése")}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block type-overline text-slate-700 mb-1">
+                    {t("Alternative codes", "Alternatívne kódy", "Alternatív kódok")}
+                  </label>
+                  <input
+                    type="text"
+                    disabled={isProductCardLocked}
+                    value={itemForm.extras.altCodes}
+                    onChange={(e) => setItemForm(prev => ({ ...prev, extras: { ...prev.extras, altCodes: e.target.value } }))}
+                    placeholder={t("supplier code, manufacturer code (comma separated)", "kód dodávateľa, kód výrobcu (oddelené čiarkou)", "beszállítói kód, gyártói kód (vesszővel elválasztva)")}
+                    aria-label={t("Alternative codes", "Alternatívne kódy", "Alternatív kódok")}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                  />
+                  <p className="text-micro text-slate-400 mt-1">
+                    {t("Searchable everywhere products are searched.", "Dajú sa vyhľadať všade, kde sa hľadá tovar.", "Mindenhol kereshető, ahol termékeket keresnek.")}
+                  </p>
+                </div>
+
+                {priceLevels.length > 0 && (
+                  <div>
+                    <label className="block type-overline text-slate-700 mb-1">
+                      {t("Prices by price level (excl. VAT)", "Ceny podľa cenovej hladiny (bez DPH)", "Árak árszintenként (ÁFA nélkül)")}
+                    </label>
+                    <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2">
+                      {priceLevels.map(level => (
+                        <div key={level.id} className="flex items-center gap-2" data-testid={`item-level-price-${level.id}`}>
+                          <span className="text-ui font-semibold text-slate-600 w-28 shrink-0 truncate" title={level.name}>{level.name}</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            disabled={isProductCardLocked}
+                            value={itemForm.extras.priceLevels[level.id] ?? ""}
+                            onChange={(e) => setItemForm(prev => ({
+                              ...prev,
+                              extras: { ...prev.extras, priceLevels: { ...prev.extras.priceLevels, [level.id]: e.target.value } }
+                            }))}
+                            placeholder={t("default price", "predvolená cena", "alapár")}
+                            aria-label={`${t("Price on level", "Cena na hladine", "Ár a szinten")} ${level.name}`}
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-800 focus:ring-2 focus:ring-blue-900 focus:outline-none transition disabled:bg-slate-100/70 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-micro text-slate-400 mt-1">
+                      {t("A blank level uses the suggested sale price above.", "Prázdna hladina použije predajnú cenu vyššie.", "Az üres szint a fenti eladási árat használja.")}
+                    </p>
+                  </div>
+                )}
+
+                {editingItem?.externalId && (
+                  <div data-testid="item-external-ref">
+                    <label className="block type-overline text-slate-700 mb-1">
+                      {t("External reference", "Externý odkaz", "Külső hivatkozás")}
+                    </label>
+                    <div className="px-3 py-2 bg-slate-100/70 border border-slate-200 rounded-xl text-ui font-mono font-semibold text-slate-600">
+                      {editingItem.externalSource || "—"} / {editingItem.externalId}
+                    </div>
+                    <p className="text-micro text-slate-400 mt-1">
+                      {t("Read-only: what an ERP / MRP sync or an import matches this product by.", "Len na čítanie: podľa tohto sa tovar páruje pri synchronizácii s ERP / MRP alebo importe.", "Csak olvasható: ez alapján párosítja az ERP / MRP szinkron vagy az import a terméket.")}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* 4. CATEGORIES (MULTI-SELECT SEARCHABLE LIST WITH POSSIBILITY TO ADD OPTIONS) */}
@@ -4878,7 +5031,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder={t("Search by product name, SKU or barcode...", "Hľadať podľa názvu, SKU alebo čiarového kódu...", "Keresés név, cikkszám vagy vonalkód alapján...")}
+                placeholder={t("Search by product name, SKU, barcode or any other code...", "Hľadať podľa názvu, SKU, čiarového kódu alebo iného kódu...", "Keresés név, cikkszám, vonalkód vagy más kód alapján...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-800"
@@ -5004,6 +5157,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                     <>
                                       <span>&bull;</span>
                                       <span className="flex items-center gap-1"><Barcode className="w-3 h-3" />{item.barcode}</span>
+                                    </>
+                                  )}
+                                  {(item.altCodes ?? []).length > 0 && (
+                                    <>
+                                      <span>&bull;</span>
+                                      <span title={t("Alternative codes", "Alternatívne kódy", "Alternatív kódok")}>{(item.altCodes ?? []).join(" · ")}</span>
+                                    </>
+                                  )}
+                                  {packHint(item, t("pack", "bal", "csomag")) && (
+                                    <>
+                                      <span>&bull;</span>
+                                      <span>{packHint(item, t("pack", "bal", "csomag"))}</span>
                                     </>
                                   )}
                                 </div>

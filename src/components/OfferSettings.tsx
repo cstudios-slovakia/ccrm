@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { ArrowLeft, Lock, Plus, Save, Share2, Sparkles, Trash2 } from "lucide-react";
-import type { AiCustomTemplate, CompanyBillingSettings, ExternalInvoicingConfig } from "../types";
+import type { AiCustomTemplate, CompanyBillingSettings, ExternalInvoicingConfig, InvoiceOffer } from "../types";
+import type { OfferStatusDef } from "../utils/offerStatuses";
+import { OfferStatusSettings } from "./OfferStatusSettings";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
@@ -15,6 +17,11 @@ interface OfferSettingsProps {
   setInvoicingIntegrations?: (next: ExternalInvoicingConfig | null) => void;
   aiCustomTemplates: AiCustomTemplate[];
   setAiCustomTemplates?: React.Dispatch<React.SetStateAction<AiCustomTemplate[]>>;
+  /** The configurable price-offer statuses and the documents that carry them. */
+  offerStatuses: OfferStatusDef[];
+  setOfferStatuses?: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
+  documents: InvoiceOffer[];
+  setDocuments?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
   lang: Language;
   /** False renders every field read-only; saving, uploading and deleting are hidden. */
   canEdit: boolean;
@@ -57,6 +64,10 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   setInvoicingIntegrations,
   aiCustomTemplates,
   setAiCustomTemplates,
+  offerStatuses,
+  setOfferStatuses,
+  documents,
+  setDocuments,
   lang,
   canEdit,
   onBack,
@@ -610,6 +621,17 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
           </div>
         </fieldset>
       </div>
+
+      {setOfferStatuses && (
+        <OfferStatusSettings
+          statuses={offerStatuses}
+          setStatuses={setOfferStatuses}
+          documents={documents}
+          setDocuments={setDocuments}
+          userLanguage={lang}
+          canEdit={canEdit}
+        />
+      )}
     </div>
   );
 };

@@ -58,7 +58,8 @@ test.describe('Warehouse — WAP freeze on stock (audit F8)', () => {
     const lockButton = page.getByRole('button', { name: /Locked \(Hold 1s\)|Zamknuté \(Držte 1s\)/ });
     await lockButton.dispatchEvent('mousedown');
     await expect(page.getByRole('button', { name: /Unlocked|Odomknuté/ })).toBeVisible({ timeout: 3000 });
-    await lockButton.dispatchEvent('mouseup').catch(() => {});
+    // No mouseup: the lock button is gone once the hold completes, and a dispatchEvent on a missing
+    // element waits for it until the whole test times out (the `.catch` cannot help a wait).
 
     console.log('DEBUG labels:', JSON.stringify(await page.locator('label').allInnerTexts()));
     // No live input carries the WAP at all any more — only a read-only

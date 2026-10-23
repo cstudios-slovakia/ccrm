@@ -60,6 +60,13 @@ export interface TimelineEvent {
   // the first entry so events written before this existed still render.
   attachments?: TimelineAttachment[];
   isOutgoing?: boolean;
+  // Mail entries only: the mailbox the message was read from (a label such as "Info"),
+  // whose personal mailbox that is (the login e-mail; absent for a company mailbox),
+  // and whether the background job stored a readable body (read on demand through
+  // mail_broker.php?action=get_filed_mail, never carried by the sync).
+  mailAccount?: string;
+  mailOwner?: string;
+  hasStoredBody?: boolean;
   audioFile?: string; // path to audio recording file
   transcription?: string; // RAG or speech-to-text transcript
   // Who produced this entry — the user who logged the note, sent the mail or
@@ -161,6 +168,8 @@ export interface Lead {
   dissolutionDate?: string;
   region?: string;
   district?: string;
+  /** The price level this client buys on (Settings → Price levels); empty = the items' default sell price. */
+  priceLevelId?: string | null;
   
   // Interactive Timeline Logs
   timeline?: TimelineEvent[];
@@ -777,6 +786,19 @@ export interface WarehouseItem {
   defaultSellPrice: number;
   avgPurchasePrice: number; // Weighted Average Purchase price (WAP)
   lastPurchasePrice: number;
+  /** VAT rate of this item; null/absent = use the company default (Settings → Invoicing). */
+  vatRate?: number | null;
+  /** Price per price level (Settings → Price levels), keyed by level id. `defaultSellPrice` is the fallback. */
+  priceLevels?: Record<string, number>;
+  /** Units (`unit`) in one package, e.g. 1.44 m² per pack; with an optional package label ("bal"). */
+  packQuantity?: number | null;
+  packUnit?: string | null;
+  /** The record in an outside system (an ERP / MRP) this item came from: read-only, what syncs and imports upsert by. */
+  externalSource?: string | null;
+  externalId?: string | null;
+  /** Codes beside the SKU (supplier code, manufacturer code); searched wherever items are. */
+  altCodes?: string[];
+  weightKg?: number | null;
   createdAt?: string;
 }
 
@@ -968,7 +990,12 @@ export interface ProjectRevenueAnalysis {
 
 export type InvoiceOfferType = 'price_offer' | 'proforma' | 'invoice';
 export type InvoiceOfferMode = 'default' | 'custom' | 'external';
-export type InvoiceOfferStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'invoiced' | 'cancelled';
+/**
+ * A status key. Proformas and invoices use the six built-ins (draft, sent, approved,
+ * rejected, invoiced, cancelled); a price offer's status is a key from the configurable list (utils/offerStatuses.ts),
+ * so any string must be tolerated.
+ */
+export type InvoiceOfferStatus = string;
 export type ExternalInvoiceProvider = 'superfaktura' | 'idoklad';
 
 export interface InvoiceOfferItem {

@@ -475,6 +475,28 @@ async function writeChecks() {
   check('cancelling cancels the unsettled ledger movement', cell(`SELECT status FROM financial_records WHERE id='fr-inv-${inv.id}'`) === 'cancelled', '');
   check('a cancelled document cannot be reopened', isErr(await call(A, 'update_invoice_status', { id: inv.id, status: 'sent' }), /cannot be changed/), '');
 
+  // price offers: their statuses are configurable (OFFER_STATUSES) and are judged by group
+  const OFFER_STATUSES = [
+    { key: 'draft', color: '#64748b', group: 'draft' },
+    { key: 'precenenie', label: 'Precenenie', color: '#f59e0b', group: 'open' },
+    { key: 'uzavreta_vyhra', label: 'Uzavretá', color: '#10b981', group: 'won' },
+    { key: 'uzavreta_prehra', label: 'Bez objednávky', color: '#f43f5e', group: 'lost' },
+    { key: 'cancelled', color: '#f43f5e', group: 'cancelled' },
+  ];
+  sql(`INSERT INTO system_settings (\`key\`, \`value\`) VALUES ('OFFER_STATUSES', ${sq(JSON.stringify(OFFER_STATUSES))}) ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`);
+  const offerRow = (id, status) => `(${sq(id)}, ${sq('CP-PROBE-' + id)}, 'price_offer', ${sq(leadId)}, 'Probe', 'T', 'S', ${sq(status)}, CURDATE())`;
+  const metricsBefore = await call(A, 'get_invoicing_metrics', {});
+  sql(`INSERT INTO invoices_offers (id, document_number, type, lead_id, client_name, title, subject, status, issued_at) VALUES ${[offerRow('po-a', 'draft'), offerRow('po-w', 'uzavreta_vyhra'), offerRow('po-l', 'uzavreta_prehra')].join(', ')}`);
+  check('an offer can be moved to a configured status of the open group', (await call(A, 'update_invoice_status', { id: 'po-a', status: 'precenenie' })).success === true, '');
+  check('an offer status of the won group is a verdict left to the app', isErr(await call(A, 'update_invoice_status', { id: 'po-a', status: 'uzavreta_vyhra' }), /only be set in the app/), '');
+  check('an unknown offer status is refused and the valid ones are listed', isErr(await call(A, 'update_invoice_status', { id: 'po-a', status: 'bogus' }), /Unknown offer status.*precenenie/), '');
+  check('an offer can be cancelled, and then stays cancelled', (await call(A, 'update_invoice_status', { id: 'po-a', status: 'cancelled' })).success === true
+    && isErr(await call(A, 'update_invoice_status', { id: 'po-a', status: 'precenenie' }), /cannot be changed/), '');
+  const metricsAfter = await call(A, 'get_invoicing_metrics', {});
+  check('the win rate counts offers by status group (one custom won, one custom lost)', metricsAfter.offers_decided - metricsBefore.offers_decided === 2, `${metricsBefore.offers_decided} -> ${metricsAfter.offers_decided}`);
+  sql(`DELETE FROM invoices_offers WHERE id IN ('po-a', 'po-w', 'po-l')`);
+  sql(`DELETE FROM system_settings WHERE \`key\` = 'OFFER_STATUSES'`);
+
   // expenses
   check('a paid expense is refused', isErr(await call(A, 'record_expense', { title: 'E', amount: 10, issue_date: '2026-10-01', status: 'paid' }), /planned.*pending/), '');
   check('an income category is refused for an expense', isErr(await call(A, 'record_expense', { title: 'E', amount: 10, issue_date: '2026-10-01', category_id: 'inc-child' }), /income category/), '');
@@ -548,6 +570,28 @@ async function writeChecks() {
   check('add_task_comment refuses a task with no linked lead (nothing would be stored)', isErr(await call(A, 'add_task_comment', { task_id: r.id, comment: 'hi' }), /not linked to a lead/), '');
   check('create_contact refuses an unknown client', isErr(await call(A, 'create_contact', { client_id: 'nope', name: 'X' }), /not found/), '');
   check('create_inventory_item refuses a duplicate SKU', isErr(await call(A, 'create_inventory_item', { sku: 'PI-1', name: 'Dup' }), /already exists/), '');
+
+  // richer product data: VAT, pack size, weight, alternative codes, one price per price level
+  const richItem = await call(A, 'create_inventory_item', { sku: 'PI-RICH', name: 'Rich product', default_sell_price: 100, vat_rate: 10, pack_quantity: 1.44, pack_unit: 'bal', weight_kg: 12.5, alt_codes: ['SUP-77', ' BR/100 ', 'sup-77'] });
+  check('create_inventory_item takes VAT, pack size, weight and alternative codes', richItem.success === true, JSON.stringify(richItem));
+  check('create_inventory_item refuses an impossible VAT rate', isErr(await call(A, 'create_inventory_item', { sku: 'PI-BADVAT', name: 'X', vat_rate: 250 }), /vat_rate/), '');
+  r = await call(A, 'list_inventory_items', { search: 'BR/100' });
+  check('an item is found by an alternative code', Array.isArray(r) && r.some((i) => i.id === richItem.id), JSON.stringify(r).slice(0, 200));
+  sql(`UPDATE warehouse_items SET external_source = 'mrp', external_id = 'MRP-39' WHERE id = ${sq(richItem.id)}`);
+  r = await call(A, 'list_inventory_items', { search: 'MRP-39' });
+  check('an item is found by its external id', Array.isArray(r) && r.some((i) => i.id === richItem.id), '');
+  const rich = Array.isArray(r) ? r.find((i) => i.id === richItem.id) : null;
+  check('listed items carry the new fields, codes as a list', !!rich && rich.vat_rate === 10 && rich.pack_quantity === 1.44 && rich.pack_unit === 'bal' && rich.weight_kg === 12.5
+    && JSON.stringify(rich.alt_codes) === JSON.stringify(['SUP-77', 'BR/100']) && !('alt_codes_json' in rich), JSON.stringify(rich));
+  sql(`INSERT INTO system_settings (\`key\`, \`value\`) VALUES ('PRICE_LEVELS', ${sq(JSON.stringify([{ id: 'pl-wh', name: 'Veľkoobchod' }, { id: 'pl-partner', name: 'Partner' }]))}) ON DUPLICATE KEY UPDATE \`value\` = VALUES(\`value\`)`);
+  sql(`INSERT INTO warehouse_item_prices (item_id, price_level_id, price) VALUES (${sq(richItem.id)}, 'pl-wh', 80), (${sq(richItem.id)}, 'pl-gone', 50)`);
+  r = await call(A, 'get_inventory_item', { id: richItem.id });
+  check('get_inventory_item lists the prices of the configured levels by name, and not those of a deleted level',
+    Array.isArray(r.price_levels) && r.price_levels.length === 1 && r.price_levels[0].name === 'Veľkoobchod' && r.price_levels[0].price === 80, JSON.stringify(r.price_levels));
+  sql(`DELETE FROM warehouse_item_prices WHERE item_id = ${sq(richItem.id)}`);
+  sql(`DELETE FROM system_settings WHERE \`key\` = 'PRICE_LEVELS'`);
+  r = await call(A, 'search_entities', { query: 'SUP-77', entity_types: ['warehouse'] });
+  check('search_entities finds an item by an alternative code', Array.isArray(r.warehouse_items) && r.warehouse_items.some((i) => i.id === richItem.id), JSON.stringify(r).slice(0, 200));
   check('schedule_meeting refuses an impossible date', isErr(await call(A, 'schedule_meeting', { title: 'M', date: '2026-02-31' }), /YYYY-MM-DD/), '');
 
   // read tools that need no fixture beyond the above

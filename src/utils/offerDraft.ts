@@ -73,8 +73,13 @@ export function customLine(id: string, vatRate: number): InvoiceOfferItem {
   };
 }
 
-export function warehouseLine(id: string, product: WarehouseItem, vatRate: number): InvoiceOfferItem {
-  const unitPrice = num(product.defaultSellPrice);
+/**
+ * A line for a warehouse product. `unitPrice` is the price resolved for this
+ * customer (their price level, else the default); it falls back to the product's
+ * default sell price when the caller has no opinion.
+ */
+export function warehouseLine(id: string, product: WarehouseItem, vatRate: number, unitPrice?: number): InvoiceOfferItem {
+  unitPrice = num(unitPrice ?? product.defaultSellPrice);
   return {
     id,
     warehouseItemId: product.id,
@@ -116,6 +121,8 @@ export interface NewDraftOptions {
   signOffTeam: string;
   currency: string;
   settings?: CompanyBillingSettings | null;
+  /** Where a new offer starts: the first draft status of the configured list. Defaults to "draft". */
+  status?: string;
 }
 
 /** A fresh draft, pre-filled from the defaults in Settings → Invoicing. */
@@ -151,7 +158,7 @@ export function newOfferDraft(o: NewDraftOptions): InvoiceOffer {
     closingNote: "",
     signOffTeam: o.signOffTeam,
     customTemplateId: o.mode === "custom" ? o.templateId || null : null,
-    status: "draft",
+    status: o.status || "draft",
     issuedAt: o.issuedAt
   };
 }
@@ -287,7 +294,7 @@ function finalizeOffer(draft: InvoiceOffer, o: AssembleOptions, sampleClientName
     closingNote: orNull(draft.closingNote),
     signOffTeam: orNull(draft.signOffTeam),
     customTemplateId: draft.mode === "custom" ? draft.customTemplateId || o.activeTemplateId || null : null,
-    status: existing?.status || "draft",
+    status: existing?.status || draft.status || "draft",
     // The issue date is editable on an existing offer too. Valid-until moves
     // with it by the same number of days, keeping the offer's own terms. An
     // offer has no payment due date.

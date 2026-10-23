@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/pipeline_extras.php';
 
 // This file exposes a PUBLIC lead-capture webhook (POST, authenticated by the
 // X-API-KEY header) that is intentionally reachable cross-origin from external
@@ -467,6 +468,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // the lead ("Client interest / problem to solve"); it still goes to the
     // timeline as well.
     $interestNote = $formMessage;
+    // Whatever else the form asked (project type, area, deadline, ...) has no
+    // lead field to land in, so it follows the message as "Label: value" lines.
+    $extraLines = ccrm_pipeline_extra_lines($payload);
     $phone = isset($payload['phone']) ? trim($payload['phone']) : "";
     $email = isset($payload['email']) ? trim($payload['email']) : "";
     $country = isset($payload['country']) ? trim($payload['country']) : "Slovakia";
@@ -599,7 +603,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $messageLines[] = "Message: Form submitted (no message content).";
             }
-            
+            // The existing lead's interest note is a person's text and is left
+            // alone; the extra answers are kept on this timeline note only.
+            if ($extraLines !== '') {
+                $messageLines[] = $extraLines;
+            }
+
             $teContent = implode("\n", $messageLines);
             $teId = 'ev-' . uniqid();
             $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'note', ?, 'Form Inquiry (Existing Active Lead)', ?)");
@@ -649,6 +658,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo->beginTransaction();
 
+        $newInterestNote = ccrm_pipeline_with_extras($interestNote, $extraLines);
+
         // Next project manager in the configured rotation (Settings → Users);
         // falls back to the primary user when auto-assignment is off. Never a
         // hardcoded demo name. Held in a variable because an auto-created
@@ -673,7 +684,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $email,
             $contactPerson,
             $country,
-            $interestNote !== '' ? $interestNote : null,
+            $newInterestNote !== '' ? $newInterestNote : null,
             $created_at
         ]);
 
@@ -687,7 +698,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 3. Insert timeline event
         $teId = 'ev-' . uniqid();
-        $teContent = $formMessage !== '' ? $formMessage : "Lead received from external integration.";
+        $teContent = $newInterestNote !== '' ? $newInterestNote : "Lead received from external integration.";
         $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'note', ?, 'Lead Created via Public API', ?)");
         $insTe->execute([
             $teId,

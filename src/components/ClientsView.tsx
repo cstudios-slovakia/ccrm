@@ -8,7 +8,7 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink, Ticket as TicketIcon
+  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink, Ticket as TicketIcon, Tag
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
@@ -27,6 +27,7 @@ import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { BlockEditor } from "./BlockEditor";
 import { VoiceRecorderCard } from "./VoiceRecorderCard";
 import { CustomSelect } from "./ui/CustomSelect";
+import type { PriceLevel } from "../utils/priceLevels";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
 import type { CompanyDetails, CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
@@ -57,6 +58,8 @@ import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
+import { FiledMailBody, MailAccountBadge } from "./FiledMail";
+import { fetchFiledMail, shouldReadStoredBody } from "../utils/filedMail";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo } from "../utils/leadActions";
@@ -78,6 +81,8 @@ export interface ClientSortConfig {
 const CLIENTS_SORT_STORAGE_KEY = "ccrm_clients_sort_config";
 
 interface ClientsViewProps {
+  /** The configured price levels: a client can be put on one (Client profile → Price level). */
+  priceLevels?: PriceLevel[];
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
   projectManagers: string[];
@@ -455,6 +460,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   warehouses = [],
   setWarehouseMovements,
   invoicesOffers: _invoicesOffers = [],
+  priceLevels = [],
   setInvoicesOffers,
   financialCategories = [],
   clientCategories = [],
@@ -1025,6 +1031,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       categories: string[];
       ticketAllowedEmails: string[];
       clientCategoryId: string | null;
+      priceLevelId: string | null;
       archived: boolean;
       aiSummary?: string;
       aiSummaryFingerprint?: string;
@@ -1076,6 +1083,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           categories: [],
           ticketAllowedEmails: [],
           clientCategoryId: lead.clientCategoryId || null,
+          priceLevelId: lead.priceLevelId || null,
           archived: !!lead.archived,
           aiSummary: lead.aiSummary || "",
           aiSummaryFingerprint: lead.aiSummaryFingerprint || "",
@@ -1089,6 +1097,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         }
         if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
           profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
+        }
+        if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
+          profilesMap[clientKey].priceLevelId = lead.priceLevelId;
         }
         // Archived only while every lead of the profile is: a new deal under the
         // same name brings the client back into the register on its own.
@@ -1424,6 +1435,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileDistrict, setProfileDistrict] = useState("");
   const [profileCategories, setProfileCategories] = useState<string[]>([]);
   const [profileClientCategoryId, setProfileClientCategoryId] = useState("");
+  const [profilePriceLevelId, setProfilePriceLevelId] = useState("");
 
   // The same registry autofill as the register drawer, on the client profile.
   const profileLookup = useCompanyLookup<CompanyLookupField>({
@@ -2593,6 +2605,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       
       const currentUserStr = sessionStorage.getItem("crm_current_user_rbac");
       const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+
+      // Mail the background job filed from a mailbox the viewer does not own (a company
+      // mailbox, a colleague's) is read from the stored body: there is no such mailbox to ask.
+      if (shouldReadStoredBody(event, currentUser?.email)) {
+        const filed = await fetchFiledMail(event.id);
+        setTimelineEmailDetailBody({ uid, html: "", text: filed.text, attachments: filed.attachments.map((a, i) => ({ part_num: String(i), name: a.name, size: a.size, type: "", stored: true })) });
+        return;
+      }
       
       const res = await fetch(
         `/api/mail_broker.php?action=get_email_detail&folder=${folder}&uid=${uid}`,
@@ -2676,6 +2696,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileDistrict(activeClient.district || "");
         setProfileCategories(activeClient.categories || []);
         setProfileClientCategoryId(activeClient.clientCategoryId || "");
+        setProfilePriceLevelId(activeClient.priceLevelId || "");
         
         if (clientNameChanged) {
           setIsEditingProfile(false); // Reset to read-only by default on transition to a new client
@@ -2775,7 +2796,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       region: profileType !== "person" ? profileRegion.trim() : undefined,
       district: profileType !== "person" ? profileDistrict.trim() : undefined,
       categories: profileCategories,
-      clientCategoryId: profileClientCategoryId || null
+      clientCategoryId: profileClientCategoryId || null,
+      priceLevelId: profilePriceLevelId || null
     }));
 
     setIsEditingProfile(false); // Toggle back to read-only
@@ -4012,6 +4034,30 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 )}
               </div>
 
+              {/* Price level (Settings → Invoicing → Price levels): which price list this client buys on */}
+              {priceLevels.length > 0 && (
+                <div className="border-t-2 border-slate-100 pt-4 space-y-1 text-left" data-testid="client-price-level">
+                  <label className="type-overline text-slate-500 flex items-center gap-1">
+                    <Tag className="h-3 w-3" /> {t("Price level", "Cenová hladina", "Árszint")}
+                  </label>
+                  {isEditingProfile ? (
+                    <CustomSelect
+                      value={profilePriceLevelId}
+                      onChange={setProfilePriceLevelId}
+                      options={[
+                        { value: "", label: t("Default prices", "Predvolené ceny", "Alapértelmezett árak") },
+                        ...priceLevels.map(l => ({ value: l.id, label: l.name })),
+                      ]}
+                    />
+                  ) : (
+                    <span className="block pt-1 text-ui font-semibold text-slate-700">
+                      {priceLevels.find(l => l.id === profilePriceLevelId)?.name
+                        || <span className="text-micro text-slate-400 italic font-normal">{t("Default prices", "Predvolené ceny", "Alapértelmezett árak")}</span>}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Interested categories (lead interest, set in Settings) */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-2 text-left">
                 <label className="type-overline text-slate-500 flex items-center gap-1">
@@ -4589,6 +4635,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                               </>
                                             )}
                                           </span>
+                                          <MailAccountBadge event={event} language={systemLanguage} />
                                           <span 
                                             className="inline-flex items-center gap-1 type-overline px-2.5 py-0.5 rounded-full border shadow-sm text-white"
                                             style={{ backgroundColor: pmColor, borderColor: pmColor }}
@@ -4675,6 +4722,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     );
                                   })()}
                                   </TimelineCollapsible>
+                                  <FiledMailBody event={event} language={systemLanguage} />
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (

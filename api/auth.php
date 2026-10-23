@@ -974,6 +974,181 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * The statuses every installation starts with for a price offer, before
+     * anyone opens Price offers → Settings → Offer statuses. Mirrors
+     * DEFAULT_OFFER_STATUS_DEFS in src/utils/offerStatuses.ts. `invoiced` is
+     * legacy: kept so offers that carry it keep their meaning (won), but it is
+     * no longer offered as a choice.
+     */
+    function ccrm_default_offer_status_defs(): array {
+        return [
+            ['key' => 'draft', 'color' => '#64748b', 'group' => 'draft'],
+            ['key' => 'sent', 'color' => '#3b82f6', 'group' => 'open'],
+            ['key' => 'approved', 'color' => '#10b981', 'group' => 'won'],
+            ['key' => 'invoiced', 'color' => '#10b981', 'group' => 'won', 'legacy' => true],
+            ['key' => 'rejected', 'color' => '#f43f5e', 'group' => 'lost'],
+            ['key' => 'cancelled', 'color' => '#f43f5e', 'group' => 'cancelled'],
+        ];
+    }
+
+    /**
+     * A stored offer-status list, cleaned up the same way normalizeOfferStatusDefs()
+     * does it in src/utils/offerStatuses.ts: unique non-empty keys, a known group,
+     * a hex colour, kept in group order — and the built-ins whenever the list is
+     * unreadable or has no (non-legacy) draft status for a new offer to start in.
+     */
+    function ccrm_normalize_offer_statuses($raw): array {
+        $groups = ['draft', 'open', 'won', 'lost', 'cancelled'];
+        $defaults = ccrm_default_offer_status_defs();
+        if (!is_array($raw)) {
+            return $defaults;
+        }
+        $builtins = [];
+        foreach ($defaults as $d) {
+            $builtins[$d['key']] = $d;
+        }
+        $seen = [];
+        $out = [];
+        foreach ($raw as $item) {
+            if (!is_array($item)) continue;
+            $key = trim((string)($item['key'] ?? ''));
+            if ($key === '' || mb_strlen($key) > 50 || isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $builtin = $builtins[$key] ?? null;
+            $color = (string)($item['color'] ?? '');
+            $color = preg_match('/^#[0-9a-f]{6}$/i', $color) ? strtolower($color) : ($builtin['color'] ?? '#6366f1');
+            $group = in_array($item['group'] ?? null, $groups, true) ? $item['group'] : ($builtin['group'] ?? 'open');
+            $label = trim((string)($item['label'] ?? ''));
+            $def = ['key' => $key];
+            if ($label !== '') $def['label'] = $label;
+            $def['color'] = $color;
+            $def['group'] = $group;
+            if (($item['legacy'] ?? null) === true || !empty($builtin['legacy'])) $def['legacy'] = true;
+            $out[] = $def;
+        }
+        $hasDraft = false;
+        foreach ($out as $d) {
+            if ($d['group'] === 'draft' && empty($d['legacy'])) { $hasDraft = true; break; }
+        }
+        if (!$hasDraft) {
+            return $defaults;
+        }
+        $ordered = [];
+        foreach ($groups as $g) {
+            foreach ($out as $d) {
+                if ($d['group'] === $g) $ordered[] = $d;
+            }
+        }
+        return $ordered;
+    }
+
+    /** The configured price-offer statuses, read once per request. */
+    function ccrm_offer_status_defs(?\PDO $pdo = null): array {
+        static $cached = null;
+        if ($pdo === null) {
+            return $cached ?? ccrm_default_offer_status_defs();
+        }
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'OFFER_STATUSES'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_offer_statuses($decoded);
+        return $cached;
+    }
+
+    /** The group a price-offer status belongs to, or null for a key the list does not know. */
+    function ccrm_offer_status_group(string $status, ?\PDO $pdo = null): ?string {
+        foreach (ccrm_offer_status_defs($pdo) as $d) {
+            if ($d['key'] === $status) return $d['group'];
+        }
+        return null;
+    }
+
+    /** The first (non-legacy) status of a group, e.g. what an automatic "approve" sets. */
+    function ccrm_offer_status_in_group(string $group, ?\PDO $pdo = null): ?string {
+        $fallback = null;
+        foreach (ccrm_offer_status_defs($pdo) as $d) {
+            if ($d['group'] !== $group) continue;
+            if (empty($d['legacy'])) return $d['key'];
+            $fallback = $fallback ?? $d['key'];
+        }
+        return $fallback;
+    }
+
+    /**
+     * A stored price-level list (Settings → Price levels), cleaned up the same way
+     * normalizePriceLevels() does it in src/utils/warehousePricing.ts: unique
+     * non-empty ids, a trimmed non-empty name (unique ignoring case). Unreadable
+     * input is an empty list — an installation that never opened the editor has no levels.
+     */
+    function ccrm_normalize_price_levels($raw): array {
+        if (!is_array($raw)) return [];
+        $ids = [];
+        $names = [];
+        $out = [];
+        foreach ($raw as $item) {
+            if (!is_array($item)) continue;
+            $id = trim((string)($item['id'] ?? ''));
+            $name = mb_substr(trim((string)($item['name'] ?? '')), 0, 60);
+            $nameKey = mb_strtolower($name);
+            if ($id === '' || mb_strlen($id) > 50 || $name === '' || isset($ids[$id]) || isset($names[$nameKey])) continue;
+            $ids[$id] = true;
+            $names[$nameKey] = true;
+            $out[] = ['id' => $id, 'name' => $name];
+        }
+        return $out;
+    }
+
+    /** The configured price levels, read once per request. */
+    function ccrm_price_levels(?\PDO $pdo = null): array {
+        static $cached = null;
+        if ($pdo === null) {
+            return $cached ?? [];
+        }
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'PRICE_LEVELS'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_price_levels($decoded);
+        return $cached;
+    }
+
+    /**
+     * The unit sell price of an item for a customer on `$levelId`: that level's
+     * price when the level still exists and the item has a positive price on it,
+     * else the item's default sell price. Mirrors resolveSellPrice() in
+     * src/utils/warehousePricing.ts. `$levelPrices` is [level id => price].
+     */
+    function ccrm_resolve_sell_price(float $defaultSellPrice, array $levelPrices, ?string $levelId, array $levels): float {
+        if ($levelId !== null && $levelId !== '') {
+            foreach ($levels as $l) {
+                if ($l['id'] === $levelId) {
+                    $price = (float)($levelPrices[$levelId] ?? 0);
+                    if ($price > 0) return $price;
+                    break;
+                }
+            }
+        }
+        return $defaultSellPrice;
+    }
+
+    /**
      * Normalize an automatic-project-creation config blob to its canonical shape.
      *
      *   enabled        false — no project is created (the historical behaviour)

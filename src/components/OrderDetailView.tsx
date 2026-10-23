@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { appliedPriceLevel, clientPriceLevelId, matchesItemQuery, packHint, resolveItemVatRate, resolveSellPrice, type PriceLevel } from "../utils/priceLevels";
 import {
   ShoppingCart,
   Search,
@@ -72,6 +73,8 @@ export interface OrderDetailViewProps {
   canDelete?: boolean;
   onOpenClient?: (clientId: string) => void;
   companyBillingSettings?: CompanyBillingSettings | null;
+  /** The configured price levels: a product is priced on the customer's level. */
+  priceLevels?: PriceLevel[];
   backLabel?: string;
 }
 
@@ -93,6 +96,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   canDelete,
   onOpenClient,
   companyBillingSettings,
+  priceLevels = [],
   backLabel
 }) => {
   const t = (en: string, sk: string, hu: string) =>
@@ -214,6 +218,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     return leads.find(l => l.id === formData.clientId) || null;
   }, [formData.customerType, formData.clientId, leads]);
 
+  // The price level the selected client buys on (their own, else their client record's).
+  const customerPriceLevelId = useMemo(() => clientPriceLevelId(selectedClient, leads), [selectedClient, leads]);
+
   // Filtered clients list
   const filteredClients = useMemo(() => {
     if (!clientSearchQuery.trim()) return leads.slice(0, 8);
@@ -275,12 +282,8 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     // Filter physical warehouse products
     const matchedProducts = warehouseItems.filter(w => {
       if (!q) return true;
-      return (
-        w.name.toLowerCase().includes(q) ||
-        w.sku.toLowerCase().includes(q) ||
-        (w.barcode && w.barcode.toLowerCase().includes(q)) ||
-        (w.category && w.category.toLowerCase().includes(q))
-      );
+      // name, SKU, barcode, alternative codes and the external id, then the category
+      return matchesItemQuery(w, q) || (w.category && w.category.toLowerCase().includes(q));
     }).slice(0, 15);
 
     // Filter services
@@ -1591,8 +1594,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                                 sku: wh.sku,
                                 name: wh.name,
                                 unit: wh.unit || "ks",
-                                unitPrice: wh.defaultSellPrice || 0,
-                                taxRate: defaultVatRate
+                                // the customer's price level, else the default; the item's own VAT, else the company default
+                                unitPrice: resolveSellPrice(wh, customerPriceLevelId, priceLevels),
+                                taxRate: resolveItemVatRate(wh, companyBillingSettings)
                               });
                             }}
                             className="w-full px-4 py-2.5 hover:bg-indigo-50/70 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer group"
@@ -1609,11 +1613,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                               <p className="text-micro text-slate-400 mt-0.5 truncate">
                                 {wh.category && `${wh.category} • `}
                                 {t("Unit", "Jedn.", "Egység")}: {wh.unit || "ks"}
+                                {packHint(wh, t("pack", "bal", "csomag")) && ` • ${packHint(wh, t("pack", "bal", "csomag"))}`}
                               </p>
                             </div>
                             <div className="text-right shrink-0">
-                              <span className="text-ui font-mono font-bold text-slate-900 group-hover:text-indigo-600">
-                                {money(wh.defaultSellPrice)}
+                              <span
+                                className="text-ui font-mono font-bold text-slate-900 group-hover:text-indigo-600"
+                                title={appliedPriceLevel(wh, customerPriceLevelId, priceLevels)?.name}
+                              >
+                                {money(resolveSellPrice(wh, customerPriceLevelId, priceLevels))}
                               </span>
                               <span className="block text-micro text-slate-400">/{wh.unit || "ks"}</span>
                             </div>

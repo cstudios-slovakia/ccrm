@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Percent, RotateCcw
 } from "lucide-react";
-import type { Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
+import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
 import { keepStoredOfferDefaults } from "../utils/offerDefaults";
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
@@ -19,6 +19,9 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
+import { PriceLevelSettings } from "./PriceLevelSettings";
+import { CompanyMailboxSettings } from "./CompanyMailboxSettings";
+import type { PriceLevel } from "../utils/priceLevels";
 import { TicketSettings } from "./TicketSettings";
 import { OrderStatusSettings } from "./OrderStatusSettings";
 import { ShippingMethodSettings } from "./ShippingMethodSettings";
@@ -537,8 +540,13 @@ interface SettingsViewProps {
   settingsActionId?: string | null;
 
   // Record stores — used to cascade a rename onto existing leads/tasks so they are not orphaned.
+  leads?: Lead[];
   setLeads?: React.Dispatch<React.SetStateAction<Lead[]>>;
   setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
+  /** Price levels (Invoicing tab), with the items and clients that use them. */
+  priceLevels?: PriceLevel[];
+  setPriceLevels?: React.Dispatch<React.SetStateAction<PriceLevel[]>>;
+  warehouseItems?: WarehouseItem[];
 
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
@@ -684,8 +692,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   initialSubTab = "branding",
   settingsAction = null,
   settingsActionId = null,
+  leads: leadRows = [],
   setLeads,
   setTasks,
+  priceLevels,
+  setPriceLevels,
+  warehouseItems = [],
   projectTypes,
   setProjectTypes,
   projectStatuses,
@@ -3796,6 +3808,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
             </div>
+
+            {priceLevels && setPriceLevels && (
+              <PriceLevelSettings
+                levels={priceLevels}
+                setLevels={setPriceLevels}
+                warehouseItems={warehouseItems}
+                leads={leadRows}
+                setLeads={setLeads}
+                userLanguage={userLanguage}
+                canEdit={getPermission("general_config") === "edit"}
+              />
+            )}
           </div>
         )}
 
@@ -6261,6 +6285,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <li><code>source_id</code>, <code>category_id</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti a kategórie záujmu - nájdete ich v stĺpci ID v Nastaveniach → Zdroje leadov. Sú trvalé: zmena poradia ani premenovanie ich nemení" : userLanguage === "hu" ? "A forgalmi csatorna és az érdeklődési kategória azonosítója - a Beállítások → Lead források ID oszlopában találhatók. Állandóak: sem az átrendezés, sem az átnevezés nem változtatja meg őket" : "IDs of the traffic channel and the interest category - read them from the ID column in Settings → Lead sources. They are permanent: neither reordering nor renaming changes them"})</span></li>
                     <li><code>category_ids</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Viac kategórií naraz, keď formulár ponúka zaškrtávacie políčka - pole [2, 3] alebo reťazec \"2,3\". Lead dostane všetky a ku každej vznikne jeho projekt" : userLanguage === "hu" ? "Több kategória egyszerre, ha az űrlapon jelölőnégyzetek vannak - [2, 3] tömb vagy \"2,3\" szöveg. A lead mindegyiket megkapja, és mindegyikhez külön projekt jön létre" : "Several categories at once, for a form with checkboxes - an array [2, 3] or the string \"2,3\". The lead gets all of them, and each one opens its own project"})</span></li>
                     <li><code>traffic_origin</code>, <code>traffic_origin_detail</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Odkiaľ návštevník prišiel na web ešte pred formulárom (facebook, instagram, google, direct...) a voľný detail (médium, kampaň, odkazujúca doména, vstupná stránka). Voľný text, nič sa nevaliduje; zobrazí sa v profile leadu ako Pôvod návštevy a ďalší dopyt ho nikdy neprepíše" : userLanguage === "hu" ? "Honnan érkezett a látogató az oldalra még az űrlap előtt (facebook, instagram, google, direct...) és szabad részlet (médium, kampány, hivatkozó domain, céloldal). Szabad szöveg, nincs ellenőrzés; a lead profiljában Látogatás eredeteként jelenik meg, és későbbi megkeresés sosem írja felül" : "Where the visitor came from before the form (facebook, instagram, google, direct...) plus a free-text detail (medium, campaign, referring host, landing page). Free text, nothing is validated; shown on the lead as Traffic Origin and never overwritten by a later inquiry"})</span></li>
+                    <li><span className="text-micro text-slate-400 font-normal">{userLanguage === "sk" ? "Akékoľvek ďalšie polia" : userLanguage === "hu" ? "Bármely további mező" : "Any other field"}</span> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Neprázdne textové polia (a zoznamy, spojené čiarkou) sa uložia do „Záujem klienta“ aj do časovej osi ako riadky „Názov: hodnota“. Nepovinné pole " : userLanguage === "hu" ? "A nem üres szöveges mezők (és a vesszővel összefűzött listák) „Név: érték” sorokként kerülnek az „Ügyfél érdeklődése” mezőbe és az idővonalra. Az opcionális " : "Non-empty text fields (and lists, joined with commas) are saved to \"Client interest\" and the timeline as \"Label: value\" lines. The optional "}<code>field_labels</code>{userLanguage === "sk" ? " (napr. {\"area_size\": \"Plocha (m²)\"}) určí názov riadku, inak sa použije názov poľa. Tokeny, honeypoty a vnorené objekty sa ignorujú. Pri existujúcom aktívnom leade idú tieto riadky len do časovej osi" : userLanguage === "hu" ? " (pl. {\"area_size\": \"Terület (m²)\"}) adja meg a sor nevét, különben a mező neve szerepel. A tokeneket, honeypotokat és a beágyazott objektumokat figyelmen kívül hagyjuk. Meglévő aktív lead esetén ezek a sorok csak az idővonalra kerülnek" : " (e.g. {\"area_size\": \"Area (m²)\"}) names a line, otherwise the field name is used. Tokens, honeypots and nested objects are ignored. For an existing active lead these lines go to the timeline only"})</span></li>
                   </ul>
                 </div>
               </div>
@@ -6610,6 +6635,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </form>
               </div>
             </div>
+
+            {/* Shared mailboxes read by the background filing job. The server refuses everyone but admins. */}
+            {isAdminRoleName(currentUser?.role) && (
+              <CompanyMailboxSettings users={users} userLanguage={userLanguage} />
+            )}
           </div>
         )}
 

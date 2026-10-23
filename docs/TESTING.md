@@ -396,6 +396,25 @@ Runs headless verification of WebAuthn options generation, serialization/deseria
 npm run test:passkeys
 ```
 
+### 5f-2. Background mail filing (`npm run test:mail-filing`)
+
+`api/mail_filing.php` reads the company mailboxes and every user's mailbox over IMAP and files mail from or to a known customer onto that customer's timeline. The matching rules run on their own (`npm run test:mail-filing`, no database, no mail server). The whole job (chunked backlog, new mail, Sent, one message in two mailboxes, the removed-entry tombstone, a mailbox with a wrong password, agreement with the live read) needs a plain-text IMAP server and a scratch database. A throw-away Dovecot on the dev compose network does it; the script appends its own test mail with IMAP APPEND:
+
+```bash
+# a Dovecot with users info@test.local, steel@test.local, broken@test.local, all with the password "secret"
+docker run -d --name imaptest --network ccrm_default --network-alias imaptest \
+  -v <dovecot.conf>:/etc/dovecot/dovecot.conf:ro -v <users>:/etc/dovecot/users:ro dovecot/dovecot:2.3-latest
+docker exec -u root imaptest sh -c 'chown vmail:vmail /var/mail && chmod 775 /var/mail'
+
+# run it inside the `crm` container (it has the PHP IMAP extension), against a scratch database
+docker cp scripts/test-mail-filing.php crm:/tmp/tmf.php
+docker exec -e CCRM_API_DIR=/var/www/html/api \
+  -e "CCRM_TEST_DSN=mysql:host=db;dbname=a3_scratch;charset=utf8mb4" -e CCRM_TEST_USER=root -e CCRM_TEST_PASS=<root password> \
+  -e CCRM_TEST_IMAP_HOST=imaptest crm php /tmp/tmf.php
+```
+
+The Dovecot config is the minimum (`protocols = imap`, `ssl = no`, a passwd-file `passdb`, a static `userdb` for `vmail`, `mail_location = maildir:/var/mail/%n/Maildir`, a `Sent` mailbox with `special_use = \Sent`). The script drops every table of the scratch database, so never point it at real data.
+
 ### 5g. Module screenshots (`npm run shots:modules`)
 
 The module setup wizard shows a real screenshot of every module. They are
@@ -430,6 +449,7 @@ icon card for any module whose image is missing.
 |---|---|
 | Mid-change, want fast feedback | `npm run test:unit` |
 | Touched passkeys (`api/passkeys*.php`) | `npm run test:passkeys` |
+| Touched mail filing (`api/mail_filing.php`, `company_mailboxes.php`, the filing part of `mail_broker.php`) | `npm run test:mail-filing`, and with a test IMAP server the whole job (see 5f-2) |
 | Touched a specific module's UI | `npm run test:qa:crawler` |
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |

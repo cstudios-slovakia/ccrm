@@ -65,7 +65,8 @@ export const ENTITY = {
   role: { en: ["Role", "roles"], sk: { one: "Rola", few: "roly", many: "rolí", gender: "f" }, hu: "szerepkör" },
   template: { en: ["Template", "templates"], sk: { one: "Šablóna", few: "šablóny", many: "šablón", gender: "f" }, hu: "sablon" },
   eventType: { en: ["Event type", "event types"], sk: { one: "Typ udalosti", few: "typy udalostí", many: "typov udalostí", gender: "m" }, hu: "eseménytípus" },
-  log: { en: ["Log", "logs"], sk: { one: "Záznam", few: "záznamy", many: "záznamov", gender: "m" }, hu: "napló" },
+  log: { en: ["Log", "logs"], sk: { one: "Záznam", few: "záznamy", many: "záznamov", gender: "m" }, hu: "napló" },
+  priceLevel: { en: ["Price level", "price levels"], sk: { one: "Cenová hladina", few: "cenové hladiny", many: "cenových hladín", gender: "f" }, hu: "árszint" },
 } as const satisfies Record<string, EntityLabel>;
 
 export type EntityKey = keyof typeof ENTITY;

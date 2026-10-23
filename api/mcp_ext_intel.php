@@ -136,6 +136,22 @@ function mcp_sql_compact(string $column): string {
  *
  * @return array{0: string, 1: array}
  */
+/**
+ * A warehouse item row as MCP returns it: the alternative codes as a list instead of the
+ * stored JSON, and the numeric columns as numbers.
+ */
+function mcp_inventory_row(array $row): array {
+    if (array_key_exists('alt_codes_json', $row)) {
+        $codes = $row['alt_codes_json'] !== null && $row['alt_codes_json'] !== '' ? json_decode($row['alt_codes_json'], true) : [];
+        $row['alt_codes'] = is_array($codes) ? array_values($codes) : [];
+        unset($row['alt_codes_json']);
+    }
+    foreach (['vat_rate', 'pack_quantity', 'weight_kg'] as $k) {
+        if (array_key_exists($k, $row) && $row[$k] !== null) $row[$k] = (float)$row[$k];
+    }
+    return $row;
+}
+
 function mcp_token_where(array $columns, array $tokens, ?string $compactColumn = null, string $query = ''): array {
     $and = []; $params = [];
     foreach ($tokens as $t) {
@@ -724,7 +740,7 @@ function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
     }
 
     if (in_array('warehouse', $types, true) && mcp_can('warehouse')) {
-        [$w, $p] = mcp_token_where(['name', 'sku', 'barcode'], $tokens);
+        [$w, $p] = mcp_token_where(['name', 'sku', 'barcode', 'alt_codes_json', 'external_id'], $tokens);
         $stmt = $pdo->prepare("SELECT id, sku, name, category, default_sell_price FROM warehouse_items WHERE {$w} ORDER BY name ASC LIMIT {$limit}");
         $stmt->execute($p);
         $results['warehouse_items'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);

@@ -9,6 +9,8 @@ import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAs
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
 import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
+import { normalizeOfferStatusDefs, type OfferStatusDef } from "./utils/offerStatuses";
+import { normalizePriceLevels, type PriceLevel } from "./utils/priceLevels";
 import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
 import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
@@ -222,6 +224,8 @@ const computeSettingsSig = (s: any): string => {
     // Normalized on both sides: an install that never opened the editor has
     // nothing stored, and that must compare equal to the built-ins it is shown.
     normalizeProjectStatusDefs(s.projectStatuses),
+    normalizeOfferStatusDefs(s.offerStatuses),
+    normalizePriceLevels(s.priceLevels),
     normalizeOrderStatusDefs(s.orderStatuses),
     normalizeTicketStatuses(s.ticketStatuses),
     normalizeTicketSettings(s.ticketSettings),
@@ -771,6 +775,10 @@ function App() {
   // The project statuses, configured in Settings → Project settings. Handed to
   // every view through ProjectStatusesProvider.
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDef[]>(() => normalizeProjectStatusDefs(null));
+  // The price-offer statuses, configured in Price offers → Settings → Offer statuses.
+  const [offerStatuses, setOfferStatuses] = useState<OfferStatusDef[]>(() => normalizeOfferStatusDefs(null));
+  // The named price lists (Settings → Invoicing → Price levels) items carry a price for and clients buy on.
+  const [priceLevels, setPriceLevels] = useState<PriceLevel[]>(() => normalizePriceLevels(null));
 
   const [leadSources, setLeadSources] = useState<string[]>([
     "showroom", "facebook", "instagram", "website"
@@ -1379,6 +1387,8 @@ ${log.payload || ''}
         taskStateColors,
         taskSettings,
         projectStatuses,
+        offerStatuses,
+        priceLevels,
         orderStatuses,
         ticketStatuses,
         ticketSettings,
@@ -2487,6 +2497,8 @@ ${log.payload || ''}
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
       projectStatuses,
+      offerStatuses,
+      priceLevels,
       orderStatuses,
       ticketStatuses,
       ticketSettings,
@@ -2518,7 +2530,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2876,6 +2888,14 @@ ${log.payload || ''}
         });
         setProjectStatuses((prev) => {
           const next = normalizeProjectStatusDefs(s.projectStatuses);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setOfferStatuses((prev) => {
+          const next = normalizeOfferStatusDefs(s.offerStatuses);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setPriceLevels((prev) => {
+          const next = normalizePriceLevels(s.priceLevels);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
         setOrderStatuses((prev) => {
@@ -3296,6 +3316,10 @@ ${log.payload || ''}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          leads={leads}
+          priceLevels={priceLevels}
+          setPriceLevels={setPriceLevels}
+          warehouseItems={warehouseItems}
           projectStatuses={projectStatuses}
           setProjectStatuses={setProjectStatuses}
           orderStatuses={orderStatuses}
@@ -3405,7 +3429,8 @@ ${log.payload || ''}
           : activeRoute.slice("clients/".length)
       );
       return (
-        <ClientsView 
+        <ClientsView
+          priceLevels={priceLevels} 
           leads={leads}
           setLeads={updateLeadsAndSync}
           orders={orders}
@@ -3568,6 +3593,10 @@ ${log.payload || ''}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          leads={leads}
+          priceLevels={priceLevels}
+          setPriceLevels={setPriceLevels}
+          warehouseItems={warehouseItems}
           projectStatuses={projectStatuses}
           setProjectStatuses={setProjectStatuses}
           orderStatuses={orderStatuses}
@@ -3733,6 +3762,7 @@ ${log.payload || ''}
           : undefined;
         return (
           <ClientsView
+          priceLevels={priceLevels}
             leads={leads}
             orders={orders}
             setOrders={updateOrdersAndSync}
@@ -3809,6 +3839,9 @@ ${log.payload || ''}
       case "invoices":
         return (
           <PriceOffersView
+            priceLevels={priceLevels}
+            offerStatuses={offerStatuses}
+            setOfferStatuses={setOfferStatuses}
             access={access.module("invoices")}
             canConfigure={access.canEdit("general_config")}
             invoicesOffers={invoicesOffers}
@@ -3842,6 +3875,7 @@ ${log.payload || ''}
           : undefined;
         return (
           <OrdersView
+            priceLevels={priceLevels}
             orders={orders}
             setOrders={updateOrdersAndSync}
             leads={leads}
@@ -4095,6 +4129,8 @@ ${log.payload || ''}
       case "warehouse":
         return (
           <WarehouseView
+            priceLevels={priceLevels}
+            companyBillingSettings={companyBillingSettings}
             access={access.module("warehouse")}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}

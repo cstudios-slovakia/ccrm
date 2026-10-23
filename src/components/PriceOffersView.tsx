@@ -6,7 +6,7 @@ import {
   AlertCircle, Layers, TrendingUp, Award, Lock, Settings
 } from "lucide-react";
 import type {
-  InvoiceOffer, InvoiceOfferMode, InvoiceOfferStatus, ExternalInvoiceProvider,
+  InvoiceOffer, InvoiceOfferMode, ExternalInvoiceProvider,
   Lead, WarehouseItem, CompanyBillingSettings,
   AiCustomTemplate, ExternalInvoicingConfig, TimelineEvent, UserProfile
 } from "../types";
@@ -30,6 +30,18 @@ import { getAvailableVatRates } from "../utils/vat";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { num } from "../utils/offerDraft";
+import type { PriceLevel } from "../utils/priceLevels";
+import {
+  DEFAULT_OFFER_STATUS_DEFS,
+  defaultOfferStatus,
+  firstOfferStatusOf,
+  isWonOfferStatus,
+  offerStatusBadgeStyle,
+  offerStatusLabel,
+  offerStatusOptions,
+  offerWinStats,
+  type OfferStatusDef,
+} from "../utils/offerStatuses";
 
 interface PriceOffersViewProps {
   /**
@@ -39,6 +51,11 @@ interface PriceOffersViewProps {
    */
   invoicesOffers: InvoiceOffer[];
   setInvoicesOffers: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  /** The configurable price-offer statuses (Settings → Offer statuses). Defaults to the six built-ins. */
+  offerStatuses?: OfferStatusDef[];
+  /** The configured price levels, so a product is priced on the customer's level. */
+  priceLevels?: PriceLevel[];
+  setOfferStatuses?: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
   warehouseItems: WarehouseItem[];
@@ -64,13 +81,6 @@ interface PriceOffersViewProps {
 const OFFER_PREFIX = "CP";
 
 /**
- * Statuses an offer can be moved to. "invoiced" is kept out on purpose — an
- * invoice is no longer tied to the offer it came from — but offers that already
- * carry it keep showing it (see `statusOptionsFor`).
- */
-const OFFER_STATUSES = ["draft", "sent", "approved", "rejected", "cancelled"] as const;
-
-/**
  * Which editor is open, if any. Only one at a time: opening another one (a
  * different menu entry, or the edit button of a row) replaces it, after asking
  * when the open one has unsaved changes. `key` remounts the editor so it
@@ -88,6 +98,9 @@ interface EditorSession {
 export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   invoicesOffers: allDocuments = [],
   setInvoicesOffers,
+  offerStatuses = DEFAULT_OFFER_STATUS_DEFS as OfferStatusDef[],
+  priceLevels = [],
+  setOfferStatuses,
   leads = [],
   setLeads,
   warehouseItems = [],
@@ -195,45 +208,25 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   const metrics = useMemo(() => {
     const offers = invoicesOffers;
     const totalOffersVal = offers.reduce((sum, o) => sum + num(o.totalPrice), 0);
-    // "invoiced" is a legacy verdict: offers that carry it were won, so they
-    // still count as approved here even though it can no longer be picked.
-    const isWon = (o: InvoiceOffer) => o.status === "approved" || o.status === "invoiced";
-    const approvedVal = offers.filter(isWon).reduce((sum, o) => sum + num(o.totalPrice), 0);
+    // Won and lost are the status's group, not its key: the statuses are
+    // configurable, and a legacy "invoiced" offer was won too.
+    const approvedVal = offers.filter(o => isWonOfferStatus(o.status, offerStatuses)).reduce((sum, o) => sum + num(o.totalPrice), 0);
     // Win rate is only meaningful over offers that reached a verdict — counting
     // drafts as losses pinned it near zero however well the business was doing.
-    const decided = offers.filter(o => isWon(o) || o.status === "rejected");
-    const won = decided.filter(isWon);
-    const winRate = decided.length > 0 ? Math.round((won.length / decided.length) * 100) : 0;
+    const { decided, winRate } = offerWinStats(offers, offerStatuses);
     return {
       totalOffersVal,
       approvedVal,
       winRate,
-      decidedCount: decided.length,
+      decidedCount: decided,
       totalCount: offers.length
     };
-  }, [invoicesOffers]);
+  }, [invoicesOffers, offerStatuses]);
 
   // ------------------------------------------------------------ labels & badges
-  const statusLabel = (status: InvoiceOfferStatus) => {
-    switch (status) {
-      case "draft": return t("Draft", "Návrh", "Piszkozat");
-      case "sent": return t("Sent", "Odoslaná", "Elküldve");
-      case "approved": return t("Approved", "Schválená", "Jóváhagyva");
-      case "rejected": return t("Rejected", "Zamietnutá", "Elutasítva");
-      case "invoiced": return t("Approved (invoiced)", "Schválená (vyfakturovaná)", "Jóváhagyva (kiszámlázva)");
-      case "cancelled": return t("Cancelled", "Zrušená", "Törölve");
-      default: return status;
-    }
-  };
-
-  const statusBadgeClass = (status: InvoiceOfferStatus) =>
-    status === "approved" || status === "invoiced"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : status === "sent"
-        ? "bg-blue-50 text-blue-700 border-blue-200"
-        : status === "rejected" || status === "cancelled"
-          ? "bg-rose-50 text-rose-700 border-rose-200"
-          : "bg-slate-100 text-slate-600 border-slate-200";
+  const statusLabel = (status: string) => offerStatusLabel(status, t, offerStatuses);
+  // A key the list does not know (deleted elsewhere, imported) is shown raw in a neutral badge.
+  const statusBadgeStyle = (status: string) => offerStatusBadgeStyle(status, offerStatuses);
 
   const modeLabel = (offer: InvoiceOffer) =>
     offer.mode === "default"
@@ -246,13 +239,10 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             ? "SuperFaktúra"
             : t("External", "Externé", "Külső");
 
-  const filterStatusOptions = OFFER_STATUSES.map(s => ({ value: s, label: statusLabel(s) }));
+  const filterStatusOptions = offerStatusOptions(t, offerStatuses);
 
-  /** The picker's options, plus the legacy "invoiced" when this very offer carries it. */
-  const statusOptionsFor = (status: InvoiceOfferStatus) =>
-    status === "invoiced"
-      ? [...filterStatusOptions, { value: "invoiced" as const, label: statusLabel("invoiced") }]
-      : filterStatusOptions;
+  /** The picker's options, plus this very offer's own status when it is legacy or no longer in the list. */
+  const statusOptionsFor = (status: string) => offerStatusOptions(t, offerStatuses, status);
 
   // ------------------------------------------------------------ editor opening
   /** A pristine editor goes away silently; one with changes asks first. */
@@ -355,7 +345,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
         doc.externalId = data.externalId ?? null;
         doc.externalPdfUrl = data.externalPdfUrl ?? null;
         if (data.documentNumber) doc.documentNumber = String(data.documentNumber);
-        doc.status = "sent";
+        // Sent to the client: the first status of the open group, whatever it is called here.
+        doc.status = firstOfferStatusOf("open", offerStatuses) ?? doc.status;
       } catch (err) {
         const isAbort = err instanceof Error && err.name === "AbortError";
         setExternalError(
@@ -411,7 +402,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
     setEditorDirty(false);
   };
 
-  const handleChangeStatus = (offerId: string, status: InvoiceOfferStatus) => {
+  const handleChangeStatus = (offerId: string, status: string) => {
     if (!canEdit) return;
     setInvoicesOffers(prev =>
       prev.map(o => (o.id === offerId ? { ...o, status, statusChangedAt: todayLocal() } : o))
@@ -455,6 +446,10 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           setInvoicingIntegrations={setInvoicingIntegrations}
           aiCustomTemplates={aiCustomTemplates}
           setAiCustomTemplates={setAiCustomTemplates}
+          offerStatuses={offerStatuses}
+          setOfferStatuses={canConfigure ? setOfferStatuses : undefined}
+          documents={allDocuments}
+          setDocuments={setInvoicesOffers}
           lang={lang}
           canEdit={canConfigure}
           onBack={() => setShowSettings(false)}
@@ -557,10 +552,12 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           enabledProviders={enabledProviders}
           invoicingIntegrations={invoicingIntegrations}
           availableVatRates={availableVatRates}
+          priceLevels={priceLevels}
           currency={currency}
           currentUser={currentUser}
           canEdit={canEdit}
           canConfigure={canConfigure}
+          defaultStatus={defaultOfferStatus(offerStatuses)}
           onOpenOfferSettings={openOfferSettings}
           nextDocumentNumber={nextDocumentNumber}
           saving={isExternalLoading}
@@ -704,20 +701,16 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                           size="sm"
                           align="right"
                           value={offer.status}
-                          onChange={next => handleChangeStatus(offer.id, next as InvoiceOfferStatus)}
+                          onChange={next => handleChangeStatus(offer.id, next)}
                           options={statusOptionsFor(offer.status)}
                           unstyled
-                          className={cn(
-                            "gap-1.5 px-2.5 py-1 rounded-full type-overline border cursor-pointer transition-all hover:brightness-95",
-                            statusBadgeClass(offer.status)
-                          )}
+                          className="gap-1.5 px-2.5 py-1 rounded-full type-overline border cursor-pointer transition-all hover:brightness-95"
+                          style={statusBadgeStyle(offer.status)}
                         />
                       ) : (
                         <span
-                          className={cn(
-                            "inline-flex items-center px-2.5 py-1 rounded-full type-overline border",
-                            statusBadgeClass(offer.status)
-                          )}
+                          className="inline-flex items-center px-2.5 py-1 rounded-full type-overline border"
+                          style={statusBadgeStyle(offer.status)}
                         >
                           {statusLabel(offer.status)}
                         </span>

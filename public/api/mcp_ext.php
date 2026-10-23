@@ -1049,8 +1049,11 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 $byType[$r['type']][$r['status']] = ['count' => (int)$r['c'], 'total' => mcp_round2($r['total'])];
                 if ($r['type'] === 'price_offer') {
                     $offersVal += (float)$r['total'];
-                    if (in_array($r['status'], ['approved', 'invoiced'], true)) { $won += (int)$r['c']; $decided += (int)$r['c']; }
-                    elseif ($r['status'] === 'rejected') { $decided += (int)$r['c']; }
+                    // By the status's group, not its key: the statuses are configurable
+                    // (Price offers → Settings → Offer statuses).
+                    $group = ccrm_offer_status_group((string)$r['status'], $pdo);
+                    if ($group === 'won') { $won += (int)$r['c']; $decided += (int)$r['c']; }
+                    elseif ($group === 'lost') { $decided += (int)$r['c']; }
                 }
                 if ($r['type'] === 'invoice') $invoicedVal += (float)$r['total'];
             }
@@ -1061,7 +1064,7 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 'offer_win_rate_percent' => $decided > 0 ? (int)round($won / $decided * 100) : 0,
                 'offers_decided' => $decided,
                 'by_type_and_status' => $byType,
-                'note' => 'Invoiced value counts invoices only (an offer marked invoiced and its invoice are one job). Win rate = approved or invoiced offers / offers that reached a verdict.',
+                'note' => 'Invoiced value counts invoices only (an offer marked invoiced and its invoice are one job). Win rate = offers in a status of the "won" group (approved, invoiced, ...) / offers that reached a verdict (won or lost group).',
             ];
         }
     }

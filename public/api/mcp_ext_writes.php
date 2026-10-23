@@ -463,18 +463,39 @@ function mcp_do_create_invoice(\PDO $pdo, array $user, array $args): array {
 
 function mcp_do_update_invoice_status(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
-    $status = mcp_enum($args, 'status', ['draft', 'sent', 'cancelled', 'approved', 'rejected', 'invoiced', 'paid']);
-    if ($status === null) throw new \InvalidArgumentException("'status' is required.");
-    if (!in_array($status, ['draft', 'sent', 'cancelled'], true)) {
-        throw new \InvalidArgumentException("Status '{$status}' can only be set in the app: approving, invoicing and settling money change the books. MCP may set a document to draft, sent or cancelled.");
-    }
     $stmt = $pdo->prepare("SELECT id, document_number, type, status FROM invoices_offers WHERE id = ?");
     $stmt->execute([$id]);
     $doc = $stmt->fetch(\PDO::FETCH_ASSOC);
     if (!$doc) throw new \Exception("Invoice not found with ID: {$id}");
-    if ($doc['status'] === $status) return ['success' => true, 'id' => $id, 'status' => $status, 'message' => 'No change.'];
-    if (in_array($doc['status'], ['cancelled', 'invoiced'], true)) {
-        throw new \InvalidArgumentException("A {$doc['status']} document cannot be changed through MCP.");
+
+    if ($doc['type'] === 'price_offer') {
+        // A price offer's statuses are configurable, so they are judged by group:
+        // MCP may move an offer between draft, open (sent) and cancelled statuses.
+        // Won and lost are verdicts, and are left to the app.
+        $status = isset($args['status']) ? trim((string)$args['status']) : '';
+        if ($status === '') throw new \InvalidArgumentException("'status' is required.");
+        $group = ccrm_offer_status_group($status, $pdo);
+        if ($group === null) {
+            $keys = array_column(ccrm_offer_status_defs($pdo), 'key');
+            throw new \InvalidArgumentException("Unknown offer status '{$status}'. Valid: " . implode(', ', $keys) . '.');
+        }
+        if (!in_array($group, ['draft', 'open', 'cancelled'], true)) {
+            throw new \InvalidArgumentException("Status '{$status}' can only be set in the app: accepting or rejecting an offer is a verdict. MCP may set an offer to a draft, sent or cancelled status.");
+        }
+        if ($doc['status'] === $status) return ['success' => true, 'id' => $id, 'status' => $status, 'message' => 'No change.'];
+        if (ccrm_offer_status_group((string)$doc['status'], $pdo) === 'cancelled' || $doc['status'] === 'invoiced') {
+            throw new \InvalidArgumentException("A {$doc['status']} document cannot be changed through MCP.");
+        }
+    } else {
+        $status = mcp_enum($args, 'status', ['draft', 'sent', 'cancelled', 'approved', 'rejected', 'invoiced', 'paid']);
+        if ($status === null) throw new \InvalidArgumentException("'status' is required.");
+        if (!in_array($status, ['draft', 'sent', 'cancelled'], true)) {
+            throw new \InvalidArgumentException("Status '{$status}' can only be set in the app: approving, invoicing and settling money change the books. MCP may set a document to draft, sent or cancelled.");
+        }
+        if ($doc['status'] === $status) return ['success' => true, 'id' => $id, 'status' => $status, 'message' => 'No change.'];
+        if (in_array($doc['status'], ['cancelled', 'invoiced'], true)) {
+            throw new \InvalidArgumentException("A {$doc['status']} document cannot be changed through MCP.");
+        }
     }
 
     mcp_tx($pdo, function () use ($pdo, $doc, $status, $id) {

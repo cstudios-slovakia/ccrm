@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import type { PriceLevel } from "../utils/priceLevels";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
@@ -62,6 +63,8 @@ export interface OrdersViewProps {
   leads: Lead[];
   setLeads?: React.Dispatch<React.SetStateAction<Lead[]>>;
   warehouseItems?: WarehouseItem[];
+  /** The configured price levels: a product is priced on the customer's level. */
+  priceLevels?: PriceLevel[];
   warehouses?: Warehouse[];
   setWarehouseMovements?: React.Dispatch<React.SetStateAction<WarehouseMovement[]>>;
   invoicesOffers?: InvoiceOffer[];
@@ -94,6 +97,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   leads,
   setLeads,
   warehouseItems = [],
+  priceLevels = [],
   warehouses = [],
   setWarehouseMovements,
   invoicesOffers: _invoicesOffers = [],
@@ -662,6 +666,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         leads={leads}
         setLeads={setLeads}
         warehouseItems={warehouseItems}
+        priceLevels={priceLevels}
         warehouses={warehouses}
         orderStatuses={orderStatuses}
         systemCurrency={systemCurrency}
