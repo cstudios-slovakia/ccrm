@@ -116,6 +116,12 @@ const AI_DEPENDENT_TABS = ["rag_ai", "automation", "meetings", "email"];
 // is abandoned so the next 5s tick can try again instead of waiting on a hung socket.
 const SYNC_REQUEST_TIMEOUT_MS = 30_000;
 
+// A push that was in flight when the tab was refreshed. Replayed once the next
+// page has loaded and signed in, so a reload during a freeze does not drop the
+// edit. Only bodies written before this page opened are replayed.
+const PENDING_PUSH_STORAGE_KEY = "ccrm_pending_push_v1";
+const pageOpenedAt = Date.now();
+
 // Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
 const safeLazy = <T extends ComponentType<any>>(importFn: () => Promise<{ default: T }>) =>
   lazy(async () => {
@@ -1486,6 +1492,11 @@ ${log.payload || ''}
 
     try {
       const body = JSON.stringify(payload);
+      try {
+        if (body.length < 4_000_000) {
+          sessionStorage.setItem(PENDING_PUSH_STORAGE_KEY, JSON.stringify({ at: Date.now(), body }));
+        }
+      } catch { /* private mode or a full quota — the request itself still goes out */ }
       const res = await fetch("/sync.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1511,6 +1522,7 @@ ${log.payload || ''}
           pendingPushRef.current = true;
         }
       } else if (res.ok) {
+        try { sessionStorage.removeItem(PENDING_PUSH_STORAGE_KEY); } catch { /* ignore */ }
         // The server now holds this exact payload — remember it so a later 401
         // can tell a genuine unsaved edit apart from an echoed no-op push.
         lastConfirmedPushSigRef.current = computePushSig(payload);
@@ -2513,6 +2525,32 @@ ${log.payload || ''}
     return () => window.removeEventListener("beforeunload", handler);
   }, [isSyncing]);
 
+  // Replay a save that was in flight when this page was reloaded. The body was
+  // written before the previous page closed; a save started on this page is newer
+  // than pageOpenedAt and is left for its own request.
+  useEffect(() => {
+    if (!currentUser || !isInitialSyncResolved) return;
+    let raw: string | null = null;
+    try { raw = sessionStorage.getItem(PENDING_PUSH_STORAGE_KEY); } catch { return; }
+    if (!raw) return;
+    let saved: { at?: number; body?: string };
+    try { saved = JSON.parse(raw); } catch {
+      try { sessionStorage.removeItem(PENDING_PUSH_STORAGE_KEY); } catch { /* ignore */ }
+      return;
+    }
+    if (!saved.body || typeof saved.at !== "number" || saved.at >= pageOpenedAt) return;
+    try { sessionStorage.removeItem(PENDING_PUSH_STORAGE_KEY); } catch { /* ignore */ }
+    fetch("/sync.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: saved.body,
+    }).then((res) => {
+      if (!res.ok) throw new Error(String(res.status));
+    }).catch(() => {
+      try { sessionStorage.setItem(PENDING_PUSH_STORAGE_KEY, raw as string); } catch { /* ignore */ }
+    });
+  }, [currentUser, isInitialSyncResolved]);
+
   // Sync settings when modified (only AFTER the initial database sync is resolved to prevent overwriting with defaults)
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
@@ -3037,7 +3075,7 @@ ${log.payload || ''}
         setCurrentUser(null);
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`sync.php answered ${res.status}`);
       const data = await res.json();
       if (activePushesRef.current > 0 || pollStartTime < lastPushTimeRef.current || Date.now() - lastPushTimeRef.current < 4000) {
         return;
@@ -3058,7 +3096,15 @@ ${log.payload || ''}
       try {
         await fetchFull(sessionAdoptionOpenRef.current);
       } catch (err) {
+        // A timeout is not a logout. The first pull of a large database, or one
+        // stuck behind a session lock, used to fail once and then the loader
+        // gave way to the login screen while the session was still valid.
         console.warn("Staging sync backend offline", err);
+        try {
+          await fetchFull(false);
+        } catch (retryErr) {
+          console.warn("Staging sync retry failed", retryErr);
+        }
       } finally {
         // Always leave the boot loader, even on a 5xx or malformed response, so
         // the app never hangs forever on "Syncing…". Worst case the user sees the

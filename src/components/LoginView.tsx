@@ -52,7 +52,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showResetInfo, setShowResetInfo] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   // Time-of-day adaptive engine state
   const [currentTime, setCurrentTime] = useState<Date>(() => new Date());

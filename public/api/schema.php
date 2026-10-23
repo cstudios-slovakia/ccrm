@@ -1587,6 +1587,8 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         ccrm_migrate_tickets($pdo);
         ccrm_seed_default_tickets($pdo);
+        // Exact copies only. A distinct note, offer, time, amount or file is kept.
+        ccrm_dedupe_exact_timeline_events($pdo);
     }
 
     /**
@@ -1816,6 +1818,112 @@ if (!function_exists('ccrm_schema_statements')) {
         } catch (\Throwable $e) {
             error_log('[ccrm schema] employee role migration error: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Drop timeline rows that are exact copies of another row on the same lead.
+     *
+     * The duplicate-key handler in sync.php used to mint a new id and insert
+     * again, so one imported note became thousands of identical rows. The row
+     * that is kept is the original id when one is present (anything that is
+     * not the `ev-<uniqid>-<nnnn>` shape that handler minted). A blank amount
+     * and a numeric zero compare equal, because the import stored NULL and the
+     * cloned row stored 0 for the same offer. Different text, time, amount or
+     * attachment stays.
+     *
+     * Idempotent: a second run finds nothing to delete. Runs on every schema
+     * apply so a copy that appears later is still collapsed on the next deploy.
+     */
+    function ccrm_dedupe_exact_timeline_events(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'timeline_events')) {
+            return;
+        }
+        try {
+            $optional = [];
+            foreach (['mail_account', 'mail_owner', 'mail_has_body', 'mail_message_id'] as $col) {
+                if (ccrm_column_exists($pdo, 'timeline_events', $col)) {
+                    $optional[] = $col;
+                }
+            }
+            $fields = array_merge(
+                ['lead_id', 'type', 'timestamp', 'title', 'content', 'amount', 'file_name', 'file_size', 'file_type', 'attachments_json', 'extra_time', 'is_outgoing', 'author', 'audio_file', 'transcription', 'hidden'],
+                $optional
+            );
+            $present = [];
+            foreach ($fields as $field) {
+                if (ccrm_column_exists($pdo, 'timeline_events', $field)) {
+                    $present[] = $field;
+                }
+            }
+            $sql = 'SELECT `id`, `' . implode('`, `', $present) . '` FROM `timeline_events`';
+            $rows = $pdo->query($sql);
+            if ($rows === false) {
+                return;
+            }
+            $groups = [];
+            while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
+                $id = (string)$row['id'];
+                unset($row['id']);
+                $norm = [];
+                foreach ($row as $field => $value) {
+                    if ($value === null) {
+                        $norm[$field] = null;
+                    } elseif (is_string($value) && trim($value) === '') {
+                        $norm[$field] = null;
+                    } elseif ($field === 'amount') {
+                        $norm[$field] = is_numeric($value) && (float)$value == 0.0 ? null : (is_numeric($value) ? (string)(0 + $value) : (string)$value);
+                    } elseif ($field === 'hidden' || $field === 'is_outgoing' || $field === 'mail_has_body') {
+                        $norm[$field] = (string)(int)$value;
+                    } else {
+                        $norm[$field] = (string)$value;
+                    }
+                }
+                $encoded = json_encode($norm, JSON_UNESCAPED_UNICODE);
+                if ($encoded === false) {
+                    $encoded = serialize($norm);
+                }
+                $groups[$row['lead_id'] . "\n" . hash('sha256', $encoded)][] = $id;
+            }
+            $drop = [];
+            foreach ($groups as $ids) {
+                if (count($ids) < 2) {
+                    continue;
+                }
+                usort($ids, 'ccrm_timeline_dedupe_prefer');
+                for ($i = 1, $n = count($ids); $i < $n; $i++) {
+                    $drop[] = $ids[$i];
+                }
+            }
+            if (!$drop) {
+                return;
+            }
+            $del = $pdo->prepare('DELETE FROM `timeline_events` WHERE `id` = ?');
+            $pdo->beginTransaction();
+            try {
+                foreach ($drop as $id) {
+                    $del->execute([$id]);
+                }
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+            error_log('[ccrm schema] removed ' . count($drop) . ' exact duplicate timeline event(s); one copy of each distinct event was kept.');
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] timeline dedupe failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /** Prefer the original event id over a clone minted by the old duplicate-key retry. */
+    function ccrm_timeline_dedupe_prefer(string $a, string $b): int {
+        $rank = static function (string $id): int {
+            return preg_match('/^ev-[0-9a-f]{13}-\d{4}$/i', $id) ? 1 : 0;
+        };
+        $byRank = $rank($a) <=> $rank($b);
+        return $byRank !== 0 ? $byRank : strcmp($a, $b);
     }
 
     /**
