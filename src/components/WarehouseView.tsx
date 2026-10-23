@@ -175,6 +175,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useListFilter<string>("warehouse.category", "all");
   const [stockStatusFilter, setStockStatusFilter] = useListFilter<"all" | "in_stock" | "low_stock" | "out_of_stock">("warehouse.stockStatus", "all");
   const [movementTypeFilter, setMovementTypeFilter] = useListFilter<string>("warehouse.movementType", "all");
+  // The catalogue used to mount every product. A few thousand rows froze the tab.
+  // The first page is drawn; Show more reveals the rest. Nothing is omitted from search.
+  const WAREHOUSE_PAGE_SIZE = 80;
+  const [warehouseVisibleCount, setWarehouseVisibleCount] = useState(WAREHOUSE_PAGE_SIZE);
 
   // Modals & Navigation state
   const [selectedProductDetailId, setSelectedProductDetailId] = useState<string | "new" | null>(null);
@@ -517,23 +521,34 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [warehouseItems, customCategories]);
 
+  // One lookup per item. Scanning every stock row for every product made a
+  // filter of a few thousand items walk millions of pairs.
+  const stockByItemId = useMemo(() => {
+    const map = new Map<string, typeof warehouseStock>();
+    for (const row of warehouseStock) {
+      const list = map.get(row.itemId);
+      if (list) list.push(row);
+      else map.set(row.itemId, [row]);
+    }
+    return map;
+  }, [warehouseStock]);
+
   // Aggregate quantities helper per item (optionally filtered by warehouse)
   const getStockInfoForItem = (itemId: string, warehouseId?: string) => {
     let onHand = 0;
     let reserved = 0;
     let locations: string[] = [];
 
-    warehouseStock.forEach(s => {
-      if (s.itemId === itemId) {
-        if (!warehouseId || warehouseId === "all" || s.warehouseId === warehouseId) {
-          onHand += s.quantity;
-          reserved += s.reservedQuantity;
-          if (s.location && !locations.includes(s.location)) {
-            locations.push(s.location);
-          }
+    const rows = stockByItemId.get(itemId);
+    if (rows) for (const s of rows) {
+      if (!warehouseId || warehouseId === "all" || s.warehouseId === warehouseId) {
+        onHand += s.quantity;
+        reserved += s.reservedQuantity;
+        if (s.location && !locations.includes(s.location)) {
+          locations.push(s.location);
         }
       }
-    });
+    }
 
     return {
       onHand,
@@ -618,7 +633,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
       return true;
     });
-  }, [warehouseItems, warehouseStock, selectedWarehouseId, stockStatusFilter, selectedCategory, searchQuery]);
+  }, [warehouseItems, stockByItemId, selectedWarehouseId, stockStatusFilter, selectedCategory, searchQuery]);
+
+  useEffect(() => {
+    setWarehouseVisibleCount(WAREHOUSE_PAGE_SIZE);
+  }, [searchQuery, selectedCategory, stockStatusFilter, selectedWarehouseId]);
+
+  const visibleWarehouseItems = filteredItems.slice(0, warehouseVisibleCount);
 
   // Filtered Movements
   const filteredMovements = useMemo(() => {
@@ -5106,7 +5127,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    filteredItems.map(item => {
+                    visibleWarehouseItems.map(item => {
                       const stock = getStockInfoForItem(item.id, selectedWarehouseId);
                       const isLow = stock.onHand > 0 && stock.onHand <= item.minStock;
                       const isOut = stock.onHand === 0;
@@ -5292,6 +5313,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         </tr>
                       );
                     })
+                  )}
+                  {filteredItems.length > visibleWarehouseItems.length && (
+                    <tr>
+                      <td colSpan={9} className="py-3 px-6 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setWarehouseVisibleCount((count) => count + WAREHOUSE_PAGE_SIZE)}
+                          className="px-4 py-1.5 rounded-full type-overline border border-slate-200 bg-slate-50 text-slate-600 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                          {t(
+                            `Show more (${visibleWarehouseItems.length} of ${filteredItems.length})`,
+                            `Zobraziť ďalšie (${visibleWarehouseItems.length} z ${filteredItems.length})`,
+                            `Továbbiak (${visibleWarehouseItems.length} / ${filteredItems.length})`,
+                          )}
+                        </button>
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

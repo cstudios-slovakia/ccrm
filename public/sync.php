@@ -887,6 +887,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // If not authenticated, we only allow access to non-sensitive user profile
     // suggestions if DEMO_MODE is active. Otherwise, require auth.
     $sessionUser = ccrm_current_user();
+    // Release the session file before the multi-MB read. PHP locks that file
+    // for the whole request, so a slow pull (or a refresh that starts a second
+    // one) froze every other call from this browser, including the login check
+    // on the new page. The user is already resolved; nothing below writes $_SESSION.
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     if ($sessionUser === null) {
         if ($isDemoMode) {
             $users = [];
@@ -2782,6 +2789,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // SECURITY: writes require an authenticated session.
     $sessionUser = ccrm_require_auth();
+    // Same as the GET path: do not hold the session lock across the write.
+    // A save of a lead with a huge timeline otherwise blocks the probe, and a
+    // refresh in that window looks like a logout when the new page times out.
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     // The `createdBy` fallback for stock movements, financial records and
     // documents. It used to be read here without ever being set in this branch
     // (only GET defines it), so those rows were stored with no author.
@@ -4455,9 +4468,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ccrm_trigger_workflow('lead_timeline_event', array_merge($te, $workflowActor, ['lead_id' => $leadId]), $pdo);
                             }
                         } catch (\PDOException $pdoEx) {
-                            // If duplicate key (SQLSTATE 23000 / error 1062), regenerate ID and retry
+                            // Duplicate primary key. Minting a fresh id here inserted a
+                            // second copy of the same event on every collision, which
+                            // multiplied a handful of imported notes into thousands of
+                            // identical timeline rows. If this lead already has the row,
+                            // keep that one. A new id is only for the rare case where a
+                            // different lead owns this id, so this lead does not lose
+                            // an event that is actually its own.
                             if ($pdoEx->getCode() == 23000 || strpos($pdoEx->getMessage(), '1062') !== false) {
-                                $teParams[0] = 'ev-' . uniqid() . '-' . rand(1000, 9999);
+                                $ownerLead = false;
+                                try {
+                                    $ownerStmt = $pdo->prepare("SELECT `lead_id` FROM `timeline_events` WHERE `id` = ?");
+                                    $ownerStmt->execute([$teId]);
+                                    $ownerLead = $ownerStmt->fetchColumn();
+                                } catch (\Throwable $e) {
+                                    $ownerLead = false;
+                                }
+                                if ($ownerLead === $leadId) {
+                                    continue;
+                                }
+                                $teParams[0] = 'ev-' . bin2hex(random_bytes(8));
                                 try {
                                     $insTimeline->execute($teParams);
                                 } catch (\PDOException $pdoEx2) {

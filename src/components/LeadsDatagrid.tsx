@@ -709,10 +709,14 @@ const generateAiSummary = (
     const timeline = lead.timeline || [];
     let latestEventStr = "";
     if (timeline.length > 0) {
-        const sortedTimeline = [...timeline].sort((a, b) =>
-            b.timestamp.localeCompare(a.timestamp),
-        );
-        const latest = sortedTimeline[0];
+        // One pass. Sorting a lead whose timeline was cloned thousands of
+        // times blocked the list on every render, and the sentence only
+        // needs the newest event. Equal timestamps keep the earlier row,
+        // matching a stable descending sort.
+        let latest = timeline[0];
+        for (let i = 1; i < timeline.length; i++) {
+            if (timeline[i].timestamp > latest.timestamp) latest = timeline[i];
+        }
 
         let typeLabel: string = latest.type;
         if (lang === "sk") {
@@ -1809,7 +1813,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // single group used to mount ~1k rows/cards at once, which is the main cause
     // of slow first paint and janky scrolling. We render the first page and let
     // the user reveal more on demand, per group.
-    const LEADS_PAGE_SIZE = 60;
+    // Expanded rows draw a progress strip and a summary line, so the first
+    // page is shorter there. Compact stays at 60. Show more still reveals
+    // every lead; nothing is dropped.
+    const LEADS_PAGE_SIZE = compactMode ? 60 : 24;
     const [groupVisibleCount, setGroupVisibleCount] = useState<
         Record<string, number>
     >({});
