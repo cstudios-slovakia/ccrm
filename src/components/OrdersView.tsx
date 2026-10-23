@@ -57,6 +57,7 @@ import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } fr
 import { invoiceMovementId } from "../utils/invoiceFinanceBridge";
 import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
+import { useListFilter } from "../hooks/useListFilter";
 
 export interface OrdersViewProps {
   orders: Order[];
@@ -127,9 +128,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const canDelete = canEdit && getPermission("orders.delete") === "edit";
 
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-  const [activeGroupFilter, setActiveGroupFilter] = useState<string>("all");
-  const [customerTypeFilter, setCustomerTypeFilter] = useState<string>("all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("all");
+  const [activeGroupFilter, setActiveGroupFilter] = useListFilter<string>("orders.group", "all");
+  const [customerTypeFilter, setCustomerTypeFilter] = useListFilter<string>("orders.customerType", "all");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useListFilter<string>("orders.paymentStatus", "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
 

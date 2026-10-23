@@ -70,6 +70,7 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { Chart as BundledChart } from "../utils/chartRuntime";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
+import { useListFilter } from "../hooks/useListFilter";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -499,16 +500,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useState("all");
+  const [selectedType, setSelectedType] = useListFilter("clients.type", "all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
-  const [filterCity, setFilterCity] = useState("");
-  const [filterPM, setFilterPM] = useState("");
+  const [filterCity, setFilterCity] = useListFilter("clients.city", "");
+  const [filterPM, setFilterPM] = useListFilter("clients.manager", "");
   const [currentPage, setCurrentPage] = useState(1);
   // Active clients or the archive — the two never share the list, so a
   // restore is always one tab away, the way archived tasks work.
-  const [clientArchiveScope, setClientArchiveScope] = useState<"active" | "archived">("active");
+  const [clientArchiveScope, setClientArchiveScope] = useListFilter<"active" | "archived">("clients.archive", "active");
   // "" = every category, NO_CLIENT_CATEGORY = clients filed under none.
-  const [filterClientCategory, setFilterClientCategory] = useState("");
+  const [filterClientCategory, setFilterClientCategory] = useListFilter("clients.category", "");
   // The categories manager takes the list's place while it is open.
   const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 

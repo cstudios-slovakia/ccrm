@@ -43,6 +43,7 @@ import {
   offerWinStats,
   type OfferStatusDef,
 } from "../utils/offerStatuses";
+import { useListFilter } from "../hooks/useListFilter";
 
 interface PriceOffersViewProps {
   /**
@@ -152,8 +153,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
   // ---------------------------------------------------------------- list state
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [modeFilter, setModeFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useListFilter<string>("priceOffers.status", "all");
+  const [modeFilter, setModeFilter] = useListFilter<string>("priceOffers.mode", "all");
 
   // -------------------------------------------------------------- editor state
   const [editorSession, setEditorSession] = useState<EditorSession | null>(null);

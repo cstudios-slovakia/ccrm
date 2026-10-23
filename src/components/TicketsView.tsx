@@ -101,6 +101,7 @@ import {
   isImageAttachment,
   isRichTextEmpty,
 } from "./ui/TicketRichHtmlEditor";
+import { useListFilter } from "../hooks/useListFilter";
 
 /** Single time input in H:MM format (e.g. 1:30 for 90 minutes) with a permanent preset ":" */
 const ColonTimeInput: React.FC<{
@@ -321,15 +322,15 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   // Filters & view state
   const [boardEl, setBoardEl] = useState<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [kpiBucket, setKpiBucket] = useState<
+  const [kpiBucket, setKpiBucket] = useListFilter<
     "all_open" | "unassigned" | "waiting_client" | "sla_risk" | "resolved" | "all"
-  >("all_open");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [projectFilter, setProjectFilter] = useState<string>("all");
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
-  const [archiveScope, setArchiveScope] = useState<"active" | "archived">("active");
-  const [viewMode, setViewMode] = useState<"table" | "board">("table");
+  >("tickets.bucket", "all_open");
+  const [statusFilter, setStatusFilter] = useListFilter<string>("tickets.status", "all");
+  const [priorityFilter, setPriorityFilter] = useListFilter<string>("tickets.priority", "all");
+  const [projectFilter, setProjectFilter] = useListFilter<string>("tickets.project", "all");
+  const [assigneeFilter, setAssigneeFilter] = useListFilter<string>("tickets.assignee", "all");
+  const [archiveScope, setArchiveScope] = useListFilter<"active" | "archived">("tickets.archive", "active");
+  const [viewMode, setViewMode] = useListFilter<"table" | "board">("tickets.viewMode", "table");
 
   // Selected Ticket for Full Detail View
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(

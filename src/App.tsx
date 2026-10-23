@@ -2120,18 +2120,22 @@ ${log.payload || ''}
     [isLoggedIn, currentUserMetaJson, anonPrefs]
   );
 
-  const setUserPref = <K extends keyof UserPrefs>(key: K, value: UserPrefs[K]) => {
+  // `change` receives the latest stored preferences (usersRef, not a render
+  // snapshot) and returns the fields to overwrite, so two writes in one tick —
+  // "clear all filters" — build on each other instead of the second undoing the first.
+  const patchUserPrefs = (change: (current: UserPrefs) => Partial<UserPrefs>) => {
     if (!currentUser) {
-      setAnonPrefs(prev => ({ ...prev, [key]: value }));
+      setAnonPrefs(prev => ({ ...prev, ...change({ ...DEFAULT_USER_PREFS, ...prev }) }));
       return;
     }
     let updatedMeta: any = null;
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
         const meta = parseUserMetadata(u);
+        const current = readUserPrefs(u);
         const nextMeta = {
           ...meta,
-          preferences: { ...readUserPrefs(u), [key]: value }
+          preferences: { ...current, ...change(current) }
         };
         updatedMeta = nextMeta;
         return { ...u, metadata_json: nextMeta };
@@ -2143,15 +2147,31 @@ ${log.payload || ''}
     }
   };
 
+  const setUserPref = <K extends keyof UserPrefs>(key: K, value: UserPrefs[K]) => {
+    patchUserPrefs(() => ({ [key]: value } as Partial<UserPrefs>));
+  };
+
+  const setListFilter = (key: string, value: unknown) => {
+    patchUserPrefs(current => {
+      const next = { ...current.listFilters };
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+      return { listFilters: next };
+    });
+  };
+
   // The context value must not close over a stale setter: pushStateToServer reads
   // isInitialSyncResolved from its own closure and silently drops pushes when it
   // is still false, so a memoised setter captured on first render would never
   // save anything.
   const setUserPrefRef = useRef(setUserPref);
   setUserPrefRef.current = setUserPref;
+  const setListFilterRef = useRef(setListFilter);
+  setListFilterRef.current = setListFilter;
   const userPrefsApi = useMemo<UserPrefsApi>(() => ({
     prefs: userPrefs,
-    setPref: (key, value) => setUserPrefRef.current(key, value)
+    setPref: (key, value) => setUserPrefRef.current(key, value),
+    setListFilter: (key, value) => setListFilterRef.current(key, value)
   }), [userPrefs]);
 
   const errorSidebarEnabled = userPrefs.errorSidebarEnabled;

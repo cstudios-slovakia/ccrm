@@ -30,6 +30,7 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { todayLocal } from "../utils/localTime";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { useListFilter } from "../hooks/useListFilter";
 
 interface QueuedFile {
   id: string;
@@ -116,8 +117,8 @@ export const FilesView: React.FC<FilesViewProps> = ({
       return null;
     }
   }, []);
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<"all" | RegistryFileType>("all");
-  const [selectedClientFilter, setSelectedClientFilter] = useState("all");
+  const [selectedTypeFilter, setSelectedTypeFilter] = useListFilter<"all" | RegistryFileType>("files.type", "all");
+  const [selectedClientFilter, setSelectedClientFilter] = useListFilter("files.client", "all");
 
   const [isUploadDrawerOpen, setIsUploadDrawerOpen] = useState(false);
   const [isClosingUpload, setIsClosingUpload] = useState(false);

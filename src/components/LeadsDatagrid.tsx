@@ -5,6 +5,7 @@ import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
+import { useListFilter, useListDateFilter } from "../hooks/useListFilter";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
 import {
@@ -1829,14 +1830,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Filters and Search
     const [searchQuery, setSearchQuery] = useState("");
+    // The filters below are remembered per user (see useListFilter): opening a
+    // lead and coming back finds the list as it was left.
+    //
     // `#leads?status=new` (the dashboard phase donut) opens the list already
-    // filtered to that pipeline stage. "all" when the param is absent.
-    const [selectedState, setSelectedState] = useState(leadStatusFromHash);
-    // Keep the stage filter and the hash in step: a donut click lands here
-    // already filtered, the dropdown (and Clear) rewrite `?status=`, and Back
-    // restores the previous stage.
+    // filtered to that pipeline stage, and wins over the remembered stage.
+    const [storedState, persistState] = useListFilter("leads.state", "all");
+    const [selectedState, setSelectedState] = useState(() => {
+        const fromHash = leadStatusFromHash();
+        return fromHash !== "all" ? fromHash : storedState;
+    });
     useEffect(() => {
-        const apply = () => setSelectedState(leadStatusFromHash());
+        // Mirror only: a change to the stored value from elsewhere is picked up on
+        // the next mount.
+        persistState(selectedState);
+    }, [selectedState, persistState]);
+    // Keep the stage filter and the hash in step: a donut click lands here
+    // already filtered and the dropdown (and Clear) rewrite `?status=`. A hash
+    // with no `status` says nothing about the stage — closing a lead lands on
+    // plain `#leads` — so it leaves the filter alone.
+    useEffect(() => {
+        const apply = () => {
+            const { route, params } = parseAppHash(window.location.hash);
+            const status = (params.get("status") || "").trim().toLowerCase();
+            if (route === "leads" && status) setSelectedState(status);
+        };
         window.addEventListener("hashchange", apply);
         return () => window.removeEventListener("hashchange", apply);
     }, []);
@@ -1850,19 +1868,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (next) params.set("status", next);
         else params.delete("status");
         const qs = params.toString();
-        window.location.hash = qs ? `leads?${qs}` : "leads";
+        // replaceState: the filter is not a navigation, so it adds no Back entry
+        // (which would otherwise bounce back to the stage-less hash and re-apply).
+        window.history.replaceState(null, "", `#${qs ? `leads?${qs}` : "leads"}`);
     }, [selectedState]);
-    const [selectedSource, setSelectedSource] = useState("all");
-    const [selectedDivision, setSelectedDivision] = useState("all");
-    const [selectedType, setSelectedType] = useState("all");
+    const [selectedSource, setSelectedSource] = useListFilter("leads.source", "all");
+    const [selectedDivision, setSelectedDivision] = useListFilter("leads.division", "all");
+    const [selectedType, setSelectedType] = useListFilter("leads.type", "all");
 
     // Offer date filter states
-    const [filterOfferStartDate, setFilterOfferStartDate] =
-        useState<Date | null>(null);
-    const [filterOfferEndDate, setFilterOfferEndDate] = useState<Date | null>(
-        null,
-    );
-    const [offerPresetName, setOfferPresetName] = useState<string>("All Time");
+    const [filterOfferStartDate, setFilterOfferStartDate] = useListDateFilter("leads.offerStart");
+    const [filterOfferEndDate, setFilterOfferEndDate] = useListDateFilter("leads.offerEnd");
+    const [offerPresetName, setOfferPresetName] = useListFilter<string>("leads.offerPreset", "All Time");
     const [isOfferDatePickerOpen, setIsOfferDatePickerOpen] = useState(false);
 
     // Collapsed bar: search, lead state, PM, list/kanban, favorites, view.
@@ -1874,15 +1891,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (!next) setIsOfferDatePickerOpen(false);
         setStoredShowFilters(next);
     };
-    const [selectedOwner, setSelectedOwner] = useState("all");
-    const [selectedCity, setSelectedCity] = useState("all");
+    const [selectedOwner, setSelectedOwner] = useListFilter("leads.owner", "all");
+    const [selectedCity, setSelectedCity] = useListFilter("leads.city", "all");
     // Client importance filter. "all" = off, "none" = leads nobody rated yet,
     // "5".."1" = that exact star count, "min4"/"min3" = that many stars and up.
-    const [selectedRating, setSelectedRating] = useState("all");
-    const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
+    const [selectedRating, setSelectedRating] = useListFilter("leads.rating", "all");
+    const [selectedArchiveFilter, setSelectedArchiveFilter] = useListFilter<"active" | "archived" | "all">("leads.archive", "active");
     // Favorites state & hook
     const { isFavorite } = useFavorites();
-    const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
+    const [filterFavoritesOnly, setFilterFavoritesOnly] = useListFilter("leads.favoritesOnly", false);
+    // Favorites in a group of their own above the rest (list and kanban). A
+    // display choice, not a filter, so it persists and "Clear" leaves it alone.
+    const [storedFavoritesFirst, setFavoritesFirst] = useUserPref("leadsFavoritesFirst");
+    const favoritesFirst = storedFavoritesFirst ?? false;
 
     // Multi-selection & Bulk action toolbar state
     const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());

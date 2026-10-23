@@ -97,6 +97,7 @@ import type {
 import { StatGrid, PageHeader, Tabs } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { useListFilter } from "../hooks/useListFilter";
 
 interface WarehouseViewProps {
   systemLanguage: Language;
@@ -171,9 +172,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Filters
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [stockStatusFilter, setStockStatusFilter] = useState<"all" | "in_stock" | "low_stock" | "out_of_stock">("all");
-  const [movementTypeFilter, setMovementTypeFilter] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useListFilter<string>("warehouse.category", "all");
+  const [stockStatusFilter, setStockStatusFilter] = useListFilter<"all" | "in_stock" | "low_stock" | "out_of_stock">("warehouse.stockStatus", "all");
+  const [movementTypeFilter, setMovementTypeFilter] = useListFilter<string>("warehouse.movementType", "all");
 
   // Modals & Navigation state
   const [selectedProductDetailId, setSelectedProductDetailId] = useState<string | "new" | null>(null);

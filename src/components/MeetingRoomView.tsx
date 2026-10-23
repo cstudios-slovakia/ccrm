@@ -18,6 +18,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { useListFilter } from "../hooks/useListFilter";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -143,9 +144,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLeadFilter, setSelectedLeadFilter] = useState("");
-  const [dateFilter, setDateFilter] = useState<"all" | "today" | "week" | "month">("all");
-  const [showArchived, setShowArchived] = useState(false);
+  const [selectedLeadFilter, setSelectedLeadFilter] = useListFilter("meetings.lead", "");
+  const [dateFilter, setDateFilter] = useListFilter<"all" | "today" | "week" | "month">("meetings.date", "all");
+  const [showArchived, setShowArchived] = useListFilter("meetings.archived", false);
   
   // Leads & Clients lists
   const clientsList = useMemo(() => leads.filter((l) => !l.archived && l.status === "accepted" && l.id !== "unassigned-docs"), [leads]);

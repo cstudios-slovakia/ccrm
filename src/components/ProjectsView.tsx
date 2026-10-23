@@ -63,6 +63,7 @@ import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
+import { useListFilter } from "../hooks/useListFilter";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -254,15 +255,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     setVisibleStatuses(next);
   }, [visibleStatuses, defaultOpenStatuses, setVisibleStatuses]);
 
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
-  const [selectedDivisionFilter, setSelectedDivisionFilter] = useState("all");
-  const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
+  const [selectedTypeFilter, setSelectedTypeFilter] = useListFilter("projects.type", "all");
+  const [selectedDivisionFilter, setSelectedDivisionFilter] = useListFilter("projects.division", "all");
+  const [selectedManagerFilter, setSelectedManagerFilter] = useListFilter("projects.manager", "all");
   /* Star priority, same options as the leads list — see utils/rating.ts. */
-  const [selectedRatingFilter, setSelectedRatingFilter] = useState("all");
-  const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
+  const [selectedRatingFilter, setSelectedRatingFilter] = useListFilter("projects.rating", "all");
+  const [selectedArchiveFilter, setSelectedArchiveFilter] = useListFilter<"active" | "archived" | "all">("projects.archive", "active");
   /* Its own dimension rather than another status: a project can be late in any
      status, so "overdue" cannot live in the status dropdown. */
-  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useListFilter("projects.overdue", false);
 
   // Batch Multi-Selection State
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());

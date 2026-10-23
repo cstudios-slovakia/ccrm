@@ -224,6 +224,15 @@ export interface UserPrefs {
    * whether *this person* has been shown the wizard is theirs.
    */
   moduleWizardCompletedAt: string | null;
+  /**
+   * The filters of every list screen (status, type, manager, archive ...), so a
+   * list comes back the way it was left after opening a record and returning, or
+   * after a reload on another device. Keyed "<screen>.<filter>", e.g.
+   * "leads.type"; a filter at its default is absent. One map rather than one key
+   * per filter so a new filter needs no change here; read and written through
+   * useListFilter() in hooks/useListFilter.ts.
+   */
+  listFilters: Record<string, unknown>;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -271,6 +280,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   recentClientIds: [],
   moduleWizardPending: false,
   moduleWizardCompletedAt: null,
+  listFilters: {},
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */
@@ -305,11 +315,15 @@ export const hasStoredPrefs = (user: UserLike): boolean => {
 export interface UserPrefsApi {
   prefs: UserPrefs;
   setPref: <K extends keyof UserPrefs>(key: K, value: UserPrefs[K]) => void;
+  /** Sets one entry of `listFilters`; `undefined` removes it. Merges against the
+   *  latest stored map, so several calls in one tick do not overwrite each other. */
+  setListFilter: (key: string, value: unknown) => void;
 }
 
 export const UserPrefsContext = createContext<UserPrefsApi>({
   prefs: DEFAULT_USER_PREFS,
   setPref: () => {},
+  setListFilter: () => {},
 });
 
 export const useUserPrefs = (): UserPrefsApi => useContext(UserPrefsContext);

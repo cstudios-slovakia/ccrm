@@ -22,6 +22,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { useListFilter } from "../hooks/useListFilter";
 
 interface EmailViewProps {
   currentUser: any;
@@ -128,7 +129,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Filtering & Pagination
   const [searchQuery, setSearchQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [filter, setFilter] = useListFilter<"all" | "unread">("email.filter", "all");
   
   // UI Loaders
   const [isLoadingEmails, setIsLoadingEmails] = useState(false);
