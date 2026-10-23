@@ -52,6 +52,27 @@ $check('a body is tidied: line endings, trailing blanks and runs of empty lines'
 [$long, $cut] = ccrm_mail_clean_body(str_repeat('ž', CCRM_MAIL_BODY_MAX_CHARS + 10));
 $check('a very long body is cut and flagged', mb_strlen($long, 'UTF-8') === CCRM_MAIL_BODY_MAX_CHARS && $cut === true);
 
+// ── attachment storage names and what the client may see (no database) ──────────
+$goodKey = str_repeat('a1', 16) . '.pdf';
+$check('a storage name is 32 hex characters and a short extension, nothing that could leave the folder',
+    ccrm_mail_attachment_key_ok($goodKey) && !ccrm_mail_attachment_key_ok('../' . $goodKey) && !ccrm_mail_attachment_key_ok('x.pdf')
+    && !ccrm_mail_attachment_key_ok(str_repeat('A1', 16) . '.pdf') && !ccrm_mail_attachment_key_ok(null) && !ccrm_mail_attachment_key_ok(['a']));
+$check('a storage name that is not on disk resolves to nothing', ccrm_mail_attachment_path($goodKey) === null && ccrm_mail_attachment_path('../../auth.php') === null);
+$shown = ccrm_mail_attachments_for_client([
+    ['name' => 'a.pdf', 'size' => 10, 'part' => '2', 'key' => $goodKey],
+    'not an entry',
+    ['name' => 'b.exe', 'size' => 5, 'part' => '3'],
+]);
+$check('the client list says which files were kept, keeps every position and never carries a storage name',
+    count($shown) === 3 && $shown[0] === ['name' => 'a.pdf', 'size' => 10, 'stored' => true] && $shown[1]['stored'] === false
+    && $shown[2] === ['name' => 'b.exe', 'size' => 5, 'stored' => false] && strpos(json_encode($shown), $goodKey) === false);
+$check('only well-formed storage names are collected from a stored list',
+    ccrm_mail_attachment_keys([['key' => $goodKey], ['key' => '../x'], ['name' => 'n'], 'x']) === [$goodKey]);
+$check('an embedded image is recognised, a normal attachment is not',
+    ccrm_mail_part_is_inline_image((object)['ifdisposition' => 1, 'disposition' => 'INLINE', 'type' => 5])
+    && !ccrm_mail_part_is_inline_image((object)['ifdisposition' => 1, 'disposition' => 'ATTACHMENT', 'type' => 5])
+    && !ccrm_mail_part_is_inline_image((object)['ifdisposition' => 1, 'disposition' => 'INLINE', 'type' => 3]));
+
 $dsn = getenv('CCRM_TEST_DSN');
 $imapHost = getenv('CCRM_TEST_IMAP_HOST');
 if (!$dsn || !$imapHost) {
@@ -207,6 +228,53 @@ for ($i = 0; $i < 12; $i++) ccrm_run_mail_filing($pdo, ['only' => 'c:cmb-a', 'ma
 $hidden = $pdo->prepare("SELECT `hidden` FROM `timeline_events` WHERE `id` = ?");
 $hidden->execute([$eventId($uidOld1)]);
 $check('a removed entry stays removed when the mailbox is read again', (int)$hidden->fetchColumn() === 1 && $count("`id` = ?", [$eventId($uidOld1)]) === 1);
+
+// attachments: the files are kept, the unsafe or oversized ones are not, a re-read keeps the same files
+$appendMime = function (string $user, string $from, string $to, string $subject, string $body, array $files, string $messageId) use ($profile) {
+    $settings = $profile($user);
+    $mailbox = get_imap_mailbox_string($settings, 'INBOX');
+    $stream = @imap_open(get_imap_mailbox_string($settings, ''), $user, $settings['imapPassword'], OP_HALFOPEN);
+    if (!$stream) throw new RuntimeException('cannot open the test IMAP server: ' . imap_last_error());
+    $b = 'bnd' . bin2hex(random_bytes(6));
+    $raw = "From: $from\r\nTo: $to\r\nSubject: $subject\r\nDate: " . date('r') . "\r\nMessage-ID: <$messageId>\r\nMIME-Version: 1.0\r\n"
+        . "Content-Type: multipart/mixed; boundary=\"$b\"\r\n\r\n--$b\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n$body\r\n";
+    foreach ($files as $name => $bytes) {
+        $raw .= "--$b\r\nContent-Type: application/octet-stream; name=\"$name\"\r\nContent-Transfer-Encoding: base64\r\n"
+            . "Content-Disposition: attachment; filename=\"$name\"\r\n\r\n" . chunk_split(base64_encode($bytes)) . "\r\n";
+    }
+    $raw .= "--$b--\r\n";
+    if (!@imap_append($stream, $mailbox, $raw)) throw new RuntimeException('append failed: ' . imap_last_error());
+    @imap_close($stream);
+    $c = @imap_open($mailbox, $user, $settings['imapPassword']);
+    $uid = max(imap_search($c, 'ALL', SE_UID));
+    @imap_close($c);
+    return (int)$uid;
+};
+$pdfBytes = "%PDF-1.4\n" . str_repeat("1 0 obj << /Type /Catalog >> endobj\n", 3) . "%%EOF\n";
+$uidAtt = $appendMime($userA, 'novak@cust.sk', $userA, 'With files', 'see attached', ['ponuka.pdf' => $pdfBytes, 'shell.php' => '<?php echo 1;', 'broken.pdf' => 'not a pdf'], 'm-att@x');
+ccrm_run_mail_filing($pdo, ['only' => 'c:cmb-a']);
+$attRow = $pdo->prepare("SELECT `attachments_json` FROM `filed_mail_bodies` WHERE `event_id` = ?");
+$attRow->execute([$eventId($uidAtt)]);
+$stored = json_decode((string)$attRow->fetchColumn(), true) ?: [];
+$byName = array_column($stored, null, 'name');
+$check('all three attachments are listed by name', count($stored) === 3 && isset($byName['ponuka.pdf'], $byName['shell.php'], $byName['broken.pdf']), json_encode($stored));
+$keptPath = ccrm_mail_attachment_path($byName['ponuka.pdf']['key'] ?? null);
+$check('a normal attachment is kept on disk, byte for byte, outside the public folder',
+    $keptPath !== null && file_get_contents($keptPath) === $pdfBytes && strpos(str_replace('\\', '/', $keptPath), '/uploads/private/mail/') !== false, json_encode($byName['ponuka.pdf'] ?? null));
+$check('an executable type is listed but never kept', !isset($byName['shell.php']['key']));
+$check('bytes that are not the format their name promises are not kept', !isset($byName['broken.pdf']['key']));
+$firstKey = $byName['ponuka.pdf']['key'] ?? '';
+$filesAfterFirstRead = count(glob(ccrm_mail_attachment_dir() . '*'));
+$pdo->prepare("DELETE FROM `mail_sync_state` WHERE `mailbox_key` = 'c:cmb-a'")->execute();
+for ($i = 0; $i < 12; $i++) ccrm_run_mail_filing($pdo, ['only' => 'c:cmb-a', 'max_messages' => 5]);
+$attRow->execute([$eventId($uidAtt)]);
+$again = array_column(json_decode((string)$attRow->fetchColumn(), true) ?: [], null, 'name');
+$check('reading the message again keeps the same file instead of storing a second copy',
+    ($again['ponuka.pdf']['key'] ?? '') === $firstKey && count(glob(ccrm_mail_attachment_dir() . '*')) === $filesAfterFirstRead);
+ccrm_mail_purge_filed($pdo, $eventId($uidAtt));
+$gone = $pdo->prepare("SELECT COUNT(*) FROM `filed_mail_bodies` WHERE `event_id` = ?");
+$gone->execute([$eventId($uidAtt)]);
+$check('removing the message deletes its stored body and its files', (int)$gone->fetchColumn() === 0 && ccrm_mail_attachment_path($firstKey) === null);
 
 // one broken mailbox does not stop the others
 $r = ccrm_run_mail_filing($pdo, ['max_messages' => 50]);

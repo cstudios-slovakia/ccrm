@@ -49,6 +49,7 @@ import {
 } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
+import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { isClientRecord } from "../utils/clientRecord";
 import { contactDetailsFor, resolveLinkedClient } from "../utils/leadClient";
 import { formatMoney } from "../utils/currency";
@@ -56,6 +57,7 @@ import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } fr
 import { invoiceMovementId } from "../utils/invoiceFinanceBridge";
 import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
+import { useListFilter } from "../hooks/useListFilter";
 
 export interface OrdersViewProps {
   orders: Order[];
@@ -69,6 +71,8 @@ export interface OrdersViewProps {
   setWarehouseMovements?: React.Dispatch<React.SetStateAction<WarehouseMovement[]>>;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  /** Settings → Invoice statuses: an issued invoice starts in the first settled / open one. */
+  invoiceStatuses?: OfferStatusDef[];
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: (recs: FinancialRecord[] | ((prev: FinancialRecord[]) => FinancialRecord[])) => void;
   onAddTimelineEvent?: (leadId: string, event: TimelineEvent) => void;
@@ -101,6 +105,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   warehouses = [],
   setWarehouseMovements,
   invoicesOffers: _invoicesOffers = [],
+  invoiceStatuses,
   setInvoicesOffers,
   financialRecords: _financialRecords = [],
   setFinancialRecords,
@@ -123,9 +128,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const canDelete = canEdit && getPermission("orders.delete") === "edit";
 
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-  const [activeGroupFilter, setActiveGroupFilter] = useState<string>("all");
-  const [customerTypeFilter, setCustomerTypeFilter] = useState<string>("all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>("all");
+  const [activeGroupFilter, setActiveGroupFilter] = useListFilter<string>("orders.group", "all");
+  const [customerTypeFilter, setCustomerTypeFilter] = useListFilter<string>("orders.customerType", "all");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useListFilter<string>("orders.paymentStatus", "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
 
@@ -359,7 +364,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       subject: `${t("Order", "Objednávka", "Rendelés")} ${order.orderNumber}`,
       type: "invoice",
       mode: "default",
-      status: order.paymentStatus === "paid" ? "invoiced" : "sent",
+      status: issuedInvoiceStatus(order.paymentStatus === "paid", invoiceStatuses),
       clientId: targetClientId,
       leadId: targetClientId || "",
       clientName,
@@ -564,13 +569,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const orderStatusOptions = useMemo(() => {
     return orderStatuses.map(s => ({
       value: s.key,
-      label: (
-        <span className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-          <span>{orderStatusLabel(s.key, t, orderStatuses)}</span>
-        </span>
-      ),
-      searchText: orderStatusLabel(s.key, t, orderStatuses)
+      label: orderStatusLabel(s.key, t, orderStatuses),
+      color: orderStatusColor(s.key, orderStatuses),
     }));
   }, [orderStatuses, userLanguage]);
 

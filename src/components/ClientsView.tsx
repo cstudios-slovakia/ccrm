@@ -18,6 +18,7 @@ import { OrderDetailView } from "./OrderDetailView";
 import { isClientRecord } from "../utils/clientRecord";
 import { applyClientProfile } from "../utils/leadClient";
 import { getDefaultVatRate } from "../utils/vat";
+import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
@@ -69,6 +70,7 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { Chart as BundledChart } from "../utils/chartRuntime";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
+import { useListFilter } from "../hooks/useListFilter";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -108,6 +110,8 @@ interface ClientsViewProps {
   setWarehouseMovements?: (movements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => void;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: (invoices: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
+  /** Settings → Invoice statuses: an issued invoice starts in the first settled / open one. */
+  invoiceStatuses?: OfferStatusDef[];
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   /** Customer categories (the Categories panel of the client register). */
@@ -460,6 +464,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   warehouses = [],
   setWarehouseMovements,
   invoicesOffers: _invoicesOffers = [],
+  invoiceStatuses,
   priceLevels = [],
   setInvoicesOffers,
   financialCategories = [],
@@ -495,16 +500,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useState("all");
+  const [selectedType, setSelectedType] = useListFilter("clients.type", "all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
-  const [filterCity, setFilterCity] = useState("");
-  const [filterPM, setFilterPM] = useState("");
+  const [filterCity, setFilterCity] = useListFilter("clients.city", "");
+  const [filterPM, setFilterPM] = useListFilter("clients.manager", "");
   const [currentPage, setCurrentPage] = useState(1);
   // Active clients or the archive — the two never share the list, so a
   // restore is always one tab away, the way archived tasks work.
-  const [clientArchiveScope, setClientArchiveScope] = useState<"active" | "archived">("active");
+  const [clientArchiveScope, setClientArchiveScope] = useListFilter<"active" | "archived">("clients.archive", "active");
   // "" = every category, NO_CLIENT_CATEGORY = clients filed under none.
-  const [filterClientCategory, setFilterClientCategory] = useState("");
+  const [filterClientCategory, setFilterClientCategory] = useListFilter("clients.category", "");
   // The categories manager takes the list's place while it is open.
   const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 
@@ -1844,7 +1849,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       subject: `${t("Order", "Objednávka", "Rendelés")} ${order.orderNumber}`,
       type: "invoice",
       mode: "default",
-      status: order.paymentStatus === "paid" ? "invoiced" : "sent",
+      status: issuedInvoiceStatus(order.paymentStatus === "paid", invoiceStatuses),
       clientId: targetClientId,
       leadId: targetClientId || "",
       clientName,
@@ -1966,7 +1971,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       formValues.isRecurring = false;
       formValues.projectId = null;
       formValues.clientId = clientIdVal;
-      formValues.taxRate = 20;
+      formValues.taxRate = getDefaultVatRate(companyBillingSettings);
       formValues.createdBy = (window as any).ccrmCurrentUser?.email || "Admin";
       formValues.createdAt = new Date().toISOString();
     }

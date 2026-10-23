@@ -11,6 +11,7 @@ import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { StatGrid, EntityHeader, PageHeader, Tabs } from "./layout";
+import { useListFilter } from "../hooks/useListFilter";
 
 interface SocialMediaViewProps {
   systemLanguage: Language;
@@ -181,8 +182,8 @@ export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
 
   // View state
   const [activeView, setActiveView] = useState<"list" | "calendar" | "analytics">("list");
-  const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [selectedPlatform, setSelectedPlatform] = useListFilter<string>("socialMedia.platform", "all");
+  const [selectedStatus, setSelectedStatus] = useListFilter<string>("socialMedia.status", "all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Demo Mode Lightswitch state (default to true when isDemoMode is on)
@@ -206,7 +207,7 @@ export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [deepLinkMiss, setDeepLinkMiss] = useState<string | null>(null);
   const [analyticsSubTab, setAnalyticsSubTab] = useState<"posting" | "inbox">("posting");
-  const [analyticsPlatformFilter, setAnalyticsPlatformFilter] = useState<string>("all");
+  const [analyticsPlatformFilter, setAnalyticsPlatformFilter] = useListFilter<string>("socialMedia.analyticsPlatform", "all");
   const [analyticsDateRange, setAnalyticsDateRange] = useState<string>("30d");
   const [activeMetrics, setActiveMetrics] = useState<string[]>(["likes", "comments", "shares", "impressions"]);
 

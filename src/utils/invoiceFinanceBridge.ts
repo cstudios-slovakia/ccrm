@@ -1,4 +1,5 @@
 import type { FinancialRecord, InvoiceOffer } from "../types";
+import { DEFAULT_INVOICE_STATUS_DEFS, isLiveInvoiceStatus, type OfferStatusDef } from "./offerStatuses.ts";
 
 /**
  * Bridge from the Invoicing module into the finance ledger (audit F27, option a).
@@ -20,9 +21,14 @@ import type { FinancialRecord, InvoiceOffer } from "../types";
 
 export const invoiceMovementId = (invoiceId: string) => `fr-inv-${invoiceId}`;
 
-/** Only a real invoice is expected income — a price offer or a proforma is not. */
-const isLiveInvoice = (doc: InvoiceOffer) =>
-  doc.type === "invoice" && doc.status !== "cancelled" && doc.status !== "rejected";
+/**
+ * Only a real invoice is expected income — a price offer or a proforma is not —
+ * and not one that was withdrawn or turned down. That is read from the status's
+ * group (Price offers → Settings → Invoice statuses are configurable), so a
+ * status the list does not know counts as live, as any status once did.
+ */
+const isLiveInvoice = (doc: InvoiceOffer, statuses: readonly OfferStatusDef[]) =>
+  doc.type === "invoice" && isLiveInvoiceStatus(doc.status, statuses);
 
 /** Money has already been recorded against the movement; it must never be removed. */
 const isSettled = (rec: FinancialRecord) =>
@@ -64,7 +70,8 @@ const invoiceOwnedSettlementFields = (doc: InvoiceOffer) => {
     currency: doc.currency || "EUR",
     issueDate: doc.issuedAt,
     dueDate: doc.dueDate || null,
-    taxRate: subtotal > 0 ? Math.round((num(doc.vatAmount) / subtotal) * 100) : 20
+    // An invoice with nothing to tax has no rate to derive; 0 rather than a guess.
+    taxRate: subtotal > 0 ? Math.round((num(doc.vatAmount) / subtotal) * 100) : 0
   } satisfies Partial<FinancialRecord>;
 };
 
@@ -111,7 +118,8 @@ export function reconcileInvoiceMovements(
   prevDocs: InvoiceOffer[],
   nextDocs: InvoiceOffer[],
   records: FinancialRecord[],
-  now: string = new Date().toISOString()
+  now: string = new Date().toISOString(),
+  statuses: readonly OfferStatusDef[] = DEFAULT_INVOICE_STATUS_DEFS
 ): FinancialRecord[] {
   const prevById = new Map(prevDocs.map(d => [d.id, d]));
   const nextIds = new Set(nextDocs.map(d => d.id));
@@ -120,7 +128,7 @@ export function reconcileInvoiceMovements(
   const removals = new Set<string>();
   for (const doc of nextDocs) {
     if (prevById.get(doc.id) === doc) continue;
-    if (isLiveInvoice(doc)) upserts.set(invoiceMovementId(doc.id), doc);
+    if (isLiveInvoice(doc, statuses)) upserts.set(invoiceMovementId(doc.id), doc);
     else removals.add(invoiceMovementId(doc.id));
   }
   for (const doc of prevDocs) {

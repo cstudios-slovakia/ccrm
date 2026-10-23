@@ -185,7 +185,8 @@ body {
   background: linear-gradient(135deg, #f2f6fc 0%, #f0f2fa 50%, #faf5f0 100%);
   color: rgb(var(--foreground));
   font-family: "Google Sans", "Product Sans", sans-serif;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "calt" 0, "liga" 0;
+  font-variant-ligatures: none; /* Google Sans renders "(1)" as a circled digit */
   min-height: 100vh;
   transition: background 0.5s ease, color 0.5s ease;
 }

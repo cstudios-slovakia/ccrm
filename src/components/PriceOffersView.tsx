@@ -32,6 +32,7 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { num } from "../utils/offerDraft";
 import type { PriceLevel } from "../utils/priceLevels";
 import {
+  DEFAULT_INVOICE_STATUS_DEFS,
   DEFAULT_OFFER_STATUS_DEFS,
   defaultOfferStatus,
   firstOfferStatusOf,
@@ -42,6 +43,7 @@ import {
   offerWinStats,
   type OfferStatusDef,
 } from "../utils/offerStatuses";
+import { useListFilter } from "../hooks/useListFilter";
 
 interface PriceOffersViewProps {
   /**
@@ -56,6 +58,9 @@ interface PriceOffersViewProps {
   /** The configured price levels, so a product is priced on the customer's level. */
   priceLevels?: PriceLevel[];
   setOfferStatuses?: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
+  /** The configurable statuses of proformas and invoices (edited here, used in Files and Orders). Defaults to the six built-ins. */
+  invoiceStatuses?: OfferStatusDef[];
+  setInvoiceStatuses?: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
   leads: Lead[];
   setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
   warehouseItems: WarehouseItem[];
@@ -101,6 +106,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   offerStatuses = DEFAULT_OFFER_STATUS_DEFS as OfferStatusDef[],
   priceLevels = [],
   setOfferStatuses,
+  invoiceStatuses = DEFAULT_INVOICE_STATUS_DEFS as OfferStatusDef[],
+  setInvoiceStatuses,
   leads = [],
   setLeads,
   warehouseItems = [],
@@ -146,8 +153,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
   // ---------------------------------------------------------------- list state
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [modeFilter, setModeFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useListFilter<string>("priceOffers.status", "all");
+  const [modeFilter, setModeFilter] = useListFilter<string>("priceOffers.mode", "all");
 
   // -------------------------------------------------------------- editor state
   const [editorSession, setEditorSession] = useState<EditorSession | null>(null);
@@ -448,6 +455,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           setAiCustomTemplates={setAiCustomTemplates}
           offerStatuses={offerStatuses}
           setOfferStatuses={canConfigure ? setOfferStatuses : undefined}
+          invoiceStatuses={invoiceStatuses}
+          setInvoiceStatuses={canConfigure ? setInvoiceStatuses : undefined}
           documents={allDocuments}
           setDocuments={setInvoicesOffers}
           lang={lang}

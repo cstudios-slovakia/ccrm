@@ -76,6 +76,8 @@ interface AutomationViewProps {
   leads: any[];
   taskStates: string[];
   leadStates: string[];
+  /** Pipeline colour of each lead state from the settings, keyed by lower-cased state name. */
+  leadStateColors?: Record<string, string>;
   leadSources: string[];
   /** Used by the "change project status" action to narrow which project it moves. */
   projectTypes?: ProjectType[];
@@ -876,6 +878,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   users,
   taskStates,
   leadStates,
+  leadStateColors = {},
   leadSources,
   projectTypes = [],
   setAppTab,
@@ -2770,7 +2773,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   onChange={(v) => setTriggerConfig({ ...triggerConfig, fromStatus: v })}
                                   options={[
                                     { value: "any", label: t("Any", "Akýkoľvek", "Bármely") },
-                                    ...leadStates.map(s => ({ value: s, label: s })),
+                                    ...leadStates.map(s => ({ value: s, label: s, color: leadStateColors[s.toLowerCase()] || "#64748b" })),
                                   ]}
                                 />
                               </div>
@@ -2788,7 +2791,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   onChange={(v) => setTriggerConfig({ ...triggerConfig, toStatus: v })}
                                   options={[
                                     { value: "any", label: t("Any", "Akýkoľvek", "Bármely") },
-                                    ...leadStates.map(s => ({ value: s, label: s })),
+                                    ...leadStates.map(s => ({ value: s, label: s, color: leadStateColors[s.toLowerCase()] || "#64748b" })),
                                   ]}
                                 />
                               </div>
@@ -3090,7 +3093,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   <CustomSelect
                                     value={node.data.status || "new"}
                                     onChange={(v) => updateActionField("status", v)}
-                                    options={leadStates.map(s => ({ value: s, label: s }))}
+                                    options={leadStates.map(s => ({ value: s, label: s, color: leadStateColors[s.toLowerCase()] || "#64748b" }))}
                                   />
                                 </div>
                               </div>

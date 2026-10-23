@@ -37,6 +37,7 @@ import type {
 } from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
+import { isLiveInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import {
   formatMoney,
   currencyForRegion
@@ -142,6 +143,8 @@ interface DynamicDashboardViewProps {
   projectTypes?: ProjectType[];
   financialRecords?: FinancialRecord[];
   invoicesOffers?: InvoiceOffer[];
+  /** Settings → Invoice statuses: which invoices still count as billed. */
+  invoiceStatuses?: OfferStatusDef[];
   leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
   leadStateParents?: Record<string, string>;
 }
@@ -428,6 +431,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   projectTypes = [],
   financialRecords = [],
   invoicesOffers = [],
+  invoiceStatuses,
   leadStageGroups = {},
   leadStateParents = {},
 }) => {
@@ -701,7 +705,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         } else {
           if (invoicesOffers && invoicesOffers.length > 0) {
             const pInvoices = invoicesOffers.filter(
-              (io) => p.leadId && io.leadId === p.leadId && io.type === "invoice" && io.status !== "cancelled"
+              (io) => p.leadId && io.leadId === p.leadId && io.type === "invoice" && isLiveInvoiceStatus(io.status, invoiceStatuses)
             );
             pInvoiced = pInvoices.reduce((sum, io) => sum + (Number(io.totalPrice) || 0), 0);
           }
@@ -752,6 +756,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     leads,
     financialRecords,
     invoicesOffers,
+    invoiceStatuses,
     defaultCurrency,
     projectStatuses,
     t,

@@ -398,7 +398,7 @@ npm run test:passkeys
 
 ### 5f-2. Background mail filing (`npm run test:mail-filing`)
 
-`api/mail_filing.php` reads the company mailboxes and every user's mailbox over IMAP and files mail from or to a known customer onto that customer's timeline. The matching rules run on their own (`npm run test:mail-filing`, no database, no mail server). The whole job (chunked backlog, new mail, Sent, one message in two mailboxes, the removed-entry tombstone, a mailbox with a wrong password, agreement with the live read) needs a plain-text IMAP server and a scratch database. A throw-away Dovecot on the dev compose network does it; the script appends its own test mail with IMAP APPEND:
+`api/mail_filing.php` reads the company mailboxes and every user's mailbox over IMAP and files mail from or to a known customer onto that customer's timeline. The matching rules and the attachment storage rules (storage-name validation, what the client may see of an attachment list) run on their own (`npm run test:mail-filing`, no database, no mail server). The whole job (chunked backlog, new mail, Sent, one message in two mailboxes, the removed-entry tombstone, a mailbox with a wrong password, agreement with the live read) needs a plain-text IMAP server and a scratch database. A throw-away Dovecot on the dev compose network does it; the script appends its own test mail with IMAP APPEND:
 
 ```bash
 # a Dovecot with users info@test.local, steel@test.local, broken@test.local, all with the password "secret"

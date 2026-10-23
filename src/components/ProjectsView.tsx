@@ -4,7 +4,7 @@ import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X, PanelRightOpen } from "lucide-react";
-import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
+import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract, CompanyBillingSettings } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
@@ -63,6 +63,7 @@ import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
+import { useListFilter } from "../hooks/useListFilter";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -152,6 +153,8 @@ interface ProjectsViewProps {
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   currencyCode?: string | null;
+  /** Settings → Billing: the default VAT rate a finance record added from a project starts with. */
+  companyBillingSettings?: CompanyBillingSettings | null;
   /** Every task; a project's Tasks tab lists and creates the ones linked to it. */
   tasks?: Task[];
   setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
@@ -192,6 +195,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   financialCategories = [],
   setFinancialCategories,
   currencyCode,
+  companyBillingSettings,
   tasks,
   setTasks,
   taskStates,
@@ -251,15 +255,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     setVisibleStatuses(next);
   }, [visibleStatuses, defaultOpenStatuses, setVisibleStatuses]);
 
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
-  const [selectedDivisionFilter, setSelectedDivisionFilter] = useState("all");
-  const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
+  const [selectedTypeFilter, setSelectedTypeFilter] = useListFilter("projects.type", "all");
+  const [selectedDivisionFilter, setSelectedDivisionFilter] = useListFilter("projects.division", "all");
+  const [selectedManagerFilter, setSelectedManagerFilter] = useListFilter("projects.manager", "all");
   /* Star priority, same options as the leads list — see utils/rating.ts. */
-  const [selectedRatingFilter, setSelectedRatingFilter] = useState("all");
-  const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
+  const [selectedRatingFilter, setSelectedRatingFilter] = useListFilter("projects.rating", "all");
+  const [selectedArchiveFilter, setSelectedArchiveFilter] = useListFilter<"active" | "archived" | "all">("projects.archive", "active");
   /* Its own dimension rather than another status: a project can be late in any
      status, so "overdue" cannot live in the status dropdown. */
-  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useListFilter("projects.overdue", false);
 
   // Batch Multi-Selection State
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
@@ -1645,6 +1649,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         financialCategories={financialCategories}
         setFinancialCategories={setFinancialCategories}
         currencyCode={currencyCode}
+        companyBillingSettings={companyBillingSettings}
         canEdit={canEdit}
         canDelete={canDelete}
         financeAccess={financeAccess}
@@ -2955,6 +2960,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           financialCategories={financialCategories}
           setFinancialCategories={setFinancialCategories}
           currencyCode={currencyCode}
+          companyBillingSettings={companyBillingSettings}
           canEdit={canEdit}
           canDelete={canDelete}
           financeAccess={financeAccess}

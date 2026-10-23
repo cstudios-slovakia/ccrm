@@ -359,11 +359,7 @@ function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
 
 /** The company's default VAT rate (Settings → Billing); nothing else from that setting is read. */
 function mcp_default_vat_rate(\PDO $pdo): float {
-    $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'COMPANY_BILLING_SETTINGS'");
-    $stmt->execute();
-    $s = json_decode((string)$stmt->fetchColumn(), true);
-    $r = is_array($s) ? (float)($s['defaultVatRate'] ?? 0) : 0.0;
-    return $r > 0 ? $r : 20.0;
+    return ccrm_default_vat_rate($pdo);
 }
 
 /** Is an invoice's linked ledger movement settled (money recorded against it)? */
@@ -446,7 +442,7 @@ function mcp_do_create_invoice(\PDO $pdo, array $user, array $args): array {
                      VALUES (?, 'income', 'invoice', ?, ?, ?, 0, ?, 'pending', ?, ?, ?, ?, ?, 'bank_transfer', ?)"
                 )->execute([
                     'fr-inv-' . $invId, $docNum . ' — ' . $clientName, $title, $total, $currency, $issuedAt, $dueDate, $clientId, $docNum,
-                    $subtotal > 0 ? round($vatTotal / $subtotal * 100) : 20, $user['name'],
+                    $subtotal > 0 ? round($vatTotal / $subtotal * 100) : ccrm_default_vat_rate($pdo), $user['name'],
                 ]);
             }
         });
@@ -487,21 +483,30 @@ function mcp_do_update_invoice_status(\PDO $pdo, array $user, array $args): arra
             throw new \InvalidArgumentException("A {$doc['status']} document cannot be changed through MCP.");
         }
     } else {
-        $status = mcp_enum($args, 'status', ['draft', 'sent', 'cancelled', 'approved', 'rejected', 'invoiced', 'paid']);
-        if ($status === null) throw new \InvalidArgumentException("'status' is required.");
-        if (!in_array($status, ['draft', 'sent', 'cancelled'], true)) {
-            throw new \InvalidArgumentException("Status '{$status}' can only be set in the app: approving, invoicing and settling money change the books. MCP may set a document to draft, sent or cancelled.");
+        // Proformas and invoices have a configurable list of their own (Price offers → Settings →
+        // Invoice statuses), judged by group exactly like an offer's: approving, invoicing and
+        // settling money change the books, so MCP may only move a document between draft, open
+        // (sent) and cancelled statuses.
+        $status = isset($args['status']) ? trim((string)$args['status']) : '';
+        if ($status === '') throw new \InvalidArgumentException("'status' is required.");
+        $group = ccrm_invoice_status_group($status, $pdo);
+        if ($group === null) {
+            $keys = array_column(ccrm_invoice_status_defs($pdo), 'key');
+            throw new \InvalidArgumentException("Unknown invoice status '{$status}'. Valid: " . implode(', ', $keys) . '.');
+        }
+        if (!in_array($group, ['draft', 'open', 'cancelled'], true)) {
+            throw new \InvalidArgumentException("Status '{$status}' can only be set in the app: approving, invoicing and settling money change the books. MCP may set a document to a draft, sent or cancelled status.");
         }
         if ($doc['status'] === $status) return ['success' => true, 'id' => $id, 'status' => $status, 'message' => 'No change.'];
-        if (in_array($doc['status'], ['cancelled', 'invoiced'], true)) {
+        if (ccrm_invoice_status_group((string)$doc['status'], $pdo) === 'cancelled' || $doc['status'] === 'invoiced') {
             throw new \InvalidArgumentException("A {$doc['status']} document cannot be changed through MCP.");
         }
     }
 
-    mcp_tx($pdo, function () use ($pdo, $doc, $status, $id) {
+    mcp_tx($pdo, function () use ($pdo, $doc, $status, $group, $id) {
         $pdo->prepare("UPDATE invoices_offers SET status = ?, status_changed_at = ? WHERE id = ?")->execute([$status, mcp_today(), $id]);
         // A cancelled invoice is no longer expected income. Money already recorded against it stays (the app's rule).
-        if ($status === 'cancelled' && $doc['type'] === 'invoice') {
+        if ($group === 'cancelled' && $doc['type'] === 'invoice') {
             $pdo->prepare(
                 "UPDATE financial_records SET status = 'cancelled'
                  WHERE id = ? AND status NOT IN ('paid', 'partially_paid') AND amount_real = 0"

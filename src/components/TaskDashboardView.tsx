@@ -80,6 +80,7 @@ import { PageHeader } from "./layout";
 import { consumeLaunchIntent, parseLaunchIntent } from "../utils/launchIntent";
 import { isEmbedUrl } from "../utils/pwaInstallLogic";
 import { openTasksMiniWindow } from "../utils/popOut";
+import { useListFilter } from "../hooks/useListFilter";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
@@ -606,11 +607,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // badge excepted — that is a link) or by the matching dropdown, and each
     // shows as a removable chip in every section. "" / null shows everything;
     // the assignee uses "all" because the Global Tasks select always has.
-    const [clientFilter, setClientFilter] = useState("");
-    const [projectFilter, setProjectFilter] = useState("");
-    const [assigneeFilter, setAssigneeFilter] = useState("all");
-    const [assignerFilter, setAssignerFilter] = useState("all");
-    const [tagFilter, setTagFilter] = useState<string | null>(null);
+    const [clientFilter, setClientFilter] = useListFilter("tasks.client", "");
+    const [projectFilter, setProjectFilter] = useListFilter("tasks.project", "");
+    const [assigneeFilter, setAssigneeFilter] = useListFilter("tasks.assignee", "all");
+    const [assignerFilter, setAssignerFilter] = useListFilter("tasks.assigner", "all");
+    const [tagFilter, setTagFilter] = useListFilter<string | null>("tasks.tag", null);
     // My Tasks only: Global Tasks and Done & Archived have a date-range picker
     // for this. A due-date click there fills the picker instead.
     const [myDayFilter, setMyDayFilter] = useState("");
@@ -750,9 +751,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
     // Timeline view filter states
-    const [timelineFilter, setTimelineFilter] = useState<
+    const [timelineFilter, setTimelineFilter] = useListFilter<
         "all" | "created" | "completed"
-    >("all");
+    >("tasks.timeline", "all");
     const [timelineSearch, setTimelineSearch] = useState("");
     const [timelineSort, setTimelineSort] = useState<"newest" | "oldest">(
         "newest",
@@ -790,9 +791,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Archive filters state
     const [archiveSearchQuery, setArchiveSearchQuery] = useState("");
-    const [archivePriorityFilter, setArchivePriorityFilter] = useState("all");
-    const [archiveUserFilter, setArchiveUserFilter] = useState("all");
-    const [archiveTimingFilter, setArchiveTimingFilter] = useState("all");
+    const [archivePriorityFilter, setArchivePriorityFilter] = useListFilter("tasks.archivePriority", "all");
+    const [archiveUserFilter, setArchiveUserFilter] = useListFilter("tasks.archiveUser", "all");
+    const [archiveTimingFilter, setArchiveTimingFilter] = useListFilter("tasks.archiveTiming", "all");
 
     // Expand/collapse states for task buckets.
     // Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow,
@@ -940,8 +941,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     }, [activeBulkMenu]);
 
     // Global view filters & user list memo
-    const [globalPriorityFilter, setGlobalPriorityFilter] = useState("all");
-    const [globalStateFilter, setGlobalStateFilter] = useState("all");
+    const [globalPriorityFilter, setGlobalPriorityFilter] = useListFilter("tasks.globalPriority", "all");
+    const [globalStateFilter, setGlobalStateFilter] = useListFilter("tasks.globalState", "all");
     // The assignee filter (`assigneeFilter`, above): "all" keeps the whole-team
     // board; any other value narrows both halves of the split view to that one
     // project manager.
@@ -2915,7 +2916,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         );
                                     }}
                                     className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] type-overline !py-0.5 !px-2 truncate"
-                                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
+                                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st), color: taskStateColors[st] || "#64748b" }))}
                                 />
                             </div>
 
@@ -5520,6 +5521,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     tickets={tickets}
                     users={users}
                     taskStates={taskStates}
+                    taskStateColors={taskStateColors}
                     systemLanguage={systemLanguage}
                     currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}

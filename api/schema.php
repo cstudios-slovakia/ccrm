@@ -773,7 +773,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `sign_off_team` VARCHAR(150) NULL,
               `custom_template_id` VARCHAR(50) NULL,
               `custom_template_style_json` TEXT NULL,
-              `status` VARCHAR(50) NOT NULL DEFAULT 'draft' COMMENT 'Price offers: a key of OFFER_STATUSES. Proformas and invoices: draft, sent, approved, rejected, invoiced, cancelled',
+              `status` VARCHAR(50) NOT NULL DEFAULT 'draft' COMMENT 'Price offers: a key of OFFER_STATUSES. Proformas and invoices: a key of INVOICE_STATUSES (built-ins: draft, sent, invoiced, approved, rejected, cancelled)',
               `status_changed_at` DATE NULL COMMENT 'Day the status last changed (client-stamped)',
               `issued_at` DATE NOT NULL,
               `valid_until` DATE NULL,
@@ -2044,7 +2044,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 "CREATE TABLE IF NOT EXISTS `filed_mail_bodies` (
                   `event_id` VARCHAR(50) NOT NULL PRIMARY KEY,
                   `body` MEDIUMTEXT NULL,
-                  `attachments_json` TEXT NULL COMMENT 'Names and sizes only; the files stay on the mail server',
+                  `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,part,key?}; key names the file kept under uploads/private/mail/ (api/mail_attachments.php)',
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );

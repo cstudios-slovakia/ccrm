@@ -5,6 +5,7 @@ import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
+import { useListFilter, useListDateFilter } from "../hooks/useListFilter";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
 import {
@@ -22,6 +23,7 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { createPortal } from "react-dom";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { useFavorites } from "../utils/favorites";
+import { FAVORITES_GROUP, pinFavoriteLeads } from "../utils/favoriteLeads";
 import { LeadListViewMenu } from "./LeadListViewMenu";
 import {
     resolveLeadColumns,
@@ -418,6 +420,7 @@ const LeadStatusSelector: React.FC<LeadStatusSelectorProps> = ({
                 options={majorStates.map((state) => ({
                     value: state.toLowerCase(),
                     label: state,
+                    color: getStateColor(state),
                 }))}
             />
             {hasSubstates && (
@@ -445,7 +448,8 @@ const LeadStatusSelector: React.FC<LeadStatusSelectorProps> = ({
                         },
                         ...activeSubstates.map((sub) => ({
                             value: sub.toLowerCase(),
-                            label: `↳ ${sub}`,
+                            label: sub,
+                            color: getStateColor(sub),
                         })),
                     ]}
                 />
@@ -1055,7 +1059,7 @@ function LeadFilterToolbarControls({
 }
 
 /** Filters that sit on the first row while they fit, then drop to the expanded row. Time, then type, then the rest in their previous order. */
-const LEAD_OVERFLOW_FILTERS = ["time", "type", "division", "rating", "archive", "city", "source"] as const;
+const LEAD_OVERFLOW_FILTERS = ["time", "type", "division", "rating", "archive", "city", "source", "favoritesFirst"] as const;
 type LeadOverflowFilter = (typeof LEAD_OVERFLOW_FILTERS)[number];
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -1826,14 +1830,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Filters and Search
     const [searchQuery, setSearchQuery] = useState("");
+    // The filters below are remembered per user (see useListFilter): opening a
+    // lead and coming back finds the list as it was left.
+    //
     // `#leads?status=new` (the dashboard phase donut) opens the list already
-    // filtered to that pipeline stage. "all" when the param is absent.
-    const [selectedState, setSelectedState] = useState(leadStatusFromHash);
-    // Keep the stage filter and the hash in step: a donut click lands here
-    // already filtered, the dropdown (and Clear) rewrite `?status=`, and Back
-    // restores the previous stage.
+    // filtered to that pipeline stage, and wins over the remembered stage.
+    const [storedState, persistState] = useListFilter("leads.state", "all");
+    const [selectedState, setSelectedState] = useState(() => {
+        const fromHash = leadStatusFromHash();
+        return fromHash !== "all" ? fromHash : storedState;
+    });
     useEffect(() => {
-        const apply = () => setSelectedState(leadStatusFromHash());
+        // Mirror only: a change to the stored value from elsewhere is picked up on
+        // the next mount.
+        persistState(selectedState);
+    }, [selectedState, persistState]);
+    // Keep the stage filter and the hash in step: a donut click lands here
+    // already filtered and the dropdown (and Clear) rewrite `?status=`. A hash
+    // with no `status` says nothing about the stage — closing a lead lands on
+    // plain `#leads` — so it leaves the filter alone.
+    useEffect(() => {
+        const apply = () => {
+            const { route, params } = parseAppHash(window.location.hash);
+            const status = (params.get("status") || "").trim().toLowerCase();
+            if (route === "leads" && status) setSelectedState(status);
+        };
         window.addEventListener("hashchange", apply);
         return () => window.removeEventListener("hashchange", apply);
     }, []);
@@ -1847,19 +1868,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (next) params.set("status", next);
         else params.delete("status");
         const qs = params.toString();
-        window.location.hash = qs ? `leads?${qs}` : "leads";
+        // replaceState: the filter is not a navigation, so it adds no Back entry
+        // (which would otherwise bounce back to the stage-less hash and re-apply).
+        window.history.replaceState(null, "", `#${qs ? `leads?${qs}` : "leads"}`);
     }, [selectedState]);
-    const [selectedSource, setSelectedSource] = useState("all");
-    const [selectedDivision, setSelectedDivision] = useState("all");
-    const [selectedType, setSelectedType] = useState("all");
+    const [selectedSource, setSelectedSource] = useListFilter("leads.source", "all");
+    const [selectedDivision, setSelectedDivision] = useListFilter("leads.division", "all");
+    const [selectedType, setSelectedType] = useListFilter("leads.type", "all");
 
     // Offer date filter states
-    const [filterOfferStartDate, setFilterOfferStartDate] =
-        useState<Date | null>(null);
-    const [filterOfferEndDate, setFilterOfferEndDate] = useState<Date | null>(
-        null,
-    );
-    const [offerPresetName, setOfferPresetName] = useState<string>("All Time");
+    const [filterOfferStartDate, setFilterOfferStartDate] = useListDateFilter("leads.offerStart");
+    const [filterOfferEndDate, setFilterOfferEndDate] = useListDateFilter("leads.offerEnd");
+    const [offerPresetName, setOfferPresetName] = useListFilter<string>("leads.offerPreset", "All Time");
     const [isOfferDatePickerOpen, setIsOfferDatePickerOpen] = useState(false);
 
     // Collapsed bar: search, lead state, PM, list/kanban, favorites, view.
@@ -1871,15 +1891,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (!next) setIsOfferDatePickerOpen(false);
         setStoredShowFilters(next);
     };
-    const [selectedOwner, setSelectedOwner] = useState("all");
-    const [selectedCity, setSelectedCity] = useState("all");
+    const [selectedOwner, setSelectedOwner] = useListFilter("leads.owner", "all");
+    const [selectedCity, setSelectedCity] = useListFilter("leads.city", "all");
     // Client importance filter. "all" = off, "none" = leads nobody rated yet,
     // "5".."1" = that exact star count, "min4"/"min3" = that many stars and up.
-    const [selectedRating, setSelectedRating] = useState("all");
-    const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
+    const [selectedRating, setSelectedRating] = useListFilter("leads.rating", "all");
+    const [selectedArchiveFilter, setSelectedArchiveFilter] = useListFilter<"active" | "archived" | "all">("leads.archive", "active");
     // Favorites state & hook
     const { isFavorite } = useFavorites();
-    const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
+    const [filterFavoritesOnly, setFilterFavoritesOnly] = useListFilter("leads.favoritesOnly", false);
+    // Favorites in a group of their own above the rest (list and kanban). A
+    // display choice, not a filter, so it persists and "Clear" leaves it alone.
+    const [storedFavoritesFirst, setFavoritesFirst] = useUserPref("leadsFavoritesFirst");
+    const favoritesFirst = storedFavoritesFirst ?? false;
 
     // Multi-selection & Bulk action toolbar state
     const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
@@ -2032,6 +2056,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return selectedCity !== "all";
             case "source":
                 return selectedSource !== "all";
+            case "favoritesFirst":
+                // A display choice, not a filter: no "filters are active" dot.
+                return false;
         }
     };
 
@@ -2650,14 +2677,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [logContent, setLogContent] = useState("");
     const [logAmount, setLogAmount] = useState("");
     const [logTime, setLogTime] = useState("");
-    const [logFileName, setLogFileName] = useState("");
-    const [logFileSize, setLogFileSize] = useState("");
     const [logFileType, setLogFileType] = useState<
         "offer" | "contract" | "invoice"
     >("offer");
-    const [logFileObject, setLogFileObject] = useState<File | null>(null);
-    // Documents attached to a business-document event. Several PDFs can be filed
-    // under one event (e.g. a batch of advance invoices).
+    // Documents attached to an offer or business-document event. Several files can
+    // be filed under one event (e.g. a batch of advance invoices).
     const [logDocumentFiles, setLogDocumentFiles] = useState<File[]>([]);
     const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
 
@@ -3526,79 +3550,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }
 
         const eventId = "evt_" + Math.random().toString(36).substr(2, 9);
-        let finalFileName =
-            logType === "offer" && logFileName ? logFileName : undefined;
-        let finalFileSize =
-            logType === "offer" && logFileSize ? logFileSize : undefined;
+        let finalFileName: string | undefined;
+        let finalFileSize: string | undefined;
         let finalFilePath: string | undefined;
         let finalAttachments: TimelineAttachment[] | undefined;
-
-        // Handle physical file upload to backend if present
-        if (logType === "offer" && logFileObject) {
-            try {
-                const formData = new FormData();
-                formData.append("file", logFileObject);
-                formData.append("eventId", eventId);
-
-                const uploadRes = await fetch("/upload.php", {
-                    method: "POST",
-                    body: formData,
-                });
-
-                if (!uploadRes.ok) {
-                    const errData = await uploadRes.json().catch(() => ({}));
-                    throw new Error(
-                        errData.error ||
-                            t(
-                                "Failed to upload file",
-                                "Nahranie súboru zlyhalo",
-                                "A fájl feltöltése sikertelen",
-                            ),
-                    );
-                }
-
-                const uploadData = await uploadRes.json();
-                if (uploadData.success) {
-                    finalFileName = uploadData.fileName || logFileObject.name;
-                    finalFilePath = uploadData.filePath;
-                    // `filePath` has no column of its own — only attachments_json
-                    // survives a sync round trip. Without this the stored path is
-                    // lost on the next reload and the preview has to guess the URL
-                    // back from the event id and the file name.
-                    if (uploadData.filePath) {
-                        finalAttachments = [
-                            {
-                                name: finalFileName || logFileObject.name,
-                                size: finalFileSize || (logFileObject.size / 1024 / 1024).toFixed(2) + " MB",
-                                path: uploadData.filePath,
-                            },
-                        ];
-                    }
-                    // The server only returns extracted text when it is genuinely readable
-                    // (its quality filter drops binary/metadata noise from any format,
-                    // including PDFs), so append whatever comes back. Garbage arrives empty.
-                    if (uploadData.extractedText) {
-                        contentString = `${contentString}\n\n--- Document Content ---\n${uploadData.extractedText}`;
-                    }
-                }
-            } catch (err: any) {
-                console.error(err);
-                (window as any).showToast(
-                    err.message ||
-                        t(
-                            "Failed to upload document file!",
-                            "Nahranie dokumentu zlyhalo!",
-                            "A dokumentum feltöltése sikertelen!",
-                        ),
-                );
-                return;
-            }
-        }
 
         // Business-document events can carry several files. They are uploaded one by
         // one under a per-file id prefix so two documents with the same name cannot
         // overwrite each other on disk.
-        if (isDocumentEventType(logType) && logDocumentFiles.length > 0) {
+        if (
+            (isDocumentEventType(logType) || logType === "offer") &&
+            logDocumentFiles.length > 0
+        ) {
             setIsUploadingDocuments(true);
             try {
                 const uploaded: TimelineAttachment[] = [];
@@ -3773,9 +3736,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setLogContent("");
         setLogAmount("");
         setLogTime("");
-        setLogFileName("");
-        setLogFileSize("");
-        setLogFileObject(null);
         setLogDocumentFiles([]);
         setLogType(null);
 
@@ -5059,12 +5019,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         // Now filter by visibility settings
         if (leadSort.key === "state") {
             // For state-grouped mode, we filter the groups/columns themselves
-            return rawGrouped.filter((group) =>
+            const visible = rawGrouped.filter((group) =>
                 resolvedVisibleStates.includes(group.state.toLowerCase()),
             );
+            return favoritesFirst
+                ? pinFavoriteLeads(visible, isFavorite, false)
+                : visible;
         } else {
             // For other sorting modes, we filter individual leads in each group, and hide empty groups
-            return rawGrouped
+            const visible = rawGrouped
                 .map((group) => ({
                     ...group,
                     leads: group.leads.filter((lead) => {
@@ -5077,6 +5040,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     }),
                 }))
                 .filter((group) => group.leads.length > 0);
+            return favoritesFirst
+                ? pinFavoriteLeads(visible, isFavorite, true)
+                : visible;
         }
     }, [
         processedLeads,
@@ -5084,8 +5050,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         leadSort,
         resolvedVisibleStates,
         leadStateParents,
+        favoritesFirst,
+        isFavorite,
         t,
     ]);
+
+    // Kanban columns: the stages, with the favorites as a column of their own first.
+    const kanbanColumns = useMemo(() => {
+        const columns = stateGroupedLeads.filter((group) =>
+            resolvedVisibleStates.includes(group.state.toLowerCase()),
+        );
+        return favoritesFirst ? pinFavoriteLeads(columns, isFavorite, false) : columns;
+    }, [stateGroupedLeads, resolvedVisibleStates, favoritesFirst, isFavorite]);
 
     // Order all major states and their associated substates sequentially for the progress bar
     const orderedAllStates = useMemo(() => {
@@ -6990,6 +6966,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     (st) => ({
                                                                         value: st,
                                                                         label: st,
+                                                                        color: taskStateColors[st] || "#64748b",
                                                                     }),
                                                                 )}
                                                             />
@@ -7740,180 +7717,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-ui"
                                                             />
                                                         </div>
-                                                        <div className="space-y-1 animate-in slide-in-from-left duration-200">
-                                                            <label className="type-overline text-slate-500">
-                                                                {getTranslation(
-                                                                    systemLanguage,
-                                                                    "logger.attach_doc",
-                                                                )}
-                                                            </label>
-                                                            <div className="flex items-center gap-2">
-                                                                <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer type-overline shadow-sm select-none shrink-0">
-                                                                    <FolderOpen className="h-4 w-4" />
-                                                                    <span>
-                                                                        {getTranslation(
-                                                                            systemLanguage,
-                                                                            "logger.choose_file",
-                                                                        )}
-                                                                    </span>
-                                                                    <input
-                                                                        type="file"
-                                                                        className="hidden"
-                                                                        onChange={(
-                                                                            e,
-                                                                        ) => {
-                                                                            const file =
-                                                                                e
-                                                                                    .target
-                                                                                    .files?.[0];
-                                                                            if (
-                                                                                file
-                                                                            ) {
-                                                                                const MAX_MB = 64;
-                                                                                if (
-                                                                                    file.size >
-                                                                                    MAX_MB *
-                                                                                        1024 *
-                                                                                        1024
-                                                                                ) {
-                                                                                    (
-                                                                                        window as any
-                                                                                    ).showToast?.(
-                                                                                        t(
-                                                                                            `File is too large (max ${MAX_MB} MB).`,
-                                                                                            `Súbor je príliš veľký (max ${MAX_MB} MB).`,
-                                                                                            `A fájl túl nagy (max ${MAX_MB} MB).`,
-                                                                                        ),
-                                                                                    );
-                                                                                    e.target.value =
-                                                                                        "";
-                                                                                    return;
-                                                                                }
-                                                                                setLogFileName(
-                                                                                    file.name,
-                                                                                );
-                                                                                setLogFileSize(
-                                                                                    (
-                                                                                        file.size /
-                                                                                        1024 /
-                                                                                        1024
-                                                                                    ).toFixed(
-                                                                                        2,
-                                                                                    ) +
-                                                                                        " MB",
-                                                                                );
-                                                                                setLogFileObject(
-                                                                                    file,
-                                                                                );
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                </label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={getTranslation(
-                                                                        systemLanguage,
-                                                                        "logger.no_file",
-                                                                    )}
-                                                                    value={
-                                                                        logFileName
-                                                                            ? `${logFileName} (${logFileSize})`
-                                                                            : ""
-                                                                    }
-                                                                    readOnly
-                                                                    className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-micro text-slate-500 font-bold"
-                                                                />
-                                                                {logFileName && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            setLogFileName(
-                                                                                "",
-                                                                            );
-                                                                            setLogFileSize(
-                                                                                "",
-                                                                            );
-                                                                            setLogFileObject(
-                                                                                null,
-                                                                            );
-                                                                        }}
-                                                                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl animate-in fade-in"
-                                                                    >
-                                                                        <X className="h-4 w-4" />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {logFileName && (
-                                                            <div className="ws-md:col-span-2 space-y-1.5 animate-in slide-in-from-top-2 duration-200 border-t border-slate-100 pt-3">
-                                                                <label className="type-overline text-slate-500">
-                                                                    {getTranslation(
-                                                                        systemLanguage,
-                                                                        "logger.specify_type",
-                                                                    )}
-                                                                </label>
-                                                                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
-                                                                    {(
-                                                                        [
-                                                                            "offer",
-                                                                            "contract",
-                                                                            "invoice",
-                                                                        ] as const
-                                                                    ).map(
-                                                                        (
-                                                                            type,
-                                                                        ) => (
-                                                                            <button
-                                                                                key={
-                                                                                    type
-                                                                                }
-                                                                                type="button"
-                                                                                onClick={() =>
-                                                                                    setLogFileType(
-                                                                                        type,
-                                                                                    )
-                                                                                }
-                                                                                className={`py-1.5 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
-                                                                                    logFileType ===
-                                                                                    type
-                                                                                        ? "bg-amber-700 text-white border border-amber-800 shadow"
-                                                                                        : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
-                                                                                }`}
-                                                                            >
-                                                                                <span>
-                                                                                    {type ===
-                                                                                        "offer" &&
-                                                                                        getTranslation(
-                                                                                            systemLanguage,
-                                                                                            "logger.type.offer",
-                                                                                        )}
-                                                                                    {type ===
-                                                                                        "contract" &&
-                                                                                        getTranslation(
-                                                                                            systemLanguage,
-                                                                                            "logger.type.contract",
-                                                                                        )}
-                                                                                    {type ===
-                                                                                        "invoice" &&
-                                                                                        getTranslation(
-                                                                                            systemLanguage,
-                                                                                            "logger.type.invoice",
-                                                                                        )}
-                                                                                </span>
-                                                                            </button>
-                                                                        ),
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        )}
                                                     </>
                                                 )}
 
                                                 {/* Business documents: several files per event. */}
-                                                {isDocumentEventType(
-                                                    logType,
-                                                ) && (
+                                                {(isDocumentEventType(logType) ||
+                                                    logType === "offer") && (
                                                     <div className="ws-md:col-span-2 space-y-2 animate-in slide-in-from-left duration-200">
                                                         <label className="type-overline text-slate-500">
                                                             {t(
@@ -8078,6 +7887,70 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     ),
                                                                 )}
                                                             </ul>
+                                                        )}
+                                                        {logType === "offer" &&
+                                                            logDocumentFiles.length >
+                                                                0 && (
+                                                            <div className="space-y-1.5 animate-in slide-in-from-top-2 duration-200 border-t border-slate-100 pt-3">
+                                                                <label className="type-overline text-slate-500">
+                                                                    {getTranslation(
+                                                                        systemLanguage,
+                                                                        "logger.specify_type",
+                                                                    )}
+                                                                </label>
+                                                                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
+                                                                    {(
+                                                                        [
+                                                                            "offer",
+                                                                            "contract",
+                                                                            "invoice",
+                                                                        ] as const
+                                                                    ).map(
+                                                                        (
+                                                                            type,
+                                                                        ) => (
+                                                                            <button
+                                                                                key={
+                                                                                    type
+                                                                                }
+                                                                                type="button"
+                                                                                onClick={() =>
+                                                                                    setLogFileType(
+                                                                                        type,
+                                                                                    )
+                                                                                }
+                                                                                className={`py-1.5 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
+                                                                                    logFileType ===
+                                                                                    type
+                                                                                        ? "bg-amber-700 text-white border border-amber-800 shadow"
+                                                                                        : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                                }`}
+                                                                            >
+                                                                                <span>
+                                                                                    {type ===
+                                                                                        "offer" &&
+                                                                                        getTranslation(
+                                                                                            systemLanguage,
+                                                                                            "logger.type.offer",
+                                                                                        )}
+                                                                                    {type ===
+                                                                                        "contract" &&
+                                                                                        getTranslation(
+                                                                                            systemLanguage,
+                                                                                            "logger.type.contract",
+                                                                                        )}
+                                                                                    {type ===
+                                                                                        "invoice" &&
+                                                                                        getTranslation(
+                                                                                            systemLanguage,
+                                                                                            "logger.type.invoice",
+                                                                                        )}
+                                                                                </span>
+                                                                            </button>
+                                                                        ),
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 )}
@@ -10661,6 +10534,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 />
                         </div>
                 );
+            case "favoritesFirst":
+                return (
+                        <label
+                            className={`shrink-0 w-max h-10 flex items-center gap-2 rounded-xl border px-2.5 text-ui font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                                favoritesFirst
+                                    ? "bg-rose-50 border-rose-200 text-rose-700"
+                                    : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                            }`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={favoritesFirst}
+                                onChange={(e) => setFavoritesFirst(e.target.checked)}
+                                className="h-3.5 w-3.5 accent-rose-500 cursor-pointer"
+                            />
+                            <Heart className={`h-3.5 w-3.5 shrink-0 ${favoritesFirst ? "fill-rose-500 text-rose-500" : "text-slate-400"}`} />
+                            <span>{t("Show favorite leads always as first", "Obľúbené leady vždy ako prvé", "Kedvenc leadek mindig elöl")}</span>
+                        </label>
+                );
             default:
                 return null;
         }
@@ -10989,6 +10881,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                             <tbody className="divide-y-0 ws-lg:divide-y ws-lg:divide-blue-50 text-ui block ws-lg:table-row-group">
                                 {groupedLeads.map((group) => {
+                                    const isFavoritesGroup =
+                                        group.state === FAVORITES_GROUP;
                                     const stateColor =
                                         group.colorOverride ||
                                         getSafeStateColor(group.state);
@@ -11008,7 +10902,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <React.Fragment key={group.state}>
                                             {/* State/PM Group Header Row */}
                                             {(leadSort.key === "state" ||
-                                                leadSort.key === "pm") && (
+                                                leadSort.key === "pm" ||
+                                                isFavoritesGroup) && (
                                                 <tr
                                                     onClick={() =>
                                                         toggleGroupCollapse(group.state)
@@ -11051,7 +10946,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         color: stateColor,
                                                                     }}
                                                                 >
-                                                                    {leadSort.key ===
+                                                                    {isFavoritesGroup ? (
+                                                                        <span className="inline-flex items-center gap-1.5">
+                                                                            <Heart className="h-3.5 w-3.5 fill-current" />
+                                                                            {t("Favorites", "Obľúbené", "Kedvencek")}
+                                                                        </span>
+                                                                    ) : leadSort.key ===
                                                                     "pm"
                                                                         ? `${t("Project Manager", "Projektový manažér", "Projektmenedzser")}: ${group.state}`
                                                                         : group.state}
@@ -11099,7 +10999,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     color: stateColor,
                                                                 }}
                                                             >
-                                                                {leadSort.key ===
+                                                                {isFavoritesGroup
+                                                                    ? t(
+                                                                          "FAVORITES VALUE",
+                                                                          "HODNOTA OBĽÚBENÝCH",
+                                                                          "KEDVENCEK ÉRTÉKE",
+                                                                      )
+                                                                    : leadSort.key ===
                                                                 "pm"
                                                                     ? t(
                                                                           "MANAGER VALUE",
@@ -11177,10 +11083,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 backgroundColor:
                                                                                     isInlineEditing
                                                                                         ? `${leadColor}15`
-                                                                                        : hoveredLeadId ===
-                                                                                            lead.id
-                                                                                          ? `${leadColor}12`
-                                                                                          : `${leadColor}06`,
+                                                                                        : isFavoritesGroup
+                                                                                          ? `${stateColor}${hoveredLeadId === lead.id ? "22" : "12"}`
+                                                                                          : hoveredLeadId ===
+                                                                                              lead.id
+                                                                                            ? `${leadColor}12`
+                                                                                            : `${leadColor}06`,
                                                                             }}
                                                                         >
                                                                             {/* ============================================================ */}
@@ -11950,16 +11858,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 ) : (
                     <div>
                     <div ref={setBoardEl} className="flex flex-row gap-5 overflow-x-auto p-5 pb-6 items-stretch min-h-145 scrollbar-thin select-none bg-slate-50/20">
-                        {stateGroupedLeads
-                            .filter((group) =>
-                                resolvedVisibleStates.includes(
-                                    group.state.toLowerCase(),
-                                ),
-                            )
+                        {kanbanColumns
                             .map((group, index) => {
-                                const stateColor = getSafeStateColor(
-                                    group.state,
-                                );
+                                const isFavoritesGroup =
+                                    group.state === FAVORITES_GROUP;
+                                const stateColor =
+                                    group.colorOverride ||
+                                    getSafeStateColor(group.state);
                                 const totalVal = group.leads.reduce(
                                     (sum, l) => sum + l.value,
                                     0,
@@ -11979,6 +11884,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         )}
                                         <div
                                             onDragOver={(e) => {
+                                                // Favorites are not a state: nothing to drop onto.
+                                                if (isFavoritesGroup) return;
                                                 e.preventDefault();
                                                 setDragOverColumn(columnState);
                                             }}
@@ -11988,21 +11895,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             onDrop={(e) => {
                                                 e.preventDefault();
                                                 setDragOverColumn(null);
-                                                if (draggedLeadId) {
+                                                if (draggedLeadId && !isFavoritesGroup) {
                                                     handleLeadDrop(
                                                         draggedLeadId,
                                                         group.state,
                                                     );
                                                 }
                                             }}
-                                            className={`flex flex-col min-w-71.25 max-w-80 flex-1 rounded-[26px] bg-slate-50/40 border-2 transition-all duration-300 ${
+                                            className={`flex flex-col min-w-71.25 max-w-80 flex-1 rounded-[26px] border-2 transition-all duration-300 ${
+                                                isFavoritesGroup
+                                                    ? "bg-rose-50/60"
+                                                    : "bg-slate-50/40"
+                                            } ${
                                                 compactMode
                                                     ? "p-2.5 gap-2"
                                                     : "p-4 gap-4"
                                             } ${
                                                 isOver
                                                     ? "border-dashed border-blue-400 bg-blue-50/15 scale-[0.99] shadow-inner"
-                                                    : "border-slate-100"
+                                                    : isFavoritesGroup
+                                                      ? "border-rose-100"
+                                                      : "border-slate-100"
                                             }`}
                                         >
                                             {/* Column Header */}
@@ -12016,7 +11929,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         }}
                                                     />
                                                     <span className="type-overline text-slate-800">
-                                                        {group.state}
+                                                        {isFavoritesGroup
+                                                            ? t("Favorites", "Obľúbené", "Kedvencek")
+                                                            : group.state}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
@@ -12349,8 +12264,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                         {/* Card Substate Selector Dropdown */}
                                                                         {(() => {
+                                                                            // The card's own stage: the favorites
+                                                                            // column holds leads of every stage.
+                                                                            const ownStatus =
+                                                                                lead.status.toLowerCase();
                                                                             const activeMain =
-                                                                                group.state.toLowerCase();
+                                                                                leadStateParents[ownStatus]?.toLowerCase() ??
+                                                                                ownStatus;
                                                                             const activeSubstates =
                                                                                 leadStates.filter(
                                                                                     (

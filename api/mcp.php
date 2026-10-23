@@ -965,12 +965,12 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'update_invoice_status',
-            'description' => 'Set a document to draft, sent or cancelled. For a price offer, "sent" means any configured status of the open group (and "draft"/"cancelled" the draft/cancelled groups), given by its key. Approving, invoicing and settling money cannot be done through MCP (they change the books). Cancelling an invoice cancels its unsettled ledger movement; money already recorded stays.',
+            'description' => 'Set a document to draft, sent or cancelled. Statuses are configurable (Price offers → Settings): "sent" means any configured status of the open group, and "draft"/"cancelled" the draft/cancelled groups, given by its key. Proformas and invoices use their own list, offers theirs. Approving, invoicing and settling money cannot be done through MCP (they change the books). Cancelling an invoice cancels its unsettled ledger movement; money already recorded stays.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'string', 'description' => 'Invoice ID'],
-                    'status' => ['type' => 'string', 'description' => 'New status: draft, sent or cancelled; for a price offer, the key of a configured status in the draft, open or cancelled group']
+                    'status' => ['type' => 'string', 'description' => 'The key of a status in the draft, open or cancelled group (built-ins: draft, sent, cancelled)']
                 ],
                 'required' => ['id', 'status']
             ]

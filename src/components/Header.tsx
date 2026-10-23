@@ -639,17 +639,19 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
                 <>
                     {/* Brand Title */}
-                    <div className="flex flex-col shrink-0">
-                        <h1 className="text-body xs:text-title-sm font-heading font-extrabold text-slate-900 leading-none">
+                    <div className="flex flex-col min-w-0 shrink">
+                        <h1 className="text-body xs:text-title-sm font-heading font-extrabold text-slate-900 leading-none truncate">
                             {systemName}
                         </h1>
                     </div>
 
                     {/* Universal Search bar & Favorites in the center (Desktop & Tablet) */}
-                    <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 mx-2 sm:mx-4">
+                    {/* The group takes the slack between brand and utilities and the search
+                        gives way first, so the utilities (profile last) are never pushed off screen. */}
+                    <div className="hidden sm:flex flex-1 min-w-0 items-center justify-center gap-1.5 sm:gap-2 mx-2 sm:mx-4">
                         <div
                             ref={searchContainerRef}
-                            className="relative sm:w-48 md:w-72 lg:w-96"
+                            className="relative flex-1 min-w-24 sm:max-w-48 md:max-w-72 lg:max-w-96"
                         >
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
@@ -1174,7 +1176,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
                                         </span>
                                     </div>
-                                    <span className="text-ui font-bold tracking-tight text-amber-800 hidden md:inline">
+                                    <span className="text-ui font-bold tracking-tight text-amber-800 hidden lg:inline">
                                         {t("Enable Notifications", "Zapnúť upozornenia", "Értesítések bekapcsolása")}
                                     </span>
                                 </button>

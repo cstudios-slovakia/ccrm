@@ -74,6 +74,26 @@ $byKey = array_column($out, null, 'key');
 $check('legacy survives a round trip and is forced on for the built-in invoiced',
     ($byKey['invoiced']['legacy'] ?? null) === true && ($byKey['old']['legacy'] ?? null) === true && !isset($byKey['new']['legacy']));
 
+// ── proformas and invoices: a list of their own ──────────────────────────────
+$invoiceDefaults = ccrm_default_invoice_status_defs();
+$invoiceKeys = ['draft', 'sent', 'invoiced', 'approved', 'rejected', 'cancelled'];
+foreach ([null, 'x', 3, [], [['key' => '', 'group' => 'draft']]] as $junk) {
+    if ($keys(ccrm_normalize_offer_statuses($junk, $invoiceDefaults)) !== $invoiceKeys) { $check('junk input gives the invoice built-ins', false); break; }
+}
+$check('nothing stored, junk and an emptied list give the six invoice built-ins, in the order the client uses', true);
+$check('a list nobody edited normalizes to itself', ccrm_normalize_offer_statuses($invoiceDefaults, $invoiceDefaults) === $invoiceDefaults);
+$check('on an invoice `invoiced` is a real status, not the legacy one it is on an offer',
+    !isset(array_column($invoiceDefaults, null, 'key')['invoiced']['legacy'])
+    && ccrm_normalize_offer_statuses($invoiceDefaults, $invoiceDefaults)[2]['key'] === 'invoiced');
+$out = ccrm_normalize_offer_statuses([['key' => 'sent', 'group' => 'open']], $invoiceDefaults);
+$check('a list with nowhere to start falls back to the invoice built-ins, not the offer ones', $keys($out) === $invoiceKeys);
+$out = ccrm_normalize_offer_statuses([
+    ['key' => 'draft'], ['key' => 'paid', 'label' => 'Zaplatená', 'color' => '#00ff00', 'group' => 'won'], ['key' => 'invoiced', 'color' => 'nonsense'],
+], $invoiceDefaults);
+$byKey = array_column($out, null, 'key');
+$check('custom invoice statuses are kept, and a built-in takes its colour from the invoice defaults',
+    $keys($out) === ['draft', 'paid', 'invoiced'] && $byKey['invoiced']['color'] === '#10b981' && !isset($byKey['invoiced']['legacy']) && $byKey['paid']['label'] === 'Zaplatená');
+
 // ── database ──────────────────────────────────────────────────────────────────
 $dsn = getenv('CCRM_TEST_DSN');
 if ($dsn) {
@@ -109,6 +129,9 @@ if ($dsn) {
     $check('the first status of a group skips the legacy one',
         ccrm_offer_status_in_group('won', $pdo) === 'approved' && ccrm_offer_status_in_group('open', $pdo) === 'sent'
         && ccrm_offer_status_in_group('draft', $pdo) === 'draft');
+    $check('proformas and invoices read their own list: built-ins until one is stored',
+        ccrm_invoice_status_group('invoiced', $pdo) === 'won' && ccrm_invoice_status_group('rejected', $pdo) === 'lost'
+        && ccrm_invoice_status_group('cancelled', $pdo) === 'cancelled' && ccrm_invoice_status_group('paid', $pdo) === null);
     $pdo->exec('DROP TABLE `invoices_offers`');
     $pdo->exec('DROP TABLE `system_settings`');
 } else {

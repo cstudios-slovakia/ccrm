@@ -22,9 +22,13 @@
                invoice stopped being tied to its offer). A legacy status is not
                offered in a picker, except on an offer that already has it.
 
-  Proformas and invoices share the `status` column but keep the fixed built-in
-  set: their statuses are tied to the invoicing providers and to the finance
-  bridge, and nobody asked to configure them.
+  Proformas and invoices share the `status` column and have a list of their own
+  (Price offers → Settings → Invoice statuses), built the same way: one list for
+  both, because a proforma and an invoice are settled the same way. Its defaults
+  are DEFAULT_INVOICE_STATUS_DEFS, and the groups mean what they mean for an
+  offer, read for money: `won` = invoiced / settled, `lost` = rejected,
+  `cancelled` = withdrawn. What the finance ledger expects (invoiceFinanceBridge)
+  is decided by group too, so renaming or adding a status never changes it.
 
   Mirrored by ccrm_offer_status_defs() in api/auth.php, which validates what
   the API and the MCP tools may write.
@@ -56,12 +60,29 @@ const BUILTIN_OFFER_STATUS_LABELS: Record<string, [string, string, string]> = {
   cancelled: ["Cancelled", "Zrušená", "Törölve"],
 };
 
+const INVOICED_STATUS_LABEL: [string, string, string] = ["Invoiced", "Vyfakturovaná", "Kiszámlázva"];
+
 /** What an installation that never opened the editor has. */
 export const DEFAULT_OFFER_STATUS_DEFS: readonly OfferStatusDef[] = [
   { key: "draft", color: "#64748b", group: "draft" },
   { key: "sent", color: "#3b82f6", group: "open" },
   { key: "approved", color: "#10b981", group: "won" },
   { key: "invoiced", color: "#10b981", group: "won", legacy: true },
+  { key: "rejected", color: "#f43f5e", group: "lost" },
+  { key: "cancelled", color: "#f43f5e", group: "cancelled" },
+];
+
+/**
+ * What an installation that never opened the invoice-status editor has: the six
+ * statuses a proforma or an invoice always had. Unlike for an offer, `invoiced`
+ * is a real, selectable status (it is what a paid order's invoice starts in),
+ * so it is not legacy, and it comes first in its group.
+ */
+export const DEFAULT_INVOICE_STATUS_DEFS: readonly OfferStatusDef[] = [
+  { key: "draft", color: "#64748b", group: "draft" },
+  { key: "sent", color: "#3b82f6", group: "open" },
+  { key: "invoiced", color: "#10b981", group: "won" },
+  { key: "approved", color: "#10b981", group: "won" },
   { key: "rejected", color: "#f43f5e", group: "lost" },
   { key: "cancelled", color: "#f43f5e", group: "cancelled" },
 ];
@@ -83,8 +104,11 @@ const isGroup = (value: unknown): value is OfferStatusGroup =>
  * malformed blob, a list emptied by hand — falls back to the built-ins, and so
  * does a list with nowhere for a new offer to start (no `draft` status).
  */
-export const normalizeOfferStatusDefs = (raw: unknown): OfferStatusDef[] => {
-  const defaults = () => DEFAULT_OFFER_STATUS_DEFS.map((d) => ({ ...d }));
+export const normalizeOfferStatusDefs = (
+  raw: unknown,
+  builtins: readonly OfferStatusDef[] = DEFAULT_OFFER_STATUS_DEFS,
+): OfferStatusDef[] => {
+  const defaults = () => builtins.map((d) => ({ ...d }));
   if (!Array.isArray(raw)) return defaults();
   const seen = new Set<string>();
   const out: OfferStatusDef[] = [];
@@ -94,7 +118,7 @@ export const normalizeOfferStatusDefs = (raw: unknown): OfferStatusDef[] => {
     const key = String(rec.key ?? "").trim();
     if (!key || key.length > MAX_KEY_LENGTH || seen.has(key)) continue;
     seen.add(key);
-    const builtin = DEFAULT_OFFER_STATUS_DEFS.find((d) => d.key === key);
+    const builtin = builtins.find((d) => d.key === key);
     const color = HEX_COLOR.test(String(rec.color ?? ""))
       ? String(rec.color).toLowerCase()
       : builtin?.color ?? NEW_OFFER_STATUS_COLOR;
@@ -108,6 +132,10 @@ export const normalizeOfferStatusDefs = (raw: unknown): OfferStatusDef[] => {
   if (!out.some((d) => d.group === "draft" && !d.legacy)) return defaults();
   return OFFER_STATUS_GROUPS.flatMap((g) => out.filter((d) => d.group === g));
 };
+
+/** The invoice / proforma list, cleaned up the same way, with its own built-ins. */
+export const normalizeInvoiceStatusDefs = (raw: unknown): OfferStatusDef[] =>
+  normalizeOfferStatusDefs(raw, DEFAULT_INVOICE_STATUS_DEFS);
 
 /**
  * A key for a status added under `name`: the name folded to ASCII snake case,
@@ -149,7 +177,8 @@ export const offerStatusLabel = (
   const key = String(status ?? "").trim();
   const def = findStatus(key, statuses);
   if (def?.label) return def.label;
-  const builtin = BUILTIN_OFFER_STATUS_LABELS[key];
+  // `invoiced` reads "Approved (invoiced)" on an offer, where it is legacy, and plain "Invoiced" where it is a real status.
+  const builtin = key === "invoiced" && def && !def.legacy ? INVOICED_STATUS_LABEL : BUILTIN_OFFER_STATUS_LABELS[key];
   return builtin ? t(builtin[0], builtin[1], builtin[2]) : key;
 };
 
@@ -180,6 +209,30 @@ export const firstOfferStatusOf = (
 export const defaultOfferStatus = (statuses: readonly OfferStatusDef[] = DEFAULT_OFFER_STATUS_DEFS): string =>
   firstOfferStatusOf("draft", statuses) ?? statuses[0]?.key ?? "draft";
 
+/**
+ * An invoice in this status is still expected income: neither turned down
+ * (`lost`) nor withdrawn (`cancelled`). A status the list does not know counts as
+ * live, as any status once did.
+ */
+export const isLiveInvoiceStatus = (
+  status: string | undefined | null,
+  statuses: readonly OfferStatusDef[] = DEFAULT_INVOICE_STATUS_DEFS,
+): boolean => {
+  const group = offerStatusGroup(status, statuses);
+  return group !== "lost" && group !== "cancelled";
+};
+
+/**
+ * The status a freshly issued invoice starts in: the first "won" one when the
+ * order behind it is already paid (it is settled), else the first "open" one
+ * (sent, waiting for the money). Falls back to the keys invoices always used
+ * if the list holds no status of that group.
+ */
+export const issuedInvoiceStatus = (
+  paid: boolean,
+  statuses: readonly OfferStatusDef[] = DEFAULT_INVOICE_STATUS_DEFS,
+): string => (paid ? firstOfferStatusOf("won", statuses) ?? "invoiced" : firstOfferStatusOf("open", statuses) ?? "sent");
+
 /** The status's hex colour; grey for one the list does not know. */
 export const offerStatusColor = (
   status: string | undefined | null,
@@ -204,12 +257,13 @@ export const offerStatusOptions = (
   t: Translate,
   statuses: readonly OfferStatusDef[] = DEFAULT_OFFER_STATUS_DEFS,
   current?: string | null,
-): { value: string; label: string }[] => {
+): { value: string; label: string; color: string }[] => {
   const options = statuses
     .filter((d) => !d.legacy || d.key === current)
-    .map((d) => ({ value: d.key, label: offerStatusLabel(d.key, t, statuses) }));
+    .map((d) => ({ value: d.key, label: offerStatusLabel(d.key, t, statuses), color: offerStatusColor(d.key, statuses) }));
   const key = String(current ?? "").trim();
-  if (key && !options.some((o) => o.value === key)) options.push({ value: key, label: offerStatusLabel(key, t, statuses) });
+  if (key && !options.some((o) => o.value === key))
+    options.push({ value: key, label: offerStatusLabel(key, t, statuses), color: offerStatusColor(key, statuses) });
   return options;
 };
 

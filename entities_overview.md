@@ -244,7 +244,7 @@ Where the filing job stopped, per mailbox and folder, so a run is incremental.
 ### `filed_mail_bodies`
 The readable plain-text body of a filed message, apart from `timeline_events` because the sync reads that whole table on every load. Read on demand through `mail_broker.php?action=get_filed_mail` by anyone who may see e-mail on a timeline.
 * `event_id` VARCHAR(50) [PK] (= `timeline_events.id`)
-* `body` MEDIUMTEXT, `attachments_json` TEXT (names and sizes only; the files stay on the mail server)
+* `body` MEDIUMTEXT, `attachments_json` TEXT (JSON list `[{ name, size, part, key? }]`; `key` is the random storage name of the file kept under `uploads/private/mail/` (behind a deny-all guard, streamed by `mail_broker.php?action=get_filed_mail_attachment` after the e-mail permission check). An entry without `key` was not kept: too big, a blocked type, an embedded image. The client never receives `key`)
 * `created_at` TIMESTAMP
 
 ## 6. Projects & Lifecycles

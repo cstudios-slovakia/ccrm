@@ -28,12 +28,19 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
   moves it into that group. A status is renamed in place and recoloured from its
   dot. What a group means is in utils/offerStatuses.ts.
 
+  It edits one of two lists: the price-offer statuses (`kind="offer"`, the
+  default) or the one list proformas and invoices share (`kind="invoice"`).
+  Only the wording, the documents counted as using a status, and the test ids
+  differ.
+
   Deleting a status that offers still use asks where to move them first; an
   unused one just goes (with Undo). Renaming changes only the label, so the key
   an offer stores never moves and a rename rewrites no offer.
 */
 
 interface OfferStatusSettingsProps {
+  /** Which list this edits. */
+  kind?: "offer" | "invoice";
   statuses: OfferStatusDef[];
   setStatuses: React.Dispatch<React.SetStateAction<OfferStatusDef[]>>;
   /** The whole shared document list: usage is counted over the price offers in it. */
@@ -46,6 +53,7 @@ interface OfferStatusSettingsProps {
 type Row = { type: "divider"; group: OfferStatusGroup } | { type: "status"; def: OfferStatusDef };
 
 export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
+  kind = "offer",
   statuses,
   setStatuses,
   documents,
@@ -56,6 +64,10 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
   const t = (en: string, sk: string, hu: string) => (userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en);
   const toast = (msg: string) => (window as unknown as { showToast?: (m: string) => void }).showToast?.(msg);
   const labelOf = (key: string) => offerStatusLabel(key, t, statuses);
+  const isInvoice = kind === "invoice";
+  /** The documents that sit on this list's statuses. */
+  const usesList = (d: InvoiceOffer) => (isInvoice ? d.type === "invoice" || d.type === "proforma" : d.type === "price_offer");
+  const tid = isInvoice ? "invoice-status" : "offer-status";
 
   const [draggedKey, setDraggedKey] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -65,6 +77,40 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
   const [removing, setRemoving] = useState<{ def: OfferStatusDef; target: string } | null>(null);
 
   const groupInfo = (g: OfferStatusGroup): { name: string; desc: string; chip: string } => {
+    if (isInvoice) {
+      switch (g) {
+        case "draft":
+          return {
+            name: t("Draft", "Návrh", "Piszkozat"),
+            desc: t("Being prepared — where every new document starts", "Pripravuje sa — tu začína každý nový doklad", "Előkészületben — itt indul minden új bizonylat"),
+            chip: "bg-slate-100 text-slate-700 border-slate-200",
+          };
+        case "open":
+          return {
+            name: t("Issued", "Vystavené", "Kiállítva"),
+            desc: t("Sent, waiting to be settled", "Odoslané, čaká sa na vyrovnanie", "Elküldve, rendezésre vár"),
+            chip: "bg-blue-50 text-blue-700 border-blue-200",
+          };
+        case "won":
+          return {
+            name: t("Invoiced", "Vyfakturované", "Kiszámlázva"),
+            desc: t("Approved or invoiced — still expected income", "Schválené alebo vyfakturované — stále očakávaný príjem", "Jóváhagyva vagy kiszámlázva — továbbra is várt bevétel"),
+            chip: "bg-emerald-50 text-emerald-700 border-emerald-200",
+          };
+        case "lost":
+          return {
+            name: t("Rejected", "Zamietnuté", "Elutasítva"),
+            desc: t("Turned down — no longer expected income", "Zamietnuté — už nie je očakávaný príjem", "Elutasítva — már nem várt bevétel"),
+            chip: "bg-rose-50 text-rose-700 border-rose-200",
+          };
+        case "cancelled":
+          return {
+            name: t("Cancelled", "Zrušené", "Törölt"),
+            desc: t("Withdrawn — no longer expected income", "Stiahnuté — už nie je očakávaný príjem", "Visszavonva — már nem várt bevétel"),
+            chip: "bg-amber-50 text-amber-700 border-amber-200",
+          };
+      }
+    }
     switch (g) {
       case "draft":
         return {
@@ -102,7 +148,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
   const usage = useMemo(() => {
     const counts: Record<string, number> = {};
     documents.forEach((d) => {
-      if (d.type === "price_offer" && d.status) counts[d.status] = (counts[d.status] || 0) + 1;
+      if (usesList(d) && d.status) counts[d.status] = (counts[d.status] || 0) + 1;
     });
     return counts;
   }, [documents]);
@@ -135,7 +181,11 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
       else next.push({ ...r.def, group });
     });
     if (!next.some((d) => d.group === "draft" && !d.legacy)) {
-      toast(t(
+      toast(isInvoice ? t(
+        "At least one Draft status must remain — that is where new documents start.",
+        "Musí zostať aspoň jeden stav v skupine Návrh — tam začínajú nové doklady.",
+        "Legalább egy Piszkozat állapotnak maradnia kell — ott indulnak az új bizonylatok.",
+      ) : t(
         "At least one Draft status must remain — that is where new offers start.",
         "Musí zostať aspoň jeden stav v skupine Návrh — tam začínajú nové ponuky.",
         "Legalább egy Piszkozat állapotnak maradnia kell — ott indulnak az új ajánlatok.",
@@ -167,11 +217,13 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
     const label = newName.trim();
     if (!label) return;
     if (nameTaken(label)) {
-      toast(t("This offer status already exists!", "Tento stav ponuky už existuje!", "Ez az ajánlat-állapot már létezik!"));
+      toast(isInvoice
+        ? t("This invoice status already exists!", "Tento stav dokladu už existuje!", "Ez a bizonylat-állapot már létezik!")
+        : t("This offer status already exists!", "Tento stav ponuky už existuje!", "Ez az ajánlat-állapot már létezik!"));
       return;
     }
-    // Keys still sitting on offers count as taken too, so a new status never
-    // silently inherits the offers of one deleted earlier.
+    // Keys still sitting on documents count as taken too, so a new status never
+    // silently inherits the documents of one deleted earlier.
     const taken = [...statuses.map((d) => d.key), ...Object.keys(usage)];
     const def: OfferStatusDef = { key: offerStatusKeyFor(label, taken), label, color: NEW_OFFER_STATUS_COLOR, group: newGroup };
     setStatuses((prev) => OFFER_STATUS_GROUPS.flatMap((g) => [...prev, def].filter((d) => d.group === g)));
@@ -183,7 +235,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
     const remaining = statuses.filter((d) => d.key !== def.key);
     const index = statuses.findIndex((d) => d.key === def.key);
     const moved = new Set(
-      documents.filter((d) => d.type === "price_offer" && d.status === def.key).map((d) => d.id),
+      documents.filter((d) => usesList(d) && d.status === def.key).map((d) => d.id),
     );
     runUndoable({
       message: singleMessage(userLanguage, "status", "delete", labelOf(def.key)),
@@ -210,7 +262,11 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
   const handleRemove = (def: OfferStatusDef) => {
     if (!canEdit) return;
     if (def.group === "draft" && !def.legacy && startersWithout(def.key) === 0) {
-      toast(t(
+      toast(isInvoice ? t(
+        "At least one Draft status is required — that is where new documents start.",
+        "Je potrebný aspoň jeden stav v skupine Návrh — tam začínajú nové doklady.",
+        "Legalább egy Piszkozat állapot szükséges — ott indulnak az új bizonylatok.",
+      ) : t(
         "At least one Draft status is required — that is where new offers start.",
         "Je potrebný aspoň jeden stav v skupine Návrh — tam začínajú nové ponuky.",
         "Legalább egy Piszkozat állapot szükséges — ott indulnak az új ajánlatok.",
@@ -235,33 +291,49 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
     : [];
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left" data-testid="offer-status-settings">
+    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left" data-testid={`${tid}-settings`}>
       <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
         <Tag className="h-4.5 w-4.5 text-indigo-500" />
-        {t("Offer statuses", "Stavy cenových ponúk", "Árajánlat-állapotok")}
+        {isInvoice
+          ? t("Invoice & proforma statuses", "Stavy faktúr a zálohových faktúr", "Számla- és díjbekérő-állapotok")
+          : t("Offer statuses", "Stavy cenových ponúk", "Árajánlat-állapotok")}
       </h3>
 
       <p className="type-overline text-slate-400">
-        {t(
-          "Drag statuses up or down relative to the group dividers to reorder them and change their group. Click a status's colour dot to change its colour. Won and Lost statuses decide the win rate. Proformas and invoices keep their own fixed statuses.",
-          "Presunutím stavov nahor alebo nadol vzhľadom na oddeľovače skupín zmeníte ich poradie aj skupinu. Kliknutím na farebný bod zmeníte farbu stavu. Stavy Vyhrané a Prehraté určujú úspešnosť. Zálohové a ostré faktúry majú vlastné pevné stavy.",
-          "Húzza az állapotokat a csoportelválasztókhoz képest fel vagy le a sorrend és a csoport módosításához. A színes pontra kattintva módosíthatja a színt. A Megnyert és Elveszett állapotok döntik el a nyerési arányt. A díjbekérők és számlák saját, rögzített állapotokat használnak.",
-        )}
+        {isInvoice
+          ? t(
+              "One list for proformas and invoices. Drag statuses relative to the group dividers to reorder them and change their group; click the colour dot to recolour. The group decides the books: a Rejected or Cancelled invoice is no longer expected income in Finance.",
+              "Jeden zoznam pre zálohové aj ostré faktúry. Presunutím stavov vzhľadom na oddeľovače skupín zmeníte poradie aj skupinu; kliknutím na farebný bod zmeníte farbu. Skupina rozhoduje o účtovníctve: zamietnutá alebo zrušená faktúra už vo Financiách nie je očakávaný príjem.",
+              "Egy lista a díjbekérőknek és a számláknak. Húzza az állapotokat a csoportelválasztókhoz képest a sorrend és a csoport módosításához; a színes pontra kattintva módosíthatja a színt. A csoport dönt a könyvelésről: az Elutasított vagy Törölt számla a Pénzügyekben már nem várt bevétel.",
+            )
+          : t(
+              "Drag statuses up or down relative to the group dividers to reorder them and change their group. Click a status's colour dot to change its colour. Won and Lost statuses decide the win rate. Proformas and invoices have a list of their own, below.",
+              "Presunutím stavov nahor alebo nadol vzhľadom na oddeľovače skupín zmeníte ich poradie aj skupinu. Kliknutím na farebný bod zmeníte farbu stavu. Stavy Vyhrané a Prehraté určujú úspešnosť. Zálohové a ostré faktúry majú vlastný zoznam nižšie.",
+              "Húzza az állapotokat a csoportelválasztókhoz képest fel vagy le a sorrend és a csoport módosításához. A színes pontra kattintva módosíthatja a színt. A Megnyert és Elveszett állapotok döntik el a nyerési arányt. A díjbekérőknek és a számláknak lentebb saját listájuk van.",
+            )}
       </p>
 
       {removing && (
         <div
           role="alertdialog"
-          aria-label={t("Move offers before deleting", "Presunúť ponuky pred zmazaním", "Ajánlatok áthelyezése törlés előtt")}
-          data-testid="offer-status-reassign"
+          aria-label={isInvoice
+            ? t("Move documents before deleting", "Presunúť doklady pred zmazaním", "Bizonylatok áthelyezése törlés előtt")
+            : t("Move offers before deleting", "Presunúť ponuky pred zmazaním", "Ajánlatok áthelyezése törlés előtt")}
+          data-testid={`${tid}-reassign`}
           className="p-4 rounded-2xl border border-amber-200 bg-amber-50 space-y-3"
         >
           <p className="text-ui text-amber-900 font-semibold">
-            {t(
-              `${removingCount} price offer(s) have the status “${labelOf(removing.def.key)}”. Where should they go before it is deleted?`,
-              `${removingCount} cenových ponúk má stav „${labelOf(removing.def.key)}“. Kam ich presunúť pred zmazaním?`,
-              `${removingCount} árajánlat állapota „${labelOf(removing.def.key)}”. Hová kerüljenek a törlés előtt?`,
-            )}
+            {isInvoice
+              ? t(
+                  `${removingCount} invoice(s) or proforma(s) have the status “${labelOf(removing.def.key)}”. Where should they go before it is deleted?`,
+                  `${removingCount} faktúr alebo zálohových faktúr má stav „${labelOf(removing.def.key)}“. Kam ich presunúť pred zmazaním?`,
+                  `${removingCount} számla vagy díjbekérő állapota „${labelOf(removing.def.key)}”. Hová kerüljenek a törlés előtt?`,
+                )
+              : t(
+                  `${removingCount} price offer(s) have the status “${labelOf(removing.def.key)}”. Where should they go before it is deleted?`,
+                  `${removingCount} cenových ponúk má stav „${labelOf(removing.def.key)}“. Kam ich presunúť pred zmazaním?`,
+                  `${removingCount} árajánlat állapota „${labelOf(removing.def.key)}”. Hová kerüljenek a törlés előtt?`,
+                )}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <div className="w-64 max-w-full">
@@ -297,7 +369,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
               <th className="py-3 px-4 type-overline text-slate-500 w-44">{t("Colour", "Farba", "Szín")}</th>
               <th className="py-3 px-4 type-overline text-slate-500">{t("Status name", "Názov stavu", "Állapot neve")}</th>
               <th className="py-3 px-4 type-overline text-slate-500 w-36">{t("Group", "Skupina", "Csoport")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Offers", "Ponuky", "Ajánlatok")}</th>
+              <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{isInvoice ? t("Documents", "Doklady", "Bizonylatok") : t("Offers", "Ponuky", "Ajánlatok")}</th>
               <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
             </tr>
           </thead>
@@ -322,7 +394,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                 return (
                   <tr
                     key={`div-${row.group}`}
-                    data-testid={`offer-status-divider-${row.group}`}
+                    data-testid={`${tid}-divider-${row.group}`}
                     onDragOver={onDragOver}
                     onDragLeave={() => setDragOverIndex(null)}
                     onDrop={onDrop}
@@ -347,7 +419,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
               return (
                 <tr
                   key={`status-${def.key}`}
-                  data-testid={`offer-status-row-${def.key}`}
+                  data-testid={`${tid}-row-${def.key}`}
                   draggable={canEdit}
                   onDragStart={() => canEdit && setDraggedKey(def.key)}
                   onDragEnd={() => {
@@ -403,9 +475,9 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                       <span
                         className="ml-2 type-overline text-slate-400"
                         title={t(
-                          "Kept for offers that already carry it; not offered when picking a status",
-                          "Ponechaný pre ponuky, ktoré ho už majú; pri výbere stavu sa neponúka",
-                          "Azoknak az ajánlatoknak marad meg, amelyeknél már szerepel; választáskor nem jelenik meg",
+                          "Kept for documents that already carry it; not offered when picking a status",
+                          "Ponechaný pre doklady, ktoré ho už majú; pri výbere stavu sa neponúka",
+                          "Azoknak a bizonylatoknak marad meg, amelyeknél már szerepel; választáskor nem jelenik meg",
                         )}
                       >
                         {t("legacy", "starý", "régi")}
@@ -453,8 +525,10 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
             required
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder={t("Add new offer status...", "Pridať nový stav ponuky...", "Új ajánlat-állapot hozzáadása...")}
-            aria-label={t("New offer status", "Nový stav ponuky", "Új ajánlat-állapot")}
+            placeholder={isInvoice
+              ? t("Add new invoice status...", "Pridať nový stav faktúry...", "Új számla-állapot hozzáadása...")
+              : t("Add new offer status...", "Pridať nový stav ponuky...", "Új ajánlat-állapot hozzáadása...")}
+            aria-label={isInvoice ? t("New invoice status", "Nový stav faktúry", "Új számla-állapot") : t("New offer status", "Nový stav ponuky", "Új ajánlat-állapot")}
             className="flex-1 min-w-37.5 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
           />
           <div className="w-40">

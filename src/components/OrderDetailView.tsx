@@ -41,6 +41,7 @@ import type {
 } from "../types";
 import type { Language } from "../utils/translations";
 import { EntityHeader } from "./layout";
+import { CustomSelect } from "./ui/CustomSelect";
 import {
   orderStatusLabel,
   orderStatusColor,
@@ -53,6 +54,7 @@ import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
 import { getAvailableShippingMethods } from "../utils/shipping";
 import { getAvailablePaymentMethods, getDefaultPaymentMethod } from "../utils/payment";
 import { formatDateLocalized } from "../utils/localTime";
+import { isClientRecord } from "../utils/clientRecord";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -217,6 +219,10 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     if (formData.customerType !== "client" || !formData.clientId) return null;
     return leads.find(l => l.id === formData.clientId) || null;
   }, [formData.customerType, formData.clientId, leads]);
+
+  // `leads` holds clients and pipeline leads alike; an order may be attached to either.
+  // A lead has no client profile yet, so it must not be presented as a synced client.
+  const selectedIsLead = !!selectedClient && !isClientRecord(selectedClient);
 
   // The price level the selected client buys on (their own, else their client record's).
   const customerPriceLevelId = useMemo(() => clientPriceLevelId(selectedClient, leads), [selectedClient, leads]);
@@ -479,25 +485,30 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
         badges={
           <>
             {/* Status Dropdown / Badge */}
-            <div className="relative inline-flex items-center">
-              <select
+            <div className="inline-flex items-center">
+              <CustomSelect
+                size="sm"
+                fitLabel
                 value={formData.status}
                 disabled={!canEdit}
-                onChange={e => setFormData({ ...formData, status: e.target.value })}
-                className="appearance-none pl-3 pr-7 py-1 rounded-full text-micro font-bold text-white shadow-sm cursor-pointer focus:outline-none transition-all"
+                onChange={status => setFormData({ ...formData, status })}
+                className="!rounded-full !py-1 !font-bold !text-white !border-transparent"
                 style={{ backgroundColor: orderStatusColor(formData.status, orderStatuses) }}
-              >
-                {orderStatuses.map(st => (
-                  <option key={st.key} value={st.key} className="bg-slate-900 text-white">
-                    {orderStatusLabel(st.key, t, orderStatuses)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 size-3 text-white pointer-events-none" />
+                options={orderStatuses.map(st => ({
+                  value: st.key,
+                  label: orderStatusLabel(st.key, t, orderStatuses),
+                  color: orderStatusColor(st.key, orderStatuses),
+                }))}
+              />
             </div>
 
             {/* Customer Type Badge */}
-            {formData.customerType === "client" ? (
+            {formData.customerType === "client" && selectedIsLead ? (
+              <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
+                <User className="size-3" />
+                {t("Lead", "Lead", "Lead")}
+              </span>
+            ) : formData.customerType === "client" ? (
               <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                 <UserCheck className="size-3" />
                 {t("CRM Client", "CRM Klient", "CRM Ügyfél")}
@@ -738,8 +749,13 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                             className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/70 border-b border-slate-100 last:border-b-0 flex items-center justify-between gap-3 transition-colors cursor-pointer"
                           >
                             <div className="min-w-0">
-                              <p className="text-ui font-bold text-slate-800 truncate">
-                                {c.name}
+                              <p className="text-ui font-bold text-slate-800 truncate flex items-center gap-2">
+                                <span className="truncate">{c.name}</span>
+                                {!isClientRecord(c) && (
+                                  <span className="shrink-0 px-1.5 py-px rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {t("Lead", "Lead", "Lead")}
+                                  </span>
+                                )}
                               </p>
                               <p className="text-micro text-slate-500 truncate">
                                 {c.contactPerson && `${c.contactPerson} • `}
@@ -763,18 +779,22 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
                 {/* Synced Client Relationship Profile Card (Directly matching Leads style) */}
                 {selectedClient ? (
-                  <div className="p-5 rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 text-emerald-950 space-y-3.5 shadow-xs">
-                    <div className="border-b border-emerald-200/60 pb-2.5 flex items-center justify-between gap-2">
-                      <span className="text-micro font-bold text-emerald-800 flex items-center gap-1.5 uppercase tracking-wider">
-                        <UserCheck className="size-3.5 text-emerald-600" />
-                        {t("Synced CRM Client", "Zosynchronizovaný klient", "Szinkronizált ügyfél")}
+                  <div className={selectedIsLead ? "p-5 rounded-2xl border-2 border-indigo-300 bg-indigo-50/70 text-indigo-950 space-y-3.5 shadow-xs" : "p-5 rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 text-emerald-950 space-y-3.5 shadow-xs"}>
+                    <div className={selectedIsLead ? "border-b border-indigo-200/60 pb-2.5 flex items-center justify-between gap-2" : "border-b border-emerald-200/60 pb-2.5 flex items-center justify-between gap-2"}>
+                      <span className={selectedIsLead ? "text-micro font-bold text-indigo-800 flex items-center gap-1.5 uppercase tracking-wider" : "text-micro font-bold text-emerald-800 flex items-center gap-1.5 uppercase tracking-wider"}>
+                        {selectedIsLead
+                          ? <User className="size-3.5 text-indigo-600" />
+                          : <UserCheck className="size-3.5 text-emerald-600" />}
+                        {selectedIsLead
+                          ? t("Lead (no client profile)", "Lead (bez profilu klienta)", "Lead (nincs ügyfélprofil)")
+                          : t("Synced CRM Client", "Zosynchronizovaný klient", "Szinkronizált ügyfél")}
                       </span>
                       <div className="flex items-center gap-2">
                         {onOpenClient && (
                           <button
                             type="button"
                             onClick={() => onOpenClient(selectedClient.id)}
-                            className="text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 hover:underline cursor-pointer"
+                            className={selectedIsLead ? "text-micro font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 hover:underline cursor-pointer" : "text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 hover:underline cursor-pointer"}
                           >
                             {t("Open Profile", "Otvoriť profil", "Profil megnyitása")}
                             <ExternalLink className="size-3" />
@@ -792,7 +812,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <div className="size-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex items-center justify-center font-bold text-ui shadow-xs shrink-0">
+                      <div className={selectedIsLead ? "size-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white flex items-center justify-center font-bold text-ui shadow-xs shrink-0" : "size-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex items-center justify-center font-bold text-ui shadow-xs shrink-0"}>
                         {getInitials(selectedClient.name)}
                       </div>
                       <div className="min-w-0">
@@ -800,44 +820,54 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           {selectedClient.name}
                         </h4>
                         {selectedClient.contactPerson && (
-                          <p className="text-micro font-semibold text-emerald-800">
+                          <p className={selectedIsLead ? "text-micro font-semibold text-indigo-800" : "text-micro font-semibold text-emerald-800"}>
                             {selectedClient.contactPerson}
                           </p>
                         )}
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-micro font-medium pt-1 border-t border-emerald-200/50">
+                    <div className={selectedIsLead ? "grid grid-cols-2 gap-2 text-micro font-medium pt-1 border-t border-indigo-200/50" : "grid grid-cols-2 gap-2 text-micro font-medium pt-1 border-t border-emerald-200/50"}>
                       {selectedClient.email && (
-                        <div className="flex items-center gap-1.5 text-emerald-900 truncate">
-                          <Mail className="size-3 text-emerald-600 shrink-0" />
+                        <div className={selectedIsLead ? "flex items-center gap-1.5 text-indigo-900 truncate" : "flex items-center gap-1.5 text-emerald-900 truncate"}>
+                          <Mail className={selectedIsLead ? "size-3 text-indigo-600 shrink-0" : "size-3 text-emerald-600 shrink-0"} />
                           <span className="truncate">{selectedClient.email}</span>
                         </div>
                       )}
                       {selectedClient.phone && (
-                        <div className="flex items-center gap-1.5 text-emerald-900 truncate">
-                          <Phone className="size-3 text-emerald-600 shrink-0" />
+                        <div className={selectedIsLead ? "flex items-center gap-1.5 text-indigo-900 truncate" : "flex items-center gap-1.5 text-emerald-900 truncate"}>
+                          <Phone className={selectedIsLead ? "size-3 text-indigo-600 shrink-0" : "size-3 text-emerald-600 shrink-0"} />
                           <span>{selectedClient.phone}</span>
                         </div>
                       )}
                       {selectedClient.companyId && (
-                        <div className="text-emerald-800">
-                          <span className="text-emerald-600 font-bold">IČO:</span> {selectedClient.companyId}
+                        <div className={selectedIsLead ? "text-indigo-800" : "text-emerald-800"}>
+                          <span className={selectedIsLead ? "text-indigo-600 font-bold" : "text-emerald-600 font-bold"}>IČO:</span> {selectedClient.companyId}
                         </div>
                       )}
                       {selectedClient.city && (
-                        <div className="flex items-center gap-1 text-emerald-800 truncate">
-                          <MapPin className="size-3 text-emerald-600 shrink-0" />
+                        <div className={selectedIsLead ? "flex items-center gap-1 text-indigo-800 truncate" : "flex items-center gap-1 text-emerald-800 truncate"}>
+                          <MapPin className={selectedIsLead ? "size-3 text-indigo-600 shrink-0" : "size-3 text-emerald-600 shrink-0"} />
                           <span>{selectedClient.city}</span>
                         </div>
                       )}
                     </div>
 
+                    {selectedIsLead && (
+                      <p className="text-micro text-indigo-800/80 leading-snug">
+                        {t(
+                          "This order is attached to a lead. Create a client profile from the lead to turn it into a registered client.",
+                          "Objednávka je priradená k leadu. Z leadu môžete vytvoriť profil klienta, aby sa z neho stal registrovaný klient.",
+                          "A rendelés egy leadhez van rendelve. A leadből ügyfélprofilt hozhat létre, hogy regisztrált ügyfél legyen."
+                        )}
+                      </p>
+                    )}
+
                     <div className="pt-2 flex items-center justify-between">
                       <button
                         type="button"
                         onClick={() => handleSelectClient(selectedClient)}
-                        className="text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
+                        className={selectedIsLead ? "text-micro font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 cursor-pointer" : "text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"}
                       >
                         <RotateCcw className="size-3" />
                         {t("Re-sync addresses", "Znovu zosúladiť adresy", "Címek újraszinkronizálása")}

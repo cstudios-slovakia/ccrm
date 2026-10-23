@@ -28,7 +28,11 @@ const offer = (id: string, number: string, status: string, total = 100) => ({
   issuedAt: '2026-08-01', validUntil: '2026-08-31', createdBy: 'Erik',
 });
 
-async function seed(page: Page, offers: Record<string, unknown>[], offerStatuses?: unknown) {
+const invoice = (id: string, number: string, status: string, type = 'invoice') => ({
+  ...offer(id, number, status), type, title: `Faktúra ${number}`, dueDate: '2026-08-15',
+});
+
+async function seed(page: Page, offers: Record<string, unknown>[], offerStatuses?: unknown, invoiceStatuses?: unknown) {
   await page.route('**/sync.php**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
     const base = buildSyncPayload();
@@ -38,7 +42,12 @@ async function seed(page: Page, offers: Record<string, unknown>[], offerStatuses
       body: JSON.stringify({
         ...base,
         invoicesOffers: offers,
-        settings: { ...base.settings, companyBillingSettings: COMPANY, ...(offerStatuses ? { offerStatuses } : {}) },
+        settings: {
+          ...base.settings,
+          companyBillingSettings: COMPANY,
+          ...(offerStatuses ? { offerStatuses } : {}),
+          ...(invoiceStatuses ? { invoiceStatuses } : {}),
+        },
       }),
     });
   });
@@ -46,6 +55,7 @@ async function seed(page: Page, offers: Record<string, unknown>[], offerStatuses
 
 type Pushed = {
   offerStatuses?: { key: string; label?: string; group: string }[];
+  invoiceStatuses?: { key: string; label?: string; group: string }[];
   offers: Map<string, Record<string, unknown>>;
 };
 
@@ -57,10 +67,11 @@ function recordPushes(page: Page): Pushed {
     if (request.method() !== 'GET') {
       try {
         const body = request.postDataJSON() as {
-          settings?: { offerStatuses?: Pushed['offerStatuses'] };
+          settings?: { offerStatuses?: Pushed['offerStatuses']; invoiceStatuses?: Pushed['invoiceStatuses'] };
           invoicesOffers?: Record<string, unknown>[];
         };
         if (body?.settings?.offerStatuses) pushed.offerStatuses = body.settings.offerStatuses;
+        if (body?.settings?.invoiceStatuses) pushed.invoiceStatuses = body.settings.invoiceStatuses;
         for (const o of body?.invoicesOffers ?? []) pushed.offers.set(String(o.id), o);
       } catch {
         /* not JSON — nothing to record */
@@ -93,7 +104,7 @@ test.describe('Offer statuses', () => {
 
     // Add one — it lands in "Open", the form's default group.
     await page.getByLabel('Nový stav ponuky').fill('Precenenie');
-    await page.getByRole('button', { name: 'Pridať stav' }).click();
+    await page.getByTestId('offer-status-settings').getByRole('button', { name: 'Pridať stav' }).click();
     await expect(statusRow(page, 'precenenie')).toContainText('Precenenie');
     await expect
       .poll(() => (pushed.offerStatuses ?? []).map((d) => d.key), { timeout: 10_000 })
@@ -175,5 +186,67 @@ test.describe('Offer statuses', () => {
     await expect(page.getByText('mystery_state').first()).toBeVisible();
     // One won, one lost: the win rate is 50 % whatever the statuses are called.
     await expect(page.getByText('50 %').or(page.getByText('50%')).first()).toBeVisible();
+  });
+
+  test('proformas and invoices have a list of their own, counted over invoices only', async ({ page }) => {
+    await startSession(page);
+    await seed(page, [
+      offer('io-1', 'CP-2026-001', 'sent'),
+      invoice('io-2', 'FA-2026-001', 'sent'),
+      invoice('io-3', 'ZF-2026-001', 'sent', 'proforma'),
+    ]);
+    const pushed = recordPushes(page);
+    await openOfferSettings(page);
+
+    const invoiceRow = (key: string) => page.getByTestId(`invoice-status-row-${key}`);
+    const list = page.getByTestId('invoice-status-settings');
+    await expect(list).toBeVisible();
+
+    // The six built-ins; unlike on an offer, `invoiced` is a real status, not "legacy".
+    for (const key of ['draft', 'sent', 'invoiced', 'approved', 'rejected', 'cancelled']) {
+      await expect(invoiceRow(key)).toBeVisible();
+    }
+    await expect(invoiceRow('invoiced')).not.toContainText(/starý/);
+    // One invoice and one proforma are "sent"; the offer sitting on the offer list's "sent" is not counted here.
+    await expect(invoiceRow('sent')).toContainText('2');
+    await expect(statusRow(page, 'sent')).toContainText('1');
+
+    // Add one, settled: it is pushed as the invoice list, and the offer list is untouched.
+    await list.getByLabel('Nový stav faktúry').fill('Zaplatená');
+    await list.getByRole('combobox').or(list.locator('button[aria-haspopup="listbox"]')).first().click();
+    await page.getByRole('option', { name: 'Vyfakturované' }).click();
+    await list.getByRole('button', { name: 'Pridať stav' }).click();
+    await expect(invoiceRow('zaplatena')).toContainText('Zaplatená');
+    await expect
+      .poll(() => (pushed.invoiceStatuses ?? []).map((d) => d.key), { timeout: 10_000 })
+      .toEqual(['draft', 'sent', 'invoiced', 'approved', 'zaplatena', 'rejected', 'cancelled']);
+    // Every settings push carries both lists; the offer list is still the built-ins.
+    expect((pushed.offerStatuses ?? []).map((d) => d.key)).toEqual(['draft', 'sent', 'approved', 'invoiced', 'rejected', 'cancelled']);
+  });
+
+  test('the status picker of an issued invoice offers the configured invoice statuses', async ({ page }) => {
+    await startSession(page);
+    await seed(
+      page,
+      [invoice('io-2', 'FA-2026-001', 'sent')],
+      undefined,
+      [
+        { key: 'draft', color: '#64748b', group: 'draft' },
+        { key: 'sent', color: '#3b82f6', group: 'open' },
+        { key: 'zaplatena', label: 'Zaplatená', color: '#10b981', group: 'won' },
+        { key: 'cancelled', color: '#f43f5e', group: 'cancelled' },
+      ],
+    );
+    const pushed = recordPushes(page);
+    await gotoView(page, '#files');
+
+    await page.locator('tr').filter({ hasText: 'FA-2026-001' }).getByText('FA-2026-001').first().click();
+    const dialog = page.locator('.fixed.inset-0').filter({ hasText: 'Print' }).or(page.locator('.fixed.inset-0').filter({ hasText: 'Tlač' })).first();
+    await expect(dialog).toBeVisible();
+    // The picker shows the current status, and the custom one is on offer; the removed built-ins are not.
+    await dialog.getByRole('button', { name: 'Odoslaná' }).click();
+    await expect(page.getByRole('option', { name: 'Vyfakturovaná' })).toHaveCount(0);
+    await page.getByRole('option', { name: 'Zaplatená' }).click();
+    await expect.poll(() => pushed.offers.get('io-2')?.status, { timeout: 10_000 }).toBe('zaplatena');
   });
 });

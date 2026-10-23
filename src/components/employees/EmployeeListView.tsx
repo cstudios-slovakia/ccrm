@@ -39,6 +39,7 @@ import { asLang } from "../../utils/undoMessages";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import { StickyHScrollbar } from "../ui/StickyHScrollbar";
 import { useStickyTableHead } from "../../hooks/useStickyTableHead";
+import { useListFilter } from "../../hooks/useListFilter";
 
 interface EmployeeListViewProps {
   employees: Employee[];
@@ -76,8 +77,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 }) => {
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [kindFilter, setKindFilter] = useState<"all" | EmployeeKind>("all");
+  const [statusFilter, setStatusFilter] = useListFilter<"all" | "active" | "inactive">("employees.status", "all");
+  const [kindFilter, setKindFilter] = useListFilter<"all" | EmployeeKind>("employees.kind", "all");
   /* The structure, a plain table or cards. DB-backed like the projects list's, so
      the choice follows the user to their next device. The structure is a table
      that always shows the hand-set order and is rearranged by dragging. */
