@@ -808,7 +808,7 @@ if ($want('products')) {
         foreach ([1, 2, 3, 4, 5] as $i) if ((float)$p["CENA{$i}"] > 0) $prices[$i] = (float)$p["CENA{$i}"];
         $products[] = [
             'id' => "whi-vt-{$mrp}", 'sku' => $mrp, 'externalId' => $mrp, 'name' => mb_substr(vt_clean($p['NAZOV']) ?? $mrp, 0, 255),
-            'altCodes' => $codes, 'unit' => $units[$mj] ?? $mj, 'vatRate' => $p['SADZBADPH'] !== null ? (float)$p['SADZBADPH'] : null,
+            'altCodes' => $codes, 'unit' => $units[$mj] ?? $mj, 'vatRate' => (float)$p['SADZBADPH'] > 0 ? (float)$p['SADZBADPH'] : 23.0,
             'purchasePrice' => (float)$p['CENAMJ'], 'sellPrice' => (float)$p['CENA1'], 'prices' => $prices,
             'packQuantity' => (float)$p['BALENIE'] > 0 ? (float)$p['BALENIE'] : null, 'description' => vt_text($p['POZNAMKA']),
             'stock' => (float)$p['POCETMJ'], 'reserved' => (float)$p['POCREZMJ'], 'minStock' => (float)$p['MINIMUM'], 'optimalStock' => (float)$p['NORMA'],
@@ -818,7 +818,9 @@ if ($want('products')) {
     }
     vt_json_write("{$outDir}/products.json", $products);
     $report->set('products', count($products));
-    $report->set('products with VAT 0 %', count(array_filter($products, fn($p) => $p['vatRate'] !== null && $p['vatRate'] == 0)));
+    // MRP leaves SADZBADPH at 0 on 2,994 products; their price with VAT equals the price without it, so 0 means "unset", not a 0 % rate.
+    // Peter's decision (2026-10-23): all of them get the Slovak standard rate of 23 %.
+    $report->set('products with VAT 0 in MRP, imported as 23 %', (int)q('SELECT COUNT(*) c FROM product__temp WHERE COALESCE(SADZBADPH, 0) <= 0')[0]['c']);
     $report->set('products with stock', count(array_filter($products, fn($p) => $p['stock'] != 0)));
 }
 

@@ -91,7 +91,8 @@ function vt_put_event(PDO $pdo, string $ownerId, array $e, string $fallbackTs): 
     $row = [
         'id' => $e['id'], 'lead_id' => $ownerId, 'type' => $e['type'], 'timestamp' => vt_ts($e['timestamp'] ?? '', $fallbackTs),
         'title' => vt_cut(trim((string)($e['title'] ?? '')) !== '' ? $e['title'] : 'Záznam', 250),
-        'content' => vt_cut($e['content'] ?? null, 60000), 'attachments_json' => $att,
+        // '' not NULL: the lead timeline calls content.trim() on notes, and the app itself never stores NULL here
+        'content' => vt_cut($e['content'] ?? '', 60000) ?? '', 'attachments_json' => $att,
         'is_outgoing' => !empty($e['isOutgoing']) ? 1 : 0, 'author' => $e['author'] ?? null,
     ];
     vt_upsert($pdo, 'timeline_events', $row, ['hidden']);
@@ -293,12 +294,17 @@ if ($want('mail')) {
         }
     }
     $clientIds = array_flip($pdo->query("SELECT `id` FROM `leads` WHERE `id` LIKE 'client-vt-%'")->fetchAll(PDO::FETCH_COLUMN));
+    // A dry run rolls the clients step back, so on an empty target the clients are not in the database yet:
+    // check against the extracted list and do not write the mail rows (they would break the foreign key).
+    $inDb = $clientIds;
+    if ($dry) foreach (vt_json_read("{$dataDir}/clients.json") as $c) $clientIds[$c['id']] = true;
     $batch = 0;
     $pdo->beginTransaction();
     try {
         $insBody = $pdo->prepare("INSERT INTO `filed_mail_bodies` (`event_id`, `body`, `attachments_json`) VALUES (?, ?, NULL) ON DUPLICATE KEY UPDATE `body` = VALUES(`body`)");
         foreach (vt_read_jsonl("{$dataDir}/mail.jsonl") as $m) {
-            if (!isset($clientIds[$m['clientId']]) && !$dry) { $report->skip('mail', 'client record not in the database', $m['id']); continue; }
+            if (!isset($clientIds[$m['clientId']])) { $report->skip('mail', 'client record not in the database', $m['id']); continue; }
+            if ($dry && !isset($inDb[$m['clientId']])) { $report->count('mail messages'); continue; }
             $hasBody = trim((string)$m['body']) !== '';
             vt_upsert($pdo, 'timeline_events', [
                 'id' => $m['id'], 'lead_id' => $m['clientId'], 'type' => 'email', 'timestamp' => vt_ts($m['timestamp'], '2000-01-01 00:00:00'),

@@ -15,6 +15,7 @@
  * unchanged. A password is never sent back to the browser.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/mail_filing.php';
 
 header('Content-Type: application/json');
