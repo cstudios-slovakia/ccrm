@@ -46,6 +46,11 @@ interface TicketSettingsProps {
   userLanguage?: Language;
   canEdit?: boolean;
   onTicketsPolled?: () => void;
+  /**
+   * Which panels to draw. Settings shows the statuses and the intake side (mailbox,
+   * SLA targets, canned replies) as two sections; the default is both.
+   */
+  part?: "statuses" | "intake";
 }
 
 type Row =
@@ -78,6 +83,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
   userLanguage = "sk",
   canEdit = true,
   onTicketsPolled,
+  part,
 }) => {
   const tr = (sk: string, en: string, hu: string) =>
     userLanguage === "en" ? en : userLanguage === "hu" ? hu : sk;
@@ -443,6 +449,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
 
   return (
     <div className="space-y-6">
+      {part !== "intake" && (<>
       {/* 1. Ticket Statuses (ProjectStatusSettings style) */}
       <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
         <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
@@ -703,7 +710,9 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
           </form>
         )}
       </div>
+      </>)}
 
+      {part !== "statuses" && (<>
       {/* 2. Support Email IMAP Polling & OpenAI Project Routing */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1216,6 +1225,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 };

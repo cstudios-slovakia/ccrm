@@ -16,13 +16,9 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { PROJECT_AUTO_CREATE_ENABLED } from "../utils/featureFlags";
 
-/**
- * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation from leads
- * is switched off, so its settings card is hidden. Setting this back to true
- * also needs the server calls restored — grep for the same marker.
- */
-const PROJECT_AUTO_CREATE_ENABLED = false;
+// PROJECT_AUTO_CREATE_ENABLED lives in utils/featureFlags.ts (Settings reads it too).
 
 interface ProjectSettingsProps {
   projectTypes: ProjectType[];

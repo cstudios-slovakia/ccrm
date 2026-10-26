@@ -1837,3 +1837,82 @@ dialog[open]::backdrop {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
 }
+
+/* A scroller with no visible scrollbar that still says "there is more".
+   The bar is hidden, and instead the content fades out on each edge that has
+   more behind it. <ScrollFade> (components/settings/ScrollFade.tsx) sets
+   data-fade="start" / "end" / "start end" from the scroll position, so the
+   fade only shows where something is hidden and never on a list that fits.
+   Items cut off at the faded edge are the second cue. */
+@utility scroll-fade-x {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+  --fade-start: 0px;
+  --fade-end: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  &[data-fade~="start"] { --fade-start: 2.25rem; }
+  &[data-fade~="end"] { --fade-end: 2.25rem; }
+}
+@utility scroll-fade-y {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+  --fade-start: 0px;
+  --fade-end: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  &[data-fade~="start"] { --fade-start: 1.75rem; }
+  &[data-fade~="end"] { --fade-end: 1.75rem; }
+}
+
+/* Settings: tile lift, section flash after a deep link, results and menu entrance.
+   All of it stands still under prefers-reduced-motion; the flash then becomes a
+   static ring for the same moment. */
+.settings-tile {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.settings-tile:hover,
+.settings-tile:focus-visible {
+  transform: translateY(-2px);
+}
+.settings-tile:active {
+  transform: translateY(0) scale(0.985);
+}
+@keyframes settings-section-flash {
+  0% { box-shadow: 0 0 0 0 rgb(99 102 241 / 0.5); }
+  35% { box-shadow: 0 0 0 5px rgb(99 102 241 / 0.32); }
+  100% { box-shadow: 0 0 0 0 rgb(99 102 241 / 0); }
+}
+.settings-section-flash {
+  animation: settings-section-flash 1.5s ease-out 1;
+}
+@keyframes settings-results-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.settings-results-in {
+  animation: settings-results-in 0.18s ease-out both;
+}
+@keyframes settings-menu-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.settings-menu-in {
+  animation: settings-menu-in 0.16s ease-out both;
+  transform-origin: top center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-tile { transition: none; }
+  .settings-tile:hover,
+  .settings-tile:focus-visible,
+  .settings-tile:active { transform: none; }
+  .settings-section-flash {
+    animation: none;
+    outline: 2px solid rgb(99 102 241 / 0.55);
+    outline-offset: 3px;
+  }
+  .settings-results-in,
+  .settings-menu-in { animation: none; }
+}

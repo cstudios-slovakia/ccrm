@@ -1,7 +1,6 @@
 import React from "react";
-import { Coins, Table2, Link2, FileSpreadsheet } from "lucide-react";
+import { ArrowRight, Coins, Table2, Link2, FileSpreadsheet } from "lucide-react";
 import type { FinancialCategory, FinancialRecord, FinancialOperatingMode } from "../types";
-import { CustomSelect } from "./ui/CustomSelect";
 import { FinancialCategoriesManager } from "./FinancialCategoriesManager";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { getTranslation, type Language } from "../utils/translations";
@@ -10,11 +9,8 @@ import { useUserPref } from "../utils/userPrefs";
 interface FinanceSettingsProps {
   userLanguage: Language;
   systemLanguage: Language;
-  /** Raw currency code, or "" for "follow the region". The same value General config edits. */
+  /** Raw currency code, or "" for "follow the region". Edited in Company › Language & currency only. */
   systemCurrency: string;
-  setSystemCurrency: (currency: string) => void;
-  /** The currency is workspace-wide, so it follows the general-config permission. */
-  canEditCurrency: boolean;
   financialCategories: FinancialCategory[];
   setFinancialCategories: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   setFinancialRecords: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
@@ -24,6 +20,11 @@ interface FinanceSettingsProps {
   /** Financial operating mode: connected (live movements) vs simplified (detached spreadsheet) */
   financialMode?: FinancialOperatingMode;
   setFinancialMode?: (mode: FinancialOperatingMode) => void;
+  /**
+   * Which panels to draw. Settings shows the ledger side (operating mode, movements
+   * table, currency) and the category tree as two sections; the default is both.
+   */
+  part?: "ledger" | "categories";
 }
 
 const PANEL = "glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass";
@@ -39,15 +40,14 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
   userLanguage,
   systemLanguage,
   systemCurrency,
-  setSystemCurrency,
-  canEditCurrency,
   financialCategories,
   setFinancialCategories,
   setFinancialRecords,
   canEdit,
   canDelete,
   financialMode = "connected",
-  setFinancialMode
+  setFinancialMode,
+  part
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -56,6 +56,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
 
   return (
     <div className="space-y-6">
+      {part !== "categories" && (<>
       {/* Financial Operating Mode */}
       <div className={PANEL}>
         <h3 className={PANEL_TITLE}>
@@ -181,47 +182,47 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
         </label>
       </div>
 
-      {/* Currency */}
+      {/* Currency: read-only here, edited in Company › Language & currency */}
       <div className={PANEL}>
         <h3 className={PANEL_TITLE}>
           <Coins className="h-4.5 w-4.5 text-emerald-500" />
           {getTranslation(userLanguage, "settings.general.currency")}
         </h3>
-        <div className="space-y-1.5 max-w-md">
-          <CustomSelect
-            disabled={!canEditCurrency}
-            value={systemCurrency || ""}
-            onChange={(v) => setSystemCurrency(v)}
-            options={[
-              {
-                value: "",
-                label: `${getTranslation(userLanguage, "settings.general.currency_auto")} (${currencyForRegion(systemLanguage)})`
-              },
-              ...CURRENCY_OPTIONS.map((c) => ({ value: c.code, label: c.label }))
-            ]}
-          />
-          <p className="text-micro text-slate-400">
-            {getTranslation(userLanguage, "settings.general.currency_desc")}
-          </p>
-          <p className="text-micro text-slate-400">
-            {t(
-              "The same setting as in General config — it applies to the whole workspace, not just Finance.",
-              "Rovnaké nastavenie ako vo Všeobecnej konfigurácii — platí pre celý systém, nielen pre Financie.",
-              "Ugyanaz a beállítás, mint az Általános beállításokban — a teljes rendszerre vonatkozik, nem csak a Pénzügyekre."
-            )}
-          </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <span
+            data-testid="finance-currency-readonly"
+            className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-body font-bold text-slate-800"
+          >
+            {systemCurrency
+              ? CURRENCY_OPTIONS.find((c) => c.code === systemCurrency)?.label ?? systemCurrency
+              : `${getTranslation(userLanguage, "settings.general.currency_auto")} (${currencyForRegion(systemLanguage)})`}
+          </span>
+          <a
+            href="#settings/company/regional"
+            data-testid="finance-currency-link"
+            className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-indigo-700 no-underline transition-colors hover:bg-indigo-50"
+          >
+            {getTranslation(userLanguage, "settings.nav.ui.currency_readonly_btn")}
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </a>
         </div>
+        <p className="text-micro text-slate-500">
+          {getTranslation(userLanguage, "settings.nav.ui.currency_readonly_body")}
+        </p>
       </div>
+      </>)}
 
       {/* Movement categories */}
-      <FinancialCategoriesManager
-        financialCategories={financialCategories}
-        setFinancialCategories={setFinancialCategories}
-        setFinancialRecords={setFinancialRecords}
-        userLanguage={userLanguage}
-        canEdit={canEdit}
-        canDelete={canDelete}
-      />
+      {part !== "ledger" && (
+        <FinancialCategoriesManager
+          financialCategories={financialCategories}
+          setFinancialCategories={setFinancialCategories}
+          setFinancialRecords={setFinancialRecords}
+          userLanguage={userLanguage}
+          canEdit={canEdit}
+          canDelete={canDelete}
+        />
+      )}
     </div>
   );
 };

@@ -116,7 +116,7 @@ test("admin can do everything, even with no role record", () => {
   assert.equal(a.can("system_reset"), true);
   assert.equal(a.canEdit("leads"), true);
   assert.deepEqual(a.module("leads"), { view: true, edit: true, delete: true });
-  assert.equal(a.canOpenRoute("settings/danger"), true);
+  assert.equal(a.canOpenRoute("settings/system/reset"), true);
 });
 
 test("unknown role gets nothing", () => {
@@ -163,7 +163,7 @@ test("settings access opens on any settings category", () => {
   assert.equal(none.canOpenRoute("settings"), false);
   const some = buildAccess(user("R"), [{ name: "R", permissions: { ...newRolePermissions(), pipeline_stages: "view" } }]);
   assert.equal(some.hasSettingsAccess, true);
-  assert.equal(some.canOpenRoute("settings/states"), true);
+  assert.equal(some.canOpenRoute("settings/leads/stages"), true);
   const danger = buildAccess(user("R"), [{ name: "R", permissions: { ...newRolePermissions(), system_reset: "edit" } }]);
   assert.equal(danger.hasSettingsAccess, true);
 });

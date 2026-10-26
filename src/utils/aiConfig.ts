@@ -202,5 +202,5 @@ export const isAiKeyProblem = (code: string): boolean =>
 
 /** Send the user straight to the field they need to fill in. */
 export const openAiSettings = (): void => {
-  window.location.hash = "settings/ai";
+  window.location.hash = "settings/integrations/ai";
 };

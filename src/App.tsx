@@ -3335,7 +3335,8 @@ ${log.payload || ''}
     if (activeRoute.startsWith("user-")) {
       const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
-        <SettingsView 
+        <SettingsView
+          settingsRoute="settings/access/users" 
           employees={employeeRights.view ? employees : undefined}
           systemName={systemName} 
           setSystemName={setSystemName} 
@@ -3604,10 +3605,6 @@ ${log.payload || ''}
       );
     }
     if (activeRoute.startsWith("settings")) {
-      const parts = activeRoute.split("/");
-      const subTab = parts[1] || "branding";
-      const settingsAction = parts[2] || null;
-      const settingsActionId = parts[3] || null;
       return (
         <SettingsView 
           employees={employeeRights.view ? employees : undefined}
@@ -3699,9 +3696,7 @@ ${log.payload || ''}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
-          initialSubTab={subTab}
-          settingsAction={settingsAction}
-          settingsActionId={settingsActionId}
+          settingsRoute={activeRoute}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
           customDashboards={customDashboards}
@@ -3927,6 +3922,7 @@ ${log.payload || ''}
             setInvoiceStatuses={setInvoiceStatuses}
             access={access.module("invoices")}
             canConfigure={access.canEdit("general_config")}
+            openOnSettings={activeRoute.split("?")[0].split("/")[1] === "settings"}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
             leads={leads}
@@ -3942,8 +3938,8 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             onOpenSettings={() => {
-              window.location.hash = "settings/invoicing";
-              setActiveTab("settings/invoicing");
+              window.location.hash = "settings/company/billing";
+              setActiveTab("settings/company/billing");
             }}
           />
         );
@@ -4672,7 +4668,7 @@ ${log.payload || ''}
                 language={userLanguage}
                 isAdmin={access.isAdmin}
                 onOpenLicenseSettings={() => {
-                  window.location.hash = "settings/license";
+                  window.location.hash = "settings/system/license";
                 }}
               />
               {/* Whole views (RAG assistant, automations, meeting summaries, the

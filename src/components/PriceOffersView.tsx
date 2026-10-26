@@ -80,6 +80,11 @@ interface PriceOffersViewProps {
   access?: ModuleAccess;
   /** Whether the user may change the offer settings (connectors hold API keys). */
   canConfigure?: boolean;
+  /**
+   * Open on the offer settings screen (templates, connectors, statuses). Set by the
+   * `#invoices/settings` link that Settings › Offers & invoicing offers.
+   */
+  openOnSettings?: boolean;
 }
 
 /** Offers always carry the CP series; invoices and proformas are issued elsewhere. */
@@ -123,7 +128,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   onOpenSettings,
   onAddTimelineEvent,
   access = FULL_MODULE_ACCESS,
-  canConfigure = false
+  canConfigure = false,
+  openOnSettings = false
 }) => {
   // Only price offers are listed, counted and numbered here.
   const invoicesOffers = useMemo(() => allDocuments.filter(d => d.type === "price_offer"), [allDocuments]);
@@ -139,7 +145,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   const canEdit = access.edit;
   const canDelete = access.delete;
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(openOnSettings);
   const currency = systemCurrency || "EUR";
   const money = (value: unknown, decimals = 2) =>
     formatMoney(num(value), currency, lang, {

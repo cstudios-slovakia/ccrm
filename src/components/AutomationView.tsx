@@ -3859,7 +3859,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   {setAppTab && (
                     <button
                       type="button"
-                      onClick={() => setAppTab("settings/ai")}
+                      onClick={() => setAppTab("settings/integrations/ai")}
                       className="ml-1.5 inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-2 decoration-indigo-300 hover:decoration-indigo-600 transition-colors cursor-pointer align-baseline"
                     >
                       {t("Open AI Settings & Embeddings", "Otvoriť AI nastavenia a model", "AI beállítások megnyitása")}
