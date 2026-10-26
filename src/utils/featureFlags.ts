@@ -11,3 +11,9 @@ export const SOCIAL_MEDIA_ENABLED = true;
 // honoured so Normal/Big can be previewed. Enabled in Phase F: default "auto".
 // index.html's pre-paint script must use the same default (unit-tested).
 export const VIEW_SIZE_ENABLED = true;
+
+// Automatic project creation from incoming leads — PROJECT-AUTO-CREATE-DISABLED
+// (v1.9.29). While false its settings card is hidden, and so is the Projects &
+// tasks › Auto-create section. Setting this back to true also needs the server
+// calls restored — grep for the same marker.
+export const PROJECT_AUTO_CREATE_ENABLED = false;

@@ -232,6 +232,19 @@ export interface UserPrefs {
    * per filter so a new filter needs no change here; read and written through
    * useListFilter() in hooks/useListFilter.ts.
    */
+  /**
+   * Settings: the home screen is a grid of category tiles ("tiles", the default)
+   * or a left navigation beside the open category ("sidebar"). Only the wide
+   * layout honours it — below `ws-lg` the settings always render tiles, and the
+   * stored choice is kept for the next wide screen.
+   */
+  settingsLayout: "tiles" | "sidebar";
+  /**
+   * Settings: the sections the user opened last, newest first, as `category/section`
+   * ids (see settings/settingsRegistry.ts). Ids the registry no longer knows are
+   * dropped when read, so a renamed section never leaves a dead chip.
+   */
+  settingsRecents: string[];
   listFilters: Record<string, unknown>;
 }
 
@@ -280,6 +293,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   recentClientIds: [],
   moduleWizardPending: false,
   moduleWizardCompletedAt: null,
+  settingsLayout: "tiles",
+  settingsRecents: [],
   listFilters: {},
 };
 
