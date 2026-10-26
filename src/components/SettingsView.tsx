@@ -5856,7 +5856,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                           <button
                             type="submit"
-                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
+                            disabled={!newState.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.states.btn_add")}
                           </button>
@@ -6026,7 +6027,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           />
                           <button
                             type="submit"
-                            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1 shrink-0"
+                            disabled={!newSource.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add")}
                           </button>
@@ -6186,7 +6188,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           />
                           <button
                             type="submit"
-                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
+                            disabled={!newCategory.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_category")}
                           </button>
@@ -6337,7 +6340,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           />
                           <button
                             type="submit"
-                            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1 shrink-0"
+                            disabled={!newDivision.trim()}
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_division")}
                           </button>
