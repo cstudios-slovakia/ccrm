@@ -2125,6 +2125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'sectionsOrder' => json_decode($row['sections_order_json'] ?? '[]', true),
                     'customBannerText' => $row['custom_banner_text'],
                     'badgeStyle' => $row['badge_style'] ?? 'rounded',
+                    // NULL for a template generated before the variants existed.
+                    'layout' => isset($row['layout_json']) && $row['layout_json'] !== '' ? json_decode($row['layout_json'], true) : null,
                     'createdAt' => $row['created_at'],
                 ];
             }
@@ -5777,14 +5779,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insAct = $pdo->prepare("INSERT INTO `ai_custom_templates` (
                 `id`, `name`, `description`, `source_pdf_url`, `source_pdf_name`,
-                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`, `layout_json`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `description` = VALUES(`description`),
                 `source_pdf_url` = VALUES(`source_pdf_url`), `source_pdf_name` = VALUES(`source_pdf_name`),
                 `colors_json` = VALUES(`colors_json`), `typography_json` = VALUES(`typography_json`),
                 `sections_order_json` = VALUES(`sections_order_json`), `custom_banner_text` = VALUES(`custom_banner_text`),
-                `badge_style` = VALUES(`badge_style`)");
+                `badge_style` = VALUES(`badge_style`), `layout_json` = VALUES(`layout_json`)");
 
             foreach ($payload['aiCustomTemplates'] as $act) {
                 $actId = $act['id'];
@@ -5798,7 +5800,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     json_encode($act['typography'] ?? (object)[], JSON_UNESCAPED_UNICODE),
                     json_encode($act['sectionsOrder'] ?? [], JSON_UNESCAPED_UNICODE),
                     $act['customBannerText'] ?? null,
-                    $act['badgeStyle'] ?? 'rounded'
+                    $act['badgeStyle'] ?? 'rounded',
+                    // A handful of enum values and three short headings; the renderer
+                    // validates them again, so this only bounds what a client can park here.
+                    isset($act['layout']) && is_array($act['layout']) && strlen((string)json_encode($act['layout'])) <= 4000
+                        ? json_encode($act['layout'], JSON_UNESCAPED_UNICODE)
+                        : null
                 ]);
                 $processedActIds[] = $actId;
             }

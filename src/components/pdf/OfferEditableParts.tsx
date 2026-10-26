@@ -172,13 +172,15 @@ export const EditableUspGrid: React.FC<{
   cardClassName: string;
   dotClassName: string;
   dotStyle?: React.CSSProperties;
-}> = ({ cards, editing, cardClassName, dotClassName, dotStyle }) => {
+  /** Per-template card colours (an edge, an outline) that a class cannot carry. */
+  cardStyle?: React.CSSProperties;
+}> = ({ cards, editing, cardClassName, dotClassName, dotStyle, cardStyle }) => {
   const { copy } = editing;
   const visible = cards.slice(0, MAX_USP_CARDS);
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-4">
       {visible.map((card, idx) => (
-        <div key={idx} className={cn(cardClassName, "relative group/usp")} data-offer-usp={idx}>
+        <div key={idx} className={cn(cardClassName, "relative group/usp")} style={cardStyle} data-offer-usp={idx}>
           <div className="font-bold text-slate-950 text-xs flex items-center gap-2">
             <span className={dotClassName} style={dotStyle} />
             <OfferInput

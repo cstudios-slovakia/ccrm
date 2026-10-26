@@ -70,6 +70,8 @@ interface PriceOffersViewProps {
   setAiCustomTemplates?: React.Dispatch<React.SetStateAction<AiCustomTemplate[]>>;
   invoicingIntegrations?: ExternalInvoicingConfig | null;
   setInvoicingIntegrations?: (next: ExternalInvoicingConfig | null) => void;
+  /** Integrations config, only to tell whether the OpenAI key behind the AI template generator is set. */
+  integrationsConfig?: unknown;
   currentUser: UserProfile | null;
   systemLanguage?: string | null;
   systemCurrency?: string | null;
@@ -122,6 +124,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   setAiCustomTemplates,
   invoicingIntegrations,
   setInvoicingIntegrations,
+  integrationsConfig,
   currentUser,
   systemLanguage = "sk",
   systemCurrency = "EUR",
@@ -490,6 +493,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           canEdit={canConfigure}
           onBack={() => setShowSettings(false)}
           onOpenCompanySettings={onOpenSettings}
+          integrationsConfig={integrationsConfig}
         />
       </div>
     );

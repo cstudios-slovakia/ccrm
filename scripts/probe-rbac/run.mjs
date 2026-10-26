@@ -667,6 +667,12 @@ async function main() {
     const allowedSummary = await api(SESSIONS.pm, 'api/summarize_financial.php', json({}));
     check('R5: ...while a role with the module is not blocked by the gate (control)', allowedSummary.status !== 403, `${allowedSummary.status}`);
 
+    // The AI template generator is gated like the save that follows it (aiCustomTemplates is written by general_config editors only).
+    const pdfTplPm = await api(SESSIONS.pm, 'api/generate_pdf_template.php', json({}));
+    check('R5: generate_pdf_template refused for a role that edits invoices but not general configuration (403)', pdfTplPm.status === 403, `${pdfTplPm.status} ${pdfTplPm.raw.slice(0, 90)}`);
+    const pdfTplAdmin = await api(SESSIONS.admin, 'api/generate_pdf_template.php', json({}));
+    check('R5: ...while general_config = edit passes the gate and reaches the generator (no key stored: ai_key_missing)', pdfTplAdmin.status === 422 && pdfTplAdmin.data?.code === 'ai_key_missing', `${pdfTplAdmin.status} ${pdfTplAdmin.raw.slice(0, 120)}`);
+
     // The assistant's own context, built per role (the builder is what chat_rag / realtime / the agents call).
     const contextFor = (userKey, query = 'employee salary vacation leads invoices finance meeting warehouse') => {
       const script = `<?php
@@ -1112,6 +1118,45 @@ switch ($argv[1] ?? '') {
       Number(val("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='employees' AND COLUMN_NAME='user_id' AND NON_UNIQUE=0")) >= 1 &&
       val("SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='employees' AND COLUMN_NAME='user_id' AND REFERENCED_TABLE_NAME='users'") === '1');
 
+
+    // ======================================================================= AI price-offer templates
+    // The look read from a sample PDF (layout_json) must survive save, reload and rename; a template saved
+    // before the column existed stays a template with no layout.
+    section('T: AI price-offer templates keep their look through sync');
+    sql('ALTER TABLE ai_custom_templates DROP COLUMN layout_json');
+    // The schema is only re-applied when its fingerprint changes (a deploy); forget it so the migration runs.
+    sql("DELETE FROM system_settings WHERE `key`='SCHEMA_FINGERPRINT'");
+    mig('apply');
+    check('T1: layout_json is added by the migration (run twice) when it is missing',
+      val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='ai_custom_templates' AND COLUMN_NAME='layout_json'") === '1');
+    const tplLayout = {
+      headerStyle: 'dark-band', tableHeaderStyle: 'filled-dark', uspCardStyle: 'left-border', totalBannerStyle: 'solid-dark',
+      fontFamily: 'serif', headings: { usp: 'Prečo strechu zveriť nám', items: 'Rozsah dodávky a montáže', nextStep: 'Ďalší krok' },
+    };
+    const tplColors = { primary: '#7c2d12', secondary: '#9a3412', background: '#ffffff', accent: '#f97316', text: '#111827' };
+    const tplOrder = ['header', 'client_metadata', 'greeting', 'items_table', 'usp_grid', 'reassurance', 'total_box', 'key_parameters', 'next_steps', 'signoff', 'footer'];
+    const tpl = (extra = {}) => ({
+      id: 'act-probe-1', name: 'Probe template', description: 'd', colors: tplColors,
+      typography: { fontFamily: 'serif', headingStyle: 'bold' }, sectionsOrder: tplOrder,
+      customBannerText: 'Cena', badgeStyle: 'pill', createdAt: '2026-01-01', ...extra,
+    });
+    const tplById = async (id) => ((await syncGet(SESSIONS.admin)).data?.aiCustomTemplates || []).find((x) => x.id === id);
+    await post('admin', { aiCustomTemplates: [tpl({ layout: tplLayout })] });
+    let got = await tplById('act-probe-1');
+    check('T2: a saved template comes back with every layout field', JSON.stringify(got?.layout) === JSON.stringify(tplLayout), JSON.stringify(got?.layout));
+    check('T2: ...and its colours, block order, banner and badge',
+      JSON.stringify(got?.colors) === JSON.stringify(tplColors) && JSON.stringify(got?.sectionsOrder) === JSON.stringify(tplOrder) && got?.customBannerText === 'Cena' && got?.badgeStyle === 'pill');
+    await post('admin', { aiCustomTemplates: [tpl({ name: 'Renamed template', layout: tplLayout })] });
+    got = await tplById('act-probe-1');
+    check('T3: a rename updates the same row — new name, layout intact, still one row',
+      got?.name === 'Renamed template' && JSON.stringify(got?.layout) === JSON.stringify(tplLayout) && val("SELECT COUNT(*) FROM ai_custom_templates WHERE id='act-probe-1'") === '1');
+    await post('admin', { aiCustomTemplates: [tpl({ id: 'act-probe-legacy', name: 'Legacy template' })] });
+    check('T4: a template saved without a layout comes back with none (it keeps its original look)', (await tplById('act-probe-legacy'))?.layout === null);
+    check('T4: ...and saving it did not touch the other template', JSON.stringify((await tplById('act-probe-1'))?.layout) === JSON.stringify(tplLayout));
+    await post('admin', { aiCustomTemplates: [tpl({ name: 'Renamed template', layout: { headerStyle: 'x'.repeat(5000) } })] });
+    check('T5: an oversized layout is not stored', (await tplById('act-probe-1'))?.layout === null);
+    await post('employee_a', { aiCustomTemplates: [tpl({ name: 'Hijacked', layout: tplLayout })] });
+    check('T6: a role without general_config cannot rename or restyle a template', (await tplById('act-probe-1'))?.name === 'Renamed template');
   } finally {
     teardown();
   }

@@ -16,6 +16,7 @@
     "test:mail-filing": "php scripts/test-mail-filing.php",
     "test:warehouse-fields": "php scripts/test-warehouse-fields.php",
     "test:offer-statuses": "php scripts/test-offer-statuses.php",
+    "test:pdf-template": "php scripts/test-pdf-template.php",
     "test:pipeline-extras": "php scripts/test-pipeline-extras.php",
     "test:passkeys": "php scripts/test-passkeys.php",
     "test:vector": "php scripts/test-vector-index.php",
