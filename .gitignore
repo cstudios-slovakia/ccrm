@@ -136,3 +136,11 @@ __pycache__/
 
 # Villatesta migration: extracted customer data (personal data, never commit)
 scripts/import/villatesta/out/
+
+# `php ccrm update` copies public/* to the docroot of a server checkout. These
+# four are not tracked at the root (unlike api/ and sync.php), so on a server
+# they would show as untracked after every update.
+/dump_schema.php
+/widget-test.html
+/module-screenshots/
+/update-screenshots/

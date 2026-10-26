@@ -16,8 +16,9 @@ docker compose exec -T -u www-data web php ccrm update
 docker compose exec -T web apache2ctl graceful
 
 # The stack files themselves ship in the repo. Say so if they changed; do not
-# restart the databases behind the operator's back.
-if ! diff -rq --exclude=.env --exclude='.cron*' "$CCRM_DIR/deploy/vps" . >/dev/null 2>&1; then
+# restart the databases behind the operator's back. health-log.sh is a per-host
+# helper (it hardcodes the host name), so it is not part of the comparison.
+if ! diff -rq --exclude=.env --exclude='.cron*' --exclude=health-log.sh "$CCRM_DIR/deploy/vps" . >/dev/null 2>&1; then
   echo
   echo "NOTE: deploy/vps/ changed in this release. Review and apply:"
   echo "  diff -r $CCRM_DIR/deploy/vps ."
