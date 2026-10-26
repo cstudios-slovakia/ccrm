@@ -746,6 +746,16 @@ function ccrm_migrate() {
 
     try {
         $pdo = get_db_connection();
+        // Forget the "schema already applied" marker so this run really migrates.
+        // The web workers may still hold the OLD schema.php in opcache for a while
+        // after the swap; a poll that lands in that window runs the old migrations
+        // and stamps the NEW fingerprint, so a plain ccrm_apply_schema() here would
+        // find the schema "current" and skip everything the release added.
+        try {
+            $pdo->exec("DELETE FROM `system_settings` WHERE `key` = 'SCHEMA_FINGERPRINT'");
+        } catch (\Throwable $e) {
+            // No system_settings yet (fresh database): nothing is marked, nothing to clear.
+        }
         ccrm_apply_schema($pdo);
         echo "Database schema migrated successfully.\n";
     } catch (\Exception $e) {
