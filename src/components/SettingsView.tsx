@@ -86,6 +86,7 @@ import { CategoryPage } from "./settings/CategoryPage";
 import { SidebarLayout } from "./settings/SidebarLayout";
 import { SectionCard, ModuleLinkCard } from "./settings/SectionCard";
 import { SaveBar } from "./settings/SaveBar";
+import { ScrollFade } from "./settings/ScrollFade";
 import type { SectionNode } from "./settings/SectionList";
 
 const LeadAssignmentCard: React.FC<{
@@ -2228,8 +2229,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return resolveRolePermissions(role);
   };
 
+  // Other people's accounts and the role registry are Admin-only on the server.
+  // pm_managers opens these two screens; it must not be able to write them,
+  // because writing them includes assigning the Admin role.
+  const canAdministerUsers = isAdminRoleName(currentUser?.role);
   const matrixLocked = (roleName: string) =>
-    isAdminRoleName(roleName) || getPermission("pm_managers") !== "edit";
+    isAdminRoleName(roleName) || !canAdministerUsers;
 
   const renderAccessCell = (roleName: string, key: string) => {
     const currentValue = resolvedForRole(roleName)[key] || "nothing";
@@ -2621,7 +2626,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Add/Remove Users logic
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     const nameVal = newManager.trim();
     const emailVal = newUserEmail.trim();
     const pwdVal = newUserPassword.trim();
@@ -2677,7 +2682,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleRemoveUser = (name: string) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     const target = users.find(u => u.name.toLowerCase() === name.toLowerCase());
     const adminCount = users.filter(u => (u.role || "").toLowerCase() === "admin").length;
     if (target && (target.role || "").toLowerCase() === "admin" && adminCount <= 1) {
@@ -2727,6 +2732,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleUpdateUser = (updated: UserProfile) => {
+    if (!canAdministerUsers) return;
     // Match on the identity the record had before this edit — matching on
     // updated.email loses the change whenever the email itself is what changed.
     const previousEmail = selectedUser?.email ?? updated.email;
@@ -2737,7 +2743,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Add Role logic
   const handleAddRole = (e: React.FormEvent) => {
     e.preventDefault();
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     const nameVal = newRoleName.trim();
     if (!nameVal) return;
     if (roles.some(r => r.name.toLowerCase() === nameVal.toLowerCase())) {
@@ -2761,7 +2767,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleRemoveRole = (roleName: string) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     if (isProtectedRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk" 
@@ -2797,7 +2803,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   // The server saves the role registry for Admin only, so the reset is Admin-only as well.
-  const canResetEmployeeRole = isAdminRoleName(currentUser?.role);
+  const canResetEmployeeRole = canAdministerUsers;
   const resetEmployeeRole = () => {
     if (!canResetEmployeeRole) return;
     if (!window.confirm(formatTranslation(userLanguage, "settings.rbac.reset_defaults_confirm", { role: EMPLOYEE_ROLE_NAME }))) return;
@@ -2806,7 +2812,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const updateRolePermission = (roleName: string, key: string, value: PermissionValue) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     if (isAdminRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk" 
@@ -2821,7 +2827,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const updateRoleSection = (roleName: string, section: PermissionSection, granted: boolean) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     if (isAdminRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk"
@@ -2931,7 +2937,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Read-only alert component
   const renderReadOnlyBanner = (permKey: string) => {
-    const isReadOnly = getPermission(permKey) === "view";
+    // Users and roles stay visible with pm_managers, but only an Admin can save
+    // them. Anyone else sees the same read-only notice as a view permission.
+    const isReadOnly = getPermission(permKey) === "view"
+      || (permKey === "pm_managers" && !canAdministerUsers);
     if (!isReadOnly) return null;
     return (
       <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2 mb-6 shadow-sm">
@@ -2990,7 +2999,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         type="button"
         onClick={saveCompanyDrafts}
         data-testid="settings-company-save"
-        className="flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+        className="hidden min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500 ws-lg:flex"
       >
         <Save className="h-4 w-4" aria-hidden="true" />
         {getTranslation(userLanguage, "common.save")}
@@ -3016,7 +3025,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </h3>
         
                         {/* Users Responsive Table */}
-                        <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                        <ScrollFade axis="x" className="rounded-2xl border border-slate-200">
                           <table className="w-full text-left border-collapse text-ui">
                             <thead className="sticky top-0 z-20 bg-slate-50">
                               <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 type-overline">
@@ -3097,7 +3106,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       >
                                         <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
                                       </button>
-                                      {getPermission("pm_managers") === "edit" && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
+                                      {canAdministerUsers && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
                                         <HoldToConfirmButton
                                             tone="danger"
                                             lang={userLanguage}
@@ -3115,7 +3124,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </ScrollFade>
                       </div>
                     ) : (
                       <div className="space-y-6 animate-in slide-in-from-right duration-250">
@@ -3164,7 +3173,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
                                   <input
                                     type="text"
-                                    disabled={getPermission("pm_managers") === "view"}
+                                    disabled={!canAdministerUsers}
                                     value={selectedUser.name}
                                     onChange={(e) => {
                                       const updated = { ...selectedUser, name: e.target.value };
@@ -3179,7 +3188,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
                                   <input
                                     type="email"
-                                    disabled={getPermission("pm_managers") === "view"}
+                                    disabled={!canAdministerUsers}
                                     value={selectedUser.email}
                                     onChange={(e) => {
                                       const updated = { ...selectedUser, email: e.target.value };
@@ -3195,7 +3204,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <input
                                     type="text"
                                     placeholder={getTranslation(userLanguage, "settings.managers.placeholder_password")}
-                                    disabled={getPermission("pm_managers") === "view"}
+                                    disabled={!canAdministerUsers}
                                     value={selectedUser.password || ""}
                                     onChange={(e) => {
                                       const updated = { ...selectedUser, password: e.target.value };
@@ -3208,7 +3217,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {/* Security Access Level Role */}
                                 <div className="space-y-1">
                                   <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
-                                  {getPermission("pm_managers") === "edit" ? (
+                                  {canAdministerUsers ? (
                                     <CustomSelect
                                       value={selectedUser.role}
                                       onChange={(v) => {
@@ -3224,7 +3233,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     />
                                   ) : (
                                     <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-extrabold select-text w-full">
-                                      🛡️ {selectedUser.role}
+                                      <ShieldCheck className="inline h-3.5 w-3.5 align-text-bottom" aria-hidden="true" /> {selectedUser.role}
                                     </div>
                                   )}
                                 </div>
@@ -3242,7 +3251,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         <button
                                           key={colorPreset}
                                           type="button"
-                                          disabled={getPermission("pm_managers") === "view"}
+                                          disabled={!canAdministerUsers}
                                           onClick={() => {
                                             const updated = { ...selectedUser, color: colorPreset };
                                             handleUpdateUser(updated);
@@ -3258,7 +3267,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     })}
         
                                     {/* More colours: full palette + the browser's custom picker */}
-                                    {getPermission("pm_managers") === "edit" && (
+                                    {canAdministerUsers && (
                                       <ColorPicker
                                         variant="palette"
                                         value={selectedUser.color}
@@ -3292,7 +3301,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                               {(!selectedUser.activityLog || selectedUser.activityLog.length === 0) ? (
                                 <div className="py-12 text-center text-slate-400">
-                                  <div className="text-display mb-2">📜</div>
+                                  <Icons.ScrollText className="mx-auto mb-2 h-8 w-8" aria-hidden="true" />
                                   <div className="font-bold text-slate-700 uppercase tracking-wider">{getTranslation(userLanguage, "settings.managers.timeline_empty")}</div>
                                   <div className="type-overline mt-1.5 text-slate-400">{getTranslation(userLanguage, "settings.managers.timeline_empty_desc")}</div>
                                 </div>
@@ -3342,7 +3351,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
         
                             {/* SIMULATION FORM */}
-                            {getPermission("pm_managers") === "edit" && (
+                            {canAdministerUsers && (
                               <form 
                                 onSubmit={(e) => {
                                   e.preventDefault();
@@ -3398,7 +3407,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     )}
         
                     {/* Add User form - Gated to edit access */}
-                    {!selectedUser && getPermission("pm_managers") === "edit" && (
+                    {!selectedUser && canAdministerUsers && (
                         <form onSubmit={handleAddUser} className="p-5 border border-slate-200/80 bg-slate-50/50 rounded-2xl space-y-4 max-w-2xl mt-8">
                           <h4 className="text-ui font-bold text-slate-700 flex items-center gap-1">
                             <Plus className="h-4 w-4" /> {getTranslation(userLanguage, "settings.managers.form_title")}
@@ -3488,7 +3497,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
         
                       {/* RBAC Matrix Table (Flipped: columns are roles, rows are functions) */}
-                      <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
+                      <ScrollFade axis="x" className="rounded-2xl border border-slate-200 shadow-sm">
                         <table className="w-full text-left border-collapse bg-white">
                           <thead className="sticky top-0 z-20 bg-slate-50">
                             <tr className="bg-slate-50 border-b border-slate-200 type-overline text-slate-600">
@@ -3516,7 +3525,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       
                                       {/* Delete action for custom roles */}
                                       {!isAdmin && !isProtectedRoleName(role.name) && (
-                                        getPermission("pm_managers") === "edit" ? (
+                                        canAdministerUsers ? (
                                           <HoldToConfirmButton
                                               tone="danger"
                                               lang={userLanguage}
@@ -3549,7 +3558,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       )}
         
                                       {/* Navigation layout upload button */}
-                                      {getPermission("pm_managers") === "edit" && (
+                                      {canAdministerUsers && (
                                         <div className="mt-2">
                                           <button
                                             type="button"
@@ -3615,10 +3624,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })}
                           </tbody>
                         </table>
-                      </div>
+                      </ScrollFade>
         
                       {/* Add Custom Role - Gated */}
-                      {getPermission("pm_managers") === "edit" && (
+                      {canAdministerUsers && (
                         <form onSubmit={handleAddRole} className="p-5 border border-slate-200/85 bg-slate-50/50 rounded-2xl flex flex-col ws-sm:flex-row items-end gap-3 max-w-xl mt-6">
                           <div className="flex-1 space-y-1 w-full">
                             <label className="type-overline text-slate-400 block pl-0.5">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>
@@ -3974,7 +3983,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               
                               {unifiedEntries.filter(ue => !ue.archived).length === 0 ? (
                                 <div className="border border-slate-200 border-dashed rounded-2xl p-8 text-center text-slate-400">
-                                  <span className="text-display">🗂️</span>
+                                  <Icons.FolderOpen className="mx-auto h-8 w-8" aria-hidden="true" />
                                   <p className="text-ui font-bold text-slate-500 mt-2">
                                     {t("No active unified entries", "Žiadne aktívne unifikované záznamy", "Nincsenek aktív egységes bejegyzések")}
                                   </p>
@@ -4081,7 +4090,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {/* Meta Ads Credentials Form */}
                       <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
                         <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                          <span className="text-blue-600 font-extrabold text-title-sm">♾️</span> {getTranslation(userLanguage, "settings.ads.meta_title")}
+                          <Icons.Infinity className="h-4.5 w-4.5 text-blue-600" aria-hidden="true" /> {getTranslation(userLanguage, "settings.ads.meta_title")}
                         </h3>
                         
                         <div className="space-y-3">
@@ -4134,7 +4143,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {/* Google Ads Credentials Form */}
                       <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
                         <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                          <span className="text-amber-500 font-extrabold text-title-sm">🤖</span> {getTranslation(userLanguage, "settings.ads.google_title")}
+                          <Icons.Bot className="h-4.5 w-4.5 text-amber-500" aria-hidden="true" /> {getTranslation(userLanguage, "settings.ads.google_title")}
                         </h3>
                         
                         <div className="space-y-3">
@@ -4274,7 +4283,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                       {/* Connected Active Campaign Listing */}
                       {isConnected ? (
-                        <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
+                        <ScrollFade axis="x" className="rounded-2xl border border-slate-200 shadow-sm">
                           <table className="w-full text-left border-collapse bg-white">
                             <thead>
                               <tr className="bg-slate-50 border-b border-slate-200 type-overline text-slate-600">
@@ -4304,7 +4313,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           ? "bg-blue-50 text-blue-700 border-blue-200"
                                           : "bg-amber-50 text-amber-700 border-amber-200"
                                       }`}>
-                                        {c.platform === "meta" ? "♾️ Meta" : "🤖 Google"}
+                                        {c.platform === "meta" ? "Meta" : "Google"}
                                       </span>
                                     </td>
         
@@ -4398,10 +4407,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               })}
                             </tbody>
                           </table>
-                        </div>
+                        </ScrollFade>
                       ) : (
                         <div className="py-8 flex flex-col items-center justify-center text-center space-y-2 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                          <span className="text-heading">🔌</span>
+                          <Icons.Plug className="h-7 w-7" aria-hidden="true" />
                           <div className="flex flex-col">
                             <span className="text-ui font-bold text-slate-600">{getTranslation(userLanguage, "settings.ads.empty_title")}</span>
                             <span className="text-micro text-slate-400 max-w-sm mt-1">
@@ -5190,7 +5199,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
+                        <ScrollFade axis="x" className="">
                           <table className="w-full text-left text-ui border-collapse">
                             <thead>
                               <tr className="border-b border-slate-200 text-slate-500 type-overline">
@@ -5229,7 +5238,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               ))}
                             </tbody>
                           </table>
-                        </div>
+                        </ScrollFade>
                       )}
                     </div>
                   </div>
@@ -5481,7 +5490,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         )}
                       </p>
         
-                      <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
@@ -5822,11 +5831,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })()}
                           </tbody>
                         </table>
-                      </div>
+                      </ScrollFade>
         
                       {/* Add Custom Stage */}
                       {getPermission("pipeline_stages") === "edit" && (
-                        <form onSubmit={handleAddState} className="flex gap-2 max-w-lg pt-2 items-center">
+                        <form onSubmit={handleAddState} className="flex flex-wrap gap-2 max-w-lg pt-2 items-center">
                           <input
                             type="text"
                             required
@@ -5876,7 +5885,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {getTranslation(userLanguage, "settings.sources.desc")}
                       </p>
         
-                      <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
@@ -6002,11 +6011,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })}
                           </tbody>
                         </table>
-                      </div>
+                      </ScrollFade>
         
                       {/* Add Custom Source */}
                       {getPermission("traffic_sources") === "edit" && (
-                        <form onSubmit={handleAddSource} className="flex gap-2 max-w-md pt-2">
+                        <form onSubmit={handleAddSource} className="flex flex-wrap gap-2 max-w-md pt-2">
                           <input
                             type="text"
                             required
@@ -6036,7 +6045,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {getTranslation(userLanguage, "settings.sources.categories_desc")}
                       </p>
         
-                      <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
@@ -6162,11 +6171,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })}
                           </tbody>
                         </table>
-                      </div>
+                      </ScrollFade>
         
                       {/* Add Custom Category */}
                       {getPermission("traffic_sources") === "edit" && (
-                        <form onSubmit={handleAddCategory} className="flex gap-2 max-w-md pt-2">
+                        <form onSubmit={handleAddCategory} className="flex flex-wrap gap-2 max-w-md pt-2">
                           <input
                             type="text"
                             required
@@ -6196,7 +6205,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {getTranslation(userLanguage, "settings.sources.divisions_desc")}
                       </p>
         
-                      <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
@@ -6313,11 +6322,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })}
                           </tbody>
                         </table>
-                      </div>
+                      </ScrollFade>
         
                       {/* Add New Division Form */}
                       {getPermission("traffic_sources") === "edit" && (
-                        <form onSubmit={handleAddDivision} className="flex items-center gap-3 pt-2">
+                        <form onSubmit={handleAddDivision} className="flex flex-wrap items-center gap-3 pt-2">
                           <input
                             type="text"
                             required
@@ -6347,7 +6356,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
                       </p>
         
-                      <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
@@ -6438,7 +6447,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })}
                           </tbody>
                         </table>
-                      </div>
+                      </ScrollFade>
         
                       {/* Add New Task State Form */}
                       {getPermission("traffic_sources") === "edit" && (
@@ -6539,7 +6548,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
                       <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
                         <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-1.5">
-                          🔌 {getTranslation(userLanguage, "settings.api.guide")}
+                          {getTranslation(userLanguage, "settings.api.guide")}
                         </h3>
                         <span className="bg-blue-50 text-blue-700 type-overline px-2 py-0.5 rounded-full border border-blue-200/50">
                           STABLE w1
@@ -6917,7 +6926,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         return (
                         <form onSubmit={handleSendTestEmail} className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
                           <h4 className="text-ui font-heading font-bold text-slate-800 flex items-center gap-1.5">
-                            ⚙️ {getTranslation(userLanguage, "settings.email.diagnostics")}
+                            {getTranslation(userLanguage, "settings.email.diagnostics")}
                           </h4>
                           <p className="text-micro text-slate-400 leading-normal font-semibold">
                             {getTranslation(userLanguage, "settings.email.diagnostics_desc")}

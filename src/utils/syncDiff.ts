@@ -78,3 +78,64 @@ export const diffRecords = (
   }
   return { changed, deletedIds, next };
 };
+
+// Collections the delta sync tracks, plus the two blobs that are not record
+// lists (settings, the role registry). A refusal tag whose collection is not
+// here is one this client does not know — it is still a refused write.
+const KNOWN_SKIP_COLLECTIONS = new Set([
+  "leads", "tasks", "users", "roles", "meetingNotes", "customDashboards",
+  "projectTypes", "projects", "warehouses", "suppliers", "warehouseItems",
+  "warehouseStock", "warehouseBatches", "warehouseMovements", "financialCategories",
+  "financialRecords", "invoicesOffers", "aiCustomTemplates", "clientCategories",
+  "employees", "employeeSalaries", "employeeVacations", "orders", "tickets",
+  "supportContracts", "settings", "unifiedEntries", "unifiedEntriesData",
+]);
+
+/**
+ * The collection a `permissionSkipped` tag belongs to.
+ * `settings:DIVISIONS` → settings, `leads:clients` and `customDashboards:home`
+ * (with or without `:delete`) → the parent list, `users:nameTaken` → users.
+ */
+export const skippedCollection = (tag: string): string => {
+  if (tag.startsWith("settings:")) return "settings";
+  const body = tag.endsWith(":delete") ? tag.slice(0, -":delete".length) : tag;
+  if (body === "leads:clients") return "leads";
+  if (body === "customDashboards:home") return "customDashboards";
+  const colon = body.indexOf(":");
+  return colon === -1 ? body : body.slice(0, colon);
+};
+
+/** Keep the previous baseline for this collection: the server did not store it. */
+export const skipHoldsBaseline = (skipped: ReadonlySet<string>, key: string): boolean => {
+  for (const tag of skipped) {
+    if (skippedCollection(tag) === key) return true;
+  }
+  return false;
+};
+
+/**
+ * Whether the user should be told this tag is unsaved work.
+ * A bare collection the push did not touch stays quiet (the server names the
+ * collection whenever a write was refused, including an empty one). A reason
+ * suffix (`users:nameTaken`, `leads:outside-scope`, `employees:userId`) is
+ * lost work. A tag this client does not recognise is lost work too — treating
+ * it as success is how a refused edit stays on screen with nothing said.
+ */
+export const skipIsLostWork = (tag: string, payload: { [key: string]: unknown }): boolean => {
+  const col = skippedCollection(tag);
+  if (!KNOWN_SKIP_COLLECTIONS.has(col)) return true;
+  if (col === "settings") return payload.settings != null;
+  const bare = tag === col || tag === `${col}:delete`
+    || tag === "leads:clients" || tag === "leads:clients:delete"
+    || tag === "customDashboards:home" || tag === "customDashboards:home:delete";
+  if (!bare) return true;
+  if (tag.endsWith(":delete")) {
+    const deleted = payload.deleted;
+    const ids = deleted && typeof deleted === "object"
+      ? (deleted as { [key: string]: unknown })[col]
+      : undefined;
+    return Array.isArray(ids) && ids.length > 0;
+  }
+  const body = payload[col];
+  return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
+};
