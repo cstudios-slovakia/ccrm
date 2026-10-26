@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
-  FileText, Search, Eye, Trash2, Pencil,
+  FileText, Search, Eye, Trash2, Pencil, Copy,
   AlertCircle, Layers, TrendingUp, Award, Lock, Settings
 } from "lucide-react";
 import type {
@@ -29,7 +29,7 @@ import { PageHeader, StatGrid, StatTile } from "./layout";
 import { getAvailableVatRates } from "../utils/vat";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
-import { num } from "../utils/offerDraft";
+import { duplicateOffer, num } from "../utils/offerDraft";
 import type { PriceLevel } from "../utils/priceLevels";
 import {
   DEFAULT_INVOICE_STATUS_DEFS,
@@ -298,16 +298,37 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
     openEditor({ mode: offer.mode, templateId: offer.customTemplateId || undefined, offerId: offer.id });
 
   // ------------------------------------------------------------------- actions
+  /** Issues a copy of the offer right away, with no review step in between. */
+  const handleDuplicateOffer = async (offer: InvoiceOffer) => {
+    if (!canEdit || isExternalLoading) return;
+    // Issuing closes the open editor, so unsaved changes are asked about first.
+    if (!(await confirmDiscard())) return;
+    const copy = duplicateOffer(offer, {
+      id: "io-" + Math.random().toString(36).slice(2, 11),
+      documentNumber: nextDocumentNumber(),
+      todayIso: todayLocal(),
+      status: defaultOfferStatus(offerStatuses),
+      createdBy: currentUser?.name
+    });
+    await handleSaveOffer(copy, offer.externalProvider ?? enabledProviders[0] ?? "superfaktura", true);
+  };
+
   /** Saves the document the editor built; for the accounting-service mode it is issued upstream first. */
-  const handleSaveOffer = async (doc: InvoiceOffer, externalProvider: ExternalInvoiceProvider) => {
+  const handleSaveOffer = async (doc: InvoiceOffer, externalProvider: ExternalInvoiceProvider, asNew = false) => {
     if (!canEdit) return;
+
+    // A copy is issued without the editor open, so its failure has to surface as a toast.
+    const reportError = (message: string) => {
+      setExternalError(message);
+      if (asNew) toast(message, "error");
+    };
 
     // Only issue upstream once. Re-saving an edit of an already-issued
     // document must not create a second copy in the accounting service.
     const alreadyIssuedExternally = Boolean(doc.externalId);
     if (doc.mode === "external" && !alreadyIssuedExternally) {
       if (!enabledProviders.length) {
-        setExternalError(
+        reportError(
           t(
             "No external accounting service is enabled. Configure SuperFaktúra or iDoklad in the offer settings.",
             "Nie je zapnutá žiadna externá účtovná služba. Nastavte SuperFaktúru alebo iDoklad v nastaveniach cenových ponúk.",
@@ -344,7 +365,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           );
         }
         if (!res.ok || !data?.success) {
-          setExternalError(data?.message || `HTTP ${res.status}`);
+          reportError(data?.message || `HTTP ${res.status}`);
           setIsExternalLoading(false);
           return;
         }
@@ -356,7 +377,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
         doc.status = firstOfferStatusOf("open", offerStatuses) ?? doc.status;
       } catch (err) {
         const isAbort = err instanceof Error && err.name === "AbortError";
-        setExternalError(
+        reportError(
           isAbort
             ? t("The external service did not respond in time.", "Externá služba neodpovedala včas.", "A külső szolgáltatás nem válaszolt időben.")
             : t("External API call failed: ", "Volanie externého API zlyhalo: ", "A külső API hívása sikertelen: ") + (err instanceof Error ? err.message : String(err))
@@ -367,7 +388,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
       setIsExternalLoading(false);
     }
 
-    const isEdit = Boolean(editorSession?.offerId);
+    const isEdit = !asNew && Boolean(editorSession?.offerId);
     setInvoicesOffers(prev =>
       isEdit ? prev.map(o => (o.id === doc.id ? doc : o)) : [doc, ...prev]
     );
@@ -670,7 +691,16 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredOffers.length > 0 ? (
                 filteredOffers.map(offer => (
-                  <tr key={offer.id} className="group hover:bg-slate-50/80 transition-colors">
+                  <tr
+                    key={offer.id}
+                    onClick={e => {
+                      // Controls inside the row (status picker, action buttons) keep their own behaviour.
+                      if ((e.target as HTMLElement).closest("button, a, input, select, [role=listbox], [role=option]")) return;
+                      if (canEdit) handleEditOffer(offer);
+                      else setPreviewOffer(offer);
+                    }}
+                    className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
+                  >
                     <td className="p-4 align-top font-mono font-bold text-slate-900 whitespace-nowrap">
                       {offer.documentNumber}
                       {offer.externalId && (
@@ -734,6 +764,15 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                         >
                           <Eye className="h-4 w-4" />
                         </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => handleDuplicateOffer(offer)}
+                            title={t("Duplicate", "Duplikovať", "Másolás")}
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        )}
                         {canEdit && (
                           <button
                             onClick={() => handleEditOffer(offer)}

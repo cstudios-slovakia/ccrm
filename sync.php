@@ -3297,6 +3297,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // with no message at all.
                     'TASK_STATES', 'TASK_STATE_COLORS',
                     'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS', 'LEAD_CATEGORY_COLORS',
+                    // Divisions live on the same screen behind the same gate.
+                    // Missing from every list, they were refused even for an
+                    // admin — and silently, on an install that never stored
+                    // the row, because a never-stored key counts as defaults.
+                    'DIVISIONS', 'DIVISION_COLORS',
                 ]);
             }
             if ($canSettingsAi) {

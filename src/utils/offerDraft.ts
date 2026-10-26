@@ -306,6 +306,32 @@ function finalizeOffer(draft: InvoiceOffer, o: AssembleOptions, sampleClientName
 }
 
 /**
+ * A saved offer copied into a new, ready-to-issue one: same content, own id
+ * and number, issued today with its terms moved by as many days, and nothing
+ * that ties it to what the original issued upstream.
+ */
+export function duplicateOffer(
+  offer: InvoiceOffer,
+  o: { id: string; documentNumber: string; todayIso: string; status: string; createdBy?: string | null }
+): InvoiceOffer {
+  return {
+    ...offer,
+    id: o.id,
+    documentNumber: o.documentNumber,
+    // Line ids are the primary key of invoice_offer_items, so a copy must not reuse them.
+    items: offer.items.map(it => ({ ...it, id: "ioi-" + Math.random().toString(36).slice(2, 11) })),
+    uspCards: (offer.uspCards || []).map(c => ({ ...c })),
+    status: o.status,
+    statusChangedAt: undefined,
+    issuedAt: o.todayIso,
+    validUntil: shiftWithIssue(o.todayIso, offer.validUntil, offer.issuedAt) || addDays(o.todayIso, 30),
+    externalId: null,
+    externalPdfUrl: null,
+    createdBy: o.createdBy || offer.createdBy || null
+  };
+}
+
+/**
  * The finished document for Preview. Before a client is chosen it shows a
  * sample client so the layout is still judged on real data.
  */
