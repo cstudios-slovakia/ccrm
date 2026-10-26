@@ -1979,14 +1979,14 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 >
                   {renderIcon(type.icon, "h-6 w-6")}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h4 className="font-heading font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
                     {type.name}
                   </h4>
                   <p className="text-ui font-semibold text-slate-500 line-clamp-2 mt-1">
                     {type.description || t("No description.", "Bez popisu.", "Nincs leírás.")}
                   </p>
-                  <div className="flex items-center gap-2 mt-2.5">
+                  <div className="flex flex-wrap items-center gap-2 mt-2.5">
                     <span className="px-2 py-0.5 rounded-full bg-slate-100 text-micro font-bold text-slate-500 border border-slate-200">
                       {type.attributes?.length || 0} {t("attributes", "atribútov", "attribútum")}
                     </span>
@@ -2045,8 +2045,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           each produce their own project for it.
 
           PROJECT-AUTO-CREATE-DISABLED (v1.9.29): hidden, because the server no
-          longer creates projects from leads. Flip the constant at the top of
-          this file (and restore the server calls) to bring it back. */}
+          longer creates projects from leads. Flip the flag in utils/featureFlags.ts
+          (and restore the server calls) to bring it back. */}
       {PROJECT_AUTO_CREATE_ENABLED && setProjectAutoCreate && (() => {
         const active = isProjectAutoCreateActive(projectAutoCreate, projectTypes);
         const chosenType = projectTypes.find(pt => pt.id === projectAutoCreate.projectTypeId);

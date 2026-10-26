@@ -112,7 +112,7 @@ export const CategoryPage: React.FC<{
       <div className="flex flex-col" data-testid="settings-category" data-category={def.id}>
         <div
           data-testid="settings-sticky-bar"
-          className="sticky top-0 z-20 -mx-(--gutter) -mt-(--gutter) flex flex-col gap-3 border-b border-slate-200 bg-slate-50/95 px-(--gutter) pb-2.5 pt-3.5 backdrop-blur"
+          className="sticky top-[calc(var(--gutter)*-1)] z-20 -mx-(--gutter) -mt-(--gutter) flex flex-col gap-3 border-b border-slate-200 bg-slate-50/95 px-(--gutter) pb-2.5 pt-3.5 backdrop-blur"
         >
           <div className="flex items-center gap-2.5">
             <a
@@ -190,7 +190,7 @@ export const CategoryPage: React.FC<{
         <nav
           aria-label={t("settings.nav.ui.sections")}
           data-testid="settings-section-tabs"
-          className="sticky top-2 z-10 rounded-3xl border border-slate-200 bg-white/90 p-1.5 shadow-glass-sm backdrop-blur"
+          className="sticky top-[calc(0.5rem_-_var(--gutter))] z-10 rounded-3xl border border-slate-200 bg-white/90 p-1.5 shadow-glass-sm backdrop-blur"
         >
           <ScrollFade axis="x">
             <ul className="flex gap-1">
@@ -222,7 +222,7 @@ export const CategoryPage: React.FC<{
 
       <div className="flex flex-wrap items-start gap-6">
         <SectionList categoryId={def.id} sections={sections} flashId={flashId} className="flex-[999_1_40rem]" />
-        <aside className="flex min-w-0 flex-[1_1_18rem] flex-col gap-4.5 ws-lg:sticky ws-lg:top-20">
+        <aside className="flex min-w-0 flex-[1_1_18rem] flex-col gap-4.5 ws-lg:sticky ws-lg:top-[calc(5rem_-_var(--gutter))]">
           <RelatedList lang={lang} category={category} canSee={canSee} onOpen={onOpenRef} variant="card" />
           <HelpCard lang={lang} categoryId={def.id} />
         </aside>

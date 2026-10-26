@@ -18,7 +18,7 @@ export const SaveBar: React.FC<{
     role="region"
     aria-label={getTranslation(lang, "settings.nav.ui.unsaved")}
     data-testid="settings-save-bar"
-    className="settings-menu-in fixed inset-x-3 bottom-4 z-40 flex items-center gap-2.5 rounded-3xl bg-slate-900 py-2.5 pl-4 pr-2.5 shadow-2xl [padding-bottom:max(0.625rem,env(safe-area-inset-bottom))]"
+    className="settings-menu-in fixed bottom-24 left-3 right-20 z-40 lg:bottom-4 flex items-center gap-2.5 rounded-3xl bg-slate-900 py-2.5 pl-4 pr-2.5 shadow-2xl [padding-bottom:max(0.625rem,env(safe-area-inset-bottom))]"
   >
     <span className="flex min-w-0 flex-1 flex-col">
       <span className="text-ui font-bold text-white">{getTranslation(lang, "settings.nav.ui.unsaved")}</span>

@@ -257,13 +257,15 @@ test.describe('Shell navigation', () => {
     assertNoDefectsFound();
   });
 
-  test('a settings section button switches the section', async ({ page }) => {
-    // Regression: the hash parser split "settings/managers" on "/" and "?" at
+  test('a settings section tab switches the section', async ({ page }) => {
+    // Regression: the hash parser split "settings/leads/sources" on "/" and "?" at
     // once, so every sub-path was dropped and a section click did nothing.
-    await gotoView(page, '#settings/branding');
-    const usersTab = page.getByRole('button', { name: /Users & PMs|Používatelia a PM|Felhasználók és PM/ });
-    await usersTab.click();
-    await expect(page).toHaveURL(/#settings\/managers$/);
-    await expect(usersTab).toHaveClass(/bg-indigo-600/);
+    await gotoView(page, '#settings/leads');
+    const sourcesTab = page
+      .getByTestId('settings-section-tabs')
+      .getByRole('link', { name: /Lead sources|Zdroje leadov|Lead források/ });
+    await sourcesTab.click();
+    await expect(page).toHaveURL(/#settings\/leads\/sources$/);
+    await expect(sourcesTab).toHaveAttribute('aria-current', 'true');
   });
 });

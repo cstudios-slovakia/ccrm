@@ -82,6 +82,12 @@ The order when finishing a change:
   migration code inside those files; if a migration `require`s another file, add
   it to the fingerprint or edits to it will never re-run. Never put per-request
   work into a migration, and never call DDL from the poll path.
+- Settings is one registry, not a list of tabs: categories, sections, permissions, search
+  keywords and the old `#settings/<id>` redirects all live in
+  `src/components/settings/settingsRegistry.ts`. Adding a section is a registry entry,
+  three translations (`translations.settingsNav.ts`) and a case in `renderSection`;
+  see [`docs/SETTINGS.md`](docs/SETTINGS.md). Scrolling lists in Settings use
+  `ScrollFade`, never a visible scrollbar.
 - The backend source is `public/`; the repo-root copies (`sync.php`, `api/`) are
   mirrored by `npm run sync:backend`. Edit `public/`, then sync.
 - The production server has **no build step**. The compiled frontend is built

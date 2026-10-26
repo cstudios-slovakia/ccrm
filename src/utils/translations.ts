@@ -1,4 +1,4 @@
-import { settingsNavEn, settingsNavSk, settingsNavHu } from "./translations.settingsNav.ts";
+import { settingsNavEn, settingsNavSk, settingsNavHu } from "./translations.settingsNav";
 
 export type Language = "en" | "sk" | "hu";
 

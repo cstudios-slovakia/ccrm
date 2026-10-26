@@ -58,11 +58,14 @@ export const useSectionScroll = (categoryId: string, sectionIds: string[], route
     let raf = 0;
     const update = () => {
       raf = 0;
-      const line = root.getBoundingClientRect().top + 140;
+      const rootTop = root.getBoundingClientRect().top;
       let current = idsKey.split("|")[0] ?? "";
       for (const id of idsKey.split("|")) {
         const el = document.getElementById(sectionDomId(categoryId, id));
-        if (el && el.getBoundingClientRect().top <= line) current = id;
+        if (!el) continue;
+        // A section counts as current once it has reached the line scrollIntoView puts it on.
+        const reach = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+        if (el.getBoundingClientRect().top <= rootTop + reach + 12) current = id;
       }
       setActiveId((prev) => (prev === current ? prev : current));
     };

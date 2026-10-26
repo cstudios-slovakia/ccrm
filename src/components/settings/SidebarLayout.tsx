@@ -55,10 +55,10 @@ export const SidebarLayout: React.FC<{
         <nav
           aria-label={t("settings.nav.ui.categories_nav")}
           data-testid="settings-nav"
-          className="glass-panel flex min-w-60 max-w-75 flex-[1_1_16.5rem] flex-col rounded-3xl border border-white/60 bg-white/95 p-3.5 shadow-glass ws-lg:sticky ws-lg:top-20"
+          className="glass-panel flex min-w-60 max-w-75 flex-[1_1_16.5rem] flex-col rounded-3xl border border-white/60 bg-white/95 p-3.5 shadow-glass ws-lg:sticky ws-lg:top-[calc(0.5rem_-_var(--gutter))]"
         >
           <SettingsNavSearch lang={lang} catalog={catalog} query={query} setQuery={setQuery} inputRef={searchRef} onOpen={onOpenSearchHit}>
-            <ScrollFade axis="y" className="max-h-[calc(100vh-14rem)]">
+            <ScrollFade axis="y" className="max-h-[calc(100vh_-_14rem)]">
               <div className="flex flex-col gap-0.5">
                 {groups.map((group) => (
                   <div key={group.id} className="flex flex-col gap-0.5">
