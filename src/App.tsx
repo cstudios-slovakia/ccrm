@@ -59,7 +59,7 @@ import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
-import { baselineOf, diffRecords, type RecordBaseline } from "./utils/syncDiff";
+import { baselineOf, diffRecords, skipHoldsBaseline, skipIsLostWork, type RecordBaseline } from "./utils/syncDiff";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
 import { adoptableSessionUser } from "./utils/sessionUser";
@@ -1572,13 +1572,10 @@ ${log.payload || ''}
             }
           }
           for (const [key, next] of Object.entries(pendingBaselines)) {
-            if (
-              skipped.has(key) ||
-              skipped.has(`${key}:delete`) ||
-              deleteBlockedKeys.has(key) ||
-              (key === "leads" && (skipped.has("leads:clients") || skipped.has("leads:clients:delete"))) ||
-              (key === "customDashboards" && (skipped.has("customDashboards:home") || skipped.has("customDashboards:home:delete")))
-            ) {
+            // A reason suffix (users:nameTaken, leads:outside-scope, …) refuses
+            // the collection the same way a bare name does: keep the previous
+            // baseline so the edit is sent again instead of looking saved.
+            if (skipHoldsBaseline(skipped, key) || deleteBlockedKeys.has(key)) {
               continue;
             }
             const conflictIds = conflicted[key] ?? [];
@@ -1594,28 +1591,10 @@ ${log.payload || ''}
               syncedRecordsRef.current[key] = next;
             }
           }
-          if (!skipped.has("unifiedEntriesData") && !skipped.has("unifiedEntriesData:delete")) {
+          if (!skipHoldsBaseline(skipped, "unifiedEntriesData")) {
             Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
           }
-          const skippedWork = [...skipped].filter((tag) => {
-            // A settings key this role may not write and that differed from
-            // what is stored (the server only tags those). It is lost work:
-            // the next full pull puts the stored value back.
-            if (tag.startsWith("settings:")) return (payload as any).settings != null;
-            const base = tag.replace(/:delete$/, "");
-            const payloadKey =
-              base === "leads:clients"
-                ? "leads"
-                : base === "customDashboards:home"
-                ? "customDashboards"
-                : base;
-            if (tag.endsWith(":delete")) {
-              const ids = (payload as any).deleted?.[payloadKey];
-              return Array.isArray(ids) && ids.length > 0;
-            }
-            const body = (payload as any)[payloadKey];
-            return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
-          });
+          const skippedWork = [...skipped].filter((tag) => skipIsLostWork(tag, payload as { [key: string]: unknown }));
           const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
           if (conflictCount > 0) pullAfterConflictRef.current = true;
           const blockedCount = [...deleteBlockedKeys].length;
