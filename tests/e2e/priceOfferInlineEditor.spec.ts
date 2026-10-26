@@ -43,14 +43,46 @@ const COMPANY = {
   defaultUspCards: [],
 };
 
-const template = (id: string, name: string) => ({
+/** A template stored before the layout variants existed: no `layout`, so it keeps its original look. */
+const template = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
   id,
   name,
   colors: { primary: '#1e3a8a', secondary: '#2563eb', background: '#ffffff', accent: '#3b82f6', text: '#111827' },
   typography: { fontFamily: 'Inter', headingStyle: 'bold' },
-  sectionsOrder: [],
+  sectionsOrder: [] as string[],
   badgeStyle: 'rounded',
   createdAt: '2026-01-05',
+  ...extra,
+});
+
+const BLOCKS = [
+  'header', 'client_metadata', 'greeting', 'usp_grid', 'reassurance',
+  'items_table', 'total_box', 'key_parameters', 'next_steps', 'signoff', 'footer',
+];
+
+/** Dark header band, black table head, left-bordered cards, its own headings and block order. */
+const signumLike = template('tpl-signum', 'Šablóna Signum', {
+  colors: { primary: '#7c2d12', secondary: '#9a3412', background: '#ffffff', accent: '#f97316', text: '#111827' },
+  typography: { fontFamily: 'serif', headingStyle: 'bold' },
+  layout: {
+    headerStyle: 'dark-band',
+    tableHeaderStyle: 'filled-dark',
+    uspCardStyle: 'left-border',
+    totalBannerStyle: 'solid-dark',
+    fontFamily: 'serif',
+    headings: { usp: 'Prečo strechu zveriť nám', items: 'Rozsah dodávky a montáže', nextStep: 'Ďalší krok SIGNUM' },
+  },
+  // The items table comes before the benefit cards.
+  sectionsOrder: ['header', 'client_metadata', 'greeting', 'items_table', 'usp_grid', 'reassurance', 'total_box', 'key_parameters', 'next_steps', 'signoff', 'footer'],
+});
+
+/** A light, blue, Standard-ordered template that does have a layout. */
+const plainBlue = template('tpl-blue', 'Šablóna Modrá', {
+  layout: {
+    headerStyle: 'light', tableHeaderStyle: 'filled-primary', uspCardStyle: 'soft',
+    totalBannerStyle: 'gradient', fontFamily: 'sans', headings: { usp: '', items: '', nextStep: '' },
+  },
+  sectionsOrder: BLOCKS,
 });
 
 const PROVIDERS = {
@@ -103,7 +135,7 @@ const SEEDED_OFFER = {
 };
 
 interface Seed {
-  templates?: ReturnType<typeof template>[];
+  templates?: Record<string, unknown>[];
   providers?: boolean;
   offers?: Record<string, unknown>[];
 }
@@ -455,9 +487,9 @@ test.describe('Price offer inline editor', () => {
     await chooseTemplate(page, /AI template|AI šablóna/);
 
     const editor = editorOf(page);
-    // The template picker sits in the toolbar, and the badge of the AI template in the document.
+    // The template picker names it in the toolbar; the document itself never prints the internal name.
     await expect(editor.getByRole('button', { name: /Modrá šablóna/ }).first()).toBeVisible();
-    await expect(editor.locator('[data-offer-editing]')).toContainText('Modrá šablóna');
+    await expect(editor.locator('[data-offer-editing]')).not.toContainText('Modrá šablóna');
     await expect(editor.getByRole('tab', { name: /Preview|Náhľad/ })).toBeVisible();
     await expect(subjectField(editor)).toBeVisible();
   });
@@ -475,7 +507,9 @@ test.describe('Price offer inline editor', () => {
     await expect(ai).toHaveAttribute('aria-expanded', 'true');
     await menu.getByRole('menuitem', { name: /Zelená šablóna/ }).click();
 
-    await expect(editorOf(page).locator('[data-offer-editing]')).toContainText('Zelená šablóna');
+    // The chosen template is the one the toolbar names, and the document stays free of its name.
+    await expect(editorOf(page).getByRole('button', { name: /Zelená šablóna/ }).first()).toBeVisible();
+    await expect(editorOf(page).locator('[data-offer-editing]')).not.toContainText('Zelená šablóna');
   });
 
   test('Preview is the saved document: the same markup the preview dialog shows after issuing', async ({ page }) => {
@@ -522,5 +556,344 @@ test.describe('Price offer inline editor', () => {
     // Same validation as the document editor.
     await page.getByRole('button', { name: /Issue via external API|Vystaviť cez externé API/ }).click();
     await expect(editor.getByRole('button', { name: /Select a client|Vyberte klienta/ })).toBeFocused();
+  });
+});
+
+
+/** Picks one AI template from the New offer menu when there are several. */
+async function chooseAiTemplate(page: Page, name: RegExp) {
+  await newOfferButton(page).click();
+  const menu = page.getByRole('menu');
+  await menu.getByRole('menuitem', { name: /AI template|AI šablóna/ }).click();
+  await menu.getByRole('menuitem', { name }).click();
+  await expect(editorOf(page)).toBeVisible();
+}
+
+/** Switches the template in the editor's toolbar picker. */
+async function switchTemplate(page: Page, from: RegExp, to: RegExp) {
+  await editorOf(page).getByRole('button', { name: from }).first().click();
+  await page.getByRole('option', { name: to }).click();
+}
+
+/** What the page looks like: the pieces a template changes, as computed styles and positions. */
+const documentLook = (page: Page) =>
+  page.evaluate(() => {
+    const doc = document.querySelector('[data-offer-editing], .print-document') as HTMLElement;
+    const css = (el: Element | null, prop: string) => (el ? getComputedStyle(el).getPropertyValue(prop) : null);
+    const headings = Array.from(doc.querySelectorAll('h3')).map((h) => h.textContent?.trim() ?? '');
+    const topOf = (text: string) => {
+      const h = Array.from(doc.querySelectorAll('h3')).find((el) => el.textContent?.includes(text));
+      return h ? h.getBoundingClientRect().top : null;
+    };
+    return {
+      headerBg: css(doc.firstElementChild, 'background-color'),
+      theadBg: css(doc.querySelector('thead tr'), 'background-color'),
+      font: css(doc, 'font-family'),
+      headings,
+      itemsTop: topOf('Rozsah dodávky'),
+      uspTop: topOf('Prečo'),
+      uspCardEdge: css(doc.querySelector('[data-offer-usp="0"]'), 'border-left-width'),
+      uspCardEdgeColor: css(doc.querySelector('[data-offer-usp="0"]'), 'border-left-color'),
+      templateId: doc.getAttribute('data-offer-template'),
+      text: doc.textContent ?? "",
+    };
+  });
+
+/** Every AI template the app pushed to /sync.php, newest write winning per id. */
+function recordSyncedTemplates(page: Page) {
+  const pushed = new Map<string, Record<string, any>>();
+  let lastCount = -1;
+  void page.route('**/sync.php**', async (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET') {
+      try {
+        const body = request.postDataJSON() as { aiCustomTemplates?: Record<string, any>[] };
+        if (Array.isArray(body?.aiCustomTemplates)) {
+          lastCount = body.aiCustomTemplates.length;
+          for (const tpl of body.aiCustomTemplates) pushed.set(String(tpl.id), tpl);
+        }
+      } catch {
+        /* not JSON — nothing to record */
+      }
+    }
+    await route.fallback();
+  });
+  return { pushed, count: () => lastCount };
+}
+
+async function openOfferSettingsTab(page: Page, tab: RegExp) {
+  await gotoView(page, '#invoices');
+  await page.getByRole('button', { name: /Nastavenia ponúk/ }).first().click();
+  await page.getByRole('tab', { name: tab }).click();
+}
+
+const saveSettingsButton = (page: Page) => page.getByRole('button', { name: /Uložiť nastavenia ponúk|Save offer settings/ });
+const aiTab = /^AI šablóny/;
+
+test.describe('AI price offer templates', () => {
+  test('two templates with different blueprints produce visibly different documents, and the name is never printed', async ({ page }) => {
+    await startSession(page);
+    await seedInvoicing(page, { templates: [signumLike, plainBlue] });
+    const pushed = recordSyncedOffers(page);
+    await gotoView(page, '#invoices');
+
+    // --- the Signum-like template: dark band, black table head, headings, order, edge cards, serif
+    await chooseAiTemplate(page, /Šablóna Signum/);
+    const editor = editorOf(page);
+    const a = await documentLook(page);
+    expect(a.templateId).toBe('tpl-signum');
+    expect(a.headerBg).toBe('rgb(17, 24, 39)'); // the dark band, from the sample's text colour
+    expect(a.theadBg).toBe('rgb(17, 24, 39)'); // black table head
+    expect(a.headings).toContain('Prečo strechu zveriť nám');
+    expect(a.headings.some((h) => h.includes('Rozsah dodávky a montáže'))).toBe(true);
+    expect(a.text).toContain('Ďalší krok SIGNUM');
+    expect(a.itemsTop!).toBeLessThan(a.uspTop!); // the items table is printed before the benefit cards
+    expect(a.uspCardEdge).toBe('4px');
+    expect(a.uspCardEdgeColor).toBe('rgb(249, 115, 22)'); // the orange accent
+    expect(a.font).toMatch(/Georgia/);
+
+    // --- switch to the plain blue one in the toolbar: every one of those changes back
+    await switchTemplate(page, /Šablóna Signum/, /Šablóna Modrá/);
+    await expect(editor.locator('[data-offer-template="tpl-blue"]')).toBeVisible();
+    const b = await documentLook(page);
+    expect(b.headerBg).not.toBe(a.headerBg);
+    expect(b.theadBg).toBe('rgb(30, 58, 138)'); // filled with its own primary
+    expect(b.headings.some((h) => h.includes('Rozsah dodávky a položiek'))).toBe(true); // built-in wording
+    expect(b.headings.some((h) => h.includes('montáže'))).toBe(false);
+    expect(b.text).not.toContain('SIGNUM');
+    expect(b.uspTop!).toBeLessThan(b.itemsTop!); // Standard order
+    expect(b.uspCardEdge).not.toBe('4px');
+    expect(b.font).not.toMatch(/Georgia/);
+
+    // --- the internal name is on neither the edit view nor the preview
+    for (const view of ['Edit', 'Preview'] as const) {
+      if (view === 'Preview') await editor.getByRole('tab', { name: /Preview|Náhľad/ }).click();
+      const text = (await documentLook(page)).text;
+      expect(text).not.toContain('Šablóna Modrá');
+      expect(text).not.toContain('Šablóna Signum');
+    }
+
+    // --- the choice survives issuing: stored on the offer, and the saved preview draws that template
+    await editor.getByRole('tab', { name: /Edit|Úprava/ }).click();
+    await switchTemplate(page, /Šablóna Modrá/, /Šablóna Signum/);
+    await editor.locator('[data-offer-field="title"] input').fill('Ponuka — signum');
+    await editor.getByRole('button', { name: /Select a client|Vyberte klienta/ }).click();
+    await page.getByRole('option', { name: LEAD_NAME }).click();
+    await page.getByRole('button', { name: /Custom item|Vlastná položka/ }).click();
+    await page.getByPlaceholder(/Item name|Názov položky/).fill('Fólia');
+    await page.getByRole('spinbutton', { name: /Unit price|Jedn\. cena/ }).fill('80');
+    await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+    await expect(editorOf(page)).toHaveCount(0);
+
+    await expect.poll(() => [...pushed.values()].find((o) => o.title === 'Ponuka — signum')?.customTemplateId, { timeout: 10_000 }).toBe('tpl-signum');
+
+    await page.locator('tbody tr').filter({ hasText: 'Ponuka — signum' }).getByTitle(/Preview & print|Náhľad a tlač/).click();
+    const modalDoc = page.locator('[data-offer-template="tpl-signum"]');
+    await expect(modalDoc).toBeVisible();
+    const modalLook = await modalDoc.evaluate((el) => ({
+      band: getComputedStyle(el.firstElementChild!).backgroundColor,
+      thead: getComputedStyle(el.querySelector('thead tr')!).backgroundColor,
+      text: el.textContent ?? "",
+    }));
+    expect(modalLook.band).toBe('rgb(17, 24, 39)');
+    expect(modalLook.thead).toBe('rgb(17, 24, 39)');
+    expect(modalLook.text).toContain('Rozsah dodávky a montáže');
+    expect(modalLook.text).not.toContain('Šablóna Signum');
+  });
+
+  test('a template stored before the variants existed renders in the original layout', async ({ page }) => {
+    await startSession(page);
+    // Even a stored order and page colours do not change a legacy template: it always printed Standard.
+    await seedInvoicing(page, {
+      templates: [template('tpl-old', 'Stará šablóna', {
+        sectionsOrder: ['footer', 'header'],
+        colors: { primary: '#1e3a8a', secondary: '#2563eb', background: '#111111', accent: '#3b82f6', text: '#f5f5f5' },
+      })],
+    });
+    await gotoView(page, '#invoices');
+    await chooseTemplate(page, /AI template|AI šablóna/);
+    const look = await documentLook(page);
+    expect(look.theadBg).toBe('rgb(30, 58, 138)');
+    expect(look.headings.some((h) => h.includes('Rozsah dodávky a položiek'))).toBe(true);
+    expect(look.uspTop!).toBeLessThan(look.itemsTop!);
+    const background = await editorOf(page).locator('[data-offer-editing]').evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(background).toBe('rgb(255, 255, 255)');
+  });
+
+  test('a failed generation shows the real reason, adds no template and offers no rename', async ({ page }) => {
+    await startSession(page);
+    await seedInvoicing(page);
+    const synced = recordSyncedTemplates(page);
+    await page.route('**/upload.php', (route) =>
+      route.fulfill({ json: { success: true, fileName: 'sample.pdf', filePath: '/uploads/custom-template-pdf_sample.pdf', extractedText: '' } })
+    );
+    let request: Record<string, unknown> | null = null;
+    await page.route('**/api/generate_pdf_template.php', async (route) => {
+      request = route.request().postDataJSON();
+      await route.fulfill({
+        status: 502,
+        json: { success: false, code: 'ai_error', message: 'OpenAI Error: HTTP 400: Unsupported value: temperature', providerMessage: 'HTTP 400: Unsupported value: temperature' },
+      });
+    });
+    await openOfferSettingsTab(page, aiTab);
+
+    await page.getByTestId('ai-template-upload').setInputFiles({ name: 'sample.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') });
+
+    // The toast names the cause, not "success".
+    await expect(page.getByText(/Chyba pri generovaní AI šablóny:.*HTTP 400: Unsupported value: temperature/)).toBeVisible();
+    await expect(page.getByText(/úspešne vygenerovaná/)).toHaveCount(0);
+    await expect(page.getByTestId('template-rename-dialog')).toHaveCount(0);
+    await expect(page.getByTestId('ai-template-name')).toHaveCount(0);
+    await expect(page.getByText(/Zatiaľ žiadna AI šablóna/)).toBeVisible();
+    expect(synced.count()).toBeLessThanOrEqual(0);
+
+    // The endpoint is told the stored file and the user's language.
+    expect(request).toMatchObject({ pdfName: 'sample.pdf', pdfUrl: '/uploads/custom-template-pdf_sample.pdf', systemLanguage: 'sk' });
+  });
+
+  test('a missing OpenAI key is reported as such, not as a generated template', async ({ page }) => {
+    await startSession(page);
+    await seedInvoicing(page);
+    await page.route('**/upload.php', (route) =>
+      route.fulfill({ json: { success: true, fileName: 'sample.pdf', filePath: '/uploads/custom-template-pdf_sample.pdf', extractedText: '' } })
+    );
+    await page.route('**/api/generate_pdf_template.php', (route) =>
+      route.fulfill({ status: 422, json: { success: false, code: 'ai_key_missing', message: 'The OpenAI API key is not configured' } })
+    );
+    await openOfferSettingsTab(page, aiTab);
+    await page.getByTestId('ai-template-upload').setInputFiles({ name: 'sample.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') });
+    await expect(page.getByText(/OpenAI API kľúč nie je nastavený/).first()).toBeVisible();
+    await expect(page.getByTestId('ai-template-name')).toHaveCount(0);
+  });
+
+  test('a generated template offers a rename that is pre-selected, saved on Enter, and visible in the picker', async ({ page }) => {
+    await startSession(page);
+    await seedInvoicing(page);
+    const synced = recordSyncedTemplates(page);
+    await page.route('**/upload.php', (route) =>
+      route.fulfill({ json: { success: true, fileName: 'sample.pdf', filePath: '/uploads/custom-template-pdf_sample.pdf', extractedText: '' } })
+    );
+    await page.route('**/api/generate_pdf_template.php', (route) =>
+      route.fulfill({ json: { success: true, template: { ...signumLike, id: 'act-new', name: 'Navrhnutý názov' } } })
+    );
+    await openOfferSettingsTab(page, aiTab);
+    const upload = page.getByTestId('ai-template-upload');
+    await upload.setInputFiles({ name: 'sample.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') });
+
+    const dialog = page.getByTestId('template-rename-dialog');
+    await expect(dialog).toBeVisible();
+    const input = page.getByTestId('template-rename-input');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue('Navrhnutý názov');
+    // The proposed text is selected, so typing replaces it.
+    expect(await input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd, el.value.length])).toEqual([0, 15, 15]);
+
+    // Empty is refused; a clash with another template is allowed but warned about.
+    await input.fill('   ');
+    await expect(page.getByTestId('template-rename-save')).toBeDisabled();
+    await input.fill('Moja šablóna');
+    await expect(page.getByTestId('template-rename-duplicate')).toHaveCount(0);
+
+    // Tab stays inside the dialog.
+    await input.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(dialog.locator(':focus')).toHaveCount(1);
+
+    await input.focus();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('ai-template-name')).toHaveText('Moja šablóna');
+    await expect(upload).toBeFocused(); // focus goes back to the control that started it
+
+    // The rename is an update of the same row, and reaches the server.
+    await expect.poll(() => synced.pushed.get('act-new')?.name, { timeout: 10_000 }).toBe('Moja šablóna');
+    expect(synced.pushed.size).toBe(1);
+    // The look read from the sample travels with it.
+    expect(synced.pushed.get('act-new')?.layout?.headerStyle).toBe('dark-band');
+
+    // Back in the editor the new name is what tells the template apart.
+    await page.getByRole('button', { name: /Späť na cenové ponuky/ }).click();
+    await chooseTemplate(page, /AI template|AI šablóna/);
+    await expect(editorOf(page).getByRole('button', { name: /Moja šablóna/ }).first()).toBeVisible();
+    await expect(editorOf(page).locator('[data-offer-template="act-new"]')).toBeVisible();
+  });
+
+  test('Escape keeps the proposed name, and a card is renamed in place afterwards', async ({ page }) => {
+    await startSession(page);
+    await seedInvoicing(page, { templates: [template('tpl-1', 'Modrá šablóna', { layout: plainBlue.layout, sectionsOrder: BLOCKS })] });
+    const synced = recordSyncedTemplates(page);
+    await page.route('**/upload.php', (route) =>
+      route.fulfill({ json: { success: true, fileName: 'sample.pdf', filePath: '/uploads/custom-template-pdf_sample.pdf', extractedText: '' } })
+    );
+    await page.route('**/api/generate_pdf_template.php', (route) =>
+      route.fulfill({ json: { success: true, template: { ...signumLike, id: 'act-new', name: 'Modrá šablóna' } } })
+    );
+    await openOfferSettingsTab(page, aiTab);
+    await page.getByTestId('ai-template-upload').setInputFiles({ name: 'sample.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') });
+
+    // Same name as the existing one: allowed, but the dialog warns.
+    await expect(page.getByTestId('template-rename-dialog')).toBeVisible();
+    await expect(page.getByTestId('template-rename-duplicate')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('template-rename-dialog')).toHaveCount(0);
+    await expect(page.getByTestId('ai-template-name')).toHaveCount(2);
+
+    // Rename the new card in place.
+    const card = page.getByTestId('ai-template-name').first();
+    await card.hover();
+    await page.getByTitle(/Premenovať šablónu/).first().click();
+    const field = page.locator('input.border-indigo-300').first();
+    await field.fill('Signum — oranžová');
+    await field.press('Enter');
+    await expect(page.getByTestId('ai-template-name').first()).toHaveText('Signum — oranžová');
+    await expect.poll(() => synced.pushed.get('act-new')?.name, { timeout: 10_000 }).toBe('Signum — oranžová');
+  });
+});
+
+test.describe('Price offer settings tabs', () => {
+  test('four tabs, the save button on the first two only, and unsaved edits survive a tab switch', async ({ page }) => {
+    await startSession(page);
+    await seedInvoicing(page);
+    await openOfferSettingsTab(page, /^Predvolené texty/);
+
+    const tabs = page.getByTestId('offer-settings-tabs').getByRole('tab');
+    await expect(tabs).toHaveCount(4);
+    await expect(tabs.nth(0)).toHaveText(/Predvolené texty/);
+    await expect(tabs.nth(1)).toHaveText(/Externé účtovníctvo/);
+    await expect(tabs.nth(2)).toHaveText(/AI šablóny/);
+    await expect(tabs.nth(3)).toHaveText(/Stavy/);
+
+    // The back link and the identity link stay above the tabs on every tab.
+    await expect(page.getByRole('button', { name: /Späť na cenové ponuky/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Firemné údaje, bankový účet/ })).toBeVisible();
+
+    // Tab 1: the texts, and the save button.
+    await expect(page.getByText('Predvolená záruka')).toBeVisible();
+    await expect(saveSettingsButton(page)).toBeVisible();
+    const warranty = page.getByPlaceholder(/napr\. 10 rokov|e\.g\. 10 years/);
+    await warranty.fill('15 rokov');
+
+    // Tab 2: connectors, save still offered.
+    await tabs.nth(1).click();
+    await expect(page.getByText('SuperFaktúra API')).toBeVisible();
+    await expect(page.getByText('iDoklad API')).toBeVisible();
+    await expect(saveSettingsButton(page)).toBeVisible();
+
+    // Tab 3: the generator; nothing to save with the button.
+    await tabs.nth(2).click();
+    await expect(page.getByTestId('ai-template-upload')).toBeAttached();
+    await expect(saveSettingsButton(page)).toHaveCount(0);
+
+    // Tab 4: both status lists, no save button.
+    await tabs.nth(3).click();
+    await expect(page.getByTestId('offer-status-settings')).toBeVisible();
+    await expect(page.getByTestId('invoice-status-settings')).toBeVisible();
+    await expect(saveSettingsButton(page)).toHaveCount(0);
+
+    // Back on tab 1 the unsaved edit is still there.
+    await tabs.nth(0).click();
+    await expect(warranty).toHaveValue('15 rokov');
   });
 });

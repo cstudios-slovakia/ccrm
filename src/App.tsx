@@ -3938,6 +3938,7 @@ ${log.payload || ''}
             setAiCustomTemplates={updateAiCustomTemplatesAndSync}
             invoicingIntegrations={invoicingIntegrations}
             setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
+            integrationsConfig={integrationsConfig}
             currentUser={activeUser}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}

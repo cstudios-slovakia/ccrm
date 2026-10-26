@@ -86,6 +86,8 @@ const statusRow = (page: Page, key: string) => page.getByTestId(`offer-status-ro
 const openOfferSettings = async (page: Page) => {
   await gotoView(page, '#invoices');
   await page.getByRole('button', { name: /Nastavenia ponúk/ }).first().click();
+  // The statuses are the fourth tab of the offer settings.
+  await page.getByRole('tab', { name: /^Stavy/ }).click();
   await expect(page.getByTestId('offer-status-settings')).toBeVisible();
 };
 

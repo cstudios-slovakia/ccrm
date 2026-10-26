@@ -1173,6 +1173,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'projects', 'value')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");
         }
+        // AI price-offer templates: the look read from the sample PDF (header, table,
+        // card and banner variants, font, section headings). NULL on a template
+        // generated before the variants existed, which keeps its original look.
+        if (ccrm_table_exists($pdo, 'ai_custom_templates') && !ccrm_column_exists($pdo, 'ai_custom_templates', 'layout_json')) {
+            $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `layout_json` TEXT NULL AFTER `badge_style`");
+        }
         // Sessions established before this timestamp are rejected, so a password
         // change can retire every session the old password could reach. NULL means
         // "no password change recorded yet" and lets existing sessions continue.

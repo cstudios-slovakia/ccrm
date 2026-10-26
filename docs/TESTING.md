@@ -415,6 +415,10 @@ docker exec -e CCRM_API_DIR=/var/www/html/api \
 
 The Dovecot config is the minimum (`protocols = imap`, `ssl = no`, a passwd-file `passdb`, a static `userdb` for `vmail`, `mail_location = maildir:/var/mail/%n/Maildir`, a `Sent` mailbox with `special_use = \Sent`). The script drops every table of the scratch database, so never point it at real data.
 
+### 5h. AI price-offer template generator (`npm run test:pdf-template`)
+
+`api/generate_pdf_template.php` turns a sample offer PDF into a template. `scripts/test-pdf-template.php` checks, with no database and no OpenAI, the part that makes model output safe to store (enums, hex colours, heading length, the guaranteed block set) and that a client-supplied `pdfUrl` can only ever reach a `custom-template-pdf_*.pdf` inside the uploads directory. It needs PHP, so without a local install run it in the dev container: `docker cp scripts/test-pdf-template.php crm:/tmp/t.php && docker exec -e CCRM_API_DIR=/var/www/html/api crm php /tmp/t.php`. The call to OpenAI itself is only exercised live (needs a key in Settings → AI integration); the browser flow around it (error toast, no template added, rename dialog) is mocked in `tests/e2e/priceOfferInlineEditor.spec.ts`, and the `layout_json` round trip through `sync.php` is in `npm run test:rbac` (checks `T1`–`T6`).
+
 ### 5g. Module screenshots (`npm run shots:modules`)
 
 The module setup wizard shows a real screenshot of every module. They are

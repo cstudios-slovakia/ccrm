@@ -1162,6 +1162,19 @@ export interface AiCustomTemplate {
   sectionsOrder: string[];
   customBannerText?: string;
   badgeStyle?: 'rounded' | 'square' | 'pill';
+  /**
+   * The look read from the sample PDF: a bounded set of variants, validated by
+   * `resolveAiTemplate` (src/utils/aiTemplateBlueprint.ts). Absent on a template
+   * generated before the variants existed, which keeps its original look.
+   */
+  layout?: {
+    headerStyle?: string;
+    tableHeaderStyle?: string;
+    uspCardStyle?: string;
+    totalBannerStyle?: string;
+    fontFamily?: string;
+    headings?: { usp?: string; items?: string; nextStep?: string };
+  } | null;
   createdAt: string;
 }
 
