@@ -37,17 +37,25 @@
  * case — an uncommitted edit sitting only in the root file, or a commit that
  * touched only the root copy — and refuses to overwrite it instead.
  *
+ * A file that exists only under `public/` stays there (screenshots,
+ * `dump_schema.php`) unless a PHP file that already has a root copy loads it
+ * with `require`/`include` of `__DIR__ . '….php'`. Docker serves the repo
+ * root, so that require fatals every request — the time-tracking migration
+ * did this to `time_entries_lib.php` and the leads list came up empty.
+ * Those siblings, and anything they themselves require, are copied too, and
+ * `--check` fails while any are missing.
+ *
  * Usage:
  *   node scripts/sync-backend.mjs           # copy public/ -> root where they differ
  *   node scripts/sync-backend.mjs --check   # exit 1 if they differ, change nothing
  *   node scripts/sync-backend.mjs --force   # overwrite even a root file that looks newer
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { rootFileIsNewer } from './sync-backend-policy.mjs';
+import { missingRequiredMirrors, rootFileIsNewer } from './sync-backend-policy.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const publicDir = join(repoRoot, 'public');
@@ -102,9 +110,10 @@ for (const src of walk(publicDir)) {
     const rel = relative(publicDir, src);
     const dest = join(repoRoot, rel);
 
-    // Only mirror files that already have a root counterpart. A file that
-    // exists solely in public/ (e.g. dump_schema.php) is published to the
-    // server by `ccrm update` but is deliberately not duplicated in the repo.
+    // A file with no root counterpart is not mirrored on its own. `ccrm update`
+    // still publishes it, which is how screenshots and one-off scripts stay out
+    // of the repo root. The pass below is the exception: a mirrored PHP file
+    // that requires such a sibling.
     if (!existsSync(dest)) continue;
 
     const from = readFileSync(src);
@@ -129,16 +138,52 @@ for (const src of walk(publicDir)) {
     updated.push(rootRel);
 }
 
-if (drifted.length === 0) {
-    console.log('sync-backend: root backend copies are in sync with public/');
-    process.exit(0);
+// Php that Docker will actually execute (it bind-mounts the repo root) and
+// that loads a sibling which exists only under public/. Copy that sibling,
+// then anything it loads, so the require does not fatal at runtime.
+const mirrorInputs = [];
+for (const src of walk(publicDir)) {
+    if (!src.endsWith('.php')) continue;
+    const rel = relative(publicDir, src).split(sep).join('/');
+    mirrorInputs.push({
+        path: rel,
+        hasRoot: existsSync(join(repoRoot, ...rel.split('/'))),
+        source: readFileSync(src, 'utf8'),
+    });
+}
+const missing = missingRequiredMirrors(mirrorInputs);
+const copiedMissing = [];
+if (!checkOnly) {
+    for (const item of missing) {
+        const src = join(publicDir, ...item.path.split('/'));
+        const dest = join(repoRoot, ...item.path.split('/'));
+        mkdirSync(dirname(dest), { recursive: true });
+        writeFileSync(dest, readFileSync(src));
+        copiedMissing.push(item.path);
+    }
 }
 
 if (checkOnly) {
-    console.error('sync-backend: root copies differ from public/ (public/ is the source of truth):');
-    for (const f of drifted) console.error(`  - ${f}`);
-    console.error('Run `node scripts/sync-backend.mjs` to update them, then commit.');
+    if (drifted.length === 0 && missing.length === 0) {
+        console.log('sync-backend: root backend copies are in sync with public/');
+        process.exit(0);
+    }
+    if (drifted.length > 0) {
+        console.error('sync-backend: root copies differ from public/ (public/ is the source of truth):');
+        for (const f of drifted) console.error(`  - ${f}`);
+        console.error('Run `node scripts/sync-backend.mjs` to update them, then commit.');
+    }
+    if (missing.length > 0) {
+        console.error('sync-backend: mirrored PHP requires files that exist only under public/ (Docker serves the repo root):');
+        for (const item of missing) console.error(`  - ${item.path}  (required by ${item.requiredBy})`);
+        console.error('Run `node scripts/sync-backend.mjs` to copy them, then commit.');
+    }
     process.exit(1);
+}
+
+if (copiedMissing.length > 0) {
+    console.log('sync-backend: copied public-only PHP required by a mirrored file:');
+    for (const f of copiedMissing) console.log(`  - ${f}`);
 }
 
 if (blocked.length > 0) {
@@ -149,5 +194,12 @@ if (blocked.length > 0) {
     process.exit(1);
 }
 
-console.log('sync-backend: updated root copies from public/:');
-for (const f of updated) console.log(`  - ${f}`);
+if (updated.length === 0 && copiedMissing.length === 0) {
+    console.log('sync-backend: root backend copies are in sync with public/');
+    process.exit(0);
+}
+
+if (updated.length > 0) {
+    console.log('sync-backend: updated root copies from public/:');
+    for (const f of updated) console.log(`  - ${f}`);
+}
