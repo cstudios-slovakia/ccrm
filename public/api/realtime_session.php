@@ -109,7 +109,7 @@ if ($action === 'exchange_sdp') {
 
     $model = (string)($payload['model'] ?? '');
     if (!preg_match('/^gpt-realtime[A-Za-z0-9._\-]{0,40}$/', $model)) {
-        $model = 'gpt-realtime-1.5';
+        $model = 'gpt-realtime-2.1';
     }
     $ch = curl_init('https://api.openai.com/v1/realtime/calls?model=' . urlencode($model));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -1245,10 +1245,15 @@ $realtimeTools = [
 // Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
 $sessionConfig = [
     'type' => 'realtime',
-    'model' => 'gpt-realtime-1.5',
+    'model' => 'gpt-realtime-2.1',
     'instructions' => $voiceSystemPrompt,
     'tools' => $realtimeTools,
     'audio' => [
+        'input' => [
+            'transcription' => [
+                'model' => 'gpt-live-transcribe',
+            ],
+        ],
         'output' => [
             'voice' => $assignedVoice
         ]

@@ -119,6 +119,7 @@ if ($httpCode !== 200 || !$response) {
 }
 
 $resData = json_decode($response, true);
+ccrm_ai_capture_usage($pdo, 'meeting_summary', $resData, $meetingModel);
 $aiReply = $resData['choices'][0]['message']['content'] ?? '';
 
 // Try parsing AI reply to verify it's valid JSON

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus, MicOff } from "lucide-react";
@@ -572,7 +573,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           meetingId: viewState === "new" ? currentNoteId : selectedMeeting?.id,
-          manualNotes: manualNotesText
+          manualNotes: manualNotesText,
+          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined
         })
       });
       const data = await res.json();
@@ -1783,7 +1785,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       {/* Module header (docs/VIEW-SIZE.md §6.2) */}
       {viewState === "list" && (
         <PageHeader
-          icon={<Sparkles className="text-indigo-500" />}
+          icon={<SectionIcon id="meetings" />}
           title={t("AI Meeting Room & Note Summarizer", "AI Zasadačka a analýza stretnutí", "AI Tárgyaló és megbeszélés elemzés")}
           subtitle={t(
             "Log call/meeting notes, view raw conversations, and let AI automatically extract key take-aways, sentiment analysis, and follow-up actions.",

@@ -13,6 +13,7 @@ import {
 import { type ExecutiveRole } from "../../utils/executive/defaultExecutives";
 import type { Language } from "../../utils/translations";
 import { BlobatarAvatar, type ExpressionName } from "../common/BlobatarAvatar";
+import { reportVoiceUsage } from "../../utils/aiUsage";
 
 interface ExecutiveCallModalProps {
   isOpen: boolean;
@@ -258,7 +259,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           type: "session.update",
           session: {
             input_audio_transcription: {
-              model: "whisper-1"
+              model: "gpt-live-transcribe"
             },
             turn_detection: {
               type: "server_vad",
@@ -326,7 +327,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         body: JSON.stringify({
           action: "exchange_sdp",
           sdp: offer.sdp,
-          model: "gpt-realtime-1.5",
+          model: "gpt-realtime-2.1",
           client_secret: clientSecret
         })
       });
@@ -355,6 +356,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
 
   // 5. Handle Realtime Data Channel Events
   const handleRealtimeEvent = (event: any) => {
+    reportVoiceUsage(event);
     switch (event.type) {
       case "input_audio_buffer.speech_started":
         setIsUserSpeaking(true);

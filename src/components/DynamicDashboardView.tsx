@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { AI_DASHBOARD_MODELS, AI_MODEL_TERRA, upgradeAiModel } from "../utils/aiModels";
+import { SectionIcon } from "./icons/SectionIcon";
 import {
   AlertCircle,
   ArrowDownRight,
@@ -495,7 +497,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
   const [isEditMode, setIsEditMode] = useState(canEdit && dashboard.layout.widgets.length === 0);
   const [promptText, setPromptText] = useState("");
-  const [selectedModel, setSelectedModel] = useState(dashboard.activeModel || "gpt-5.6-terra");
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const upgraded = upgradeAiModel(dashboard.activeModel, AI_MODEL_TERRA);
+    return (AI_DASHBOARD_MODELS as readonly string[]).includes(upgraded) ? upgraded : AI_MODEL_TERRA;
+  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -505,13 +510,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   const [widgetErrors, setWidgetErrors] = useState<Record<string, string>>({});
   const [isSaved, setIsSaved] = useState(true);
 
-  const models = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"];
+  const models: string[] = [...AI_DASHBOARD_MODELS];
   const modelIndex = models.indexOf(selectedModel);
   const handleModelSliderChange = (val: number) => {
-    setSelectedModel(models[val] || "gpt-5.6-terra");
+    setSelectedModel(models[val] || AI_MODEL_TERRA);
   };
   // Driven by slider position (not the selectedModel string) so dashboards saved
-  // before models were renamed to the gpt-5.6 family (e.g. a stored "gpt-4o")
+  // before this rename (e.g. a stored "gpt-5.6-terra" or "gpt-4o")
   // still show a level that matches where the slider thumb actually sits.
   const modelLevelIndex = modelIndex >= 0 ? modelIndex : 1;
   const modelLevelLabel = [
@@ -980,7 +985,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         const res = await fetch("/api/translate_dashboard.php", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ layout: dashboard.layout, model: dashboard.activeModel || "gpt-5.6-terra" })
+          body: JSON.stringify({ layout: dashboard.layout, model: upgradeAiModel(dashboard.activeModel, AI_MODEL_TERRA) })
         });
         const json = await res.json();
         if (!cancelled && json.success && json.layout) {
@@ -1725,7 +1730,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
             {isHome ? (
-              <LayoutDashboard className="h-6 w-6" style={{ color: dashboard.color }} />
+              <SectionIcon id="dashboard" className="h-6 w-6" />
             ) : (
               <Sparkles className="h-6 w-6" style={{ color: dashboard.color }} />
             )}

@@ -110,6 +110,7 @@ if ($httpCode !== 200) {
 }
 
 $resData = json_decode($response, true);
+ccrm_ai_capture_usage($pdo, 'dashboard_translate', $resData, $model);
 $rawText = $resData['choices'][0]['message']['content'] ?? '';
 
 $cleanedText = trim($rawText);

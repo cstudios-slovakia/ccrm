@@ -391,6 +391,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             formData.append("today", toLocalDateStr(new Date()));
             formData.append("language", systemLanguage);
             formData.append("users", JSON.stringify(users.map((u) => u.name)));
+            if (voiceRecordDuration > 0) formData.append("durationSeconds", String(voiceRecordDuration));
 
             const res = await fetchWithTimeout(
                 "/api/transcribe_task.php",

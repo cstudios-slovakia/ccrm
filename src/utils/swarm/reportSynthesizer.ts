@@ -4,6 +4,7 @@
  * including the mandatory "What Strategy to Use to Achieve the Goal?" strategic playbook.
  */
 
+import { AI_MODEL_LUNA } from "../aiModels";
 import { callLlmJson } from './llmProxyClient';
 import type { SwarmPost, SwarmAgentProfile, SwarmKnowledgeGraph, StrategicReport, SwarmContextDocument } from './types';
 
@@ -173,7 +174,7 @@ Synthesize the final authoritative strategic report in professional ${langLabel}
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
     ], {
-      model: modelName || 'gpt-5.6-luna',
+      model: modelName || AI_MODEL_LUNA,
       temperature: 0.4,
       maxTokens: 10000
     });

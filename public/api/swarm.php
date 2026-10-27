@@ -65,7 +65,7 @@ $contextExtractor = new CrmContextExtractor($pdo);
 function get_server_llm_credentials(PDO $pdo): array {
     $apiKey = '';
     $baseUrl = 'https://api.openai.com/v1';
-    $model = 'gpt-5.6-luna';
+    $model = 'gpt-6-luna';
 
     try {
         $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
@@ -87,7 +87,7 @@ function get_server_llm_credentials(PDO $pdo): array {
         $baseUrl = rtrim(getenv('LLM_BASE_URL'), '/');
     }
     if (getenv('LLM_MODEL_NAME')) {
-        $model = getenv('LLM_MODEL_NAME');
+        $model = ccrm_ai_upgrade_model(getenv('LLM_MODEL_NAME'), 'gpt-6-luna');
     }
 
     return [
@@ -177,22 +177,16 @@ if ($action === 'llm_proxy') {
     $messages = $body['messages'] ?? [];
     // Only the models the Swarm UI offers (or the administrator configured): an
     // arbitrary client-chosen model would let any user spend the key on the most
-    // expensive one.
+    // expensive one. A stored GPT-5.6 / GPT-4o id is rewritten first.
     $swarmCfg = [];
     try {
         $swarmCfg = ccrm_load_integrations_config($pdo);
     } catch (\Throwable $e) {
     }
-    $swarmAllowedModels = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', $creds['defaultModel'], ccrm_ai_model($swarmCfg, $creds['defaultModel'])];
-    $model = (isset($body['model']) && is_string($body['model']) && in_array($body['model'], $swarmAllowedModels, true))
-        ? $body['model']
-        : $creds['defaultModel'];
-    // Map internal branding names to live OpenAI model identifiers
-    if ($model === 'gpt-5.6-luna') {
-        $model = 'gpt-4o-mini';
-    } elseif ($model === 'gpt-5.6-terra') {
-        $model = 'gpt-4o';
-    }
+    $configured = ccrm_ai_upgrade_model($creds['defaultModel'], 'gpt-6-luna');
+    $swarmAllowedModels = ['gpt-6-luna', 'gpt-6.1-terra', 'gpt-6.1-sol', $configured, ccrm_ai_model($swarmCfg, $configured)];
+    $requested = isset($body['model']) && is_string($body['model']) ? ccrm_ai_upgrade_model($body['model'], $configured) : $configured;
+    $model = in_array($requested, $swarmAllowedModels, true) ? $requested : $configured;
     $temperature = isset($body['temperature']) ? (float)$body['temperature'] : 0.7;
     $responseFormat = $body['response_format'] ?? null;
     $maxTokens = isset($body['max_completion_tokens']) 
@@ -207,7 +201,7 @@ if ($action === 'llm_proxy') {
         exit;
     }
 
-    $isReasoningModel = preg_match('/^(o1|o3|o-)/i', $model);
+    $isReasoningModel = !ccrm_ai_model_supports_temperature($model);
     $payload = [
         'model' => $model,
         'messages' => $messages,
@@ -279,6 +273,10 @@ if ($action === 'llm_proxy') {
         error_log('[swarm] LLM gateway error: ' . $curlErr);
         echo json_encode(['success' => false, 'message' => 'LLM gateway communication error.']);
         exit;
+    }
+
+    if ($httpCode === 200 && is_string($response)) {
+        ccrm_ai_capture_usage($pdo, 'sai_swarm', json_decode($response, true), $model);
     }
 
     http_response_code($httpCode);

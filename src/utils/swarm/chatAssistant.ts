@@ -5,6 +5,7 @@
  * 2. Direct 1-on-1 cross-examination of any simulated agent in-character.
  */
 
+import { AI_MODEL_LUNA } from "../aiModels";
 import { callLlmProxy } from './llmProxyClient';
 import type { LLMMessage } from './llmProxyClient';
 import type { SwarmAgentProfile, SwarmPost, StrategicReport } from './types';
@@ -46,7 +47,7 @@ You MUST respond strictly in natural, professional ${langLabel}.`;
   ];
 
   return callLlmProxy(messages, {
-    model: modelName || 'gpt-5.6-luna',
+    model: modelName || AI_MODEL_LUNA,
     temperature: 0.5
   });
 }
@@ -88,7 +89,7 @@ You MUST answer strictly in natural ${langLabel} in first person.`;
   ];
 
   return callLlmProxy(messages, {
-    model: modelName || 'gpt-5.6-luna',
+    model: modelName || AI_MODEL_LUNA,
     temperature: 0.7
   });
 }

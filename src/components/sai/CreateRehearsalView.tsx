@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { AI_MODEL_INPUT_USD_PER_M, AI_MODEL_LUNA, AI_MODEL_TERRA, upgradeSwarmModel } from '../../utils/aiModels';
 import { 
   ArrowRight, 
   Calendar, 
@@ -268,8 +269,8 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
 export const DEFAULT_CRM_SOURCES = CRM_SOURCE_OPTIONS.map(s => s.id);
 
 export const MODEL_PRICING: Record<string, { ratePerM: number; label: string }> = {
-  'gpt-5.6-luna': { ratePerM: 0.25, label: 'GPT-5.6 Luna' },
-  'gpt-5.6-terra': { ratePerM: 1.50, label: 'GPT-5.6 Terra' },
+  [AI_MODEL_LUNA]: { ratePerM: AI_MODEL_INPUT_USD_PER_M[AI_MODEL_LUNA], label: 'GPT-6 Luna' },
+  [AI_MODEL_TERRA]: { ratePerM: AI_MODEL_INPUT_USD_PER_M[AI_MODEL_TERRA], label: 'GPT-6.1 Terra' },
 };
 
 interface CreateRehearsalViewProps {
@@ -382,7 +383,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   });
   const [swarmScale, setSwarmScale] = useState<number>(initialData?.swarm_scale || 30);
   const [totalRounds, setTotalRounds] = useState<number>(initialData?.total_rounds || 8);
-  const [llmModel, setLlmModel] = useState<string>(initialData?.model_name || 'gpt-5.6-luna');
+  const [llmModel, setLlmModel] = useState<string>(upgradeSwarmModel(initialData?.model_name));
   const [diurnalCycle, setDiurnalCycle] = useState<boolean>(initialData?.diurnal_cycle ?? true);
 
   // Execution Mode: 'demo' (fast synthetic, 0 €) vs 'live' (real LLM calls)
@@ -426,7 +427,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     }, 0);
     const totalTokens = ontologyTokens + profileTokens + simulationTokens + reportTokens + attachedDocTokens;
     const totalCalls = turnsPerSim + swarmScale + 6;
-    const rate = MODEL_PRICING[llmModel]?.ratePerM ?? 0.25;
+    const rate = MODEL_PRICING[llmModel]?.ratePerM ?? AI_MODEL_INPUT_USD_PER_M[AI_MODEL_LUNA];
     const cost = (totalTokens / 1_000_000) * rate;
 
     return {
@@ -449,7 +450,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       }
       if (initialData.swarm_scale) setSwarmScale(initialData.swarm_scale);
       if (initialData.total_rounds) setTotalRounds(initialData.total_rounds);
-      if (initialData.model_name) setLlmModel(initialData.model_name);
+      if (initialData.model_name) setLlmModel(upgradeSwarmModel(initialData.model_name));
       if (initialData.diurnal_cycle !== undefined) setDiurnalCycle(initialData.diurnal_cycle);
       if (initialData.context_documents && Array.isArray(initialData.context_documents)) {
         setContextDocuments(initialData.context_documents);
@@ -1741,11 +1742,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               }}
               className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-ui font-bold text-slate-900 outline-none focus:border-purple-500 focus:bg-white"
             >
-              <option value="gpt-5.6-luna">
-                {t('GPT-5.6 Luna (Cost-optimized & High Speed) ⭐', 'GPT-5.6 Luna (Cenovo optimalizovaný & Vysoká rýchlosť) ⭐', 'GPT-5.6 Luna (Költségoptimalizált és nagy sebességű) ⭐')}
+              <option value={AI_MODEL_LUNA}>
+                {t('GPT-6 Luna (Cost-optimized & High Speed) ⭐', 'GPT-6 Luna (Cenovo optimalizovaný & Vysoká rýchlosť) ⭐', 'GPT-6 Luna (Költségoptimalizált és nagy sebességű) ⭐')}
               </option>
-              <option value="gpt-5.6-terra">
-                {t('GPT-5.6 Terra (Deep Cognitive Analysis & Complex Swarm)', 'GPT-5.6 Terra (Hĺbková kognitívna analýza & Komplexný roj)', 'GPT-5.6 Terra (Mély kognitív elemzés és összetett raj)')}
+              <option value={AI_MODEL_TERRA}>
+                {t('GPT-6.1 Terra (Deep Cognitive Analysis & Complex Swarm)', 'GPT-6.1 Terra (Hĺbková kognitívna analýza & Komplexný roj)', 'GPT-6.1 Terra (Mély kognitív elemzés és összetett raj)')}
               </option>
             </select>
             <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
@@ -1759,9 +1760,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 )}{' '}
                 <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
                 {t(
-                  'We exclusively use supported OpenAI models. GPT-5.6 Luna delivers fast, budget-conscious deliberation; GPT-5.6 Terra generates deep strategic nuances, countermoves, and complex market behavior.',
-                  'Využívame výhradne podporované OpenAI modely. GPT-5.6 Luna nahradil starší 4o a poskytuje bleskovú, cenovo optimalizovanú debatu; GPT-5.6 Terra generuje hlboké strategické nuansy, protiťahy a komplexné uvažovanie účastníkov trhu.',
-                  'Kizárólag támogatott OpenAI modelleket használunk. A GPT-5.6 Luna gyors, költséghatékony vitát tesz lehetővé; a GPT-5.6 Terra mély stratégiai árnyalatokat, ellenlépéseket és komplex piaci viselkedést generál.'
+                  'We exclusively use supported OpenAI models. GPT-6 Luna delivers fast, budget-conscious deliberation; GPT-6.1 Terra generates deep strategic nuances, countermoves, and complex market behavior.',
+                  'Využívame výhradne podporované OpenAI modely. GPT-6 Luna poskytuje bleskovú, cenovo optimalizovanú debatu; GPT-6.1 Terra generuje hlboké strategické nuansy, protiťahy a komplexné uvažovanie účastníkov trhu.',
+                  'Kizárólag támogatott OpenAI modelleket használunk. A GPT-6 Luna gyors, költséghatékony vitát tesz lehetővé; a GPT-6.1 Terra mély stratégiai árnyalatokat, ellenlépéseket és komplex piaci viselkedést generál.'
                 )}
               </span>
             </div>

@@ -1527,6 +1527,7 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
         return "Autonomous Run failed: OpenAI API returned code " . $httpCode . ": " . $errMsg;
     } else {
         $resData = json_decode($response, true);
+        ccrm_ai_capture_usage($pdo, 'executive_agent', $resData, $agentModel);
         $aiReply = $resData['choices'][0]['message']['content'] ?? 'No response returned from model.';
         $reply = restore_text($aiReply, $to_real);
         return "[Autonomous Run " . date('Y-m-d H:i') . "]\n\n" . $reply;

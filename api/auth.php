@@ -2189,13 +2189,46 @@ HTACCESS;
     }
 
     /**
+     * Older model ids stored on live installs, and the current id they become.
+     * Same tier, same or lower price (OpenAI list, Oct 2026). Keep this in step
+     * with LEGACY_MODELS in src/utils/aiModels.ts — the schema migration rewrites
+     * rows with these keys.
+     *
+     * @return array<string, string>
+     */
+    function ccrm_ai_model_upgrades(): array {
+        return [
+            'gpt-5.6-luna' => 'gpt-6-luna',
+            'gpt-4o-mini' => 'gpt-6-luna',
+            'gpt-5.6-terra' => 'gpt-6.1-terra',
+            'gpt-4o' => 'gpt-6.1-terra',
+            'gpt-5.6-sol' => 'gpt-6.1-sol',
+            'claude-3-5-sonnet-20241022' => 'claude-sonnet-5-5',
+        ];
+    }
+
+    /**
+     * Rewrite a stored model id. An empty value becomes $fallback; an id this
+     * app does not recognise is returned unchanged (a hand-set custom model).
+     */
+    function ccrm_ai_upgrade_model($model, string $fallback): string {
+        if (!is_string($model) || trim($model) === '') {
+            return $fallback;
+        }
+        $model = trim($model);
+        $map = ccrm_ai_model_upgrades();
+        return $map[$model] ?? $model;
+    }
+
+    /**
      * Resolve the OpenAI chat model to use, from the admin-configured
      * INTEGRATIONS_CONFIG, falling back to a sane default. Centralised so the
      * default is not scattered as a literal across every AI endpoint.
+     * A stored older id is rewritten (see ccrm_ai_model_upgrades()).
      */
-    function ccrm_ai_model(array $config = [], string $default = 'gpt-5.6-luna'): string {
+    function ccrm_ai_model(array $config = [], string $default = 'gpt-6-luna'): string {
         $m = $config['aiModel'] ?? ($config['openAiModel'] ?? '');
-        return (is_string($m) && $m !== '') ? $m : $default;
+        return ccrm_ai_upgrade_model(is_string($m) ? $m : '', $default);
     }
 
     /**
@@ -2205,9 +2238,10 @@ HTACCESS;
      * administrator configured, instead of being forwarded to OpenAI as typed.
      */
     function ccrm_ai_requested_model(array $config, $requested): string {
-        $configured = ccrm_ai_model($config, 'gpt-5.6-terra');
-        $allowed = ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', $configured];
-        return (is_string($requested) && in_array($requested, $allowed, true)) ? $requested : $configured;
+        $configured = ccrm_ai_model($config, 'gpt-6.1-terra');
+        $requested = ccrm_ai_upgrade_model(is_string($requested) ? $requested : '', $configured);
+        $allowed = ['gpt-6-luna', 'gpt-6.1-terra', 'gpt-6.1-sol', $configured];
+        return in_array($requested, $allowed, true) ? $requested : $configured;
     }
 
     /**
@@ -2251,13 +2285,13 @@ HTACCESS;
     }
 
     /**
-     * OpenAI's reasoning-model families (o1/o3/o4/gpt-5*) reject any
+     * OpenAI's reasoning-model families (o1, o3, o4, gpt-5 and gpt-6) reject any
      * 'temperature' value other than the default (1) — sending 0.2/0.3/0.4
      * fails with "Unsupported value: 'temperature' does not support X".
      * Only include the param for models that actually accept it.
      */
     function ccrm_ai_model_supports_temperature(string $model): bool {
-        return !preg_match('/^(o[1-9]|gpt-5)/i', trim($model));
+        return !preg_match('/^(o[1-9]|gpt-[5-9])/i', trim($model));
     }
 
     /**
@@ -2604,6 +2638,234 @@ HTACCESS;
         $incoming['emailSettings'] = ccrm_encrypt_config_secrets($incoming['emailSettings'], ccrm_email_secret_keys());
         $encoded = json_encode($incoming, JSON_INVALID_UTF8_SUBSTITUTE);
         return $encoded === false ? $incomingJson : $encoded;
+    }
+
+    /**
+     * Ledger of tokens (and transcription minutes) each AI feature actually consumed.
+     * Created here as well as in schema.php so a call that lands before the next
+     * sync still records. Never throws: a broken ledger must not fail the feature.
+     */
+    function ccrm_ai_usage_ensure(\PDO $pdo): void {
+        static $ready = false;
+        if ($ready || $pdo->inTransaction()) {
+            return;
+        }
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS `ai_usage` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `feature` VARCHAR(64) NOT NULL,
+              `model` VARCHAR(80) NOT NULL,
+              `input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `cached_input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `input_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `audio_seconds` DECIMAL(10,2) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_ai_usage_created` (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+        $ready = true;
+    }
+
+    /**
+     * One successful provider call. Token fields are already split: input is
+     * uncached text, cached input is separate, audio tokens are separate, and
+     * audio_seconds is file or live transcription billed by the minute.
+     */
+    function ccrm_ai_record_usage(
+        \PDO $pdo,
+        string $feature,
+        string $model,
+        int $inputTokens,
+        int $outputTokens,
+        int $cachedInputTokens = 0,
+        int $inputAudioTokens = 0,
+        int $outputAudioTokens = 0,
+        float $audioSeconds = 0
+    ): void {
+        try {
+            $feature = strtolower(preg_replace('/[^a-z0-9_]/i', '', $feature) ?? '');
+            $feature = substr($feature !== '' ? $feature : 'unknown', 0, 64);
+            $model = trim($model);
+            if (str_starts_with($model, 'models/')) {
+                $model = substr($model, 7);
+            }
+            $model = substr($model !== '' ? $model : 'unknown', 0, 80);
+            $clamp = static function (int $n): int {
+                return max(0, min($n, 50000000));
+            };
+            $inputTokens = $clamp($inputTokens);
+            $outputTokens = $clamp($outputTokens);
+            $cachedInputTokens = $clamp($cachedInputTokens);
+            $inputAudioTokens = $clamp($inputAudioTokens);
+            $outputAudioTokens = $clamp($outputAudioTokens);
+            if ($audioSeconds < 0 || $audioSeconds > 14400) {
+                $audioSeconds = 0;
+            }
+            if ($inputTokens + $outputTokens + $cachedInputTokens + $inputAudioTokens + $outputAudioTokens === 0 && $audioSeconds <= 0) {
+                return;
+            }
+            ccrm_ai_usage_ensure($pdo);
+            $pdo->prepare(
+                "INSERT INTO `ai_usage`
+                  (`feature`, `model`, `input_tokens`, `cached_input_tokens`, `output_tokens`, `input_audio_tokens`, `output_audio_tokens`, `audio_seconds`)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            )->execute([
+                $feature,
+                $model,
+                $inputTokens,
+                $cachedInputTokens,
+                $outputTokens,
+                $inputAudioTokens,
+                $outputAudioTokens,
+                round($audioSeconds, 2),
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[ccrm ai usage] ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Read a chat, embeddings, Anthropic or Gemini JSON body and store its usage.
+     * $fallbackModel is the id we sent when the body does not echo one.
+     */
+    function ccrm_ai_capture_usage(\PDO $pdo, string $feature, $decoded, string $fallbackModel = ''): void {
+        if (!is_array($decoded)) {
+            return;
+        }
+        $model = '';
+        if (isset($decoded['model']) && is_string($decoded['model'])) {
+            $model = $decoded['model'];
+        } elseif (isset($decoded['modelVersion']) && is_string($decoded['modelVersion'])) {
+            $model = $decoded['modelVersion'];
+        }
+        if (trim($model) === '') {
+            $model = $fallbackModel;
+        }
+        $usage = null;
+        if (isset($decoded['usage']) && is_array($decoded['usage'])) {
+            $usage = $decoded['usage'];
+        } elseif (isset($decoded['usageMetadata']) && is_array($decoded['usageMetadata'])) {
+            $usage = $decoded['usageMetadata'];
+        }
+        if ($usage === null) {
+            return;
+        }
+        $input = (int)($usage['prompt_tokens'] ?? $usage['input_tokens'] ?? $usage['promptTokenCount'] ?? 0);
+        $output = (int)($usage['completion_tokens'] ?? $usage['output_tokens'] ?? $usage['candidatesTokenCount'] ?? 0);
+        $output += (int)($usage['thoughtsTokenCount'] ?? 0);
+        $cached = (int)($usage['prompt_tokens_details']['cached_tokens']
+            ?? $usage['input_token_details']['cached_tokens']
+            ?? $usage['cachedContentTokenCount']
+            ?? 0);
+        $inAudio = (int)($usage['prompt_tokens_details']['audio_tokens'] ?? $usage['input_token_details']['audio_tokens'] ?? 0);
+        $outAudio = (int)($usage['completion_tokens_details']['audio_tokens'] ?? $usage['output_token_details']['audio_tokens'] ?? 0);
+        if (isset($usage['input_token_details']['text_tokens']) || $inAudio > 0) {
+            $input = isset($usage['input_token_details']['text_tokens'])
+                ? (int)$usage['input_token_details']['text_tokens']
+                : max(0, $input - $inAudio);
+        }
+        if (isset($usage['output_token_details']['text_tokens']) || $outAudio > 0) {
+            $output = isset($usage['output_token_details']['text_tokens'])
+                ? (int)$usage['output_token_details']['text_tokens']
+                : max(0, $output - $outAudio);
+        }
+        if ($cached > 0) {
+            $input = max(0, $input - $cached);
+        }
+        $seconds = 0.0;
+        if (isset($usage['seconds']) && is_numeric($usage['seconds'])) {
+            $seconds = (float)$usage['seconds'];
+        }
+        ccrm_ai_record_usage($pdo, $feature, $model, $input, $output, $cached, $inAudio, $outAudio, $seconds);
+    }
+
+    /** Seconds the transcription body itself reports, or 0. */
+    function ccrm_ai_provider_audio_seconds($decoded): float {
+        if (!is_array($decoded)) {
+            return 0;
+        }
+        $usage = (isset($decoded['usage']) && is_array($decoded['usage'])) ? $decoded['usage'] : [];
+        $seconds = $usage['seconds'] ?? ($decoded['duration'] ?? null);
+        if (!is_numeric($seconds)) {
+            return 0;
+        }
+        $n = (float)$seconds;
+        return ($n > 0 && $n <= 14400) ? $n : 0;
+    }
+
+    /** A duration the browser measured, capped so a bad value cannot dominate the month. */
+    function ccrm_ai_posted_audio_seconds($posted): float {
+        if (!is_numeric($posted)) {
+            return 0;
+        }
+        $n = (float)$posted;
+        return ($n > 0 && $n <= 14400) ? $n : 0;
+    }
+
+    /** WAV header, then ffprobe when the shell allows it. 0 when neither can tell. */
+    function ccrm_ai_probe_audio_seconds(string $path): float {
+        $fh = @fopen($path, 'rb');
+        if ($fh) {
+            $riff = fread($fh, 12);
+            if (strlen($riff) === 12 && substr($riff, 0, 4) === 'RIFF' && substr($riff, 8, 4) === 'WAVE') {
+                $rate = 0;
+                $align = 0;
+                while (!feof($fh)) {
+                    $chunk = fread($fh, 8);
+                    if (strlen($chunk) < 8) {
+                        break;
+                    }
+                    $id = substr($chunk, 0, 4);
+                    $size = unpack('V', substr($chunk, 4, 4))[1];
+                    if ($id === 'fmt ' && $size >= 16) {
+                        $fmt = fread($fh, $size);
+                        $rate = unpack('V', substr($fmt, 4, 4))[1];
+                        $align = unpack('v', substr($fmt, 12, 2))[1];
+                    } elseif ($id === 'data' && $rate > 0 && $align > 0) {
+                        fclose($fh);
+                        return $size / ($rate * $align);
+                    } else {
+                        fseek($fh, $size + ($size % 2), SEEK_CUR);
+                    }
+                }
+            }
+            fclose($fh);
+        }
+        if (!function_exists('exec')) {
+            return 0;
+        }
+        $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+        if (in_array('exec', $disabled, true)) {
+            return 0;
+        }
+        $out = [];
+        $code = 1;
+        @exec('ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 ' . escapeshellarg($path), $out, $code);
+        if ($code !== 0) {
+            return 0;
+        }
+        $n = (float)trim((string)($out[0] ?? ''));
+        return ($n > 0 && $n <= 14400) ? $n : 0;
+    }
+
+    /**
+     * Billable audio length: the provider's own seconds, then the file, then
+     * the duration the browser sent with the upload.
+     */
+    function ccrm_ai_resolve_audio_seconds($decoded, string $path, $posted): float {
+        $fromProvider = ccrm_ai_provider_audio_seconds($decoded);
+        if ($fromProvider > 0) {
+            return $fromProvider;
+        }
+        if ($path !== '' && is_file($path)) {
+            $probed = ccrm_ai_probe_audio_seconds($path);
+            if ($probed > 0) {
+                return $probed;
+            }
+        }
+        return ccrm_ai_posted_audio_seconds($posted);
     }
 }
 

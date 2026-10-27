@@ -123,6 +123,19 @@ function ccrm_vec_embed(string $apiKey, array $texts): array {
         throw new \RuntimeException('OpenAI embeddings returned ' . $code . ': ' . ($data['error']['message'] ?? ($err ?: 'no response')));
     }
     $data = json_decode((string)$body, true);
+    if (function_exists('get_db_connection') && function_exists('ccrm_ai_capture_usage')) {
+        static $usagePdo = false;
+        if ($usagePdo === false) {
+            try {
+                $usagePdo = get_db_connection();
+            } catch (\Throwable $e) {
+                $usagePdo = null;
+            }
+        }
+        if ($usagePdo instanceof \PDO) {
+            ccrm_ai_capture_usage($usagePdo, 'rag_embeddings', $data, CCRM_VEC_MODEL);
+        }
+    }
     $out = [];
     foreach (($data['data'] ?? []) as $row) {
         $out[(int)$row['index']] = $row['embedding'];

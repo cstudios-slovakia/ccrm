@@ -15,6 +15,7 @@ import { VERSION_CODENAME } from "../../utils/version";
 import type { Language } from "../../utils/translations";
 import type { ScreenContextInfo } from "../../hooks/useCurrentScreenContext";
 import { viewSizeScale } from "../../utils/viewSize";
+import { reportVoiceUsage } from "../../utils/aiUsage";
 
 interface CopilotSidebarProps {
   isOpen: boolean;
@@ -637,7 +638,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                 voice: sessionInit.voice || "alloy",
                 tools: sessionInit.tools || [],
                 input_audio_transcription: {
-                  model: "whisper-1"
+                  model: "gpt-live-transcribe"
                 }
               }
             })
@@ -648,6 +649,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       dc.addEventListener("message", async (event) => {
         try {
           const msg = JSON.parse(event.data);
+          reportVoiceUsage(msg);
 
           // User Speech Started -> Interrupt AI Speech
           if (msg.type === "input_audio_buffer.speech_started") {
@@ -1022,7 +1024,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
           action: "exchange_sdp",
           sdp: offer.sdp,
           client_secret: clientSecret,
-          model: "gpt-realtime-1.5"
+          model: "gpt-realtime-2.1"
         })
       });
 

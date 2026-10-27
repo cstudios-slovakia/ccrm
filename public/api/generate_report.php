@@ -249,6 +249,7 @@ if ($httpCode !== 200 || !$response) {
 }
 
 $resData = json_decode($response, true);
+ccrm_ai_capture_usage($pdo, 'report', $resData, $reportModel);
 $aiReply = trim($resData['choices'][0]['message']['content'] ?? '');
 
 if (empty($aiReply)) {

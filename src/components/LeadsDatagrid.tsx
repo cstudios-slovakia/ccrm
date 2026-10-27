@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
@@ -93,7 +94,6 @@ import {
     AlertTriangle,
     Building2,
     Heart,
-    ShoppingCart,
 } from "lucide-react";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { EntityTasksPanel } from "./EntityTasksPanel";
@@ -1622,6 +1622,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     // A timeline note has no meeting_notes row to look the
                     // recording up by, so say which stored file to transcribe.
                     audioFile: uploadedAudioFile || undefined,
+                    durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined,
                 }),
             });
             const data = await res.json();
@@ -5481,7 +5482,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
                             title={t("Place new order for this lead", "Vystaviť novú objednávku pre tento lead", "Új rendelés feladása ehhez a leadhez")}
                         >
-                            <ShoppingCart className="h-4 w-4 stroke-[2.5]" />
+                            <SectionIcon id="orders" className="h-4 w-4" />
                             <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
                         </button>
                     )}
@@ -10569,7 +10570,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative min-w-0">
             {/* 0. Title header */}
             <PageHeader
-              icon={<Layers className="h-6 w-6 text-blue-600" />}
+              icon={<SectionIcon id="leads" />}
               title={getTranslation(systemLanguage, "leads.title")}
               subtitle={getTranslation(systemLanguage, "leads.subtitle")}
               actions={canEdit ? (

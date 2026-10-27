@@ -1,7 +1,7 @@
 <?php
 /**
  * AI Voice Task Transcription & Task Extraction Endpoint.
- * Transcribes audio via OpenAI Whisper and parses structured CRM task(s) via OpenAI GPT.
+ * Transcribes audio via OpenAI gpt-transcribe and parses structured CRM task(s) via OpenAI GPT.
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
@@ -101,7 +101,7 @@ if (!empty($rawText)) {
     $cFile = new CURLFile($targetPath, $mimeType, basename($targetPath));
     $whisperPayload = [
         'file' => $cFile,
-        'model' => 'whisper-1',
+        'model' => 'gpt-transcribe',
         'prompt' => 'Hlasové CRM úlohy, pripomienky a termíny. Hangfeladatok, határidők és emlékeztetők a CRM-ben. Voice tasks, deadlines and reminders.'
     ];
 
@@ -120,6 +120,17 @@ if (!empty($rawText)) {
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlErr = curl_error($ch);
     curl_close($ch);
+
+    $taskAudioSeconds = 0.0;
+    if ($httpCode === 200 && $whisperResponse) {
+        $whisperForUsage = json_decode($whisperResponse, true);
+        $taskAudioSeconds = ccrm_ai_resolve_audio_seconds($whisperForUsage, $targetPath, $_POST['durationSeconds'] ?? null);
+        if ($taskAudioSeconds > 0) {
+            ccrm_ai_record_usage($pdo, 'task_transcription', 'gpt-transcribe', 0, 0, 0, 0, 0, $taskAudioSeconds);
+        } else {
+            ccrm_ai_capture_usage($pdo, 'task_transcription', $whisperForUsage, 'gpt-transcribe');
+        }
+    }
 
     // Clean up temporary audio file after transcription
     @unlink($targetPath);
@@ -236,6 +247,7 @@ Transcription:
 
     if ($httpCode === 200 && $gptResponse) {
         $gptJson = json_decode($gptResponse, true);
+        ccrm_ai_capture_usage($pdo, 'task_extraction', $gptJson, $aiModel);
         $aiReply = $gptJson['choices'][0]['message']['content'] ?? '';
         $cleanedReply = trim(preg_replace('/^```json|```$/i', '', trim($aiReply)));
         $aiJson = json_decode($cleanedReply, true);

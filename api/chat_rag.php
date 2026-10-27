@@ -459,6 +459,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $reply = "Failed to convene Executive Council. API returned code " . $httpCode . ": " . $errMsg;
         } else {
             $resData = json_decode($response, true);
+            ccrm_ai_capture_usage($pdo, 'executive_council', $resData, $chatModel);
             $aiReply = $resData['choices'][0]['message']['content'] ?? 'No response returned from model.';
             $reply = restore_text($aiReply, $to_real);
         }
@@ -626,6 +627,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reply = "Failed to fetch response from OpenAI. API returned code " . $httpCode . ": " . $errMsg;
     } else {
         $resData = json_decode($response, true);
+        ccrm_ai_capture_usage($pdo, 'executive_assistant', $resData, $chatModel);
         $aiReply = $resData['choices'][0]['message']['content'] ?? 'No response returned from model.';
         $reply = restore_text($aiReply, $to_real);
     }

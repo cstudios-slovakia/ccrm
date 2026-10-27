@@ -76,7 +76,7 @@ function demo_seed_sai(PDO $pdo): void {
         'metricsHistory' => $data['metrics'],
         'finalReport' => $data['report'],
         'crm_data_sources' => ['leads', 'clients', 'projects', 'finance', 'emails'],
-        'model_name' => 'gpt-5.6-luna',
+        'model_name' => 'gpt-6-luna',
         'diurnal_cycle' => true,
     ];
     $flags = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES;

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { 
@@ -8,7 +9,7 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink, Ticket as TicketIcon, Tag
+  AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
@@ -2449,7 +2450,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           manualNotes: manualNotesText,
           // A timeline note has no meeting_notes row to look the recording up
           // by, so say which stored file to transcribe.
-          audioFile: uploadedAudioFile || undefined
+          audioFile: uploadedAudioFile || undefined,
+          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined
         })
       });
       const data = await res.json();
@@ -3400,7 +3402,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
               title={t("Place new order for this client", "Vystaviť novú objednávku pre tohto klienta", "Új rendelés feladása")}
             >
-              <ShoppingCart className="h-4 w-4 stroke-[2.5]" />
+              <SectionIcon id="orders" className="h-4 w-4" />
               <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
             </button>
           )}
@@ -4144,7 +4146,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 items={[
                   { key: "timeline", icon: <Clock className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.history_timeline") },
                   { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
-                  { key: "orders", icon: <ShoppingCart className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
+                  { key: "orders", icon: <SectionIcon id="orders" className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
                   { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
                   {
                     key: "leads",
@@ -5554,7 +5556,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
                     <div>
                       <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                        <ShoppingCart className="h-4.5 w-4.5 text-sky-600 stroke-[2.5]" />
+                        <SectionIcon id="orders" className="h-4.5 w-4.5" />
                         {t("Client Orders & E-Shop Purchases", "Objednávky a nákupy klienta", "Ügyfél rendelései és vásárlásai")}
                       </h3>
                       <p className="text-caption text-slate-500 mt-0.5">
@@ -5577,7 +5579,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {clientOrders.length === 0 ? (
                     <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption space-y-3">
                       <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500">
-                        <ShoppingCart className="w-6 h-6" />
+                        <SectionIcon id="orders" className="w-6 h-6" />
                       </div>
                       <div>
                         <p className="font-semibold text-slate-600">
@@ -5907,7 +5909,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       {/* 1. Title header */}
       <PageHeader
-        icon={<Users className="h-6 w-6 text-emerald-600" />}
+        icon={<SectionIcon id="clients" />}
         title={getTranslation(systemLanguage, "clients.title")}
         badge={<>
           {!canEdit && (

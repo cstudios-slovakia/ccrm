@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { SectionIcon } from "../icons/SectionIcon";
+import { SECTION_VISUALS } from "../../utils/sectionVisuals";
 import { 
   Sparkles, 
   Plus, 
@@ -16,6 +18,7 @@ import {
   Database 
 } from 'lucide-react';
 import FlockIcon from '../icons/FlockIcon';
+import { AI_MODEL_LUNA, upgradeSwarmModel } from '../../utils/aiModels';
 import type { 
   SimulationParameters, 
   SwarmKnowledgeGraph, 
@@ -202,7 +205,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                 context_documents: Array.isArray(simDetails.context_documents) ? simDetails.context_documents : (Array.isArray(cp.context_documents) ? cp.context_documents : undefined),
                 swarm_scale: simDetails.swarm_scale ? Number(simDetails.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
                 total_rounds: simDetails.total_rounds ? Number(simDetails.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
-                model_name: simDetails.model_name || cp.model_name || 'gpt-5.6-luna',
+                model_name: upgradeSwarmModel(simDetails.model_name || cp.model_name),
                 diurnal_cycle: simDetails.diurnal_cycle !== undefined ? simDetails.diurnal_cycle : (cp.diurnal_cycle ?? true),
                 status: 'draft'
               });
@@ -329,7 +332,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       context_documents: contextDocs,
       swarm_scale: sim.swarm_scale ? Number(sim.swarm_scale) : (cp.swarm_scale ? Number(cp.swarm_scale) : 30),
       total_rounds: sim.total_rounds ? Number(sim.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
-      model_name: sim.model_name || cp.model_name || 'gpt-5.6-luna',
+      model_name: upgradeSwarmModel(sim.model_name || cp.model_name),
       diurnal_cycle: sim.diurnal_cycle !== undefined ? sim.diurnal_cycle : (cp.diurnal_cycle ?? true),
       status: 'draft'
     });
@@ -647,7 +650,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
           totalRounds: simDetails.total_rounds ? Number(simDetails.total_rounds) : (cp.total_rounds ? Number(cp.total_rounds) : 8),
           platforms: (simDetails.platforms || cp.platforms || 'dual') as ('dual' | 'chitchat' | 'forum' | 'twitter' | 'reddit'),
           diurnalCycle: simDetails.diurnal_cycle !== undefined ? simDetails.diurnal_cycle : (cp.diurnal_cycle ?? true),
-          llmModel: simDetails.model_name || cp.model_name || 'gpt-5.6-luna',
+          llmModel: upgradeSwarmModel(simDetails.model_name || cp.model_name),
           executionMode: activeIsDemo ? 'demo' : 'live'
         };
         await handleLaunchSimulation(config, activeSimulationId);
@@ -811,12 +814,12 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       {activeView === 'list' ? (
         <header className="px-6 py-4 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-400 flex items-center justify-center shadow-md text-white">
-              <FlockIcon size={22} className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-md text-white" style={{ backgroundColor: SECTION_VISUALS.sai.color }}>
+              <SectionIcon id="sai" className="w-5 h-5" color="#ffffff" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-title font-extrabold bg-gradient-to-r from-purple-700 via-indigo-700 to-emerald-600 bg-clip-text text-transparent">
+                <h1 className="text-title font-extrabold text-slate-900">
                   SAI
                 </h1>
                 <span className="px-2 py-0.5 rounded-full type-overline bg-purple-100 text-purple-700 border border-purple-200">
@@ -1071,8 +1074,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                 </div>
               ) : pastSimulations.length === 0 ? (
                 <div className="p-12 rounded-3xl bg-white border border-dashed border-slate-300 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
-                    <FlockIcon size={24} className="w-6 h-6" />
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto" style={{ backgroundColor: SECTION_VISUALS.sai.bg, color: SECTION_VISUALS.sai.color }}>
+                    <SectionIcon id="sai" className="w-6 h-6" />
                   </div>
                   <h4 className="text-body font-bold text-slate-700">{t('No simulations yet', 'Zatiaľ žiadne simulácie', 'Még nincsenek szimulációk')}</h4>
                   <p className="text-ui text-slate-500 max-w-sm mx-auto">

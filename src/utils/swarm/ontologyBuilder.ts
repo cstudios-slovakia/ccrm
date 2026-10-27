@@ -3,6 +3,7 @@
  * Analyzes seed document + CRM context to extract active social actors and relationship edges.
  */
 
+import { AI_MODEL_LUNA } from "../aiModels";
 import { callLlmJson } from './llmProxyClient';
 import type { SwarmKnowledgeGraph, SwarmContextDocument } from './types';
 
@@ -10,7 +11,7 @@ export async function buildKnowledgeGraph(
   seedDocument: string,
   crmContextText: string,
   hypothesis: string,
-  modelName: string = 'gpt-5.6-luna',
+  modelName: string = AI_MODEL_LUNA,
   contextDocuments?: SwarmContextDocument[],
   language: string = 'sk'
 ): Promise<SwarmKnowledgeGraph> {

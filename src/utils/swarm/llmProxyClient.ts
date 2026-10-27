@@ -1,3 +1,5 @@
+import { AI_MODEL_LUNA } from "../aiModels";
+
 /**
  * LLM Proxy Client
  * Routes chat completion requests through the secure authenticated PHP proxy (/api/swarm.php?action=llm_proxy).
@@ -22,7 +24,7 @@ export async function callLlmProxy(
   const tokenLimit = options.maxTokens || 4000;
   const payload = {
     messages,
-    model: options.model || 'gpt-5.6-luna',
+    model: options.model || AI_MODEL_LUNA,
     temperature: options.temperature !== undefined ? options.temperature : 0.7,
     response_format: options.responseFormat || null,
     max_tokens: tokenLimit,

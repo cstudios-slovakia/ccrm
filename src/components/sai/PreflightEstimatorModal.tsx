@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AI_MODEL_INPUT_USD_PER_M, AI_MODEL_LUNA, AI_MODEL_TERRA } from '../../utils/aiModels';
 import { ShieldAlert, Zap, X, ArrowRight, Coins, FileText, Sparkles } from 'lucide-react';
 import type { SwarmContextDocument } from '../../utils/swarm/types';
 
@@ -64,8 +65,8 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
   const totalCalls = turnsPerSim + swarmScale + 6; // sim turns + profiles + ontology & report
 
   // Pricing estimators per 1M tokens
-  const costGpt56Luna = (totalTokens / 1_000_000) * 0.25; // Cost-optimized
-  const costGpt56Terra = (totalTokens / 1_000_000) * 1.50; // Heavy reasoning
+  const costLuna = (totalTokens / 1_000_000) * AI_MODEL_INPUT_USD_PER_M[AI_MODEL_LUNA];
+  const costTerra = (totalTokens / 1_000_000) * AI_MODEL_INPUT_USD_PER_M[AI_MODEL_TERRA];
 
   const isDemo = currentMode === 'demo';
 
@@ -197,19 +198,19 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
                 : t('Estimated API Quota Costs (OpenAI)', 'Odhadované náklady na kvótu (OpenAI)', 'Becsült OpenAI API költség')}
             </span>
             <div className="space-y-2 text-ui">
-              <div className={`flex justify-between items-center py-1 border-b border-slate-200/50 ${_modelName === 'gpt-5.6-luna' ? 'font-bold text-purple-700' : ''}`}>
+              <div className={`flex justify-between items-center py-1 border-b border-slate-200/50 ${_modelName === AI_MODEL_LUNA ? 'font-bold text-purple-700' : ''}`}>
                 <span className="font-medium text-slate-700 flex items-center gap-1.5">
-                  <span>{t('GPT-5.6 Luna (Cost-optimized)', 'GPT-5.6 Luna (Cenovo optimalizovaný)', 'GPT-5.6 Luna (Költségoptimalizált)')}</span>
-                  {_modelName === 'gpt-5.6-luna' && <span className="px-1.5 py-0.2 text-micro bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
+                  <span>{t('GPT-6 Luna (Cost-optimized)', 'GPT-6 Luna (Cenovo optimalizovaný)', 'GPT-6 Luna (Költségoptimalizált)')}</span>
+                  {_modelName === AI_MODEL_LUNA && <span className="px-1.5 py-0.2 text-micro bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
                 </span>
-                <span className="font-bold text-emerald-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costGpt56Luna.toFixed(3)}`}</span>
+                <span className="font-bold text-emerald-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costLuna.toFixed(3)}`}</span>
               </div>
-              <div className={`flex justify-between items-center py-1 ${_modelName === 'gpt-5.6-terra' ? 'font-bold text-purple-700' : ''}`}>
+              <div className={`flex justify-between items-center py-1 ${_modelName === AI_MODEL_TERRA ? 'font-bold text-purple-700' : ''}`}>
                 <span className="font-medium text-slate-700 flex items-center gap-1.5">
-                  <span>{t('GPT-5.6 Terra (Deep reasoning)', 'GPT-5.6 Terra (Hĺbkové uvažovanie)', 'GPT-5.6 Terra (Mély következtetés)')}</span>
-                  {_modelName === 'gpt-5.6-terra' && <span className="px-1.5 py-0.2 text-micro bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
+                  <span>{t('GPT-6.1 Terra (Deep reasoning)', 'GPT-6.1 Terra (Hĺbkové uvažovanie)', 'GPT-6.1 Terra (Mély következtetés)')}</span>
+                  {_modelName === AI_MODEL_TERRA && <span className="px-1.5 py-0.2 text-micro bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
                 </span>
-                <span className="font-bold text-indigo-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costGpt56Terra.toFixed(3)}`}</span>
+                <span className="font-bold text-indigo-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costTerra.toFixed(3)}`}</span>
               </div>
             </div>
           </div>

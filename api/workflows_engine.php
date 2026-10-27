@@ -554,12 +554,14 @@ if (!function_exists('ccrm_workflow_resolve_assignee')) {
 
 if (!function_exists('ccrm_call_llm')) {
     function ccrm_call_llm($provider, $key, $prompt, $options = []) {
+        $model = '';
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         
         if ($provider === 'gemini') {
-            $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $key;
+            $model = 'gemini-3.8-flash';
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' . $key;
             $payload = [
                 'contents' => [
                     ['parts' => [['text' => $prompt]]]
@@ -571,7 +573,7 @@ if (!function_exists('ccrm_call_llm')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         } elseif ($provider === 'openai') {
             $url = 'https://api.openai.com/v1/chat/completions';
-            $model = $options['model'] ?? 'gpt-5.6-luna';
+            $model = ccrm_ai_upgrade_model($options['model'] ?? '', 'gpt-6-luna');
             $payload = [
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $prompt]]
@@ -585,7 +587,7 @@ if (!function_exists('ccrm_call_llm')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         } elseif ($provider === 'anthropic') {
             $url = 'https://api.anthropic.com/v1/messages';
-            $model = $options['model'] ?? 'claude-3-5-sonnet-20241022';
+            $model = ccrm_ai_upgrade_model($options['model'] ?? '', 'claude-sonnet-5-5');
             $payload = [
                 'model' => $model,
                 'max_tokens' => 1024,
@@ -612,6 +614,9 @@ if (!function_exists('ccrm_call_llm')) {
         }
         
         $data = json_decode($response, true);
+        if (!empty($options['pdo']) && $options['pdo'] instanceof PDO && function_exists('ccrm_ai_capture_usage')) {
+            ccrm_ai_capture_usage($options['pdo'], (string)($options['feature'] ?? 'workflow'), $data, $model);
+        }
         if ($provider === 'gemini') {
             return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
         } elseif ($provider === 'openai') {
@@ -795,7 +800,11 @@ if (!function_exists('ccrm_execute_workflow')) {
                     $promptTemplate = $nodeData['prompt'] ?? '';
                     $prompt = ccrm_interpolate_variables($promptTemplate, $incomingPayload, $context);
                     
-                    $response = ccrm_call_llm($provider, $key, $prompt);
+                    $response = ccrm_call_llm($provider, $key, $prompt, [
+                        'model' => $nodeData['model'] ?? '',
+                        'pdo' => $pdo,
+                        'feature' => 'workflow',
+                    ]);
                     
                     // Attempt to decode as JSON if next node expects object, or just keep as text
                     $jsonDecoded = json_decode($response, true);

@@ -1634,7 +1634,7 @@ export const CUSTOM_DASHBOARDS = [
     name: 'Obchodný prehľad',
     icon: 'TrendingUp',
     color: '#4f46e5',
-    activeModel: 'gemini-2.5-flash',
+    activeModel: 'gpt-6.1-terra',
     archived: false,
     prompts: [
       { prompt: 'Zobraz mi hodnotu otvoreného pipeline, počet nových dopytov tento mesiac, úspešnosť ponúk, rozdelenie dopytov podľa zdroja a tabuľku najväčších otvorených príležitostí.', layout: {} },
@@ -1666,7 +1666,7 @@ export const CUSTOM_DASHBOARDS = [
     name: 'Cash flow a pohľadávky',
     icon: 'Wallet',
     color: '#059669',
-    activeModel: 'gemini-2.5-flash',
+    activeModel: 'gpt-6.1-terra',
     archived: false,
     prompts: [
       { prompt: 'Sprav mi nástenku o peniazoch: koľko mi ešte majú zaplatiť, koľko je po splatnosti, ako vyzerá cash flow za posledných 8 mesiacov a zoznam faktúr po splatnosti.', layout: {} },

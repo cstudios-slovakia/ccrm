@@ -494,14 +494,14 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <span className="text-micro text-slate-400">{t("Filtered by the night cycle", "Filtrované nočným cyklom", "Éjszakai ciklussal szűrve")}</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-5.6 Terra price", "Cena GPT-5.6 Terra", "GPT-5.6 Terra ára")}</span>
-                    <span className="text-title font-bold text-indigo-600 mt-1 block">0.064 €</span>
-                    <span className="text-micro text-slate-400">{t("1.50 € / 1M tokens (deep analysis)", "1.50 € / 1M tokenov (hĺbková analýza)", "1.50 € / 1M token (mély elemzés)")}</span>
+                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-6.1 Terra price", "Cena GPT-6.1 Terra", "GPT-6.1 Terra ára")}</span>
+                    <span className="text-title font-bold text-indigo-600 mt-1 block">0.043 €</span>
+                    <span className="text-micro text-slate-400">{t("1.00 € / 1M input tokens (deep analysis)", "1.00 € / 1M vstupných tokenov (hĺbková analýza)", "1.00 € / 1M bemeneti token (mély elemzés)")}</span>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-5.6 Luna price", "Cena GPT-5.6 Luna", "GPT-5.6 Luna ára")}</span>
-                    <span className="text-title font-bold text-purple-600 mt-1 block">0.011 €</span>
-                    <span className="text-micro text-slate-400">{t("0.25 € / 1M tokens (cost-optimised)", "0.25 € / 1M tokenov (cenovo optimalizovaný)", "0.25 € / 1M token (árra optimalizált)")}</span>
+                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-6 Luna price", "Cena GPT-6 Luna", "GPT-6 Luna ára")}</span>
+                    <span className="text-title font-bold text-purple-600 mt-1 block">0.004 €</span>
+                    <span className="text-micro text-slate-400">{t("0.10 € / 1M input tokens (cost-optimised)", "0.10 € / 1M vstupných tokenov (cenovo optimalizovaný)", "0.10 € / 1M bemeneti token (árra optimalizált)")}</span>
                   </div>
                 </div>
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * AI Meeting Transcription & Synthesis Endpoint.
- * Transcribes audio via Whisper and generates automated meeting minutes via GPT.
+ * Transcribes audio via gpt-transcribe and generates automated meeting minutes via GPT.
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
@@ -126,7 +126,7 @@ $cFile = new CURLFile($localPath, $mimeType, basename($localPath));
 
 $whisperPayload = [
     'file' => $cFile,
-    'model' => 'whisper-1'
+    'model' => 'gpt-transcribe'
 ];
 
 $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
@@ -155,6 +155,12 @@ if ($httpCode !== 200 || !$whisperResponse) {
 
 $whisperJson = json_decode($whisperResponse, true);
 $transcription = $whisperJson['text'] ?? '';
+$audioSeconds = ccrm_ai_resolve_audio_seconds($whisperJson, $localPath, $data['durationSeconds'] ?? null);
+if ($audioSeconds > 0) {
+    ccrm_ai_record_usage($pdo, $transcribeOnly ? 'voice_note' : 'meeting_transcription', 'gpt-transcribe', 0, 0, 0, 0, 0, $audioSeconds);
+} else {
+    ccrm_ai_capture_usage($pdo, $transcribeOnly ? 'voice_note' : 'meeting_transcription', $whisperJson, 'gpt-transcribe');
+}
 
 if (empty($transcription)) {
     http_response_code(500);
@@ -232,6 +238,7 @@ if ($httpCode !== 200 || !$gptResponse) {
 }
 
 $gptJson = json_decode($gptResponse, true);
+ccrm_ai_capture_usage($pdo, 'meeting_minutes', $gptJson, $transcribeModel);
 $aiReply = $gptJson['choices'][0]['message']['content'] ?? '';
 
 // Try parsing AI reply to verify it's valid JSON
