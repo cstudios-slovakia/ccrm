@@ -2889,7 +2889,8 @@ ${log.payload || ''}
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         if (s.companyBillingSettings) setCompanyBillingSettings(sameOr(s.companyBillingSettings));
         if (s.invoicingIntegrations) setInvoicingIntegrations(sameOr(s.invoicingIntegrations));
-        setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
+        // An empty stage list is never real data (it hides every lead), so keep the built-in stages instead of adopting it.
+        setLeadStates((prev) => Array.isArray(s.leadStates) && s.leadStates.length > 0 && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
         setDivisions((prev) => s.divisions && JSON.stringify(s.divisions) !== JSON.stringify(prev) ? s.divisions : prev);
@@ -2923,7 +2924,7 @@ ${log.payload || ''}
           const next = normalizeProjectAutoCreate(s.projectAutoCreate);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
-        setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
+        setTaskStates((prev) => Array.isArray(s.taskStates) && s.taskStates.length > 0 && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         setTaskSettings((prev) => {
           const next = normalizeTaskSettings(s.taskSettings);
