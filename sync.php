@@ -3189,14 +3189,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $settingsList = [
-                'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
-                'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
-                'SYSTEM_CURRENCY' => $s['systemCurrency'] ?? '',
-                'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
-                'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
-                'LEAD_CATEGORIES' => json_encode($s['leadCategories'] ?? []),
-                'DIVISIONS' => json_encode($s['divisions'] ?? []),
-                'DIVISION_COLORS' => json_encode($s['divisionColors'] ?? []),
+                // Every list and map below follows one contract: a key the client
+                // did not send means unchanged (null is skipped further down). It
+                // used to fall back to `[]` / a default, so any save that merely
+                // lacked a list (a script, an old tab, an API client) emptied the
+                // pipeline stages, sources and categories for everyone.
+                'SYSTEM_NAME' => isset($s['systemName']) && is_string($s['systemName']) && $s['systemName'] !== '' ? $s['systemName'] : null,
+                'SYSTEM_LANGUAGE' => isset($s['systemLanguage']) && is_string($s['systemLanguage']) && $s['systemLanguage'] !== '' ? $s['systemLanguage'] : null,
+                'SYSTEM_CURRENCY' => isset($s['systemCurrency']) && is_string($s['systemCurrency']) ? $s['systemCurrency'] : null,
+                // The stage list also never saves empty: a lead has to sit in some
+                // stage, and an empty list hides every lead from the pipeline.
+                'LEAD_STATES' => ccrm_settings_list_value($s, 'leadStates', false),
+                'LEAD_SOURCES' => ccrm_settings_list_value($s, 'leadSources', true),
+                'LEAD_CATEGORIES' => ccrm_settings_list_value($s, 'leadCategories', true),
+                'DIVISIONS' => ccrm_settings_list_value($s, 'divisions', true),
+                'DIVISION_COLORS' => ccrm_settings_list_value($s, 'divisionColors', true),
                 // Omitted (or empty) means unchanged, the same contract as the
                 // SLA and auto-assignment blobs below: a client that predates
                 // permanent ids must not be able to wipe the map and send every
@@ -3207,12 +3214,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_IDS' => !empty($s['leadCategoryIds']) && is_array($s['leadCategoryIds'])
                     ? json_encode(ccrm_normalize_list_ids($s['leadCategories'] ?? [], $s['leadCategoryIds']), JSON_UNESCAPED_UNICODE)
                     : null,
-                'LEAD_STATE_COLORS' => json_encode($s['leadStateColors'] ?? []),
-                'LEAD_SOURCE_COLORS' => json_encode($s['leadSourceColors'] ?? []),
-                'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
-                'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
-                'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
-                'LEAD_STATE_FOLLOWUP' => json_encode($s['leadStateFollowUp'] ?? (object)[]),
+                'LEAD_STATE_COLORS' => ccrm_settings_list_value($s, 'leadStateColors', true),
+                'LEAD_SOURCE_COLORS' => ccrm_settings_list_value($s, 'leadSourceColors', true),
+                'LEAD_CATEGORY_COLORS' => ccrm_settings_list_value($s, 'leadCategoryColors', true),
+                'LEAD_STAGE_GROUPS' => ccrm_settings_list_value($s, 'leadStageGroups', true),
+                'LEAD_STATE_PARENTS' => ccrm_settings_list_value($s, 'leadStateParents', true),
+                'LEAD_STATE_FOLLOWUP' => ccrm_settings_list_value($s, 'leadStateFollowUp', true),
                 // Omitted means unchanged (null is skipped below), the same
                 // contract as the auto-assignment settings underneath: a client
                 // that knows nothing about SLA limits must not clear everyone
@@ -3245,8 +3252,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             )
                     ))
                     : null,
-                'TASK_STATES' => json_encode($s['taskStates'] ?? []),
-                'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
+                'TASK_STATES' => ccrm_settings_list_value($s, 'taskStates', false),
+                'TASK_STATE_COLORS' => ccrm_settings_list_value($s, 'taskStateColors', true),
                 // Omitted means unchanged: a client that predates Settings → Tasks
                 // must not switch the option off for everyone by saving an
                 // unrelated setting.

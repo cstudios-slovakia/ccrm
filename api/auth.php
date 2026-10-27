@@ -1009,6 +1009,20 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * The JSON to store for a settings list or map the client sent, or null (keep
+     * what is stored) when it did not send one. Saving settings must never empty a
+     * list just because the request left it out: a script, an old browser tab or an
+     * API client posting `settings` without `leadStates` used to wipe the pipeline
+     * stages, which hides every lead. `$allowEmpty` false also refuses an empty
+     * list, for the lists nothing can work without (stages, task states).
+     */
+    function ccrm_settings_list_value(array $s, string $key, bool $allowEmpty): ?string {
+        if (!array_key_exists($key, $s) || !is_array($s[$key])) return null;
+        if (!$allowEmpty && count($s[$key]) === 0) return null;
+        return json_encode($s[$key]);
+    }
+
+    /**
      * A stored status list (offers, or proformas and invoices), cleaned up the same
      * way normalizeOfferStatusDefs() does it in src/utils/offerStatuses.ts: unique
      * non-empty keys, a known group, a hex colour, kept in group order — and the
