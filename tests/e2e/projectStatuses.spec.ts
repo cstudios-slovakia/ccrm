@@ -53,7 +53,7 @@ test.describe('Project statuses', () => {
     await startSession(page);
     const pushed = recordPushes(page);
     page.on('dialog', (dialog) => void dialog.accept());
-    await gotoView(page, '#settings/projects');
+    await gotoView(page, '#settings/projects/statuses');
 
     // The five built-ins, each under its group.
     for (const key of ['new', 'active', 'on_hold', 'completed', 'cancelled']) {
@@ -94,7 +94,7 @@ test.describe('Project statuses', () => {
 
   test('the last open status cannot be removed', async ({ page }) => {
     await startSession(page);
-    await gotoView(page, '#settings/projects');
+    await gotoView(page, '#settings/projects/statuses');
     page.on('dialog', (dialog) => void dialog.accept());
 
     for (const key of ['on_hold', 'active']) {

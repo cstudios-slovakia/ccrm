@@ -7,12 +7,10 @@ import {
   SETTINGS_TINTS, categoryKey, resolveSectionRef, sectionKey, settingsPath,
 } from "./settingsRegistry.ts";
 import type { VisibleCategory } from "./settingsRegistry.ts";
-import { SectionList, useSectionScroll } from "./SectionList";
-import type { SectionNode } from "./SectionList";
+import { SectionPanel, SectionTabs, openSectionTab, useScrollTopOnTab } from "./SectionList";
 import { MobileSectionMenu } from "./MobileSectionMenu";
 import { LayoutSwitch } from "./SettingsHome";
 import type { SettingsLayout } from "./SettingsHome";
-import { ScrollFade } from "./ScrollFade";
 
 const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <kbd className="rounded-md border border-slate-200 bg-slate-100 px-1.5 py-px font-sans text-caption font-semibold text-slate-600">{children}</kbd>
@@ -80,31 +78,33 @@ const HelpCard: React.FC<{ lang: Language; categoryId: string }> = ({ lang, cate
 
 /**
  * A category on a wide screen in tile mode, or on a phone: back button and breadcrumb,
- * the category header, a sticky row of section tabs (a dropdown on phones), every
- * section stacked as its own card, and an aside with related settings and a help card.
+ * the category header, a sticky row of section tabs (a dropdown on phones), the one
+ * open section, and an aside with related settings and a help card.
  */
 export const CategoryPage: React.FC<{
   lang: Language;
   phone: boolean;
   category: VisibleCategory;
-  sections: SectionNode[];
-  routeSectionId: string | null;
+  sectionIds: string[];
+  /** The open tab. */
+  activeId: string;
+  /** What the open tab shows. */
+  body: React.ReactNode;
   canSee: (ref: string) => boolean;
   layout: SettingsLayout;
   onLayoutChange: (next: SettingsLayout) => void;
   onSearch: () => void;
   onOpenRef: (ref: string) => void;
-}> = ({ lang, phone, category, sections, routeSectionId, canSee, layout, onLayoutChange, onSearch, onOpenRef }) => {
+}> = ({ lang, phone, category, sectionIds, activeId, body, canSee, layout, onLayoutChange, onSearch, onOpenRef }) => {
   const t = (k: string) => getTranslation(lang, k);
   const def = category.def;
   const tint = SETTINGS_TINTS[def.tint];
   const Icon = def.icon;
-  const sectionIds = sections.map((s) => s.id);
-  const { activeId, flashId, goTo } = useSectionScroll(def.id, sectionIds, routeSectionId);
+  useScrollTopOnTab(def.id, activeId);
 
   const open = (id: string) => {
     onOpenRef(`${def.id}/${id}`);
-    goTo(id);
+    openSectionTab(def.id, id);
   };
 
   if (phone) {
@@ -139,7 +139,7 @@ export const CategoryPage: React.FC<{
         </div>
 
         <div className="flex flex-col gap-4 pt-4">
-          <SectionList categoryId={def.id} sections={sections} flashId={flashId} className="gap-4" />
+          <SectionPanel lang={lang} categoryId={def.id} sectionId={activeId} className="gap-4">{body}</SectionPanel>
           <RelatedList lang={lang} category={category} canSee={canSee} onOpen={onOpenRef} variant="list" />
         </div>
       </div>
@@ -186,42 +186,12 @@ export const CategoryPage: React.FC<{
         </div>
       </header>
 
-      {sections.length > 1 && (
-        <nav
-          aria-label={t("settings.nav.ui.sections")}
-          data-testid="settings-section-tabs"
-          className="sticky top-[calc(0.5rem_-_var(--gutter))] z-10 rounded-3xl border border-slate-200 bg-white/90 p-1.5 shadow-glass-sm backdrop-blur"
-        >
-          <ScrollFade axis="x">
-            <ul className="flex gap-1">
-              {sections.map((s) => {
-                const current = activeId === s.id;
-                return (
-                  <li key={s.id} className="shrink-0">
-                    <a
-                      href={"#" + settingsPath(def.id, s.id)}
-                      aria-current={current ? "true" : undefined}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        open(s.id);
-                      }}
-                      className={cn(
-                        "inline-flex min-h-10 items-center rounded-2xl px-4 text-ui no-underline transition-colors",
-                        current ? "bg-indigo-50 font-bold text-indigo-700" : "font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                      )}
-                    >
-                      {t(sectionKey(def.id, s.id, "title"))}
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          </ScrollFade>
-        </nav>
+      {sectionIds.length > 1 && (
+        <SectionTabs lang={lang} categoryId={def.id} sectionIds={sectionIds} activeId={activeId} onPick={open} />
       )}
 
       <div className="flex flex-wrap items-start gap-6">
-        <SectionList categoryId={def.id} sections={sections} flashId={flashId} className="flex-[999_1_40rem]" />
+        <SectionPanel lang={lang} categoryId={def.id} sectionId={activeId} className="flex-[999_1_40rem]">{body}</SectionPanel>
         <aside className="flex min-w-0 flex-[1_1_18rem] flex-col gap-4.5 ws-lg:sticky ws-lg:top-[calc(5rem_-_var(--gutter))]">
           <RelatedList lang={lang} category={category} canSee={canSee} onOpen={onOpenRef} variant="card" />
           <HelpCard lang={lang} categoryId={def.id} />

@@ -1,14 +1,13 @@
 import React from "react";
 import * as Icons from "lucide-react";
 import {
-  Save, Database, Trash2, ShieldAlert, Sliders,
-  Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
-  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
-  Menu, ArrowUp, FolderOpen, Search, Building2, Percent, RotateCcw
+  Database, Trash2, Sliders,
+  Globe, Plus, X, ShieldCheck, Lock,
+  Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, Check,
+  Menu, ArrowUp, FolderOpen, Search, Building2, RotateCcw
 } from "lucide-react";
 import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
-import { keepStoredOfferDefaults } from "../utils/offerDefaults";
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
 import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD } from "../utils/payment";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
@@ -85,9 +84,17 @@ import type { CategoryBadge, SettingsLayout } from "./settings/SettingsHome";
 import { CategoryPage } from "./settings/CategoryPage";
 import { SidebarLayout } from "./settings/SidebarLayout";
 import { SectionCard, ModuleLinkCard } from "./settings/SectionCard";
-import { SaveBar } from "./settings/SaveBar";
+import { SaveStatus } from "./settings/SectionCard";
+import { useAutosave } from "./settings/useAutosave";
 import { ScrollFade } from "./settings/ScrollFade";
-import type { SectionNode } from "./settings/SectionList";
+
+/** The billing fields the company forms own. Saving writes only these, so a payment or shipping edit made elsewhere is never overwritten. */
+const COMPANY_FORM_KEYS: Array<keyof CompanyBillingSettings> = [
+  "companyLogoUrl", "companyName", "companySubtitle", "companyId", "taxId", "vatId",
+  "street", "city", "postalCode", "country", "email", "phone", "phoneSecondary", "website",
+  "iban", "swift", "defaultPaymentDueDays", "defaultVatRate", "vatRates",
+];
+const normField = (v: unknown) => (v === undefined || v === null ? "" : Array.isArray(v) ? JSON.stringify(v) : String(v));
 
 const LeadAssignmentCard: React.FC<{
   users: UserProfile[];
@@ -217,21 +224,14 @@ const LeadAssignmentCard: React.FC<{
   };
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
-      <div className="space-y-1 border-b border-slate-200 pb-3">
-        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-          <Share2 className="h-4.5 w-4.5 text-indigo-500" />
-          {t("Automatic lead assignment", "Automatické priraďovanie leadov", "Automatikus lead-kiosztás")}
-        </h3>
-        <p className="text-micro font-semibold text-slate-500 leading-relaxed max-w-2xl pt-3">
-          {t(
+    <SectionCard
+      title={t("Automatic lead assignment", "Automatické priraďovanie leadov", "Automatikus lead-kiosztás")}
+      description={t(
             "When a new lead arrives without an owner — from the web form, automations, imports, or added here without picking anyone — it is assigned to one person. Leads that already have an owner are never touched.",
             "Nový lead, ktorý príde bez vlastníka — z webového formulára, z automatizácií, z importov alebo pridaný tu bez výberu osoby — sa pridelí jednej osobe. Leadov, ktoré už majú vlastníka, sa to nikdy netýka.",
             "A gazda nélkül érkező új lead — webűrlapról, automatizációból, importból, vagy itt személy kiválasztása nélkül — egyetlen személyhez kerül. A már gazdával rendelkező leadeket ez soha nem érinti.",
           )}
-        </p>
-      </div>
-
+    >
       <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2" role="radiogroup" aria-label={t("Assignment mode", "Režim priradenia", "Kiosztási mód")}>
         {PANELS.map((m) => {
           const active = panel === m.id;
@@ -461,7 +461,7 @@ const LeadAssignmentCard: React.FC<{
           )}
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 };
 
@@ -755,10 +755,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const openCategory: VisibleCategory | null = catalog.find((c) => c.def.id === openCategoryId) ?? null;
   const openSection =
     openCategory && openSectionId && openCategory.sections.some((s) => s.id === openSectionId) ? openSectionId : null;
-  /** Whether a section is on screen right now (every section of the open category is). */
+  // Every section is its own tab. An address without one (`#settings/leads`) opens the first.
+  const activeSection = openCategory ? openSection ?? openCategory.sections[0]?.id ?? null : null;
+  /** Whether a section is the open tab right now. */
   const isOpen = (ref: string) => {
     const [c, s] = ref.split("/");
-    return openCategory?.def.id === c && openCategory.sections.some((x) => x.id === s);
+    return openCategory?.def.id === c && activeSection === s;
   };
   const errorsOpen = isOpen("system/errors");
   const apiOpen = isOpen("integrations/api");
@@ -1218,6 +1220,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   
   // User creation states
   const [newManager, setNewManager] = React.useState("");
+  // The "new account" form stays closed until "Create a new user account" is pressed.
+  const [isAddingUser, setIsAddingUser] = React.useState(false);
+  // Same for a new role: the name field appears when "New role" is pressed.
+  const [isAddingRole, setIsAddingRole] = React.useState(false);
   const [newUserEmail, setNewUserEmail] = React.useState("");
   const [newUserPassword, setNewUserPassword] = React.useState("");
   // The role a freshly provisioned user gets: the native Employee role when the workspace has one
@@ -1312,17 +1318,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSaveZernio = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setIsEditingZernioKey(false);
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        zernioApiKey
-      });
-      (window as any).showToast(t("Zernio settings saved!", "Nastavenia Zernio boli uložené!", "Zernio beállítások elmentve!"));
-    }
-  };
+  // The Zernio key saves itself; "Test connection" and the device login store it as well.
+  const zernioStatus = useAutosave({
+    value: zernioApiKey,
+    dirty: zernioApiKey !== (integrationsConfig?.zernioApiKey || ""),
+    enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (key) => updateIntegrationsConfig?.({ ...integrationsConfig, zernioApiKey: key }),
+  });
 
   const handleResetZernioKey = () => {
     if (!confirm(t("Are you sure you want to reset your Zernio API Key & connection?", "Naozaj chcete resetovať Zernio API kľúč a pripojenie?", "Biztosan visszaállítja a Zernio API kulcsot és a kapcsolatot?"))) {
@@ -1510,9 +1512,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>(() => billingFromSaved(companyBillingSettings));
 
+  // Whether the form has edits the stored settings do not have yet (set every render, read by the sync below).
+  const billingDirtyRef = React.useRef(false);
   React.useEffect(() => {
     if (companyBillingSettings) {
-      setBillingForm(prev => ({
+      setBillingForm(prev => {
+        const merged: CompanyBillingSettings = {
         ...prev,
         ...companyBillingSettings,
         defaultVatRate: companyBillingSettings.defaultVatRate !== undefined ? companyBillingSettings.defaultVatRate : (prev.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE),
@@ -1526,7 +1531,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           ? companyBillingSettings.paymentMethods
           : (prev.paymentMethods && prev.paymentMethods.length > 0 ? prev.paymentMethods : [...DEFAULT_PAYMENT_METHODS]),
         defaultPaymentMethod: companyBillingSettings.defaultPaymentMethod || prev.defaultPaymentMethod || DEFAULT_STANDARD_PAYMENT_METHOD
-      }));
+        };
+        if (!billingDirtyRef.current) return merged;
+        // A save echoing back must not overwrite what was typed while it was on its way.
+        const kept: Record<string, unknown> = { ...merged };
+        for (const k of COMPANY_FORM_KEYS) kept[k] = prev[k];
+        return kept as unknown as CompanyBillingSettings;
+      });
     }
   }, [companyBillingSettings]);
 
@@ -1627,16 +1638,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [isUploadingLogo, setIsUploadingLogo] = React.useState(false);
 
-  const handleSaveBillingSettings = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    // The offer defaults are edited in the Price Offers module: keep whatever is
-    // stored there rather than the copy this form loaded.
-    if (setCompanyBillingSettings) {
-      setCompanyBillingSettings(prev => keepStoredOfferDefaults(billingForm, prev));
-    }
-    (window as any).showToast(t("Invoicing settings saved successfully!", "Fakturačné nastavenia boli úspešne uložené!", "A számlázási beállítások sikeresen elmentve!"));
-  };
-
   const handleUploadLogo = async (file: File) => {
     setIsUploadingLogo(true);
     try {
@@ -1671,9 +1672,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }, [errorsOpen]);
 
+  // Which record type the form was last filled from, so a save (or a sync) landing while
+  // the form is open never overwrites what is being typed.
+  const loadedUERef = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (recordsOpen) {
       if (settingsAction === "new") {
+        if (loadedUERef.current !== "new") {
+          loadedUERef.current = "new";
         setEditingUEId(null);
         setUeName("");
         setUeEntryName("Entry");
@@ -1684,27 +1690,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setUeModules(["title"]);
         setUeFolderModules(["title"]);
         setUeShowFolderSummary(false);
+        }
         setIsCreatingUE(true);
       } else if (settingsAction === "edit" && settingsActionId) {
         const ue = unifiedEntries.find(u => u.id === settingsActionId);
         if (ue) {
-          setEditingUEId(ue.id);
-          setUeName(ue.name);
-          setUeEntryName(ue.entryName || "Entry");
-          setUeFolderName(ue.folderName || "Folder");
-          setUeIcon(ue.icon);
-          setUeColor(ue.color);
-          setUeFoldersEnabled(ue.foldersEnabled);
-          setUeShowFolderSummary(ue.showFolderSummary || false);
-          setUeModules(ue.modules);
-          setUeFolderModules(ue.folderModules || ["title"]);
+          if (loadedUERef.current !== ue.id) {
+            loadedUERef.current = ue.id;
+            setEditingUEId(ue.id);
+            setUeName(ue.name);
+            setUeEntryName(ue.entryName || "Entry");
+            setUeFolderName(ue.folderName || "Folder");
+            setUeIcon(ue.icon);
+            setUeColor(ue.color);
+            setUeFoldersEnabled(ue.foldersEnabled);
+            setUeShowFolderSummary(ue.showFolderSummary || false);
+            setUeModules(ue.modules);
+            setUeFolderModules(ue.folderModules || ["title"]);
+          }
           setIsCreatingUE(true);
         } else {
           setIsCreatingUE(false);
         }
       } else {
+        loadedUERef.current = null;
         setIsCreatingUE(false);
       }
+    } else {
+      loadedUERef.current = null;
     }
   }, [recordsOpen, settingsAction, settingsActionId, unifiedEntries]);
 
@@ -1843,41 +1856,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isSendingTest, setIsSendingTest] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ status: "success" | "error"; message: string } | null>(null);
 
-  const handleSaveEmailSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (getPermission("general_config") !== "edit") return;
-
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        emailProvider,
-        smtpHost,
-        smtpPort,
-        smtpSecure,
-        smtpAuth,
-        smtpUser,
-        smtpPassword,
-        senderName,
-        senderEmail,
-        exchUrl,
-        exchDomain,
-        exchAuth,
-        exchClientId,
-        exchTenantId,
-        exchClientSecret,
-        exchPassword,
-        exchMailbox
-      });
-    }
-
-    (window as any).showToast(
-      userLanguage === "sk" 
-        ? "Konfigurácia e-mailového servera bola úspešne uložená!" 
-        : userLanguage === "hu" 
-          ? "Az e-mail szerver konfigurációja sikeresen mentve!" 
-          : "Email server configuration saved successfully!"
-    );
-  };
+  // The outgoing server saves itself a moment after the last edit — no Save button.
+  const emailDraft = JSON.stringify({
+    emailProvider, smtpHost, smtpPort, smtpSecure, smtpAuth, smtpUser, smtpPassword, senderName, senderEmail,
+    exchUrl, exchDomain, exchAuth, exchClientId, exchTenantId, exchClientSecret, exchPassword, exchMailbox,
+  });
+  const emailStored = JSON.stringify({
+    emailProvider: integrationsConfig?.emailProvider || "smtp",
+    smtpHost: integrationsConfig?.smtpHost || "",
+    smtpPort: integrationsConfig?.smtpPort || "",
+    smtpSecure: integrationsConfig?.smtpSecure || "ssl",
+    smtpAuth: integrationsConfig?.smtpAuth !== false,
+    smtpUser: integrationsConfig?.smtpUser || "",
+    smtpPassword: integrationsConfig?.smtpPassword || "",
+    senderName: integrationsConfig?.senderName || "",
+    senderEmail: integrationsConfig?.senderEmail || "",
+    exchUrl: integrationsConfig?.exchUrl || "",
+    exchDomain: integrationsConfig?.exchDomain || "",
+    exchAuth: integrationsConfig?.exchAuth || "oauth",
+    exchClientId: integrationsConfig?.exchClientId || "",
+    exchTenantId: integrationsConfig?.exchTenantId || "",
+    exchClientSecret: integrationsConfig?.exchClientSecret || "",
+    exchPassword: integrationsConfig?.exchPassword || "",
+    exchMailbox: integrationsConfig?.exchMailbox || "",
+  });
+  const emailStatus = useAutosave({
+    value: emailDraft,
+    dirty: emailDraft !== emailStored,
+    enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (json) => updateIntegrationsConfig?.({ ...integrationsConfig, ...JSON.parse(json) }),
+  });
 
   const handleSendTestEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2066,38 +2074,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     fetchTrainingStats();
   };
 
-  const handleSaveAiSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (getPermission("ai_config") !== "edit") return;
-
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        openAiKey,
-        anthropicKey,
-        geminiKey,
-        vectorDb,
-        mariaDbHost,
-        mariaDbPort,
-        mariaDbUser,
-        mariaDbPassword,
-        mariaDbName,
-        qdrantUrl,
-        qdrantApiKey,
-        pineconeApiKey,
-        pineconeIndex,
-        vectorDbValidated
-      });
-    }
-
-    (window as any).showToast(
-      userLanguage === "sk" 
-        ? "Konfigurácia AI integrácie bola úspešne uložená!" 
-        : userLanguage === "hu" 
-          ? "Az AI integrációs beállítások sikeresen mentve!" 
-          : "AI integration settings saved successfully!"
-    );
-  };
+  // AI credentials and the vector database settings save themselves too.
+  const aiDraft = JSON.stringify({
+    openAiKey, anthropicKey, geminiKey, vectorDb, mariaDbHost, mariaDbPort, mariaDbUser, mariaDbPassword,
+    mariaDbName, qdrantUrl, qdrantApiKey, pineconeApiKey, pineconeIndex, vectorDbValidated,
+  });
+  const aiStored = JSON.stringify({
+    openAiKey: integrationsConfig?.openAiKey || "",
+    anthropicKey: integrationsConfig?.anthropicKey || "",
+    geminiKey: integrationsConfig?.geminiKey || "",
+    vectorDb: integrationsConfig?.vectorDb || "none",
+    mariaDbHost: integrationsConfig?.mariaDbHost || "",
+    mariaDbPort: integrationsConfig?.mariaDbPort || "3306",
+    mariaDbUser: integrationsConfig?.mariaDbUser || "",
+    mariaDbPassword: integrationsConfig?.mariaDbPassword || "",
+    mariaDbName: integrationsConfig?.mariaDbName || "",
+    qdrantUrl: integrationsConfig?.qdrantUrl || "",
+    qdrantApiKey: integrationsConfig?.qdrantApiKey || "",
+    pineconeApiKey: integrationsConfig?.pineconeApiKey || "",
+    pineconeIndex: integrationsConfig?.pineconeIndex || "",
+    vectorDbValidated: integrationsConfig?.vectorDbValidated === true,
+  });
+  const aiStatus = useAutosave({
+    value: aiDraft,
+    dirty: aiDraft !== aiStored,
+    enabled: getPermission("ai_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (json) => updateIntegrationsConfig?.({ ...integrationsConfig, ...JSON.parse(json) }),
+  });
 
   // API Key management states
   const [apiKey, setApiKey] = React.useState("");
@@ -2679,6 +2682,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setNewManager("");
     setNewUserEmail("");
     setNewUserPassword("");
+    setIsAddingUser(false);
   };
 
   const handleRemoveUser = (name: string) => {
@@ -2908,8 +2912,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setUeFolderModules(["title"]);
     setIsCreatingUE(false);
     setEditingUEId(null);
-    window.location.hash = "settings/unified";
+    window.location.hash = "settings/modules/records";
   };
+
+  // An existing record type saves as it is edited; only creating one needs the button.
+  const editingUE = editingUEId ? unifiedEntries.find((u) => u.id === editingUEId) : undefined;
+  const ueDraft = JSON.stringify({
+    name: ueName.trim(),
+    entryName: ueEntryName.trim() || "Entry",
+    folderName: ueFolderName.trim() || "Folder",
+    icon: ueIcon,
+    color: ueColor,
+    modules: ueModules,
+    folderModules: ueFoldersEnabled ? ueFolderModules : [],
+    foldersEnabled: ueFoldersEnabled,
+    showFolderSummary: ueFoldersEnabled ? ueShowFolderSummary : false,
+  });
+  const ueStored = editingUE
+    ? JSON.stringify({
+        name: editingUE.name,
+        entryName: editingUE.entryName || "Entry",
+        folderName: editingUE.folderName || "Folder",
+        icon: editingUE.icon,
+        color: editingUE.color,
+        modules: editingUE.modules,
+        folderModules: editingUE.foldersEnabled ? editingUE.folderModules || [] : [],
+        foldersEnabled: Boolean(editingUE.foldersEnabled),
+        showFolderSummary: editingUE.foldersEnabled ? Boolean(editingUE.showFolderSummary) : false,
+      })
+    : "";
+  const ueStatus = useAutosave({
+    value: ueDraft,
+    dirty: Boolean(editingUE) && isCreatingUE && ueName.trim() !== "" && ueModules.length > 0 && ueDraft !== ueStored,
+    enabled: getPermission("general_config") === "edit" && Boolean(setUnifiedEntries),
+    save: (json) => {
+      const patch = JSON.parse(json);
+      setUnifiedEntries?.(unifiedEntries.map((ue) => (ue.id === editingUEId ? { ...ue, ...patch } : ue)), unifiedEntriesData);
+    },
+  });
 
 
 
@@ -2950,62 +2990,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     );
   };
 
-  // ── Company drafts: one billing form, one system name, one save ───────────
-  const COMPANY_FIELDS: Array<[keyof CompanyBillingSettings, string]> = [
-    ["companyLogoUrl", t("Logo", "Logo", "Logó")],
-    ["companyName", t("Company name", "Názov firmy", "Cégnév")],
-    ["companySubtitle", t("Slogan", "Slogan", "Szlogen")],
-    ["companyId", "IČO"],
-    ["taxId", "DIČ"],
-    ["vatId", "IČ DPH"],
-    ["street", t("Street", "Ulica", "Utca")],
-    ["city", t("City", "Mesto", "Város")],
-    ["postalCode", t("Postal code", "PSČ", "Irányítószám")],
-    ["country", t("Country", "Krajina", "Ország")],
-    ["email", "E-mail"],
-    ["phone", t("Phone", "Telefón", "Telefon")],
-    ["phoneSecondary", t("Secondary phone", "Záložný telefón", "Másodlagos telefon")],
-    ["website", t("Website", "Web", "Weboldal")],
-    ["iban", "IBAN"],
-    ["swift", "SWIFT"],
-    ["defaultPaymentDueDays", t("Payment due", "Splatnosť", "Fizetési határidő")],
-    ["defaultVatRate", t("Default VAT", "Predvolená DPH", "Alapértelmezett ÁFA")],
-    ["vatRates", t("VAT rates", "Sadzby DPH", "ÁFA-kulcsok")],
-  ];
+  // ── Company forms save themselves ─────────────────────────────────────────
+  // One billing form and the system name: an edit is written shortly after the last
+  // keystroke (useAutosave); the chip in each card header says "Saving… / Saved".
+  const canEditCompany = getPermission("general_config") === "edit";
   const savedBilling = billingFromSaved(companyBillingSettings);
-  const norm = (v: unknown) => (v === undefined || v === null ? "" : Array.isArray(v) ? JSON.stringify(v) : String(v));
-  const changedFields = [
-    ...(tempName !== systemName ? [t("System name", "Názov systému", "Rendszernév")] : []),
-    ...COMPANY_FIELDS.filter(([k]) => norm(billingForm[k]) !== norm(savedBilling[k])).map(([, label]) => label),
-  ];
-  const companyDirty = changedFields.length > 0;
-
-  const saveCompanyDrafts = () => {
-    if (getPermission("general_config") !== "edit") return;
-    const nameChanged = tempName.trim() !== "" && tempName !== systemName;
-    if (nameChanged) setSystemName(tempName);
-    const billingChanged = COMPANY_FIELDS.some(([k]) => norm(billingForm[k]) !== norm(savedBilling[k]));
-    // Saving with nothing changed still confirms, as the old Save button did.
-    if (billingChanged || !nameChanged) handleSaveBillingSettings();
-    else (window as any).showToast(userLanguage === "sk" ? "Nastavenia značky boli úspešne uložené!" : userLanguage === "hu" ? "Márkajelzés beállításai sikeresen mentve!" : "Branding settings saved successfully!");
-  };
-  const discardCompanyDrafts = () => {
-    setTempName(systemName);
-    setBillingForm(billingFromSaved(companyBillingSettings));
-  };
-  const companySaveButton =
-    getPermission("general_config") === "edit" ? (
-      <button
-        type="button"
-        onClick={saveCompanyDrafts}
-        data-testid="settings-company-save"
-        className="hidden min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500 ws-lg:flex"
-      >
-        <Save className="h-4 w-4" aria-hidden="true" />
-        {getTranslation(userLanguage, "common.save")}
-      </button>
-    ) : null;
-
+  const billingDirty = COMPANY_FORM_KEYS.some((k) => normField(billingForm[k]) !== normField(savedBilling[k]));
+  billingDirtyRef.current = billingDirty;
+  const billingStatus = useAutosave({
+    value: billingForm,
+    dirty: billingDirty,
+    enabled: canEditCompany && Boolean(setCompanyBillingSettings),
+    save: (form) =>
+      setCompanyBillingSettings?.((prev) => {
+        if (!prev) return form;
+        const patch: Record<string, unknown> = {};
+        for (const k of COMPANY_FORM_KEYS) patch[k] = form[k];
+        return { ...prev, ...patch } as CompanyBillingSettings;
+      }),
+  });
+  const nameStatus = useAutosave({
+    value: tempName,
+    dirty: tempName.trim() !== "" && tempName !== systemName,
+    enabled: canEditCompany,
+    save: (name) => setSystemName(name),
+  });
+  // Both write independently; the chip shows the one that is busy.
+  const companyStatus = billingStatus === "saving" || nameStatus === "saving" ? "saving" : billingStatus === "saved" || nameStatus === "saved" ? "saved" : "idle";
+  const companySaveStatus = <SaveStatus lang={userLanguage} status={companyStatus} />;
 
   const renderSection = (ref: string): React.ReactNode => {
     switch (ref) {
@@ -3014,16 +3026,84 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-6">
                     
                     {!selectedUser ? (
-                      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass animate-in fade-in duration-200">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center justify-between border-b border-slate-200 pb-3">
-                          <span className="flex items-center gap-2">
-                            <Users className="h-4.5 w-4.5 text-blue-500" /> {getTranslation(userLanguage, "settings.managers.title")}
-                          </span>
-                          <span className="text-micro text-slate-400 font-semibold lowercase">
-                            {users.length} {getTranslation(userLanguage, "settings.managers.active_users")}
-                          </span>
-                        </h3>
-        
+                      <SectionCard
+                        testId="settings-users-card"
+                        title={getTranslation(userLanguage, "settings.managers.title")}
+                        description={`${users.length} ${getTranslation(userLanguage, "settings.managers.active_users")}`}
+                        action={canAdministerUsers && !isAddingUser ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingUser(true)}
+                            data-testid="settings-add-user"
+                            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.managers.form_title")}
+                          </button>
+                        ) : undefined}
+                      >
+                        {isAddingUser && canAdministerUsers && (
+                          <form onSubmit={handleAddUser} data-testid="settings-add-user-form" className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+                            <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
+                                <input
+                                  type="text"
+                                  required
+                                  autoFocus
+                                  value={newManager}
+                                  onChange={(e) => setNewManager(e.target.value)}
+                                  placeholder={t("e.g. Sara Nováková", "napr. Sara Nováková", "pl. Sara Nováková")}
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
+                                <input
+                                  type="email"
+                                  required
+                                  value={newUserEmail}
+                                  onChange={(e) => setNewUserEmail(e.target.value)}
+                                  placeholder={t("e.g. sara@crm.com", "napr. sara@crm.com", "pl. sara@crm.com")}
+                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
+                                <PasswordInput
+                                  required
+                                  value={newUserPassword}
+                                  onChange={(e) => setNewUserPassword(e.target.value)}
+                                  placeholder={getTranslation(userLanguage, "settings.managers.placeholder_new_password")}
+                                  className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_role_assignment")}</label>
+                                <CustomSelect
+                                  value={newUserRole}
+                                  onChange={(v) => setNewUserRole(v)}
+                                  options={roles.map(r => ({ value: r.name, label: r.name }))}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsAddingUser(false)}
+                                className="min-h-11 cursor-pointer rounded-2xl border border-slate-200 bg-white px-5 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                              >
+                                {getTranslation(userLanguage, "common.cancel")}
+                              </button>
+                              <button
+                                type="submit"
+                                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                              >
+                                <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.managers.btn_provision")}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
                         {/* Users Responsive Table */}
                         <ScrollFade axis="x" className="rounded-2xl border border-slate-200">
                           <table className="w-full text-left border-collapse text-ui">
@@ -3125,7 +3205,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </tbody>
                           </table>
                         </ScrollFade>
-                      </div>
+                      </SectionCard>
                     ) : (
                       <div className="space-y-6 animate-in slide-in-from-right duration-250">
                         {/* Back & Breadcrumbs */}
@@ -3146,31 +3226,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                         <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6 items-stretch">
                           {/* COLUMN 1: Basic Profile Settings */}
-                          <div className="ws-lg:col-span-5 glass-panel p-6 rounded-[28px] border border-white/60 bg-white/95 shadow-glass space-y-6 flex flex-col justify-between">
+                          <SectionCard
+                            className="ws-lg:col-span-5"
+                            title={selectedUser.name}
+                            description={`${selectedUser.role} ${getTranslation(userLanguage, "settings.managers.profile_suffix")}`}
+                          >
                             <div className="space-y-5">
-                              <div className="border-b border-slate-100 pb-3 flex items-center gap-3">
-                                <div 
-                                  className="h-12 w-12 rounded-2xl font-heading font-bold text-body flex items-center justify-center border-2 shadow shadow-inner shrink-0"
-                                  style={{
-                                    backgroundColor: `${selectedUser.color}12`,
-                                    color: selectedUser.color,
-                                    borderColor: `${selectedUser.color}40`
-                                  }}
-                                >
-                                  {selectedUser.name.substring(0,2).toUpperCase()}
-                                </div>
-                                <div className="flex flex-col text-left">
-                                  <h4 className="text-body font-bold text-slate-800 leading-tight">{selectedUser.name}</h4>
-                                  <span className="type-overline text-slate-400 mt-0.5">
-                                    {selectedUser.role} {getTranslation(userLanguage, "settings.managers.profile_suffix")}
-                                  </span>
-                                </div>
-                              </div>
-        
                               <div className="space-y-4 text-ui font-bold text-slate-700 text-left">
                                 {/* Name setting */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
+                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
                                   <input
                                     type="text"
                                     disabled={!canAdministerUsers}
@@ -3185,7 +3250,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                                 {/* Email Address */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
+                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
                                   <input
                                     type="email"
                                     disabled={!canAdministerUsers}
@@ -3200,7 +3265,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                                 {/* Password */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
+                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
                                   <input
                                     type="text"
                                     placeholder={getTranslation(userLanguage, "settings.managers.placeholder_password")}
@@ -3216,7 +3281,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                                 {/* Security Access Level Role */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
+                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
                                   {canAdministerUsers ? (
                                     <CustomSelect
                                       value={selectedUser.role}
@@ -3240,7 +3305,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                                 {/* Swatches preset colors */}
                                 <div className="space-y-2 pt-2 border-t border-slate-100">
-                                  <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_color")}</label>
+                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_color")}</label>
                                   <div className="flex flex-wrap items-center gap-2">
                                     {[
                                       "#3b82f6", "#0ea5e9", "#6366f1", "#10b981", 
@@ -3281,24 +3346,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </div>
                             </div>
         
-                            <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end">
-                              <button
-                                type="button"
-                                onClick={() => { window.location.hash = "settings"; }}
-                                className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-ui font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
-                              >
-                                <Save className="h-4.5 w-4.5" /> {getTranslation(userLanguage, "settings.managers.btn_save_profile")}
-                              </button>
-                            </div>
-                          </div>
-        
+                          </SectionCard>
+
                           {/* COLUMN 2: User Activity timeline */}
-                          <div className="ws-lg:col-span-7 glass-panel p-6 rounded-[28px] border border-white/60 bg-white/95 shadow-glass space-y-6 flex flex-col justify-between">
+                          <SectionCard
+                            className="ws-lg:col-span-7"
+                            title={getTranslation(userLanguage, "settings.managers.timeline_title")}
+                          >
                             <div className="space-y-4">
-                              <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b border-slate-100 text-left">
-                                <Clock className="h-4.5 w-4.5 text-indigo-500 animate-pulse stroke-[2.5]" /> {getTranslation(userLanguage, "settings.managers.timeline_title")}
-                              </h3>
-        
                               {(!selectedUser.activityLog || selectedUser.activityLog.length === 0) ? (
                                 <div className="py-12 text-center text-slate-400">
                                   <Icons.ScrollText className="mx-auto mb-2 h-8 w-8" aria-hidden="true" />
@@ -3401,90 +3456,64 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 </button>
                               </form>
                             )}
-                          </div>
+                          </SectionCard>
                         </div>
                       </div>
                     )}
         
-                    {/* Add User form - Gated to edit access */}
-                    {!selectedUser && canAdministerUsers && (
-                        <form onSubmit={handleAddUser} className="p-5 border border-slate-200/80 bg-slate-50/50 rounded-2xl space-y-4 max-w-2xl mt-8">
-                          <h4 className="text-ui font-bold text-slate-700 flex items-center gap-1">
-                            <Plus className="h-4 w-4" /> {getTranslation(userLanguage, "settings.managers.form_title")}
-                          </h4>
-                          
-                          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
-                              <input
-                                type="text"
-                                required
-                                value={newManager}
-                                onChange={(e) => setNewManager(e.target.value)}
-                                placeholder={t("e.g. Sara Nováková", "napr. Sara Nováková", "pl. Sara Nováková")}
-                                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
-                              <input
-                                type="email"
-                                required
-                                value={newUserEmail}
-                                onChange={(e) => setNewUserEmail(e.target.value)}
-                                placeholder={t("e.g. sara@crm.com", "napr. sara@crm.com", "pl. sara@crm.com")}
-                                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                              />
-                            </div>
-                          </div>
-        
-                          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
-                              <PasswordInput
-                                required
-                                value={newUserPassword}
-                                onChange={(e) => setNewUserPassword(e.target.value)}
-                                placeholder={getTranslation(userLanguage, "settings.managers.placeholder_new_password")}
-                                className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_role_assignment")}</label>
-                              <CustomSelect
-                                value={newUserRole}
-                                onChange={(v) => setNewUserRole(v)}
-                                options={roles.map(r => ({ value: r.name, label: r.name }))}
-                              />
-                            </div>
-                          </div>
-        
-                          <div className="flex justify-end pt-1">
-                            <button
-                              type="submit"
-                              className="w-fit px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1"
-                            >
-                              <Plus className="h-4 w-4" /> {getTranslation(userLanguage, "settings.managers.btn_provision")}
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
+                  </div>
         );
       case "access/roles":
         return (
                   <div className="space-y-6">
         
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <div className="border-b border-slate-200 pb-3 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-3">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                          <ShieldCheck className="h-4.5 w-4.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.rbac.title")}
-                        </h3>
-                        <span className="type-overline text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 shadow-inner">
-                          {getTranslation(userLanguage, "settings.rbac.model_badge")}
-                        </span>
-                      </div>
-        
+                    <SectionCard
+                      testId="settings-roles-card"
+                      title={getTranslation(userLanguage, "settings.rbac.title")}
+                      description={getTranslation(userLanguage, "settings.rbac.model_badge")}
+                      action={canAdministerUsers && !isAddingRole ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingRole(true)}
+                          data-testid="settings-add-role"
+                          className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                        >
+                          <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.rbac.btn_create")}
+                        </button>
+                      ) : undefined}
+                    >
+                      {isAddingRole && canAdministerUsers && (
+                        <form onSubmit={handleAddRole} className="flex flex-col items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-5 ws-sm:flex-row">
+                          <div className="w-full flex-1 space-y-1">
+                            <label className="type-overline block pl-0.5 text-slate-500">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>
+                            <input
+                              type="text"
+                              required
+                              autoFocus
+                              value={newRoleName}
+                              onChange={(e) => setNewRoleName(e.target.value)}
+                              placeholder={getTranslation(userLanguage, "settings.rbac.placeholder")}
+                              className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+                          <div className="flex w-full gap-2 ws-sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingRole(false)}
+                              className="min-h-11 flex-1 cursor-pointer rounded-2xl border border-slate-200 bg-white px-5 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50 ws-sm:flex-none"
+                            >
+                              {getTranslation(userLanguage, "common.cancel")}
+                            </button>
+                            <button
+                              type="submit"
+                              className="min-h-11 flex-1 cursor-pointer rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500 ws-sm:flex-none"
+                            >
+                              {getTranslation(userLanguage, "settings.rbac.btn_create")}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 text-caption text-slate-600 space-y-2">
                         <p className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.rbac.legend.title")}</p>
                         <ul className="grid ws-sm:grid-cols-2 gap-x-6 gap-y-1 font-semibold">
@@ -3626,29 +3655,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </table>
                       </ScrollFade>
         
-                      {/* Add Custom Role - Gated */}
-                      {canAdministerUsers && (
-                        <form onSubmit={handleAddRole} className="p-5 border border-slate-200/85 bg-slate-50/50 rounded-2xl flex flex-col ws-sm:flex-row items-end gap-3 max-w-xl mt-6">
-                          <div className="flex-1 space-y-1 w-full">
-                            <label className="type-overline text-slate-400 block pl-0.5">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>
-                            <input
-                              type="text"
-                              required
-                              value={newRoleName}
-                              onChange={(e) => setNewRoleName(e.target.value)}
-                              placeholder={getTranslation(userLanguage, "settings.rbac.placeholder")}
-                              className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                          <button
-                            type="submit"
-                            className="px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 shrink-0 w-full ws-sm:w-auto"
-                          >
-                            {getTranslation(userLanguage, "settings.rbac.btn_create")}
-                          </button>
-                        </form>
-                      )}
-        
                       {/* Hidden role default layout file selector */}
                       <input
                         type="file"
@@ -3657,7 +3663,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         onChange={handleRoleLayoutFileChange}
                         className="hidden"
                       />
-                    </div>
+                    </SectionCard>
                   </div>
         );
       case "access/audit":
@@ -3681,393 +3687,260 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                   </div>
         );
-      case "modules/records":
-        return (
-                  <>
-                    {isCreatingUE ? (
-                      <div className="space-y-6">
-                        
-                        <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                          <form onSubmit={handleCreateUnifiedEntry} className="space-y-6 text-left animate-in fade-in duration-200">
-                            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                              <div className="flex items-center gap-3">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    window.location.hash = "settings/modules/records";
-                                  }}
-                                  className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-all cursor-pointer flex items-center justify-center h-9 w-9"
-                                  title={t("Back", "Späť", "Vissza")}
-                                >
-                                  <ArrowLeft className="h-4 w-4" />
-                                </button>
-                                <div className="flex flex-col">
-                                  <h3 className="text-body font-heading font-bold text-slate-900">
-                                    {editingUEId
-                                      ? t("Edit Unified Entry Type", "Upraviť typ unifikovaného záznamu", "Egységes bejegyzéstípus szerkesztése")
-                                      : t("Create New Unified Entry Type", "Vytvoriť nový typ unifikovaného záznamu", "Új egységes bejegyzéstípus létrehozása")}
-                                  </h3>
-                                  <p className="type-overline text-slate-400 mt-0.5">
-                                    {editingUEId ? t("Modify the unified entry schema configuration", "Upravte konfiguráciu unifikovanej schémy", "Az egységes bejegyzés sémakonfigurációjának módosítása") : t("Add a new database schema for unified entries", "Pridajte novú databázovú schému pre unifikované záznamy", "Új adatbázis-séma hozzáadása egységes bejegyzésekhez")}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-        
-                            <div className="space-y-5">
-                              <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
-                                {/* Section Name */}
-                                <div className="flex flex-col gap-1.5">
-                                  <label className="type-overline text-slate-400">
-                                    {t("Section Name (e.g. Licenses)", "Názov sekcie (napr. Licencie)", "Szekció neve (pl. Licencek)")} *
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={ueName}
-                                    onChange={(e) => setUeName(e.target.value)}
-                                    className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                                    placeholder={t("Enter section name...", "Zadajte názov...", "Adja meg a szekció nevét...")}
-                                    required
-                                  />
-                                </div>
-        
-                                {/* Entry Name */}
-                                <div className="flex flex-col gap-1.5">
-                                  <label className="type-overline text-slate-400">
-                                    {t("Entry Name (singular, e.g. License)", "Názov pre záznamy (jedn. č., napr. Licencia)", "Bejegyzés neve (egyes szám, pl. Licenc)")} *
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={ueEntryName}
-                                    onChange={(e) => setUeEntryName(e.target.value)}
-                                    className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                                    placeholder={t("Entry", "Záznam", "Bejegyzés")}
-                                    required
-                                  />
-                                </div>
-        
-                                {/* Folder Name */}
-                                <div className="flex flex-col gap-1.5">
-                                  <label className="type-overline text-slate-400">
-                                    {t("Folder Name (singular, e.g. Folder)", "Názov pre priečinky (jedn. č., napr. Priečinok)", "Mappa neve (egyes szám, pl. Mappa)")} *
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={ueFolderName}
-                                    onChange={(e) => setUeFolderName(e.target.value)}
-                                    className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 transition-all shadow-sm"
-                                    placeholder={t("Folder", "Priečinok", "Mappa")}
-                                    required
-                                  />
-                                </div>
-                              </div>
-        
-                              <div className="flex flex-col gap-1.5">
-                                <label className="type-overline text-slate-400">
-                                  {t("Icon", "Ikona", "Ikon")}
-                                </label>
-                                <div className="flex items-center gap-3">
-                                  <div className="h-12 w-12 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm shrink-0">
-                                    {getIconComponent(ueIcon, "h-6 w-6")}
-                                  </div>
-                                  <div className="flex flex-col gap-1 text-left">
-                                    <span className="text-ui font-bold text-slate-800">{ueIcon}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => setIsIconPickerOpen(true)}
-                                      className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl type-overline text-indigo-700 transition-all cursor-pointer shadow-sm active:scale-95"
-                                    >
-                                      {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-        
-                              {/* Color */}
-                              <div className="flex flex-col gap-1.5">
-                                <label className="type-overline text-slate-400">
-                                  {t("Color", "Farba", "Szín")}
-                                </label>
-                                <div className="flex flex-wrap gap-2">
-                                  {["#3b82f6", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#14b8a6", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899"].map((colorHex) => {
-                                    const isSelected = ueColor === colorHex;
-                                    return (
-                                      <button
-                                        key={colorHex}
-                                        type="button"
-                                        onClick={() => setUeColor(colorHex)}
-                                        className="w-8 h-8 rounded-full border border-slate-200 transition-transform relative flex items-center justify-center shrink-0 hover:scale-105"
-                                        style={{ backgroundColor: colorHex }}
-                                      >
-                                        {isSelected && (
-                                          <span className="w-2.5 h-2.5 rounded-full bg-white shadow-sm border border-slate-300" />
-                                        )}
-                                      </button>
-                                    );
-                                  })}
-                                  <ColorPicker variant="palette" value={ueColor} onChange={setUeColor} className="w-8 h-8 p-1" />
-                                </div>
-                              </div>
-        
-                              {/* Modules */}
-                              <div className="flex flex-col gap-1.5">
-                                <label className="type-overline text-slate-400 text-left">
-                                  {t("Active Modules (fields) for Entries", "Aktívne moduly (polia) pre záznamy", "Aktív modulok (mezők) a bejegyzésekhez")}
-                                </label>
-                                <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2.5">
-                                  {[
-                                    { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
-                                    { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
-                                    { id: "file", label: t("File", "Súbor (File)", "Fájl") },
-                                    { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
-                                    { id: "lead", label: t("Lead", "Lead", "Lead") },
-                                    { id: "number", label: t("Number", "Číslo (Number)", "Szám") },
-                                    { id: "money", label: t("Money", "Suma (Money)", "Összeg") }
-                                  ].map((mod) => {
-                                    const isChecked = ueModules.includes(mod.id);
-                                    return (
-                                      <div key={mod.id} className="flex flex-col p-4 rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
-                                        <label className="flex items-center justify-between cursor-pointer w-full">
-                                          <span className="text-ui font-bold text-slate-700">{mod.label}</span>
-                                          <input
-                                            type="checkbox"
-                                            checked={isChecked}
-                                            onChange={(e) => {
-                                              if (e.target.checked) {
-                                                setUeModules([...ueModules, mod.id]);
-                                              } else {
-                                                setUeModules(ueModules.filter(m => m !== mod.id));
-                                              }
-                                            }}
-                                            className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                                          />
-                                        </label>
-        
-                                        {mod.id === "due_date" && isChecked && ueFoldersEnabled && (
-                                          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between animate-in slide-in-from-top-1 duration-150 text-left">
-                                            <div className="flex flex-col">
-                                              <span className="type-overline text-slate-700">
-                                                {t("Show summary", "Zobraziť prehľad", "Összefoglaló megjelenítése")}
-                                              </span>
-                                              <span className="text-micro font-semibold text-slate-400 mt-0.5">
-                                                {t("Shows entry count", "Zobrazí počet záznamov", "Megjeleníti a bejegyzések számát")}
-                                              </span>
-                                            </div>
-                                            <input
-                                              type="checkbox"
-                                              checked={ueShowFolderSummary}
-                                              onChange={(e) => setUeShowFolderSummary(e.target.checked)}
-                                              className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                                            />
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-        
-                              {/* Folders */}
-                              <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white">
-                                <div className="flex flex-col text-left">
-                                  <span className="text-ui font-bold text-slate-700">
-                                    {t("Enable Folders", "Povoliť priečinky (Folders)", "Mappák engedélyezése")}
-                                  </span>
-                                  <span className="text-micro font-semibold text-slate-400">
-                                    {t("Allows nesting entries within grouping folders", "Umožňuje zoskupovať záznamy do vnorených zložiek", "Lehetővé teszi a bejegyzések csoportosító mappákba ágyazását")}
-                                  </span>
-                                </div>
-                                <input
-                                  type="checkbox"
-                                  checked={ueFoldersEnabled}
-                                  onChange={(e) => setUeFoldersEnabled(e.target.checked)}
-                                  className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                                />
-                              </div>
-        
-                              {ueFoldersEnabled && (
-                                <div className="flex flex-col gap-3 p-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                  <label className="type-overline text-slate-400 text-left">
-                                    {t("Active Modules for Folders", "Aktívne moduly pre priečinky", "Aktív modulok a mappákhoz")}
-                                  </label>
-                                  <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2.5">
-                                    {[
-                                      { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
-                                      { id: "due_date", label: t("Due Date", "Termín (Due Date)", "Határidő") },
-                                      { id: "file", label: t("File", "Súbor (File)", "Fájl") },
-                                      { id: "client", label: t("Client", "Klient (Client)", "Ügyfél") },
-                                      { id: "lead", label: t("Lead", "Lead", "Lead") },
-                                      { id: "number", label: t("Number", "Číslo (Number)", "Szám") },
-                                      { id: "money", label: t("Money", "Suma (Money)", "Összeg") }
-                                    ].map((mod) => {
-                                      const isChecked = ueFolderModules.includes(mod.id);
-                                      return (
-                                        <div key={mod.id} className="flex flex-col p-4 rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
-                                          <label className="flex items-center justify-between cursor-pointer w-full">
-                                            <span className="text-ui font-bold text-slate-700">{mod.label}</span>
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              onChange={(e) => {
-                                                if (e.target.checked) {
-                                                  setUeFolderModules([...ueFolderModules, mod.id]);
-                                                } else {
-                                                  setUeFolderModules(ueFolderModules.filter(m => m !== mod.id));
-                                                }
-                                              }}
-                                              className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 rounded border-slate-300 cursor-pointer"
-                                            />
-                                          </label>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-        
-                            <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  window.location.hash = "settings/modules/records";
-                                }}
-                                className="px-4 py-2 rounded-xl hover:bg-slate-100 text-slate-600 text-ui font-bold transition-all cursor-pointer"
-                              >
-                                {t("Cancel", "Zrušiť", "Mégse")}
-                              </button>
-                              <button
-                                type="submit"
-                                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
-                              >
-                                {t("Save", "Uložiť", "Mentés")}
-                              </button>
-                            </div>
-                          </form>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="ws-lg:col-span-8 space-y-6">
-                          
-                          <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                              <div className="flex flex-col text-left">
-                                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                                  <FolderOpen className="h-4.5 w-4.5 text-indigo-500" />
-                                  {userLanguage === "sk" ? "Unifikované univerzálne záznamy" : userLanguage === "hu" ? "Egységes univerzális bejegyzések" : "Unified Universal Entries"}
-                                </h3>
-                                <p className="type-overline text-slate-400 mt-0.5">
-                                  {userLanguage === "sk" ? "Definujte a konfigurujte vlastné dátové štruktúry" : userLanguage === "hu" ? "Egyéni adatstruktúrák definiálása és konfigurálása" : "Define and configure custom data structures"}
-                                </p>
-                              </div>
-                              {getPermission("general_config") === "edit" && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    window.location.hash = "settings/modules/records/new";
-                                  }}
-                                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
-                                >
-                                  <Plus className="h-4 w-4" />
-                                  {t("New Entry", "Nový záznam", "Új bejegyzés")}
-                                </button>
-                              )}
-                            </div>
-        
-                            {/* List of existing UUE types */}
-                            <div className="space-y-3.5">
-                              <span className="type-overline text-slate-400 text-left block">
-                                {t("Active Database Types", "Aktívne databázové typy", "Aktív adatbázistípusok")}
-                              </span>
-                              
-                              {unifiedEntries.filter(ue => !ue.archived).length === 0 ? (
-                                <div className="border border-slate-200 border-dashed rounded-2xl p-8 text-center text-slate-400">
-                                  <Icons.FolderOpen className="mx-auto h-8 w-8" aria-hidden="true" />
-                                  <p className="text-ui font-bold text-slate-500 mt-2">
-                                    {t("No active unified entries", "Žiadne aktívne unifikované záznamy", "Nincsenek aktív egységes bejegyzések")}
-                                  </p>
-                                  <p className="text-micro font-medium text-slate-400 mt-1">
-                                    {t("Create your first entry schema by clicking the button above.", "Vytvorte nový záznam kliknutím na tlačidlo vyššie.", "Hozza létre első bejegyzéssémáját a fenti gombra kattintva.")}
-                                  </p>
-                                </div>
-                              ) : (
-                                <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
-                                  {unifiedEntries.filter(ue => !ue.archived).map((ue) => (
-                                    <div key={ue.id} className="p-4 rounded-2xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-sm hover:shadow-md transition-all text-left relative group">
-                                      <div className="flex items-start gap-3">
-                                        <div 
-                                          className="p-3.5 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm"
-                                          style={{ backgroundColor: ue.color }}
-                                        >
-                                          {getIconComponent(ue.icon, "h-5 w-5")}
-                                        </div>
-                                        <div className="flex flex-col min-w-0">
-                                          <span className="text-ui font-bold text-slate-800 truncate">
-                                            {ue.name}
-                                          </span>
-                                          <span className="type-overline text-slate-400 mt-1">
-                                            {t("Modules: ", "Moduly: ", "Modulok: ")}
-                                            <span className="text-slate-600 font-semibold">{ue.modules.join(", ")}</span>
-                                          </span>
-                                          <span className="type-overline text-slate-400">
-                                            {t("Folders: ", "Zložky: ", "Mappák: ")}
-                                            <span className="text-slate-600 font-semibold">{ue.foldersEnabled ? t("Yes", "Áno", "Igen") : t("No", "Nie", "Nem")}</span>
-                                          </span>
-                                        </div>
-                                      </div>
-        
-                                      <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 mt-4">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            window.location.hash = `settings/modules/records/edit/${ue.id}`;
-                                          }}
-                                          className="px-2.5 py-1.5 type-overline text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                                          title={t("Edit entry schema", "Upraviť schému záznamu", "Bejegyzéséma szerkesztése")}
-                                        >
-                                          <Pencil className="h-3 w-3" />
-                                          {t("Edit", "Upraviť", "Szerkesztés")}
-                                        </button>
-                                        <HoldToConfirmButton
-                                            tone="archive"
-                                            lang={userLanguage}
-                                            what={ue.name}
-                                            onConfirm={() => handleArchiveUnifiedEntry(ue.id)}
-                                            className="px-2.5 py-1.5 type-overline text-rose-600 hover:bg-rose-50 rounded-lg transition-all flex items-center gap-1"
-                                            title={t("Archive entry schema", "Archivovať schému záznamu", "Bejegyzéséma archiválása")}
-                                            icon={<Trash2 className="h-3 w-3" />}
-                                        >{t("Archive", "Archivovať", "Archiválás")}
-                                        </HoldToConfirmButton>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-        
-                        <div className="ws-lg:col-span-4 space-y-6 text-left ws-lg:sticky ws-lg:top-24 ws-lg:self-start">
-                          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-                            <h4 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5 pb-3 border-b border-slate-200 mb-3.5">
-                              <ShieldAlert className="h-4.5 w-4.5 text-indigo-500" />
-                              {t("System Information", "Dôležité upozornenie", "Rendszerinformáció")}
-                            </h4>
-                            <div className="space-y-3.5 text-caption font-medium text-slate-500 leading-relaxed">
-                              <p>
-                                {t("Creating a unified entry schema automatically instantiates a new table in the database.", "Vytvorenie unifikovaného záznamu automaticky vytvorí novú tabuľku v relačnej databáze.", "Egységes bejegyzéséma létrehozása automatikusan új táblát hoz létre az adatbázisban.")}
-                              </p>
-                              <p>
-                                {t("Archiving an entry hides it from navigation. The underlying SQL table and data remain untouched.", "Pokiaľ záznam vymažete/archivujete, samotná tabuľka ani v nej uložené údaje sa neodstránia. Iba sa prestane zobrazovať v hlavnom paneli a menu.", "A bejegyzés archiválása elrejti azt a navigációból. A mögöttes SQL tábla és az adatok érintetlenül maradnak.")}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </>
+      case "modules/records": {
+        const canEditRecords = getPermission("general_config") === "edit";
+        const moduleOptions = [
+          { id: "title", label: t("Title / Name", "Titulok / Názov", "Cím / Név") },
+          { id: "due_date", label: t("Due Date", "Termín", "Határidő") },
+          { id: "file", label: t("File", "Súbor", "Fájl") },
+          { id: "client", label: t("Client", "Klient", "Ügyfél") },
+          { id: "lead", label: t("Lead", "Lead", "Lead") },
+          { id: "number", label: t("Number", "Číslo", "Szám") },
+          { id: "money", label: t("Money", "Suma", "Összeg") },
+        ];
+        const toggleIn = (list: string[], id: string, on: boolean) => (on ? [...list, id] : list.filter((m) => m !== id));
+        const checkTile = (id: string, label: string, checked: boolean, onChange: (on: boolean) => void) => (
+          <label
+            key={id}
+            className={cn(
+              "flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition-colors",
+              checked ? "border-indigo-200 bg-indigo-50/60" : "border-slate-200 bg-white hover:bg-slate-50",
+            )}
+          >
+            <span className="text-ui font-bold text-slate-700">{label}</span>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => onChange(e.target.checked)}
+              className="h-4.5 w-4.5 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+          </label>
         );
+        const fieldLabel = "type-overline text-slate-500";
+        const fieldInput = "min-h-11 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-ui font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none";
+        const activeEntries = unifiedEntries.filter((ue) => !ue.archived);
+
+        if (isCreatingUE) {
+          const backToList = () => { window.location.hash = "settings/modules/records"; };
+          return (
+            <form onSubmit={handleCreateUnifiedEntry} className="flex flex-col gap-6 text-left" data-testid="settings-record-form">
+              <SectionCard
+                title={editingUEId
+                  ? t("Edit record type", "Upraviť typ záznamu", "Rekordtípus szerkesztése")
+                  : t("New record type", "Nový typ záznamu", "Új rekordtípus")}
+                description={editingUEId
+                  ? t("Changes are saved as you make them.", "Zmeny sa ukladajú priebežne.", "A módosítások menet közben mentődnek.")
+                  : t("Each record type gets its own table, a menu entry and a list of its own.", "Každý typ záznamu dostane vlastnú tabuľku, položku v menu a zoznam.", "Minden rekordtípus saját táblát, menüpontot és listát kap.")}
+                action={
+                  <div className="flex items-center gap-2">
+                    {editingUEId && <SaveStatus lang={userLanguage} status={ueStatus} />}
+                    <button
+                      type="button"
+                      onClick={backToList}
+                      className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                    >
+                      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                      {t("Back", "Späť", "Vissza")}
+                    </button>
+                  </div>
+                }
+              >
+                <div className="grid grid-cols-1 gap-4 ws-md:grid-cols-3">
+                  <label className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Section name (e.g. Licenses)", "Názov sekcie (napr. Licencie)", "Szekció neve (pl. Licencek)")} *</span>
+                    <input type="text" value={ueName} onChange={(e) => setUeName(e.target.value)} className={fieldInput} placeholder={t("Enter section name...", "Zadajte názov...", "Adja meg a szekció nevét...")} required />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Entry name (singular, e.g. License)", "Názov záznamu (jednotné číslo, napr. Licencia)", "Bejegyzés neve (egyes szám, pl. Licenc)")} *</span>
+                    <input type="text" value={ueEntryName} onChange={(e) => setUeEntryName(e.target.value)} className={fieldInput} placeholder={t("Entry", "Záznam", "Bejegyzés")} required />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Folder name (singular, e.g. Folder)", "Názov priečinka (jednotné číslo, napr. Priečinok)", "Mappa neve (egyes szám, pl. Mappa)")} *</span>
+                    <input type="text" value={ueFolderName} onChange={(e) => setUeFolderName(e.target.value)} className={fieldInput} placeholder={t("Folder", "Priečinok", "Mappa")} required />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 ws-md:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Icon", "Ikona", "Ikon")}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+                        {getIconComponent(ueIcon, "h-6 w-6")}
+                      </div>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="text-ui font-bold text-slate-800">{ueIcon}</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsIconPickerOpen(true)}
+                          className="min-h-9 cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 text-ui font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                        >
+                          {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className={fieldLabel}>{t("Color", "Farba", "Szín")}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {["#3b82f6", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#14b8a6", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899"].map((colorHex) => (
+                        <button
+                          key={colorHex}
+                          type="button"
+                          aria-label={colorHex}
+                          onClick={() => setUeColor(colorHex)}
+                          className="relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 transition-transform hover:scale-105"
+                          style={{ backgroundColor: colorHex }}
+                        >
+                          {ueColor === colorHex && <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-white shadow-sm" />}
+                        </button>
+                      ))}
+                      <ColorPicker variant="palette" value={ueColor} onChange={setUeColor} className="h-8 w-8 p-1" />
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard
+                title={t("Fields", "Polia", "Mezők")}
+                description={t("What every entry of this type holds.", "Čo obsahuje každý záznam tohto typu.", "Mit tartalmaz az ilyen típusú bejegyzések mindegyike.")}
+              >
+                <div className="grid grid-cols-1 gap-2.5 ws-sm:grid-cols-2 ws-lg:grid-cols-4">
+                  {moduleOptions.map((mod) => checkTile(mod.id, mod.label, ueModules.includes(mod.id), (on) => setUeModules(toggleIn(ueModules, mod.id, on))))}
+                </div>
+              </SectionCard>
+
+              <SectionCard
+                title={t("Folders", "Priečinky", "Mappák")}
+                description={t("Allows nesting entries within grouping folders.", "Umožňuje zoskupovať záznamy do priečinkov.", "Lehetővé teszi a bejegyzések csoportosító mappákba ágyazását.")}
+                action={
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 text-ui font-bold text-slate-700">
+                    {t("Enable folders", "Povoliť priečinky", "Mappák engedélyezése")}
+                    <input
+                      type="checkbox"
+                      checked={ueFoldersEnabled}
+                      onChange={(e) => setUeFoldersEnabled(e.target.checked)}
+                      className="h-5 w-5 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </label>
+                }
+              >
+                {ueFoldersEnabled ? (
+                  <div className="flex flex-col gap-4">
+                    <span className={fieldLabel}>{t("Fields of a folder", "Polia priečinka", "A mappa mezői")}</span>
+                    <div className="grid grid-cols-1 gap-2.5 ws-sm:grid-cols-2 ws-lg:grid-cols-4">
+                      {moduleOptions.map((mod) => checkTile(mod.id, mod.label, ueFolderModules.includes(mod.id), (on) => setUeFolderModules(toggleIn(ueFolderModules, mod.id, on))))}
+                    </div>
+                    {ueModules.includes("due_date") && checkTile(
+                      "summary",
+                      t("Show a summary (number of entries) on folders", "Zobraziť na priečinkoch prehľad (počet záznamov)", "Összefoglaló (bejegyzések száma) a mappákon"),
+                      ueShowFolderSummary,
+                      setUeShowFolderSummary,
+                    )}
+                  </div>
+                ) : (
+                  <p className="type-body text-slate-500">{t("Folders are off: entries are one flat list.", "Priečinky sú vypnuté: záznamy tvoria jeden zoznam.", "A mappák ki vannak kapcsolva: a bejegyzések egy lapos listát alkotnak.")}</p>
+                )}
+              </SectionCard>
+
+              {!editingUEId && (
+                <div className="flex flex-wrap justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={backToList}
+                    className="min-h-11 cursor-pointer rounded-2xl border border-slate-200 bg-white px-5 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                  >
+                    {t("Cancel", "Zrušiť", "Mégse")}
+                  </button>
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    {t("Create record type", "Vytvoriť typ záznamu", "Rekordtípus létrehozása")}
+                  </button>
+                </div>
+              )}
+            </form>
+          );
+        }
+
+        return (
+          <SectionCard
+            testId="settings-records-list"
+            title={t("Custom record types", "Vlastné typy záznamov", "Egyéni rekordtípusok")}
+            description={t("Define your own data structures: each gets a table, a menu entry and a list.", "Definujte vlastné dátové štruktúry: každá dostane tabuľku, položku v menu a zoznam.", "Határozzon meg saját adatstruktúrákat: mindegyik saját táblát, menüpontot és listát kap.")}
+            action={
+              canEditRecords ? (
+                <button
+                  type="button"
+                  onClick={() => { window.location.hash = "settings/modules/records/new"; }}
+                  className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  {t("New record type", "Nový typ záznamu", "Új rekordtípus")}
+                </button>
+              ) : undefined
+            }
+          >
+            {activeEntries.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-400">
+                <FolderOpen className="mx-auto h-8 w-8" aria-hidden="true" />
+                <p className="mt-2 text-ui font-bold text-slate-500">{t("No record types yet", "Zatiaľ žiadne typy záznamov", "Még nincs rekordtípus")}</p>
+                <p className="mt-1 text-caption text-slate-400">{t("Create the first one with the button above.", "Vytvorte prvý tlačidlom vyššie.", "Hozza létre az elsőt a fenti gombbal.")}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 ws-sm:grid-cols-2">
+                {activeEntries.map((ue) => (
+                  <div key={ue.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="flex shrink-0 items-center justify-center rounded-xl p-3.5 text-white shadow-sm" style={{ backgroundColor: ue.color }}>
+                        {getIconComponent(ue.icon, "h-5 w-5")}
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <span className="truncate text-body font-bold text-slate-800">{ue.name}</span>
+                        <span className="text-ui text-slate-500">
+                          {t("Fields", "Polia", "Mezők")}: <span className="font-semibold text-slate-700">{ue.modules.join(", ")}</span>
+                        </span>
+                        <span className="text-ui text-slate-500">
+                          {t("Folders", "Priečinky", "Mappák")}: <span className="font-semibold text-slate-700">{ue.foldersEnabled ? t("Yes", "Áno", "Igen") : t("No", "Nie", "Nem")}</span>
+                        </span>
+                      </div>
+                    </div>
+                    {canEditRecords && (
+                      <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => { window.location.hash = `settings/modules/records/edit/${ue.id}`; }}
+                          className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-ui font-bold text-indigo-600 transition-colors hover:bg-indigo-50"
+                          title={t("Edit record type", "Upraviť typ záznamu", "Rekordtípus szerkesztése")}
+                        >
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("Edit", "Upraviť", "Szerkesztés")}
+                        </button>
+                        <HoldToConfirmButton
+                          tone="archive"
+                          lang={userLanguage}
+                          what={ue.name}
+                          onConfirm={() => handleArchiveUnifiedEntry(ue.id)}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-ui font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                          title={t("Archive record type", "Archivovať typ záznamu", "Rekordtípus archiválása")}
+                          icon={<Trash2 className="h-3.5 w-3.5" />}
+                        >{t("Archive", "Archivovať", "Archiválás")}
+                        </HoldToConfirmButton>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5 rounded-2xl bg-slate-50 p-4 text-ui text-slate-600">
+              <p>{t("Creating a record type adds a new table to the database.", "Vytvorenie typu záznamu pridá do databázy novú tabuľku.", "Egy rekordtípus létrehozása új táblát ad az adatbázishoz.")}</p>
+              <p>{t("Archiving one only hides it from the menu — the table and its data stay untouched.", "Archivácia ho iba skryje z menu — tabuľka aj údaje v nej zostanú nedotknuté.", "Az archiválás csak elrejti a menüből — a tábla és az adatok érintetlenek maradnak.")}</p>
+            </div>
+          </SectionCard>
+        );
+      }
       case "projects/tasks":
         return (
                   <div className="space-y-6">
@@ -4088,14 +3961,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {/* Split Credentials Row */}
                     <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
                       {/* Meta Ads Credentials Form */}
-                      <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                          <Icons.Infinity className="h-4.5 w-4.5 text-blue-600" aria-hidden="true" /> {getTranslation(userLanguage, "settings.ads.meta_title")}
-                        </h3>
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.ads.meta_title")}
+                      >
                         
                         <div className="space-y-3">
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.meta_id")}</label>
+                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.meta_id")}</label>
                             <input
                               type="text"
                               disabled={getPermission("general_config") === "view"}
@@ -4110,7 +3982,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
+                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
                             <PasswordInput
                               disabled={getPermission("general_config") === "view"}
                               value={metaAppSecret}
@@ -4124,7 +3996,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.meta_token")}</label>
+                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.meta_token")}</label>
                             <textarea
                               rows={2}
                               disabled={getPermission("general_config") === "view"}
@@ -4138,18 +4010,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                         </div>
-                      </div>
+                      </SectionCard>
         
                       {/* Google Ads Credentials Form */}
-                      <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                          <Icons.Bot className="h-4.5 w-4.5 text-amber-500" aria-hidden="true" /> {getTranslation(userLanguage, "settings.ads.google_title")}
-                        </h3>
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.ads.google_title")}
+                      >
                         
                         <div className="space-y-3">
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_dev")}</label>
+                              <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_dev")}</label>
                               <input
                                 type="text"
                                 disabled={getPermission("general_config") === "view"}
@@ -4164,7 +4035,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
         
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_client")}</label>
+                              <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_client")}</label>
                               <input
                                 type="text"
                                 disabled={getPermission("general_config") === "view"}
@@ -4180,7 +4051,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
+                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
                             <PasswordInput
                               disabled={getPermission("general_config") === "view"}
                               value={googleClientSecret}
@@ -4194,7 +4065,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.ads.google_refresh")}</label>
+                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_refresh")}</label>
                             <textarea
                               rows={2}
                               disabled={getPermission("general_config") === "view"}
@@ -4208,22 +4079,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                         </div>
-                      </div>
+                      </SectionCard>
                     </div>
         
                     {/* Campaign Control Center Panel */}
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-                        <div className="flex flex-col">
-                          <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                            <Sliders className="h-4.5 w-4.5 text-indigo-600" /> {getTranslation(userLanguage, "settings.ads.campaign_title")}
-                          </h3>
-                          <span className="type-overline text-slate-400 mt-1 block">
-                            {getTranslation(userLanguage, "settings.ads.campaign_desc")}
-                          </span>
-                        </div>
-        
-                        <div className="flex items-center gap-3 shrink-0">
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.ads.campaign_title")}
+                      description={getTranslation(userLanguage, "settings.ads.campaign_desc")}
+                      action={
+<div className="flex items-center gap-3 shrink-0">
                           {/* Status Indicator */}
                           <span className={`px-3 py-1 rounded-full border type-overline flex items-center gap-1.5 ${
                             isConnected 
@@ -4279,7 +4143,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             <span>{isSyncing ? getTranslation(userLanguage, "settings.ads.btn_syncing") : getTranslation(userLanguage, "settings.ads.btn_sync")}</span>
                           </button>
                         </div>
-                      </div>
+}
+                    >
         
                       {/* Connected Active Campaign Listing */}
                       {isConnected ? (
@@ -4419,7 +4284,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                         </div>
                       )}
-                    </div>
+                    </SectionCard>
                   </div>
         );
       case "integrations/ai":
@@ -4427,14 +4292,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-6 animate-fade-in">
         
                     {/* API CREDENTIALS — always editable, independent of vector DB connection state */}
-                    <form onSubmit={handleSaveAiSettings} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
-                      </h3>
-        
-                      <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-ui text-slate-600 leading-relaxed font-semibold">
-                        {t("Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.", "Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli CRM.", "Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a CRM oldalsávi asszisztensében.")}
-                      </div>
+                    <SectionCard
+                      title={t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
+                      description={t("Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.", "Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli CRM.", "Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a CRM oldalsávi asszisztensében.")}
+                      action={<SaveStatus lang={userLanguage} status={aiStatus} />}
+                    >
         
                       <div className="space-y-2">
                         <label className="type-overline text-slate-500 block">
@@ -4672,41 +4534,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </div>
                       )}
         
-                      {getPermission("ai_config") === "edit" && (
-                        <div className="flex justify-end pt-3">
-                          <button
-                            type="submit"
-                            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
-                          >
-                            <Save className="h-4 w-4" /> {t("Save AI Configuration", "Uložiť konfiguráciu AI", "AI konfiguráció mentése")}
-                          </button>
-                        </div>
-                      )}
-                    </form>
+                      
+                    </SectionCard>
         
                     {vectorDbValidated && (
                       /* CONFIRMED CONNECTION CARD */
-                      <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-                              <ShieldCheck className="h-6 w-6" />
-                            </div>
-                            <div>
-                              <h3 className="text-body font-heading font-extrabold text-slate-900">
-                                {t("Vector Database Connected", "Vektorová databáza pripojená", "Vektoradatbázis csatlakoztatva")}
-                              </h3>
-                              <p className="text-micro text-slate-500 font-semibold mt-0.5">
-                                {t(
+                      <SectionCard
+                        title={t("Vector Database Connected", "Vektorová databáza pripojená", "Vektoradatbázis csatlakoztatva")}
+                        description={t(
                                   "Your RAG pipeline backend is successfully configured and active.",
                                   "Backend vašej RAG pipeline je úspešne nakonfigurovaný a aktívny.",
                                   "A RAG folyamat háttérrendszere sikeresen be van állítva és aktív."
                                 )}
-                              </p>
-                            </div>
-                          </div>
-                          {getPermission("ai_config") === "edit" && (
-                            <button
+                        action={getPermission("ai_config") === "edit" ? (
+<button
                               type="button"
                               onClick={() => {
                                 setVectorDbValidated(false);
@@ -4722,8 +4563,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             >
                               {t("Reset Configuration", "Resetovať konfiguráciu", "Konfiguráció visszaállítása")}
                             </button>
-                          )}
-                        </div>
+                        ) : undefined}
+                      >
                         {/* Active database info summary */}
                         <div className="text-ui font-semibold text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                           <span className="type-overline text-slate-400 block mb-2">{t("Active Backend Details", "Aktívne detaily backendu", "Aktív backend részletei")}</span>
@@ -4814,7 +4655,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <span>{trainingProgress}%</span>
                               </div>
                               <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                                <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full transition-all duration-300" style={{ width: `${trainingProgress}%` }} />
+                                <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full transition-all duration-300" style={{ width: `${trainingProgress}%` }}></div>
                               </div>
                             </div>
                           )}
@@ -4868,7 +4709,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </SectionCard>
                     )}
                   </div>
         );
@@ -4877,91 +4718,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-6 animate-fade-in">
         
                     {/* Header Hero Card */}
-                    <div className="glass-panel p-6 ws-sm:p-8 rounded-3xl space-y-6 border border-rose-200/40 bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950 text-white shadow-2xl relative overflow-hidden">
-                      <div className="absolute -right-12 -top-12 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
-                      <div className="flex flex-col ws-sm:flex-row items-start ws-sm:items-center justify-between gap-6 relative z-10">
-                        <div className="flex items-center gap-4">
-                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/30 shrink-0 font-bold text-heading">
-                            Z
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2.5 flex-wrap">
-                              <h2 className="text-title font-heading font-bold tracking-tight text-white">
-                                Zernio Social Media Engine
-                              </h2>
-                              <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 type-overline px-2.5 py-0.5 rounded-full">
-                                {t("15+ platforms, AI ready", "15+ platforiem, pripravené na AI", "15+ platform, AI-kész")}
-                              </span>
-                            </div>
-                            <p className="text-ui text-slate-300 mt-1 max-w-xl leading-relaxed">
-                              {t(
+                    <SectionCard
+                      title="Zernio Social Media Engine"
+                      description={t(
                                 "Connect your CRM to Zernio REST API & AI Agents infrastructure for unified social media scheduling, multi-platform publishing, and inbox engagement across Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky, and more.",
                                 "Pripojte vaše CRM k Zernio REST API a AI agentom pre unifikované plánovanie sociálnych sietí, publikovanie na 15+ platformách (Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky).",
                                 "Csatlakoztassa CRM-jét a Zernio REST API-hoz az egységes közösségi média ütemezéshez 15+ platformon."
                               )}
-                            </p>
-                          </div>
-                        </div>
-        
-                        {/* Connection Status & Control Buttons */}
-                        <div className="shrink-0 flex items-center gap-3">
-                          <div className="flex items-center gap-2.5 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10">
-                            <div className={`w-3 h-3 rounded-full ${(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></div>
-                            <div>
-                              <span className="type-overline text-slate-400 block">{t("Status", "Stav", "Állapot")}</span>
-                              <span className="text-ui font-extrabold text-white">
-                                {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) 
-                                  ? (userLanguage === "sk" ? "Pripojené & Aktívne" : userLanguage === "hu" ? "Csatlakoztatva & Aktív" : "Connected & Active")
-                                  : (userLanguage === "sk" ? "Čaká na API Kľúč" : userLanguage === "hu" ? "API Kulcsra vár" : "Awaiting API Key")}
-                              </span>
-                            </div>
-                          </div>
-        
+                      action={
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 text-ui font-bold text-slate-700">
+                            <span className={`h-2.5 w-2.5 rounded-full ${(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) ? "bg-emerald-500" : "bg-amber-400"}`} />
+                            {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected)
+                              ? (userLanguage === "sk" ? "Pripojené & Aktívne" : userLanguage === "hu" ? "Csatlakoztatva & Aktív" : "Connected & Active")
+                              : (userLanguage === "sk" ? "Čaká na API Kľúč" : userLanguage === "hu" ? "API Kulcsra vár" : "Awaiting API Key")}
+                          </span>
                           {(zernioTestResult?.success || integrationsConfig?.zernioConnected || zernioApiKey) && (
                             <button
                               type="button"
                               onClick={() => setIsEditingZernioKey(!isEditingZernioKey)}
-                              className="px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl text-ui font-extrabold border border-white/20 transition-all cursor-pointer flex items-center gap-1.5"
+                              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                             >
-                              <Pencil className="h-3.5 w-3.5" />
+                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                               {isEditingZernioKey
                                 ? t("Hide Configuration", "Skryť konfiguráciu", "Konfiguráció elrejtése")
                                 : t("Configure Key", "Upraviť kľúč", "Kulcs szerkesztése")}
                             </button>
                           )}
                         </div>
-                      </div>
-        
-                      {/* Supported Platforms Pills */}
-                      <div className="pt-4 border-t border-white/10 flex flex-wrap gap-2 items-center text-micro font-bold text-slate-300">
-                        <span className="type-overline text-slate-400 mr-1">{t("Supported Platforms:", "Podporované platformy:", "Támogatott platformok:")}</span>
+                      }
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-ui font-semibold text-slate-600">
+                        <span className="type-overline mr-1 text-slate-500">{t("Supported Platforms:", "Podporované platformy:", "Támogatott platformok:")}</span>
                         {["Twitter / X", "Instagram", "TikTok", "LinkedIn", "YouTube", "Facebook", "Threads", "Bluesky", "Pinterest", "Reddit", "WhatsApp", "Google Business"].map((plat) => (
-                          <span key={plat} className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-slate-200">
+                          <span key={plat} className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-700">
                             {plat}
                           </span>
                         ))}
                       </div>
-                    </div>
+                    </SectionCard>
         
                     {/* CONNECTED VIEW: Clean status & connected accounts card (Hidden while editing) */}
                     {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) && !isEditingZernioKey && (
-                      <div className="glass-panel p-6 ws-sm:p-8 rounded-3xl border border-emerald-200/80 bg-white/95 shadow-glass space-y-6 animate-fade-in">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="p-3 rounded-2xl bg-emerald-100 text-emerald-700">
-                              <ShieldCheck className="h-6 w-6" />
-                            </div>
-                            <div>
-                              <h3 className="text-title-sm font-heading font-extrabold text-slate-900">
-                                {t("Zernio API Connection Active", "Zernio API pripojenie je aktívne", "Zernio API kapcsolat aktív")}
-                              </h3>
-                              <p className="text-ui font-semibold text-slate-500 mt-0.5">
-                                {t("Your CRM is successfully connected to Zernio API backend.", "Vaše CRM je úspešne pripojené k Zernio API backendu.", "A CRM sikeresen csatlakozik a Zernio API-hoz.")}
-                              </p>
-                            </div>
-                          </div>
-        
-                          <div className="flex items-center gap-2">
+                      <SectionCard
+                        title={t("Zernio API Connection Active", "Zernio API pripojenie je aktívne", "Zernio API kapcsolat aktív")}
+                        description={t("Your CRM is successfully connected to Zernio API backend.", "Vaše CRM je úspešne pripojené k Zernio API backendu.", "A CRM sikeresen csatlakozik a Zernio API-hoz.")}
+                        action={
+<div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => handleTestZernio()}
@@ -4982,7 +4785,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </button>
                             )}
                           </div>
-                        </div>
+}
+                      >
         
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
@@ -5025,28 +4829,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
                           )}
                         </div>
-                      </div>
+                      </SectionCard>
                     )}
         
                     {/* SETUP & EDIT VIEW: Show 1-Click Auth + API Key form only when not connected OR editing */}
                     {(!integrationsConfig?.zernioConnected && !zernioTestResult?.success) || isEditingZernioKey ? (
                       <>
                         {/* Option 1: 1-Click Device Authorization */}
-                        <div className="glass-panel p-6 ws-sm:p-8 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                            <div>
-                              <h3 className="text-body font-heading font-extrabold text-slate-900 flex items-center gap-2">
-                                <Icons.Zap className="h-4.5 w-4.5 text-rose-600" /> {t("1-Click Agent Device Authorization", "1-Click Autorizácia zariadenia agenta", "1-Kattintásos eszköz hitelesítés")}
-                              </h3>
-                              <p className="text-caption text-slate-500 mt-1">
-                                {t(
-                                  "Authorize your CRM instance instantly with Zernio via browser authentication flow.",
-                                  "Autorizujte vašu CRM inštanciu okamžite so Zernio cez bezpečné prehliadačové overenie.",
-                                  "Hitelesítse CRM-jét azonnal a Zernióval böngészős hitelesítéssel."
-                                )}
-                              </p>
-                            </div>
-                            <button
+                        <SectionCard
+                          title={t("1-Click Agent Device Authorization", "1-Click Autorizácia zariadenia agenta", "1-Kattintásos eszköz hitelesítés")}
+                          description={t("Authorize your CRM instance instantly with Zernio via browser authentication flow.", "Autorizujte vašu CRM inštanciu okamžite so Zernio cez bezpečné prehliadačové overenie.", "Hitelesítse CRM-jét azonnal a Zernióval böngészős hitelesítéssel.")}
+                          action={
+<button
                               type="button"
                               onClick={handleStartDeviceAuth}
                               disabled={isInitiatingDeviceAuth || getPermission("general_config") === "view"}
@@ -5059,7 +4853,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               )}
                               {t("Connect via Zernio", "Pripojiť cez Zernio", "Csatlakozás Zernióval")}
                             </button>
-                          </div>
+}
+                        >
         
                           {deviceAuthInfo && (
                             <div className="p-5 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-4 animate-fade-in">
@@ -5085,13 +4880,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               )}
                             </div>
                           )}
-                        </div>
+                        </SectionCard>
         
                         {/* Option 2: API Key Configuration Form */}
-                        <form onSubmit={handleSaveZernio} className="glass-panel p-6 ws-sm:p-8 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                          <h3 className="text-body font-heading font-extrabold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-                            <Lock className="h-4.5 w-4.5 text-indigo-500" /> {t("Zernio API Key", "Zernio API Kľúč", "Zernio API Kulcs")}
-                          </h3>
+                        <SectionCard
+                          title={t("Zernio API Key", "Zernio API Kľúč", "Zernio API Kulcs")}
+                          action={<SaveStatus lang={userLanguage} status={zernioStatus} />}
+                        >
         
                           <div className="space-y-2">
                             <label className="block text-ui font-extrabold text-slate-700">
@@ -5129,16 +4924,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {t("Test Connection", "Testovať pripojenie", "Kapcsolat tesztelése")}
                             </button>
         
-                            {getPermission("general_config") === "edit" && (
-                              <button
-                                type="submit"
-                                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-ui font-bold shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
-                              >
-                                <Save className="h-4 w-4" /> {t("Save Social Settings", "Uložiť nastavenia sociálnych sietí", "Közösségi beállítások mentése")}
-                              </button>
-                            )}
+                            
                           </div>
-                        </form>
+                        </SectionCard>
         
                       </>
                     ) : null}
@@ -5146,31 +4934,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {/* Rendered in BOTH the connected and the setup state: a key revoked
                         after a successful connection fails silently otherwise. */}
                     {zernioTestResult && !zernioTestResult.success && (
-                      <div className="glass-panel p-6 rounded-3xl border border-rose-200/80 bg-rose-50/30 space-y-4 animate-fade-in">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-2xl bg-rose-100 text-rose-700 shrink-0">
-                            <Icons.AlertCircle className="h-6 w-6" />
-                          </div>
-                          <div className="min-w-0">
-                            <h4 className="text-body font-heading font-extrabold text-rose-900">
-                              {userLanguage === "sk" ? "Chyba overenia Zernio API" : userLanguage === "hu" ? "Zernio API ellenőrzési hiba" : "Zernio Verification Error"}
-                            </h4>
-                            <p className="text-ui font-medium text-slate-600 mt-0.5 break-words">{zernioTestResult.message}</p>
-                          </div>
-                        </div>
-                      </div>
+                      <SectionCard
+                        title={userLanguage === "sk" ? "Chyba overenia Zernio API" : userLanguage === "hu" ? "Zernio API ellenőrzési hiba" : "Zernio Verification Error"}
+                        description={zernioTestResult.message}
+                        tone="danger"
+                      />
                     )}
                   </div>
         );
       case "system/errors":
         return (
                   <div className="space-y-6">
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-                          <Icons.AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" /> {t("System Errors & Exceptions", "Systémové chyby a výnimky", "Rendszerhibák és kivételek")}
-                        </h3>
-                        <div className="flex gap-2">
+                    <SectionCard
+                      title={t("System Errors & Exceptions", "Systémové chyby a výnimky", "Rendszerhibák és kivételek")}
+                      action={
+<div className="flex gap-2">
                           <button
                             type="button"
                             onClick={fetchErrorLogs}
@@ -5188,7 +4966,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
                           </HoldToConfirmButton>
                         </div>
-                      </div>
+}
+                    >
         
                       {isLoadingLogs ? (
                         <div className="flex justify-center py-12">
@@ -5240,7 +5019,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </table>
                         </ScrollFade>
                       )}
-                    </div>
+                    </SectionCard>
                   </div>
         );
       case "system/reset":
@@ -5249,19 +5028,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                     {/* Wipe Demo Data section (Only visible when isDemoMode is active) */}
                     {isDemoMode && getPermission("system_reset") === "edit" && (
-                      <div className="glass-panel p-6 rounded-3xl space-y-4 border border-amber-200/60 bg-amber-50/10 shadow-glass animate-in fade-in slide-in-from-top-4 duration-300">
-                        <h3 className="text-body font-heading font-bold text-amber-800 flex items-center gap-2 border-b border-amber-100 pb-3">
-                          <Sliders className="h-4.5 w-4.5 text-amber-600 animate-spin" style={{ animationDuration: '6s' }} /> 
-                          {userLanguage === "sk" ? "Odstrániť Demo Dáta" : userLanguage === "hu" ? "Demo Adatok Törlése" : "Wipe Demo Data"}
-                        </h3>
-                        
-                        <p className="text-ui text-amber-700/80 leading-relaxed max-w-2xl font-bold">
-                          {userLanguage === "sk" 
+                      <SectionCard
+                        title={userLanguage === "sk" ? "Odstrániť Demo Dáta" : userLanguage === "hu" ? "Demo Adatok Törlése" : "Wipe Demo Data"}
+                        description={userLanguage === "sk" 
                             ? "Tento krok vymaže všetky vopred načítané demo údaje (leady, históriu pipeline, kalendáre, projektové úlohy) a trvalo prepne CRM z demo režimu do čistej databázy." 
                             : userLanguage === "hu"
                               ? "Ez a lépés törli az összes előre betöltött bemutató adatot (leadek, naptár, feladatok), és véglegesen kikapcsolja a demo módot."
                               : "This will remove all pre-loaded demo records (leads, pipeline history, calendar slots, project tasks) and permanently switch the CRM out of demo mode."}
-                        </p>
+                        tone="warning"
+                      >
         
                         <div className="flex justify-end pt-2">
                           <button
@@ -5272,17 +5047,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {userLanguage === "sk" ? "Vymazať demo údaje" : userLanguage === "hu" ? "Demo adatok törlése" : "Wipe Demo Records"}
                           </button>
                         </div>
-                      </div>
+                      </SectionCard>
                     )}
         
-                    <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-rose-50/15 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-rose-800 flex items-center gap-2 border-b border-rose-100 pb-3">
-                        <ShieldAlert className="h-4.5 w-4.5 text-rose-600" /> {getTranslation(userLanguage, "settings.danger.title")}
-                      </h3>
-                      
-                      <p className="text-ui text-rose-700/80 leading-relaxed max-w-2xl font-bold">
-                        {getTranslation(userLanguage, "settings.danger.desc")}
-                      </p>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.danger.title")}
+                      description={getTranslation(userLanguage, "settings.danger.desc")}
+                      tone="danger"
+                    >
         
                       {getPermission("system_reset") === "edit" && (
                         <div className="flex justify-end pt-2">
@@ -5294,7 +5066,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </button>
                         </div>
                       )}
-                    </div>
+                    </SectionCard>
                   </div>
         );
       case "system/license":
@@ -5470,14 +5242,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         );
       case "leads/stages":
         return (
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <Tag className="h-4.5 w-4.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.states.title")}
-                      </h3>
-                      
-                      <p className="type-overline text-slate-400 text-left">
-                        {getTranslation(userLanguage, "settings.states.desc")}
-                      </p>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.states.title")}
+                      description={getTranslation(userLanguage, "settings.states.desc")}
+                    >
         
                       {/* SLA limits need saying out loud: the column is a number box with
                           no obvious meaning, and where the warning turns up is the whole
@@ -5863,7 +5631,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </button>
                         </form>
                       )}
-                    </div>
+                    </SectionCard>
         );
       case "leads/assignment":
         return (
@@ -5877,14 +5645,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         );
       case "leads/sources":
         return (
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <Share2 className="h-4.5 w-4.5 text-emerald-500" /> {getTranslation(userLanguage, "settings.sources.title")}
-                      </h3>
-                      
-                      <p className="type-overline text-slate-400 text-left">
-                        {getTranslation(userLanguage, "settings.sources.desc")}
-                      </p>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.sources.title")}
+                      description={getTranslation(userLanguage, "settings.sources.desc")}
+                    >
         
                       <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
@@ -6034,18 +5798,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </button>
                         </form>
                       )}
-                    </div>
+                    </SectionCard>
         );
       case "leads/interests":
         return (
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <Tag className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {getTranslation(userLanguage, "settings.sources.categories_title")}
-                      </h3>
-                      
-                      <p className="type-overline text-slate-400 text-left">
-                        {getTranslation(userLanguage, "settings.sources.categories_desc")}
-                      </p>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.sources.categories_title")}
+                      description={getTranslation(userLanguage, "settings.sources.categories_desc")}
+                    >
         
                       <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
@@ -6195,18 +5955,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </button>
                         </form>
                       )}
-                    </div>
+                    </SectionCard>
         );
       case "company/divisions":
         return (
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <Building2 className="h-4.5 w-4.5 text-blue-600" /> {getTranslation(userLanguage, "settings.sources.divisions_title")}
-                      </h3>
-                      
-                      <p className="type-overline text-slate-400 text-left">
-                        {getTranslation(userLanguage, "settings.sources.divisions_desc")}
-                      </p>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.sources.divisions_title")}
+                      description={getTranslation(userLanguage, "settings.sources.divisions_desc")}
+                    >
         
                       <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
@@ -6347,18 +6103,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </button>
                         </form>
                       )}
-                    </div>
+                    </SectionCard>
         );
       case "projects/taskstates":
         return (
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <CheckSquare className="h-4.5 w-4.5 text-indigo-500" /> {userLanguage === "sk" ? "Stavy úloh" : userLanguage === "hu" ? "Feladat állapotok" : "Task States"}
-                      </h3>
-                      
-                      <p className="type-overline text-slate-400 text-left">
-                        {userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
-                      </p>
+                    <SectionCard
+                      title={userLanguage === "sk" ? "Stavy úloh" : userLanguage === "hu" ? "Feladat állapotok" : "Task States"}
+                      description={userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
+                    >
         
                       <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
@@ -6494,18 +6246,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                         </div>
                       )}
-                    </div>
+                    </SectionCard>
         );
       case "integrations/api":
         return (
         <>
-                    <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <Lock className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {getTranslation(userLanguage, "settings.api.title")}
-                      </h3>
-                      <p className="type-overline text-slate-400">
-                        {getTranslation(userLanguage, "settings.api.desc")}
-                      </p>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.api.title")}
+                      description={getTranslation(userLanguage, "settings.api.desc")}
+                    >
                       <div className="flex flex-col ws-sm:flex-row gap-3 items-center">
                         <div className="relative flex-1 w-full">
                           <input
@@ -6548,16 +6297,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </button>
                         </div>
                       </div>
-                    </div>
-                    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-1.5">
-                          {getTranslation(userLanguage, "settings.api.guide")}
-                        </h3>
-                        <span className="bg-blue-50 text-blue-700 type-overline px-2 py-0.5 rounded-full border border-blue-200/50">
+                    </SectionCard>
+                    <SectionCard
+                      title={getTranslation(userLanguage, "settings.api.guide")}
+                      action={
+<span className="bg-blue-50 text-blue-700 type-overline px-2 py-0.5 rounded-full border border-blue-200/50">
                           STABLE w1
                         </span>
-                      </div>
+}
+                    >
         
                       <p className="text-ui text-slate-600 leading-relaxed">
                         {userLanguage === "sk" 
@@ -6597,7 +6345,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }'`}
                         </pre>
                       </div>
-        </div>
+        </SectionCard>
         <p className="flex flex-wrap items-center gap-3 text-ui text-slate-500">
           <span>{navT("settings.nav.ui.api_link_note")}</span>
           <a href={"#" + settingsPath("leads", "intake")} className="font-semibold text-indigo-600 hover:text-indigo-800">{navT("settings.nav.ui.api_link_btn")}</a>
@@ -6646,10 +6394,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         );
       case "email/outgoing":
         return (
-                      <form onSubmit={handleSaveEmailSettings} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                          <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {getTranslation(userLanguage, "settings.email.title")}
-                        </h3>
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.email.title")}
+                        action={<SaveStatus lang={userLanguage} status={emailStatus} />}
+                      >
         
                         {/* Provider Selector Switch */}
                         <div className="space-y-2">
@@ -6913,29 +6661,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                         )}
         
-                        {/* Save button */}
-                        {getPermission("general_config") === "edit" && (
-                          <div className="flex justify-end border-t border-slate-100 pt-4">
-                            <button
-                              type="submit"
-                              className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-lg shadow-indigo-600/10 flex items-center gap-1.5 cursor-pointer active:scale-95"
-                            >
-                              <Save className="h-4 w-4" /> {getTranslation(userLanguage, "settings.email.btn_save")}
-                            </button>
-                          </div>
-                        )}
-                      </form>
+                        
+                      </SectionCard>
         );
       case "email/test":
         return (
-                        <form onSubmit={handleSendTestEmail} className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                          <h4 className="text-ui font-heading font-bold text-slate-800 flex items-center gap-1.5">
-                            {getTranslation(userLanguage, "settings.email.diagnostics")}
-                          </h4>
-                          <p className="text-micro text-slate-400 leading-normal font-semibold">
-                            {getTranslation(userLanguage, "settings.email.diagnostics_desc")}
-                          </p>
-        
+                        <SectionCard
+                          title={getTranslation(userLanguage, "settings.email.diagnostics")}
+                          description={getTranslation(userLanguage, "settings.email.diagnostics_desc")}
+                        >
+                        <form onSubmit={handleSendTestEmail} className="flex flex-col gap-4">
                           <div className="space-y-3 pt-1">
                             <div className="space-y-1.5">
                               <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.test_recipient")}</label>
@@ -6979,6 +6714,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
                           )}
                         </form>
+                        </SectionCard>
         );
       case "email/mailboxes":
         return <CompanyMailboxSettings users={users} userLanguage={userLanguage} />;
@@ -6998,9 +6734,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             value={systemLanguage}
                             onChange={(v) => setSystemLanguage(v as Language)}
                             options={[
-                              { value: "sk", label: "🇸🇰 Slovenčina" },
-                              { value: "en", label: "🇬🇧 English" },
-                              { value: "hu", label: "🇭🇺 Magyar" },
+                              { value: "sk", label: "Slovenčina" },
+                              { value: "en", label: "English" },
+                              { value: "hu", label: "Magyar" },
                             ]}
                           />
                           <p className="text-micro text-slate-400">
@@ -7033,10 +6769,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       case "system/server":
         return (
         <>
-                      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                          <Database className="h-4.5 w-4.5 text-emerald-500" /> {getTranslation(userLanguage, "settings.general.db_title")}
-                        </h3>
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.general.db_title")}
+                      >
         
                         <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 text-ui text-slate-600 font-bold">
                           <div className="space-y-2">
@@ -7070,11 +6805,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="glass-panel p-6 rounded-3xl space-y-4 border border-white/60 bg-white/95 shadow-glass">
-                        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                          <Globe className="h-4.5 w-4.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.general.host_title")}
-                        </h3>
+                      </SectionCard>
+                      <SectionCard
+                        title={getTranslation(userLanguage, "settings.general.host_title")}
+                      >
                         
                         <div className="text-ui space-y-3 font-semibold text-slate-600">
                           <div className="flex items-center justify-between">
@@ -7092,7 +6826,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             <span className="text-slate-400 italic">{getTranslation(userLanguage, "settings.general.host_laravel_desc")}</span>
                           </div>
                         </div>
-                      </div>
+                      </SectionCard>
         </>
         );
       case "company/profile":
@@ -7100,7 +6834,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("company", "profile", "title"))}
           description={navT(sectionKey("company", "profile", "hint"))}
-          action={companySaveButton}
+          action={companySaveStatus}
         >
           <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-6 items-start">
                           {/* Logo Upload Box */}
@@ -7164,7 +6898,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </div>
                             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                               <div className="relative">
-                                <label className="type-overline text-slate-600 block mb-1">
+                                <label className="type-overline text-slate-500 block mb-1">
                                   {t("Company Name", "Obchodné meno spoločnosti", "Cégnév")}
                                 </label>
                                 <div className="relative">
@@ -7190,7 +6924,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </div>
         
                               <div>
-                                <label className="type-overline text-slate-600 block mb-1">
+                                <label className="type-overline text-slate-500 block mb-1">
                                   {t("Subtitle / Slogan", "Podtitul / Špecializácia", "Szlogen")}
                                 </label>
                                 <input
@@ -7205,7 +6939,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
                         <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
                           <div className="col-span-2 ws-sm:col-span-1">
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Email", "Fakturačný e-mail", "E-mail")}
                             </label>
                             <input
@@ -7217,7 +6951,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Phone", "Telefónne číslo", "Telefonszám")}
                             </label>
                             <input
@@ -7229,7 +6963,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Secondary Phone", "Záložný telefón", "Másodlagos telefon")}
                             </label>
                             <input
@@ -7241,7 +6975,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div className="col-span-2 ws-sm:col-span-1">
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Website", "Webová stránka", "Weboldal")}
                             </label>
                             <input
@@ -7259,11 +6993,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("company", "billing", "title"))}
           description={navT(sectionKey("company", "billing", "hint"))}
-          action={companySaveButton}
+          action={companySaveStatus}
         >
                             <div className="grid grid-cols-2 ws-sm:grid-cols-3 gap-3">
                               <div className="relative">
-                                <label className="type-overline text-slate-600 block mb-1">IČO</label>
+                                <label className="type-overline text-slate-500 block mb-1">IČO</label>
                                 <div className="relative">
                                   <input
                                     type="text"
@@ -7286,7 +7020,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 />
                               </div>
                               <div className="relative">
-                                <label className="type-overline text-slate-600 block mb-1">DIČ</label>
+                                <label className="type-overline text-slate-500 block mb-1">DIČ</label>
                                 <div className="relative">
                                   <input
                                     type="text"
@@ -7309,7 +7043,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 />
                               </div>
                               <div className="relative col-span-2 ws-sm:col-span-1">
-                                <label className="type-overline text-slate-600 block mb-1">IČ DPH</label>
+                                <label className="type-overline text-slate-500 block mb-1">IČ DPH</label>
                                 <div className="relative">
                                   <input
                                     type="text"
@@ -7333,7 +7067,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
                         <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
                           <div className="col-span-2">
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
                             </label>
                             <input
@@ -7345,7 +7079,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("City", "Mesto", "Város")}
                             </label>
                             <input
@@ -7357,7 +7091,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Postal Code", "PSČ", "Irányítószám")}
                             </label>
                             <input
@@ -7369,7 +7103,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           <div className="col-span-2 ws-sm:col-span-1">
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Country", "Krajina", "Ország")}
                             </label>
                             <CustomSelect
@@ -7386,11 +7120,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("company", "bank", "title"))}
           description={navT(sectionKey("company", "bank", "hint"))}
-          action={companySaveButton}
+          action={companySaveStatus}
         >
           <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                           <div>
-                            <label className="type-overline text-slate-600 block mb-1">IBAN</label>
+                            <label className="type-overline text-slate-500 block mb-1">IBAN</label>
                             <input
                               type="text"
                               value={billingForm.iban || ""}
@@ -7400,7 +7134,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
                           <div>
-                            <label className="type-overline text-slate-600 block mb-1">SWIFT / BIC</label>
+                            <label className="type-overline text-slate-500 block mb-1">SWIFT / BIC</label>
                             <input
                               type="text"
                               value={billingForm.swift || ""}
@@ -7414,14 +7148,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         );
       case "offers/defaults":
         return (
+        <>
         <SectionCard
           title={navT(sectionKey("offers", "defaults", "title"))}
           description={navT(sectionKey("offers", "defaults", "hint"))}
-          action={companySaveButton}
+          action={companySaveStatus}
         >
           <div className="max-w-xs">
                           <div>
-                            <label className="type-overline text-slate-600 block mb-1">
+                            <label className="type-overline text-slate-500 block mb-1">
                               {t("Default Payment Due (Days)", "Predvolená splatnosť (Dni)", "Fizetési határidő (napok)")}
                             </label>
                             <input
@@ -7432,28 +7167,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             />
                           </div>
           </div>
+                        </SectionCard>
                         {/* VAT Rates & Defaults Configuration */}
-                        <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="p-1 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
-                                  <Percent className="size-3.5" />
-                                </span>
-                                <h4 className="text-ui font-bold text-slate-800">
-                                  {t("VAT Rates & Defaults", "Sadzby DPH a predvolená hodnota", "ÁFA kulcsok és alapértelmezett érték")}
-                                </h4>
-                              </div>
-                              <p className="text-micro text-slate-500 mt-1">
-                                {t(
+                        <SectionCard
+                          title={t("VAT Rates & Defaults", "Sadzby DPH a predvolená hodnota", "ÁFA kulcsok és alapértelmezett érték")}
+                          description={t(
                                   "Configure available VAT rates for orders and invoices. The default rate will be pre-selected on newly added items.",
                                   "Nastavte dostupné sadzby DPH pre objednávky a faktúry. Predvolená sadzba sa automaticky zvolí pri nových položkách.",
                                   "Állítsa be a megrendelések és számlák ÁFA kulcsait. Az alapértelmezett kulcs automatikusan beállításra kerül az új tételeknél."
                                 )}
-                              </p>
-                            </div>
-        
-                            <button
+                          action={
+<button
                               type="button"
                               onClick={handleResetVatRates}
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 text-micro font-medium text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
@@ -7462,7 +7186,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               <RotateCcw className="size-3 text-slate-400" />
                               <span>{t("Reset to defaults (23, 19, 10, 5, 0)", "Obnoviť predvolené (23, 19, 10, 5, 0)", "Alapértelmezés (23, 19, 10, 5, 0)")}</span>
                             </button>
-                          </div>
+}
+                        >
         
                           {/* Active VAT rates pills */}
                           <div className="space-y-1.5">
@@ -7575,8 +7300,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </select>
                             </div>
                           </div>
-                        </div>
-        </SectionCard>
+                        </SectionCard>
+        </>
         );
       default:
         return null;
@@ -7586,16 +7311,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // ── The sections of the open category ───────────────────────────────────────
   const canSee = (ref: string) => catalog.some((c) => c.sections.some((s) => `${c.def.id}/${s.id}` === ref));
 
-  const sectionNodes = (cat: VisibleCategory): SectionNode[] => {
-    const bannered = new Set<string>();
-    return cat.sections.flatMap((s) => {
-      const body = renderSection(`${cat.def.id}/${s.id}`);
-      if (!body) return [];
-      // One read-only notice per permission on a page, not one per card.
-      const showBanner = !s.linkOnly && !bannered.has(s.permKey);
-      bannered.add(s.permKey);
-      return [{ id: s.id, node: (<>{showBanner && renderReadOnlyBanner(s.permKey)}{body}</>) }];
-    });
+  /** The open tab: its read-only notice (when the permission is "view") and its body. */
+  const activeBody = (cat: VisibleCategory, id: string): React.ReactNode => {
+    const def = cat.sections.find((s) => s.id === id);
+    const body = renderSection(`${cat.def.id}/${id}`);
+    return (
+      <>
+        {def && !def.linkOnly && renderReadOnlyBanner(def.permKey)}
+        {body ?? <p className="type-body text-slate-500">{navT("settings.nav.ui.not_available")}</p>}
+      </>
+    );
   };
 
   const openSearchHit = (entry: SearchEntry) => {
@@ -7622,7 +7347,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   let shell: React.ReactNode = null;
   if (wide !== null) {
-    if (openCategory && openCategory.def.id === "modules" && openSection === "records" && isCreatingUE) {
+    if (openCategory && openCategory.def.id === "modules" && activeSection === "records" && isCreatingUE) {
       // Creating or editing a custom record type takes the whole width and hides the navigation.
       shell = (
         <div className="flex flex-col gap-6" data-testid="settings-record-editor">
@@ -7630,8 +7355,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {renderSection("modules/records")}
         </div>
       );
-    } else if (openCategory) {
-      const sections = sectionNodes(openCategory);
+    } else if (openCategory && activeSection) {
+      const sectionIds = openCategory.sections.map((s) => s.id);
+      const body = activeBody(openCategory, activeSection);
       shell =
         layout === "sidebar" ? (
           <SidebarLayout
@@ -7639,8 +7365,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             groups={visibleGroups(visibility)}
             catalog={catalog}
             category={openCategory}
-            sections={sections}
-            routeSectionId={openSection}
+            activeId={activeSection}
+            body={body}
             layout={layout}
             onLayoutChange={setLayoutPref}
             query={query}
@@ -7656,8 +7382,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             lang={userLanguage}
             phone={phone}
             category={openCategory}
-            sections={sections}
-            routeSectionId={openSection}
+            sectionIds={sectionIds}
+            activeId={activeSection}
+            body={body}
             canSee={canSee}
             layout={layout}
             onLayoutChange={setLayoutPref}
@@ -7692,16 +7419,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }
 
-  // The floating save bar: phones only, and only where an explicit Save already exists.
-  const showSaveBar = phone && companyDirty && !isCreatingUE && (openCategory?.def.id === "company" || openCategory?.def.id === "offers");
-
   return (
     <div ref={wideRef} className="select-none text-slate-800 animate-fade-in" data-testid="settings-root" data-layout={layout}>
       {shell}
-
-      {showSaveBar && (
-        <SaveBar lang={userLanguage} detail={changedFields.join(", ")} onSave={saveCompanyDrafts} onDiscard={discardCompanyDrafts} />
-      )}
 
         {/* Exception Detail Popup Modal */}
         {selectedLog && (

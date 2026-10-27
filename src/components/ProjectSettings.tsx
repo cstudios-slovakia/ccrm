@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { SectionCard } from "./settings/SectionCard";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Check, Workflow, LayoutGrid, Rows3, ListTree, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Check, LayoutGrid, Rows3, ListTree, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
@@ -919,19 +920,17 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
   if (isCreating || editingType) {
     return (
-      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <h3 className="font-heading font-bold text-title text-slate-800">
-            {isCreating ? t("Create Project Type", "Vytvoriť typ projektu", "Projekt típus létrehozása") : t("Edit Project Type", "Upraviť typ projektu", "Projekt típus szerkesztése")}
-          </h3>
-          <button
+      <SectionCard
+        title={isCreating ? t("Create Project Type", "Vytvoriť typ projektu", "Projekt típus létrehozása") : t("Edit Project Type", "Upraviť typ projektu", "Projekt típus szerkesztése")}
+        action={
+<button
             onClick={handleCloseEditor}
             className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
-
+}
+      >
         {/* Section tabs */}
         <div role="tablist" className="flex flex-wrap items-center gap-1 p-1 rounded-2xl bg-slate-100 border border-slate-200 select-none w-fit max-w-full">
           {([
@@ -1836,13 +1835,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 {/* An existing type saves itself, so there is nothing to cancel. */}
                 {isCreating ? t("Cancel", "Zrušiť", "Mégse") : t("Close", "Zavrieť", "Bezárás")}
               </button>
-              <button
-                onClick={handleSaveType}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-emerald-600 text-white font-bold text-ui hover:bg-emerald-700 shadow-md cursor-pointer"
-              >
-                <Save className="h-4 w-4" />
-                <span>{t("Save Project Type", "Uložiť typ projektu", "Projekt típus mentése")}</span>
-              </button>
+              {isCreating && (
+                <button
+                  onClick={handleSaveType}
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-500 shadow-md shadow-indigo-600/20 cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>{t("Create Project Type", "Vytvoriť typ projektu", "Projekt típus létrehozása")}</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1894,147 +1895,140 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             </div>
           </div>
         )}
-      </div>
+      </SectionCard>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between text-left">
-        <div className="flex flex-col">
-          <h3 className="font-heading font-bold text-slate-800 text-title-sm">
-            {t("Project Types", "Typy projektov", "Projekt típusok")}
-          </h3>
-          <p className="type-overline text-slate-400 mt-0.5">
-            {t("Configure dynamic templates and attributes schemas", "Konfigurácia šablón a atribútov pre projekty", "Sablonok és attribútum sémák beállítása")}
-          </p>
-        </div>
-
-        {canEdit && (
+      <SectionCard
+        testId="settings-project-types"
+        title={t("Project Types", "Typy projektov", "Projekt típusok")}
+        description={t("Configure dynamic templates and attributes schemas", "Konfigurácia šablón a atribútov pre projekty", "Sablonok és attribútum sémák beállítása")}
+        action={canEdit ? (
           <button
+            type="button"
             onClick={handleStartCreate}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
           >
-            <Plus className="h-4.5 w-4.5" />
-            <span>{t("New Project Type", "Nový typ", "Új típus")}</span>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            <span>{t("New Project Type", "Nový typ", "Új typ")}</span>
           </button>
-        )}
-      </div>
+        ) : undefined}
+      >
+        {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 text-left">
+          <div className="flex flex-col">
+            <span className="text-body font-bold text-slate-800">
+              {t("Default project view", "Predvolené zobrazenie projektov", "Alapértelmezett projekt nézet")}
+            </span>
+            <span className="text-ui text-slate-500">
+              {t(
+                "Which view the projects screen opens on. The switcher in the list changes it too.",
+                "Zobrazenie, ktorým sa otvorí zoznam projektov. Prepínač v zozname ho tiež mení.",
+                "Melyik nézettel nyílik meg a projektek képernyő. A listában lévő kapcsoló is módosítja.",
+              )}
+            </span>
+          </div>
 
-      {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
-      <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-wrap items-center justify-between gap-3 text-left">
-        <div className="flex flex-col">
-          <span className="font-heading font-bold text-slate-800 text-ui">
-            {t("Default project view", "Predvolené zobrazenie projektov", "Alapértelmezett projekt nézet")}
-          </span>
-          <span className="text-caption font-semibold text-slate-400 mt-0.5">
-            {t(
-              "Which view the projects screen opens on. The switcher in the list changes it too.",
-              "Zobrazenie, ktorým sa otvorí zoznam projektov. Prepínač v zozname ho tiež mení.",
-              "Melyik nézettel nyílik meg a projektek képernyő. A listában lévő kapcsoló is módosítja.",
-            )}
-          </span>
+          <div className="flex shrink-0 select-none items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1">
+            {([
+              { mode: "structure" as const, Icon: ListTree, label: t("Structure", "Štruktúra", "Struktúra") },
+              { mode: "list" as const, Icon: Rows3, label: t("List", "Zoznam", "Lista") },
+              { mode: "grid" as const, Icon: LayoutGrid, label: t("Cards", "Karty", "Kártyák") },
+            ]).map(({ mode, Icon, label }) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setProjectsViewMode(mode)}
+                aria-pressed={projectsViewMode === mode}
+                className={`flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3 type-overline transition-all ${
+                  projectsViewMode === mode ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
-          {([
-            { mode: "structure" as const, Icon: ListTree, label: t("Structure", "Štruktúra", "Struktúra") },
-            { mode: "list" as const, Icon: Rows3, label: t("List", "Zoznam", "Lista") },
-            { mode: "grid" as const, Icon: LayoutGrid, label: t("Cards", "Karty", "Kártyák") },
-          ]).map(({ mode, Icon, label }) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setProjectsViewMode(mode)}
-              aria-pressed={projectsViewMode === mode}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer ${
-                projectsViewMode === mode
-                  ? "bg-white text-indigo-600 shadow-sm"
-                  : "text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {projectTypes.length === 0 ? (
-        <div className="glass-panel p-8 rounded-3xl border border-white/60 bg-white/95 text-center text-slate-400 shadow-glass">
-          <p className="text-body font-semibold">{t("No project types configured.", "Nie sú nakonfigurované žiadne typy projektov.", "Nincsenek projekt típusok beállítva.")}</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4 text-left">
-          {projectTypes.map(type => (
-            <div
-              key={type.id}
-              onClick={() => handleStartEdit(type)}
-              className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass hover:shadow-lg transition-all duration-300 cursor-pointer flex items-start justify-between group"
-            >
-              <div className="flex items-start gap-4">
-                <div 
-                  className="p-3 rounded-2xl text-white shrink-0 shadow-sm"
-                  style={{ backgroundColor: type.color }}
-                >
-                  {renderIcon(type.icon, "h-6 w-6")}
-                </div>
-                <div className="min-w-0">
-                  <h4 className="font-heading font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
-                    {type.name}
-                  </h4>
-                  <p className="text-ui font-semibold text-slate-500 line-clamp-2 mt-1">
-                    {type.description || t("No description.", "Bez popisu.", "Nincs leírás.")}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 mt-2.5">
-                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-micro font-bold text-slate-500 border border-slate-200">
-                      {type.attributes?.length || 0} {t("attributes", "atribútov", "attribútum")}
-                    </span>
-                    {type.hasTimeline && (
-                      <span className="px-2 py-0.5 rounded-full bg-purple-50 text-micro font-bold text-purple-600 border border-purple-100">
-                        {t("Timeline", "Časová os", "Idővonal")}
+        {projectTypes.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-400">
+            <p className="text-body font-semibold">{t("No project types configured.", "Nie sú nakonfigurované žiadne typy projektov.", "Nincsenek projekt típusok beállítva.")}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 text-left ws-md:grid-cols-2">
+            {projectTypes.map(type => (
+              <div
+                key={type.id}
+                onClick={() => handleStartEdit(type)}
+                className="group flex cursor-pointer items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md"
+              >
+                <div className="flex min-w-0 items-start gap-4">
+                  <div
+                    className="shrink-0 rounded-2xl p-3 text-white shadow-sm"
+                    style={{ backgroundColor: type.color }}
+                  >
+                    {renderIcon(type.icon, "h-6 w-6")}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-heading font-bold text-slate-800 transition-colors group-hover:text-indigo-600">
+                      {type.name}
+                    </h4>
+                    <p className="mt-1 line-clamp-2 text-ui text-slate-500">
+                      {type.description || t("No description.", "Bez popisu.", "Nincs leírás.")}
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-micro font-bold text-slate-500">
+                        {type.attributes?.length || 0} {t("attributes", "atribútov", "attribútum")}
                       </span>
-                    )}
-                    {type.hasGantt && (
-                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-micro font-bold text-blue-600 border border-blue-100">
-                        {t("Gantt", "Gantt", "Gantt")}
-                      </span>
-                    )}
-                    {projectTypeHasInvoiceDate(type) && (
-                      <span className="px-2 py-0.5 rounded-full bg-sky-50 text-micro font-bold text-sky-600 border border-sky-100">
-                        {t("Invoice date", "Termín fakturácie", "Számlázási határidő")}
-                      </span>
-                    )}
-                    {type.hasDeadline && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-micro font-bold text-amber-600 border border-amber-100">
-                        {t("Deadline", "Termín", "Határidő")}
-                      </span>
-                    )}
-                    {(type.fileFields?.length || 0) > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-micro font-bold text-emerald-600 border border-emerald-100">
-                        {t("Files", "Súbory", "Fájlok")}
-                      </span>
-                    )}
+                      {type.hasTimeline && (
+                        <span className="rounded-full border border-purple-100 bg-purple-50 px-2 py-0.5 text-micro font-bold text-purple-600">
+                          {t("Timeline", "Časová os", "Idővonal")}
+                        </span>
+                      )}
+                      {type.hasGantt && (
+                        <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-micro font-bold text-blue-600">
+                          {t("Gantt", "Gantt", "Gantt")}
+                        </span>
+                      )}
+                      {projectTypeHasInvoiceDate(type) && (
+                        <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-micro font-bold text-sky-600">
+                          {t("Invoice date", "Termín fakturácie", "Számlázási határidő")}
+                        </span>
+                      )}
+                      {type.hasDeadline && (
+                        <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-micro font-bold text-amber-600">
+                          {t("Deadline", "Termín", "Határidő")}
+                        </span>
+                      )}
+                      {(type.fileFields?.length || 0) > 0 && (
+                        <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-micro font-bold text-emerald-600">
+                          {t("Files", "Súbory", "Fájlok")}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {canEdit && (
-                <HoldToConfirmButton
+                {canEdit && (
+                  <HoldToConfirmButton
                     tone="danger"
                     lang={userLanguage}
                     what={type.name}
                     onConfirm={() => handleDeleteType(type.id)}
-                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all shrink-0"
+                    className="shrink-0 rounded-xl p-2 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-600"
                     title={t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}
-                >
-                  <Trash2 className="h-4.5 w-4.5" />
-                </HoldToConfirmButton>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                  >
+                    <Trash2 className="h-4.5 w-4.5" />
+                  </HoldToConfirmButton>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
 
       {/* ── AUTOMATIC CREATION FROM LEADS ──────────────────────────────────
           Every lead that arrives gets a project already paired with it — one
@@ -2073,21 +2067,14 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           .filter((r): r is { category: string; type: string } => !!r.type);
 
         return (
-          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left space-y-5">
-            <div className="space-y-1">
-              <h3 className="font-heading font-bold text-slate-800 text-title-sm flex items-center gap-2">
-                <Workflow className="h-4.5 w-4.5 text-indigo-500" />
-                {t("Automatic project creation", "Automatické vytváranie projektov", "Automatikus projektlétrehozás")}
-              </h3>
-              <p className="text-caption font-semibold text-slate-500 leading-relaxed max-w-3xl">
-                {t(
+          <SectionCard
+            title={t("Automatic project creation", "Automatické vytváranie projektov", "Automatikus projektlétrehozás")}
+            description={t(
                   "Every new lead is paired with a project — leads from the web form, from automations, from imports, and leads added by hand. Each interest category can name its own project type, so a lead ticking two of them gets one project of each. A lead whose interests match no rule falls back to the type below.",
                   "Každý nový lead sa spáruje s projektom — leady z webového formulára, z automatizácií, z importov aj leady pridané ručne. Každá kategória záujmu môže mať vlastný typ projektu, takže lead s dvoma kategóriami dostane projekt z každej. Lead, ktorého záujmy nezodpovedajú žiadnemu pravidlu, dostane záložný typ nižšie.",
                   "Minden új lead projekttel lesz párosítva — a webűrlapról, automatizációkból és importokból érkező, valamint a kézzel hozzáadott leadek. Minden érdeklődési kategóriának saját projekt típusa lehet, így a két kategóriát megjelölő lead mindegyikből kap egyet. Az egyik szabályra sem illeszkedő lead az alábbi tartalék típust kapja.",
                 )}
-              </p>
-            </div>
-
+          >
             {projectTypes.length === 0 ? (
               <p className="text-caption font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
                 {t(
@@ -2281,7 +2268,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 )}
               </>
             )}
-          </div>
+          </SectionCard>
         );
       })()}
     </div>

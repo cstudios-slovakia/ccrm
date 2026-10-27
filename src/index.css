@@ -1867,9 +1867,8 @@ dialog[open]::backdrop {
   &[data-fade~="end"] { --fade-end: 1.75rem; }
 }
 
-/* Settings: tile lift, section flash after a deep link, results and menu entrance.
-   All of it stands still under prefers-reduced-motion; the flash then becomes a
-   static ring for the same moment. */
+/* Settings: tile lift, tab panel / results / menu entrance.
+   All of it stands still under prefers-reduced-motion. */
 .settings-tile {
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
@@ -1880,13 +1879,12 @@ dialog[open]::backdrop {
 .settings-tile:active {
   transform: translateY(0) scale(0.985);
 }
-@keyframes settings-section-flash {
-  0% { box-shadow: 0 0 0 0 rgb(99 102 241 / 0.5); }
-  35% { box-shadow: 0 0 0 5px rgb(99 102 241 / 0.32); }
-  100% { box-shadow: 0 0 0 0 rgb(99 102 241 / 0); }
+@keyframes settings-panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
-.settings-section-flash {
-  animation: settings-section-flash 1.5s ease-out 1;
+.settings-panel-in {
+  animation: settings-panel-in 0.2s ease-out both;
 }
 @keyframes settings-results-in {
   from { opacity: 0; transform: translateY(-4px); }
@@ -1908,11 +1906,7 @@ dialog[open]::backdrop {
   .settings-tile:hover,
   .settings-tile:focus-visible,
   .settings-tile:active { transform: none; }
-  .settings-section-flash {
-    animation: none;
-    outline: 2px solid rgb(99 102 241 / 0.55);
-    outline-offset: 3px;
-  }
+  .settings-panel-in,
   .settings-results-in,
   .settings-menu-in { animation: none; }
 }

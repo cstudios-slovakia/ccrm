@@ -1,115 +1,115 @@
 import React from "react";
 import { cn } from "../../utils/cn";
-import { settingsPath } from "./settingsRegistry.ts";
+import { getTranslation } from "../../utils/translations";
+import type { Language } from "../../utils/translations";
+import { sectionKey, settingsPath } from "./settingsRegistry.ts";
+import { ScrollFade } from "./ScrollFade";
 
-/** DOM id of a section's anchor; one category is on screen at a time, so this is unique. */
+/** DOM id of a section's panel; one category is on screen at a time, so this is unique. */
 export const sectionDomId = (categoryId: string, sectionId: string) => `settings-${categoryId}-${sectionId}`;
+export const tabDomId = (categoryId: string, sectionId: string) => `settings-tab-${categoryId}-${sectionId}`;
 
-export interface SectionNode {
-  id: string;
-  node: React.ReactNode;
-}
+/** The address of a section's tab. Every tab, menu entry and sidebar link goes through it. */
+export const sectionHash = (categoryId: string, sectionId: string) => "#" + settingsPath(categoryId, sectionId);
 
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
-
-/**
- * The scrolling behaviour of a category page: `settings/<category>/<section>` scrolls to
- * that section and flashes it; scrolling by hand moves the "current section" the tabs and
- * the phone dropdown show. Shared by the tile and the sidebar layouts.
- */
-export const useSectionScroll = (categoryId: string, sectionIds: string[], routeSectionId: string | null) => {
-  const [activeId, setActiveId] = React.useState<string>(routeSectionId ?? sectionIds[0] ?? "");
-  const [flashId, setFlashId] = React.useState<string | null>(null);
-  const flashTimer = React.useRef<number | undefined>(undefined);
-  const idsKey = sectionIds.join("|");
-
-  const scrollRoot = (): HTMLElement | null => document.querySelector<HTMLElement>("main.workspace");
-
-  const scrollToSection = React.useCallback(
-    (sectionId: string) => {
-      const el = document.getElementById(sectionDomId(categoryId, sectionId));
-      if (!el) return;
-      el.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
-      setActiveId(sectionId);
-      setFlashId(sectionId);
-      window.clearTimeout(flashTimer.current);
-      flashTimer.current = window.setTimeout(() => setFlashId(null), 1600);
-    },
-    [categoryId],
-  );
-
-  // A new route: scroll to its section, or to the top of the category.
-  React.useEffect(() => {
-    if (routeSectionId) {
-      // After the sections have mounted and laid out.
-      const raf = requestAnimationFrame(() => scrollToSection(routeSectionId));
-      return () => cancelAnimationFrame(raf);
-    }
-    scrollRoot()?.scrollTo({ top: 0, behavior: "auto" });
-    setActiveId(idsKey.split("|")[0] ?? "");
-    return undefined;
-  }, [categoryId, routeSectionId, idsKey, scrollToSection]);
-
-  // Scroll-spy: the last section whose top has passed the reading line.
-  React.useEffect(() => {
-    const root = scrollRoot();
-    if (!root) return;
-    let raf = 0;
-    const update = () => {
-      raf = 0;
-      const rootTop = root.getBoundingClientRect().top;
-      let current = idsKey.split("|")[0] ?? "";
-      for (const id of idsKey.split("|")) {
-        const el = document.getElementById(sectionDomId(categoryId, id));
-        if (!el) continue;
-        // A section counts as current once it has reached the line scrollIntoView puts it on.
-        const reach = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
-        if (el.getBoundingClientRect().top <= rootTop + reach + 12) current = id;
-      }
-      setActiveId((prev) => (prev === current ? prev : current));
-    };
-    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
-    root.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      root.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [categoryId, idsKey]);
-
-  React.useEffect(() => () => window.clearTimeout(flashTimer.current), []);
-
-  /** Navigate to a section: through the hash (so the address is shareable), scrolling by hand if it is already there. */
-  const goTo = React.useCallback(
-    (sectionId: string) => {
-      const target = "#" + settingsPath(categoryId, sectionId);
-      if (window.location.hash === target) scrollToSection(sectionId);
-      else window.location.hash = target;
-    },
-    [categoryId, scrollToSection],
-  );
-
-  return { activeId, flashId, goTo };
+/** Opens a tab by moving the address, which keeps every section deep-linkable and Back working. */
+export const openSectionTab = (categoryId: string, sectionId: string) => {
+  const target = sectionHash(categoryId, sectionId);
+  if (window.location.hash !== target) window.location.hash = target;
 };
 
-/** The sections of a category, stacked. Each is an anchor the tabs and deep links scroll to. */
-export const SectionList: React.FC<{
+/**
+ * Every section is its own tab: only the open one is rendered. Switching tabs (or
+ * category) starts the page from the top, so the new tab never opens half way down.
+ */
+export const useScrollTopOnTab = (categoryId: string, sectionId: string) => {
+  React.useEffect(() => {
+    document.querySelector<HTMLElement>("main.workspace")?.scrollTo({ top: 0, behavior: "auto" });
+  }, [categoryId, sectionId]);
+};
+
+/** The one open section of a category, as the panel of its tab. */
+export const SectionPanel: React.FC<{
+  lang: Language;
   categoryId: string;
-  sections: SectionNode[];
-  flashId: string | null;
+  sectionId: string;
+  children: React.ReactNode;
   className?: string;
-}> = ({ categoryId, sections, flashId, className }) => (
-  <div className={cn("flex min-w-0 flex-col gap-6", className)}>
-    {sections.map((s) => (
-      <section
-        key={s.id}
-        id={sectionDomId(categoryId, s.id)}
-        data-settings-section={s.id}
-        data-testid={`settings-section-${categoryId}-${s.id}`}
-        className={cn("scroll-mt-36 ws-lg:scroll-mt-24 flex min-w-0 flex-col gap-6 rounded-3xl", flashId === s.id && "settings-section-flash")}
-      >
-        {s.node}
-      </section>
-    ))}
-  </div>
+}> = ({ lang, categoryId, sectionId, children, className }) => (
+  <section
+    key={sectionId}
+    id={sectionDomId(categoryId, sectionId)}
+    role="tabpanel"
+    aria-label={getTranslation(lang, sectionKey(categoryId, sectionId, "title"))}
+    data-settings-section={sectionId}
+    data-testid={`settings-section-${categoryId}-${sectionId}`}
+    className={cn("settings-panel-in flex min-w-0 flex-col gap-6", className)}
+  >
+    {children}
+  </section>
 );
+
+/**
+ * The tab strip of a category (wide screens, tile layout): real tabs — one per
+ * section, arrow keys move between them, the chosen one is the only one shown.
+ */
+export const SectionTabs: React.FC<{
+  lang: Language;
+  categoryId: string;
+  sectionIds: string[];
+  activeId: string;
+  onPick: (sectionId: string) => void;
+}> = ({ lang, categoryId, sectionIds, activeId, onPick }) => {
+  const t = (k: string) => getTranslation(lang, k);
+  const listRef = React.useRef<HTMLUListElement | null>(null);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const i = Math.max(0, sectionIds.indexOf(activeId));
+    const next =
+      e.key === "Home" ? 0 : e.key === "End" ? sectionIds.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + sectionIds.length) % sectionIds.length;
+    onPick(sectionIds[next]);
+    requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-tab="${sectionIds[next]}"]`)?.focus());
+  };
+
+  return (
+    <nav
+      aria-label={t("settings.nav.ui.sections")}
+      data-testid="settings-section-tabs"
+      className="sticky top-[calc(0.5rem_-_var(--gutter))] z-10 rounded-3xl border border-slate-200 bg-white/90 p-1.5 shadow-glass-sm backdrop-blur"
+    >
+      <ScrollFade axis="x">
+        <ul ref={listRef} role="tablist" aria-orientation="horizontal" onKeyDown={onKeyDown} className="flex gap-1">
+          {sectionIds.map((id) => {
+            const current = activeId === id;
+            return (
+              <li key={id} role="presentation" className="shrink-0">
+                <a
+                  id={tabDomId(categoryId, id)}
+                  role="tab"
+                  data-tab={id}
+                  aria-selected={current}
+                  aria-controls={sectionDomId(categoryId, id)}
+                  tabIndex={current ? 0 : -1}
+                  href={sectionHash(categoryId, id)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onPick(id);
+                  }}
+                  className={cn(
+                    "inline-flex min-h-10 items-center rounded-2xl px-4 text-ui no-underline transition-colors",
+                    current ? "bg-indigo-50 font-bold text-indigo-700" : "font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                  )}
+                >
+                  {t(sectionKey(categoryId, id, "title"))}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </ScrollFade>
+    </nav>
+  );
+};

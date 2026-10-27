@@ -35,22 +35,24 @@ async function openMovements(page: Page) {
 }
 
 test.describe('Settings → Finance', () => {
-  test('the Finance tab holds the categories, the inline-edit switch and the currency', async ({ page }) => {
+  test('the ledger tab holds the inline-edit switch and the currency, the categories tab the category tree', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#settings/finance');
 
-    await expect(
-      page.getByRole('heading', { name: /Movement Categories|Kategórie finančných pohybov/ })
-    ).toBeVisible(SETTLE);
-    await expect(inlineEditSwitch(page)).toBeVisible();
+    await expect(inlineEditSwitch(page)).toBeVisible(SETTLE);
     await expect(
       page.getByRole('heading', { name: /^(Currency|Mena|Pénznem)$/ })
     ).toBeVisible();
+
+    await page.getByRole('tab', { name: /Categories|Kategórie|Kategóriák/ }).click();
+    await expect(
+      page.getByRole('heading', { name: /Movement Categories|Kategórie finančných pohybov/ })
+    ).toBeVisible(SETTLE);
   });
 
   test('a category added here is saved to the tree', async ({ page }) => {
     await startSession(page);
-    await gotoView(page, '#settings/finance');
+    await gotoView(page, '#settings/finance/categories');
 
     await page.getByPlaceholder(/e\.g\. Meta Ads|napr\. Meta Ads|pl\. Google Ads/).fill(CATEGORY_NAME);
     await page.getByRole('button', { name: /Add Category|Pridať kategóriu/ }).click();

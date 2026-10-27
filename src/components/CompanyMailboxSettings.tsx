@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, Inbox, Pencil, Play, Plus, RefreshCw, X } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { AlertCircle, CheckCircle2, Pencil, Play, Plus, RefreshCw, X } from "lucide-react";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -147,32 +148,24 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
   ];
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left" data-testid="company-mailboxes">
-      <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-3 border-b border-slate-200 pb-3">
-        <div>
-          <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-            <Inbox className="h-4.5 w-4.5 text-indigo-500" />
-            {t("Company mailboxes", "Firemné schránky", "Céges postafiókok")}
-          </h3>
-          <p className="text-ui text-slate-500 font-medium mt-0.5 max-w-3xl">
-            {t(
+    <SectionCard
+      title={t("Company mailboxes", "Firemné schránky", "Céges postafiókok")}
+      description={t(
               "Shared mailboxes such as info@ or an order desk. Every few minutes the CRM reads them, and everyone's personal mailbox, and files each message from or to a known customer onto that customer's timeline, where everyone who may see it can read it.",
               "Spoločné schránky, napríklad info@ alebo objednávky. CRM ich každých pár minút načíta spolu s osobnými schránkami všetkých a každú správu od známeho zákazníka alebo jemu zaeviduje do jeho časovej osi, kde si ju prečíta každý, kto ju smie vidieť.",
               "Közös postafiókok, például az info@ vagy a rendeléskezelő. A CRM néhány percenként beolvassa őket és mindenki személyes postafiókját, és minden ismert ügyféltől érkező vagy neki küldött üzenetet az ügyfél idővonalán rögzít, ahol mindenki elolvashatja, aki láthatja.",
             )}
-          </p>
-        </div>
-        {!draft && (
-          <button
+      action={!draft ? (
+<button
             type="button"
             onClick={openNew}
             className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
           >
             <Plus className="h-3.5 w-3.5" /> {t("Add mailbox", "Pridať schránku", "Postafiók hozzáadása")}
           </button>
-        )}
-      </div>
-
+) : undefined}
+      testId="company-mailboxes"
+    >
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
           {loadError}
@@ -374,6 +367,6 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
             ))}
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 };

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { GripVertical, Plus, ShoppingCart, X, CheckCircle2 } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { GripVertical, Plus, X, CheckCircle2 } from "lucide-react";
 import type { Order } from "../types";
 import type { Language } from "../utils/translations";
 import {
@@ -209,20 +210,14 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
   };
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-        <ShoppingCart className="h-4.5 w-4.5 text-indigo-500" />
-        {t("Order Statuses (E-Shop & Pipeline)", "Stavy objednávok (E-shop & Obchod)", "Rendelés állapotok")}
-      </h3>
-
-      <p className="type-overline text-slate-400">
-        {t(
+    <SectionCard
+      title={t("Order Statuses (E-Shop & Pipeline)", "Stavy objednávok (E-shop & Obchod)", "Rendelés állapotok")}
+      description={t(
           "Drag statuses up or down relative to the group dividers to change their lifecycle phase. Click a status colour dot to change its colour.",
           "Presunutím stavov nahor alebo nadol vzhľadom na oddeľovače skupín zmeníte fázu životného cyklu. Kliknutím na farebný bod zmeníte farbu stavu.",
           "Húzza az állapotokat a csoportelválasztókhoz képest a fázis módosításához. A színes pontra kattintva módosíthatja a színt."
         )}
-      </p>
-
+    >
       <div className="border border-slate-200/80 rounded-2xl overflow-x-auto shadow-inner bg-white/50">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -396,6 +391,6 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
           </button>
         </form>
       )}
-    </div>
+    </SectionCard>
   );
 };

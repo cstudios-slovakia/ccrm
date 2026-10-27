@@ -1,5 +1,6 @@
 import React from "react";
-import { ScrollText, RefreshCw, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { RefreshCw, Download, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { formatTimestampLocalized } from "../utils/localTime";
 
@@ -102,12 +103,15 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
 
   return (
     <div className="ws-lg:col-span-12 space-y-6">
-      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
-          <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
-            <ScrollText className="h-4.5 w-4.5 text-indigo-600" /> {t("Audit log", "Auditný záznam", "Audit napló")}
-          </h3>
-          <div className="flex gap-2">
+      <SectionCard
+        title={t("Audit log", "Auditný záznam", "Audit napló")}
+        description={t(
+            "Who signed in, changed roles, created keys or cleared logs. Entries are append-only: nothing here can be edited or deleted. Administrators are notified by push when roles change, users are removed, MCP keys are created or logins are locked out.",
+            "Kto sa prihlásil, zmenil roly, vytvoril kľúče alebo vymazal záznamy. Záznamy sa iba pridávajú: nič tu nemožno upraviť ani zmazať. Administrátori dostanú push upozornenie pri zmene rolí, odstránení používateľa, vytvorení MCP kľúča alebo zámku prihlásenia.",
+            "Ki lépett be, ki módosított szerepköröket, hozott létre kulcsot vagy törölt naplót. A bejegyzések csak bővülnek: itt semmi sem szerkeszthető vagy törölhető. Az adminisztrátorok push értesítést kapnak szerepkörváltásról, felhasználó törléséről, MCP kulcs létrehozásáról vagy bejelentkezési zárolásról."
+          )}
+        action={
+<div className="flex gap-2">
             <button
               type="button"
               onClick={load}
@@ -122,15 +126,9 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
               <Download className="h-3.5 w-3.5" /> CSV
             </a>
           </div>
-        </div>
-
-        <p className="text-ui text-slate-500 font-medium max-w-3xl">
-          {t(
-            "Who signed in, changed roles, created keys or cleared logs. Entries are append-only: nothing here can be edited or deleted. Administrators are notified by push when roles change, users are removed, MCP keys are created or logins are locked out.",
-            "Kto sa prihlásil, zmenil roly, vytvoril kľúče alebo vymazal záznamy. Záznamy sa iba pridávajú: nič tu nemožno upraviť ani zmazať. Administrátori dostanú push upozornenie pri zmene rolí, odstránení používateľa, vytvorení MCP kľúča alebo zámku prihlásenia.",
-            "Ki lépett be, ki módosított szerepköröket, hozott létre kulcsot vagy törölt naplót. A bejegyzések csak bővülnek: itt semmi sem szerkeszthető vagy törölhető. Az adminisztrátorok push értesítést kapnak szerepkörváltásról, felhasználó törléséről, MCP kulcs létrehozásáról vagy bejelentkezési zárolásról."
-          )}
-        </p>
+}
+      >
+        
 
         <div className="grid grid-cols-1 ws-md:grid-cols-4 gap-3">
           <label className="space-y-1">
@@ -234,7 +232,7 @@ export const AuditLogSettings: React.FC<AuditLogSettingsProps> = ({ language }) 
             </button>
           </div>
         </div>
-      </div>
+      </SectionCard>
     </div>
   );
 };

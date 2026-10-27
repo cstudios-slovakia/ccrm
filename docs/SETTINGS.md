@@ -15,8 +15,8 @@ Since 1.13 (Nectarine) Settings is **12 categories in three groups**, each holdi
 | Hash | Shows |
 |---|---|
 | `#settings` | the tiles home (or the first permitted category in sidebar layout, wide screens only) |
-| `#settings/<category>` | the category page, scrolled to the top |
-| `#settings/<category>/<section>` | the category page, scrolled to that section, which flashes once |
+| `#settings/<category>` | the category page on its first tab |
+| `#settings/<category>/<section>` | the category page on that section's tab |
 | `#settings/modules/records/new`, `…/edit/<id>` | the custom record type editor (full width, navigation hidden) |
 
 Every pre-1.13 link (`#settings/invoicing`, `#settings/states`, …) is in
@@ -32,6 +32,12 @@ simply opens that category. Callers inside the app use the new routes.
 - Below `ws-lg` (the workspace container, measured by `useSettingsWide`) only the
   tile layout exists, whatever the stored preference says; the switch is hidden and
   the stored value is kept for the next wide screen.
+- **Every section is a real tab.** Only the open section is rendered (`SectionPanel`), the
+  others are one click away in the tab strip (`SectionTabs`: `role="tablist"`, arrow keys,
+  Home/End), in the sidebar's sub-links or in the phone dropdown. Switching tabs moves the
+  address (so Back and shared links work) and starts the page from the top — nothing scrolls
+  to a section any more. A section that has to load data on open (`isOpen` in `SettingsView`)
+  starts loading when its tab opens, not when the category does.
 - Phone category pages replace the section tabs with a **section dropdown**
   (`MobileSectionMenu`) — there is no sideways chip row. The only sideways scroller
   on the phone home is the "Recently opened" row.
@@ -68,15 +74,42 @@ that has more behind it; the item cut off at the fade is the second cue. Wrap an
 scrolling table or list in Settings in `<ScrollFade axis="x|y">` instead of
 `overflow-auto`.
 
-## Drafts
+## One block, one header
 
-The company forms (profile, billing details, bank account, invoice defaults) are one
-`billingForm` state with one save. Every card has a Save button on wide screens; on a
-phone the floating **Unsaved changes · Discard · Save** bar (`SaveBar`) appears while
-the form differs from what is stored. Switching category never discards the draft —
-the state lives in `SettingsView`, not in the sections.
+Every setting on every tab lives in a `SectionCard` (`settings/SectionCard.tsx`): a title, a
+one-line description and an optional action on one header row, a hairline, then the body.
+Never hand-build a card (`glass-panel … <h3>`), never put an icon in front of a block title,
+and put what used to be a small caption under the title into `description`. A component that
+Settings embeds (`ProjectSettings`, `TicketSettings`, …) uses `SectionCard` itself. Inside a
+block, `SettingsGroup` is the captioned group; a nested boxed block is a second `SectionCard`.
+`settingsRedesign.spec.ts` opens every section and fails on any `.glass-panel` without the
+standard header.
+
+An **"Add …" form is closed until its button is pressed**, and it lives inside the block it adds
+to (new user, new role). The only always-visible add row is the one-line input at the foot of a
+list (a new source, a new division).
+
+## Saving
+
+There is no Save button in Settings. An edit is written shortly after the last keystroke
+(`useAutosave`, 700 ms of quiet; leaving the screen writes a waiting edit at once) and the
+block's header shows a `SaveStatus` chip — "Saving…" then "Saved". Wire a new form like this:
+
+1. compute whether the draft differs from what is stored (`dirty`),
+2. `const status = useAutosave({ value, dirty, enabled: canEdit, save })`,
+3. pass `<SaveStatus lang={…} status={status} />` as the card's `action`.
+
+Rules that keep it honest: compare against the stored value **with the same defaults the form
+loads with** (or the first render looks dirty and writes defaults); save only the fields the
+form owns (the company forms patch `COMPANY_FORM_KEYS` into the latest stored record, so a
+payment-method edit made elsewhere is never overwritten); and never let a save echoing back
+overwrite what is being typed (`billingDirtyRef` in `SettingsView`).
+
+What keeps an explicit button is an action, not a setting: creating a record type, sending a
+test e-mail, testing a connection, resetting or wiping data. Editing an existing record type
+saves itself.
 
 ## Tests
 
 `tests/e2e/settingsRedesign.spec.ts` (tiles, layout switch, old links, inline search,
-category pages, phone layout) and `src/components/settings/settingsRegistry.test.ts`.
+category pages and their tabs, one header for every block, autosave, phone layout) and `src/components/settings/settingsRegistry.test.ts`.

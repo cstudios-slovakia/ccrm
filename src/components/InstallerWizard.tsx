@@ -171,11 +171,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
         {/* Language selector in Header */}
         <div className="absolute top-6 right-6 flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-full border border-slate-200 type-overline text-slate-600">
           <Languages className="h-3.5 w-3.5 text-indigo-500" />
-          <button onClick={() => setLang("en")} className={`hover:text-indigo-600 ${lang === "en" ? "text-indigo-600 font-extrabold" : ""}`}>EN</button>
+          <button onClick={() => setLang("en")} className={`hover:text-indigo-600 ${lang === "en" ? "text-indigo-600 font-extrabold" : ""}`}>English</button>
           <span>&bull;</span>
-          <button onClick={() => setLang("sk")} className={`hover:text-indigo-600 ${lang === "sk" ? "text-indigo-600 font-extrabold" : ""}`}>SK</button>
+          <button onClick={() => setLang("sk")} className={`hover:text-indigo-600 ${lang === "sk" ? "text-indigo-600 font-extrabold" : ""}`}>Slovenčina</button>
           <span>&bull;</span>
-          <button onClick={() => setLang("hu")} className={`hover:text-indigo-600 ${lang === "hu" ? "text-indigo-600 font-extrabold" : ""}`}>HU</button>
+          <button onClick={() => setLang("hu")} className={`hover:text-indigo-600 ${lang === "hu" ? "text-indigo-600 font-extrabold" : ""}`}>Magyar</button>
         </div>
 
         {/* Brand Banner */}

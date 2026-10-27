@@ -7,8 +7,7 @@ import {
 } from "./settingsRegistry.ts";
 import type { SettingsGroupId, VisibleCategory } from "./settingsRegistry.ts";
 import type { SearchEntry } from "./settingsSearch.ts";
-import { SectionList, useSectionScroll } from "./SectionList";
-import type { SectionNode } from "./SectionList";
+import { SectionPanel, openSectionTab, useScrollTopOnTab } from "./SectionList";
 import { SettingsNavSearch } from "./SettingsSearchCard";
 import { SettingsHeader } from "./SettingsHome";
 import type { SettingsLayout } from "./SettingsHome";
@@ -17,16 +16,17 @@ import { ScrollFade } from "./ScrollFade";
 
 /**
  * The sidebar layout (wide screens): a grouped navigation on the left — search on top,
- * the active category expanded with its sections as sub-links — and the category's
- * sections stacked on the right.
+ * the active category expanded with its sections as sub-links — and the open
+ * section on the right.
  */
 export const SidebarLayout: React.FC<{
   lang: Language;
   groups: { id: SettingsGroupId; categories: VisibleCategory[] }[];
   catalog: VisibleCategory[];
   category: VisibleCategory;
-  sections: SectionNode[];
-  routeSectionId: string | null;
+  /** The open section; the others are one click away in the navigation. */
+  activeId: string;
+  body: React.ReactNode;
   layout: SettingsLayout;
   onLayoutChange: (next: SettingsLayout) => void;
   query: string;
@@ -37,15 +37,14 @@ export const SidebarLayout: React.FC<{
   onOpenRef: (ref: string) => void;
   onOpenCategory: (categoryId: string) => void;
 }> = ({
-  lang, groups, catalog, category, sections, routeSectionId, layout, onLayoutChange, query, setQuery, searchRef,
+  lang, groups, catalog, category, activeId, body, layout, onLayoutChange, query, setQuery, searchRef,
   canSee, onOpenSearchHit, onOpenRef, onOpenCategory,
 }) => {
   const t = (k: string) => getTranslation(lang, k);
   const def = category.def;
   const tint = SETTINGS_TINTS[def.tint];
   const Icon = def.icon;
-  const sectionIds = sections.map((s) => s.id);
-  const { activeId, flashId, goTo } = useSectionScroll(def.id, sectionIds, routeSectionId);
+  useScrollTopOnTab(def.id, activeId);
 
   return (
     <div className="flex flex-col gap-7" data-testid="settings-sidebar-layout">
@@ -94,7 +93,7 @@ export const SidebarLayout: React.FC<{
                                       onClick={(e) => {
                                         e.preventDefault();
                                         onOpenRef(`${c.def.id}/${s.id}`);
-                                        goTo(s.id);
+                                        openSectionTab(c.def.id, s.id);
                                       }}
                                       className={cn(
                                         "flex min-h-8.5 items-center rounded-lg px-2.5 text-ui no-underline transition-colors",
@@ -128,7 +127,7 @@ export const SidebarLayout: React.FC<{
               <p className="type-body text-slate-500">{t(categoryKey(def.id, "subtitle"))}</p>
             </div>
           </div>
-          <SectionList categoryId={def.id} sections={sections} flashId={flashId} />
+          <SectionPanel lang={lang} categoryId={def.id} sectionId={activeId}>{body}</SectionPanel>
           <RelatedList lang={lang} category={category} canSee={canSee} onOpen={onOpenRef} variant="list" />
         </div>
       </div>

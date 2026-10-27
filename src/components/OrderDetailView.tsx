@@ -1103,12 +1103,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
-                  <option value="SK">Slovensko (SK)</option>
-                  <option value="CZ">Česká republika (CZ)</option>
-                  <option value="HU">Magyarország (HU)</option>
-                  <option value="AT">Österreich (AT)</option>
-                  <option value="DE">Deutschland (DE)</option>
-                  <option value="PL">Polska (PL)</option>
+                  <option value="SK">Slovensko</option>
+                  <option value="CZ">Česká republika</option>
+                  <option value="HU">Magyarország</option>
+                  <option value="AT">Österreich</option>
+                  <option value="DE">Deutschland</option>
+                  <option value="PL">Polska</option>
                 </select>
               </div>
 
@@ -1291,12 +1291,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   })}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
                 >
-                  <option value="SK">Slovensko (SK)</option>
-                  <option value="CZ">Česká republika (CZ)</option>
-                  <option value="HU">Magyarország (HU)</option>
-                  <option value="AT">Österreich (AT)</option>
-                  <option value="DE">Deutschland (DE)</option>
-                  <option value="PL">Polska (PL)</option>
+                  <option value="SK">Slovensko</option>
+                  <option value="CZ">Česká republika</option>
+                  <option value="HU">Magyarország</option>
+                  <option value="AT">Österreich</option>
+                  <option value="DE">Deutschland</option>
+                  <option value="PL">Polska</option>
                 </select>
               </div>
 

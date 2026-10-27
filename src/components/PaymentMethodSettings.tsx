@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { SectionCard } from "./settings/SectionCard";
 import {
   CreditCard,
   Plus,
@@ -251,34 +252,13 @@ export const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({
   };
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-      {/* Header */}
-      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200/60 text-indigo-600">
-            <CreditCard className="size-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-body font-heading font-bold text-slate-900">
-                {t("Payment Methods", "Spôsoby platby", "Fizetési módok")}
-              </h3>
-              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono text-micro font-bold border border-slate-200">
-                {activeMethods.length}
-              </span>
-            </div>
-            <p className="type-overline text-slate-400 mt-0.5">
-              {t(
-                "Configure payment methods available when processing orders and select default for new orders",
-                "Nastavte spôsoby platby pre objednávky a zvoľte predvolenú možnosť",
-                "Állítsa be a rendeléseknél elérhető fizetési módokat és az alapértelmezett opciót"
-              )}
-            </p>
-          </div>
-        </div>
-
-        {canEdit && (
-          <button
+    <SectionCard
+      title={t("Payment Methods", "Spôsoby platby", "Fizetési módok")}
+      description={activeMethods.length}
+      action={<div className="flex items-center gap-2">
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 font-mono text-micro font-bold text-slate-600">{activeMethods.length}</span>
+            {canEdit && (
+<button
             type="button"
             onClick={handleReset}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-ui font-medium transition-all shadow-2xs cursor-pointer self-start ws-sm:self-auto"
@@ -293,9 +273,9 @@ export const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({
               {t("Reset to defaults", "Obnoviť predvolené", "Alapértelmezett")}
             </span>
           </button>
-        )}
-      </div>
-
+            )}
+          </div>}
+    >
       {/* Reorderable Methods List */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -533,6 +513,6 @@ export const PaymentMethodSettings: React.FC<PaymentMethodSettingsProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 };

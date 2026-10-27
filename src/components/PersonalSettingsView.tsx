@@ -491,9 +491,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   value={userLanguage}
                   onChange={(v) => setUserLanguage(v as Language)}
                   options={[
-                    { value: "sk", label: "🇸🇰 Slovenčina" },
-                    { value: "en", label: "🇬🇧 English" },
-                    { value: "hu", label: "🇭🇺 Magyar" },
+                    { value: "sk", label: "Slovenčina" },
+                    { value: "en", label: "English" },
+                    { value: "hu", label: "Magyar" },
                   ]}
                 />
               </div>

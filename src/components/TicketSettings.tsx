@@ -1,17 +1,14 @@
 import React, { useMemo, useState } from "react";
+import { SectionCard } from "./settings/SectionCard";
 import {
   Plus,
   Trash2,
-  Mail,
   Sparkles,
-  Clock,
-  MessageSquare,
   CheckCircle2,
   AlertCircle,
   RefreshCw,
   GripVertical,
   Lock,
-  Tag,
   X,
 } from "lucide-react";
 import type {
@@ -451,20 +448,14 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
     <div className="space-y-6">
       {part !== "intake" && (<>
       {/* 1. Ticket Statuses (ProjectStatusSettings style) */}
-      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-        <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-          <Tag className="h-4.5 w-4.5 text-indigo-500" />
-          {t("Ticket statuses", "Stavy tiketov", "Jegyállapotok")}
-        </h3>
-
-        <p className="type-overline text-slate-400">
-          {t(
+      <SectionCard
+        title={t("Ticket statuses", "Stavy tiketov", "Jegyállapotok")}
+        description={t(
             "Drag statuses up or down relative to the group dividers to reorder them and change their group. Click a status's colour dot to change its colour.",
             "Presunutím stavov nahor alebo nadol vzhľadom na oddeľovače skupín zmeníte ich poradie aj skupinu. Kliknutím na farebný bod zmeníte farbu stavu.",
             "Húzza az állapotokat a csoportelválasztókhoz képest fel vagy le a sorrend és a csoport módosításához. A színes pontra kattintva módosíthatja a színt.",
           )}
-        </p>
-
+      >
         <div className="border border-slate-200/80 rounded-2xl overflow-x-auto shadow-inner bg-white/50">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -709,36 +700,24 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
             </button>
           </form>
         )}
-      </div>
+      </SectionCard>
       </>)}
 
       {part !== "statuses" && (<>
       {/* 2. Support Email IMAP Polling & OpenAI Project Routing */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center">
-              <Mail className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-body font-bold text-slate-900">
-                {tr(
+      <SectionCard
+        title={tr(
                   "Support E-mail (IMAP Polling & SMTP) + OpenAI priradenie projektu",
                   "Support Email (IMAP Polling & SMTP) + OpenAI Project Routing",
                   "Támogatási E-mail (IMAP & SMTP) + OpenAI projekt-hozzárendelés",
                 )}
-              </h3>
-              <p className="text-caption text-slate-500">
-                {tr(
+        description={tr(
                   "Automatické sťahovanie e-mailov zo support schránky. Ak je nastavený OpenAI kľúč, AI automaticky vyberie prislúchajúci projekt.",
                   "Automatically poll support inbox via IMAP. When an OpenAI key is configured, AI automatically selects the matching project.",
                   "Bejövő levelek automatikus lekérdezése IMAP-on. Ha van OpenAI kulcs, az AI automatikusan kiválasztja a megfelelő projektet.",
                 )}
-              </p>
-            </div>
-          </div>
-
-          <label className="inline-flex items-center gap-2 text-ui font-semibold text-slate-700 cursor-pointer">
+        action={
+<label className="inline-flex items-center gap-2 text-ui font-semibold text-slate-700 cursor-pointer">
             <input
               type="checkbox"
               checked={Boolean(ticketSettings.imapEnabled)}
@@ -755,8 +734,8 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
               {tr("Povoliť IMAP polling", "Enable IMAP Polling", "IMAP lekérdezés engedélyezése")}
             </span>
           </label>
-        </div>
-
+}
+      >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-caption font-semibold text-slate-500 mb-1">
@@ -1034,28 +1013,17 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
             />
           </div>
         </div>
-      </div>
+      </SectionCard>
 
       {/* 3. SLA Targets per Priority */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-body font-bold text-slate-900">
-              {tr("SLA Limity podľa priority", "SLA Targets by Priority", "SLA célértékek prioritás szerint")}
-            </h3>
-            <p className="text-caption text-slate-500">
-              {tr(
+      <SectionCard
+        title={tr("SLA Limity podľa priority", "SLA Targets by Priority", "SLA célértékek prioritás szerint")}
+        description={tr(
                 "Maximálny čas prvej odpovede a vyriešenia v minútach.",
                 "Maximum first response and resolution time in minutes.",
                 "Maximális első válaszidő és megoldási idő percben.",
               )}
-            </p>
-          </div>
-        </div>
-
+      >
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {(["critical", "high", "normal", "low"] as TicketPriority[]).map(
             (prio) => {
@@ -1125,28 +1093,17 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
             },
           )}
         </div>
-      </div>
+      </SectionCard>
 
       {/* 4. Canned Reply Templates */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
-            <MessageSquare className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-body font-bold text-slate-900">
-              {tr("Šablóny rýchlych odpovedí", "Canned Reply Templates", "Sablon válaszok")}
-            </h3>
-            <p className="text-caption text-slate-500">
-              {tr(
+      <SectionCard
+        title={tr("Šablóny rýchlych odpovedí", "Canned Reply Templates", "Sablon válaszok")}
+        description={tr(
                 "Predpripravené odpovede pre rýchlu komunikáciu v detaile tiketu.",
                 "Pre-written replies for one-click insertion in the ticket composer.",
                 "Előre megírt válaszok a gyors ügyfélszolgálati kommunikációhoz.",
               )}
-            </p>
-          </div>
-        </div>
-
+      >
         <div className="space-y-2 mb-4">
           {(ticketSettings.replyTemplates || []).map((tpl) => (
             <div
@@ -1224,7 +1181,7 @@ export const TicketSettings: React.FC<TicketSettingsProps> = ({
             </div>
           </div>
         )}
-      </div>
+      </SectionCard>
       </>)}
     </div>
   );

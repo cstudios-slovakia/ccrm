@@ -1,11 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { SETTINGS_CATEGORIES } from '../../src/components/settings/settingsRegistry.ts';
 
 /**
  * The regrouped Settings: 12 category tiles in three groups (or a sidebar), one
- * category per page with every section stacked, inline search, the old
- * `#settings/<id>` links, and the phone layout (tiles only, a section dropdown,
- * a floating save bar).
+ * category per page with one real tab per section (only the open one is rendered),
+ * inline search, the old `#settings/<id>` links, settings that save themselves, and
+ * the phone layout (tiles only, a section dropdown).
  *
  * The fixture runs in Slovak, so labels are matched in more than one language.
  */
@@ -64,9 +65,12 @@ test.describe('Settings home — tiles', () => {
     await page.getByTestId('settings-tile-leads').click();
 
     await expect(page.getByTestId('settings-category')).toHaveAttribute('data-category', 'leads', SETTLE);
-    await expect(page.getByTestId('settings-section-tabs').getByRole('link')).toHaveCount(5);
-    for (const s of ['stages', 'sources', 'interests', 'assignment', 'intake']) {
-      await expect(page.getByTestId(`settings-section-leads-${s}`)).toBeAttached();
+    await expect(page.getByTestId('settings-section-tabs').getByRole('tab')).toHaveCount(5);
+    // Real tabs: the first one is open, the others are not even rendered.
+    await expect(page.getByRole('tab', { name: /Pipeline stages|Fázy pipeline|Pipeline-fázisok/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('settings-section-leads-stages')).toBeVisible();
+    for (const s of ['sources', 'interests', 'assignment', 'intake']) {
+      await expect(page.getByTestId(`settings-section-leads-${s}`)).toHaveCount(0);
     }
     // Related settings are cross-links, never a dead end.
     await expect(page.getByTestId('settings-related').getByRole('link').first()).toBeVisible();
@@ -239,21 +243,25 @@ test.describe('Settings — inline search', () => {
 });
 
 test.describe('Settings — a category page', () => {
-  test('a deep link scrolls to the section and flashes it', async ({ page }) => {
+  test('a deep link opens that section as the current tab, and only that section', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#settings/leads/assignment');
     const section = page.getByTestId('settings-section-leads-assignment');
     await expect(section).toBeVisible(SETTLE);
-    await expect(section).toHaveClass(/settings-section-flash/);
+    await expect(page.getByTestId('settings-section-tabs').locator('[aria-selected="true"]')).toContainText(/Automatic assignment|Automatické priraďovanie|Automatikus kiosztás/);
+    await expect(page.getByTestId('settings-section-leads-stages')).toHaveCount(0);
     await expect.poll(async () => (await section.boundingBox())?.y ?? 9999, SETTLE).toBeLessThan(400);
   });
 
   test('a section tab moves the address and the current section', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#settings/leads');
-    await page.getByTestId('settings-section-tabs').getByRole('link', { name: /Lead sources|Zdroje leadov|Lead források/ }).click();
+    await page.getByTestId('settings-section-tabs').getByRole('tab', { name: /Lead sources|Zdroje leadov|Lead források/ }).click();
     await expect.poll(() => hashOf(page), SETTLE).toBe('#settings/leads/sources');
-    await expect(page.getByTestId('settings-section-tabs').locator('[aria-current="true"]')).toContainText(/Lead sources|Zdroje leadov|Lead források/);
+    await expect(page.getByTestId('settings-section-tabs').locator('[aria-selected="true"]')).toContainText(/Lead sources|Zdroje leadov|Lead források/);
+    // The tab swaps the content: the stages are gone, the sources are on screen.
+    await expect(page.getByTestId('settings-section-leads-sources')).toBeVisible(SETTLE);
+    await expect(page.getByTestId('settings-section-leads-stages')).toHaveCount(0);
   });
 
   test('recently opened sections come back as chips on the home screen', async ({ page }) => {
@@ -275,7 +283,7 @@ test.describe('Settings — a category page', () => {
 
   test('the offer templates and statuses are cards that open the Price offers settings', async ({ page }) => {
     await startSession(page);
-    await gotoView(page, '#settings/offers');
+    await gotoView(page, '#settings/offers/templates');
     const link = page.getByTestId('settings-module-link').first();
     await expect(link).toBeVisible(SETTLE);
     await link.click();
@@ -292,6 +300,97 @@ test.describe('Settings — a category page', () => {
       const headings = await page.locator('main.workspace h1, main.workspace h2, main.workspace h3, main.workspace h4, nav a, nav button').allInnerTexts();
       expect(headings.filter((h) => emoji.test(h)), `${hash}: ${text.slice(0, 40)}`).toEqual([]);
     }
+  });
+});
+
+test.describe('Settings — one look for every block', () => {
+  test('every section is a tab, and every block on it has the same header', async ({ page }) => {
+    test.setTimeout(480_000);
+    await startSession(page);
+    const offenders: string[] = [];
+    for (const cat of SETTINGS_CATEGORIES) {
+      for (const sec of cat.sections) {
+        if (sec.id === 'autocreate') continue; // hidden while the feature flag is off
+        await gotoView(page, `#settings/${cat.id}/${sec.id}`);
+        const panel = page.getByTestId(`settings-section-${cat.id}-${sec.id}`);
+        await expect(panel, `${cat.id}/${sec.id}`).toBeVisible(SETTLE);
+        const bad = await panel.evaluate((root) =>
+          Array.from(root.querySelectorAll('.glass-panel'))
+            .filter((el) => !el.firstElementChild?.querySelector(':scope > div > h3.type-panel-title'))
+            .map((el) => (el.textContent ?? '').trim().slice(0, 40)),
+        );
+        for (const b of bad) offenders.push(`${cat.id}/${sec.id}: "${b}"`);
+      }
+    }
+    expect(offenders, 'blocks without the standard header').toEqual([]);
+  });
+
+  test('arrow keys move between the tabs of a category', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#settings/leads');
+    const tabs = page.getByTestId('settings-section-tabs').getByRole('tab');
+    await tabs.first().focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => hashOf(page), SETTLE).toBe('#settings/leads/sources');
+    await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+    await expect(tabs.nth(1)).toBeFocused();
+    await page.keyboard.press('End');
+    await expect.poll(() => hashOf(page), SETTLE).toBe('#settings/leads/intake');
+  });
+
+  test('the company blocks have no Save button — they save themselves', async ({ page }) => {
+    await startSession(page);
+    for (const sec of ['profile', 'billing', 'bank']) {
+      await gotoView(page, `#settings/company/${sec}`);
+      const panel = page.getByTestId(`settings-section-company-${sec}`);
+      await expect(panel).toBeVisible(SETTLE);
+      await expect(panel.getByRole('button', { name: /Save|Uložiť|Mentés/ })).toHaveCount(0);
+    }
+    await gotoView(page, '#settings/company/bank');
+    await page.getByTestId('settings-section-company-bank').getByRole('textbox').first().fill('SK31 1200 0000 1987 4263 7541');
+    await expect(page.getByTestId('settings-save-status')).toHaveAttribute('data-status', 'saved', SETTLE);
+  });
+
+  test('the new-account form appears only when asked for, inside the users block', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#settings/access/users');
+    const card = page.getByTestId('settings-users-card');
+    await expect(card).toBeVisible(SETTLE);
+    await expect(page.getByTestId('settings-add-user-form')).toHaveCount(0);
+
+    await card.getByTestId('settings-add-user').click();
+    const form = card.getByTestId('settings-add-user-form');
+    await expect(form).toBeVisible();
+    await form.getByRole('button', { name: /Cancel|Zrušiť|Mégse/ }).click();
+    await expect(page.getByTestId('settings-add-user-form')).toHaveCount(0);
+  });
+
+  test('language dropdowns show names only — no flags, no codes', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#settings/company/regional');
+    const panel = page.getByTestId('settings-section-company-regional');
+    await expect(panel).toBeVisible(SETTLE);
+    await panel.getByRole('button').first().click();
+    const options = (await page.getByRole('option').allInnerTexts()).map((o) => o.trim()).filter(Boolean);
+    for (const name of ['Slovenčina', 'English', 'Magyar']) expect(options).toContain(name);
+    expect(options.filter((o) => /^[A-Z]{2}\b|[\u{1F1E6}-\u{1F1FF}]/u.test(o))).toEqual([]);
+  });
+
+  test('the project types block is the same card as the statuses block', async ({ page }) => {
+    await startSession(page);
+    const look = (el: Element) => {
+      const cs = getComputedStyle(el);
+      return { radius: cs.borderTopLeftRadius, border: cs.borderTopWidth, pad: cs.paddingTop, bg: cs.backgroundColor };
+    };
+    await gotoView(page, '#settings/projects/types');
+    const types = page.getByTestId('settings-project-types');
+    await expect(types).toBeVisible(SETTLE);
+    const typesLook = await types.evaluate(look);
+
+    await gotoView(page, '#settings/projects/statuses');
+    const status = page.getByTestId('settings-section-projects-statuses').locator('.glass-panel').first();
+    await expect(status).toBeVisible(SETTLE);
+    expect(await status.evaluate(look)).toEqual(typesLook);
   });
 });
 
@@ -426,24 +525,20 @@ test.describe('Settings — on a phone', () => {
     await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(12);
   });
 
-  test('an edited company form raises the floating save bar; Discard clears it', async ({ page }) => {
+  test('an edited company form saves itself: no save bar, no save button, a "Saved" chip', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#settings/company/billing');
-    await expect(page.getByTestId('settings-save-bar')).toHaveCount(0);
 
     const street = page.getByTestId('settings-section-company-billing').getByRole('textbox').nth(3);
     const before = await street.inputValue();
-    await street.fill(before + ' 99');
-    await expect(page.getByTestId('settings-save-bar')).toBeVisible(SETTLE);
     // 48 px inputs on a phone.
     expect((await street.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(47);
-
-    await page.getByTestId('settings-save-bar-discard').click();
-    await expect(page.getByTestId('settings-save-bar')).toHaveCount(0);
-    await expect(street).toHaveValue(before);
-
     await street.fill(before + ' 7');
-    await page.getByTestId('settings-save-bar-save').click();
-    await expect(page.getByTestId('settings-save-bar')).toHaveCount(0, SETTLE);
+
+    await expect(page.getByTestId('settings-save-status')).toBeVisible(SETTLE);
+    await expect(page.getByTestId('settings-save-status')).toHaveAttribute('data-status', 'saved', SETTLE);
+    await expect(page.getByTestId('settings-save-bar')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Save|Uložiť|Mentés/ })).toHaveCount(0);
+    await expect(street).toHaveValue(before + ' 7');
   });
 });

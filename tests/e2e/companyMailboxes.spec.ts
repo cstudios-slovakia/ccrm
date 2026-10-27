@@ -61,7 +61,7 @@ test.describe('Company mailboxes', () => {
   test('an admin adds a mailbox; the password goes to the server once and a stored one is never shown', async ({ page }) => {
     await startSession(page);
     const sent = await mockMailboxApi(page);
-    await gotoView(page, '#settings/email');
+    await gotoView(page, '#settings/email/mailboxes');
 
     const panel = page.getByTestId('company-mailboxes');
     await expect(panel).toBeVisible();

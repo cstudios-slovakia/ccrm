@@ -1,5 +1,6 @@
 import React from "react";
-import { CheckSquare, Info } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { Info } from "lucide-react";
 import type { TaskSettings } from "../types";
 import type { Language } from "../utils/translations";
 
@@ -27,12 +28,9 @@ export const TaskSettingsPanel: React.FC<TaskSettingsPanelProps> = ({
   const defaultOn = settings.defaultRequiresConclusion;
 
   return (
-    <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-5">
-      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-        <CheckSquare className="h-4.5 w-4.5 text-indigo-500" />
-        {t("Tasks", "Úlohy", "Feladatok")}
-      </h3>
-
+    <SectionCard
+      title={t("Tasks", "Úlohy", "Feladatok")}
+    >
       <div className="space-y-3">
         <label
           className={`flex items-start gap-3 p-4 rounded-2xl border-2 transition-colors ${
@@ -131,6 +129,6 @@ export const TaskSettingsPanel: React.FC<TaskSettingsPanelProps> = ({
           )}
         </span>
       </p>
-    </div>
+    </SectionCard>
   );
 };

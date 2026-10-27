@@ -263,9 +263,9 @@ test.describe('Shell navigation', () => {
     await gotoView(page, '#settings/leads');
     const sourcesTab = page
       .getByTestId('settings-section-tabs')
-      .getByRole('link', { name: /Lead sources|Zdroje leadov|Lead források/ });
+      .getByRole('tab', { name: /Lead sources|Zdroje leadov|Lead források/ });
     await sourcesTab.click();
     await expect(page).toHaveURL(/#settings\/leads\/sources$/);
-    await expect(sourcesTab).toHaveAttribute('aria-current', 'true');
+    await expect(sourcesTab).toHaveAttribute('aria-selected', 'true');
   });
 });

@@ -1530,10 +1530,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-title-sm">
-                                                        🇬🇧
-                                                    </span>{" "}
-                                                    EN
+                                                    English
                                                 </button>
                                                 <button
                                                     type="button"
@@ -1546,10 +1543,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-title-sm">
-                                                        🇸🇰
-                                                    </span>{" "}
-                                                    SK
+                                                    Slovenčina
                                                 </button>
                                                 <button
                                                     type="button"
@@ -1562,10 +1556,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-title-sm">
-                                                        🇭🇺
-                                                    </span>{" "}
-                                                    HU
+                                                    Magyar
                                                 </button>
                                             </div>
                                         </div>

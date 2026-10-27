@@ -1,5 +1,6 @@
 import React from "react";
-import { ArrowRight, Coins, Table2, Link2, FileSpreadsheet } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { ArrowRight, Link2, FileSpreadsheet } from "lucide-react";
 import type { FinancialCategory, FinancialRecord, FinancialOperatingMode } from "../types";
 import { FinancialCategoriesManager } from "./FinancialCategoriesManager";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
@@ -27,9 +28,6 @@ interface FinanceSettingsProps {
   part?: "ledger" | "categories";
 }
 
-const PANEL = "glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass";
-const PANEL_TITLE =
-  "text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3";
 
 /**
  * Settings → Finance: how the Finance screen behaves and what it is made of.
@@ -58,20 +56,14 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
     <div className="space-y-6">
       {part !== "categories" && (<>
       {/* Financial Operating Mode */}
-      <div className={PANEL}>
-        <h3 className={PANEL_TITLE}>
-          <FileSpreadsheet className="h-4.5 w-4.5 text-indigo-500" />
-          {t("Financial Operating Mode", "Režim fungovania financií", "Pénzügyi működési mód")}
-        </h3>
-
-        <p className="text-micro font-medium text-slate-500 leading-relaxed -mt-2">
-          {t(
+      <SectionCard
+        title={t("Financial Operating Mode", "Režim fungovania financií", "Pénzügyi működési mód")}
+        description={t(
             "Choose how the overview table and cash flow graphs operate. You can switch between live ledger synchronization and detached spreadsheet mode at any time without losing data.",
             "Zvoľte, ako funguje prehľadová tabuľka a grafy cash flow. Medzi prepojeným režimom a odpojenou tabuľkou môžete kedykoľvek prepínať bez straty údajov.",
             "Válassza ki, hogyan működjön az áttekintő táblázat és a cash flow grafikon. Bármikor válthat a valós mozgások és a leválasztott táblázat között adatvesztés nélkül."
           )}
-        </p>
-
+      >
         <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-1">
           {/* Connected Mode Card */}
           <button
@@ -145,15 +137,12 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
             </span>
           </button>
         </div>
-      </div>
+      </SectionCard>
 
       {/* Movements table */}
-      <div className={PANEL}>
-        <h3 className={PANEL_TITLE}>
-          <Table2 className="h-4.5 w-4.5 text-indigo-500" />
-          {t("Movements table", "Tabuľka pohybov", "Mozgások táblázata")}
-        </h3>
-
+      <SectionCard
+        title={t("Movements table", "Tabuľka pohybov", "Mozgások táblázata")}
+      >
         <label className="flex items-center justify-between gap-4 cursor-pointer">
           <span className="min-w-0">
             <span className="block text-ui font-bold text-slate-800">
@@ -180,14 +169,12 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
             <span className="w-9 h-5 bg-slate-300 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500/40 peer-checked:bg-indigo-600 transition-colors duration-200 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white" />
           </span>
         </label>
-      </div>
+      </SectionCard>
 
       {/* Currency: read-only here, edited in Company › Language & currency */}
-      <div className={PANEL}>
-        <h3 className={PANEL_TITLE}>
-          <Coins className="h-4.5 w-4.5 text-emerald-500" />
-          {getTranslation(userLanguage, "settings.general.currency")}
-        </h3>
+      <SectionCard
+        title={getTranslation(userLanguage, "settings.general.currency")}
+      >
         <div className="flex flex-wrap items-center gap-3">
           <span
             data-testid="finance-currency-readonly"
@@ -209,7 +196,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
         <p className="text-micro text-slate-500">
           {getTranslation(userLanguage, "settings.nav.ui.currency_readonly_body")}
         </p>
-      </div>
+      </SectionCard>
       </>)}
 
       {/* Movement categories */}

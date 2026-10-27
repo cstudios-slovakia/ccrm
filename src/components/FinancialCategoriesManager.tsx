@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
-import { GripVertical, Layers, Trash2 } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { GripVertical, Trash2 } from "lucide-react";
 import type { FinancialCategory, FinancialRecord, FinancialType } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
@@ -383,20 +384,11 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
   const activeTree = catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree;
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
-      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-3 border-b border-slate-100 pb-4">
-        <div>
-          <h3 className="text-body font-bold text-slate-900 flex items-center gap-2">
-            <Layers className="h-4 w-4 text-indigo-500" />
-            {t("Movement Categories", "Kategórie finančných pohybov", "Mozgási kategóriák")}
-          </h3>
-          <p className="text-ui text-slate-400 mt-0.5">
-            {t("Organize your financial movement categories across Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3).", "Organizácia finančných tokov a nákladov v 3 úrovniach: Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3).", "Pénzügyi tételek 3 szintű rendszerezése: Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3).")}
-          </p>
-        </div>
-
-        {/* Incomes vs Expenses tree switcher */}
-        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl">
+    <SectionCard
+      title={t("Movement Categories", "Kategórie finančných pohybov", "Mozgási kategóriák")}
+      description={t("Organize your financial movement categories across Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3).", "Organizácia finančných tokov a nákladov v 3 úrovniach: Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3).", "Pénzügyi tételek 3 szintű rendszerezése: Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3).")}
+      action={
+<div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl">
           <button
             type="button"
             onClick={() => {
@@ -427,8 +419,8 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
             {t("Income Categories", "Kategórie príjmov", "Bevételi kategóriák")}
           </button>
         </div>
-      </div>
-
+}
+    >
       {/* Quick Add Category Form */}
       {canEdit && (
         <form onSubmit={handleCreateCategory} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-end gap-3">
@@ -550,6 +542,6 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
           </div>
         )}
       </div>
-    </div>
+    </SectionCard>
   );
 };

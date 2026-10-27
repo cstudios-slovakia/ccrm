@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Tag, X } from "lucide-react";
+import { SectionCard } from "./settings/SectionCard";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import type { Lead, WarehouseItem } from "../types";
 import type { Language } from "../utils/translations";
 import { priceLevelIdFor, type PriceLevel } from "../utils/priceLevels";
@@ -119,20 +120,15 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
   };
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left" data-testid="price-level-settings">
-      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-        <Tag className="h-4.5 w-4.5 text-indigo-500" />
-        {t("Price levels", "Cenové hladiny", "Árszintek")}
-      </h3>
-
-      <p className="type-overline text-slate-400">
-        {t(
+    <SectionCard
+      title={t("Price levels", "Cenové hladiny", "Árszintek")}
+      description={t(
           "Named price lists, e.g. Retail, Wholesale, Partner. Set the price per level on each product (Warehouse), and the level a client buys on on the client's profile. A product without a price on that level uses its default sell price.",
           "Pomenované cenníky, napr. Maloobchod, Veľkoobchod, Partner. Cenu pre každú hladinu nastavíte na produkte (Sklad) a hladinu klienta v jeho profile. Tovar bez ceny na danej hladine použije svoju predvolenú predajnú cenu.",
           "Elnevezett árlisták, pl. Kiskereskedelem, Nagykereskedelem, Partner. Az árat szintenként a terméken (Raktár), az ügyfél szintjét az ügyfél profiljában állíthatja be. Az adott szinten ár nélküli termék az alapértelmezett eladási árát használja.",
         )}
-      </p>
-
+      testId="price-level-settings"
+    >
       {levels.length === 0 ? (
         <p className="text-ui text-slate-500 italic">{t("No price levels yet.", "Zatiaľ nie sú žiadne cenové hladiny.", "Még nincsenek árszintek.")}</p>
       ) : (
@@ -234,6 +230,6 @@ export const PriceLevelSettings: React.FC<PriceLevelSettingsProps> = ({
           </button>
         </form>
       )}
-    </div>
+    </SectionCard>
   );
 };

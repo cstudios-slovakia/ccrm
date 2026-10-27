@@ -3754,7 +3754,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       />
                     ) : (
                       <div className="pl-0 text-slate-900 font-bold cursor-default select-all">
-                        🇪🇺 {profileCountry}
+                        {profileCountry}
                       </div>
                     )}
                   </div>

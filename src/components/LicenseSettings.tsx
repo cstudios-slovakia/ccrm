@@ -1,4 +1,5 @@
 import React from "react";
+import { SectionCard } from "./settings/SectionCard";
 import {
   KeyRound, ShieldCheck, ShieldAlert, ShieldX, RefreshCw, Trash2,
   Users, CalendarClock, Info, CheckCircle2, Loader2,
@@ -111,25 +112,18 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
 
   return (
     <div className="ws-lg:col-span-12 space-y-6">
-      <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-
-        {/* Heading + status chip */}
-        <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-100 pb-4">
-          <div className="space-y-1">
-            <h3 className="text-body font-heading font-bold text-slate-800 flex items-center gap-2">
-              <KeyRound className="h-4.5 w-4.5 text-indigo-500" aria-hidden="true" />
-              {t("license.title")}
-            </h3>
-            <p className="text-caption font-semibold text-slate-500">{t("license.subtitle")}</p>
-          </div>
-          <span
+      <SectionCard
+        title={t("license.title")}
+        description={t("license.subtitle")}
+        action={
+<span
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border type-overline ${statusVisual.chip}`}
           >
             <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
             {t(`license.status.${status}`)}
           </span>
-        </div>
-
+}
+      >
         {/* Licensing was never switched on for this build: say so instead of
             offering an activation form that cannot succeed. */}
         {!configured && (
@@ -214,7 +208,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
               run("activate", () => activateLicense(keyInput.trim()), "license.activated_ok");
             }}
           >
-            <label className="type-overline text-slate-400 block pl-0.5">
+            <label className="type-overline text-slate-500 block pl-0.5">
               {t("license.key_label")}
             </label>
             <div className="flex flex-col ws-sm:flex-row gap-3">
@@ -297,7 +291,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
         <p className="text-caption font-semibold text-slate-500 leading-relaxed border-t border-slate-100 pt-4">
           {t("license.updates_explainer")}
         </p>
-      </div>
+      </SectionCard>
     </div>
   );
 };
