@@ -21,6 +21,15 @@
  *   node scripts/qa/run-qa.mjs --module Warehouse   # one module
  *   node scripts/qa/run-qa.mjs --since main         # diff against another ref
  *   node scripts/qa/run-qa.mjs --files src/components/EmailView.tsx
+ *   node scripts/qa/run-qa.mjs --pending            # commits made with "QA: pending"
+ *
+ * A selection that would be the FULL suite is refused unless it was asked for
+ * (`--full`, `QA_ALLOW_FULL=1`, or CI): plain `npm run test:qa` on a branch with
+ * no upstream used to diff against a months-old base and quietly start all 400+
+ * tests. Agents pass `--files`.
+ *
+ * Exit codes: 0 passed or nothing to test, 1 defects or failed tests,
+ * 2 not admitted (lock/RAM/port wait timed out), 3 refused a full run.
  *
  * Only one run per machine. Several editor sessions share this machine and
  * each of them follows the same "test when finished" rule, so runs used to
@@ -39,7 +48,7 @@
  * browser.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -166,6 +175,7 @@ const passThrough = passThroughAt === -1 ? [] : argv.slice(passThroughAt + 1);
 const own = passThroughAt === -1 ? argv : argv.slice(0, passThroughAt);
 
 const full = own.includes('--full');
+const pending = own.includes('--pending');
 const sinceAt = own.indexOf('--since');
 const since = sinceAt === -1 ? null : own[sinceAt + 1];
 /**
@@ -204,11 +214,57 @@ function git(args) {
 function resolveBase() {
   if (since) return since;
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'])?.trim();
-  const candidates = [branch && `origin/${branch}`, 'origin/dev', 'origin/main'].filter(Boolean);
+  /* A detached HEAD reports "HEAD", which is not a branch name. */
+  const candidates = [branch && branch !== 'HEAD' && `origin/${branch}`, 'origin/main', 'origin/dev'].filter(Boolean);
+  /* The nearest one, not the first that exists: a stale `origin/dev` is
+     hundreds of commits behind and would turn every run into a full one. */
+  let best = null;
+  let bestAhead = Infinity;
   for (const ref of candidates) {
-    if (git(['rev-parse', '--verify', '--quiet', ref])) return ref;
+    if (!git(['rev-parse', '--verify', '--quiet', ref])) continue;
+    const ahead = Number(git(['rev-list', '--count', `${ref}..HEAD`])?.trim());
+    if (Number.isFinite(ahead) && ahead < bestAhead) {
+      best = ref;
+      bestAhead = ahead;
+    }
   }
-  return null;
+  return best;
+}
+
+/**
+ * Commits made without a QA verdict carry a `QA: pending` line. `--pending`
+ * covers them in one batch, counting from the last batch that passed (a marker
+ * in the git common dir, shared by every worktree) or else from the nearest base.
+ */
+const headAtStart = git(['rev-parse', 'HEAD'])?.trim() ?? null;
+const markerPath = (() => {
+  const dir = git(['rev-parse', '--path-format=absolute', '--git-common-dir'])?.trim();
+  return dir ? path.join(dir, 'ccrm-qa-pending-cleared') : null;
+})();
+
+function pendingFiles() {
+  let from = null;
+  try {
+    const sha = markerPath ? readFileSync(markerPath, 'utf8').trim() : '';
+    if (sha && git(['merge-base', '--is-ancestor', sha, 'HEAD']) !== null) from = sha;
+  } catch {
+    /* no marker yet */
+  }
+  const range = from ?? resolveBase();
+  const fromLabel = from ? from.slice(0, 8) : (range ?? 'the start of history');
+  const lines = (out) =>
+    (out ?? '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+  const shas = lines(git(['log', '--format=%H', '-E', '--grep=^QA: pending', range ? `${range}..HEAD` : 'HEAD']));
+  const files = new Set();
+  const commits = [];
+  for (const sha of shas) {
+    commits.push(`${sha.slice(0, 8)} ${git(['log', '-1', '--format=%s', sha])?.trim() ?? ''}`);
+    lines(git(['diff-tree', '--no-commit-id', '--name-only', '-r', sha])).forEach((f) => files.add(f));
+  }
+  return { files: [...files], commits, fromLabel };
 }
 
 function changedFiles() {
@@ -237,16 +293,31 @@ function selectTitles() {
   if (full) return { titles: null, why: 'full scan requested' };
   if (explicitModule) return { titles: [explicitModule], why: `module: ${explicitModule}` };
 
-  const { files, base } = explicitFiles
-    ? { files: explicitFiles, base: null }
-    : changedFiles();
-  const source = explicitFiles ? 'given files' : `vs ${base ?? 'HEAD'}`;
-  if (files.length === 0) return { titles: [], why: `no changes ${source}` };
+  const pend = pending ? pendingFiles() : null;
+  const { files, base } = pend
+    ? { files: pend.files, base: null }
+    : explicitFiles
+      ? { files: explicitFiles, base: null }
+      : changedFiles();
+  const source = pend
+    ? `commits marked "QA: pending" since ${pend.fromLabel}`
+    : explicitFiles
+      ? 'given files'
+      : `vs ${base ?? 'HEAD'}`;
+  if (pend && pend.commits.length === 0) {
+    return { titles: [], why: `no commits marked "QA: pending" since ${pend.fromLabel}` };
+  }
+  if (files.length === 0) return { titles: [], why: `no changes ${source}`, commits: pend?.commits };
 
   const forced = files.filter((f) => FORCES_FULL.test(f));
   if (forced.length > 0) {
     const extra = forced.length > 1 ? ` +${forced.length - 1}` : '';
-    return { titles: null, why: `the QA harness itself changed (${forced[0]}${extra})` };
+    return {
+      titles: null,
+      why: `the QA harness itself changed (${forced[0]}${extra}; ${source})`,
+      forced,
+      commits: pend?.commits,
+    };
   }
 
   const titles = new Set();
@@ -271,6 +342,7 @@ function selectTitles() {
     titles: [...titles],
     why: `${matched.length} of ${files.length} changed file(s) map to tests (${source})`,
     files: matched,
+    commits: pend?.commits,
   };
 }
 
@@ -310,14 +382,31 @@ function demote(pid) {
  * Re-applies both limits to the browsers playwright spawns. Priority is
  * inherited at creation, but affinity is not, and renderers come and go
  * throughout a run — so this sweeps rather than setting it once.
+ *
+ * Playwright's Chromium is also called `chrome`, the name of the user's own
+ * Google Chrome. Selecting by name alone throttled that browser every 5 seconds
+ * and never restored it, so a process only qualifies when its binary lives
+ * under the Playwright browsers directory.
  */
+function limitSelection() {
+  const browsers = process.env.PLAYWRIGHT_BROWSERS_PATH && process.env.PLAYWRIGHT_BROWSERS_PATH !== '0'
+    ? process.env.PLAYWRIGHT_BROWSERS_PATH
+    : path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'ms-playwright');
+  const dir = (browsers.endsWith(path.sep) ? browsers : browsers + path.sep).replace(/'/g, "''");
+  const names = "'chrome-headless-shell','ffmpeg-win64','chrome'";
+  /* StartsWith, not -like: `[` and `]` are wildcards there. */
+  return (
+    `Get-Process -Name ${names} -ErrorAction SilentlyContinue | ` +
+    `Where-Object { $_.Path -and $_.Path.StartsWith('${dir}', [StringComparison]::OrdinalIgnoreCase) }`
+  );
+}
+
 function enforceLimits() {
   if (process.platform !== 'win32') return () => {};
 
-  const names = "'chrome-headless-shell','ffmpeg-win64','chrome'";
   const setAffinity = capped ? `$p.ProcessorAffinity = [IntPtr]${affinityMask}; ` : '';
   const script =
-    `Get-Process -Name ${names} -ErrorAction SilentlyContinue | ForEach-Object { ` +
+    `${limitSelection()} | ForEach-Object { ` +
     `$p = $_; try { ${setAffinity}$p.PriorityClass = 'BelowNormal' } catch {} }`;
 
   const sweep = () => {
@@ -341,7 +430,7 @@ const QA_PORT = process.env.QA_PORT ?? '5273';
 
 /* -------------------------------------------------------------------- run */
 
-const { titles, why, files } = selectTitles();
+const { titles, why, files, forced, commits } = selectTitles();
 
 const rule = '─'.repeat(72);
 const scope = titles === null ? 'FULL SUITE' : titles.length === 0 ? 'nothing to test' : titles.join(', ');
@@ -354,6 +443,29 @@ console.log(`Reason:   ${why}`);
 if (files?.length) {
   const shown = files.slice(0, 8).join(', ');
   console.log(`Changed:  ${shown}${files.length > 8 ? ` +${files.length - 8} more` : ''}`);
+}
+
+if (commits?.length) {
+  console.log('Covers:');
+  commits.forEach((c) => console.log(`  ${c}`));
+}
+
+/* A full suite is 400+ tests and holds the machine lock for most of an hour,
+   so it only starts when someone asked for it by name. */
+if (titles === null && !full && process.env.QA_ALLOW_FULL !== '1' && !process.env.CI) {
+  console.log(`${rule}\n`);
+  console.log('Not started: this would run the FULL suite, and --full was not given.');
+  if (forced?.length) {
+    console.log(`  Forced by:  ${forced.slice(0, 5).join(', ')}${forced.length > 5 ? ` +${forced.length - 5} more` : ''}`);
+  }
+  console.log('  Agents:     run only your own files:  node scripts/qa/run-qa.mjs --files <files you changed>');
+  console.log(
+    pending
+      ? '  On purpose: QA_ALLOW_FULL=1 npm run test:qa:pending'
+      : '  On purpose: npm run test:qa:full   (or QA_ALLOW_FULL=1 with the same command)',
+  );
+  console.log('');
+  process.exit(3);
 }
 
 if (titles !== null && titles.length === 0) {
@@ -448,6 +560,16 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 child.on('exit', (code, signal) => {
   stopSweep();
   sweepOrphans(QA_PORT);
+  /* Only a --pending run clears the marker: a run of three files says nothing
+     about the other pending commits. HEAD is the one seen at start, so commits
+     other sessions made during the run stay pending. */
+  if (pending && code === 0 && !signal && !listOnly && markerPath && headAtStart) {
+    try {
+      writeFileSync(markerPath, `${headAtStart}\n`);
+    } catch {
+      /* the marker only narrows the next --pending run */
+    }
+  }
   if (titles !== null && code === 0) {
     console.log('\nThis was a scoped run — only the tests listed above were executed.');
     console.log('For everything:  npm run test:qa:full\n');
