@@ -18,8 +18,42 @@ export const openSectionTab = (categoryId: string, sectionId: string) => {
   if (window.location.hash !== target) window.location.hash = target;
 };
 
+/** The workspace is the scroller. Bring a sidebar section to the top of it. */
+export const scrollToSettingsSection = (
+  categoryId: string,
+  sectionId: string,
+  behavior: ScrollBehavior = "smooth",
+) => {
+  const main = document.querySelector<HTMLElement>("main.workspace");
+  const el = document.getElementById(sectionDomId(categoryId, sectionId));
+  if (!main) return;
+  if (!el) {
+    main.scrollTo({ top: 0, behavior });
+    return;
+  }
+  const top = el.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop;
+  main.scrollTo({ top: Math.max(0, top - 12), behavior });
+};
+
 /**
- * Every section is its own tab: only the open one is rendered. Switching tabs (or
+ * Which stacked section sits at the top of the workspace. The last one wins when
+ * the page is scrolled to the end, so a short final section can still be current.
+ */
+export const sectionAtScrollTop = (categoryId: string, sectionIds: string[], main: HTMLElement): string => {
+  const fallback = sectionIds[0] ?? "";
+  if (sectionIds.length === 0) return fallback;
+  if (main.scrollTop + main.clientHeight >= main.scrollHeight - 8) return sectionIds[sectionIds.length - 1];
+  const edge = main.getBoundingClientRect().top + 24;
+  let current = fallback;
+  for (const id of sectionIds) {
+    const el = document.getElementById(sectionDomId(categoryId, id));
+    if (el && el.getBoundingClientRect().top <= edge) current = id;
+  }
+  return current;
+};
+
+/**
+ * Tile and phone layouts: only the open section is rendered. Switching tabs (or
  * category) starts the page from the top, so the new tab never opens half way down.
  */
 export const useScrollTopOnTab = (categoryId: string, sectionId: string) => {
@@ -28,18 +62,20 @@ export const useScrollTopOnTab = (categoryId: string, sectionId: string) => {
   }, [categoryId, sectionId]);
 };
 
-/** The one open section of a category, as the panel of its tab. */
+/** One section of a category. `asTab` is the tile/phone panel; the sidebar stacks regions. */
 export const SectionPanel: React.FC<{
   lang: Language;
   categoryId: string;
   sectionId: string;
   children: React.ReactNode;
   className?: string;
-}> = ({ lang, categoryId, sectionId, children, className }) => (
+  /** Tile and phone: this is the open tab. Sidebar: one region in the stack. */
+  asTab?: boolean;
+}> = ({ lang, categoryId, sectionId, children, className, asTab = true }) => (
   <section
     key={sectionId}
     id={sectionDomId(categoryId, sectionId)}
-    role="tabpanel"
+    role={asTab ? "tabpanel" : "region"}
     aria-label={getTranslation(lang, sectionKey(categoryId, sectionId, "title"))}
     data-settings-section={sectionId}
     data-testid={`settings-section-${categoryId}-${sectionId}`}

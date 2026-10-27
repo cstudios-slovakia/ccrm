@@ -14,6 +14,8 @@ import {
 import { computeCostRate } from "../../utils/timeCost.ts";
 import { DEFAULT_TIME_TRACKING_SETTINGS, type TimeTrackingSettings } from "../../utils/timeTracking.ts";
 import { TimeApiError, repriceEntries, saveSettings, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
+import { ExtensionSettings } from "./ExtensionSettings";
+import { TogglImportPanel } from "./TogglImportPanel";
 import { formatMoney } from "../../utils/currency";
 import type { Language } from "../../utils/translations";
 
@@ -247,7 +249,6 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           {toggle("requireProjectToStop", t("Require a project before stopping the timer", "Vyžadovať projekt pred zastavením časovača", "Projekt megkövetelése az időzítő leállítása előtt"))}
           {toggle("requireTask", t("Require a task on every entry", "Vyžadovať úlohu pri každom zázname", "Feladat megkövetelése minden bejegyzésnél"))}
           {toggle("billableByDefault", t("New entries are billable by default", "Nové záznamy sú predvolene fakturovateľné", "Az új bejegyzések alapból számlázhatók"))}
-          {toggle("weeklyApproval", t("Weekly approval of timesheets", "Týždenné schvaľovanie výkazov", "Heti munkalap-jóváhagyás"))}
         </div>
         <div className="grid gap-4 ws-sm:grid-cols-2">
           <label className="grid gap-1">
@@ -257,14 +258,6 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           <label className="grid gap-1">
             <span className={label}>{t("Warn about entries longer than (hours)", "Upozorniť na záznamy dlhšie ako (hodiny)", "Figyelmeztetés ennél hosszabb bejegyzésre (óra)")}</span>
             <input disabled={!canEdit} type="number" min={1} value={draft.longEntryWarnHours ?? ""} onChange={(e) => set("longEntryWarnHours", e.target.value ? num(e.target.value, 10) : null)} className={field} />
-          </label>
-          <label className="grid gap-1">
-            <span className={label}>{t("Idle reminder after (minutes)", "Pripomenutie nečinnosti po (minútach)", "Tétlenségi emlékeztető ennyi perc után")}</span>
-            <input disabled={!canEdit} type="number" min={1} value={draft.idleReminderMinutes ?? ""} onChange={(e) => set("idleReminderMinutes", e.target.value ? num(e.target.value, 15) : null)} className={field} />
-          </label>
-          <label className="grid gap-1">
-            <span className={label}>{t("Lock entries older than (days)", "Zamknúť záznamy staršie ako (dni)", "Ennél régebbi bejegyzések zárolása (nap)")}</span>
-            <input disabled={!canEdit} type="number" min={0} value={draft.lockAfterDays ?? ""} onChange={(e) => set("lockAfterDays", e.target.value ? num(e.target.value, 14) : null)} className={field} />
           </label>
           <label className="grid gap-1">
             <span className={label}>{t("Rounding in reports and client PDFs", "Zaokrúhľovanie v reportoch a PDF pre klientov", "Kerekítés riportokban és ügyfél-PDF-ekben")}</span>
@@ -284,11 +277,47 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
         </div>
       </Surface>
 
-      {/* External tracker */}
+      {/* PHASE6-SETTINGS */}
+      <Surface className="space-y-4">
+        <h3 className="type-card-title text-slate-900">{t("Locking, approval and idle reminder", "Zamykanie, schvaľovanie a pripomenutie nečinnosti", "Zárolás, jóváhagyás és tétlenségi emlékeztető")}</h3>
+        <p className="text-body text-slate-500">{t(
+          "Entries older than the lock, in a paid payroll month, or in a submitted week can be changed only by an admin. That change is written to the audit log. Leave a field empty to turn that rule off. The idle reminder appears while a timer is running.",
+          "Záznamy staršie ako zámok, v uhradenom mzdovom mesiaci alebo v odoslanom týždni môže zmeniť len administrátor. Zmena sa zapíše do auditu. Prázdne pole pravidlo vypne. Pripomenutie nečinnosti sa zobrazí, kým beží časovač.",
+          "A zárolásnál régebbi, kifizetett bérhónapba eső vagy beküldött heti bejegyzést csak adminisztrátor módosíthatja. A módosítás az auditnaplóba kerül. Az üres mező kikapcsolja a szabályt. A tétlenségi emlékeztető futó időzítő mellett jelenik meg.",
+        )}</p>
+        {toggle("weeklyApproval", t("Weekly approval of timesheets", "Týždenné schvaľovanie výkazov", "Heti munkalap-jóváhagyás"))}
+        <div className="grid gap-4 ws-sm:grid-cols-2">
+          <label className="grid gap-1">
+            <span className={label}>{t("Idle reminder after (minutes)", "Pripomenutie nečinnosti po (minútach)", "Tétlenségi emlékeztető ennyi perc után")}</span>
+            <input disabled={!canEdit} type="number" min={1} value={draft.idleReminderMinutes ?? ""} onChange={(e) => set("idleReminderMinutes", e.target.value ? num(e.target.value, 15) : null)} className={field} data-testid="tt-idle-reminder" />
+          </label>
+          <label className="grid gap-1">
+            <span className={label}>{t("Lock entries older than (days)", "Zamknúť záznamy staršie ako (dni)", "Ennél régebbi bejegyzések zárolása (nap)")}</span>
+            <input disabled={!canEdit} type="number" min={0} value={draft.lockAfterDays ?? ""} onChange={(e) => set("lockAfterDays", e.target.value ? num(e.target.value, 14) : null)} className={field} data-testid="tt-lock-after-days" />
+          </label>
+        </div>
+      </Surface>
+      <TogglImportPanel language={language} t={t} canEdit={canEdit || isAdmin} />
       <Surface className="space-y-2">
         <h3 className="type-card-title text-slate-900">{t("External time tracker", "Externý nástroj na evidenciu času", "Külső időkövető")}</h3>
-        <p className="text-body text-slate-500">{t("Toggl connections stay where they are: Employees → Settings. Their hours keep showing in each employee's summary; an importer into this module arrives later.", "Pripojenia na Toggl zostávajú tam, kde sú: Zamestnanci → Nastavenia. Ich hodiny sa naďalej zobrazujú v súhrne zamestnanca; import do tohto modulu pribudne neskôr.", "A Toggl-kapcsolatok ott maradnak, ahol vannak: Munkatársak → Beállítások. Óráik továbbra is a munkatárs összesítőjében jelennek meg; az ebbe a modulba történő importáló később érkezik.")}</p>
+        <p className="text-body text-slate-500">{t(
+          "Toggl connections stay where they are: Employees → Settings. The employee summary keeps its Toggl hours and can switch to CCRM time tracking for that view only.",
+          "Pripojenia na Toggl zostávajú tam, kde sú: Zamestnanci → Nastavenia. Súhrn zamestnanca si ponecháva hodiny z Toggl a v tom zobrazení sa dá prepnúť na evidenciu času CCRM.",
+          "A Toggl-kapcsolatok ott maradnak, ahol vannak: Munkatársak → Beállítások. A munkatárs összesítője megtartja a Toggl-órákat, és azon a nézeten átváltható CCRM időkövetésre.",
+        )}</p>
       </Surface>
+      {/* END-PHASE6-SETTINGS */}
+
+      {/* PHASE5-SETTINGS */}
+      <ExtensionSettings
+        language={language}
+        t={t}
+        canEdit={canEdit}
+        isAdmin={isAdmin}
+        extension={draft.extension ?? DEFAULT_TIME_TRACKING_SETTINGS.extension}
+        onExtension={(extension) => setDraft((d) => ({ ...d, extension }))}
+      />
+      {/* END-PHASE5-SETTINGS */}
 
       {isAdmin && (
         <Surface className="space-y-3">
@@ -305,7 +334,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
       {canEdit && (
         <div className="sticky bottom-4 flex justify-end">
-          <button type="button" onClick={save} disabled={!dirty || saving} data-testid="tt-save" className="h-10 rounded-xl bg-primary px-5 text-ui font-semibold text-white shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer">
+          <button type="button" onClick={save} disabled={!dirty || saving} data-testid="tt-save" className="h-10 rounded-xl bg-primary px-5 text-ui font-semibold text-primary-foreground shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer">
             {t("Save settings", "Uložiť nastavenia", "Beállítások mentése")}
           </button>
         </div>

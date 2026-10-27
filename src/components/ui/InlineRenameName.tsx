@@ -8,20 +8,40 @@ import { Pencil } from "lucide-react";
 // re-render (each sync tick, each isSyncing toggle) and remounted the <input>,
 // wiping the in-progress edit — so typing in a source/category/state name "kicked
 // the user out" mid-edit. Hoisting it gives the component a stable identity.
+export type InlineRenameHandle = { startEdit: () => void };
+
 export const InlineRenameName: React.FC<{
   value: string;
   canEdit: boolean;
   onCommit: (next: string) => void;
   renameTitle: string;
   children: React.ReactNode;
-}> = ({ value, canEdit, onCommit, renameTitle, children }) => {
+  /** Hide the built-in pencil so the parent can place it with neighbouring actions. */
+  hideButton?: boolean;
+  /** Filled when `hideButton` is set, so an external control can start the rename. */
+  handleRef?: React.RefObject<InlineRenameHandle | null>;
+}> = ({ value, canEdit, onCommit, renameTitle, children, hideButton = false, handleRef }) => {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
+  const editingRef = React.useRef(false);
+  editingRef.current = editing;
   const commit = () => {
     setEditing(false);
     const trimmed = draft.trim();
     if (trimmed && trimmed !== value) onCommit(trimmed);
   };
+  const startEdit = React.useCallback(() => {
+    if (!canEdit || editingRef.current) return;
+    setDraft(value);
+    setEditing(true);
+  }, [canEdit, value]);
+  React.useLayoutEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = { startEdit };
+    return () => {
+      handleRef.current = null;
+    };
+  }, [handleRef, startEdit]);
   if (editing) {
     return (
       <input
@@ -37,11 +57,10 @@ export const InlineRenameName: React.FC<{
       />
     );
   }
-  const startEdit = () => { if (canEdit) { setDraft(value); setEditing(true); } };
   return (
     <span className="inline-flex items-center gap-1.5">
       <span onDoubleClick={startEdit} className={canEdit ? "cursor-text" : undefined}>{children}</span>
-      {canEdit && (
+      {canEdit && !hideButton && (
         <button
           type="button"
           onClick={startEdit}

@@ -7,7 +7,7 @@ import {
 } from "./settingsRegistry.ts";
 import type { SettingsGroupId, VisibleCategory } from "./settingsRegistry.ts";
 import type { SearchEntry } from "./settingsSearch.ts";
-import { SectionPanel, openSectionTab, useScrollTopOnTab } from "./SectionList";
+import { SectionPanel, openSectionTab, scrollToSettingsSection, sectionAtScrollTop } from "./SectionList";
 import { SettingsNavSearch } from "./SettingsSearchCard";
 import { SettingsHeader } from "./SettingsHome";
 import type { SettingsLayout } from "./SettingsHome";
@@ -16,17 +16,18 @@ import { ScrollFade } from "./ScrollFade";
 
 /**
  * The sidebar layout (wide screens): a grouped navigation on the left — search on top,
- * the active category expanded with its sections as sub-links — and the open
- * section on the right.
+ * the active category expanded with its sections as sub-links — and every section of
+ * that category stacked on the right. A sub-link scrolls to its section.
  */
 export const SidebarLayout: React.FC<{
   lang: Language;
   groups: { id: SettingsGroupId; categories: VisibleCategory[] }[];
   catalog: VisibleCategory[];
   category: VisibleCategory;
-  /** The open section; the others are one click away in the navigation. */
+  /** The section named in the address. The highlight follows what is on screen. */
   activeId: string;
-  body: React.ReactNode;
+  /** Every section of the category, in registry order. All of them stay mounted. */
+  sections: { id: string; body: React.ReactNode }[];
   layout: SettingsLayout;
   onLayoutChange: (next: SettingsLayout) => void;
   query: string;
@@ -37,14 +38,58 @@ export const SidebarLayout: React.FC<{
   onOpenRef: (ref: string) => void;
   onOpenCategory: (categoryId: string) => void;
 }> = ({
-  lang, groups, catalog, category, activeId, body, layout, onLayoutChange, query, setQuery, searchRef,
+  lang, groups, catalog, category, activeId, sections, layout, onLayoutChange, query, setQuery, searchRef,
   canSee, onOpenSearchHit, onOpenRef, onOpenCategory,
 }) => {
   const t = (k: string) => getTranslation(lang, k);
   const def = category.def;
   const tint = SETTINGS_TINTS[def.tint];
   const Icon = def.icon;
-  useScrollTopOnTab(def.id, activeId);
+  const sectionIds = sections.map((s) => s.id).join("|");
+  const [shownId, setShownId] = React.useState(activeId);
+  // While a click or a deep link is scrolling, the highlight stays on the target
+  // instead of chasing every section the animation passes.
+  const scrollLock = React.useRef(false);
+  const prevCategory = React.useRef("");
+
+  React.useEffect(() => {
+    setShownId(activeId);
+    const sameCategory = prevCategory.current === def.id;
+    prevCategory.current = def.id;
+    const behavior: ScrollBehavior = sameCategory ? "smooth" : "auto";
+    // Opening a category lands on its first section. Keep the category heading in
+    // view. A later section, or a sub-link in the category you are already in, scrolls.
+    const leadWithHeader = !sameCategory && sectionIds.split("|")[0] === activeId;
+    scrollLock.current = true;
+    const frame = requestAnimationFrame(() => {
+      if (leadWithHeader) document.querySelector<HTMLElement>("main.workspace")?.scrollTo({ top: 0, behavior: "auto" });
+      else scrollToSettingsSection(def.id, activeId, behavior);
+    });
+    const release = window.setTimeout(() => {
+      scrollLock.current = false;
+    }, behavior === "smooth" ? 700 : 50);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(release);
+    };
+  }, [def.id, activeId, sectionIds]);
+
+  React.useEffect(() => {
+    const main = document.querySelector<HTMLElement>("main.workspace");
+    if (!main) return undefined;
+    const ids = sectionIds.split("|").filter(Boolean);
+    let frame = 0;
+    const onScroll = () => {
+      if (scrollLock.current) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setShownId(sectionAtScrollTop(def.id, ids, main)));
+    };
+    main.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      main.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, [def.id, sectionIds]);
 
   return (
     <div className="flex flex-col gap-7" data-testid="settings-sidebar-layout">
@@ -84,7 +129,7 @@ export const SidebarLayout: React.FC<{
                           {on && c.sections.length > 1 && (
                             <ul className="mb-1.5 ml-5.5 mt-1 flex flex-col gap-px border-l-2 border-indigo-100 pl-3">
                               {c.sections.map((s) => {
-                                const cur = activeId === s.id;
+                                const cur = shownId === s.id;
                                 return (
                                   <li key={s.id}>
                                     <a
@@ -93,7 +138,17 @@ export const SidebarLayout: React.FC<{
                                       onClick={(e) => {
                                         e.preventDefault();
                                         onOpenRef(`${c.def.id}/${s.id}`);
+                                        const same = window.location.hash === "#" + settingsPath(c.def.id, s.id);
                                         openSectionTab(c.def.id, s.id);
+                                        // Already on this address: the effect will not scroll again.
+                                        if (same) {
+                                          setShownId(s.id);
+                                          scrollLock.current = true;
+                                          scrollToSettingsSection(c.def.id, s.id, "smooth");
+                                          window.setTimeout(() => {
+                                            scrollLock.current = false;
+                                          }, 700);
+                                        }
                                       }}
                                       className={cn(
                                         "flex min-h-8.5 items-center rounded-lg px-2.5 text-ui no-underline transition-colors",
@@ -127,7 +182,13 @@ export const SidebarLayout: React.FC<{
               <p className="type-body text-slate-500">{t(categoryKey(def.id, "subtitle"))}</p>
             </div>
           </div>
-          <SectionPanel lang={lang} categoryId={def.id} sectionId={activeId}>{body}</SectionPanel>
+          <div className="flex flex-col gap-8" data-testid="settings-section-stack">
+            {sections.map((s) => (
+              <SectionPanel key={s.id} lang={lang} categoryId={def.id} sectionId={s.id} asTab={false}>
+                {s.body}
+              </SectionPanel>
+            ))}
+          </div>
           <RelatedList lang={lang} category={category} canSee={canSee} onOpen={onOpenRef} variant="list" />
         </div>
       </div>

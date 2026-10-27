@@ -459,6 +459,23 @@ export const parseDurationColonInput = (raw: string): number => {
   return Number.isNaN(n) ? 0 : n;
 };
 
+export type TicketTotalDecision =
+  | { write: false; reason: "lower" | "equal" }
+  | { write: true; durationSec: number };
+
+/**
+ * The ticket "edit total" shortcut. A higher total is one positive hours-only
+ * correcting entry (the difference, in seconds). A lower or equal total writes
+ * nothing: lowering must shorten or delete an existing entry, never a negative row.
+ */
+export const ticketLoggedTotalAdjustment = (currentMinutes: number, targetMinutes: number): TicketTotalDecision => {
+  const current = Math.max(0, Math.round(Number(currentMinutes) || 0));
+  const target = Math.max(0, Math.round(Number(targetMinutes) || 0));
+  if (target < current) return { write: false, reason: "lower" };
+  if (target === current) return { write: false, reason: "equal" };
+  return { write: true, durationSec: (target - current) * 60 };
+};
+
 export const sanitizeColonTimeDraft = (raw: string): string => {
   const str = String(raw ?? "");
   if (str.includes(":")) {
@@ -709,23 +726,54 @@ export interface ProjectRetainerUsage {
   slaTier: string;
 }
 
+/** One native time entry, as far as a retainer total needs to see it. */
+export interface RetainerTimeEntry {
+  id: string;
+  projectId?: string | null;
+  ticketId?: string | null;
+  taskId?: string | null;
+  billable?: boolean;
+  /** YYYY-MM-DD, or a timestamp whose first 10 characters are the date. */
+  entryDate?: string | null;
+  durationSec?: number | null;
+}
+
 /**
- * Calculates how much of a project's monthly retainer has been consumed in the
- * current cycle `[periodStart, nextResetDate)` based on time logged on the
- * project's tickets.
+ * How much of a project's monthly retainer is used in `[periodStart, nextResetDate)`.
+ *
+ * Pass `entries` (native `time_entries`). Billable rows only, and each id once:
+ * an entry linked to both a task and a ticket is one row. When `entries` is
+ * omitted, the legacy `ticket.timeEntries` / `loggedMinutes` path is used so
+ * older callers keep their number.
  */
 export const computeProjectRetainerUsage = (
   project: Project | null | undefined,
   tickets: readonly Ticket[] = [],
   supportContracts: readonly SupportContract[] = [],
   referenceDate: Date = new Date(),
+  entries?: readonly RetainerTimeEntry[],
 ): ProjectRetainerUsage => {
   const cfg = resolveProjectRetainer(project, supportContracts);
   const period = computeRetainerPeriod(cfg.resetDay, referenceDate);
   const monthlyMinutes = Math.max(0, Math.round((cfg.monthlyHours || 0) * 60));
 
   let usedMinutes = 0;
-  if (project?.id) {
+  if (project?.id && entries) {
+    const ticketIds = new Set(
+      (tickets || []).filter((tk) => tk && tk.projectId === project.id).map((tk) => tk.id),
+    );
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (!entry || entry.billable === false || seen.has(entry.id)) continue;
+      const onProject = entry.projectId === project.id || (entry.ticketId != null && ticketIds.has(entry.ticketId));
+      if (!onProject) continue;
+      const stamp = String(entry.entryDate || "").slice(0, 10);
+      if (stamp && (stamp < period.periodStart || stamp >= period.nextResetDate)) continue;
+      seen.add(entry.id);
+      const minutes = entry.durationSec != null ? Math.round(entry.durationSec / 60) : 0;
+      usedMinutes += Math.max(0, minutes);
+    }
+  } else if (project?.id) {
     for (const tk of tickets || []) {
       if (!tk || tk.archived || tk.isArchived) continue;
       if (tk.projectId !== project.id) continue;

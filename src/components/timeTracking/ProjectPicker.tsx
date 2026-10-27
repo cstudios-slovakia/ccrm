@@ -237,7 +237,7 @@ export function ProjectPicker({
             </select>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Cancel", "Zrušiť", "Mégse")}</button>
-              <button type="button" onClick={create} disabled={!newType} data-testid="project-create-submit" className="h-9 rounded-lg bg-primary px-3 text-ui font-semibold text-white disabled:opacity-50 cursor-pointer">{t("Create", "Vytvoriť", "Létrehozás")}</button>
+              <button type="button" onClick={create} disabled={!newType} data-testid="project-create-submit" className="h-9 rounded-lg bg-primary px-3 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer">{t("Create", "Vytvoriť", "Létrehozás")}</button>
             </div>
           </div>
         )}

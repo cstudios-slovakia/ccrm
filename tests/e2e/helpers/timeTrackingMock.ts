@@ -23,6 +23,7 @@ interface MockContext {
   users: { id: string; name: string }[];
   roles: any[];
   tasks: Json[];
+  tickets?: Json[];
   projects: Json[];
   /** user id -> the employee record pay is taken from (absent = no employee linked). */
   employees: Record<string, { id: string; kind: string; salaryType: string; salaryAmount: number; workCountry?: HolidayCountry | null }>;
@@ -30,6 +31,7 @@ interface MockContext {
   seed: Json[];
   /** Observed by specs. */
   tasksRenamed?: Map<string, string>;
+  ticketsRenamed?: Map<string, string>;
 }
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -80,13 +82,14 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
   const view = (e: Json): Json => {
     const task = e.taskId ? ctx.tasks.find((t) => t.id === e.taskId) : null;
     const renamed = task ? ctx.tasksRenamed?.get(task.id) ?? task.title : null;
-    const linked = !!e.taskId;
-    const title = linked ? (task ? renamed : e.titleSnapshot ?? '') : e.description ?? '';
+    const ticket = !e.taskId && e.ticketId ? (ctx.tickets ?? []).find((t) => t.id === e.ticketId) : null;
+    const ticketTitle = ticket ? ctx.ticketsRenamed?.get(ticket.id) ?? ticket.title ?? ticket.subject : null;
+    const title = e.taskId ? (task ? renamed : e.titleSnapshot ?? '') : e.ticketId ? (ticket ? ticketTitle : e.titleSnapshot ?? '') : e.description ?? '';
     const out: Json = {
       ...e,
       title,
-      titleSource: linked ? 'task' : 'entry',
-      titleDeleted: linked && !task,
+      titleSource: e.taskId ? 'task' : e.ticketId ? 'ticket' : 'entry',
+      titleDeleted: e.taskId ? !task : e.ticketId ? !ticket : false,
       projectName: ctx.projects.find((p) => p.id === e.projectId)?.name ?? null,
       running: !!e.startAt && !e.endAt,
     };
@@ -103,9 +106,13 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     const taskId = 'taskId' in input ? input.taskId : existing?.taskId ?? null;
     const task = taskId ? ctx.tasks.find((t) => t.id === taskId) : null;
     if (taskId && !task) return { error: 'task_not_found' };
-    const projectId = 'projectId' in input && input.projectId ? input.projectId : task?.relatedProjectId ?? (taskId === existing?.taskId ? existing?.projectId : null) ?? null;
-    const description = taskId ? null : ('description' in input ? input.description : existing?.description) ?? null;
-    return { taskId: taskId ?? null, projectId, description, titleSnapshot: task ? task.title : description };
+    const ticketId = taskId ? null : ('ticketId' in input ? input.ticketId : existing?.ticketId ?? null);
+    const ticket = ticketId ? (ctx.tickets ?? []).find((t) => t.id === ticketId) : null;
+    if (ticketId && !ticket && ctx.tickets) return { error: 'ticket_not_found' };
+    const projectId = 'projectId' in input && input.projectId ? input.projectId : task?.relatedProjectId ?? ticket?.projectId ?? (taskId === existing?.taskId ? existing?.projectId : null) ?? null;
+    const description = taskId || ticketId ? null : ('description' in input ? input.description : existing?.description) ?? null;
+    const titleSnapshot = task ? (ctx.tasksRenamed?.get(task.id) ?? task.title) : ticket ? (ctx.ticketsRenamed?.get(ticket.id) ?? ticket.title ?? ticket.subject) : description;
+    return { taskId: taskId ?? null, ticketId: ticketId ?? null, projectId, description, titleSnapshot };
   };
 
   const finish = (e: Json, endIso: string) => {
@@ -137,10 +144,38 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         const r = running();
         return route.fulfill(ok({ entry: r ? view(r) : null }));
       }
+      if (url.searchParams.get('action') === 'totals') {
+        const byTask: Record<string, number> = {};
+        const byTicket: Record<string, number> = {};
+        const byProject: Record<string, { seconds: number; cost: number | null }> = {};
+        for (const e of entries) {
+          if (e.deletedAt || !e.durationSec) continue;
+          if (e.taskId) byTask[e.taskId] = (byTask[e.taskId] ?? 0) + e.durationSec;
+          if (e.ticketId) byTicket[e.ticketId] = (byTicket[e.ticketId] ?? 0) + e.durationSec;
+          if (e.projectId) {
+            const row = byProject[e.projectId] ?? { seconds: 0, cost: 0 };
+            row.seconds += e.durationSec;
+            if (e.userId === caller || canCosts) row.cost = (row.cost ?? 0) + (e.cost ?? 0);
+            else row.cost = null;
+            byProject[e.projectId] = row;
+          }
+        }
+        return route.fulfill(ok({ byTask, byTicket, byProject }));
+      }
+      if (url.searchParams.get('action') === 'usage') {
+        if (!access.can('tickets.time')) return route.fulfill(fail('forbidden', 403));
+        const projectId = url.searchParams.get('projectId');
+        const rows = entries.filter((e) => !e.deletedAt && e.durationSec && (e.projectId === projectId || (ctx.tickets ?? []).some((t) => t.id === e.ticketId && t.projectId === projectId)));
+        return route.fulfill(ok({ entries: rows.map((e) => ({ id: e.id, projectId: e.projectId, ticketId: e.ticketId, taskId: e.taskId, billable: e.billable, entryDate: e.entryDate, durationSec: e.durationSec })) }));
+      }
+      const ticketFilter = url.searchParams.get('ticketId');
+      if (ticketFilter && !access.can('tickets.time')) return route.fulfill(fail('forbidden', 403));
       const from = url.searchParams.get('from') ?? '0000-00-00';
       const to = url.searchParams.get('to') ?? '9999-99-99';
       const who = url.searchParams.get('userId');
-      const list = entries.filter((e) => !e.deletedAt && e.entryDate >= from && e.entryDate <= to).filter((e) => (!who || who === caller || !canTeam ? e.userId === caller : who === 'all' ? true : e.userId === who));
+      const list = entries
+        .filter((e) => !e.deletedAt && e.entryDate >= from && e.entryDate <= to && (!ticketFilter || e.ticketId === ticketFilter))
+        .filter((e) => (ticketFilter ? true : (!who || who === caller || !canTeam ? e.userId === caller : who === 'all' ? true : e.userId === who)));
       return route.fulfill(ok({ entries: list.map(view), viewer: { userId: caller, canEdit, canTeam, canCosts } }));
     }
 
@@ -161,7 +196,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       const prev = running();
       if (prev) finish(prev, now);
       const entry: Json = {
-        id: `te-mock-${++idSeq}`, userId: caller, recordedByUserId: caller, employeeId: ctx.employees[caller]?.id ?? null, ticketId: null,
+        id: `te-mock-${++idSeq}`, userId: caller, recordedByUserId: caller, employeeId: ctx.employees[caller]?.id ?? null, ticketId: links.ticketId,
         projectId: links.projectId, taskId: links.taskId, description: links.description, titleSnapshot: links.titleSnapshot, legacyNote: null,
         entryDate: ymd(new Date()), startAt: now, endAt: null, durationSec: null, billable: body.billable ?? settings.billableByDefault, tags: body.tags ?? [],
         source: body.source ?? 'timer', originType: body.originType ?? null, originId: body.originId ?? null, approvalStatus: null, createdAt: now.replace('T', ' ').slice(0, 19),
@@ -219,7 +254,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       else if (startAt && !existing) entryDate = ymd(new Date(startAt));
       const next: Json = {
         ...(existing ?? { id: `te-mock-${++idSeq}`, recordedByUserId: caller, ticketId: null, legacyNote: null, originType: null, originId: null, approvalStatus: null, createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19) }),
-        userId: owner, projectId: links.projectId, taskId: links.taskId, description, titleSnapshot: links.titleSnapshot,
+        userId: owner, projectId: links.projectId, taskId: links.taskId, ticketId: links.ticketId, description, titleSnapshot: links.titleSnapshot,
         entryDate, startAt, endAt, durationSec, billable: 'billable' in body ? !!body.billable : existing?.billable ?? settings.billableByDefault,
         tags: 'tags' in body ? body.tags : existing?.tags ?? [], source: body.source ?? existing?.source ?? 'manual',
       };

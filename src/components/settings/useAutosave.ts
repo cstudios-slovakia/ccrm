@@ -1,4 +1,5 @@
 import React from "react";
+import { registerPendingSave } from "../../utils/pendingSaves";
 
 export type AutosaveStatus = "idle" | "saving" | "saved";
 
@@ -63,6 +64,10 @@ export const useAutosave = <T,>({
     },
     [flush],
   );
+
+  // A reload inside the pause never unmounts cleanly. Hand the edit to the app
+  // first, the same way a project type does, so the unload guard can write it.
+  React.useEffect(() => registerPendingSave({ isPending: () => pending.current, flush }), [flush]);
 
   return status;
 };

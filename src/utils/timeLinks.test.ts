@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { matchOpenTasks, resolveTaskProject } from "./timeLinks.ts";
+import { clientForTask, matchOpenTasks, resolveTaskProject } from "./timeLinks.ts";
 
 const lead = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, ...extra }) as never;
 const project = (id: string, extra: Record<string, unknown> = {}) => ({ id, status: "active", ...extra }) as never;
@@ -30,6 +30,15 @@ test("with several projects the caller must ask; finished and archived ones do n
   const r = resolveTaskProject({ relatedLeadId: "client-1" }, projects, leads, (p) => p.status === "done");
   assert.equal(r.projectId, null);
   assert.deepEqual(r.candidates.map((p) => p.id), ["p1", "p2"]);
+});
+
+test("clientForTask resolves the lead to its client, and keeps a lead that has none", () => {
+  const leads = [lead("client-1", "Acme", { adjustment: 1 }), lead("lead-1", "Side", { clientId: "client-1" }), lead("lead-2", "Solo")];
+  assert.equal(clientForTask({ relatedLeadId: "lead-1" }, leads)?.id, "client-1");
+  assert.equal(clientForTask({ relatedLeadId: "client-1" }, leads)?.id, "client-1");
+  assert.equal(clientForTask({ relatedLeadId: "lead-2" }, leads)?.id, "lead-2");
+  assert.equal(clientForTask({}, leads), null);
+  assert.equal(clientForTask({ relatedLeadId: "missing" }, leads), null);
 });
 
 test("a lead linked to a client by id finds the client's projects, not a same-named lead's", () => {

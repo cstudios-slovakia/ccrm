@@ -301,6 +301,26 @@ async function main() {
     check('T10: Hungary 2026 has 23 Oct and no invented 24 Dec', (huHol.data?.days || []).some((d) => d.date === '2026-10-23') && !(huHol.data?.days || []).some((d) => d.date === '2026-12-24'));
     check('T10: bad requests are refused', (await api(S.erik, 'holidays.php', { query: '?country=DE&year=2026' })).status === 400);
     check('T10: signed-out is refused', (await api(null, 'holidays.php', { query: '?country=SK&year=2026' })).status === 401);
+
+    section('T12: ticket time moves into time_entries, once');
+    sql(`INSERT INTO tickets (id, ticket_number, title, status, project_id, assignee_id) VALUES ('tck-tt', 'TCK-TT', 'Legacy ticket', 'open', 'proj-tt-1', 'tt-erik')`);
+    sql(`INSERT INTO ticket_time_entries (id, ticket_id, user_id, user_name, minutes, billable, note, logged_at) VALUES ('tte-old', 'tck-tt', 'tt-erik', 'TT Erik', 45, 1, 'old note', '2026-10-02')`);
+    sql(`INSERT INTO ticket_time_entries (id, ticket_id, user_name, minutes, billable, logged_at) VALUES ('tte-name', 'tck-tt', 'TT Manager', 15, 1, '2026-10-03')`);
+    const migrate = `require '${SCRATCH_DIR}/config.php'; require '${SCRATCH_DIR}/api/schema.php'; require '${SCRATCH_DIR}/api/ticket_time_migration.php'; ccrm_migrate_ticket_time_entries(get_db_connection());`;
+    docker('exec', '-u', 'www-data', WEB, 'php', '-r', migrate);
+    const copied = rows(`SELECT external_id, user_id, duration_sec, legacy_note, description IS NULL AS blank, source FROM time_entries WHERE source='ticket_legacy' ORDER BY external_id`);
+    const byUser = copied.find((r) => r.external_id === 'tte:tte-old');
+    const byName = copied.find((r) => r.external_id === 'tte:tte-name');
+    check('T12: a row with a real user id is copied, hours-only, note kept, no description of its own', byUser?.user_id === 'tt-erik' && byUser?.duration_sec === '2700' && byUser?.legacy_note === 'old note' && byUser?.blank === '1', JSON.stringify(copied));
+    check('T12: a unique name match is accepted', byName?.user_id === 'tt-pm', JSON.stringify(byName));
+    docker('exec', '-u', 'www-data', WEB, 'php', '-r', migrate);
+    const again = rows(`SELECT id FROM time_entries WHERE source='ticket_legacy'`);
+    check('T12: running the migration again inserts nothing', again.length === copied.length, `${again.length} vs ${copied.length}`);
+    const hidden = await list(S.erik, '?ticketId=tck-tt&from=2026-01-01&to=2026-12-31');
+    check('T12: ticket time is refused without tickets.time', hidden.status === 403, hidden.raw);
+    sql(`UPDATE projects SET billable_rate = 80 WHERE id = 'proj-tt-1'`);
+    const rated = await te(S.admin, { action: 'create', projectId: 'proj-tt-1', description: 'Rated', entryDate: '2026-10-20', durationSec: 3600, source: 'manual' });
+    check('T12: an entry with no rate of its own freezes the project billable rate', dbEntry(rated.data?.entry?.id)?.billable_rate === '80.00', JSON.stringify(dbEntry(rated.data?.entry?.id)));
   } finally {
     teardown();
   }

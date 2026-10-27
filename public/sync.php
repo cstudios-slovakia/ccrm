@@ -15,6 +15,7 @@ require_once __DIR__ . '/api/schema.php';
 require_once __DIR__ . '/api/warehouse_item_fields.php';
 require_once __DIR__ . '/api/task_reminders.php';
 require_once __DIR__ . '/api/read_scope.php';
+require_once __DIR__ . '/api/offer_document.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -1218,6 +1219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
                 'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
                 'conclusion' => $row['conclusion'] ?? null,
+                'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
             ];
@@ -1677,6 +1679,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'createdAt' => $pRow['created_at'] ?? null,
                     'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
                     'value' => isset($pRow['value']) ? (float)$pRow['value'] : null,
+                    'hoursBudget' => isset($pRow['hours_budget']) ? (float)$pRow['hours_budget'] : null,
+                    'billableRate' => isset($pRow['billable_rate']) ? (float)$pRow['billable_rate'] : null,
+                    'isInternal' => isset($pRow['is_internal']) && (int)$pRow['is_internal'] === 1,
                     'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                     // Widget and public status-board settings. `ticketPublicHash` is the
                     // key to the public board, so it stays server-side without `tickets`.
@@ -2081,6 +2086,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'greetingNote' => $row['greeting_note'],
                     'introNote' => $row['intro_note'],
                     'uspCards' => !empty($row['usp_cards_json']) ? json_decode($row['usp_cards_json'], true) : [],
+                    'customFields' => ($cf = ccrm_offer_custom_field_values($row['custom_fields_json'] ?? null)) ? $cf : null,
                     'reassuranceNote' => $row['reassurance_note'],
                     'items' => $itemsByIo[$row['id']] ?? [],
                     'subtotal' => (float)$row['subtotal'],
@@ -2127,6 +2133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'badgeStyle' => $row['badge_style'] ?? 'rounded',
                     // NULL for a template generated before the variants existed.
                     'layout' => isset($row['layout_json']) && $row['layout_json'] !== '' ? json_decode($row['layout_json'], true) : null,
+                    'document' => (isset($row['document_json']) && $row['document_json'] !== '' && ($doc = json_decode($row['document_json'], true)) && is_array($doc)) ? $doc : null,
                     'createdAt' => $row['created_at'],
                 ];
             }
@@ -2405,22 +2412,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 }
             }
 
-            $timeByTicket = [];
-            if ($pdo->query("SHOW TABLES LIKE 'ticket_time_entries'")->rowCount() > 0) {
-                $teStmt = $pdo->query("SELECT * FROM `ticket_time_entries` ORDER BY `logged_at` DESC, `created_at` DESC");
+            // Ticket time lives in time_entries now. The blob no longer carries the
+            // rows (a stale client must not be able to delete them). loggedMinutes
+            // stays a derived total so an old client still shows a number.
+            $minutesByTicket = [];
+            if ($pdo->query("SHOW TABLES LIKE 'time_entries'")->rowCount() > 0) {
+                $teStmt = $pdo->query("SELECT `ticket_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec` FROM `time_entries` WHERE `deleted_at` IS NULL AND `ticket_id` IS NOT NULL GROUP BY `ticket_id`");
                 while ($te = $teStmt->fetch(PDO::FETCH_ASSOC)) {
-                    $timeByTicket[$te['ticket_id']][] = [
-                        'id' => $te['id'],
-                        'ticketId' => $te['ticket_id'],
-                        'userId' => $te['user_id'] ?? null,
-                        'userName' => $te['user_name'] ?? '',
-                        'minutes' => (int)($te['minutes'] ?? 0),
-                        'billable' => (int)($te['billable'] ?? 1) === 1,
-                        'note' => $te['note'] ?? null,
-                        'description' => $te['note'] ?? null,
-                        'loggedAt' => $te['logged_at'],
-                        'createdAt' => $te['created_at'],
-                    ];
+                    $minutesByTicket[$te['ticket_id']] = (int)round(((int)$te['sec']) / 60);
                 }
             }
 
@@ -2432,11 +2431,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $assigneeId = $row['assignee_id'] ?? null;
                 $assignedUser = $assigneeName ?: $assigneeId;
                 $assignedUsers = !empty($watchers) ? $watchers : ($assignedUser ? [$assignedUser] : []);
-                $tEntries = $timeByTicket[$tid] ?? [];
-                $loggedMins = 0;
-                foreach ($tEntries as $teItem) {
-                    $loggedMins += (int)($teItem['minutes'] ?? 0);
-                }
+                $loggedMins = $minutesByTicket[$tid] ?? 0;
                 $isArch = (int)($row['archived'] ?? 0) === 1;
                 $tickets[] = [
                     'id' => $tid,
@@ -2485,7 +2480,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'updatedAt' => $row['updated_at'],
                     'messages' => $msgsByTicket[$tid] ?? [],
                     'taskLinks' => $linksByTicket[$tid] ?? [],
-                    'timeEntries' => $tEntries,
+                    'timeEntries' => [],
                 ];
             }
         }
@@ -3896,7 +3891,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -4008,6 +4003,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Archived state: column is NOT NULL DEFAULT 0, so never pass null into VALUES.
                 $projArchived = !empty($p['archived']) ? 1 : 0;
 
+                // Hours budget, billable rate and the internal flag. A client that
+                // does not send the key leaves the stored value alone.
+                $hoursSent = array_key_exists('hoursBudget', $p) ? 1 : 0;
+                $projHours = ($hoursSent && is_numeric($p['hoursBudget']) && (float)$p['hoursBudget'] > 0)
+                    ? round(min((float)$p['hoursBudget'], 999999.99), 2) : null;
+                $rateSent = array_key_exists('billableRate', $p) ? 1 : 0;
+                $projBillableRate = ($rateSent && is_numeric($p['billableRate']) && (float)$p['billableRate'] >= 0)
+                    ? round(min((float)$p['billableRate'], 99999999.99), 2) : null;
+                $internalSent = array_key_exists('isInternal', $p) ? 1 : 0;
+                $projInternal = $internalSent ? (!empty($p['isInternal']) ? 1 : 0) : 0;
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -4030,7 +4036,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projTicketAllowedEmails,
                     $projTicketPublicHash,
                     $projTicketWidgetConfig,
-                    $projArchived
+                    $projArchived,
+                    $projHours,
+                    $projBillableRate,
+                    $projInternal,
+                    $hoursSent,
+                    $rateSent,
+                    $internalSent,
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries
@@ -4692,7 +4704,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)");
 
             // "Requires conclusion": which states finish a task, for the guard below.
             $conclusionTaskStates = json_decode((string)($pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn() ?: '[]'), true);
@@ -4791,7 +4803,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null,
                     ccrm_encode_task_reminders($t['emailReminders'] ?? null),
                     !empty($t['requiresConclusion']) ? 1 : 0,
-                    $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null
+                    $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null,
+                    (array_key_exists('estimateMinutes', $t) && is_numeric($t['estimateMinutes'])) ? max(0, (int)$t['estimateMinutes']) : null,
+                    array_key_exists('estimateMinutes', $t) ? 1 : 0,
                 ]);
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {
                     try {
@@ -5235,7 +5249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $dash['color'],
                     json_encode($prompts),
                     json_encode($layout),
-                    $dash['activeModel'] ?? 'gpt-4o',
+                    $dash['activeModel'] ?? 'gpt-6.1-terra',
                     ($dash['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedDashIds[] = $dashId;
@@ -5665,8 +5679,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `subtotal`, `vat_amount`, `total_price`, `price_range_min`, `price_range_max`, `currency`,
                 `duration_text`, `start_date_text`, `warranty_text`, `next_steps_note`, `closing_note`, `sign_off_team`,
                 `custom_template_id`, `custom_template_style_json`, `status`, `status_changed_at`, `issued_at`, `valid_until`, `due_date`,
-                `file_name`, `file_path`, `created_by`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `file_name`, `file_path`, `created_by`, `custom_fields_json`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `document_number` = VALUES(`document_number`), `type` = VALUES(`type`), `mode` = VALUES(`mode`),
                 `external_provider` = VALUES(`external_provider`), `external_id` = VALUES(`external_id`), `external_pdf_url` = VALUES(`external_pdf_url`),
@@ -5682,7 +5696,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `next_steps_note` = VALUES(`next_steps_note`), `closing_note` = VALUES(`closing_note`), `sign_off_team` = VALUES(`sign_off_team`),
                 `custom_template_id` = VALUES(`custom_template_id`), `custom_template_style_json` = VALUES(`custom_template_style_json`),
                 `status` = VALUES(`status`), `status_changed_at` = VALUES(`status_changed_at`), `issued_at` = VALUES(`issued_at`), `valid_until` = VALUES(`valid_until`), `due_date` = VALUES(`due_date`),
-                `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`)");
+                `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`),
+                `custom_fields_json` = VALUES(`custom_fields_json`)");
 
             $delIoItems = $pdo->prepare("DELETE FROM `invoice_offer_items` WHERE `invoice_offer_id` = ?");
             $insIoItem = $pdo->prepare("INSERT INTO `invoice_offer_items` (
@@ -5740,7 +5755,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($io['dueDate']) ? $io['dueDate'] : null,
                     $io['fileName'] ?? null,
                     $io['filePath'] ?? null,
-                    $io['createdBy'] ?? $sessionEmail
+                    $io['createdBy'] ?? $sessionEmail,
+                    ($cf = ccrm_offer_custom_field_values($io['customFields'] ?? null))
+                        ? json_encode($cf, JSON_UNESCAPED_UNICODE)
+                        : null
                 ]);
                 $processedIoIds[] = $ioId;
 
@@ -5780,14 +5798,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insAct = $pdo->prepare("INSERT INTO `ai_custom_templates` (
                 `id`, `name`, `description`, `source_pdf_url`, `source_pdf_name`,
-                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`, `layout_json`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`, `layout_json`, `document_json`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `description` = VALUES(`description`),
                 `source_pdf_url` = VALUES(`source_pdf_url`), `source_pdf_name` = VALUES(`source_pdf_name`),
                 `colors_json` = VALUES(`colors_json`), `typography_json` = VALUES(`typography_json`),
                 `sections_order_json` = VALUES(`sections_order_json`), `custom_banner_text` = VALUES(`custom_banner_text`),
-                `badge_style` = VALUES(`badge_style`), `layout_json` = VALUES(`layout_json`)");
+                `badge_style` = VALUES(`badge_style`), `layout_json` = VALUES(`layout_json`),
+                `document_json` = VALUES(`document_json`)");
 
             foreach ($payload['aiCustomTemplates'] as $act) {
                 $actId = $act['id'];
@@ -5806,6 +5825,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // validates them again, so this only bounds what a client can park here.
                     isset($act['layout']) && is_array($act['layout']) && strlen((string)json_encode($act['layout'])) <= 4000
                         ? json_encode($act['layout'], JSON_UNESCAPED_UNICODE)
+                        : null,
+                    // The block document. Anything that is not an object, or that
+                    // encodes past 100_000 characters, is stored as NULL.
+                    (isset($act['document']) && is_array($act['document'])
+                        && ($docJson = json_encode($act['document'], JSON_UNESCAPED_UNICODE))
+                        && mb_strlen($docJson) <= 100000)
+                        ? $docJson
                         : null
                 ]);
                 $processedActIds[] = $actId;
@@ -6544,16 +6570,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ON DUPLICATE KEY UPDATE `sync_mode` = VALUES(`sync_mode`)
                     ");
 
-                    $upsertTimeEntry = $pdo->prepare("
-                        INSERT INTO `ticket_time_entries` (`id`, `ticket_id`, `user_id`, `user_name`, `minutes`, `billable`, `note`, `logged_at`)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE
-                            `minutes` = VALUES(`minutes`),
-                            `billable` = VALUES(`billable`),
-                            `note` = VALUES(`note`),
-                            `logged_at` = VALUES(`logged_at`)
-                    ");
-
                     foreach ($payload['tickets'] as $tck) {
                         $tckId = (string)($tck['id'] ?? '');
                         if ($tckId === '') continue;
@@ -6677,34 +6693,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
 
-                        if (isset($tck['timeEntries']) && is_array($tck['timeEntries'])) {
-                            $keepTeIds = [];
-                            foreach ($tck['timeEntries'] as $te) {
-                                $teId = (string)($te['id'] ?? '');
-                                if ($teId === '') continue;
-                                $teLogged = !empty($te['loggedAt']) ? substr(str_replace('T', ' ', (string)$te['loggedAt']), 0, 19) : date('Y-m-d H:i:s');
-                                $teNote = isset($te['note']) && $te['note'] !== ''
-                                    ? (string)$te['note']
-                                    : (isset($te['description']) && $te['description'] !== '' ? (string)$te['description'] : null);
-                                $upsertTimeEntry->execute([
-                                    $teId,
-                                    $tckId,
-                                    !empty($te['userId']) ? (string)$te['userId'] : null,
-                                    (string)($te['userName'] ?? ''),
-                                    (int)($te['minutes'] ?? 0),
-                                    !isset($te['billable']) || $te['billable'] ? 1 : 0,
-                                    $teNote,
-                                    $teLogged,
-                                ]);
-                                $keepTeIds[] = $teId;
-                            }
-                            if (empty($keepTeIds)) {
-                                $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` = ?")->execute([$tckId]);
-                            } else {
-                                $ph = implode(',', array_fill(0, count($keepTeIds), '?'));
-                                $pdo->prepare("DELETE FROM `ticket_time_entries` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepTeIds));
-                            }
-                        }
+                        // Incoming timeEntries are ignored. Native entries are written
+                        // through api/time_entries.php; a stale client must not delete them.
                     }
 
                     $ticketsToDelete = $isDeltaSync ? $deletionsFor('tickets', $existingTicketIds) : array_diff($existingTicketIds, $processedTicketIds);

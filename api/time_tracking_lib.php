@@ -495,4 +495,171 @@ function ccrm_time_tracking_month_hours(string $apiToken, string $workspaceId, s
     ];
 }
 
+/**
+ * Phase 6 Toggl importer. These functions call the existing `toggl_curl` client.
+ * They do not replace `ccrm_time_tracking_month_hours` or the employee summary.
+ * Clockify is not imported here.
+ */
+
+/** Workspace id from settings, or the token's default workspace. */
+function ccrm_toggl_import_workspace(string $apiToken, string $workspaceId): string {
+    if ($workspaceId !== '') {
+        return $workspaceId;
+    }
+    $me = toggl_curl('https://api.track.toggl.com/api/v9/me', $apiToken);
+    if (!empty($me['ok'])) {
+        return trim((string)($me['data']['default_workspace_id'] ?? ''));
+    }
+    return '';
+}
+
+/**
+ * Workspace projects and users for the mapping screen.
+ *
+ * @return array{ok: bool, code?: string, projects: list<array{id: string, name: string}>, users: list<array{id: string, name: string, email: string}>}
+ */
+function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array {
+    $empty = ['ok' => false, 'projects' => [], 'users' => []];
+    if ($apiToken === '') {
+        return $empty + ['code' => 'toggl_not_configured'];
+    }
+    $ws = ccrm_toggl_import_workspace($apiToken, $workspaceId);
+    if ($ws === '') {
+        return $empty + ['code' => 'toggl_not_configured'];
+    }
+    $projects = [];
+    for ($page = 1; $page <= 5; $page++) {
+        $res = toggl_curl("https://api.track.toggl.com/api/v9/workspaces/{$ws}/projects?per_page=200&page={$page}", $apiToken);
+        if (empty($res['ok']) || !is_array($res['data']) || $res['data'] === []) {
+            break;
+        }
+        foreach ($res['data'] as $p) {
+            if (!isset($p['id'])) {
+                continue;
+            }
+            $projects[] = ['id' => (string)$p['id'], 'name' => (string)($p['name'] ?? '')];
+        }
+        if (count($res['data']) < 200) {
+            break;
+        }
+    }
+    $users = [];
+    $uRes = toggl_curl("https://api.track.toggl.com/api/v9/workspaces/{$ws}/users", $apiToken);
+    if (!empty($uRes['ok']) && is_array($uRes['data'])) {
+        foreach ($uRes['data'] as $u) {
+            if (!isset($u['id'])) {
+                continue;
+            }
+            $users[] = [
+                'id' => (string)$u['id'],
+                'name' => (string)($u['fullname'] ?? ($u['name'] ?? '')),
+                'email' => (string)($u['email'] ?? ''),
+            ];
+        }
+    }
+    return ['ok' => true, 'projects' => $projects, 'users' => $users];
+}
+
+/**
+ * Individual Toggl time entries in a date range, with their ids (the import key).
+ * Uses the same reports endpoint as the month summary, then the /me fallback.
+ *
+ * @return array{ok: bool, code?: string, entries: list<array<string, mixed>>}
+ */
+function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $from, string $to): array {
+    if ($apiToken === '') {
+        return ['ok' => false, 'code' => 'toggl_not_configured', 'entries' => []];
+    }
+    $ws = ccrm_toggl_import_workspace($apiToken, $workspaceId);
+    if ($ws === '') {
+        return ['ok' => false, 'code' => 'toggl_not_configured', 'entries' => []];
+    }
+    $reportsUrl = "https://api.track.toggl.com/reports/api/v3/workspace/{$ws}/search/time_entries";
+    $raw = [];
+    $firstRow = 1;
+    for ($page = 0; $page < 40; $page++) {
+        $res = toggl_curl($reportsUrl, $apiToken, 'POST', [
+            'start_date' => $from,
+            'end_date' => $to,
+            'page_size' => 50,
+            'first_row_number' => $firstRow,
+        ]);
+        if (empty($res['ok']) || !is_array($res['data']) || $res['data'] === []) {
+            break;
+        }
+        foreach ($res['data'] as $row) {
+            $raw[] = $row;
+        }
+        if (count($res['data']) < 50) {
+            break;
+        }
+        $firstRow += count($res['data']);
+    }
+    if ($raw === []) {
+        $fallback = toggl_curl(
+            "https://api.track.toggl.com/api/v9/me/time_entries?start_date={$from}T00:00:00Z&end_date={$to}T23:59:59Z",
+            $apiToken
+        );
+        if (!empty($fallback['ok']) && is_array($fallback['data'])) {
+            $raw = $fallback['data'];
+        }
+    }
+    return ['ok' => true, 'entries' => ccrm_toggl_import_flatten($raw, $from, $to)];
+}
+
+/**
+ * One row per Toggl time entry that has an id, a positive duration and a stop.
+ *
+ * @param list<array<string, mixed>> $raw
+ * @return list<array{id: string, userId: string, projectId: ?string, description: string, billable: bool, start: string, stop: string, seconds: int}>
+ */
+function ccrm_toggl_import_flatten(array $raw, string $from, string $to): array {
+    $out = [];
+    foreach ($raw as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $userId = (string)($entry['user_id'] ?? '');
+        $projectId = isset($entry['project_id']) && $entry['project_id'] !== null && $entry['project_id'] !== ''
+            ? (string)$entry['project_id'] : null;
+        $description = mb_substr(trim((string)($entry['description'] ?? '')), 0, 500);
+        $billable = !empty($entry['billable']);
+        $subs = (!empty($entry['time_entries']) && is_array($entry['time_entries'])) ? $entry['time_entries'] : [$entry];
+        foreach ($subs as $sub) {
+            if (!is_array($sub)) {
+                continue;
+            }
+            $id = trim((string)($sub['id'] ?? ($entry['id'] ?? '')));
+            if ($id === '') {
+                continue;
+            }
+            $seconds = (int)($sub['seconds'] ?? ($sub['duration'] ?? 0));
+            if ($seconds < 0) {
+                $seconds = 0;
+            }
+            $start = (string)($sub['start'] ?? '');
+            $stop = (string)($sub['stop'] ?? '');
+            $day = substr($start, 0, 10);
+            if ($seconds <= 0 || $seconds > 86400 || $start === '' || $stop === '' || $day < $from || $day > $to) {
+                continue;
+            }
+            $subUser = (string)($sub['user_id'] ?? $userId);
+            $subProject = isset($sub['project_id']) && $sub['project_id'] !== null && $sub['project_id'] !== ''
+                ? (string)$sub['project_id'] : $projectId;
+            $subDescription = trim((string)($sub['description'] ?? ''));
+            $out[] = [
+                'id' => $id,
+                'userId' => $subUser,
+                'projectId' => $subProject,
+                'description' => $description !== '' ? $description : mb_substr($subDescription, 0, 500),
+                'billable' => array_key_exists('billable', $sub) ? !empty($sub['billable']) : $billable,
+                'start' => $start,
+                'stop' => $stop,
+                'seconds' => $seconds,
+            ];
+        }
+    }
+    return $out;
+}
+
 }

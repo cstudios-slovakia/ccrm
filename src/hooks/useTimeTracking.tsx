@@ -20,13 +20,16 @@ import {
 import {
   TimeApiError,
   getHolidays,
+  EMPTY_TIME_TOTALS,
   getRunning,
   getSettings,
+  getTotals,
   startTimer,
   stopTimer,
   timeErrorMessage,
   undoStart,
   type EntryInput,
+  type TimeTotals,
   type TimeViewer,
 } from "../utils/timeTrackingApi.ts";
 
@@ -50,6 +53,8 @@ export interface TimeTrackingContextValue {
   defaultCountry: HolidayCountry;
   running: TimeEntry | null;
   nowMs: number;
+  /** Tracked seconds per task, ticket and project. Reloaded with `version`. */
+  totals: TimeTotals;
   /** Bumped by every change; views refetch on it. */
   version: number;
   bump: () => void;
@@ -79,6 +84,7 @@ const Ctx = createContext<TimeTrackingContextValue>({
   workCountry: "SK",
   defaultCountry: "SK",
   running: null,
+  totals: EMPTY_TIME_TOTALS,
   nowMs: Date.now(),
   version: 0,
   bump: () => {},
@@ -117,6 +123,7 @@ export function TimeTrackingProvider({
   const [workCountry, setWorkCountry] = useState<HolidayCountry>("SK");
   const [defaultCountry, setDefaultCountry] = useState<HolidayCountry>("SK");
   const [running, setRunning] = useState<TimeEntry | null>(null);
+  const [totals, setTotals] = useState<TimeTotals>(EMPTY_TIME_TOTALS);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [version, setVersion] = useState(0);
   const [projectRequest, setProjectRequest] = useState<TimeTrackingContextValue["projectRequest"]>(null);
@@ -141,6 +148,14 @@ export function TimeTrackingProvider({
     }
   }, []);
 
+  const refreshTotals = useCallback(async () => {
+    try {
+      setTotals(await getTotals());
+    } catch {
+      /* chips stay at what they last showed */
+    }
+  }, []);
+
   const refreshRunning = useCallback(async () => {
     try {
       setRunning(await getRunning());
@@ -158,7 +173,7 @@ export function TimeTrackingProvider({
     }
     let cancelled = false;
     (async () => {
-      await Promise.all([reloadSettings(), refreshRunning()]);
+      await Promise.all([reloadSettings(), refreshRunning(), refreshTotals()]);
       if (!cancelled) setReady(true);
     })();
     const onVisible = () => {
@@ -169,12 +184,15 @@ export function TimeTrackingProvider({
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [enabled, userId, reloadSettings, refreshRunning]);
+  }, [enabled, userId, reloadSettings, refreshRunning, refreshTotals]);
 
   // Any change (an edit, a rename of the linked task, another view's save) may have touched the running entry.
   useEffect(() => {
-    if (enabled && userId && version > 0) void refreshRunning();
-  }, [version, enabled, userId, refreshRunning]);
+    if (enabled && userId && version > 0) {
+      void refreshRunning();
+      void refreshTotals();
+    }
+  }, [version, enabled, userId, refreshRunning, refreshTotals]);
 
   // Elapsed time is now minus start: the clock only re-renders, it never counts.
   useEffect(() => {
@@ -327,6 +345,7 @@ export function TimeTrackingProvider({
     workCountry,
     defaultCountry,
     running,
+    totals,
     nowMs,
     version,
     bump,

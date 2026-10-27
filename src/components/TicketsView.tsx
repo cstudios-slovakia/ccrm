@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import {
   Ticket as TicketIcon,
@@ -81,6 +82,7 @@ import {
   formatDurationMinutes,
   parseDurationColonInput,
   sanitizeColonTimeDraft,
+  ticketLoggedTotalAdjustment,
   computeProjectRetainerUsage,
 } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -102,6 +104,9 @@ import {
   isRichTextEmpty,
 } from "./ui/TicketRichHtmlEditor";
 import { useListFilter } from "../hooks/useListFilter";
+import { useTicketTimeEntries } from "../hooks/useTimeEntries";
+import { useTimeTracking } from "../hooks/useTimeTracking";
+import { createEntry, deleteEntry, listProjectUsage, updateEntry, type UsageEntry } from "../utils/timeTrackingApi";
 
 /** Single time input in H:MM format (e.g. 1:30 for 90 minutes) with a permanent preset ":" */
 const ColonTimeInput: React.FC<{
@@ -197,6 +202,10 @@ interface TicketsViewProps {
   settingsAccess?: ModuleAccess;
   onRefreshSync?: () => void;
   onNavigate?: (route: string) => void;
+  /** `tickets.time`: the time list, the log form and the running timer on a ticket. */
+  canSeeTicketTime?: boolean;
+  /** May start a timer (`time_tracking` edit). */
+  canTrackTime?: boolean;
 }
 
 export const TicketsView: React.FC<TicketsViewProps> = ({
@@ -220,6 +229,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   access = FULL_MODULE_ACCESS,
   settingsAccess = FULL_MODULE_ACCESS,
   onRefreshSync,
+  canSeeTicketTime = false,
+  canTrackTime = false,
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -340,6 +351,37 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   useEffect(() => {
     setSelectedTicketId(initialSelectedTicketId || null);
   }, [initialSelectedTicketId]);
+
+  const ticketTime = useTicketTimeEntries(canSeeTicketTime ? selectedTicketId : null, canSeeTicketTime);
+  const timeTracker = useTimeTracking();
+  const shownTimeEntries = useMemo(() => {
+    if (!canSeeTicketTime) return [];
+    return ticketTime.entries.map((entry) => ({
+      id: entry.id,
+      ticketId: entry.ticketId || undefined,
+      userName: users.find((u) => u.id === entry.userId)?.name || "",
+      minutes: Math.round((entry.durationSec || 0) / 60),
+      billable: entry.billable,
+      note: entry.legacyNote,
+      description: entry.legacyNote,
+      loggedAt: entry.startAt || `${entry.entryDate} 12:00:00`,
+      createdAt: entry.createdAt,
+    }));
+  }, [canSeeTicketTime, ticketTime.entries, users]);
+
+  const [projectUsage, setProjectUsage] = useState<UsageEntry[]>([]);
+  useEffect(() => {
+    const projectId = tickets.find((tk) => tk.id === selectedTicketId)?.projectId;
+    if (!projectId || !canSeeTicketTime) {
+      setProjectUsage([]);
+      return;
+    }
+    let live = true;
+    listProjectUsage(projectId)
+      .then((rows) => { if (live) setProjectUsage(rows); })
+      .catch(() => { if (live) setProjectUsage([]); });
+    return () => { live = false; };
+  }, [tickets, selectedTicketId, canSeeTicketTime, timeTracker.version]);
 
   const selectedTicket = useMemo(() => {
     if (!selectedTicketId) return null;
@@ -1050,185 +1092,122 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     useTimelineTimestamp = false,
   ) => {
     if (e) e.preventDefault();
-    if (!selectedTicket || !canEdit) return;
+    if (!selectedTicket || !canEdit || !canSeeTicketTime) return;
     const mins = parseDurationColonInput(logMinutes);
     if (!mins || mins <= 0) return;
     const now = nowLocalStamp();
     const currentDatePart = now.slice(0, 10);
     const currentTimePart = now.slice(11, 16);
-    const loggedAtStamp =
+    const entryDate =
       useTimelineTimestamp &&
       timelineEventDate &&
       !(
         timelineEventDate === currentDatePart &&
         (!timelineEventTime || timelineEventTime === currentTimePart)
       )
-        ? `${timelineEventDate} ${timelineEventTime || "12:00"}:${now.slice(17, 19) || "00"}`
-        : now;
-    const noteText =
-      logDesc.trim() || t("Support work", "Podpora", "Támogatási munka");
-    const entry = {
-      id: `tte-${Date.now()}`,
+        ? timelineEventDate
+        : currentDatePart;
+    void createEntry({
       ticketId: selectedTicket.id,
-      userName: currentUser?.name || "Agent",
-      minutes: mins,
+      projectId: selectedTicket.projectId || null,
+      entryDate,
+      durationSec: mins * 60,
       billable: logBillable,
-      note: noteText,
-      description: noteText,
-      loggedAt: loggedAtStamp,
-    };
-
-    const nextEntries = [...(selectedTicket.timeEntries || []), entry];
-    const nextTotal = nextEntries.reduce((acc, item) => acc + (item.minutes || 0), 0);
-
-    updateSelectedTicket({
-      timeEntries: nextEntries,
-      loggedMinutes: nextTotal,
-    });
-
-    if (logBillable && selectedTicket.contractId) {
-      const addHours = +(mins / 60).toFixed(2);
-      setSupportContracts((prev) =>
-        prev.map((c) =>
-          c.id === selectedTicket.contractId
-            ? {
-                ...c,
-                hoursUsedThisMonth: +(
-                  (c.hoursUsedThisMonth || 0) + addHours
-                ).toFixed(2),
-              }
-            : c,
-        ),
-      );
-    }
-
-    setLogDesc("");
-    setLogMinutes("0:30");
-    if (timelineEventType === "time_logged") {
-      setTimelineEventType(null);
-    }
-    (window as any).showToast?.(
-      t("Time entry logged.", "Čas bol zaznamenaný.", "Időbejegyzés rögzítve."),
-    );
+      source: "manual",
+      originType: "ticket",
+      originId: selectedTicket.id,
+    })
+      .then(() => {
+        timeTracker.bump();
+        ticketTime.reload();
+        setLogDesc("");
+        setLogMinutes("0:30");
+        if (timelineEventType === "time_logged") setTimelineEventType(null);
+        (window as any).showToast?.(
+          t("Time entry logged.", "Čas bol zaznamenaný.", "Időbejegyzés rögzítve."),
+        );
+      })
+      .catch(() => {
+        (window as any).showToast?.(
+          t("Time could not be logged.", "Čas sa nepodarilo zaznamenať.", "Az időt nem sikerült rögzíteni."),
+          "error",
+        );
+      });
   };
 
   const handleSaveTotalLoggedTime = () => {
-    if (!selectedTicket || !isAdminUser) return;
+    if (!selectedTicket || !isAdminUser || !canSeeTicketTime) return;
     const targetMins = Math.max(0, parseDurationColonInput(editingTotalTimeDraft));
-    const now = nowLocalStamp();
-    const existing = selectedTicket.timeEntries || [];
-    let nextEntries = existing;
-
-    if (targetMins === 0) {
-      nextEntries = [];
-    } else if (existing.length === 0) {
-      const noteText = t(
-        "Time logged (Admin)",
-        "Zaznamenaný čas (Admin)",
-        "Rögzített idő (Admin)",
-      );
-      nextEntries = [
-        {
-          id: `tte-${Date.now()}`,
-          ticketId: selectedTicket.id,
-          userName: currentUser?.name || "Admin",
-          minutes: targetMins,
-          billable: true,
-          note: noteText,
-          description: noteText,
-          loggedAt: now,
-        },
-      ];
-    } else if (existing.length === 1) {
-      nextEntries = [{ ...existing[0], minutes: targetMins }];
-    } else {
-      const othersSum = existing
-        .slice(1)
-        .reduce((acc, item) => acc + (item.minutes || 0), 0);
-      if (targetMins > othersSum) {
-        nextEntries = [
-          { ...existing[0], minutes: targetMins - othersSum },
-          ...existing.slice(1),
-        ];
-      } else {
-        const noteText =
-          existing[0].description ||
-          existing[0].note ||
-          t("Support work", "Podpora", "Támogatási munka");
-        nextEntries = [
-          {
-            ...existing[0],
-            minutes: targetMins,
-            note: noteText,
-            description: noteText,
-          },
-        ];
-      }
-    }
-
-    updateSelectedTicket({
-      timeEntries: nextEntries,
-      loggedMinutes: targetMins,
-    });
+    const current = shownTimeEntries.reduce((acc, item) => acc + (item.minutes || 0), 0);
+    const decision = ticketLoggedTotalAdjustment(current, targetMins);
+    setEditingTotalTimeDraft(formatDurationMinutes(current));
     setIsEditingTotalTime(false);
-    (window as any).showToast?.(
-      t(
-        "Time logged updated.",
-        "Zaznamenaný čas bol upravený.",
-        "Rögzített idő frissítve.",
-      ),
-    );
+    if (!decision.write) {
+      if (decision.reason === "lower") {
+        (window as any).showToast?.(
+          t(
+            "The total can only be raised here. Shorten or delete an entry to lower it.",
+            "Súčet sa tu dá len zvýšiť. Znížite ho skrátením alebo odstránením záznamu.",
+            "Az összeget itt csak növelni lehet. Csökkentéshez rövidítsen vagy töröljön egy bejegyzést.",
+          ),
+          "warning",
+        );
+      }
+      return;
+    }
+    void createEntry({
+      ticketId: selectedTicket.id,
+      projectId: selectedTicket.projectId || null,
+      entryDate: todayLocal(),
+      durationSec: decision.durationSec,
+      billable: true,
+      source: "manual",
+      originType: "ticket",
+      originId: selectedTicket.id,
+    }).then(() => {
+      timeTracker.bump();
+      ticketTime.reload();
+      (window as any).showToast?.(
+        t(
+          "Time logged updated.",
+          "Zaznamenaný čas bol upravený.",
+          "Rögzített idő frissítve.",
+        ),
+      );
+    });
   };
 
   const handleSaveTimeEntry = (entryId: string) => {
-    if (!selectedTicket || !isAdminUser) return;
+    if (!selectedTicket || !isAdminUser || !canSeeTicketTime) return;
     const mins = Math.max(1, parseDurationColonInput(editingTimeEntryDuration));
-    const noteText =
-      editingTimeEntryNote.trim() ||
-      t("Support work", "Podpora", "Támogatási munka");
-    const nextEntries = (selectedTicket.timeEntries || []).map((te) =>
-      te.id === entryId
-        ? {
-            ...te,
-            minutes: mins,
-            note: noteText,
-            description: noteText,
-          }
-        : te,
-    );
-    const nextTotal = nextEntries.reduce((acc, item) => acc + (item.minutes || 0), 0);
-    updateSelectedTicket({
-      timeEntries: nextEntries,
-      loggedMinutes: nextTotal,
+    void updateEntry(entryId, { durationSec: mins * 60 }).then(() => {
+      timeTracker.bump();
+      ticketTime.reload();
+      setEditingTimeEntryId(null);
+      (window as any).showToast?.(
+        t(
+          "Time entry updated.",
+          "Časový záznam bol upravený.",
+          "Időbejegyzés frissítve.",
+        ),
+      );
     });
-    setEditingTimeEntryId(null);
-    (window as any).showToast?.(
-      t(
-        "Time entry updated.",
-        "Časový záznam bol upravený.",
-        "Időbejegyzés frissítve.",
-      ),
-    );
   };
 
   const handleDeleteTimeEntry = (entryId: string) => {
-    if (!selectedTicket || !isAdminUser) return;
-    const nextEntries = (selectedTicket.timeEntries || []).filter(
-      (te) => te.id !== entryId,
-    );
-    const nextTotal = nextEntries.reduce((acc, item) => acc + (item.minutes || 0), 0);
-    updateSelectedTicket({
-      timeEntries: nextEntries,
-      loggedMinutes: nextTotal,
+    if (!selectedTicket || !isAdminUser || !canSeeTicketTime) return;
+    void deleteEntry(entryId).then(() => {
+      timeTracker.bump();
+      ticketTime.reload();
+      if (editingTimeEntryId === entryId) setEditingTimeEntryId(null);
+      (window as any).showToast?.(
+        t(
+          "Time entry removed.",
+          "Časový záznam bol odstránený.",
+          "Időbejegyzés törölve.",
+        ),
+      );
     });
-    if (editingTimeEntryId === entryId) setEditingTimeEntryId(null);
-    (window as any).showToast?.(
-      t(
-        "Time entry removed.",
-        "Časový záznam bol odstránený.",
-        "Időbejegyzés törölve.",
-      ),
-    );
   };
 
   const handlePollImap = async () => {
@@ -2254,6 +2233,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       pairedProject,
                       tickets,
                       supportContracts,
+                      new Date(),
+                      canSeeTicketTime ? projectUsage : undefined,
                     );
                     if (!projRetainer.enabled) return null;
                     return (
@@ -2628,7 +2609,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     ),
                     count:
                       (selectedTicket.messages || []).length +
-                      (selectedTicket.timeEntries || []).length,
+                      (canSeeTicketTime ? shownTimeEntries.length : 0),
                     icon: <Clock className="h-3.5 w-3.5" />,
                   },
                   {
@@ -2644,7 +2625,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       "Zaznamenaný čas",
                       "Rögzített idő",
                     ),
-                    count: (selectedTicket.timeEntries || []).length,
+                    count: shownTimeEntries.length,
+                    hidden: !canSeeTicketTime,
                     icon: <Timer className="h-3.5 w-3.5" />,
                   },
                 ]}
@@ -3177,7 +3159,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         : null;
 
                     const timeTimelineItems: EnrichedTimelineItem[] = (
-                      selectedTicket.timeEntries || []
+                      canSeeTicketTime ? shownTimeEntries : []
                     ).map((te) => {
                       const durFormatted = formatDurationMinutes(
                         te.minutes || 0,
@@ -3864,9 +3846,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               /* TIME LOGGED TAB (Total Time + Log Time Form + Chronological Time Entries) */
               <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
                 {(() => {
-                  const totalLoggedMins = (
-                    selectedTicket.timeEntries || []
-                  ).reduce((acc, e) => acc + (e.minutes || 0), 0);
+                  const totalLoggedMins = shownTimeEntries.reduce((acc, e) => acc + (e.minutes || 0), 0);
                   const formattedTotal = formatDurationMinutes(totalLoggedMins);
 
                   return (
@@ -3946,6 +3926,25 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             {formattedTotal}
                           </span>
                         )}
+                        {canTrackTime && timeTracker.enabled && (
+                          <button
+                            type="button"
+                            data-testid="ticket-start-timer"
+                            onClick={() => {
+                              const onThis = timeTracker.running?.ticketId === selectedTicket.id && !timeTracker.running.taskId;
+                              if (onThis) void timeTracker.stop();
+                              else void timeTracker.start({ ticketId: selectedTicket.id, projectId: selectedTicket.projectId || null, description: null, originType: "ticket", originId: selectedTicket.id });
+                            }}
+                            className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer ${
+                              timeTracker.running?.ticketId === selectedTicket.id ? "bg-rose-600" : "bg-primary"
+                            }`}
+                          >
+                            <Timer className="h-4 w-4" />
+                            {timeTracker.running?.ticketId === selectedTicket.id
+                              ? t("Stop", "Zastaviť", "Leállítás")
+                              : t("Start timer", "Spustiť časovač", "Időzítő indítása")}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -4024,7 +4023,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   </form>
                 )}
 
-                {(selectedTicket.timeEntries || []).length === 0 ? (
+                {shownTimeEntries.length === 0 ? (
                   <div className="p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
                     <Timer className="w-8 h-8 text-slate-300 mx-auto" />
                     <p className="text-caption font-bold text-slate-500">
@@ -4037,7 +4036,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2.5">
-                    {[...(selectedTicket.timeEntries || [])]
+                    {[...shownTimeEntries]
                       .sort((a, b) =>
                         String(b.loggedAt || b.createdAt || "").localeCompare(
                           String(a.loggedAt || a.createdAt || ""),
@@ -4171,7 +4170,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   return (
     <div className="space-y-5 text-left">
       <PageHeader
-        icon={<TicketIcon className="h-6 w-6 text-indigo-600" />}
+        icon={<SectionIcon id="tickets" />}
         title={t(
           "Support Tickets & SLA",
           "Podporné tikety a SLA",

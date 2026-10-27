@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/sync-backend.mjs && tsc -b && vite build",
+    "build:extension": "node scripts/build-extension.mjs",
     "sync:backend": "node scripts/sync-backend.mjs",
     "check:backend": "node scripts/sync-backend.mjs --check",
     "deploy": "node scripts/deploy.mjs",

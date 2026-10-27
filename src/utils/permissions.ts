@@ -122,7 +122,13 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
   },
   {
     id: "tickets",
-    permissions: [access("tickets"), deleteToggle("tickets")],
+    permissions: [
+      access("tickets"),
+      deleteToggle("tickets"),
+      // Who may see time logged on a ticket. Off until granted; Project Manager is
+      // turned on by the schema migration, Admin by the admin role itself.
+      toggle("tickets.time", "nothing", "nothing", { key: "tickets", level: "view" }),
+    ],
   },
   {
     id: "invoices",
@@ -322,6 +328,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   "orders.delete": "nothing",
   tickets: "nothing",
   "tickets.delete": "nothing",
+  "tickets.time": "nothing",
   warehouse: "nothing",
   "warehouse.delete": "nothing",
   financial: "nothing",

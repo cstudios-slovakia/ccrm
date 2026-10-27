@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTimeTracking } from "./useTimeTracking";
 import type { TimeEntry } from "../utils/timeTracking.ts";
 import { listEntries, type ListParams } from "../utils/timeTrackingApi.ts";
@@ -36,4 +36,29 @@ export function useTimeEntries(params: ListParams): { entries: TimeEntry[]; load
   }, [key, version, enabled]);
 
   return { entries, loading, error };
+}
+
+/** A ticket's native entries. Empty unless the caller may see ticket time. Not gated on the module being visible. */
+export function useTicketTimeEntries(ticketId: string | null, allowed: boolean): { entries: TimeEntry[]; reload: () => void } {
+  const { version } = useTimeTracking();
+  const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const seq = useRef(0);
+  const reload = useCallback(() => {
+    if (!ticketId || !allowed) {
+      setEntries([]);
+      return;
+    }
+    const mine = ++seq.current;
+    listEntries({ ticketId, from: "2000-01-01", to: "2100-01-01" })
+      .then((res) => {
+        if (mine === seq.current) setEntries(res.entries);
+      })
+      .catch(() => {
+        if (mine === seq.current) setEntries([]);
+      });
+  }, [ticketId, allowed]);
+  useEffect(() => {
+    reload();
+  }, [reload, version]);
+  return { entries, reload };
 }

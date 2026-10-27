@@ -19,6 +19,17 @@ const LEAD_USER = { id: 'user-lead', name: 'Vedúci', email: 'lead@crm.com', rol
 const rows = (page: Page) => page.getByTestId('time-entry-row');
 const row = (page: Page, text: string) => rows(page).filter({ hasText: text });
 
+/** The dock hides its label until expanded; the button keeps the accessible name. */
+async function openTimeTrackingFromSidebar(page: Page) {
+  await page.locator('nav, aside').getByRole('button', { name: /Evidencia času|Time tracking|Időkövetés/ }).click();
+}
+
+/** Me / one person / whole team. "Whole team" is what the old native select called "all". */
+async function viewWholeTeam(page: Page) {
+  await page.getByTestId('viewing-as').getByRole('button').click();
+  await page.getByRole('option', { name: /Celý tím|Whole team|Teljes csapat/ }).click();
+}
+
 /** Every task the app pushed to /sync.php, newest write winning per id. */
 function recordSyncedTasks(page: Page) {
   const pushed = new Map<string, Record<string, unknown>>();
@@ -41,7 +52,7 @@ test.describe('Time tracking', () => {
   test('the module opens from the sidebar with the week, the seeded entries and today\'s total', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#tasks');
-    await page.locator('nav, aside').getByText(/Evidencia času|Time tracking|Időkövetés/).first().click();
+    await openTimeTrackingFromSidebar(page);
     await expect(page).toHaveURL(/#time-tracking/);
     await expect(page.getByTestId('timer-bar')).toBeVisible();
     await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
@@ -183,7 +194,7 @@ test.describe('Time tracking', () => {
   test('team view: a freelancer is costed at a flat rate, a user with no employee record shows "no rate"', async ({ page }) => {
     await startSession(page, { extraUsers: [FREELANCER] });
     await gotoView(page, '#time-tracking');
-    await page.getByTestId('viewing-as').selectOption('all');
+    await viewWholeTeam(page);
     await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
     await expect(page.getByTestId('day-user-header').filter({ hasText: 'Mária' })).toContainText(/bez sadzby|no rate|nincs díj/);
     // Erik is an employee on €3,200 a month: a rate is shown on his header.
@@ -193,7 +204,7 @@ test.describe('Time tracking', () => {
   test('cost of other people\'s entries is hidden without time_tracking_costs, while a person still sees their own', async ({ page }) => {
     await startSession(page, { user: LEAD_USER as never, extraUsers: [LEAD_USER as never], roles: [LEAD_ROLE as never] });
     await gotoView(page, '#time-tracking');
-    await page.getByTestId('viewing-as').selectOption('all');
+    await viewWholeTeam(page);
     await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
     await expect(page.getByTestId('time-entry-cost')).toHaveCount(0);
     await expect(page.getByTestId('stat-cost')).toHaveCount(0);
@@ -231,5 +242,75 @@ test.describe('Time tracking', () => {
     await page.getByTestId('tt-override-add').click();
     await expect(page.getByTestId('tt-overrides')).toContainText('Firemné voľno');
     await expect.poll(async () => page.getByTestId('tt-example').locator('b').first().innerText()).not.toBe(daysBefore);
+  });
+
+  test('starting from a task prefills the timer with the task and its project', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    // Tomorrow and later stay folded, so the card is not in the document until the bucket opens.
+    await page.getByRole('button', { name: /Budúce|Future|Jövőbeli/ }).click();
+    const card = page.getByTestId('task-card').filter({ hasText: 'Objednať krytinu' });
+    await card.getByTestId('task-time-start').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Objednať krytinu');
+  });
+
+  test('renaming a ticket-linked entry renames the ticket', async ({ page }) => {
+    const ticket = {
+      id: 'tck-qa',
+      ticketNumber: 'TCK-9001',
+      subject: 'Widget nefunguje',
+      title: 'Widget nefunguje',
+      status: 'open',
+      priority: 'normal',
+      type: 'bug',
+      projectId: 'project-1',
+      createdAt: '2026-10-01 09:00:00',
+      timeEntries: [],
+      messages: [],
+    };
+    await startSession(page, { tickets: [ticket] });
+    const pushed = new Map<string, { title?: string }>();
+    await page.route('**/sync.php**', async (route) => {
+      if (route.request().method() !== 'GET') {
+        try {
+          const body = route.request().postDataJSON() as { tickets?: { id?: string; title?: string }[] };
+          for (const row of body?.tickets ?? []) if (row.id) pushed.set(row.id, row);
+        } catch { /* not JSON */ }
+      }
+      await route.fallback();
+    });
+    await gotoView(page, '#time-tracking');
+    await page.getByTestId('timer-title').fill('Widget');
+    await page.getByTestId('timer-ticket-suggestion').click();
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Widget nefunguje');
+    await page.getByTestId('timer-title').fill('Widget opravený');
+    await page.getByTestId('timer-title').blur();
+    await expect.poll(() => pushed.get('tck-qa')?.title).toBe('Widget opravený');
+  });
+
+  test('ticket time is hidden without tickets.time', async ({ page }) => {
+    const ticket = {
+      id: 'tck-qa',
+      ticketNumber: 'TCK-9001',
+      subject: 'Widget nefunguje',
+      title: 'Widget nefunguje',
+      status: 'open',
+      priority: 'normal',
+      type: 'bug',
+      projectId: 'project-1',
+      createdAt: '2026-10-01 09:00:00',
+      timeEntries: [],
+      messages: [],
+    };
+    await startSession(page, {
+      user: { ...LEAD_USER, role: 'Agent' } as never,
+      extraUsers: [{ ...LEAD_USER, role: 'Agent' } as never],
+      roles: [{ name: 'Agent', permissions: { tickets: 'edit', 'tickets.time': 'nothing', time_tracking: 'edit', tasks: 'edit', 'tasks.view_all': 'edit', projects: 'edit' } }],
+      tickets: [ticket],
+    });
+    await gotoView(page, '#tickets/tck-qa');
+    await expect(page.getByTestId('ticket-start-timer')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: /Zaznamenaný čas|Time Logged|Rögzített idő/ })).toHaveCount(0);
   });
 });

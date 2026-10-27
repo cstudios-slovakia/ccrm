@@ -28,6 +28,8 @@ import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeStyle, projectStatusDotStyle, projectStatusOptions, projectTypeHasInvoiceDate } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
+import { useTimeTracking } from "../hooks/useTimeTracking";
+import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -52,9 +54,9 @@ import { reinsertAt, removeByIds } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files" | "tickets";
+type RightTab = "timeline" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "tasks" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
+  value === "timeline" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -690,6 +692,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return projectFinancials.filter((r) => r.type === "expense");
   }, [projectFinancials]);
 
+  const timeTracking = useTimeTracking();
+  const labourCost = timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null : null;
+
   const revenueAnalysis = useMemo(() => {
     let totalPlannedIncome = 0;
     let totalRealIncome = 0;
@@ -706,6 +711,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         totalRealExpenses += real;
       }
     });
+
+    // Labour is computed from time entries. It is not a financial record, so
+    // company totals never see it. It counts in this project's real profit.
+    if (labourCost != null) totalRealExpenses += labourCost;
 
     const plannedProfit = totalPlannedIncome - totalPlannedExpenses;
     const realProfit = totalRealIncome - totalRealExpenses;
@@ -737,9 +746,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       realMarginPct,
       invoicesCount: projectInvoices.length,
       expensesCount: projectExpenses.length,
-      expensesByCategory: Object.values(catMap).sort((a, b) => b.planned - a.planned)
+      expensesByCategory: Object.values(catMap).sort((a, b) => b.planned - a.planned),
+      labourCost,
     };
-  }, [projectFinancials, projectInvoices, projectExpenses, financialCategories, userLanguage]);
+  }, [projectFinancials, projectInvoices, projectExpenses, financialCategories, userLanguage, labourCost]);
 
   /* The budget is a cost ceiling — what the project may spend. The money
      already paid out and the costs planned so far are both measured against
@@ -3083,6 +3093,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   // Open tasks, counted by the same visibility rule the tab lists them with.
                   count: openTasksCount || undefined,
                 },
+                { key: "time", hidden: !timeTracking.enabled, icon: <Icons.Timer />, label: t("Time", "Čas", "Idő") },
                 { key: "gantt", hidden: !projectType.hasGantt, icon: <Icons.GanttChartSquare />, label: t("Gantt Chart", "Ganttov diagram", "Gantt diagram") },
                 {
                   key: "finances",
@@ -3141,6 +3152,20 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   if (next) {
                     onSave(next, { close: false });
                   }
+                }}
+              />
+            </div>
+          )}
+
+          {activeRightTab === "time" && timeTracking.enabled && project && (
+            <div className="flex-1 ws-lg:overflow-y-auto">
+              <ProjectTimeTab
+                project={project}
+                language={userLanguage}
+                currency={currencyCode || "EUR"}
+                onPatch={(patch) => {
+                  const next = buildProject(patch);
+                  if (next) onSave(next, { close: false });
                 }}
               />
             </div>
@@ -4475,6 +4500,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
+                    {revenueAnalysis.labourCost != null && (
+                      <div className="mt-1 type-meta text-violet-700" data-testid="project-labour-line">
+                        {t("Labour (time tracking)", "Práca (evidencia času)", "Munka (időkövetés)")}: {money(revenueAnalysis.labourCost)}
+                      </div>
+                    )}
                   </div>
                 </div>
 

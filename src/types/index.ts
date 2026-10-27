@@ -334,6 +334,8 @@ export interface Task {
   requiresConclusion?: boolean;
   /** How the task was finished — a short note or report, written when it is completed. */
   conclusion?: string;
+  /** Expected effort, in minutes. Compared with tracked time; null when unset. */
+  estimateMinutes?: number | null;
 }
 
 /** Settings → Tasks. Stored as one blob, like {@link ProjectAutoCreateSettings}. */
@@ -719,6 +721,12 @@ export interface Project {
    */
   customFileFields?: ProjectCustomFileField[];
   archived?: boolean;
+  /** Hours the project is expected to take. Null while unset. */
+  hoursBudget?: number | null;
+  /** Default billable hourly rate for time logged on this project. */
+  billableRate?: number | null;
+  /** Internal work. Time on it is not client work in the salary allocation report. */
+  isInternal?: boolean;
 
   // Support Tickets, Floating Widget & Monthly Retainer Configuration (stored on the project)
   ticketWidgetEnabled?: boolean;
@@ -1073,6 +1081,8 @@ export interface InvoiceOffer {
   nextStepsNote?: string | null;
   closingNote?: string | null;
   signOffTeam?: string | null; // e.g. "Tím SIGNUM Slovakia s.r.o."
+  /** Values the reconstructed template introduced. Capped at 24 strings. */
+  customFields?: Record<string, string> | null;
   
   // Custom AI Template metadata
   customTemplateId?: string | null;
@@ -1175,6 +1185,11 @@ export interface AiCustomTemplate {
     fontFamily?: string;
     headings?: { usp?: string; items?: string; nextStep?: string };
   } | null;
+  /**
+   * The reconstructed PDF. Absent (or null) on a template that is still a
+   * colour skin of the Signum document — those keep CustomAiOfferTemplate.
+   */
+  document?: import("../utils/offerDocument").OfferDocument | null;
   createdAt: string;
 }
 
@@ -1620,6 +1635,11 @@ export interface Ticket {
   closedAt?: string | null;
   messages?: TicketMessage[];
   taskLinks?: TicketTaskLink[];
+  /**
+   * Deprecated. Ticket time is stored in `time_entries` and read from
+   * `api/time_entries.php`. The sync blob always sends `[]`. `loggedMinutes`
+   * is still a derived total for older clients.
+   */
   timeEntries?: TicketTimeEntry[];
 }
 

@@ -78,11 +78,11 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | # | Phase | Status | Version | Commit | Date |
 |---|---|---|---|---|---|
 | 1 | Core, holidays, cost | 🟡 | v1.13.4-Nectarine | `04cc18b6` | 2026-10-27 |
-| 2 | Entry points and tickets | ⬜ | | | |
-| 3 | Calendar and Timesheet | ⬜ | | | |
-| 4 | Team, Reports, salary allocation, exports | ⬜ | | | |
-| 5 | Chrome extension, then activity capture and Unsorted | ⬜ | | | |
-| 6 | Locking and approval, Toggl import, mobile polish, idle reminder | ⬜ | | | |
+| 2 | Entry points and tickets | 🟡 | v1.13.6-Nectarine | | 2026-10-27 |
+| 3 | Calendar and Timesheet | 🟡 | v1.13.11-Nectarine | | 2026-10-27 |
+| 4 | Team, Reports, salary allocation, exports | 🟡 | v1.13.11-Nectarine | | 2026-10-27 |
+| 5 | Chrome extension, then activity capture and Unsorted | 🟡 | v1.13.11-Nectarine | | 2026-10-27 |
+| 6 | Locking and approval, Toggl import, mobile polish, idle reminder | 🟡 | v1.13.11-Nectarine | | 2026-10-27 |
 
 Branch: all phases go on `1.13-nectarine`. (Phase 1 was first committed on `1.12-mango`
 as v1.12.84 by mistake. It was moved on 2026-10-27; a backup ref
@@ -136,11 +136,11 @@ Spec: C2 to C9, C11 (List, Day, drawer, picker), C13, C16.
 - [x] Title rule: linked entry has no title of its own (C5)
 - [x] `Employee.workCountry` (type, column, employee form, sync mapping) (C6)
 - [x] Unit tests, PHP parity test, server probe, e2e spec written (`tests/e2e/timeTracking.spec.ts`)
-- [ ] **Module setup wizard step** (`ModuleSetupWizard.tsx`): hours basis, multiplier, which users track time, extension on/off. Today the module only appears as a toggle through `moduleCatalog.ts`.
-- [ ] **`npm run test:qa` for the time tracking spec**: the spec was written but never executed by the first agent ("QA not run at the owner's request"). Run it, fix what it finds.
+- [x] **Module setup wizard step** (`ModuleSetupWizard.tsx`): hours basis, multiplier, which users track time, extension on/off.
+- [ ] **`npm run test:qa` for the time tracking spec**: the spec was written but never executed ("QA not run at the owner's request"). Run it, fix what it finds.
 - [ ] **Build commit on `1.13-nectarine`** (`dist/` bundle) once QA is green. The original bundle was on `1.12-mango` and was dropped with the move.
 
-**Left over:** the three unchecked items above.
+**Left over:** QA and the build commit. The wizard step is in. Who tracks time is stored on the role, so people who share a role are checked together, and administrators stay on.
 **Open item carried to later:** verify HU 24 Dec 2026 against the official decree before adding it to the built-in list (it is deliberately absent). SK 1 Sept 2026 is settled (working day).
 **Moved to phase 2:** the brief's extra columns (`tasks.estimate_minutes`, `projects.hours_budget`, `projects.billable_rate`, project type `isInternal`) were not added in phase 1. Nothing reads them before the project Time tab, so they start phase 2.
 
@@ -148,74 +148,74 @@ Spec: C2 to C9, C11 (List, Day, drawer, picker), C13, C16.
 
 Spec: C9, C10, C5, C7.4 (billable rate), C4.3.
 
-- [ ] Schema: `tasks.estimate_minutes`, `projects.hours_budget`, `projects.billable_rate`, project type `isInternal`, `tickets.time` permission (C4.3, C16)
-- [ ] Task card ▶ and tracked-time chip, `TaskEditDrawer` "Time tracking" section (C9.2)
-- [ ] Project "Start timer on this project" and the project **Time** tab in `ProjectDetailsView`
-- [ ] Project Finances: computed "Labour (time tracking)" line, included in real profit and the profit badge. No financial records created (C7.5)
-- [ ] Task without a project: the "Which project is this for?" popover (C9.1)
-- [ ] Ticket linking in the timer bar and drawer (ticket picker next to the task picker), ticket title rule (C5)
-- [ ] Ticket detail: ▶ Start timer, running state, tracked and billable totals; **Log time** and the time list use native entries (C10)
-- [ ] Ticket-time migration `ticket_time_entries` → `time_entries`, idempotent, in a fingerprinted file (C10.3)
-- [ ] `sync.php` ticket-time changes and `TicketsView` rewrite from the table in C10.4
-- [ ] Retainer usage derived from entries (`computeProjectRetainerUsage`), counted once (C10.5)
-- [ ] Billable rate priority resolution (C7.4)
+- [x] Schema: `tasks.estimate_minutes`, `projects.hours_budget`, `projects.billable_rate`, project type `isInternal`, `tickets.time` permission (C4.3, C16)
+- [x] Task card ▶ and tracked-time chip, `TaskEditDrawer` "Time tracking" section (C9.2)
+- [x] Project "Start timer on this project" and the project **Time** tab in `ProjectDetailsView`
+- [x] Project Finances: computed "Labour (time tracking)" line, included in real profit and the profit badge. No financial records created (C7.5)
+- [x] Task without a project: the "Which project is this for?" popover (C9.1)
+- [x] Ticket linking in the timer bar and drawer (ticket picker next to the task picker), ticket title rule (C5)
+- [x] Ticket detail: ▶ Start timer, running state, tracked and billable totals; **Log time** and the time list use native entries (C10)
+- [x] Ticket-time migration `ticket_time_entries` → `time_entries`, idempotent, in a fingerprinted file (C10.3)
+- [x] `sync.php` ticket-time changes and `TicketsView` rewrite from the table in C10.4
+- [x] Retainer usage derived from entries (`computeProjectRetainerUsage`), counted once (C10.5)
+- [x] Billable rate priority resolution (C7.4)
 - [ ] QA: renaming a linked entry renames the task and the ticket; logging time on a ticket counts once toward the contract; ticket time hidden without `tickets.time`; start-from-task prefill
-- [ ] Unit tests, server probe checks for the migration, e2e spec extended
+- [x] Unit tests, server probe checks for the migration, e2e spec extended
 
-**Left over:** _(fill in when done)_
+**Left over:** QA was skipped at the owner's request (2026-10-27), including the phase 1 run of `tests/e2e/timeTracking.spec.ts`. The new checks are in that spec and in `scripts/probe-time-tracking/run.mjs` (T12) but neither was executed. "Create project for the client" is wired, and the task drawer lists each person plus a cost figure the viewer is allowed to see. Lowering a ticket's logged total writes nothing and tells the admin to shorten or delete an entry (`ticketLoggedTotalAdjustment`); raising it still adds one positive hours-only correcting entry. The typed total reverts to the real sum. Phase 1's wizard step is done; its QA and build commit are still open.
 
 ### Phase 3. Calendar and Timesheet
 
 Spec: C11.2, C11.3, C6.5 (holidays shown here).
 
-- [ ] Calendar tab (Day / Week / Month): drag to create, move, resize, "Untimed" lane, running entry with a "now" line, task rail with drag-to-calendar
-- [ ] Timesheet tab: weekly grid, Totals row, hours-only entries from cells, "Copy rows from last week", "+ Add row"
-- [ ] Holidays: all-day band and tinted cell in the Calendar, Timesheet column headers
+- [x] Calendar tab (Day / Week / Month): drag to create, move, resize, "Untimed" lane, running entry with a "now" line, task rail with drag-to-calendar
+- [x] Timesheet tab: weekly grid, Totals row, hours-only entries from cells, "Copy rows from last week", "+ Add row"
+- [x] Holidays: all-day band and tinted cell in the Calendar, Timesheet column headers
 - [ ] QA: a holiday shows in the Calendar and the Timesheet header; hours-only entry in the Untimed lane
-- [ ] Unit tests, e2e spec extended
+- [x] Unit tests. The e2e spec was not extended.
 
-**Left over:** _(fill in when done)_
+**Left over:** QA was skipped at the owner's request (2026-10-27). On the month grid, creating time is a click (09:00–10:00); dragging between days moves an entry. A paid payroll month now locks Calendar move, resize and create, and Timesheet cell edits, for a non-admin. The month list is that employee's paid `employeeSalaries` rows already on the client, plus a month the time-entry API already flagged on a loaded entry. Age and approval locks still apply. Admins can still edit; the API remains the enforcement. "Submit week" mounts phase 6's `SubmitWeekButton`.
 
 ### Phase 4. Team, Reports, salary allocation, exports
 
 Spec: C11.4, C12, C4.4 (`team`, `report`).
 
-- [ ] Team tab (matrix people × week/month, hours, cost, basis bars, vacation, popover, Totals) (needs `time_tracking_team`; cost lines need `time_tracking_costs`)
-- [ ] "Viewing as" selector (Me / Whole team / one person) across List and Day
-- [ ] Reports: Summary and Detailed, filters, grouping by derived title, Totals row
-- [ ] Salary allocation report (admins, `time_tracking_salary_report`), "Time without salary data"
-- [ ] Exports: CSV, client PDF (rounded, no cost, billable only)
-- [ ] Rate month and basis shown in the Team matrix tooltip (C7.3)
+- [x] Team tab (matrix people × week/month, hours, cost, basis bars, vacation, popover, Totals) (needs `time_tracking_team`; cost lines need `time_tracking_costs`)
+- [x] "Viewing as" selector (Me / Whole team / one person) across List and Day
+- [x] Reports: Summary and Detailed, filters, grouping by derived title, Totals row
+- [x] Salary allocation report (admins, `time_tracking_salary_report`), "Time without salary data"
+- [x] Exports: CSV, client PDF (rounded, no cost, billable only)
+- [x] Rate month and basis shown in the Team matrix tooltip (C7.3)
 - [ ] QA: Team matrix totals; cost hidden without `time_tracking_costs`; user without an employee record
-- [ ] Unit tests, e2e spec extended
+- [x] Unit tests. The e2e spec was not extended.
 
-**Left over:** _(fill in when done)_
+**Left over:** QA was skipped at the owner's request (2026-10-27). Team and Reports are computed on the client from the entries list. No `action=team` or `action=report` was added. Other people's cost is removed in `visibleEntryCost`, not only hidden in CSS.
 
 ### Phase 5. Chrome extension, then activity capture and Unsorted
 
 Spec: C15, C4.2, C4.4 (`time_tracker_ext.php`).
 
-- [ ] 5a. Tables `time_tracker_pairing_codes`, `time_tracker_devices`; `public/api/time_tracker_ext.php` (Bearer device key, CORS for `chrome-extension://<id>`, pair rate-limited per IP)
-- [ ] 5a. Extension source in `extensions/chrome-time-tracker/` (Manifest V3, TypeScript, Vite), popup (running, idle, not paired), badge, offline queue, "Paired browsers" with Revoke
-- [ ] 5a. `npm run build:extension` zips to `public/downloads/ccrm-time-tracker.zip` (committed)
-- [ ] 5b. Activity capture (opt-in, off by default), table `time_activity`, `activity` endpoint, Unsorted inbox (Day panel, List chip, extension footer), purge in cron
+- [x] 5a. Tables `time_tracker_pairing_codes`, `time_tracker_devices`; `public/api/time_tracker_ext.php` (Bearer device key, CORS for `chrome-extension://<id>`, pair rate-limited per IP)
+- [x] 5a. Extension source in `extensions/chrome-time-tracker/` (Manifest V3, TypeScript, Vite), popup (running, idle, not paired), badge, offline queue, "Paired browsers" with Revoke
+- [x] 5a. `npm run build:extension` zips to `public/downloads/ccrm-time-tracker.zip` (committed)
+- [x] 5b. Activity capture (opt-in, off by default), table `time_activity`, `activity` endpoint, Unsorted inbox (Day panel, List chip, extension footer), purge in cron
 - [ ] QA: pairing flow with the mock, one running timer shared with the extension, revoked device returns 401
-- [ ] Unit tests, e2e spec extended
+- [x] Unit tests. The e2e spec was not extended.
 
-**Left over:** _(fill in when done)_
+**Left over:** QA was skipped at the owner's request (2026-10-27). The zip is on disk at `public/downloads/ccrm-time-tracker.zip` and is not committed. The extension download, pairing code, and paired browsers live in Settings → Time tracking. There is no module overflow-menu entry. The new PHP files exist only under `public/api/` (the sync script does not create a root copy for a file that has none).
 
 ### Phase 6. Locking and approval, Toggl import, mobile polish, idle reminder
 
 Spec: C14, C13 (locking), C17.
 
-- [ ] Locking (entries older than `lockAfterDays`, in a paid payroll month, or approved: admin edit only, audit-logged) and weekly approval ("Submit week")
-- [ ] Toggl importer on the existing connector (`time_tracking_lib.php`): map projects and users, date range, preview, idempotent through `external_id`; shows "N entries already imported"
-- [ ] `EmployeeTimesheetSummary` source switch "Toggl / CCRM time tracking" (explicit, per view, never automatic)
-- [ ] Mobile polish (large running card, 44 px ▶, bottom bar), idle reminder in the PWA
+- [x] Locking (entries older than `lockAfterDays`, in a paid payroll month, or approved: admin edit only, audit-logged) and weekly approval ("Submit week")
+- [x] Toggl importer on the existing connector (`time_tracking_lib.php`): map projects and users, date range, preview, idempotent through `external_id`; shows "N entries already imported"
+- [x] `EmployeeTimesheetSummary` source switch "Toggl / CCRM time tracking" (explicit, per view, never automatic)
+- [x] Mobile polish (large running card, 44 px ▶, bottom bar), idle reminder in the PWA
 - [ ] QA: import is idempotent; locked entry opens read-only
-- [ ] Unit tests, e2e spec extended
+- [x] Unit tests. The e2e spec was not extended.
 
-**Left over:** _(fill in when done)_
+**Left over:** QA was skipped at the owner's request (2026-10-28). No new columns: approval uses `time_entries.approval_status`, and a paid month is read from `employee_salaries`. Calendar and Timesheet use that same fact from the sync blob so a drag, resize or cell edit in a paid month does not start. `npm run sync:backend` has copied the root files that already had a counterpart (`cron.php`, `schema.php`, `time_tracking_lib.php`). Version is v1.13.11-Nectarine.
 
 ## A5. Findings in existing code
 
@@ -226,6 +226,8 @@ Symptom → root cause → proposed fix. Fixed only inside the phase named.
 3. **Delete-not-in-payload on ticket time** (`sync.php` ~6687-6692): a stale PWA tab that lacks an entry deletes the server's entries. Fixed by the phase 2 migration and by ignoring incoming `timeEntries`.
 4. **No dedicated name → user helper exists** beyond ad-hoc `users` queries in `auth.php`. Phase 2 adds one small helper beside the migration: case-insensitive exact match on `users.name`, accepted only when exactly one user matches.
 5. **Only Toggl is implemented.** `provider === 'clockify'` answers "Unsupported provider" and the Clockify settings fields are placeholders. Keep that. Clockify import is not built unless the user asks.
+6. **Price levels have no hourly rate.** `PriceLevel` is an id and a name for warehouse prices. C7.4 step 4 is implemented and tested when a caller supplies a number; the server passes none, because there is no column to read. Adding a rate means a new field, not a lookup that already exists.
+7. **Dark-mode Start contrast,** fixed by `text-primary-foreground`.
 
 ---
 

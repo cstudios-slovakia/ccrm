@@ -270,6 +270,115 @@ if (!function_exists('ccrm_tt_default_settings')) {
         ];
     }
 
+    /**
+     * The billable rate to freeze when the entry does not carry its own (C7.4, steps 2–5).
+     * The entry's own rate is applied by the caller. Price levels in this app are warehouse
+     * lists with no hourly rate, so that step resolves to none.
+     */
+    function ccrm_tt_lookup_billable_rate(\PDO $pdo, ?string $projectId, ?string $ticketId, string $entryDate): ?float {
+        if ($projectId) {
+            $p = $pdo->prepare("SELECT `billable_rate` FROM `projects` WHERE `id` = ? LIMIT 1");
+            $p->execute([$projectId]);
+            $rate = $p->fetchColumn();
+            if ($rate !== false && $rate !== null && (float)$rate > 0) {
+                return round((float)$rate, 2);
+            }
+        }
+        $contractProject = $projectId;
+        $clientId = null;
+        if ($ticketId) {
+            $t = $pdo->prepare("SELECT `project_id`, `client_id` FROM `tickets` WHERE `id` = ? LIMIT 1");
+            $t->execute([$ticketId]);
+            $ticket = $t->fetch(\PDO::FETCH_ASSOC);
+            if ($ticket) {
+                $contractProject = $contractProject ?: ($ticket['project_id'] ?: null);
+                $clientId = $ticket['client_id'] ?: null;
+            }
+        }
+        if (!$clientId && $contractProject) {
+            $c = $pdo->prepare("SELECT `client_id`, `lead_id` FROM `projects` WHERE `id` = ? LIMIT 1");
+            $c->execute([$contractProject]);
+            $proj = $c->fetch(\PDO::FETCH_ASSOC);
+            if ($proj) {
+                $clientId = $proj['client_id'] ?: $proj['lead_id'] ?: null;
+            }
+        }
+        $contract = null;
+        if ($contractProject) {
+            $s = $pdo->prepare("SELECT `hourly_rate`, `monthly_hours`, `project_id` FROM `support_contracts` WHERE `project_id` = ? ORDER BY `valid_until` IS NULL DESC, `valid_until` DESC LIMIT 1");
+            $s->execute([$contractProject]);
+            $contract = $s->fetch(\PDO::FETCH_ASSOC) ?: null;
+        }
+        if (!$contract && $clientId) {
+            $s = $pdo->prepare("SELECT `hourly_rate`, `monthly_hours`, `project_id` FROM `support_contracts` WHERE `client_id` = ? ORDER BY `valid_until` IS NULL DESC, `valid_until` DESC LIMIT 1");
+            $s->execute([$clientId]);
+            $contract = $s->fetch(\PDO::FETCH_ASSOC) ?: null;
+        }
+        if ($contract && (float)$contract['hourly_rate'] > 0) {
+            $monthly = (float)$contract['monthly_hours'];
+            $hourly = round((float)$contract['hourly_rate'], 2);
+            $overage = $hourly;
+            $scopeProject = $contract['project_id'] ?: $contractProject;
+            if ($scopeProject) {
+                $w = $pdo->prepare("SELECT `ticket_widget_config_json` FROM `projects` WHERE `id` = ? LIMIT 1");
+                $w->execute([$scopeProject]);
+                $cfg = json_decode((string)$w->fetchColumn(), true);
+                if (is_array($cfg) && isset($cfg['retainer']['overageRate']) && is_numeric($cfg['retainer']['overageRate']) && (float)$cfg['retainer']['overageRate'] > 0) {
+                    $overage = round((float)$cfg['retainer']['overageRate'], 2);
+                }
+            }
+            if ($monthly > 0 && $scopeProject && preg_match('/^(\d{4})-(\d{2})/', $entryDate, $m)) {
+                $from = sprintf('%s-%s-01', $m[1], $m[2]);
+                $to = gmdate('Y-m-d', strtotime($from . ' +1 month'));
+                $u = $pdo->prepare("SELECT COALESCE(SUM(`duration_sec`), 0) FROM `time_entries` WHERE `deleted_at` IS NULL AND `billable` = 1 AND `entry_date` >= ? AND `entry_date` < ? AND (`project_id` = ? OR `ticket_id` IN (SELECT `id` FROM `tickets` WHERE `project_id` = ?))");
+                $u->execute([$from, $to, $scopeProject, $scopeProject]);
+                $usedHours = ((int)$u->fetchColumn()) / 3600;
+                if ($usedHours >= $monthly) {
+                    return $overage;
+                }
+            }
+            return $hourly;
+        }
+        return null;
+    }
+
+    /**
+     * The client's single active project, or null when there is not exactly one.
+     * "Active" ignores archived rows and the usual closed status keys.
+     */
+    function ccrm_tt_one_client_project(\PDO $pdo, ?string $partyId): ?string {
+        $partyId = ccrm_tt_nullable_id($partyId);
+        if ($partyId === null || !ccrm_table_exists($pdo, 'projects')) {
+            return null;
+        }
+        $clientId = $partyId;
+        if (ccrm_table_exists($pdo, 'leads')) {
+            $s = $pdo->prepare("SELECT `client_id` FROM `leads` WHERE `id` = ? LIMIT 1");
+            $s->execute([$partyId]);
+            $linked = $s->fetchColumn();
+            if (is_string($linked) && $linked !== '') {
+                $clientId = $linked;
+            }
+        }
+        $stmt = $pdo->prepare(
+            "SELECT p.`id`, p.`status` FROM `projects` p
+             LEFT JOIN `leads` l ON l.`id` = p.`lead_id`
+             WHERE (p.`archived` IS NULL OR p.`archived` = 0)
+               AND (p.`client_id` = ? OR p.`lead_id` = ? OR l.`client_id` = ? OR l.`id` = ?)"
+        );
+        $stmt->execute([$clientId, $clientId, $clientId, $partyId]);
+        $ids = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $status = strtolower((string)($row['status'] ?? ''));
+            if (in_array($status, ['completed', 'cancelled', 'canceled', 'done', 'closed', 'finished'], true)) {
+                continue;
+            }
+            $ids[$row['id']] = true;
+        }
+        $keys = array_keys($ids);
+        return count($keys) === 1 ? (string)$keys[0] : null;
+    }
+
     // ----- links (project / task / ticket) and the title rule ---------------------------
 
     /**
@@ -278,7 +387,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
      * Task: `task_id`; the task's ticket (related_ticket_id or a ticket_task_links row) fills
      * `ticket_id`; the project is the one given, else the task's. Title = the task's.
      * Ticket only: `ticket_id`; the project is the given one, else the ticket's, else its
-     * support contract's. Title = the ticket's.
+     * support contract's, else the client's single active project. Title = the ticket's.
      * Neither: the entry's own `description` is the title.
      * Linked entries never keep a description of their own.
      *
@@ -293,7 +402,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
         $title = null;
 
         if ($taskId !== null) {
-            $stmt = $pdo->prepare("SELECT `title`, `related_project_id`, `related_ticket_id` FROM `tasks` WHERE `id` = ? LIMIT 1");
+            $stmt = $pdo->prepare("SELECT `title`, `related_project_id`, `related_ticket_id`, `related_lead_id` FROM `tasks` WHERE `id` = ? LIMIT 1");
             $stmt->execute([$taskId]);
             $task = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) {
@@ -312,6 +421,10 @@ if (!function_exists('ccrm_tt_default_settings')) {
             }
             $ticketId = $linkedTicket;
             $projectId = $projectId ?? $derivedProject;
+            if ($projectId === null && !empty($task['related_lead_id'])) {
+                $projectId = ccrm_tt_one_client_project($pdo, (string)$task['related_lead_id']);
+                $derivedProject = $derivedProject ?? $projectId;
+            }
         } elseif ($ticketId !== null) {
             $stmt = $pdo->prepare("SELECT `title`, `project_id` FROM `tickets` WHERE `id` = ? LIMIT 1");
             $stmt->execute([$ticketId]);
@@ -327,6 +440,12 @@ if (!function_exists('ccrm_tt_default_settings')) {
                 $derivedProject = $c->fetchColumn() ?: null;
             }
             $projectId = $projectId ?? $derivedProject;
+            if ($projectId === null) {
+                $client = $pdo->prepare("SELECT `client_id` FROM `tickets` WHERE `id` = ? LIMIT 1");
+                $client->execute([$ticketId]);
+                $projectId = ccrm_tt_one_client_project($pdo, $client->fetchColumn() ?: null);
+                $derivedProject = $derivedProject ?? $projectId;
+            }
         }
 
         if ($projectId !== null) {

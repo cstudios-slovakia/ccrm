@@ -32,12 +32,15 @@ simply opens that category. Callers inside the app use the new routes.
 - Below `ws-lg` (the workspace container, measured by `useSettingsWide`) only the
   tile layout exists, whatever the stored preference says; the switch is hidden and
   the stored value is kept for the next wide screen.
-- **Every section is a real tab.** Only the open section is rendered (`SectionPanel`), the
-  others are one click away in the tab strip (`SectionTabs`: `role="tablist"`, arrow keys,
-  Home/End), in the sidebar's sub-links or in the phone dropdown. Switching tabs moves the
-  address (so Back and shared links work) and starts the page from the top — nothing scrolls
-  to a section any more. A section that has to load data on open (`isOpen` in `SettingsView`)
-  starts loading when its tab opens, not when the category does.
+- **Tiles and phones: every section is a real tab.** Only the open section is rendered
+  (`SectionPanel`), the others are one click away in the tab strip (`SectionTabs`:
+  `role="tablist"`, arrow keys, Home/End) or in the phone dropdown. Switching tabs moves the
+  address (so Back and shared links work) and starts the page from the top.
+- **Sidebar: the category is one page.** Every section of the open category is stacked, in
+  registry order. A sub-link scrolls to that section (and still moves the address). The
+  highlight follows whichever section is at the top as you scroll. A section that has to
+  load data on open (`isOpen` in `SettingsView`) loads when its category is open, because
+  the section is on screen.
 - Phone category pages replace the section tabs with a **section dropdown**
   (`MobileSectionMenu`) — there is no sideways chip row. The only sideways scroller
   on the phone home is the "Recently opened" row.

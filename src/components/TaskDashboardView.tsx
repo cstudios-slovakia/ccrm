@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { createPortal } from "react-dom";
 import { useReadScope } from "../hooks/useReadScope";
 import { referenceLeadName, referenceProjectName } from "../utils/readScope";
@@ -44,6 +45,7 @@ import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEditDrawer } from "./TaskEditDrawer";
+import { TaskTimeControls } from "./timeTracking/TaskTimeControls";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { QuickTaskModal } from "./QuickTaskModal";
@@ -2833,6 +2835,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     if ((e.target as HTMLElement).closest("button, a, input, select, label, textarea, [role='listbox'], [role='option']")) return;
                     setEditingTask(task);
                 }}
+                data-task-card=""
+                data-testid="task-card"
                 className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-start justify-between gap-3 text-ui cursor-pointer ${
                     isSelected
                         ? "bg-indigo-50/70"
@@ -2999,6 +3003,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     {/* Line 2: Everything else (delegated badge, lead/client, project, due date/time, assignee) */}
                     <div className="flex items-center gap-1.5 ws-sm:gap-2 flex-wrap min-w-0 text-micro">
+                        <TaskTimeControls
+                            task={task}
+                            projects={projects}
+                            leads={leads}
+                            onSaveProject={(taskId, projectId) =>
+                                setTasks((prev) => prev.map((row) => (row.id === taskId ? { ...row, relatedProjectId: projectId } : row)))
+                            }
+                        />
                         {isDelegatedByMe(task) && (
                             <span
                                 title={t(
@@ -5004,7 +5016,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         >
             {/* HEADER */}
             <PageHeader
-              icon={<CalendarIcon className="h-6 w-6 text-indigo-600" />}
+              icon={<SectionIcon id="tasks" />}
               title={viewMode === "calendar"
                             ? t(
                                   "My Tasks",

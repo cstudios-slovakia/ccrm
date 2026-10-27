@@ -5,6 +5,7 @@
  *   GET  ?from&to&userId&projectId&taskId&ticketId   list (userId: omitted = me, <id> or "all" need time_tracking_team)
  *   GET  ?running=1                                  the caller's running entry
  *   GET  ?action=settings                            TimeTrackingSettings + the caller's work calendar
+ *   GET  ?action=taskPeople&taskId=                  per-person seconds on one task; cost follows B8
  *   POST action=start        in ONE transaction stop the caller's running entry and start a new one
  *   POST action=stop         {id?, projectId?}
  *   POST action=undo_start   {newId, stoppedId?}     the Undo of a start: drop the new entry, reopen the stopped one
@@ -142,6 +143,133 @@ function ccrm_te_origin($v): ?string {
     return in_array($v, CCRM_TE_ORIGINS, true) ? $v : null;
 }
 
+/* PHASE6-LOCK-START */
+/**
+ * Calendar age in days of an entry date against a company-timezone today.
+ * Mirrors entryAgeDays() in src/utils/timeLock.ts (strictly greater than lockAfterDays locks).
+ */
+function ccrm_te_age_days(string $entryDate, string $today): ?int {
+    $a = \DateTimeImmutable::createFromFormat('!Y-m-d', substr($entryDate, 0, 10));
+    $b = \DateTimeImmutable::createFromFormat('!Y-m-d', substr($today, 0, 10));
+    if (!$a || !$b || $a->format('Y-m-d') !== substr($entryDate, 0, 10) || $b->format('Y-m-d') !== substr($today, 0, 10)) {
+        return null;
+    }
+    return (int)$a->diff($b)->format('%r%a');
+}
+
+/** True when a paid salary period key covers this entry's YYYY-MM. */
+function ccrm_te_month_is_paid(string $entryDate, array $keys): bool {
+    $month = substr($entryDate, 0, 7);
+    if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+        return false;
+    }
+    foreach ($keys as $key) {
+        $key = (string)$key;
+        if ($key === $month || str_starts_with($key, $month . '-') || str_starts_with($key, $month . 'W')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Paid payroll period keys for one employee. A missing table does not lock anyone. */
+function ccrm_te_paid_keys(\PDO $pdo, ?string $employeeId): array {
+    if ($employeeId === null || $employeeId === '') {
+        return [];
+    }
+    try {
+        $stmt = $pdo->prepare("SELECT `period_key` FROM `employee_salaries` WHERE `employee_id` = ? AND `status` = 'paid'");
+        $stmt->execute([$employeeId]);
+        return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
+/**
+ * Why a stored (or about-to-be-written) row is locked: age, paid payroll month, or approved.
+ * A running timer skips the age rule. Null means a non-admin may still edit it.
+ */
+function ccrm_te_lock_reason_of(\PDO $pdo, array $row, array $settings, string $today): ?string {
+    $running = !empty($row['start_at']) && empty($row['end_at']);
+    $lockAfter = $settings['lockAfterDays'] ?? null;
+    if (!$running && $lockAfter !== null) {
+        $age = ccrm_te_age_days((string)($row['entry_date'] ?? ''), $today);
+        if ($age !== null && $age > (int)$lockAfter) {
+            return 'age';
+        }
+    }
+    $employeeId = $row['employee_id'] ?? null;
+    if (($employeeId === null || $employeeId === '') && !empty($row['user_id'])) {
+        $emp = ccrm_tt_employee_for_user($pdo, (string)$row['user_id']);
+        $employeeId = $emp['id'] ?? null;
+    }
+    if (ccrm_te_month_is_paid((string)($row['entry_date'] ?? ''), ccrm_te_paid_keys($pdo, $employeeId !== null ? (string)$employeeId : null))) {
+        return 'paid_payroll';
+    }
+    if (strtolower(trim((string)($row['approval_status'] ?? ''))) === 'approved') {
+        return 'approved';
+    }
+    return null;
+}
+
+/**
+ * Non-admins cannot create, edit, delete or restore a locked entry.
+ * An admin can; that override is written to the audit log.
+ *
+ * @param list<array<string, mixed>> $rows
+ */
+function ccrm_te_refuse_locked(\PDO $pdo, array $sessionUser, array $rows, array $settings): void {
+    $today = ccrm_tt_local_date(ccrm_tt_now_utc());
+    $reason = null;
+    $id = 'new';
+    foreach ($rows as $row) {
+        $found = ccrm_te_lock_reason_of($pdo, $row, $settings, $today);
+        if ($found !== null) {
+            $reason = $found;
+            $id = (string)($row['id'] ?? 'new');
+            break;
+        }
+    }
+    if ($reason === null) {
+        return;
+    }
+    if (ccrm_is_admin($sessionUser)) {
+        ccrm_audit_log($pdo, $sessionUser, 'time_entry.lock_override', "Admin changed locked time entry {$id} ({$reason})");
+        return;
+    }
+    ccrm_te_fail('entry_locked', 403, ['reason' => $reason]);
+}
+
+/** Flag each listed entry whose employee has a paid salary for that month. */
+function ccrm_te_stamp_paid_months(\PDO $pdo, array $entries): array {
+    $ids = [];
+    foreach ($entries as $e) {
+        if (!empty($e['employeeId'])) {
+            $ids[(string)$e['employeeId']] = true;
+        }
+    }
+    $map = [];
+    if ($ids) {
+        try {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare("SELECT `employee_id`, `period_key` FROM `employee_salaries` WHERE `status` = 'paid' AND `employee_id` IN ($placeholders)");
+            $stmt->execute(array_keys($ids));
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $map[(string)$row['employee_id']][] = (string)$row['period_key'];
+            }
+        } catch (\Throwable $e) {
+            $map = [];
+        }
+    }
+    foreach ($entries as $i => $e) {
+        $keys = $map[(string)($e['employeeId'] ?? '')] ?? [];
+        $entries[$i]['paidPayrollMonth'] = ccrm_te_month_is_paid((string)($e['entryDate'] ?? ''), $keys);
+    }
+    return $entries;
+}
+/* PHASE6-LOCK-END */
+
 /** The longest stretch a single entry may span; a timer left running is stopped by the cron, not capped here. */
 const CCRM_TE_MAX_SECONDS = 86400;
 
@@ -169,18 +297,129 @@ if ($method === 'GET') {
         ccrm_te_respond(['entry' => $row ? ccrm_te_json($pdo, $row['id'], $viewer) : null]);
     }
 
+    // Aggregates for the task chip, the project Time tab and the labour line.
+    // Hours of every user (a task's tracked time is not a private entry). Cost is
+    // included only when every contributing row is one the caller may see — their
+    // own always, anyone else's only with time_tracking_costs — so a partial sum
+    // is never presented as the project's labour.
+    if ($action === 'totals') {
+        $stmt = $pdo->query("SELECT `task_id`, `ticket_id`, `project_id`, `user_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec`, SUM(`cost`) AS `cost`, SUM(`cost` IS NULL) AS `missing`
+            FROM `time_entries` WHERE `deleted_at` IS NULL AND `duration_sec` IS NOT NULL
+            GROUP BY `task_id`, `ticket_id`, `project_id`, `user_id`");
+        $byTask = [];
+        $byTicket = [];
+        $byProject = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $own = (string)$r['user_id'] === $callerId;
+            $sec = (int)$r['sec'];
+            if ($r['task_id']) {
+                $byTask[$r['task_id']] = ($byTask[$r['task_id']] ?? 0) + $sec;
+            }
+            if ($r['ticket_id']) {
+                $byTicket[$r['ticket_id']] = ($byTicket[$r['ticket_id']] ?? 0) + $sec;
+            }
+            if ($r['project_id']) {
+                if (!isset($byProject[$r['project_id']])) {
+                    $byProject[$r['project_id']] = ['seconds' => 0, 'cost' => 0.0, 'complete' => true];
+                }
+                $byProject[$r['project_id']]['seconds'] += $sec;
+                if ($own || $canCosts) {
+                    if ((int)$r['missing'] > 0) {
+                        $byProject[$r['project_id']]['complete'] = false;
+                    } else {
+                        $byProject[$r['project_id']]['cost'] += (float)$r['cost'];
+                    }
+                } else {
+                    $byProject[$r['project_id']]['complete'] = false;
+                }
+            }
+        }
+        foreach ($byProject as &$proj) {
+            $proj['cost'] = $proj['complete'] ? round($proj['cost'], 2) : null;
+            unset($proj['complete']);
+        }
+        unset($proj);
+        ccrm_te_respond(['byTask' => $byTask ?: new stdClass(), 'byTicket' => $byTicket ?: new stdClass(), 'byProject' => $byProject ?: new stdClass()]);
+    }
+
+    /* PHASE2-TASK-PEOPLE-START — phase 2 task drawer. Do not delete this block. */
+    // Per-person hours on one task. Hours are not private (same rule as totals).
+    // Cost is sent for the caller always, and for anyone else only with
+    // time_tracking_costs. null cost = no rate; an omitted cost = hidden.
+    if ($action === 'taskPeople') {
+        $taskId = trim((string)($_GET['taskId'] ?? ''));
+        if ($taskId === '') {
+            ccrm_te_fail('bad_request', 400);
+        }
+        if (!isset(ccrm_visible_task_ids($pdo, $scope, [$taskId])[$taskId])) {
+            ccrm_te_respond(['people' => []]);
+        }
+        $stmt = $pdo->prepare("SELECT `user_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec`, SUM(`cost`) AS `cost`, SUM(`cost` IS NULL) AS `missing`
+            FROM `time_entries`
+            WHERE `deleted_at` IS NULL AND `duration_sec` IS NOT NULL AND `task_id` = ?
+            GROUP BY `user_id`
+            ORDER BY `sec` DESC, `user_id`");
+        $stmt->execute([$taskId]);
+        $people = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $uid = (string)$r['user_id'];
+            $person = ['userId' => $uid, 'seconds' => (int)$r['sec']];
+            if ($uid === $callerId || $canCosts) {
+                $person['cost'] = (int)$r['missing'] > 0 ? null : round((float)$r['cost'], 2);
+            }
+            $people[] = $person;
+        }
+        ccrm_te_respond(['people' => $people]);
+    }
+    /* PHASE2-TASK-PEOPLE-END */
+
+    // Retainer maths: billable rows of a project, without titles, names or cost.
+    // Reading a ticket's time requires tickets.time (B15).
+    if ($action === 'usage') {
+        if (!ccrm_can($scope, 'tickets.time')) {
+            ccrm_te_fail('forbidden', 403);
+        }
+        $projectId = trim((string)($_GET['projectId'] ?? ''));
+        if ($projectId === '') {
+            ccrm_te_fail('bad_request', 400);
+        }
+        $stmt = $pdo->prepare("SELECT te.`id`, te.`project_id`, te.`ticket_id`, te.`task_id`, te.`billable`, te.`entry_date`, te.`duration_sec`
+            FROM `time_entries` te
+            WHERE te.`deleted_at` IS NULL AND te.`duration_sec` IS NOT NULL
+              AND (te.`project_id` = ? OR te.`ticket_id` IN (SELECT `id` FROM `tickets` WHERE `project_id` = ?))");
+        $stmt->execute([$projectId, $projectId]);
+        $rows = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $rows[] = [
+                'id' => $r['id'],
+                'projectId' => $r['project_id'],
+                'ticketId' => $r['ticket_id'],
+                'taskId' => $r['task_id'],
+                'billable' => (bool)$r['billable'],
+                'entryDate' => $r['entry_date'],
+                'durationSec' => (int)$r['duration_sec'],
+            ];
+        }
+        ccrm_te_respond(['entries' => $rows]);
+    }
+
     // List.
     $from = isset($_GET['from']) && ccrm_tt_valid_date((string)$_GET['from']) ? (string)$_GET['from'] : gmdate('Y-m-d', strtotime('-30 days'));
     $to = isset($_GET['to']) && ccrm_tt_valid_date((string)$_GET['to']) ? (string)$_GET['to'] : gmdate('Y-m-d', strtotime('+1 day'));
     $where = ["te.`deleted_at` IS NULL", "te.`entry_date` BETWEEN ? AND ?"];
     $params = [$from, $to];
 
+    $ticketFilter = trim((string)($_GET['ticketId'] ?? ''));
+    if ($ticketFilter !== '' && !ccrm_can($scope, 'tickets.time')) {
+        ccrm_te_fail('forbidden', 403);
+    }
     $who = isset($_GET['userId']) ? trim((string)$_GET['userId']) : '';
-    if ($who === '' || $who === $callerId || !$canTeam) {
-        // Without time_tracking_team the owner filter is forced to the caller, whatever was asked for.
+    // A ticket's time list is everyone's entries on that ticket. Any other list
+    // without time_tracking_team is forced to the caller.
+    if ($ticketFilter === '' && ($who === '' || $who === $callerId || !$canTeam)) {
         $where[] = "te.`user_id` = ?";
         $params[] = $callerId;
-    } elseif ($who !== 'all') {
+    } elseif ($ticketFilter === '' && $who !== 'all' && $who !== '') {
         $where[] = "te.`user_id` = ?";
         $params[] = $who;
     }
@@ -195,6 +434,9 @@ if ($method === 'GET') {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $entries = array_map(fn($r) => ccrm_tt_entry_json($r, $viewer), $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    /* PHASE6-LOCK-START */
+    $entries = ccrm_te_stamp_paid_months($pdo, $entries);
+    /* PHASE6-LOCK-END */
     ccrm_te_respond([
         'entries' => $entries,
         'viewer' => ['userId' => $callerId, 'canEdit' => $canEdit, 'canTeam' => $canTeam, 'canCosts' => $canCosts],
@@ -218,6 +460,215 @@ if ($action === 'settings') {
     ccrm_audit_log($pdo, $sessionUser, 'time_tracking.settings', 'Time tracking settings changed');
     ccrm_te_respond(['settings' => $next]);
 }
+
+/* PHASE6-LOCK-START */
+/** String map from the import body. An empty value is an explicit "do not map". */
+function ccrm_te_import_map($raw): array {
+    if (!is_array($raw)) {
+        return [];
+    }
+    $out = [];
+    foreach ($raw as $k => $v) {
+        $key = trim((string)$k);
+        if ($key === '') {
+            continue;
+        }
+        $out[$key] = trim((string)$v);
+    }
+    return $out;
+}
+
+if ($action === 'import') {
+    if (!ccrm_is_admin($sessionUser) && !ccrm_can($scope, 'general_config', 'edit')) {
+        ccrm_te_fail('forbidden', 403);
+    }
+    require_once __DIR__ . '/time_tracking_lib.php';
+    $stored = ccrm_time_tracking_stored_settings($pdo);
+    $ttCfg = is_array($stored['timeTracking'] ?? null) ? $stored['timeTracking'] : [];
+    $provider = strtolower(trim((string)($ttCfg['provider'] ?? ($stored['provider'] ?? 'toggl'))));
+    if ($provider === 'clockify') {
+        ccrm_te_fail('unsupported_provider', 422);
+    }
+    $token = ccrm_time_tracking_toggl_token($stored);
+    $workspace = ccrm_time_tracking_toggl_workspace($stored);
+
+    $saved = [];
+    try {
+        $mapStmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'TOGGL_IMPORT_MAP'");
+        $mapStmt->execute();
+        $rawMap = $mapStmt->fetchColumn();
+        $decodedMap = $rawMap ? json_decode((string)$rawMap, true) : null;
+        if (is_array($decodedMap)) {
+            $saved = $decodedMap;
+        }
+    } catch (\Throwable $e) {
+        $saved = [];
+    }
+
+    $defaultUsers = [];
+    try {
+        $defStmt = $pdo->query("SELECT `time_tracking_user_id`, `user_id` FROM `employees` WHERE `time_tracking_provider` = 'toggl' AND `time_tracking_user_id` IS NOT NULL AND `time_tracking_user_id` <> '' AND `user_id` IS NOT NULL AND `user_id` <> ''");
+        foreach ($defStmt->fetchAll(\PDO::FETCH_ASSOC) as $empRow) {
+            $defaultUsers[(string)$empRow['time_tracking_user_id']] = (string)$empRow['user_id'];
+        }
+    } catch (\Throwable $e) {
+        $defaultUsers = [];
+    }
+
+    $mode = trim((string)($body['mode'] ?? 'preview'));
+    if ($mode === 'catalog') {
+        $cat = ccrm_toggl_import_catalog($token, $workspace);
+        if (empty($cat['ok'])) {
+            ccrm_te_fail($cat['code'] ?? 'toggl_not_configured', 422);
+        }
+        $ccrmProjects = $pdo->query("SELECT `id`, `name` FROM `projects` ORDER BY `name` LIMIT 2000")->fetchAll(\PDO::FETCH_ASSOC);
+        $ccrmUsers = $pdo->query("SELECT `id`, `name`, `email` FROM `users` ORDER BY `name`")->fetchAll(\PDO::FETCH_ASSOC);
+        $savedProjects = is_array($saved['projects'] ?? null) ? $saved['projects'] : [];
+        $savedUsers = is_array($saved['users'] ?? null) ? $saved['users'] : [];
+        ccrm_te_respond([
+            'projects' => $cat['projects'],
+            'users' => $cat['users'],
+            'ccrmProjects' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? '')], $ccrmProjects),
+            'ccrmUsers' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? ''), 'email' => (string)($r['email'] ?? '')], $ccrmUsers),
+            'projectMap' => (object)$savedProjects,
+            'userMap' => (object)$savedUsers,
+            'defaultUserMap' => (object)$defaultUsers,
+        ]);
+    }
+
+    $from = (string)($body['from'] ?? '');
+    $to = (string)($body['to'] ?? '');
+    if (!ccrm_tt_valid_date($from) || !ccrm_tt_valid_date($to) || $from > $to) {
+        ccrm_te_fail('bad_request', 400);
+    }
+    $span = (int)(new \DateTimeImmutable($from))->diff(new \DateTimeImmutable($to))->days;
+    if ($span > 366) {
+        ccrm_te_fail('bad_request', 400);
+    }
+
+    $projectMap = ccrm_te_import_map($body['projectMap'] ?? ($saved['projects'] ?? []));
+    $userMap = ccrm_te_import_map($body['userMap'] ?? ($saved['users'] ?? []));
+    foreach ($defaultUsers as $extId => $uid) {
+        if (!array_key_exists($extId, $userMap)) {
+            $userMap[$extId] = $uid;
+        }
+    }
+    try {
+        $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('TOGGL_IMPORT_MAP', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+            ->execute([json_encode(['projects' => $projectMap, 'users' => $userMap], JSON_UNESCAPED_UNICODE)]);
+    } catch (\Throwable $e) {
+        /* the import still proceeds; the map is in this request */
+    }
+
+    $fetched = ccrm_toggl_import_fetch($token, $workspace, $from, $to);
+    if (empty($fetched['ok'])) {
+        ccrm_te_fail($fetched['code'] ?? 'toggl_not_configured', 422);
+    }
+    $rows = $fetched['entries'];
+    $ids = [];
+    foreach ($rows as $r) {
+        $ids[] = $r['id'];
+    }
+    $existing = [];
+    foreach (array_chunk($ids, 200) as $chunk) {
+        if ($chunk === []) {
+            continue;
+        }
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $ex = $pdo->prepare("SELECT `external_id` FROM `time_entries` WHERE `source` = 'toggl' AND `external_id` IN ($ph)");
+        $ex->execute($chunk);
+        foreach ($ex->fetchAll(\PDO::FETCH_COLUMN) as $eid) {
+            $existing[(string)$eid] = true;
+        }
+    }
+    $knownUsers = [];
+    foreach ($pdo->query("SELECT `id` FROM `users`")->fetchAll(\PDO::FETCH_COLUMN) as $uid) {
+        $knownUsers[(string)$uid] = true;
+    }
+    $knownProjects = [];
+    foreach ($pdo->query("SELECT `id` FROM `projects`")->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+        $knownProjects[(string)$pid] = true;
+    }
+
+    $already = 0;
+    $ready = [];
+    $skippedUsers = 0;
+    $unmappedProjects = 0;
+    foreach ($rows as $r) {
+        if (isset($existing[$r['id']])) {
+            $already++;
+            continue;
+        }
+        $ccrmUser = $userMap[$r['userId']] ?? '';
+        if ($ccrmUser === '' || !isset($knownUsers[$ccrmUser])) {
+            $skippedUsers++;
+            continue;
+        }
+        $ccrmProject = null;
+        if (!empty($r['projectId'])) {
+            $mapped = $projectMap[$r['projectId']] ?? '';
+            if ($mapped !== '' && isset($knownProjects[$mapped])) {
+                $ccrmProject = $mapped;
+            } else {
+                $unmappedProjects++;
+            }
+        }
+        $ready[] = $r + ['ccrmUser' => $ccrmUser, 'ccrmProject' => $ccrmProject];
+    }
+
+    $commit = $mode === 'commit';
+    $imported = 0;
+    if ($commit && $ready) {
+        $ins = $pdo->prepare(
+            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `external_id`)
+             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'toggl', ?)"
+        );
+        foreach ($ready as $r) {
+            if (isset($existing[$r['id']])) {
+                $already++;
+                continue;
+            }
+            $startUtc = ccrm_tt_to_utc($r['start']);
+            $endUtc = ccrm_tt_to_utc($r['stop']);
+            if ($startUtc === null || $endUtc === null) {
+                continue;
+            }
+            $entryDate = ccrm_tt_local_date($startUtc);
+            $desc = $r['description'] !== '' ? $r['description'] : null;
+            $price = ccrm_tt_price($pdo, $r['ccrmUser'], $entryDate, (int)$r['seconds'], $settings, true);
+            $rate = ccrm_tt_lookup_billable_rate($pdo, $r['ccrmProject'], null, $entryDate);
+            try {
+                $ins->execute([
+                    ccrm_tt_new_id(), $r['ccrmUser'], $callerId, $price['employee_id'], $r['ccrmProject'],
+                    $desc, $desc, $entryDate, $startUtc, $endUtc, (int)$r['seconds'], $r['billable'] ? 1 : 0, $rate,
+                    $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'],
+                    $r['id'],
+                ]);
+                $existing[$r['id']] = true;
+                $imported++;
+            } catch (\PDOException $e) {
+                if ((int)($e->errorInfo[1] ?? 0) === 1062) {
+                    $already++;
+                    continue;
+                }
+                ccrm_log_exception($e);
+                ccrm_te_fail('save_failed', 500);
+            }
+        }
+        ccrm_audit_log($pdo, $sessionUser, 'time_tracking.toggl_import', "Imported {$imported} Toggl entries from {$from} to {$to} ({$already} already imported)");
+    }
+
+    ccrm_te_respond([
+        'preview' => !$commit,
+        'total' => count($rows),
+        'alreadyImported' => $already,
+        'ready' => count($ready),
+        'imported' => $imported,
+        'skippedUsers' => $skippedUsers,
+        'unmappedProjects' => $unmappedProjects,
+    ]);
+}
+/* PHASE6-LOCK-END */
 
 if (!$canEdit) {
     ccrm_te_fail('forbidden', 403);
@@ -311,8 +762,9 @@ if ($action === 'start') {
             $endUtc = max($startUtc, $old['start_at']);
             $dur = ccrm_tt_seconds_between($old['start_at'], $endUtc);
             $price = ccrm_tt_price($pdo, $owner, $old['entry_date'], $dur, $settings, false);
-            $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `employee_id` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ?");
-            $upd->execute([$endUtc, $dur, $price['employee_id'], $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $old['id']]);
+            $stoppedRate = $old['billable_rate'] !== null ? $old['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $old['project_id'], $old['ticket_id'], (string)$old['entry_date']);
+            $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ?");
+            $upd->execute([$endUtc, $dur, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $old['id']]);
             $stopped = $old['id'];
         }
         $ins = $pdo->prepare(
@@ -393,8 +845,9 @@ if ($action === 'stop') {
     }
     $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
     $price = ccrm_tt_price($pdo, (string)$row['user_id'], $row['entry_date'], $dur, $settings, true);
-    $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ? AND `end_at` IS NULL");
-    $upd->execute([$endUtc, $dur, $projectId, $price['employee_id'], $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $row['id']]);
+    $stoppedRate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $projectId, $row['ticket_id'], (string)$row['entry_date']);
+    $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ? AND `end_at` IS NULL");
+    $upd->execute([$endUtc, $dur, $projectId, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $row['id']]);
     ccrm_te_respond(['entry' => ccrm_te_json($pdo, $row['id'], $viewer)]);
 }
 
@@ -441,6 +894,9 @@ if ($action === 'delete' || $action === 'restore') {
     if (!ccrm_te_can_touch((string)$row['user_id'], $callerId, $canTeam)) {
         ccrm_te_fail('forbidden', 403);
     }
+    /* PHASE6-LOCK-START */
+    ccrm_te_refuse_locked($pdo, $sessionUser, [$row], $settings);
+    /* PHASE6-LOCK-END */
     if ($action === 'delete') {
         $pdo->prepare("UPDATE `time_entries` SET `deleted_at` = UTC_TIMESTAMP() WHERE `id` = ? AND `deleted_at` IS NULL")->execute([$id]);
         if ((string)$row['user_id'] !== $callerId) {
@@ -532,6 +988,17 @@ if ($action === 'create') {
         ccrm_te_fail($time, 422);
     }
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
+    /* PHASE6-LOCK-START */
+    ccrm_te_refuse_locked($pdo, $sessionUser, [[
+        'id' => null,
+        'user_id' => $owner,
+        'employee_id' => null,
+        'entry_date' => $entryDate,
+        'approval_status' => null,
+        'start_at' => $startUtc,
+        'end_at' => $endUtc,
+    ]], $settings);
+    /* PHASE6-LOCK-END */
     $price = ccrm_tt_price($pdo, $owner, $entryDate, $duration, $settings, true);
     $billable = array_key_exists('billable', $body) ? (int)(bool)$body['billable'] : (int)$settings['billableByDefault'];
     $id = ccrm_tt_new_id();
@@ -543,7 +1010,9 @@ if ($action === 'create') {
         $ins->execute([
             $id, $owner, $callerId, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'],
             $entryDate, $startUtc, $endUtc, $duration, $billable,
-            ($canCosts && isset($body['billableRate']) && is_numeric($body['billableRate'])) ? round((float)$body['billableRate'], 2) : null,
+            ($canCosts && isset($body['billableRate']) && is_numeric($body['billableRate']))
+                ? round((float)$body['billableRate'], 2)
+                : ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate),
             $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'],
             json_encode(ccrm_tt_clean_tags($body['tags'] ?? []), JSON_UNESCAPED_UNICODE),
             ccrm_te_source($body['source'] ?? null, 'manual'), ccrm_te_origin($body['originType'] ?? null), ccrm_tt_nullable_id($body['originId'] ?? null),
@@ -616,6 +1085,21 @@ if ($action === 'update') {
         ccrm_te_fail($time, 422);
     }
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
+    /* PHASE6-LOCK-START */
+    $lockedRows = [$row];
+    if ($entryDate !== (string)$row['entry_date']) {
+        $lockedRows[] = [
+            'id' => $row['id'],
+            'user_id' => $owner,
+            'employee_id' => null,
+            'entry_date' => $entryDate,
+            'approval_status' => $row['approval_status'] ?? null,
+            'start_at' => $startUtc,
+            'end_at' => $endUtc,
+        ];
+    }
+    ccrm_te_refuse_locked($pdo, $sessionUser, $lockedRows, $settings);
+    /* PHASE6-LOCK-END */
 
     // The frozen rate is never recomputed silently: only when the owner or the month changes,
     // or a running entry just got its end.
@@ -640,6 +1124,8 @@ if ($action === 'update') {
     $billableRate = $row['billable_rate'];
     if ($canCosts && $has('billableRate')) {
         $billableRate = is_numeric($body['billableRate']) ? round((float)$body['billableRate'], 2) : null;
+    } elseif ($billableRate === null && ($endUtc !== null || $startUtc === null)) {
+        $billableRate = ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate);
     }
     $tags = $has('tags') ? json_encode(ccrm_tt_clean_tags($body['tags']), JSON_UNESCAPED_UNICODE) : $row['tags'];
 
@@ -665,5 +1151,43 @@ if ($action === 'update') {
     }
     ccrm_te_respond(['entry' => ccrm_te_json($pdo, $id, $viewer)]);
 }
+
+/* PHASE6-LOCK-START */
+if ($action === 'submit_week') {
+    if (empty($settings['weeklyApproval'])) {
+        ccrm_te_fail('approval_off', 422);
+    }
+    $rawWeek = trim((string)($body['weekStart'] ?? ''));
+    if (!ccrm_tt_valid_date($rawWeek)) {
+        ccrm_te_fail('bad_request', 400);
+    }
+    $weekDt = \DateTimeImmutable::createFromFormat('!Y-m-d', $rawWeek);
+    $weekN = (int)$weekDt->format('N');
+    $mondayDt = $weekDt->modify('-' . ($weekN - 1) . ' days');
+    $monday = $mondayDt->format('Y-m-d');
+    $sunday = $mondayDt->modify('+6 days')->format('Y-m-d');
+    $weekOwner = $callerId;
+    $asked = trim((string)($body['userId'] ?? ''));
+    if ($asked !== '' && $asked !== $callerId) {
+        if (!$canTeam && !ccrm_is_admin($sessionUser)) {
+            ccrm_te_fail('forbidden', 403);
+        }
+        if (!ccrm_te_user_exists($pdo, $asked)) {
+            ccrm_te_fail('user_not_found', 404);
+        }
+        $weekOwner = $asked;
+    }
+    $weekUpd = $pdo->prepare(
+        "UPDATE `time_entries` SET `approval_status` = 'approved'
+         WHERE `user_id` = ? AND `deleted_at` IS NULL AND `entry_date` BETWEEN ? AND ?
+           AND NOT (`start_at` IS NOT NULL AND `end_at` IS NULL)
+           AND (`approval_status` IS NULL OR `approval_status` <> 'approved')"
+    );
+    $weekUpd->execute([$weekOwner, $monday, $sunday]);
+    $submitted = $weekUpd->rowCount();
+    ccrm_audit_log($pdo, $sessionUser, 'time_tracking.submit_week', "Submitted week {$monday} for user {$weekOwner} ({$submitted} entries)");
+    ccrm_te_respond(['weekStart' => $monday, 'weekEnd' => $sunday, 'submitted' => $submitted]);
+}
+/* PHASE6-LOCK-END */
 
 ccrm_te_fail('unknown_action', 400);

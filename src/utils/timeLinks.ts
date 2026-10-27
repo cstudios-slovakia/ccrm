@@ -6,7 +6,7 @@
  * resolved with `leadClient.ts` — never by comparing names.
  */
 
-import type { Lead, Project, Task } from "../types/index.ts";
+import type { Lead, Project, Task, Ticket } from "../types/index.ts";
 import { resolveLinkedClient } from "./leadClient.ts";
 
 export interface TaskProjectResolution {
@@ -15,6 +15,19 @@ export interface TaskProjectResolution {
   /** The candidates when there are several: the caller asks "Which project is this for?". */
   candidates: Project[];
 }
+
+/**
+ * The party a task-started timer is for: the task's lead resolved to its client
+ * (`leadClient.ts`), or the lead itself when it has no client. Null when the
+ * task names nobody. The popover's "Create project for …" uses this — never a
+ * name comparison of its own.
+ */
+export const clientForTask = (task: Pick<Task, "relatedLeadId">, leads: Lead[]): Lead | null => {
+  if (!task.relatedLeadId) return null;
+  const lead = leads.find((l) => l.id === task.relatedLeadId);
+  if (!lead) return null;
+  return resolveLinkedClient(lead, leads) ?? lead;
+};
 
 /** The client record a project belongs to (its own link, else via its paired lead). */
 const clientIdOfProject = (p: Pick<Project, "clientId" | "leadId">, leads: Lead[]): string | null => {
@@ -55,5 +68,17 @@ export const matchOpenTasks = (
   return tasks
     .filter((t) => !t.archived && !isDone(t) && t.title.toLowerCase().includes(q))
     .sort((a, b) => Number(b.title.toLowerCase().startsWith(q)) - Number(a.title.toLowerCase().startsWith(q)) || a.title.localeCompare(b.title))
+    .slice(0, limit);
+};
+
+const ticketTitle = (ticket: Ticket): string => (ticket.title || ticket.subject || "").trim();
+
+/** Open tickets whose title contains the typed text. The timer bar offers them beside tasks. */
+export const matchOpenTickets = (tickets: Ticket[], query: string, isClosed: (ticket: Ticket) => boolean, limit = 6): Ticket[] => {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  return tickets
+    .filter((ticket) => !ticket.archived && !ticket.isArchived && !isClosed(ticket) && ticketTitle(ticket).toLowerCase().includes(q))
+    .sort((a, b) => Number(ticketTitle(b).toLowerCase().startsWith(q)) - Number(ticketTitle(a).toLowerCase().startsWith(q)) || ticketTitle(a).localeCompare(ticketTitle(b)))
     .slice(0, limit);
 };

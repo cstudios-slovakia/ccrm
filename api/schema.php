@@ -758,6 +758,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `greeting_note` TEXT NULL,
               `intro_note` TEXT NULL,
               `usp_cards_json` TEXT NULL,
+              `custom_fields_json` TEXT NULL,
               `reassurance_note` TEXT NULL,
               `subtotal` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
               `vat_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
@@ -1138,6 +1139,125 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_tte_ticket` (`ticket_id`),
               INDEX `idx_tte_logged` (`logged_at`),
               CONSTRAINT `fk_tte_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Time tracking: one row per stretch of work, owned by the login that did it.
+            // No foreign keys on purpose: an entry must outlive its task, ticket, project
+            // and even its user (shown greyed out, `title_snapshot` keeps a readable title).
+            "CREATE TABLE IF NOT EXISTS `time_entries` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `user_id` VARCHAR(50) NOT NULL COMMENT 'Owner: the login whose time this is',
+              `recorded_by_user_id` VARCHAR(50) NOT NULL COMMENT 'Who typed it in; differs from user_id when a manager logs time for someone',
+              `employee_id` VARCHAR(50) NULL COMMENT 'Resolved from user_id when saved; supplies the salary for the cost rate',
+              `project_id` VARCHAR(50) NULL COMMENT 'NULL = Assign project state',
+              `task_id` VARCHAR(50) NULL,
+              `ticket_id` VARCHAR(50) NULL,
+              `description` VARCHAR(500) NULL COMMENT 'The title ONLY for entries with no task and no ticket; NULL when linked',
+              `title_snapshot` VARCHAR(500) NULL COMMENT 'Written on every save; never shown while the task/ticket exists, never editable',
+              `legacy_note` VARCHAR(500) NULL COMMENT 'Read-only note migrated from ticket_time_entries',
+              `entry_date` DATE NOT NULL COMMENT 'Company-timezone date the time counts for',
+              `start_at` DATETIME NULL COMMENT 'UTC; NULL for hours-only entries',
+              `end_at` DATETIME NULL COMMENT 'UTC; NULL while running or hours-only',
+              `duration_sec` INT NULL,
+              `billable` TINYINT(1) NOT NULL DEFAULT 1,
+              `billable_rate` DECIMAL(10,2) NULL,
+              `cost_rate` DECIMAL(10,4) NULL COMMENT 'Snapshot of the hourly cost rate',
+              `cost_rate_source` VARCHAR(32) NOT NULL DEFAULT 'none' COMMENT 'monthly | daily | hourly | contractor_hourly | contractor_daily | contractor_monthly | none',
+              `cost_rate_basis_days` TINYINT NULL COMMENT 'Working days of the month the rate was divided by',
+              `cost` DECIMAL(12,2) NULL,
+              `tags` TEXT NULL COMMENT 'JSON array of strings',
+              `source` VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT 'timer | manual | day | calendar | timesheet | extension | activity | toggl | clockify | ticket_legacy',
+              `origin_type` VARCHAR(16) NULL COMMENT 'task | ticket | project | calendar | activity',
+              `origin_id` VARCHAR(64) NULL,
+              `device_id` VARCHAR(64) NULL,
+              `external_id` VARCHAR(100) NULL COMMENT 'Toggl/Clockify id, or tte:<id> for migrated ticket time',
+              `approval_status` VARCHAR(16) NULL,
+              `running_guard` VARCHAR(50) GENERATED ALWAYS AS (IF(`start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL, `user_id`, NULL)) STORED COMMENT 'UNIQUE: one running timer per user',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `deleted_at` DATETIME NULL,
+              UNIQUE KEY `uq_te_running` (`running_guard`),
+              UNIQUE KEY `uq_te_external` (`source`, `external_id`),
+              INDEX `idx_te_user_date` (`user_id`, `entry_date`),
+              INDEX `idx_te_project_date` (`project_id`, `entry_date`),
+              INDEX `idx_te_task` (`task_id`),
+              INDEX `idx_te_ticket` (`ticket_id`),
+              INDEX `idx_te_employee_date` (`employee_id`, `entry_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            /* PHASE5-SCHEMA-START */
+            "CREATE TABLE IF NOT EXISTS `time_tracker_pairing_codes` (
+              `code_hash` CHAR(64) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `expires_at` DATETIME NOT NULL,
+              `used_at` DATETIME NULL,
+              `created_at` DATETIME NOT NULL,
+              PRIMARY KEY (`code_hash`),
+              INDEX `idx_ttpc_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `time_tracker_devices` (
+              `id` VARCHAR(64) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `key_hash` CHAR(64) NOT NULL,
+              `key_prefix` VARCHAR(12) NOT NULL,
+              `name` VARCHAR(120) NOT NULL,
+              `browser` VARCHAR(80) NULL,
+              `os` VARCHAR(80) NULL,
+              `extension_version` VARCHAR(32) NULL,
+              `created_at` DATETIME NOT NULL,
+              `last_used_at` DATETIME NULL,
+              `revoked_at` DATETIME NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uq_ttd_key` (`key_hash`),
+              INDEX `idx_ttd_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `time_activity` (
+              `id` VARCHAR(64) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `device_id` VARCHAR(64) NOT NULL,
+              `domain` VARCHAR(253) NOT NULL,
+              `page_title` VARCHAR(300) NOT NULL,
+              `started_at` DATETIME NOT NULL,
+              `ended_at` DATETIME NOT NULL,
+              `duration_sec` INT NOT NULL,
+              `suggested_project_id` VARCHAR(50) NULL,
+              `status` ENUM('unsorted','assigned','dismissed') NOT NULL DEFAULT 'unsorted',
+              `entry_id` VARCHAR(64) NULL,
+              `created_at` DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              INDEX `idx_tta_user_status` (`user_id`, `status`),
+              INDEX `idx_tta_started` (`started_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+            /* PHASE5-SCHEMA-END */
+
+            // Public holidays of Slovakia and Hungary, cached from Nager.Date (api/holidays.php).
+            // Only days of work rest are stored. `manual` rows are reserved; overrides live in the settings blob.
+            "CREATE TABLE IF NOT EXISTS `public_holidays` (
+              `country` CHAR(2) NOT NULL,
+              `date` DATE NOT NULL,
+              `local_name` VARCHAR(200) NOT NULL,
+              `name_en` VARCHAR(200) NOT NULL,
+              `source` ENUM('api', 'builtin', 'manual') NOT NULL DEFAULT 'api',
+              `fetched_at` DATETIME NOT NULL,
+              PRIMARY KEY (`country`, `date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Tokens and transcription minutes each AI feature consumed. Priced in the app
+            // from the model list (src/utils/aiModels.ts); this table stores the counts.
+            "CREATE TABLE IF NOT EXISTS `ai_usage` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `feature` VARCHAR(64) NOT NULL,
+              `model` VARCHAR(80) NOT NULL,
+              `input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `cached_input_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `input_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `output_audio_tokens` INT UNSIGNED NOT NULL DEFAULT 0,
+              `audio_seconds` DECIMAL(10,2) NOT NULL DEFAULT 0,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_ai_usage_created` (`created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -1165,6 +1285,72 @@ if (!function_exists('ccrm_schema_statements')) {
      * Each step checks the live schema before mutating it, so it is safe to
      * run on every install/update without relying on try/catch swallowing.
      */
+    /**
+     * Point stored AI model ids at the current same-tier models. Idempotent:
+     * a row that already holds a current id is left alone, and a second run
+     * finds nothing to rewrite. Runs on the next schema apply after deploy, which
+     * sync.php does on the first request, so existing installs pick this up
+     * without a manual step.
+     */
+    function ccrm_migrate_ai_models(PDO $pdo): void {
+        if (!function_exists('ccrm_ai_model_upgrades')) {
+            require_once __DIR__ . '/auth.php';
+        }
+        $map = ccrm_ai_model_upgrades();
+        try {
+            if (ccrm_table_exists($pdo, 'custom_dashboards')) {
+                $dash = $pdo->prepare("UPDATE `custom_dashboards` SET `active_model` = ? WHERE `active_model` = ?");
+                foreach ($map as $from => $to) {
+                    if (strpos($from, 'gpt-') === 0 || strpos($from, 'claude-') === 0) {
+                        $dash->execute([$to, $from]);
+                    }
+                }
+                // Demo dashboards were saved with a Gemini id this picker never sent to OpenAI.
+                $dash->execute(['gpt-6.1-terra', 'gemini-2.5-flash']);
+            }
+            if (ccrm_table_exists($pdo, 'swarm_simulations')) {
+                $rows = $pdo->query("SELECT `id`, `checkpoint_state` FROM `swarm_simulations` WHERE `checkpoint_state` IS NOT NULL AND `checkpoint_state` <> ''");
+                $upd = $pdo->prepare("UPDATE `swarm_simulations` SET `checkpoint_state` = ? WHERE `id` = ?");
+                foreach ($rows as $row) {
+                    $state = json_decode((string)$row['checkpoint_state'], true);
+                    if (!is_array($state) || !isset($state['model_name']) || !is_string($state['model_name'])) {
+                        continue;
+                    }
+                    $next = $map[$state['model_name']] ?? null;
+                    if ($next === null || $next === $state['model_name']) {
+                        continue;
+                    }
+                    $state['model_name'] = $next;
+                    $encoded = json_encode($state, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    if ($encoded !== false) {
+                        $upd->execute([$encoded, $row['id']]);
+                    }
+                }
+            }
+            $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'")->fetchColumn();
+            if (is_string($raw) && $raw !== '') {
+                $cfg = json_decode($raw, true);
+                if (is_array($cfg)) {
+                    $changed = false;
+                    foreach (['aiModel', 'openAiModel'] as $key) {
+                        if (isset($cfg[$key]) && is_string($cfg[$key]) && isset($map[$cfg[$key]])) {
+                            $cfg[$key] = $map[$cfg[$key]];
+                            $changed = true;
+                        }
+                    }
+                    if ($changed) {
+                        $encoded = json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                        if ($encoded !== false) {
+                            $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'INTEGRATIONS_CONFIG'")->execute([$encoded]);
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] ai model migration skipped: ' . $e->getMessage());
+        }
+    }
+
     function ccrm_apply_migrations(PDO $pdo): void {
         // Several steps below ALTER `orders`; a database that predates the table
         // would otherwise fatal on the first one.
@@ -1178,6 +1364,14 @@ if (!function_exists('ccrm_schema_statements')) {
         // generated before the variants existed, which keeps its original look.
         if (ccrm_table_exists($pdo, 'ai_custom_templates') && !ccrm_column_exists($pdo, 'ai_custom_templates', 'layout_json')) {
             $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `layout_json` TEXT NULL AFTER `badge_style`");
+        }
+        // The reconstructed block document. NULL on a template that is still a
+        // colour skin of the Signum document (see src/utils/offerDocument.ts).
+        if (ccrm_table_exists($pdo, 'ai_custom_templates') && !ccrm_column_exists($pdo, 'ai_custom_templates', 'document_json')) {
+            $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `document_json` LONGTEXT NULL AFTER `layout_json`");
+        }
+        if (ccrm_table_exists($pdo, 'invoices_offers') && !ccrm_column_exists($pdo, 'invoices_offers', 'custom_fields_json')) {
+            $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `custom_fields_json` TEXT NULL AFTER `usp_cards_json`");
         }
         // Sessions established before this timestamp are rejected, so a password
         // change can retire every session the old password could reach. NULL means
@@ -1593,8 +1787,65 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         ccrm_migrate_tickets($pdo);
         ccrm_seed_default_tickets($pdo);
+        ccrm_migrate_time_tracking($pdo);
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
+        ccrm_migrate_ai_models($pdo);
+    }
+
+    /**
+     * Time tracking additions to existing tables. The `time_entries` and
+     * `public_holidays` tables themselves are in ccrm_schema_statements().
+     *
+     * `employees.work_country` (SK | HU | NULL): whose public-holiday calendar a
+     * person works by. NULL means the company default. It decides which days are
+     * working days for the monthly cost rate; it is never derived from the UI language.
+     */
+    function ccrm_migrate_time_tracking(PDO $pdo): void {
+        if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'work_country')) {
+            $pdo->exec("ALTER TABLE `employees` ADD COLUMN `work_country` CHAR(2) NULL COMMENT 'SK | HU; NULL = company default' AFTER `address_country`");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'estimate_minutes')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `estimate_minutes` INT NULL COMMENT 'Expected minutes; the task drawer compares it with tracked time'");
+        }
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'hours_budget')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `hours_budget` DECIMAL(8,2) NULL COMMENT 'Hours the project is expected to take'");
+        }
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'billable_rate')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries'");
+        }
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'is_internal')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing'");
+        }
+        // Ticket time is visible to Admin always, and to Project Manager unless someone turned it off.
+        try {
+            $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC' LIMIT 1")->fetchColumn();
+            $roles = is_string($raw) ? json_decode($raw, true) : null;
+            if (is_array($roles)) {
+                $changed = false;
+                foreach ($roles as &$role) {
+                    if (!is_array($role) || strtolower(trim((string)($role['name'] ?? ''))) !== 'project manager') {
+                        continue;
+                    }
+                    if (!isset($role['permissions']) || !is_array($role['permissions'])) {
+                        $role['permissions'] = [];
+                    }
+                    if (!array_key_exists('tickets.time', $role['permissions'])) {
+                        $role['permissions']['tickets.time'] = 'edit';
+                        $changed = true;
+                    }
+                }
+                unset($role);
+                if ($changed) {
+                    $upd = $pdo->prepare("UPDATE `system_settings` SET `value` = ? WHERE `key` = 'ROLES_RBAC'");
+                    $upd->execute([json_encode($roles, JSON_UNESCAPED_UNICODE)]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] tickets.time grant skipped: ' . $e->getMessage());
+        }
+        require_once __DIR__ . '/ticket_time_migration.php';
+        ccrm_migrate_ticket_time_entries($pdo);
     }
 
     /**
@@ -4436,7 +4687,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

@@ -88,6 +88,7 @@ import { SectionCard, ModuleLinkCard } from "./settings/SectionCard";
 import { SaveStatus } from "./settings/SectionCard";
 import { useAutosave } from "./settings/useAutosave";
 import { ScrollFade } from "./settings/ScrollFade";
+import { AiUsagePanel } from "./settings/AiUsagePanel";
 
 /** The billing fields the company forms own. Saving writes only these, so a payment or shipping edit made elsewhere is never overwritten. */
 const COMPANY_FORM_KEYS: Array<keyof CompanyBillingSettings> = [
@@ -756,12 +757,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const openCategory: VisibleCategory | null = catalog.find((c) => c.def.id === openCategoryId) ?? null;
   const openSection =
     openCategory && openSectionId && openCategory.sections.some((s) => s.id === openSectionId) ? openSectionId : null;
-  // Every section is its own tab. An address without one (`#settings/leads`) opens the first.
+  // Tiles and phones show one section. The sidebar stacks every section of the
+  // category, so an address without one (`#settings/leads`) still names the first
+  // — that is where the page starts, and a sub-link scrolls to another.
   const activeSection = openCategory ? openSection ?? openCategory.sections[0]?.id ?? null : null;
-  /** Whether a section is the open tab right now. */
+  const stackSections = layout === "sidebar";
+  /** Whether a section is on screen: the open tab, or any section of the stacked category. */
   const isOpen = (ref: string) => {
     const [c, s] = ref.split("/");
-    return openCategory?.def.id === c && activeSection === s;
+    if (openCategory?.def.id !== c) return false;
+    if (stackSections) return openCategory.sections.some((sec) => sec.id === s);
+    return activeSection === s;
   };
   const errorsOpen = isOpen("system/errors");
   const apiOpen = isOpen("integrations/api");
@@ -1324,7 +1330,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     value: zernioApiKey,
     dirty: zernioApiKey !== (integrationsConfig?.zernioApiKey || ""),
     enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
-    save: (key) => updateIntegrationsConfig?.({ ...integrationsConfig, zernioApiKey: key }),
+    save: (key) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), zernioApiKey: key })),
   });
 
   const handleResetZernioKey = () => {
@@ -1885,7 +1891,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     value: emailDraft,
     dirty: emailDraft !== emailStored,
     enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
-    save: (json) => updateIntegrationsConfig?.({ ...integrationsConfig, ...JSON.parse(json) }),
+    save: (json) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), ...JSON.parse(json) })),
   });
 
   const handleSendTestEmail = async (e: React.FormEvent) => {
@@ -2100,7 +2106,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     value: aiDraft,
     dirty: aiDraft !== aiStored,
     enabled: getPermission("ai_config") === "edit" && Boolean(updateIntegrationsConfig),
-    save: (json) => updateIntegrationsConfig?.({ ...integrationsConfig, ...JSON.parse(json) }),
+    save: (json) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), ...JSON.parse(json) })),
   });
 
   // API Key management states
@@ -2196,31 +2202,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([]);
 
-  const syncAdsCredentialsToDb = () => {
-    if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
-        metaAppId,
-        metaAppSecret,
-        metaAccessToken,
-        googleDevToken,
-        googleClientId,
-        googleClientSecret,
-        googleRefreshToken
-      });
+  // Ads credentials save themselves, the same way the e-mail server does. A blur-only
+  // write dropped the edit when the field never blurred (a reload, a layout switch).
+  const adsDraft = JSON.stringify({
+    metaAppId, metaAppSecret, metaAccessToken,
+    googleDevToken, googleClientId, googleClientSecret, googleRefreshToken,
+  });
+  const adsStored = JSON.stringify({
+    metaAppId: integrationsConfig?.metaAppId || "",
+    metaAppSecret: integrationsConfig?.metaAppSecret || "",
+    metaAccessToken: integrationsConfig?.metaAccessToken || "",
+    googleDevToken: integrationsConfig?.googleDevToken || "",
+    googleClientId: integrationsConfig?.googleClientId || "",
+    googleClientSecret: integrationsConfig?.googleClientSecret || "",
+    googleRefreshToken: integrationsConfig?.googleRefreshToken || "",
+  });
+  const adsStatus = useAutosave({
+    value: adsDraft,
+    dirty: adsDraft !== adsStored,
+    enabled: getPermission("general_config") === "edit" && Boolean(updateIntegrationsConfig),
+    save: (json) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), ...JSON.parse(json) })),
+  });
+  const adsSaveStatus = <SaveStatus lang={userLanguage} status={adsStatus} />;
+
+  // A campaign edit is written on the change itself. An effect that compared local
+  // state to the stored list also fired on the first copy from the server, and
+  // that copy was still empty, so opening Settings wiped the saved campaigns.
+  const campaignsRef = React.useRef(campaigns);
+  campaignsRef.current = campaigns;
+  const updateCampaign = (id: string, patch: Partial<Campaign>) => {
+    const next = campaignsRef.current.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    campaignsRef.current = next;
+    setCampaigns(next);
+    if (getPermission("general_config") === "edit") {
+      updateIntegrationsConfig?.((config: any) => ({ ...(config || {}), campaigns: next }));
     }
   };
-
-  React.useEffect(() => {
-    if (updateIntegrationsConfig && integrationsConfig) {
-      if (JSON.stringify(campaigns) !== JSON.stringify(integrationsConfig.campaigns)) {
-        updateIntegrationsConfig({
-          ...integrationsConfig,
-          campaigns
-        });
-      }
-    }
-  }, [campaigns, integrationsConfig]);
 
   // Dynamic click-to-cycle tri-state permission cell renderer.
   // `defaultValue` is what an unset slug means in practice. Almost every permission
@@ -3019,6 +3036,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Both write independently; the chip shows the one that is busy.
   const companyStatus = billingStatus === "saving" || nameStatus === "saving" ? "saving" : billingStatus === "saved" || nameStatus === "saved" ? "saved" : "idle";
   const companySaveStatus = <SaveStatus lang={userLanguage} status={companyStatus} />;
+  // The sidebar shows every company card at once. The chip stays on the card that
+  // was edited, including the moment after it has been written ("Saved").
+  const companyChip = React.useRef<"profile" | "billing" | "bank" | "defaults" | null>(null);
+  const fieldDirty = (k: keyof CompanyBillingSettings) => normField(billingForm[k]) !== normField(savedBilling[k]);
+  const nameDirty = tempName.trim() !== "" && tempName !== systemName;
+  if (nameDirty || (["companyLogoUrl", "companyName", "companySubtitle", "email", "phone", "phoneSecondary", "website"] as const).some(fieldDirty)) companyChip.current = "profile";
+  else if ((["companyId", "taxId", "vatId", "street", "city", "postalCode", "country"] as const).some(fieldDirty)) companyChip.current = "billing";
+  else if ((["iban", "swift"] as const).some(fieldDirty)) companyChip.current = "bank";
+  else if ((["defaultPaymentDueDays", "defaultVatRate", "vatRates"] as const).some(fieldDirty)) companyChip.current = "defaults";
+  const companyAction = (which: "profile" | "billing" | "bank" | "defaults") =>
+    companyChip.current === which ? companySaveStatus : undefined;
 
   const renderSection = (ref: string): React.ReactNode => {
     switch (ref) {
@@ -3975,6 +4003,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {/* Meta Ads Credentials Form */}
                       <SectionCard
                         title={getTranslation(userLanguage, "settings.ads.meta_title")}
+                        action={adsSaveStatus}
                       >
                         
                         <div className="space-y-3">
@@ -3987,7 +4016,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               onChange={(e) => {
                                 setMetaAppId(e.target.value);
                               }}
-                              onBlur={syncAdsCredentialsToDb}
                               placeholder={t("e.g. 8493029104928", "napr. 8493029104928", "pl. 8493029104928")}
                               className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                             />
@@ -4001,7 +4029,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               onChange={(e) => {
                                 setMetaAppSecret(e.target.value);
                               }}
-                              onBlur={syncAdsCredentialsToDb}
                               placeholder="••••••••••••••••••••••••••••••••"
                               className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                             />
@@ -4016,7 +4043,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               onChange={(e) => {
                                 setMetaAccessToken(e.target.value);
                               }}
-                              onBlur={syncAdsCredentialsToDb}
                               placeholder="EAAGm0PX4ZBQBO..."
                               className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 resize-none font-mono"
                             />
@@ -4040,7 +4066,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 onChange={(e) => {
                                   setGoogleDevToken(e.target.value);
                                 }}
-                                onBlur={syncAdsCredentialsToDb}
                                 placeholder={t("e.g. AbC12D34E5...", "napr. AbC12D34E5...", "pl. AbC12D34E5...")}
                                 className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                               />
@@ -4055,7 +4080,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 onChange={(e) => {
                                   setGoogleClientId(e.target.value);
                                 }}
-                                onBlur={syncAdsCredentialsToDb}
                                 placeholder="84092-abc.apps.google..."
                                 className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                               />
@@ -4070,7 +4094,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               onChange={(e) => {
                                 setGoogleClientSecret(e.target.value);
                               }}
-                              onBlur={syncAdsCredentialsToDb}
                               placeholder="GOCSPX-••••••••••••••••"
                               className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
                             />
@@ -4085,7 +4108,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               onChange={(e) => {
                                 setGoogleRefreshToken(e.target.value);
                               }}
-                              onBlur={syncAdsCredentialsToDb}
                               placeholder="1//0gDabc..."
                               className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 resize-none font-mono"
                             />
@@ -4209,7 +4231,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           value={c.budget}
                                           onChange={(e) => {
                                             const val = parseFloat(e.target.value) || 0;
-                                            setCampaigns(prev => prev.map(item => item.id === c.id ? { ...item, budget: val } : item));
+                                            updateCampaign(c.id, { budget: val });
                                           }}
                                           className="w-16 px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 focus:outline-none focus:border-indigo-500 font-bold text-center text-ui"
                                         />
@@ -4223,8 +4245,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           size="sm"
                                           value={c.status}
                                           onChange={(v) => {
-                                            const statusVal = v as any;
-                                            setCampaigns(prev => prev.map(item => item.id === c.id ? { ...item, status: statusVal } : item));
+                                            updateCampaign(c.id, { status: v as Campaign["status"] });
                                           }}
                                           options={[
                                             { value: "active", label: userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active" },
@@ -6846,7 +6867,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("company", "profile", "title"))}
           description={navT(sectionKey("company", "profile", "hint"))}
-          action={companySaveStatus}
+          action={companyAction("profile")}
         >
           <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-6 items-start">
                           {/* Logo Upload Box */}
@@ -7005,7 +7026,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("company", "billing", "title"))}
           description={navT(sectionKey("company", "billing", "hint"))}
-          action={companySaveStatus}
+          action={companyAction("billing")}
         >
                             <div className="grid grid-cols-2 ws-sm:grid-cols-3 gap-3">
                               <div className="relative">
@@ -7132,7 +7153,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("company", "bank", "title"))}
           description={navT(sectionKey("company", "bank", "hint"))}
-          action={companySaveStatus}
+          action={companyAction("bank")}
         >
           <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                           <div>
@@ -7164,7 +7185,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("offers", "defaults", "title"))}
           description={navT(sectionKey("offers", "defaults", "hint"))}
-          action={companySaveStatus}
+          action={companyAction("defaults")}
         >
           <div className="max-w-xs">
                           <div>
@@ -7315,6 +7336,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </SectionCard>
         </>
         );
+      case "integrations/usage":
+        return <AiUsagePanel lang={userLanguage} />;
       default:
         return null;
     }
@@ -7378,7 +7401,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             catalog={catalog}
             category={openCategory}
             activeId={activeSection}
-            body={body}
+            sections={openCategory.sections.map((s) => ({ id: s.id, body: activeBody(openCategory, s.id) }))}
             layout={layout}
             onLayoutChange={setLayoutPref}
             query={query}

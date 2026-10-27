@@ -3717,6 +3717,8 @@ ${log.payload || ''}
             currentUser={activeUser}
             userLanguage={userLanguage}
             access={access.module("tickets")}
+            canSeeTicketTime={access.can("tickets.time")}
+            canTrackTime={access.canEdit("time_tracking")}
             initialSelectedTicketId={subTicketId}
             onNavigate={(route: string) => {
               setActiveTab(route);
@@ -4439,6 +4441,12 @@ ${log.payload || ''}
     projectTypes,
     leads,
     tasks,
+    tickets,
+    canLinkTicket: access.can("tickets"),
+    canSeeTicketTime: access.can("tickets.time"),
+    canEditTicket: () => access.canEdit("tickets"),
+    onRenameTicket: (ticketId, title) =>
+      updateTicketsAndSync((prev) => prev.map((tk) => (tk.id === ticketId ? { ...tk, title, subject: title } : tk))),
     isTaskDone: (task) => isDoneTaskState(task.status, taskStates),
     canPickProject: access.can("projects"),
     onCreateProject: access.canEdit("projects")
@@ -4464,6 +4472,9 @@ ${log.payload || ''}
     canEditTask: (task) => userMayEditTask(task, currentUser, taskAccess),
     onRenameTask: (taskId, title) =>
       updateTasksAndSync((prev) => prev.map((tk) => (tk.id === taskId ? { ...tk, title } : tk))),
+    vacations: employeeVacations,
+    salaries: employeeSalaries,
+    canSalaryReport: access.can("time_tracking_salary_report"),
   } : null;
 
   return (
@@ -4791,6 +4802,13 @@ ${log.payload || ''}
         disabledModules={integrationsConfig?.disabledModules || []}
         onConfirm={handleModuleWizardConfirm}
         onSkip={handleModuleWizardSkip}
+        users={users.map((u) => ({
+          id: (u.id || u.email || "").trim(),
+          name: (u.name || u.email || "").trim(),
+          role: u.role || "",
+        })).filter((u) => u.id)}
+        roles={roles}
+        onTrackingRoles={updateRolesAndSync}
       />
 
       {/* Bottom-right notification stack. The save indicator and the toast share one

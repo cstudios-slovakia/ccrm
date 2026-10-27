@@ -88,9 +88,9 @@ export function EntryRow({ entry, count = 1, deps, showPerson, selected, onSelec
           {entry.cost !== null && entry.cost !== undefined ? money(entry.cost) : entry.costRate === null && !entry.running ? <span className="text-amber-600" title={t("No rate — no employee linked", "Bez sadzby — nie je pripojený zamestnanec", "Nincs díj — nincs munkatárs hozzárendelve")}>—</span> : ""}
         </span>
       )}
-      <span className="flex w-16 shrink-0 justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <span className="flex shrink-0 justify-end gap-1 opacity-100 ws-sm:w-16 ws-sm:opacity-0 ws-sm:transition-opacity ws-sm:group-hover:opacity-100 ws-sm:focus-within:opacity-100">
         {onContinue && !entry.running && (
-          <button type="button" onClick={() => onContinue(entry)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex size-7 items-center justify-center rounded-lg text-slate-500 hover:bg-primary hover:text-white cursor-pointer">
+          <button type="button" onClick={() => onContinue(entry)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary hover:text-white cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
             <Play className="size-3.5 fill-current" />
           </button>
         )}

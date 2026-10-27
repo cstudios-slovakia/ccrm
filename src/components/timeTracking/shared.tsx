@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
-import type { Employee, Lead, Project, ProjectType, Task, UserProfile } from "../../types";
+import type { Employee, EmployeeSalary, EmployeeVacation, Lead, Project, ProjectType, Task, Ticket, UserProfile } from "../../types";
+import type { LockReasonCode } from "../../utils/timeLock";
 import type { Language } from "../../utils/translations";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
@@ -21,6 +22,14 @@ export interface TimeDeps {
   projectTypes: ProjectType[];
   leads: Lead[];
   tasks: Task[];
+  tickets: Ticket[];
+  /** May the signed-in user link a ticket (the tickets module)? */
+  canLinkTicket: boolean;
+  /** May the signed-in user see time logged on a ticket (`tickets.time`)? */
+  canSeeTicketTime: boolean;
+  canEditTicket: (ticket: Ticket) => boolean;
+  /** Rename a ticket through the normal ticket save path. */
+  onRenameTicket: (ticketId: string, title: string) => void;
   /** Whether a task counts as finished (its status is a done state). */
   isTaskDone: (task: Task) => boolean;
   /** May the signed-in user pick a project directly (the projects module)? */
@@ -30,7 +39,42 @@ export interface TimeDeps {
   canEditTask: (task: Task) => boolean;
   /** Rename a task through the normal task save path (sync.php): conflict handling, audit, permissions. */
   onRenameTask: (taskId: string, title: string) => void;
+  /** Approved leave, for the Team matrix. */
+  vacations?: EmployeeVacation[];
+  /**
+   * Payroll rows already in the sync blob. A period with `status === "paid"`
+   * locks that month in the Calendar and the Timesheet for a non-admin.
+   */
+  salaries?: EmployeeSalary[];
+  /** `time_tracking_salary_report`. */
+  canSalaryReport?: boolean;
 }
+
+/** The sentence the Calendar and Timesheet show when a lock stops an edit. */
+export const describeTimeLock = (
+  code: LockReasonCode,
+  t: (en: string, sk: string, hu: string) => string,
+): string => {
+  if (code === "paid_payroll") {
+    return t(
+      "This entry is locked because its payroll month is paid.",
+      "Tento záznam je uzamknutý, pretože jeho mzdový mesiac je uhradený.",
+      "Ez a bejegyzés zárolt, mert a bérhónap ki van fizetve.",
+    );
+  }
+  if (code === "approved") {
+    return t(
+      "This entry is locked because the week was submitted.",
+      "Tento záznam je uzamknutý, pretože týždeň bol odoslaný.",
+      "Ez a bejegyzés zárolt, mert a hét be lett küldve.",
+    );
+  }
+  return t(
+    "This entry is locked because it is older than the lock.",
+    "Tento záznam je uzamknutý, pretože je starší ako zámok.",
+    "Ez a bejegyzés zárolt, mert régebbi a zárolásnál.",
+  );
+};
 
 /** Whole-currency amount with two decimals. */
 export const useMoney = (deps: Pick<TimeDeps, "currency" | "language">) =>
@@ -64,7 +108,8 @@ export const canRenameTitle = (entry: TimeEntry, deps: TimeDeps): { can: boolean
     const task = deps.tasks.find((x) => x.id === entry.taskId);
     return task && deps.canEditTask(task) ? { can: true } : { can: false, why: "readonly" };
   }
-  return { can: false, why: "ticket" };
+  const ticket = deps.tickets.find((x) => x.id === entry.ticketId);
+  return ticket && deps.canEditTicket(ticket) ? { can: true } : { can: false, why: "readonly" };
 };
 
 /** The hint printed next to the title of a linked entry. */

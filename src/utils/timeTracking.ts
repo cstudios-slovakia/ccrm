@@ -61,6 +61,8 @@ export interface TimeEntry {
   originType: string | null;
   originId: string | null;
   approvalStatus: string | null;
+  /** True when this entry's employee has a paid salary row for the entry's month. */
+  paidPayrollMonth?: boolean;
   createdAt: string;
   // Present only when the viewer may see cost (own entries always, others with time_tracking_costs).
   costRate?: number | null;

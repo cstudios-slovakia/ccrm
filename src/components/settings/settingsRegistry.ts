@@ -1,5 +1,5 @@
 import {
-  Building2, Users, LayoutGrid, Target, FolderKanban, ReceiptText, Package, Wallet,
+  Building2, Users, LayoutGrid, TableProperties, Briefcase, ClipboardList, Coins,
   LifeBuoy, Mail, Plug, Server, IdCard, Landmark, Network, Languages, UserRound,
   ShieldCheck, ScrollText, ToggleRight, Shapes, Workflow, Signpost, Tags, Shuffle,
   Webhook, CircleDot, Sparkles, ListChecks, ListTodo, Percent, BadgePercent, CreditCard,
@@ -24,7 +24,7 @@ export type SettingsGroupId = "organization" | "work" | "connections";
 
 export type SettingsTintId =
   | "indigo" | "blue" | "violet" | "emerald" | "sky" | "amber"
-  | "orange" | "teal" | "pink" | "cyan" | "fuchsia" | "slate";
+  | "orange" | "teal" | "pink" | "cyan" | "fuchsia" | "slate" | "purple" | "rose";
 
 /** The `-50` background and `-600` foreground of a category's palette ramp. */
 export const SETTINGS_TINTS: Record<SettingsTintId, { bg: string; fg: string }> = {
@@ -40,6 +40,8 @@ export const SETTINGS_TINTS: Record<SettingsTintId, { bg: string; fg: string }> 
   cyan: { bg: "bg-cyan-50", fg: "text-cyan-600" },
   fuchsia: { bg: "bg-fuchsia-50", fg: "text-fuchsia-600" },
   slate: { bg: "bg-slate-100", fg: "text-slate-600" },
+  purple: { bg: "bg-purple-50", fg: "text-purple-600" },
+  rose: { bg: "bg-rose-50", fg: "text-rose-600" },
 };
 
 /** Feature gates a section can sit behind; resolved by `SettingsFlags`. */
@@ -120,7 +122,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
   },
   // ── Work & sales ──────────────────────────────────────────────────────────
   {
-    id: "leads", group: "work", icon: Target, tint: "emerald",
+    id: "leads", group: "work", icon: TableProperties, tint: "teal",
     sections: [
       S("stages", Workflow, "pipeline_stages"),
       S("sources", Signpost, "traffic_sources"),
@@ -131,7 +133,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     related: [rel("projects/autocreate", "projects_from_leads"), rel("integrations/api", "web_form_key"), rel("access/roles", "who_edits_stages")],
   },
   {
-    id: "projects", group: "work", icon: FolderKanban, tint: "sky",
+    id: "projects", group: "work", icon: Briefcase, tint: "purple",
     sections: [
       S("types", Shapes, "general_config"),
       S("statuses", CircleDot, "general_config"),
@@ -143,7 +145,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     related: [rel("leads/stages", "lead_stages"), rel("leads/interests", "interest_categories"), rel("access/roles", "who_edits_projects")],
   },
   {
-    id: "offers", group: "work", icon: ReceiptText, tint: "amber",
+    id: "offers", group: "work", icon: FileText, tint: "emerald",
     sections: [
       S("defaults", Percent, "general_config"),
       S("prices", BadgePercent, "general_config"),
@@ -154,7 +156,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     related: [rel("company/billing", "billing_details"), rel("company/bank", "bank_account"), rel("finance/ledger", "ledger_mode")],
   },
   {
-    id: "orders", group: "work", icon: Package, tint: "orange",
+    id: "orders", group: "work", icon: ClipboardList, tint: "blue",
     sections: [
       S("statuses", PackageCheck, "general_config"),
       S("shipping", Truck, "general_config"),
@@ -162,7 +164,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     related: [rel("offers/payments", "payment_methods"), rel("offers/prices", "price_levels")],
   },
   {
-    id: "finance", group: "work", icon: Wallet, tint: "teal",
+    id: "finance", group: "work", icon: Coins, tint: "emerald",
     sections: [
       S("ledger", BookOpen, "financial"),
       S("categories", FolderTree, "financial"),
@@ -170,7 +172,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     related: [rel("company/regional", "currency"), rel("offers/defaults", "vat_rates")],
   },
   {
-    id: "tickets", group: "work", icon: LifeBuoy, tint: "pink",
+    id: "tickets", group: "work", icon: LifeBuoy, tint: "purple",
     sections: [
       S("statuses", CircleDot, "general_config"),
       S("intake", Inbox, "general_config"),
@@ -179,7 +181,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
   },
   // ── Connections & system ──────────────────────────────────────────────────
   {
-    id: "email", group: "connections", icon: Mail, tint: "cyan",
+    id: "email", group: "connections", icon: Mail, tint: "rose",
     sections: [
       S("outgoing", Send, "general_config"),
       S("mailboxes", Inbox, "general_config", { adminOnly: true }),
@@ -192,6 +194,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     sections: [
       S("api", Key, "general_config"),
       S("ai", Bot, "ai_config"),
+      S("usage", Coins, "ai_config"),
       S("ads", Megaphone, "general_config"),
       S("social", Share2, "general_config", { flag: "social" }),
     ],

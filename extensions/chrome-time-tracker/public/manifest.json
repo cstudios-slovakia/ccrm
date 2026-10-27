@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "CCRM Time Tracker",
+  "version": "1.0.0",
+  "description": "Track time in CCRM. Activity capture stays off until you turn it on.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CCRM Time Tracker",
+    "default_icon": { "128": "icons/icon128.png" }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "alarms"],
+  "optional_permissions": ["tabs"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "icons": { "128": "icons/icon128.png" }
+}

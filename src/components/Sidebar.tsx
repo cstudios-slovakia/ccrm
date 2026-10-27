@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import * as Icons from "lucide-react";
+import { AI_MODEL_TERRA } from "../utils/aiModels";
 import {
   LayoutDashboard,
   ChevronLeft,
@@ -43,6 +44,7 @@ import {
   type MotionValue
 } from "framer-motion";
 import { normalizeSidebarGroups, flattenSidebarGroups, type SidebarGroup } from "../utils/sidebarLayout";
+import { applySectionVisual } from "../utils/sectionVisuals";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
@@ -111,320 +113,18 @@ interface SidebarProps {
 }
 
 export const getSidebarItemColors = (item: any, isActive: boolean) => {
-  if (item.isCustomUE || item.isCustomDash) {
-    if (isActive) {
-      return {
-        className: "text-white font-bold shadow-lg",
-        style: {
-          backgroundColor: item.customColor || "#6366f1",
-          borderColor: item.customColor || "#6366f1",
-          boxShadow: `0 10px 15px -3px ${item.customColor || "#6366f1"}4D, 0 4px 6px -4px ${item.customColor || "#6366f1"}4D`
-        },
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-slate-500 hover:bg-slate-100",
-      style: {},
-      iconColor: item.customColor || item.color || "#6366f1"
-    };
-  }
-
-  if (item.isPurpleToGreen) {
-    if (isActive) {
-      return {
-        className: "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60",
-      style: {},
-      iconColor: item.color || "#8b5cf6"
-    };
-  }
-
-  if (item.isPurple || item.id === "rag_ai" || item.id === "automation") {
-    if (isActive) {
-      return {
-        className: "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-purple-600 hover:text-purple-700 hover:bg-purple-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-violet-500)"
-    };
-  }
-
-  if (item.isLavender || item.id === "projects") {
-    if (isActive) {
-      return {
-        className: "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-purple-500 hover:text-purple-600 hover:bg-purple-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-purple-500)"
-    };
-  }
-
-  if (item.id === "time-tracking") {
-    if (isActive) {
-      return {
-        className: "bg-teal-600 text-white font-bold shadow-lg shadow-teal-600/30 border border-teal-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-teal-700 hover:text-teal-800 hover:bg-teal-50/50",
-      style: {},
-      iconColor: item.color || "#0d9488"
-    };
-  }
-
-  if (item.isNavy || item.id === "warehouse") {
-    if (isActive) {
-      return {
-        className: "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-blue-950 hover:text-blue-900 hover:bg-blue-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-blue-900)"
-    };
-  }
-
-  if (item.isIndigo || item.id === "invoices") {
-    if (isActive) {
-      return {
-        className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-indigo-500)"
-    };
-  }  if (item.id === "orders") {
-    if (isActive) {
-      return {
-        className: "bg-sky-600 text-white font-bold shadow-lg shadow-sky-600/30 border border-sky-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-sky-700 hover:text-sky-800 hover:bg-sky-50/50",
-      style: {},
-      iconColor: item.color || "#0284c7"
-    };
-  }
-
-  if (item.isEmerald || item.id === "financial") {
-    if (isActive) {
-      return {
-        className: "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-emerald-500)"
-    };
-  }
-
-  if (item.isSand || item.id === "employees") {
-    if (isActive) {
-      return {
-        className: "bg-[#b58b4c] text-white font-bold shadow-lg shadow-[#b58b4c]/30 border border-[#c29b62]/40",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-[#b58b4c] hover:text-[#9e7638] hover:bg-[#c29b62]/10",
-      style: {},
-      iconColor: item.color || "#c29b62"
-    };
-  }
-
-  if (item.isNightBlue || item.id === "meetings") {
-    if (isActive) {
-      return {
-        className: "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-slate-600 hover:text-slate-900 hover:bg-slate-100/50",
-      style: {},
-      iconColor: item.color || "var(--color-indigo-600)"
-    };
-  }
-
-  if (item.isRose || item.id === "social_media") {
-    if (isActive) {
-      return {
-        className: "bg-rose-600 text-white font-bold shadow-lg shadow-rose-600/30 border border-rose-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-rose-600 hover:text-rose-700 hover:bg-rose-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-rose-500)"
-    };
-  }
-
-  if (item.id === "leads") {
-    if (isActive) {
-      return {
-        className: "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-blue-600 hover:text-blue-700 hover:bg-blue-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-blue-600)"
-    };
-  }
-
-  if (item.id === "clients") {
-    if (isActive) {
-      return {
-        className: "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-emerald-600)"
-    };
-  }
-
-  if (item.id === "tasks") {
-    if (isActive) {
-      return {
-        className: "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-orange-500 hover:text-orange-600 hover:bg-orange-50/50",
-      style: {},
-      iconColor: item.color || "#ff5d00"
-    };
-  }
-
-  if (item.id === "files") {
-    if (isActive) {
-      return {
-        className: "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-amber-700 hover:text-amber-800 hover:bg-amber-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-amber-700)"
-    };
-  }
-
-  if (item.id === "overview") {
-    if (isActive) {
-      return {
-        className: "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-cyan-600)"
-    };
-  }
-
-  if (item.id === "email") {
-    if (isActive) {
-      return {
-        className: "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-pink-600 hover:text-pink-700 hover:bg-pink-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-pink-600)"
-    };
-  }
-
-  if (item.id === "updates") {
-    if (isActive) {
-      return {
-        className: "bg-amber-600 text-white font-bold shadow-lg shadow-amber-600/30 border border-amber-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-amber-600 hover:text-amber-700 hover:bg-amber-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-amber-600)"
-    };
-  }
-
-  if (item.id === "dashboard") {
-    if (isActive) {
-      return {
-        className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
-        style: {},
-        iconColor: "#ffffff"
-      };
-    }
-    return {
-      className: "bg-slate-50/70 border-slate-200/90 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50",
-      style: {},
-      iconColor: item.color || "var(--color-indigo-600)"
-    };
-  }
-
+  const color = item.customColor || item.color || "#64748b";
   if (isActive) {
     return {
-      className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
-      style: {},
-      iconColor: "#ffffff"
+      className: "text-white font-bold shadow-md border",
+      style: { backgroundColor: color, borderColor: color },
+      iconColor: "#ffffff",
     };
   }
-
   return {
-    className: "bg-slate-50/70 border-slate-200/90 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50",
+    className: "bg-slate-50/70 border-slate-200/90 text-slate-500 hover:bg-slate-100",
     style: {},
-    iconColor: item.color || "currentColor"
+    iconColor: color,
   };
 };
 
@@ -454,8 +154,7 @@ interface SidebarDockButtonProps {
   startMenuEditMode: boolean;
   sidebarGroups?: SidebarGroup[];
   onItemClick: (itemId: string) => void;
-  onHoverStart: (itemId: string, rect: DOMRect) => void;
-  onHoverEnd: () => void;
+  onHoverStart: (itemId: string) => void;
   onDrop: (e: React.DragEvent, groupId: string, indexInGroup: number) => void;
   onDragOver: (e: React.DragEvent, indexInGroup: number) => void;
   onDragStartItem?: (e: React.DragEvent, itemId: string, fromGroupId: string) => void;
@@ -479,7 +178,6 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
   sidebarGroups,
   onItemClick,
   onHoverStart,
-  onHoverEnd,
   onDrop,
   onDragOver,
   onDragStartItem,
@@ -537,12 +235,6 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
     y: !isExpanded && isDockMode ? springY : 0,
     zIndex: !isExpanded && isDockMode ? zIndexTransform : undefined,
     transformOrigin: "center left" as const,
-    ...(isActive && (item.isCustomUE || item.isCustomDash)
-      ? {
-          backgroundColor: item.customColor,
-          boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
-        }
-      : {})
   };
 
   const commonClass = cn(
@@ -550,93 +242,17 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
     isEditing ? "cursor-grab active:cursor-grabbing hover:bg-slate-50 border border-transparent hover:border-slate-200" : "cursor-pointer",
     widthClasses.itemPad,
     dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
-    item.isCustomUE || item.isCustomDash
-      ? isActive
-        ? "text-white font-bold"
-        : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-      : item.isPurpleToGreen
-        ? isActive
-          ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-          : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60"
-        : item.isPurple
-          ? isActive
-            ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-            : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50"
-          : item.isLavender
-            ? isActive
-              ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
-              : "text-purple-500 hover:text-purple-600 hover:bg-purple-50/50"
-            : item.isNavy
-              ? isActive
-                ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
-                : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50"
-              : item.isIndigo
-                ? isActive
-                  ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
-                  : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50"
-                : item.isEmerald
-                  ? isActive
-                    ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50"
-                  : item.isNightBlue
-                    ? isActive
-                      ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
-                    : item.isSand
-                      ? isActive
-                        ? "bg-[#b58b4c] text-white font-bold shadow-lg shadow-[#b58b4c]/30 border border-[#c29b62]/40"
-                        : "text-[#b58b4c] hover:text-[#9e7638] hover:bg-[#c29b62]/10"
-                      : isActive
-                      ? item.id === "leads"
-                        ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
-                        : item.id === "clients"
-                          ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                          : item.id === "files"
-                            ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
-                            : item.id === "overview"
-                              ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
-                              : item.id === "email"
-                                ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
-                                : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
-                      : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+    isActive
+      ? "bg-slate-100 text-slate-900 font-semibold"
+      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
   );
 
   const innerLabel = isExpanded && (
     <span
       className={cn(
-        "font-heading font-medium tracking-wide truncate min-w-0 flex-1",
+        "font-heading font-medium truncate min-w-0 flex-1 normal-case",
         widthClasses.textSize,
-        item.isCustomUE || item.isCustomDash
-          ? isActive
-            ? "text-white font-bold"
-            : "text-slate-500 font-semibold group-hover:text-slate-700"
-          : item.isPurpleToGreen
-            ? isActive
-              ? "text-white font-bold"
-              : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold"
-            : item.isPurple
-              ? isActive
-                ? "text-white font-bold"
-                : "text-purple-600 font-bold"
-              : item.isLavender
-                ? isActive
-                  ? "text-white font-bold"
-                  : "text-purple-500 font-semibold"
-                : item.isNavy
-                  ? isActive
-                    ? "text-white font-bold"
-                    : "text-blue-950 font-semibold"
-                  : item.isNightBlue
-                    ? isActive
-                      ? "text-white font-bold"
-                      : "text-slate-800 font-semibold"
-                    : item.isSand
-                      ? isActive
-                        ? "text-white font-bold"
-                        : "text-[#b58b4c] font-semibold"
-                      : isActive
-                      ? "text-white font-bold"
-                      : "text-slate-500 font-semibold"
+        isActive ? "text-slate-900 font-semibold" : "text-slate-600"
       )}
     >
       {item.label}
@@ -649,20 +265,9 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
         type="button"
         ref={btnRef}
         onClick={() => onItemClick(item.id)}
+        data-dock-id={item.id}
         onMouseEnter={() => {
-          if (isDockMode && !isExpanded && btnRef.current) {
-            onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-          }
-        }}
-        onMouseMove={() => {
-          if (isDockMode && !isExpanded && btnRef.current) {
-            onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-          }
-        }}
-        onMouseLeave={() => {
-          if (isDockMode && !isExpanded) {
-            onHoverEnd();
-          }
+          if (isDockMode && !isExpanded) onHoverStart(item.id);
         }}
         onDragOver={(e) => {
           e.preventDefault();
@@ -682,9 +287,9 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
           className={cn(
             widthClasses.iconSize,
             "shrink-0 transition-transform duration-200",
-            isActive ? "text-white" : "group-hover:scale-105"
+            "shrink-0"
           )}
-          style={!isActive ? { color: item.color || item.customColor } : undefined}
+          style={{ color: item.color || item.customColor }}
         />
         {innerLabel}
       </motion.button>
@@ -711,20 +316,9 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
           onItemClick(item.id);
         }
       }}
+      data-dock-id={item.id}
       onMouseEnter={() => {
-        if (isDockMode && !isExpanded && btnRef.current) {
-          onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-        }
-      }}
-      onMouseMove={() => {
-        if (isDockMode && !isExpanded && btnRef.current) {
-          onHoverStart(item.id, btnRef.current.getBoundingClientRect());
-        }
-      }}
-      onMouseLeave={() => {
-        if (isDockMode && !isExpanded) {
-          onHoverEnd();
-        }
+        if (isDockMode && !isExpanded) onHoverStart(item.id);
       }}
       onDragOver={(e) => {
         e.preventDefault();
@@ -750,10 +344,9 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
       <Icon
         className={cn(
           widthClasses.iconSize,
-          "shrink-0 transition-transform duration-200",
-          isActive ? "text-white" : "group-hover:scale-105"
+          "shrink-0"
         )}
-        style={!isActive ? { color: item.color || item.customColor } : undefined}
+        style={{ color: item.color || item.customColor }}
       />
 
       {innerLabel}
@@ -874,7 +467,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Magic UI Dynamic Dock states
   const dockMouseY = useMotionValue(Infinity);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
-  const [hoveredItemPos, setHoveredItemPos] = useState<{ top: number; left: number } | null>(null);
+  const dockTipRef = useRef<HTMLDivElement>(null);
 
   // Drag states
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -995,26 +588,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
       { id: "time-tracking", label: systemLanguage === "sk" ? "Evidencia času" : systemLanguage === "hu" ? "Időkövetés" : "Time tracking", icon: Icons.Timer || ListTodo, color: "#0d9488" },
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
-      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
-      { id: "tickets", label: getTranslation(systemLanguage, "sidebar.tickets"), icon: Icons.LifeBuoy || Icons.Ticket || LayoutDashboard, color: "#6366f1", isIndigo: true },
-      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
-      { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6", isPurpleToGreen: true },
+      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)" },
+      { id: "tickets", label: getTranslation(systemLanguage, "sidebar.tickets"), icon: Icons.LifeBuoy || Icons.Ticket || LayoutDashboard, color: "#6366f1" },
+      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)" },
+      { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6" },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
-      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky" : systemLanguage === "hu" ? "Árajánlatok" : "Price Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky" : systemLanguage === "hu" ? "Árajánlatok" : "Price Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)" },
       { id: "orders", label: systemLanguage === "sk" ? "Objednávky" : systemLanguage === "hu" ? "Rendelések" : "Orders", icon: Icons.ShoppingCart || Coins, color: "#0284c7" },
-      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
-      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
-      { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62", isSand: true },
-      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)", isNightBlue: true },
+      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)" },
+      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)" },
+      { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62" },
+      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)" },
       ...dynamicUeItems,
       ...dynamicDashItems,
       { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "var(--color-amber-700)" },
       { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "var(--color-pink-600)" },
-      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)", isPurple: true },
-      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)", isRose: true },
+      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)" },
+      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)" },
       { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "var(--color-amber-600)" }
-    ];
+    ].map(applySectionVisual);
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
@@ -1062,6 +655,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // When pinned or editing navigation, sidebar stays expanded
   const isExpanded = isPinned || !isCollapsed || (isStartMenuOpen && startMenuEditMode);
+
+  // The dock label follows the magnified icon on the animation frame, without
+  // re-rendering the sidebar on every mouse move and without fading in again
+  // each time the pointer crosses onto the next button.
+  useLayoutEffect(() => {
+    if (!hoveredItemId || !isDockMode || isExpanded) return;
+    const place = () => {
+      const btn = navRef.current?.querySelector<HTMLElement>(`[data-dock-id="${hoveredItemId}"]`);
+      const tip = dockTipRef.current;
+      if (!btn || !tip) return;
+      const rect = btn.getBoundingClientRect();
+      tip.style.top = `${rect.top + rect.height / 2}px`;
+      tip.style.left = `${rect.right + 14}px`;
+    };
+    place();
+    let frame = requestAnimationFrame(function loop() {
+      place();
+      frame = requestAnimationFrame(loop);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hoveredItemId, isDockMode, isExpanded]);
 
   const widthClasses = {
     compact: {
@@ -1313,7 +927,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: dashColor,
       prompts: [],
       layout: { widgets: [] },
-      activeModel: "gpt-5.6-terra",
+      activeModel: AI_MODEL_TERRA,
       archived: false
     };
 
@@ -1526,17 +1140,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="h-2 w-2 rounded-full bg-emerald-500 transition-transform" />
                 <span className="h-2 w-2 rounded-full bg-indigo-500 transition-transform" />
               </div>
-              <span className="text-[7.5px] font-black tracking-widest text-slate-600 group-hover:text-slate-800 transition-colors uppercase leading-none">
-                START
+              <span className="text-[7.5px] font-semibold text-slate-600 group-hover:text-slate-800 transition-colors leading-none">
+                Start
               </span>
             </div>
 
             {isExpanded && (
               <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
-                <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-slate-950 transition-colors">
                   {systemName}
                 </span>
-                <span className="text-[10px] text-slate-500 tracking-wider font-semibold uppercase mt-0.5 truncate">
+                <span className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
                   {getTranslation(systemLanguage, "sidebar.command_center")}
                 </span>
               </div>
@@ -1578,8 +1192,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {isStartMenuOpen && startMenuEditMode && (
             <div className="p-3 mb-2 rounded-2xl bg-indigo-50 border border-indigo-200/90 flex flex-col gap-2 animate-in fade-in duration-200 select-none">
               <div className="flex items-center justify-between">
-                <span className="text-[10.5px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
-                  <Pencil className="h-3.5 w-3.5 text-indigo-600" />
+                <span className="text-[10.5px] font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Pencil className="h-3.5 w-3.5 text-slate-500" />
                   {t("Edit Navigation", "Úprava menu", "Menü szerkesztése")}
                 </span>
                 <button
@@ -1596,7 +1210,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {t("Done", "Hotovo", "Kész")}
                 </button>
               </div>
-              <p className="text-[10px] text-indigo-600/90 leading-snug">
+              <p className="text-[10px] text-slate-600 leading-snug">
                 {t(
                   "Use up/down arrows or drag items to reorder. Click '+ Add' on any group to insert modules.",
                   "Použite šípky hore/dole alebo presuňte položky. Kliknite '+ Pridať' pre pridanie modulu.",
@@ -1679,7 +1293,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                     ) : (
                       <>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate flex-1 min-w-0">
+                        <span className="text-[10px] font-semibold text-slate-500 truncate flex-1 min-w-0">
                           {entry.title}
                         </span>
                         {isStartMenuOpen && startMenuEditMode && (
@@ -1788,7 +1402,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       className="view-size-fixed mx-2 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
                     >
                       <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                        <span className="text-[10px] font-semibold text-slate-600">
                           {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
                         </span>
                         <button
@@ -1882,7 +1496,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       className="view-size-fixed mx-1 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
                     >
                       <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                        <span className="text-[10px] font-semibold text-slate-600">
                           {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
                         </span>
                         <button
@@ -1958,15 +1572,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setActiveTab(id);
                   if (!isPinned) setIsCollapsed(true);
                 }}
-                onHoverStart={(id, rect) => {
+                onHoverStart={(id) => {
                   setHoveredItemId(id);
-                  setHoveredItemPos({
-                    top: rect.top + rect.height / 2,
-                    left: rect.left + rect.width + 16
-                  });
-                }}
-                onHoverEnd={() => {
-                  setHoveredItemId(null);
                 }}
                 onDragStartItem={handleItemDragStart}
                 onDragEndItem={handleItemDragEnd}
@@ -2009,10 +1616,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Dynamic Dock Floating Tooltip */}
-          {hoveredItemId && hoveredItemPos && isDockMode && !isExpanded && (
+          {hoveredItemId && isDockMode && !isExpanded && (
             <div
-              className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md whitespace-nowrap"
-              style={{ top: hoveredItemPos.top, left: hoveredItemPos.left }}
+              ref={dockTipRef}
+              className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-semibold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 whitespace-nowrap"
             >
               {(() => {
                 const item = allPossibleItems.find((i) => i.id === hoveredItemId);
@@ -2271,7 +1878,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
                   <Brain className="h-4.5 w-4.5 animate-pulse" />
                 </div>
-                <span className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                <span className="text-sm font-semibold text-slate-800">
                   {t("Create New Dashboard", "Vytvoriť nový panel", "Új irányítópult létrehozása")}
                 </span>
               </div>
@@ -2286,7 +1893,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
                   {t("Dashboard Name", "Názov panela", "Irányítópult neve")}
                 </label>
                 <input
@@ -2299,7 +1906,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
                   {t("Select Icon", "Vybrať ikonu", "Ikon kiválasztása")}
                 </label>
                 <div className="flex items-center gap-3">
@@ -2320,7 +1927,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                <label className="block text-[10px] font-semibold text-slate-500 mb-2">
                   {t("Select Color", "Vybrať farbu", "Szín kiválasztása")}
                 </label>
                 <div className="grid grid-cols-8 gap-2">
@@ -2348,14 +1955,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={() => setIsDashModalOpen(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider transition-colors cursor-pointer"
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 text-xs font-semibold text-slate-600 transition-colors cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               <button
                 type="button"
                 onClick={handleCreateDashboard}
-                className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
+                className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-indigo-600/10 cursor-pointer"
               >
                 {t("Create", "Vytvoriť", "Létrehozás")}
               </button>
@@ -2370,7 +1977,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                <h3 className="text-sm font-semibold text-slate-800">
                   {t("Select Icon", "Výber ikony", "Ikon kiválasztása")}
                 </h3>
                 <p className="text-[10px] font-bold text-slate-400 mt-0.5">

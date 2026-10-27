@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Ticket as TicketIcon,
   Plus,
@@ -51,6 +51,8 @@ import {
   ticketTypeColor,
   ticketTypeLabel,
 } from "./../utils/tickets";
+import { listProjectUsage } from "../utils/timeTrackingApi";
+import { useTimeTracking } from "../hooks/useTimeTracking";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TicketRichHtmlEditor, isImageAttachment } from "./ui/TicketRichHtmlEditor";
 
@@ -114,10 +116,21 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
   const widgetCfg = project.ticketWidgetConfig || {};
 
   const retainerCfg = resolveProjectRetainer(project, supportContracts);
+  const timeTracker = useTimeTracking();
+  const [usageRows, setUsageRows] = useState<Parameters<typeof computeProjectRetainerUsage>[4]>(undefined);
+  useEffect(() => {
+    let live = true;
+    listProjectUsage(project.id)
+      .then((rows) => { if (live) setUsageRows(rows); })
+      .catch(() => { if (live) setUsageRows(undefined); });
+    return () => { live = false; };
+  }, [project.id, timeTracker.version]);
   const retainerUsage = computeProjectRetainerUsage(
     project,
     tickets,
     supportContracts,
+    new Date(),
+    usageRows,
   );
 
   const handleUpdateRetainer = (patch: Partial<ProjectRetainerConfig>) => {

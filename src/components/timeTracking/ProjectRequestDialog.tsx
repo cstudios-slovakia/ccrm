@@ -1,14 +1,23 @@
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { ProjectPicker } from "./ProjectPicker";
 import type { TimeDeps } from "./shared";
+import { rememberTimeCreate } from "./timeCreateBridge";
 
 /**
  * "Require a project before Stop": when the server answers `project_required`, the timer does not
  * fail — this dialog asks which project the time belongs to and the stop is retried with it.
  */
 export function ProjectRequestDialog({ deps }: { deps: TimeDeps }) {
+  rememberTimeCreate({
+    onCreateProject: deps.onCreateProject,
+    projectTypes: deps.projectTypes,
+    currency: deps.currency,
+    language: deps.language,
+  });
+  useEffect(() => () => rememberTimeCreate({ projectTypes: [], currency: "EUR", language: "en" }), []);
   const { projectRequest, t } = useTimeTracking();
   if (!projectRequest || typeof document === "undefined") return null;
   return createPortal(

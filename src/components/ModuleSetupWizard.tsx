@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, MotionConfig, animate, motion, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
-import { Check, CheckCheck, TriangleAlert, WandSparkles, X } from "lucide-react";
+import { Check, CheckCheck, Timer, TriangleAlert, WandSparkles, X } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
+import { formatMoney } from "../utils/currency";
 import { getModuleCategories } from "../utils/moduleCatalog";
 import type { ModuleItemConfig } from "../utils/moduleCatalog";
+import type { RolePermission } from "../types";
+import { isAdminRoleName } from "../utils/permissions";
 import {
   canConfirmDraft,
   countActive,
@@ -13,6 +16,24 @@ import {
   mergeDraftIntoDisabled,
   toggleInDraft,
 } from "../utils/moduleWizard";
+import { getSettings, saveSettings } from "../utils/timeTrackingApi";
+import type { TimeTrackingSettings } from "../utils/timeTracking";
+import {
+  applyLoadedSettings,
+  applyLoadedUsers,
+  clampTimeWizardDraft,
+  draftFromSettings,
+  patchDirtyFields,
+  rolesAfterTrackingChoice,
+  timeWizardExampleRate,
+  TIME_WIZARD_EXAMPLE_DAYS,
+  TIME_WIZARD_EXAMPLE_SALARY,
+  toggleTrackingUser,
+  trackingChoiceChanged,
+  type TimeWizardDraft,
+  type TimeWizardField,
+  type TimeWizardUser,
+} from "../utils/timeTrackingWizard";
 
 /**
  * Module setup wizard: a large popup in which an admin chooses which CRM
@@ -38,6 +59,15 @@ export interface ModuleSetupWizardProps {
   onConfirm: (nextDisabled: string[]) => void;
   /** "Decide later", the close button and Escape. Leaves `disabledModules` alone. */
   onSkip: () => void;
+  /** Workspace accounts for the "who tracks time" checklist. Omitted → the list is empty. */
+  users?: TimeWizardUser[];
+  /** Current role matrix. Omitted → nobody except administrators is checked. */
+  roles?: RolePermission[];
+  /**
+   * Called when Confirm changes who tracks time. Receives the full next role list.
+   * Not called when the checklist is unchanged, so a plain Confirm does not rewrite roles.
+   */
+  onTrackingRoles?: (nextRoles: RolePermission[]) => void;
 }
 
 const FOCUSABLE =
@@ -203,9 +233,239 @@ const ModuleCard: React.FC<ModuleCardProps> = ({ module, visible, index, languag
   );
 };
 
+const money = (language: Language, value: number, digits: number) =>
+  formatMoney(value, "EUR", language, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+interface TimeTrackingSetupStepProps {
+  language: Language;
+  t: (en: string, sk: string, hu: string) => string;
+  users: TimeWizardUser[];
+  draft: TimeWizardDraft;
+  onChange: (field: TimeWizardField, patch: Partial<TimeWizardDraft>) => void;
+  onToggleUser: (userId: string) => void;
+}
+
+/** Shown while the Time tracking card is on. Confirm on the parent applies it. */
+const TimeTrackingSetupStep: React.FC<TimeTrackingSetupStepProps> = ({ language, t, users, draft, onChange, onToggleUser }) => {
+  const shown = clampTimeWizardDraft(draft);
+  const rate = timeWizardExampleRate(draft);
+  const rateText = rate === null ? "—" : money(language, rate, 2);
+  const salaryText = money(language, TIME_WIZARD_EXAMPLE_SALARY, 0);
+  const field =
+    "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui text-slate-800 outline-none transition duration-150 ease-out hover:border-slate-300 focus:border-teal-600 focus-visible:ring-2 focus-visible:ring-teal-600/30";
+  const setNumber = (fieldName: "fixedHoursPerMonth" | "hoursPerDay" | "employerMultiplier", raw: string) => {
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n)) return;
+    if (fieldName === "hoursPerDay") onChange(fieldName, { hoursPerDay: n });
+    else if (fieldName === "fixedHoursPerMonth") onChange(fieldName, { fixedHoursPerMonth: n });
+    else onChange(fieldName, { employerMultiplier: n });
+  };
+  const listed = [...users].sort((a, b) => {
+    const rank = (role: string) => (isAdminRoleName(role) ? 0 : 1);
+    const byRole = rank(a.role) - rank(b.role);
+    return byRole !== 0 ? byRole : a.name.localeCompare(b.name, language);
+  });
+  const selected = new Set(draft.trackingUserIds);
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 6 }}
+      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+      data-testid="time-tracking-setup"
+      aria-label={t("Set up time tracking", "Nastavenie evidencie času", "Az időkövetés beállítása")}
+      className="mb-8 rounded-3xl border border-teal-200 bg-white p-4 shadow-sm shadow-teal-600/5 sm:p-5"
+    >
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-teal-600 text-white shadow-lg shadow-teal-600/25">
+          <Timer className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="type-card-title font-heading text-slate-900">
+            {t("Set up time tracking", "Nastavenie evidencie času", "Az időkövetés beállítása")}
+          </h3>
+          <p className="type-body mt-1 text-slate-500">
+            {t(
+              "These choices apply to everyone in the workspace. You can change them later in Settings → Time tracking.",
+              "Tieto voľby platia pre všetkých v pracovnom priestore. Neskôr ich zmeníte v Nastavenia → Evidencia času.",
+              "Ezek a választások a munkaterület minden tagjára érvényesek. Később a Beállítások → Időkövetés menüben módosíthatja őket.",
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <label className="grid gap-1">
+          <span className="type-label text-slate-600">{t("Monthly hours basis", "Základ mesačných hodín", "Havi óraalap")}</span>
+          <select
+            value={shown.hoursBasis}
+            data-testid="time-wizard-hours-basis"
+            onChange={(e) => onChange("hoursBasis", { hoursBasis: e.target.value === "fixed" ? "fixed" : "workingDays" })}
+            className={`${field} cursor-pointer`}
+          >
+            <option value="workingDays">{t("Working days × hours per day", "Pracovné dni × hodiny za deň", "Munkanapok × napi órák")}</option>
+            <option value="fixed">{t("Fixed hours per month", "Pevný počet hodín za mesiac", "Fix havi óraszám")}</option>
+          </select>
+        </label>
+        {shown.hoursBasis === "fixed" ? (
+          <label className="grid gap-1">
+            <span className="type-label text-slate-600">{t("Hours per month", "Hodiny za mesiac", "Órák havonta")}</span>
+            <input
+              type="number"
+              min={1}
+              max={744}
+              value={draft.fixedHoursPerMonth}
+              data-testid="time-wizard-fixed-hours"
+              onChange={(e) => setNumber("fixedHoursPerMonth", e.target.value)}
+              className={field}
+            />
+          </label>
+        ) : (
+          <label className="grid gap-1">
+            <span className="type-label text-slate-600">{t("Hours per day", "Hodiny za deň", "Napi órák")}</span>
+            <input
+              type="number"
+              min={1}
+              max={24}
+              step={0.5}
+              value={draft.hoursPerDay}
+              data-testid="time-wizard-hours-per-day"
+              onChange={(e) => setNumber("hoursPerDay", e.target.value)}
+              className={field}
+            />
+          </label>
+        )}
+        <label className="grid gap-1 sm:col-span-2">
+          <span className="type-label text-slate-600">
+            {t("Employer contributions multiplier", "Násobok odvodov zamestnávateľa", "Munkáltatói járulék szorzó")}
+          </span>
+          <input
+            type="number"
+            min={0.5}
+            max={5}
+            step={0.001}
+            value={draft.employerMultiplier}
+            data-testid="time-wizard-multiplier"
+            onChange={(e) => setNumber("employerMultiplier", e.target.value)}
+            className={field}
+          />
+          <span className="type-meta text-slate-500">
+            {t("Applies to employees, not to contractors.", "Platí pre zamestnancov, nie pre dodávateľov.", "Munkavállalókra vonatkozik, vállalkozókra nem.")}
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-4 rounded-2xl bg-teal-50 px-4 py-3 text-ui text-teal-950" data-testid="time-wizard-example">
+        {shown.hoursBasis === "fixed"
+          ? t(
+              `Example: ${salaryText} a month ÷ ${shown.fixedHoursPerMonth} h × ${shown.employerMultiplier} = `,
+              `Príklad: ${salaryText} mesačne ÷ ${shown.fixedHoursPerMonth} h × ${shown.employerMultiplier} = `,
+              `Példa: havi ${salaryText} ÷ ${shown.fixedHoursPerMonth} óra × ${shown.employerMultiplier} = `,
+            )
+          : t(
+              `Example: ${salaryText} a month, ${TIME_WIZARD_EXAMPLE_DAYS} working days, ${shown.hoursPerDay} h a day × ${shown.employerMultiplier} = `,
+              `Príklad: ${salaryText} mesačne, ${TIME_WIZARD_EXAMPLE_DAYS} pracovných dní, ${shown.hoursPerDay} h denne × ${shown.employerMultiplier} = `,
+              `Példa: havi ${salaryText}, ${TIME_WIZARD_EXAMPLE_DAYS} munkanap, napi ${shown.hoursPerDay} óra × ${shown.employerMultiplier} = `,
+            )}
+        <motion.b
+          key={rateText}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="tabular-nums text-violet-700"
+        >
+          {rateText}
+          {t("/h", "/h", "/óra")}
+        </motion.b>
+      </div>
+
+      <div className="mt-5">
+        <h4 className="type-label text-slate-700">{t("Who tracks time", "Kto eviduje čas", "Ki követi az időt")}</h4>
+        <p className="type-meta mt-1 text-slate-500">
+          {t(
+            "People who share a role track time together. Administrators always can.",
+            "Ľudia s rovnakou rolou evidujú čas spoločne. Administrátori môžu vždy.",
+            "Az azonos szerepkörű emberek együtt követik az időt. Az adminisztrátorok mindig tudják.",
+          )}
+        </p>
+        {listed.length === 0 ? (
+          <p className="type-body mt-3 text-slate-500">
+            {t(
+              "No people in this workspace yet. You can choose them later, once accounts exist.",
+              "V tomto pracovnom priestore zatiaľ nie sú žiadni ľudia. Vyberiete ich neskôr, keď budú účty existovať.",
+              "Ebben a munkaterületben még nincsenek emberek. Később választhatja ki őket, amint létrejönnek a fiókok.",
+            )}
+          </p>
+        ) : (
+          <ul className="mt-3 grid max-h-64 gap-1 overflow-y-auto overscroll-contain" data-testid="time-wizard-users">
+            {listed.map((user) => {
+              const locked = isAdminRoleName(user.role);
+              const on = locked || selected.has(user.id);
+              return (
+                <li key={user.id}>
+                  <label
+                    className={`flex items-center gap-3 rounded-xl px-2 py-2 transition duration-150 ease-out focus-within:ring-2 focus-within:ring-teal-600/40 ${
+                      locked ? "cursor-default opacity-80" : "cursor-pointer hover:bg-teal-50/80 active:bg-teal-100/80"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={locked}
+                      data-testid={`time-wizard-user-${user.id}`}
+                      onChange={() => onToggleUser(user.id)}
+                      className="size-4 shrink-0 accent-teal-600 disabled:cursor-not-allowed"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-ui font-semibold text-slate-800">{user.name}</span>
+                    {user.role && (
+                      <span className="type-overline shrink-0 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-slate-500">
+                        {user.role}
+                      </span>
+                    )}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 px-3 py-3 transition duration-150 ease-out hover:border-teal-300 hover:bg-teal-50/50 active:bg-teal-50 focus-within:ring-2 focus-within:ring-teal-600/40">
+        <input
+          type="checkbox"
+          checked={shown.extensionEnabled}
+          data-testid="time-wizard-extension"
+          onChange={(e) => onChange("extensionEnabled", { extensionEnabled: e.target.checked })}
+          className="mt-0.5 size-4 shrink-0 accent-teal-600"
+        />
+        <span className="min-w-0">
+          <span className="type-label block text-slate-800">{t("Chrome extension", "Rozšírenie pre Chrome", "Chrome-bővítmény")}</span>
+          <span className="type-meta mt-0.5 block text-slate-500">
+            {t(
+              "People can pair a browser and start the timer from it.",
+              "Ľudia môžu spárovať prehliadač a spustiť z neho časovač.",
+              "Az emberek párosíthatnak egy böngészőt, és onnan indíthatják az időzítőt.",
+            )}
+          </span>
+        </span>
+      </label>
+    </motion.section>
+  );
+};
+
 interface WizardDialogProps extends Omit<ModuleSetupWizardProps, "open"> {}
 
-const WizardDialog: React.FC<WizardDialogProps> = ({ language, catalog, disabledModules, onConfirm, onSkip }) => {
+const WizardDialog: React.FC<WizardDialogProps> = ({
+  language,
+  catalog,
+  disabledModules,
+  onConfirm,
+  onSkip,
+  users = [],
+  roles = [],
+  onTrackingRoles,
+}) => {
   const t = (en: string, sk: string, hu: string) => (language === "sk" ? sk : language === "hu" ? hu : en);
   const uid = useId();
   const titleId = `${uid}-title`;
@@ -218,6 +478,79 @@ const WizardDialog: React.FC<WizardDialogProps> = ({ language, catalog, disabled
   // The draft: ids switched OFF. Seeded once, from the workspace's current state.
   const [draft, setDraft] = useState<string[]>(() => draftFromDisabled(disabledModules, catalogIds));
   const [showGuard, setShowGuard] = useState(false);
+
+  const timeUsers = useMemo(
+    () =>
+      users
+        .map((user) => ({ id: user.id.trim(), name: (user.name || user.id).trim(), role: (user.role || "").trim() }))
+        .filter((user) => user.id),
+    [users],
+  );
+  const timeUsersKey = timeUsers.map((user) => `${user.id}\t${user.role}`).join("\n");
+  const timeRolesKey = roles.map((role) => `${role.name}\t${role.permissions?.time_tracking ?? ""}`).join("\n");
+
+  const [timeDraft, setTimeDraft] = useState<TimeWizardDraft>(() => draftFromSettings(null, timeUsers, roles));
+  const [timeBaseline, setTimeBaseline] = useState<TimeWizardDraft>(timeDraft);
+  const [timeDirty, setTimeDirty] = useState<Set<TimeWizardField>>(() => new Set());
+  const timeDraftRef = useRef(timeDraft);
+  const timeBaselineRef = useRef(timeBaseline);
+  const timeDirtyRef = useRef(timeDirty);
+  timeDraftRef.current = timeDraft;
+  timeBaselineRef.current = timeBaseline;
+  timeDirtyRef.current = timeDirty;
+
+  // People can arrive after the dialog opens. Don't overwrite a checklist the admin already used.
+  useEffect(() => {
+    const next = applyLoadedUsers(timeBaselineRef.current, timeDraftRef.current, timeDirtyRef.current, timeUsers, roles);
+    const same = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+    if (same(next.baseline.trackingUserIds, timeBaselineRef.current.trackingUserIds) && same(next.draft.trackingUserIds, timeDraftRef.current.trackingUserIds)) {
+      return;
+    }
+    timeBaselineRef.current = next.baseline;
+    timeDraftRef.current = next.draft;
+    setTimeBaseline(next.baseline);
+    setTimeDraft(next.draft);
+    // timeUsers and roles are read through the keys, which change only when the checklist inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeUsersKey, timeRolesKey]);
+
+  // Seed hours basis, the multiplier and the extension from what is already stored.
+  useEffect(() => {
+    let cancel = false;
+    getSettings()
+      .then((res) => {
+        if (cancel) return;
+        const next = applyLoadedSettings(timeBaselineRef.current, timeDraftRef.current, timeDirtyRef.current, res.settings);
+        timeBaselineRef.current = next.baseline;
+        timeDraftRef.current = next.draft;
+        setTimeBaseline(next.baseline);
+        setTimeDraft(next.draft);
+      })
+      .catch(() => {
+        /* The step still offers the defaults. Confirm only writes fields the admin changes. */
+      });
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const editTime = (field: TimeWizardField, patch: Partial<TimeWizardDraft>) => {
+    setTimeDirty((prev) => {
+      const next = new Set(prev);
+      next.add(field);
+      timeDirtyRef.current = next;
+      return next;
+    });
+    setTimeDraft((prev) => {
+      const next = { ...prev, ...patch };
+      timeDraftRef.current = next;
+      return next;
+    });
+  };
+
+  const toggleTracker = (userId: string) => {
+    editTime("tracking", { trackingUserIds: toggleTrackingUser(timeUsers, timeDraftRef.current.trackingUserIds, userId) });
+  };
 
   const total = catalogIds.length;
   const active = countActive(draft, catalogIds);
@@ -237,6 +570,27 @@ const WizardDialog: React.FC<WizardDialogProps> = ({ language, catalog, disabled
     if (!canConfirm) {
       setShowGuard(true);
       return;
+    }
+    // Time tracking stays a module card. Its setup is applied only while that card is on,
+    // and only for the fields the admin actually changed.
+    if (!draft.includes("time-tracking")) {
+      const patch = patchDirtyFields(timeBaseline, timeDraft, timeDirty);
+      if (patch) {
+        void saveSettings(patch as Partial<TimeTrackingSettings>).catch(() => {
+          window.showToast?.(
+            t(
+              "Time tracking settings could not be saved. Set them in Settings → Time tracking.",
+              "Nastavenia evidencie času sa nepodarilo uložiť. Nastavíte ich v Nastavenia → Evidencia času.",
+              "Az időkövetés beállításait nem sikerült menteni. A Beállítások → Időkövetés menüben állíthatja be őket.",
+            ),
+            "error",
+          );
+        });
+      }
+      if (timeDirty.has("tracking") && trackingChoiceChanged(timeBaseline.trackingUserIds, timeDraft.trackingUserIds)) {
+        const nextRoles = rolesAfterTrackingChoice(roles, timeUsers, timeDraft.trackingUserIds);
+        if (nextRoles !== roles) onTrackingRoles?.(nextRoles);
+      }
     }
     onConfirm(mergeDraftIntoDisabled(disabledModules, draft, catalogIds));
   };
@@ -397,6 +751,19 @@ const WizardDialog: React.FC<WizardDialogProps> = ({ language, catalog, disabled
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50/60 px-4 py-5 sm:px-6" data-testid="module-wizard-body">
             {/* On a phone the header keeps to a title and the counter; the explanation scrolls with the content. */}
             <p className="type-body mb-5 text-slate-500 sm:hidden">{subtitle}</p>
+            <AnimatePresence initial={false}>
+              {!isDraftHidden("time-tracking") && (
+                <TimeTrackingSetupStep
+                  key="time-tracking-setup"
+                  language={language}
+                  t={t}
+                  users={timeUsers}
+                  draft={timeDraft}
+                  onChange={editTime}
+                  onToggleUser={toggleTracker}
+                />
+              )}
+            </AnimatePresence>
             <div className="space-y-8">
               {categories.map((category) => {
                 const items = catalog.filter((m) => m.category === category.id);

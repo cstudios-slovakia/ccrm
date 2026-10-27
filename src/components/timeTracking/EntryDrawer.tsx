@@ -4,13 +4,17 @@ import { Clock, Copy, Trash2, Unlink, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { resolveWorkCountry, type HolidayCountry } from "../../utils/holidays.ts";
-import { matchOpenTasks } from "../../utils/timeLinks.ts";
+import { matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
+import { isClosedTicketStatus } from "../../utils/tickets";
+import { isEntryLocked, lockReason, type LockReasonCode } from "../../utils/timeLock.ts";
+import { isAdminRoleName } from "../../utils/permissions.ts";
 import {
   clockTime,
   formatDuration,
   isoFromLocal,
   needsLinkConfirmation,
   parseDurationInput,
+  todayIso,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
@@ -54,9 +58,11 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const [title, setTitle] = useState(entry.title);
   const [projectId, setProjectId] = useState<string | null>(entry.projectId);
   const [taskId, setTaskId] = useState<string | null>(entry.taskId);
+  const [ticketId, setTicketId] = useState<string | null>(entry.taskId ? null : entry.ticketId);
   const [unlinkedTitle, setUnlinkedTitle] = useState<string | null>(null);
   const [pendingLink, setPendingLink] = useState<Task | null>(null);
   const [taskQuery, setTaskQuery] = useState("");
+  const [ticketQuery, setTicketQuery] = useState("");
   const [date, setDate] = useState(entry.entryDate);
   const [start, setStart] = useState(clockTime(entry.startAt));
   const [end, setEnd] = useState(clockTime(entry.endAt));
@@ -66,9 +72,14 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const [tags, setTags] = useState(entry.tags.join(", "));
 
   const linkedTask = taskId ? lookups.taskById.get(taskId) ?? null : null;
-  const isLinked = !!taskId || (entry.titleSource === "ticket" && !!entry.ticketId && unlinkedTitle === null);
+  const linkedTicket = ticketId ? deps.tickets.find((row) => row.id === ticketId) ?? null : null;
+  const isLinked = !!taskId || (!!ticketId && unlinkedTitle === null);
   const ownText = isLinked ? "" : title;
   const suggestions = useMemo(() => (isLinked ? [] : matchOpenTasks(deps.tasks, taskQuery, deps.isTaskDone)), [deps.tasks, deps.isTaskDone, taskQuery, isLinked]);
+  const ticketSuggestions = useMemo(
+    () => (isLinked || !deps.canLinkTicket ? [] : matchOpenTickets(deps.tickets, ticketQuery, (row) => isClosedTicketStatus(row.status))),
+    [deps.canLinkTicket, deps.tickets, ticketQuery, isLinked],
+  );
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
 
   const close = () => {
@@ -78,8 +89,9 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
 
   const unlink = () => {
     // The entry's own title starts as the task's title at this moment (the server does the same).
-    const current = linkedTask?.title ?? entry.title;
+    const current = linkedTask?.title ?? linkedTicket?.title ?? linkedTicket?.subject ?? entry.title;
     setTaskId(null);
+    setTicketId(null);
     setUnlinkedTitle(current);
     setTitle(current);
   };
@@ -116,7 +128,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   };
 
   const save = async () => {
-    if (saving) return;
+    if (saving || lockedForViewer) return;
     const times = buildTimes();
     if (typeof times === "string") {
       tt.notify(timeErrorMessage(times, t), "warning");
@@ -128,10 +140,14 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
       if (entry.titleSource === "task" && taskId === entry.taskId && title.trim() && title.trim() !== entry.title.trim() && rename.can && entry.taskId) {
         deps.onRenameTask(entry.taskId, title.trim());
       }
+      if (entry.titleSource === "ticket" && ticketId === entry.ticketId && title.trim() && title.trim() !== entry.title.trim() && rename.can && entry.ticketId) {
+        deps.onRenameTicket(entry.ticketId, title.trim());
+      }
       const patch: EntryInput = {
         ...times,
         projectId,
         taskId,
+        ticketId: taskId ? null : ticketId,
         billable,
         tags: tags.split(",").map((x) => x.trim()).filter(Boolean),
       };
@@ -191,7 +207,21 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const recordedBy = deps.users.find((u) => u.id === entry.recordedByUserId);
   const sourceText = SOURCE_LABEL[entry.source] ? t(...SOURCE_LABEL[entry.source]) : entry.source;
   const originTask = entry.originType === "task" && entry.originId ? lookups.taskById.get(entry.originId) : null;
-  const readOnly = !viewer.canEdit;
+  const isAdmin = isAdminRoleName(deps.currentUser.role);
+  const lockSettings = {
+    lockAfterDays: tt.settings.lockAfterDays,
+    paidPayrollMonths: entry.paidPayrollMonth ? [entry.entryDate.slice(0, 7)] : [],
+    isAdmin,
+  };
+  const reason = lockReason(entry, lockSettings, todayIso());
+  const lockedForViewer = isEntryLocked(entry, lockSettings, todayIso());
+  const readOnly = !viewer.canEdit || lockedForViewer;
+  const reasonText = (code: LockReasonCode) =>
+    code === "age"
+      ? t("it is older than the lock", "je starší ako zámok", "régebbi a zárolásnál")
+      : code === "paid_payroll"
+        ? t("its payroll month is paid", "jeho mzdový mesiac je uhradený", "a bérhónap ki van fizetve")
+        : t("the week was submitted", "týždeň bol odoslaný", "a hét be lett küldve");
 
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -207,6 +237,14 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             <X className="size-5" />
           </button>
         </div>
+
+        {reason && (
+          <p className={`mt-4 rounded-xl px-3 py-2 text-ui ${isAdmin ? "bg-amber-50 text-amber-900" : "bg-slate-100 text-slate-700"}`} data-testid="entry-locked">
+            {isAdmin
+              ? t(`Locked because ${reasonText(reason)}. Saving writes an audit log entry.`, `Zamknuté, pretože ${reasonText(reason)}. Uloženie zapíše záznam do auditu.`, `Zárolva, mert ${reasonText(reason)}. A mentés auditbejegyzést ír.`)
+              : t(`This entry is read-only because ${reasonText(reason)}.`, `Tento záznam je len na čítanie, pretože ${reasonText(reason)}.`, `Ez a bejegyzés csak olvasható, mert ${reasonText(reason)}.`)}
+          </p>
+        )}
 
         <div className="mt-4 grid gap-4">
           {/* Title */}
@@ -280,6 +318,37 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
               </div>
             )}
           </div>
+
+          {deps.canLinkTicket && !taskId && (
+            <div className="grid gap-1">
+              <span className="type-label text-slate-600">{t("Ticket", "Tiket", "Jegy")}</span>
+              {ticketId ? (
+                <div className="flex items-center gap-2 rounded-xl bg-teal-50 px-3 py-2 text-ui font-semibold text-teal-800" data-testid="entry-linked-ticket">
+                  <span className="min-w-0 flex-1 truncate">{linkedTicket?.title || linkedTicket?.subject || entry.title}</span>
+                  {!readOnly && (
+                    <button type="button" onClick={unlink} data-testid="entry-unlink-ticket" className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 cursor-pointer">
+                      <Unlink className="size-4" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                !readOnly && (
+                  <div className="relative">
+                    <input value={ticketQuery} onChange={(e) => setTicketQuery(e.target.value)} placeholder={t("Link an open ticket…", "Prepojiť otvorený tiket…", "Nyitott jegy kapcsolása…")} data-testid="entry-ticket-search" className="h-10 w-full rounded-xl border border-slate-200 px-3 text-ui outline-none focus:border-primary" />
+                    {ticketSuggestions.length > 0 && (
+                      <div className="absolute left-0 right-0 z-10 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                        {ticketSuggestions.map((s) => (
+                          <button key={s.id} type="button" onClick={() => { setTicketId(s.id); setTitle(s.title || s.subject); setTicketQuery(""); if (!projectId && s.projectId) setProjectId(s.projectId); }} data-testid="entry-ticket-option" className="block w-full truncate px-3 py-2 text-left text-ui font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer">
+                            {s.title || s.subject}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          )}
 
           {/* When */}
           <div className="grid grid-cols-2 gap-3">
@@ -379,7 +448,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           <div className="flex items-center gap-2">
             <button type="button" onClick={close} className="h-9 rounded-xl px-3 text-ui font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">{t("Cancel", "Zrušiť", "Mégse")}</button>
             {!readOnly && (
-              <button type="button" onClick={save} disabled={saving} data-testid="entry-save" className="h-9 rounded-xl bg-primary px-4 text-ui font-semibold text-white transition-all active:scale-95 disabled:opacity-60 cursor-pointer">
+              <button type="button" onClick={save} disabled={saving} data-testid="entry-save" className="h-9 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all active:scale-95 disabled:opacity-60 cursor-pointer">
                 {t("Save", "Uložiť", "Mentés")}
               </button>
             )}

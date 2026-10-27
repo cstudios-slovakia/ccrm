@@ -11,15 +11,18 @@ import {
   groupByDay,
   parseDurationInput,
   todayIso,
-  totalCost,
   totalSeconds,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
 import { TimeApiError, createEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
+import { teamRoleBadge, visibleEntryCost, withoutHiddenCost } from "../../utils/timeTeam.ts";
 import type { Task } from "../../types";
 import { EntryRow } from "./EntryRow";
 import { ProjectPicker } from "./ProjectPicker";
+import { RoleBadge } from "./RoleBadge";
+import { UnsortedInbox } from "./UnsortedInbox";
 import { scopeParam } from "./TimeListView";
+import { useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
 import { initials, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -43,7 +46,20 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
   const [stripEnd, setStripEnd] = useState(today);
   const stripStart = addDays(stripEnd, -(STRIP_DAYS - 1));
   const strip = useMemo(() => Array.from({ length: STRIP_DAYS }, (_, i) => addDays(stripStart, i)), [stripStart]);
-  const { entries } = useTimeEntries({ from: stripStart, to: stripEnd, userId: scopeParam(scope) });
+  /* PHASE4-VIEWING-AS */
+  const providedView = useViewingAsOptional();
+  const entriesFocus = useEntriesFocus();
+  const viewing = providedView ?? viewingFromScope(scope);
+  const viewScope = entriesFocus
+    ? entriesFocus.userId
+    : viewing.mode === "team"
+      ? "all"
+      : viewing.mode === "user" && viewing.userId
+        ? viewing.userId
+        : "me";
+  const wholeTeam = viewScope === "all";
+  /* END-PHASE4-VIEWING-AS */
+  const { entries } = useTimeEntries({ from: stripStart, to: stripEnd, userId: scopeParam(viewScope) });
   const byDay = useMemo(() => groupByDay(entries), [entries]);
   const calendar = tt.calendarFor(tt.workCountry);
   useEffect(() => {
@@ -53,7 +69,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
   const people = new Set(entries.map((e) => e.userId)).size || 1;
-  const perDayTarget = (iso: string) => (calendar.isWorkingDay(iso) ? settings.hoursPerDay * 3600 * (scope === "me" ? 1 : people) : 0);
+  const perDayTarget = (iso: string) => (calendar.isWorkingDay(iso) ? settings.hoursPerDay * 3600 * (wholeTeam ? people : 1) : 0);
 
   const dayEntries = byDay.get(selected) ?? [];
   const holiday = calendar.holiday(selected);
@@ -68,6 +84,11 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
   // ----- Add row -----
   const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    const openAdd = () => setAdding(true);
+    window.addEventListener("ccrm-time-add-row", openAdd);
+    return () => window.removeEventListener("ccrm-time-add-row", openAdd);
+  }, []);
   const [rowProject, setRowProject] = useState<string | null>(null);
   const [rowTask, setRowTask] = useState<Task | null>(null);
   const [rowTaskQuery, setRowTaskQuery] = useState("");
@@ -125,7 +146,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
   return (
     <div className="grid gap-4" data-testid="time-day">
       {/* Day strip */}
-      <Surface padding="none" className="flex items-stretch gap-1 overflow-x-auto p-2" >
+      <Surface padding="none" className="flex w-full min-w-0 items-stretch gap-1 overflow-x-auto p-2" >
         <button type="button" onClick={() => setStripEnd(addDays(stripEnd, -STRIP_DAYS))} aria-label={t("Earlier", "Skôr", "Korábbi")} className="inline-flex w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer">
           <ChevronLeft className="size-4" />
         </button>
@@ -169,12 +190,12 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             {new Date(`${selected}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </h3>
           <p className="type-meta text-slate-500">
-            {scope !== "me" && <>{t("Team logged", "Tím zaznamenal", "A csapat rögzített")} <b className="tabular-nums">{formatDuration(teamTotal)}</b> · </>}
-            {t("you", "vy", "Ön")} <b className="tabular-nums" data-testid="day-mine">{formatDuration(myTotal)}</b> {t("of", "z", "ennyiből:")} {formatDuration(perDayTarget(selected) / (scope === "me" ? 1 : people))}
+            {wholeTeam && <>{t("Team logged", "Tím zaznamenal", "A csapat rögzített")} <b className="tabular-nums">{formatDuration(teamTotal)}</b> · </>}
+            {t("you", "vy", "Ön")} <b className="tabular-nums" data-testid="day-mine">{formatDuration(myTotal)}</b> {t("of", "z", "ennyiből:")} {formatDuration(perDayTarget(selected) / (wholeTeam ? people : 1))}
             {holiday && <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-micro font-semibold text-slate-600" data-testid="holiday-chip">{t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holidayName(holiday, tt.workCountry, deps.language)}</span>}
           </p>
         </div>
-        <button type="button" onClick={() => setAdding(true)} data-testid="day-add-row" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer">
+        <button type="button" onClick={() => setAdding(true)} data-testid="day-add-row" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all active:scale-95 cursor-pointer">
           <Plus className="size-4" />
           {t("Add row", "Pridať riadok", "Sor hozzáadása")}
         </button>
@@ -182,7 +203,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
       {adding && (
         <Surface tone="inset" className="grid gap-2" >
-          <div className="flex flex-wrap items-start gap-2" data-testid="day-add-form">
+          <div className="flex flex-col items-stretch gap-2 ws-sm:flex-row ws-sm:flex-wrap ws-sm:items-start" data-testid="day-add-form">
             <ProjectPicker
               projects={deps.projects}
               leads={deps.leads}
@@ -227,13 +248,13 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
               onKeyDown={(e) => { if (e.key === "Enter") void saveRow(); }}
               placeholder="1:30"
               data-testid="day-row-hours"
-              className="h-9 w-24 rounded-xl border border-slate-200 bg-white px-3 text-center text-ui tabular-nums outline-none focus:border-primary"
+              className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-center text-ui tabular-nums outline-none focus:border-primary ws-sm:w-24"
             />
             <label className="flex h-9 cursor-pointer items-center gap-1.5 text-ui text-slate-600">
               <input type="checkbox" checked={rowBillable} onChange={(e) => setRowBillable(e.target.checked)} className="size-4 accent-emerald-600" />
               {t("Billable", "Fakturovateľné", "Számlázható")}
             </label>
-            <button type="button" onClick={() => void saveRow()} disabled={busy} data-testid="day-row-save" className="h-9 rounded-xl bg-primary px-4 text-ui font-semibold text-white disabled:opacity-60 cursor-pointer">{t("Save", "Uložiť", "Mentés")}</button>
+            <button type="button" onClick={() => void saveRow()} disabled={busy} data-testid="day-row-save" className="h-9 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground disabled:opacity-60 cursor-pointer">{t("Save", "Uložiť", "Mentés")}</button>
             <button type="button" onClick={() => setAdding(false)} className="h-9 rounded-xl px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Close", "Zavrieť", "Bezárás")}</button>
           </div>
         </Surface>
@@ -245,14 +266,20 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
       ) : (
         groups.map(([userId, list]) => {
           const u = lookups.userById.get(userId);
-          const rateEntry = list.find((e) => "costRate" in e);
-          const cost = totalCost(list);
+          const seeCost = userId === (tt.userId || "") || tt.viewer.canCosts;
+          const rateEntry = seeCost ? list.find((e) => "costRate" in e) : undefined;
+          const costNumbers = list.map((e) => visibleEntryCost(e, tt.userId || "", tt.viewer.canCosts));
+          const cost = costNumbers.some((n) => n != null) ? costNumbers.reduce((sum, n) => sum + (n ?? 0), 0) : null;
+          const employee = deps.employees.find((e) => e.userId === userId);
           return (
             <Surface key={userId} padding="none" className="overflow-hidden">
               <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3" data-testid="day-user-header">
                 <span className="inline-flex size-8 items-center justify-center rounded-full text-micro font-bold text-white" style={{ backgroundColor: u?.color || "#64748b" }}>{initials(u?.name || "?")}</span>
                 <span className="type-card-title text-slate-900">{u?.name ?? t("Unknown user", "Neznámy používateľ", "Ismeretlen felhasználó")}</span>
-                {rateEntry && (
+                {/* PHASE4-VIEWING-AS */}
+                {wholeTeam && <RoleBadge badge={teamRoleBadge(u?.role, employee?.kind)} t={t} />}
+                {/* END-PHASE4-VIEWING-AS */}
+                {seeCost && rateEntry && (
                   rateEntry.costRate ? (
                     <span className="type-meta tabular-nums text-violet-700">{money(rateEntry.costRate)}/h</span>
                   ) : (
@@ -266,13 +293,16 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
               </div>
               <div role="table" className="divide-y divide-slate-100">
                 {list.map((e) => (
-                  <EntryRow key={e.id} entry={e} deps={deps} onOpen={onOpen} />
+                  <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
                 ))}
               </div>
             </Surface>
           );
         })
       )}
+      {/* PHASE5-UNSORTED */}
+      {viewScope === "me" && <UnsortedInbox deps={deps} />}
+      {/* END-PHASE5-UNSORTED */}
     </div>
   );
 }

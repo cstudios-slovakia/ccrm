@@ -15,6 +15,7 @@ import {
   normalizeTicketStatuses,
   parseDurationColonInput,
   sanitizeColonTimeDraft,
+  ticketLoggedTotalAdjustment,
   ticketTypeColor,
   ticketTypeLabel,
 } from "./tickets.ts";
@@ -183,6 +184,17 @@ test("computeRetainerPeriod and computeProjectRetainerUsage respect resetDay", (
   assert.equal(usage.enabled, true);
   assert.equal(usage.resetDay, 15);
   assert.equal(usage.usedMinutes, 90);
+
+  // Native entries: billable only, inside the period, and a row linked to both a
+  // task and a ticket counts once even if it is listed twice.
+  const native = computeProjectRetainerUsage(project, sampleTickets, [], refBeforeReset, [
+    { id: "te-1", projectId: "proj-1", ticketId: "tck-1", taskId: "task-1", billable: true, entryDate: "2026-09-20", durationSec: 90 * 60 },
+    { id: "te-1", projectId: "proj-1", ticketId: "tck-1", taskId: "task-1", billable: true, entryDate: "2026-09-20", durationSec: 90 * 60 },
+    { id: "te-old", projectId: "proj-1", ticketId: "tck-1", billable: true, entryDate: "2026-09-10", durationSec: 240 * 60 },
+    { id: "te-free", projectId: "proj-1", ticketId: "tck-1", billable: false, entryDate: "2026-09-21", durationSec: 60 * 60 },
+    { id: "te-other", projectId: "proj-2", ticketId: "tck-9", billable: true, entryDate: "2026-09-21", durationSec: 30 * 60 },
+  ]);
+  assert.equal(native.usedMinutes, 90);
   assert.equal(usage.monthlyMinutes, 600);
   assert.equal(usage.remainingMinutes, 510);
   assert.equal(usage.percent, 15);
@@ -198,4 +210,17 @@ test("ticketTypeColor and ticketTypeLabel resolve per-type colors and localized 
   assert.equal(ticketTypeLabel("bug", "en"), "Bug / Error");
   assert.equal(ticketTypeLabel("feature_request", "sk"), "Požiadavka");
   assert.equal(ticketTypeLabel("billing", "hu"), "Számlázás");
+});
+
+test("lowering a ticket total writes nothing, raising it adds one positive correcting entry", () => {
+  const lower = ticketLoggedTotalAdjustment(90, 60);
+  assert.deepEqual(lower, { write: false, reason: "lower" });
+  const same = ticketLoggedTotalAdjustment(90, 90);
+  assert.deepEqual(same, { write: false, reason: "equal" });
+  const higher = ticketLoggedTotalAdjustment(90, 150);
+  assert.equal(higher.write, true);
+  if (higher.write) {
+    assert.equal(higher.durationSec, 60 * 60);
+    assert.ok(higher.durationSec > 0);
+  }
 });

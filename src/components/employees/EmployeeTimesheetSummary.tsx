@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import type { Employee } from "../../types";
 import { formatNumber } from "../../utils/currency";
+import { timesheetSourceSwitch, type TimesheetSource } from "../../utils/timesheetSource.ts";
+import { EmployeeCcrmTimesheet } from "./EmployeeCcrmTimesheet";
 
 /**
  * Format fractional hours into "X h Y m" format without decimals.
@@ -128,6 +130,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
   onLinkTogglUser,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>("matrix");
+  const [source, setSource] = useState<TimesheetSource>("toggl");
+  const sourceSwitch = timesheetSourceSwitch(source);
   const [matrixWrapRef, matrixWrapEl] = useStickyTableHead();
   const [dailyFilter, setDailyFilter] = useState<"all" | "worked" | "weekdays">("all");
   const [hoveredDayDate, setHoveredDayDate] = useState<string | null>(null);
@@ -297,9 +301,37 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
     String(employee.timeTrackingUserId).trim() !== "none"
   );
 
+  const sourceBar = (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={t("Timesheet source", "Zdroj výkazu", "Munkalap forrása")} data-testid="timesheet-source">
+      {sourceSwitch.available.map((key) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={sourceSwitch.selected === key}
+          onClick={() => setSource(key)}
+          className={`h-10 rounded-2xl px-4 text-ui font-semibold cursor-pointer ${sourceSwitch.selected === key ? "bg-teal-600 text-white" : "border border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"}`}
+        >
+          {key === "toggl"
+            ? t("Toggl", "Toggl", "Toggl")
+            : t("CCRM time tracking", "Evidencia času CCRM", "CCRM időkövetés")}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (sourceSwitch.selected === "ccrm") {
+    return (
+      <div className="space-y-4">
+        {sourceBar}
+        <EmployeeCcrmTimesheet employee={employee} year={togglYear} month={togglMonth} t={t} />
+      </div>
+    );
+  }
+
   if (!hasAttachedUser) {
     return (
       <div className="p-8 ws-sm:p-12 text-center glass-panel rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 shadow-glass space-y-4 animate-in fade-in duration-200">
+        <div className="flex justify-center">{sourceBar}</div>
         <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-[#c29b62] dark:text-[#d4af7a] flex items-center justify-center mx-auto shadow-inner">
           <UserX className="w-8 h-8" />
         </div>
@@ -333,6 +365,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
+      {sourceBar}
       {/* 1. Header controls: Month navigation & View Switcher */}
       <div className="flex flex-col ws-lg:flex-row ws-lg:items-center justify-between gap-4 p-5 glass-panel rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-900/90 shadow-glass">
         {/* Month Selector */}

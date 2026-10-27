@@ -180,10 +180,10 @@ function ccrm_resolve_ticket_openai_key(PDO $pdo, array $ticketSettings): string
 }
 
 /**
- * Use OpenAI gpt-4o-mini to select which project an incoming support email belongs to,
+ * Use OpenAI gpt-6-luna to select which project an incoming support email belongs to,
  * plus classify its priority and ticket type.
  */
-function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $body, string $senderEmail, array $candidateProjects): ?array {
+function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $body, string $senderEmail, array $candidateProjects, ?\PDO $usagePdo = null): ?array {
     if ($apiKey === '' || empty($candidateProjects) || !function_exists('curl_init')) {
         return null;
     }
@@ -205,15 +205,19 @@ function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $b
         . "\nSubject: " . mb_substr($subject, 0, 300)
         . "\nBody:\n" . mb_substr($body, 0, 1500);
 
-    $payload = json_encode([
-        'model' => 'gpt-4o-mini',
+    $routeModel = 'gpt-6-luna';
+    $routePayload = [
+        'model' => $routeModel,
         'response_format' => ['type' => 'json_object'],
-        'temperature' => 0.1,
         'messages' => [
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user', 'content' => $userPrompt],
         ],
-    ]);
+    ];
+    if (ccrm_ai_model_supports_temperature($routeModel)) {
+        $routePayload['temperature'] = 0.1;
+    }
+    $payload = json_encode($routePayload);
 
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     curl_setopt_array($ch, [
@@ -232,6 +236,9 @@ function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $b
 
     if ($httpCode !== 200 || !$resp) return null;
     $data = json_decode((string)$resp, true);
+    if ($usagePdo instanceof \PDO) {
+        ccrm_ai_capture_usage($usagePdo, 'ticket_routing', $data, $routeModel);
+    }
     $content = $data['choices'][0]['message']['content'] ?? '';
     if (!$content) return null;
     $parsed = json_decode((string)$content, true);
@@ -449,7 +456,7 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
         }
 
         if ($openAiKey !== '' && !empty($ticketProjects)) {
-            $aiResult = ccrm_route_ticket_via_openai($openAiKey, $subject, $bodyText, $fromEmail, $ticketProjects);
+            $aiResult = ccrm_route_ticket_via_openai($openAiKey, $subject, $bodyText, $fromEmail, $ticketProjects, $pdo);
             if (is_array($aiResult)) {
                 if (!$matchedProjectId && !empty($aiResult['projectId']) && isset($projects[$aiResult['projectId']])) {
                     $matchedProjectId = (string)$aiResult['projectId'];

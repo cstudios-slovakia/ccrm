@@ -138,6 +138,19 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// PHASE5-PURGE: drop time_activity rows older than the retention. Cron only — never ?probe=1.
+$activityPurge = null;
+try {
+    require_once __DIR__ . '/schema.php';
+    if (function_exists('ccrm_apply_schema')) {
+        ccrm_apply_schema($pdo);
+    }
+    require_once __DIR__ . '/time_tracker_lib.php';
+    $activityPurge = ccrm_tta_purge($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
@@ -147,6 +160,7 @@ try {
         'taskReminders' => $taskReminders,
         'ticketPoll' => $ticketPollResult,
         'holidayRefresh' => $holidayRefresh,
+        'activityPurge' => $activityPurge,
         'mailFiling' => $mailFiling === null ? null : [
             'ran' => $mailFiling['ran'] ?? false,
             'seen' => $mailFiling['seen'] ?? 0,

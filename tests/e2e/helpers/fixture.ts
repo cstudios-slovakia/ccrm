@@ -993,6 +993,8 @@ export async function installBackendMocks(
     passkeyPwWindowMs?: number;
     /** Replaces the seeded role registry, for specs that need a role with exactly some permissions. */
     roles?: { name: string; permissions: Record<string, string> }[];
+    /** Support tickets for specs that log time on one. Omitted means the workspace has none. */
+    tickets?: Record<string, unknown>[];
   } = {},
 ) {
   const baseUser = options.user ?? TEST_USER;
@@ -1022,6 +1024,7 @@ export async function installBackendMocks(
   let pushedIntegrationsConfig: unknown;
   /** task id -> the title the app last pushed: time tracking joins a linked entry's title from it. */
   const pushedTaskTitles = new Map<string, string>();
+  const pushedTicketTitles = new Map<string, string>();
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -1032,6 +1035,7 @@ export async function installBackendMocks(
         contentType: 'application/json',
         body: JSON.stringify({
           ...payload,
+          roles: options.roles ?? payload.roles,
           users: [...payload.users, ...(options.extraUsers ?? [])]
             .map((u) => (u.email === signedIn.email ? signedIn : u))
             .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
@@ -1039,6 +1043,7 @@ export async function installBackendMocks(
             pushedIntegrationsConfig === undefined
               ? payload.settings
               : { ...payload.settings, integrationsConfig: pushedIntegrationsConfig },
+          ...(options.tickets ? { tickets: options.tickets } : {}),
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
           ),
@@ -1053,9 +1058,14 @@ export async function installBackendMocks(
         customDashboards?: { id?: string }[];
         settings?: { integrationsConfig?: unknown };
         tasks?: { id?: string; title?: string }[];
+        tickets?: { id?: string; title?: string; subject?: string }[];
       };
       for (const tk of body?.tasks ?? []) {
         if (tk?.id && typeof tk.title === 'string') pushedTaskTitles.set(tk.id, tk.title);
+      }
+      for (const tk of body?.tickets ?? []) {
+        const title = tk?.title || tk?.subject;
+        if (tk?.id && typeof title === 'string') pushedTicketTitles.set(tk.id, title);
       }
       if (body?.settings?.integrationsConfig !== undefined) {
         pushedIntegrationsConfig = body.settings.integrationsConfig;
@@ -1156,6 +1166,8 @@ export async function installBackendMocks(
     users: [TEST_USER, SECOND_USER, ...(options.extraUsers ?? [])].map((u) => ({ id: u.id, name: u.name })),
     roles: options.roles ?? ROLES,
     tasks: TASKS,
+    tickets: options.tickets ?? [],
+    ticketsRenamed: pushedTicketTitles,
     projects: PROJECTS,
     employees: {
       [TEST_USER.id]: { id: 'emp-erik', kind: 'employee', salaryType: 'monthly', salaryAmount: 3200 },

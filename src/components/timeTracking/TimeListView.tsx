@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
 import { StatGrid, StatTile } from "../layout/StatGrid";
@@ -20,8 +20,11 @@ import {
 } from "../../utils/timeTracking.ts";
 import { addDays } from "../../utils/holidays.ts";
 import { TimeApiError, deleteEntry, restoreEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
+import { withoutHiddenCost } from "../../utils/timeTeam.ts";
 import { EntryRow } from "./EntryRow";
 import { continueInput } from "./TimerBar";
+import { UnsortedListChip } from "./UnsortedInbox";
+import { EntriesFocusBanner, clearEntriesFocus, useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
 import { useMoney, type TimeDeps } from "./shared";
 
 interface Props {
@@ -40,8 +43,36 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const money = useMoney(deps);
   const [anchor, setAnchor] = useState(todayIso());
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const days = useMemo(() => weekDays(anchor), [anchor]);
-  const { entries, loading } = useTimeEntries({ from: days[0], to: days[6], userId: scopeParam(scope) });
+  /* PHASE4-VIEWING-AS */
+  const providedView = useViewingAsOptional();
+  const entriesFocus = useEntriesFocus();
+  const viewing = providedView ?? viewingFromScope(scope);
+  const viewScope = entriesFocus
+    ? entriesFocus.userId
+    : viewing.mode === "team"
+      ? "all"
+      : viewing.mode === "user" && viewing.userId
+        ? viewing.userId
+        : "me";
+  const wholeTeam = viewScope === "all";
+  const seenScope = useRef(scope);
+  useEffect(() => {
+    if (seenScope.current === scope) return;
+    seenScope.current = scope;
+    // Opening a team cell sets both the focus and "viewing as" that person.
+    // Only a later change of the selector drops the focused range.
+    if (!entriesFocus || entriesFocus.userId !== scope) clearEntriesFocus();
+  }, [scope, entriesFocus]);
+  const days = useMemo(() => {
+    if (entriesFocus?.from && entriesFocus.to && entriesFocus.from <= entriesFocus.to) {
+      const out: string[] = [];
+      for (let d = entriesFocus.from; d <= entriesFocus.to && out.length < 62; d = addDays(d, 1)) out.push(d);
+      if (out.length) return out;
+    }
+    return weekDays(anchor);
+  }, [anchor, entriesFocus]);
+  /* END-PHASE4-VIEWING-AS */
+  const { entries, loading } = useTimeEntries({ from: days[0], to: days[days.length - 1], userId: scopeParam(viewScope) });
   const today = todayIso();
 
   const calendar = tt.calendarFor(tt.workCountry);
@@ -49,17 +80,17 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
     tt.ensureHolidayYears(tt.workCountry, [...new Set(days.map((d) => Number(d.slice(0, 4))))]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor, tt.workCountry, tt.enabled]);
-  useEffect(() => setSelected(new Set()), [anchor, scope]);
+  useEffect(() => setSelected(new Set()), [anchor, viewScope, entriesFocus?.nonce]);
 
   const byDay = useMemo(() => groupByDay(entries), [entries]);
   const todays = byDay.get(today) ?? [];
   const week = entries;
-  const target = scope === "me" ? targetSeconds(calendar, days, settings.hoursPerDay) : null;
+  const target = viewScope === "me" ? targetSeconds(calendar, days, settings.hoursPerDay) : null;
   const weekCost = totalCost(week);
   const billable = billablePercent(week, nowMs);
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
   const longDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const weekLabel = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[6]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
+  const weekLabel = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
 
   const cards = [...days].reverse().filter((d) => byDay.has(d) || calendar.holiday(d));
   const holidayLabel = (iso: string) => {
@@ -88,7 +119,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
       <StatGrid count={weekCost !== null ? 4 : 3}>
         <StatTile label={t("Today", "Dnes", "Ma")} value={<span className="tabular-nums" data-testid="stat-today">{formatDuration(totalSeconds(todays, nowMs))}</span>} />
         <StatTile
-          label={t("This week", "Tento týždeň", "Ez a hét")}
+          label={days.length > 7 ? t("This period", "Toto obdobie", "Ez az időszak") : t("This week", "Tento týždeň", "Ez a hét")}
           value={<span className="tabular-nums" data-testid="stat-week">{formatDuration(totalSeconds(week, nowMs))}</span>}
           delta={target !== null ? <span data-testid="stat-target">{t("of", "z", "ennyiből:")} {formatDuration(target)} {t("target", "cieľ", "cél")}</span> : undefined}
         />
@@ -97,16 +128,19 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
       </StatGrid>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setAnchor(addDays(days[0], -7))} aria-label={t("Previous week", "Predchádzajúci týždeň", "Előző hét")} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-900 cursor-pointer">
+        <button type="button" onClick={() => { clearEntriesFocus(); setAnchor(addDays(weekDays(anchor)[0], -7)); }} aria-label={t("Previous week", "Predchádzajúci týždeň", "Előző hét")} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-900 cursor-pointer">
           <ChevronLeft className="size-4" />
         </button>
         <span className="min-w-40 text-center text-ui font-semibold text-slate-800" data-testid="week-label">{weekLabel}</span>
-        <button type="button" onClick={() => setAnchor(addDays(days[0], 7))} aria-label={t("Next week", "Nasledujúci týždeň", "Következő hét")} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-900 cursor-pointer">
+        <button type="button" onClick={() => { clearEntriesFocus(); setAnchor(addDays(weekDays(anchor)[0], 7)); }} aria-label={t("Next week", "Nasledujúci týždeň", "Következő hét")} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-900 cursor-pointer">
           <ChevronRight className="size-4" />
         </button>
-        {days[0] !== weekDays(today)[0] && (
-          <button type="button" onClick={() => setAnchor(today)} className="h-9 rounded-xl px-3 text-ui font-semibold text-primary hover:bg-slate-100 cursor-pointer">{t("Current week", "Aktuálny týždeň", "Aktuális hét")}</button>
+        {weekDays(anchor)[0] !== weekDays(today)[0] && (
+          <button type="button" onClick={() => { clearEntriesFocus(); setAnchor(today); }} className="h-9 rounded-xl px-3 text-ui font-semibold text-primary hover:bg-slate-100 cursor-pointer">{t("Current week", "Aktuálny týždeň", "Aktuális hét")}</button>
         )}
+        {/* PHASE5-UNSORTED */}
+        {viewScope === "me" && <UnsortedListChip />}
+        {/* END-PHASE5-UNSORTED */}
         {selected.size > 0 && (
           <div className="ml-auto flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-1.5 text-ui font-semibold text-white" data-testid="bulk-bar">
             {selected.size} {t("selected", "vybraných", "kijelölve")}
@@ -115,6 +149,9 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
             </HoldToConfirmButton>
           </div>
         )}
+        {/* PHASE4-VIEWING-AS */}
+        <EntriesFocusBanner users={deps.users} />
+        {/* END-PHASE4-VIEWING-AS */}
       </div>
 
       {cards.length === 0 && !loading && (
@@ -144,10 +181,10 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
               {rows.map(({ entry, members }) => (
                 <EntryRow
                   key={entry.id}
-                  entry={entry}
+                  entry={withoutHiddenCost(entry, tt.userId || "", tt.viewer.canCosts)}
                   count={members.length}
                   deps={deps}
-                  showPerson={scope !== "me"}
+                  showPerson={wholeTeam}
                   selected={selected.has(entry.id)}
                   onSelect={(checked) =>
                     setSelected((prev) => {
@@ -157,7 +194,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
                     })
                   }
                   onOpen={onOpen}
-                  onContinue={scope === "me" || entry.userId === tt.userId ? (e) => void tt.start(continueInput(e)) : undefined}
+                  onContinue={viewScope === "me" || entry.userId === tt.userId ? (e) => void tt.start(continueInput(e)) : undefined}
                 />
               ))}
             </div>

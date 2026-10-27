@@ -236,6 +236,7 @@ function ccrm_project_employee_row(array $row, array $scope): ?array {
             ? (bool)$row['isActive']
             : ((int)($row['is_active'] ?? 1) === 1),
         'userId' => $row['userId'] ?? $row['user_id'] ?? null,
+        'workCountry' => $row['workCountry'] ?? $row['work_country'] ?? null,
         'timeTrackingProvider' => $row['timeTrackingProvider'] ?? $row['time_tracking_provider'] ?? 'toggl',
         'timeTrackingUserId' => $row['timeTrackingUserId'] ?? $row['time_tracking_user_id'] ?? null,
         'timeTrackingUserName' => $row['timeTrackingUserName'] ?? $row['time_tracking_user_name'] ?? null,

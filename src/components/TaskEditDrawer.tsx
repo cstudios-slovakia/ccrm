@@ -17,6 +17,8 @@ import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
+import { TaskTimeControls } from "./timeTracking/TaskTimeControls";
+import { TaskTimeBreakdown } from "./timeTracking/TaskTimeBreakdown";
 import { projectDisplayName } from "../utils/projects";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
@@ -812,6 +814,29 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 />
                             </div>
                         )}
+
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <div className="type-label mb-2 text-slate-700">{t("Time tracking", "Evidencia času", "Időkövetés")}</div>
+                            <TaskTimeControls
+                                task={draft}
+                                projects={projects}
+                                leads={leads}
+                                layout="section"
+                                onSaveProject={(_id, projectId) => update({ relatedProjectId: projectId })}
+                            />
+                            <TaskTimeBreakdown taskId={draft.id} users={users} />
+                            <label className="mt-3 grid gap-1">
+                                <span className="type-overline text-slate-500">{t("Estimate (minutes)", "Odhad (minúty)", "Becslés (perc)")}</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    disabled={!canEdit}
+                                    value={draft.estimateMinutes ?? ""}
+                                    onChange={(e) => update({ estimateMinutes: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
+                                    className="h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-ui tabular-nums outline-none focus:border-primary disabled:opacity-60"
+                                />
+                            </label>
+                        </div>
 
                         <TaskEmailReminderField
                             task={draft}

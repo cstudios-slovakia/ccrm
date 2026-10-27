@@ -3,10 +3,10 @@ import { gotoView, startSession } from './helpers/appDriver';
 import { SETTINGS_CATEGORIES } from '../../src/components/settings/settingsRegistry.ts';
 
 /**
- * The regrouped Settings: 12 category tiles in three groups (or a sidebar), one
- * category per page with one real tab per section (only the open one is rendered),
- * inline search, the old `#settings/<id>` links, settings that save themselves, and
- * the phone layout (tiles only, a section dropdown).
+ * The regrouped Settings: 12 category tiles in three groups (or a sidebar). Tiles and
+ * phones show one tab per section. The sidebar stacks every section of the category
+ * and a sub-link scrolls to it. Inline search, the old `#settings/<id>` links,
+ * settings that save themselves, and the phone layout (tiles only, a section dropdown).
  *
  * The fixture runs in Slovak, so labels are matched in more than one language.
  */
@@ -106,6 +106,31 @@ test.describe('Settings home — tiles', () => {
     await expect(page.getByTestId('settings-category')).toHaveAttribute('data-category', 'leads', SETTLE);
     await expect(page.locator('[data-testid^="settings-nav-"]')).toHaveCount(12);
     await expect(page.getByTestId('settings-nav').locator('ul a')).toHaveCount(5);
+  });
+
+  test('sidebar stacks every section, and a sub-link scrolls to it', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#settings');
+    await page.getByTestId('settings-layout-sidebar').click();
+    await page.getByTestId('settings-nav-leads').click();
+
+    await expect(page.getByTestId('settings-section-stack')).toBeVisible(SETTLE);
+    await expect(page.getByTestId('settings-section-tabs')).toHaveCount(0);
+    // All five sections are on the page at once. Tiles would have rendered only the open tab.
+    for (const s of ['stages', 'sources', 'interests', 'assignment', 'intake']) {
+      await expect(page.getByTestId(`settings-section-leads-${s}`)).toHaveCount(1);
+    }
+
+    await page.getByTestId('settings-nav').locator('ul a', { hasText: /Lead sources|Zdroje leadov|Lead források/ }).click();
+    await expect.poll(() => hashOf(page), SETTLE).toBe('#settings/leads/sources');
+    // The click did not swap the page: the stages section is still mounted.
+    await expect(page.getByTestId('settings-section-leads-stages')).toHaveCount(1);
+    await expect.poll(async () => page.evaluate(() => {
+      const main = document.querySelector('main.workspace') as HTMLElement | null;
+      const el = document.querySelector('[data-testid="settings-section-leads-sources"]') as HTMLElement | null;
+      if (!main || !el) return 9999;
+      return Math.round(el.getBoundingClientRect().top - main.getBoundingClientRect().top);
+    }), SETTLE).toBeLessThan(80);
   });
 });
 
