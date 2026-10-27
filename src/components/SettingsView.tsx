@@ -17,6 +17,7 @@ import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
+import { TimeTrackingSettingsPanel } from "./timeTracking/TimeTrackingSettingsPanel";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
 import { PriceLevelSettings } from "./PriceLevelSettings";
 import { CompanyMailboxSettings } from "./CompanyMailboxSettings";
@@ -3941,6 +3942,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </SectionCard>
         );
       }
+      case "projects/time":
+        return (
+          <div className="space-y-6">
+            <TimeTrackingSettingsPanel
+              language={userLanguage}
+              canEdit={getPermission("general_config") === "edit"}
+              isAdmin={isAdminRoleName(currentUser?.role)}
+              currency={systemCurrency || "EUR"}
+            />
+          </div>
+        );
       case "projects/tasks":
         return (
                   <div className="space-y-6">

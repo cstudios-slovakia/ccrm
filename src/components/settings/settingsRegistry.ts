@@ -4,7 +4,7 @@ import {
   ShieldCheck, ScrollText, ToggleRight, Shapes, Workflow, Signpost, Tags, Shuffle,
   Webhook, CircleDot, Sparkles, ListChecks, ListTodo, Percent, BadgePercent, CreditCard,
   LayoutTemplate, BadgeCheck, PackageCheck, Truck, BookOpen, FolderTree, Inbox, Send,
-  MailCheck, Key, Bot, Megaphone, Share2, KeyRound, Database, Bug, TriangleAlert, FileText,
+  MailCheck, Key, Bot, Megaphone, Share2, KeyRound, Database, Bug, TriangleAlert, FileText, Timer,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -137,6 +137,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
       S("statuses", CircleDot, "general_config"),
       S("autocreate", Sparkles, "general_config", { flag: "projectAutoCreate" }),
       S("tasks", ListChecks, "general_config"),
+      S("time", Timer, "general_config"),
       S("taskstates", ListTodo, "traffic_sources"),
     ],
     related: [rel("leads/stages", "lead_stages"), rel("leads/interests", "interest_categories"), rel("access/roles", "who_edits_projects")],
@@ -297,6 +298,7 @@ export const LEGACY_SETTINGS_ROUTES: Record<string, string> = {
   tickets: "tickets/statuses",
   orders: "orders/statuses",
   tasks: "projects/tasks",
+  "time-tracking": "projects/time",
   task_states: "projects/taskstates",
   finance: "finance/ledger",
   unified: "modules/records",

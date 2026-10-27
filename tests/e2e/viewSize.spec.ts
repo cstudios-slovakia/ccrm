@@ -45,6 +45,7 @@ const MODULES = [
   { name: 'Updates', hash: '#updates' },
   { name: 'Overview', hash: '#overview' },
   { name: 'Tasks', hash: '#tasks' },
+  { name: 'Time tracking', hash: '#time-tracking' },
   { name: 'System settings', hash: '#settings' },
   { name: 'Personal settings', hash: '#personal-settings' },
 ];

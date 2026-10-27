@@ -62,6 +62,13 @@ const withTasksSection = (layout: string[]): string[] => {
       next.splice(at + 1, 0, "tasks");
     }
   }
+  // Time tracking arrived after many layouts were saved: slot it in behind Tasks. Admins hide it
+  // for everyone in Settings -> Visible modules, which is what `disabledModules` is for.
+  if (!next.includes("time-tracking")) {
+    next = [...next];
+    const at = next.indexOf("tasks");
+    next.splice(at === -1 ? next.length : at + 1, 0, "time-tracking");
+  }
   // My employment used to be its own nav item; it now lives as a tab of People (`employees`).
   if (next.includes("my-employment")) {
     next = next.filter((id) => id !== "my-employment");
@@ -165,6 +172,21 @@ export const getSidebarItemColors = (item: any, isActive: boolean) => {
       className: "bg-slate-50/70 border-slate-200/90 text-purple-500 hover:text-purple-600 hover:bg-purple-50/50",
       style: {},
       iconColor: item.color || "var(--color-purple-500)"
+    };
+  }
+
+  if (item.id === "time-tracking") {
+    if (isActive) {
+      return {
+        className: "bg-teal-600 text-white font-bold shadow-lg shadow-teal-600/30 border border-teal-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-teal-700 hover:text-teal-800 hover:bg-teal-50/50",
+      style: {},
+      iconColor: item.color || "#0d9488"
     };
   }
 
@@ -917,6 +939,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [
       "dashboard",
       "tasks",
+      "time-tracking",
       "overview",
       "projects",
       "tickets",
@@ -970,6 +993,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return [
       { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
       { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
+      { id: "time-tracking", label: systemLanguage === "sk" ? "Evidencia času" : systemLanguage === "hu" ? "Időkövetés" : "Time tracking", icon: Icons.Timer || ListTodo, color: "#0d9488" },
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
       { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
       { id: "tickets", label: getTranslation(systemLanguage, "sidebar.tickets"), icon: Icons.LifeBuoy || Icons.Ticket || LayoutDashboard, color: "#6366f1", isIndigo: true },

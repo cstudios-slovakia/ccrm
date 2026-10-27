@@ -1,0 +1,19 @@
+{
+  "_comment": "Shared by src/utils/timeCost.test.ts and scripts/test-time-cost.php. workingDays is the month's count in the person's country (Oct 2026 SK 22, Oct 2026 HU 21, May 2026 SK 20, Jun 2026 SK 22).",
+  "settings": { "hoursBasis": "workingDays", "fixedHoursPerMonth": 168, "hoursPerDay": 8, "employerMultiplier": 1.352 },
+  "cases": [
+    { "name": "Erik, employee monthly 3200, Oct 2026 SK", "person": { "kind": "employee", "salaryType": "monthly", "salaryAmount": 3200 }, "workingDays": 22, "durationSec": 8100, "expect": { "rate": 24.5818, "source": "monthly", "basisDays": 22, "cost": 55.31 } },
+    { "name": "Erik, May 2026 SK (20 days)", "person": { "kind": "employee", "salaryType": "monthly", "salaryAmount": 3200 }, "workingDays": 20, "durationSec": 3600, "expect": { "rate": 27.04, "source": "monthly", "basisDays": 20, "cost": 27.04 } },
+    { "name": "Erik, Jun 2026 SK (22 days)", "person": { "kind": "employee", "salaryType": "monthly", "salaryAmount": 3200 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": 24.5818, "source": "monthly", "basisDays": 22, "cost": 24.58 } },
+    { "name": "Erik, Oct 2026 HU (21 days)", "person": { "kind": "employee", "salaryType": "monthly", "salaryAmount": 3200 }, "workingDays": 21, "durationSec": 3600, "expect": { "rate": 25.7524, "source": "monthly", "basisDays": 21, "cost": 25.75 } },
+    { "name": "Employee daily 160", "person": { "kind": "employee", "salaryType": "daily", "salaryAmount": 160 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": 27.04, "source": "daily", "basisDays": null, "cost": 27.04 } },
+    { "name": "Employee hourly 12", "person": { "kind": "employee", "salaryType": "hourly", "salaryAmount": 12 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": 16.224, "source": "hourly", "basisDays": null, "cost": 16.22 } },
+    { "name": "Freelancer hourly 20, no multiplier", "person": { "kind": "contractor", "salaryType": "hourly", "salaryAmount": 20 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": 20, "source": "contractor_hourly", "basisDays": null, "cost": 20 } },
+    { "name": "Contractor company man-day 160", "person": { "kind": "contractor", "salaryType": "daily", "salaryAmount": 160 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": 20, "source": "contractor_daily", "basisDays": null, "cost": 20 } },
+    { "name": "Contractor retainer 3520 over 22 x 8 h", "person": { "kind": "contractor", "salaryType": "monthly", "salaryAmount": 3520 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": 20, "source": "contractor_monthly", "basisDays": 22, "cost": 20 } },
+    { "name": "No employee linked", "person": null, "workingDays": 22, "durationSec": 3600, "expect": { "rate": null, "source": "none", "basisDays": null, "cost": null } },
+    { "name": "Ledger line has no rate", "person": { "kind": "ledger", "salaryType": "monthly", "salaryAmount": 500 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": null, "source": "none", "basisDays": null, "cost": null } },
+    { "name": "No salary", "person": { "kind": "employee", "salaryType": "monthly", "salaryAmount": 0 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": null, "source": "none", "basisDays": null, "cost": null } },
+    { "name": "Fixed basis 168 h", "settings": { "hoursBasis": "fixed", "fixedHoursPerMonth": 168, "hoursPerDay": 8, "employerMultiplier": 1.352 }, "person": { "kind": "employee", "salaryType": "monthly", "salaryAmount": 3360 }, "workingDays": 22, "durationSec": 3600, "expect": { "rate": 27.04, "source": "monthly", "basisDays": null, "cost": 27.04 } }
+  ]
+}

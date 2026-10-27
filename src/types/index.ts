@@ -1207,6 +1207,12 @@ export interface Employee {
   addressCity?: string | null;
   addressZip?: string | null;
   addressCountry?: string | null;
+  /**
+   * Whose public-holiday calendar this person works by (SK or HU), which decides how many working
+   * days a month has for their monthly cost rate in time tracking. Null = the company's own
+   * country. Never derived from the UI language.
+   */
+  workCountry?: 'SK' | 'HU' | null;
   salaryType?: 'monthly' | 'daily' | 'hourly';
   salaryAmount?: number;
   salaryDueDay?: number | null;

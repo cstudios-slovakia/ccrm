@@ -75,6 +75,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
   const [salaryType, setSalaryType] = useState<"monthly" | "daily" | "hourly">("monthly");
   const [salaryAmount, setSalaryAmount] = useState<number>(0);
   const [salaryDueDay, setSalaryDueDay] = useState<string>("");
+  const [workCountry, setWorkCountry] = useState<string>("");
 
   const [vacationAllowances, setVacationAllowances] = useState<Record<string, number>>({});
 
@@ -201,6 +202,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
       setSalaryType(employee.salaryType || "monthly");
       setSalaryAmount(employee.salaryAmount || 0);
       setSalaryDueDay(employee.salaryDueDay !== null && employee.salaryDueDay !== undefined ? String(employee.salaryDueDay) : "");
+      setWorkCountry(employee.workCountry ?? "");
 
       setVacationAllowances(employee.vacationAllowances || {});
 
@@ -228,6 +230,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
       setSalaryType("monthly");
       setSalaryAmount(0);
       setSalaryDueDay("");
+      setWorkCountry("");
 
       // Initialize default allowances from settings
       const defAllowances: Record<string, number> = {};
@@ -403,6 +406,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
             salaryType,
             salaryAmount: Number(salaryAmount) || 0,
             salaryDueDay: salaryDueDay.trim() ? Number(salaryDueDay) : null,
+            workCountry: workCountry === "SK" || workCountry === "HU" ? workCountry : null,
             autoExpense,
             expenseCategoryId: expenseCategoryId || null,
           }
@@ -763,6 +767,29 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   placeholder={String(settings.salaryDueDay ?? 15)}
                   className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
+              </div>
+
+              <div>
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
+                  {t("Work calendar (public holidays)", "Pracovný kalendár (štátne sviatky)", "Munkanaptár (állami ünnepek)")}
+                </label>
+                <select
+                  value={workCountry}
+                  onChange={(e) => setWorkCountry(e.target.value)}
+                  data-testid="employee-work-country"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                >
+                  <option value="">{t("Company default", "Predvolené podľa firmy", "Cég alapértelmezése")}</option>
+                  <option value="SK">{t("Slovakia", "Slovensko", "Szlovákia")}</option>
+                  <option value="HU">{t("Hungary", "Maďarsko", "Magyarország")}</option>
+                </select>
+                <span className="mt-1 block text-caption text-slate-500">
+                  {t(
+                    "Decides how many working days a month has for this person's hourly cost in time tracking.",
+                    "Určuje, koľko pracovných dní má mesiac pre hodinový náklad tejto osoby v evidencii času.",
+                    "Meghatározza, hány munkanapja van egy hónapnak e személy időkövetési óraköltségéhez."
+                  )}
+                </span>
               </div>
             </div>
 

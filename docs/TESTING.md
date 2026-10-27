@@ -388,6 +388,21 @@ outside `npm test` because it needs Docker + MySQL. A new permission is not
 done until it has a read check and a write check here (see
 `docs/db_integration_notes/RBAC_SYSTEM.md`, "Adding a permission").
 
+### 5e-2. Time tracking probe and cost parity (`npm run test:time-tracking`, `npm run test:time-cost`)
+
+`npm run test:time-tracking` runs the real `api/time_entries.php` and `api/holidays.php` in the dev web
+container against a scratch database (`ccrm_tt_probe`, own directory `ttprobe/`; needs `docker compose up`)
+and asserts what the database stores and what the raw bodies return: the cost rate per employment status
+and per month (employee monthly in two months and in the Hungarian calendar, freelancer hourly, no employee),
+that cost fields are stripped for people without `time_tracking_costs`, ownership, the one-running-timer
+rule (including the UNIQUE index itself), Undo of a start, the title rule (a linked entry stores no
+description, the title follows the task, unlink/link, deleted task), validation, soft delete, settings and
+overrides, re-pricing and the holiday endpoint. The mocked browser suite cannot see any of that.
+
+`npm run test:time-cost` runs `scripts/fixtures/time-cost-cases.json` through the PHP port
+(`api/time_cost.php`, `api/holidays_lib.php`); the same file is run against `src/utils/timeCost.ts` by
+`npm run test:unit`, so the two cannot drift.
+
 ### 5f. Passkeys / WebAuthn ceremony tests (`npm run test:passkeys`)
 
 Runs headless verification of WebAuthn options generation, serialization/deserialization, challenge expiration and single-use lifecycle, and AAGUID lookup without requiring a database or browser:

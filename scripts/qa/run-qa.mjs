@@ -100,7 +100,10 @@ const RULES = [
   [/^src\/components\/(ModuleSetupWizard|VisibleModulesSettings)\./, ['Module setup wizard', 'System Settings']],
   [/^src\/utils\/(moduleCatalog|moduleWizard)\./, ['Module setup wizard', 'System Settings']],
   [/^scripts\/capture-module-screenshots\.mjs$/, ['Module setup wizard']],
-  [/^src\/components\/SettingsView\./, ['System Settings']],
+  /* Time tracking: the module, its provider hooks and the pure helpers behind it. The Settings tab
+     it adds is covered by the same journey spec. */
+  [/^src\/(components\/timeTracking\/|hooks\/useTime|utils\/(timeTracking|timeCost|holidays|timeLinks))/, ['Time tracking', 'Time Tracking']],
+  [/^src\/components\/SettingsView\./, ['System Settings', 'Time tracking']],
   [/^src\/components\/(SocialMediaView|RagAiView|UnifiedEntryView)\./, ['Shell navigation']],
 
   // --- the frame ---------------------------------------------------------

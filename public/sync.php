@@ -2159,6 +2159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'addressCity' => $row['address_city'],
                     'addressZip' => $row['address_zip'],
                     'addressCountry' => $row['address_country'] ?? 'Slovakia',
+                    'workCountry' => $row['work_country'] ?? null,
                     'salaryType' => $row['salary_type'] ?? 'monthly',
                     'salaryAmount' => (float)($row['salary_amount'] ?? 0),
                     'salaryDueDay' => $row['salary_due_day'] !== null ? (int)$row['salary_due_day'] : null,
@@ -5823,8 +5824,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`,
                 `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`,
                 `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `files_json`,
-                `is_active`, `notes`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `is_active`, `notes`, `work_country`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`),
                 `kind` = VALUES(`kind`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`),
@@ -5837,7 +5838,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `time_tracking_provider` = VALUES(`time_tracking_provider`), `time_tracking_user_id` = VALUES(`time_tracking_user_id`),
                 `time_tracking_user_name` = VALUES(`time_tracking_user_name`), `auto_expense` = VALUES(`auto_expense`),
                 `expense_category_id` = VALUES(`expense_category_id`), `files_json` = VALUES(`files_json`),
-                `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`)");
+                `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`), `work_country` = VALUES(`work_country`)");
 
             foreach ($payload['employees'] as $emp) {
                 if (!is_array($emp) || empty($emp['id'])) {
@@ -5904,7 +5905,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ? json_encode($emp['files'] ?? [], JSON_UNESCAPED_UNICODE)
                         : $keep('files_json', json_encode([])),
                     isset($emp['isActive']) ? ((bool)$emp['isActive'] ? 1 : 0) : 1,
-                    $personal ? ($emp['notes'] ?? null) : $keep('notes', null)
+                    $personal ? ($emp['notes'] ?? null) : $keep('notes', null),
+                    // Whose public-holiday calendar the person works by (time tracking cost rate). It
+                    // follows pay: it changes what a month's salary divides by. A client that does not
+                    // send it (an older cached app) leaves the stored value alone.
+                    ($pay && array_key_exists('workCountry', $emp))
+                        ? (in_array(strtoupper((string)$emp['workCountry']), ['SK', 'HU'], true) ? strtoupper((string)$emp['workCountry']) : null)
+                        : $keep('work_country', null)
                 ]);
                 $processedEmpIds[] = $empId;
 

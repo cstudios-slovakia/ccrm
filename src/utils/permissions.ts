@@ -167,6 +167,16 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     permissions: [access("meetings"), deleteToggle("meetings")],
   },
   {
+    // Everyone who may use the module tracks their own time; the other three are what a manager adds.
+    id: "time_tracking",
+    permissions: [
+      access("time_tracking", "edit", "nothing"),
+      toggle("time_tracking_team", "nothing", "nothing", { key: "time_tracking", level: "view" }),
+      toggle("time_tracking_costs", "nothing", "nothing", { key: "time_tracking", level: "view" }),
+      toggle("time_tracking_salary_report", "nothing", "nothing", { key: "time_tracking", level: "view" }),
+    ],
+  },
+  {
     id: "files",
     permissions: [
       access("files", "edit", "nothing", { keys: ["files.view", "files.create"], edit: ["files.create"] }),
@@ -324,6 +334,10 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   "employees.personal": "nothing",
   meetings: "nothing",
   "meetings.delete": "nothing",
+  time_tracking: "edit",
+  time_tracking_team: "nothing",
+  time_tracking_costs: "nothing",
+  time_tracking_salary_report: "nothing",
   files: "nothing",
   "files.delete": "nothing",
   email: "nothing",
@@ -427,6 +441,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   // the My employment tab needs a self.* key. Either opens the section; `my-employment` is the
   // old address of that tab.
   if (base === "employees" || base === "my-employment") return "people";
+  if (base === "time-tracking") return "time_tracking";
   // SAI rehearses sales conversations against the lead / client base. It has no permission key of
   // its own; it follows leads so a role with no sales access (Employee) is not offered it.
   if (base === "sai") return "leads";

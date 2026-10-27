@@ -356,3 +356,37 @@ test("SAI follows leads: a role with no sales access is not offered it, and it i
   assert.equal(employee.canOpenRoute("sai"), false);
   assert.equal(employee.canOpenRoute("tasks"), true);
 });
+
+test("time tracking: everyone who may use the module tracks their own time; team, costs and the salary report are opt-in", () => {
+  const sectionKeys = PERMISSION_SECTIONS.find((sec) => sec.id === "time_tracking")!.permissions.map((p) => p.key);
+  assert.deepEqual(sectionKeys, ["time_tracking", "time_tracking_team", "time_tracking_costs", "time_tracking_salary_report"]);
+  // A role stored before the module existed: tracks own time, sees nothing of anyone else's.
+  const legacy = resolveRolePermissions({ name: "Old", permissions: {} });
+  assert.equal(legacy.time_tracking, "edit");
+  assert.equal(legacy.time_tracking_team, "nothing");
+  assert.equal(legacy.time_tracking_costs, "nothing");
+  assert.equal(legacy.time_tracking_salary_report, "nothing");
+  // A role created in the matrix starts with the whole section off.
+  const fresh = newRolePermissions();
+  assert.equal(fresh.time_tracking, "nothing");
+  // The Employee role tracks own time only.
+  const emp = employeeRolePermissions();
+  assert.equal(emp.time_tracking, "edit");
+  assert.equal(emp.time_tracking_team, "nothing");
+  assert.equal(emp.time_tracking_costs, "nothing");
+});
+
+test("time tracking: team and costs mean nothing without the module, and the route maps to the module key", () => {
+  const role: RolePermission = { name: "R", permissions: { ...newRolePermissions(), time_tracking: "nothing", time_tracking_team: "edit", time_tracking_costs: "edit" } };
+  const a = buildAccess(user("R"), [role]);
+  assert.equal(a.can("time_tracking_team"), false);
+  assert.equal(a.can("time_tracking_costs"), false);
+  assert.equal(a.canOpenRoute("time-tracking"), false);
+  const viewer: RolePermission = { name: "V", permissions: { ...newRolePermissions(), time_tracking: "view", time_tracking_costs: "edit" } };
+  const b = buildAccess(user("V"), [viewer]);
+  assert.equal(b.canOpenRoute("time-tracking"), true);
+  assert.equal(b.canOpenRoute("time-tracking/day"), true);
+  assert.equal(b.canEdit("time_tracking"), false);
+  assert.equal(b.can("time_tracking_costs"), true);
+  assert.equal(permissionKeyForRoute("time-tracking/day"), "time_tracking");
+});

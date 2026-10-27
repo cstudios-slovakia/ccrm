@@ -32,6 +32,7 @@ import { fetchUpdateNotes, type UpdateEntry } from "../utils/updateNotes";
 import { useUserPref } from "../utils/userPrefs";
 import { useFavorites } from "../utils/favorites";
 import { FavoritesDrawer } from "./FavoritesDrawer";
+import { HeaderTimerPill } from "./timeTracking/HeaderTimerPill";
 import { SidebarSettings } from "./SidebarSettings";
 import { ViewSizeSettings } from "./ViewSizeSettings";
 import {
@@ -787,6 +788,8 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* Utilities */}
                     <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2.5 md:gap-4 shrink-0">
+                        <HeaderTimerPill />
+
                         {/* Mobile Search Button */}
                         <button
                             onClick={() => {

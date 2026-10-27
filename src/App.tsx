@@ -3,12 +3,17 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
+import { TimeTrackingProvider } from "./hooks/useTimeTracking";
+import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
+import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
+import type { TimeDeps } from "./components/timeTracking/shared";
+import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal } from "./components/QuickTaskModal";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
-import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
+import { defaultProjectStatus, normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
 import { normalizeInvoiceStatusDefs, normalizeOfferStatusDefs, type OfferStatusDef } from "./utils/offerStatuses";
 import { normalizePriceLevels, type PriceLevel } from "./utils/priceLevels";
 import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
@@ -437,7 +442,7 @@ function App() {
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -4095,6 +4100,26 @@ ${log.payload || ''}
             leadStateParents={leadStateParents}
           />
         );
+      case "time-tracking":
+        return timeDeps && timeEnabled ? (
+          <TimeTrackingView
+            deps={timeDeps}
+            route={activeRoute}
+            onNavigate={(route) => {
+              setActiveTab(route);
+              window.location.hash = route;
+            }}
+          />
+        ) : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => { setCurrentUser(null); window.location.href = "/"; }}
+          />
+        );
       case "overview":
         return (
           <Dashboard 
@@ -4400,12 +4425,53 @@ ${log.payload || ''}
     );
   }
 
+  // Everything the Time Tracking module needs from the rest of the app (see components/timeTracking/shared.tsx).
+  const timeEnabled = !!currentUser?.id && access.can("time_tracking") && !(integrationsConfig?.disabledModules || []).includes("time-tracking");
+  const timeDeps: TimeDeps | null = currentUser ? {
+    language: userLanguage,
+    currency: systemCurrency || "EUR",
+    currentUser,
+    users,
+    employees,
+    projects,
+    projectTypes,
+    leads,
+    tasks,
+    isTaskDone: (task) => isDoneTaskState(task.status, taskStates),
+    canPickProject: access.can("projects"),
+    onCreateProject: access.canEdit("projects")
+      ? ({ name, clientId, projectTypeId }) => {
+          const record = clientId ? leads.find((l) => l.id === clientId) : undefined;
+          const created: Project = {
+            id: "proj-" + Date.now(),
+            projectTypeId,
+            name,
+            leadId: record && !isClientRecord(record) ? record.id : null,
+            clientId: record && isClientRecord(record) ? record.id : null,
+            status: defaultProjectStatus(projectStatuses),
+            managers: [],
+            data: {},
+            timeline: [],
+            gantt: [],
+            archived: false,
+          };
+          updateProjectsAndSync((prev) => [created, ...prev]);
+          return created;
+        }
+      : undefined,
+    canEditTask: (task) => userMayEditTask(task, currentUser, taskAccess),
+    onRenameTask: (taskId, title) =>
+      updateTasksAndSync((prev) => prev.map((tk) => (tk.id === taskId ? { ...tk, title } : tk))),
+  } : null;
+
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
     <ReadScopeContext.Provider value={readScope}>
     <ProjectStatusesProvider value={projectStatuses}>
     <OrderStatusesProvider value={orderStatuses}>
     <TaskSettingsProvider value={taskSettings}>
+    <TimeTrackingProvider enabled={timeEnabled} language={userLanguage} userId={currentUser?.id ?? null}>
+    {timeDeps && timeEnabled && <ProjectRequestDialog deps={timeDeps} />}
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -4998,6 +5064,7 @@ ${log.payload || ''}
       )}
     </div>
     </QuickAddClientProvider>
+    </TimeTrackingProvider>
     </TaskSettingsProvider>
     </OrderStatusesProvider>
     </ProjectStatusesProvider>

@@ -246,6 +246,20 @@ export function buildModuleCatalog(
       badge: t("Core", "Hlavné", "Alap"),
     },
     {
+      id: "time-tracking",
+      category: "operations",
+      title: t("Time tracking", "Evidencia času", "Időkövetés"),
+      description: t("Timer, daily log, and the real cost of every hour", "Časovač, denný záznam a skutočná cena každej hodiny", "Időzítő, napi napló és minden óra valós költsége"),
+      longDescription: t(
+        "Track time with a timer, hours-only daily rows or a calendar, against projects, tasks and tickets. Every hour is priced at the worker's real cost, from their salary and the working days of that month, so each project shows what its labour really cost. Employees only ever see their own time unless you give them the team view.",
+        "Zaznamenávajte čas časovačom, denným výkazom v hodinách alebo v kalendári, voči projektom, úlohám a tiketom. Každá hodina sa ocení skutočnými nákladmi pracovníka podľa jeho mzdy a pracovných dní daného mesiaca, takže každý projekt ukáže, koľko naozaj stála práca. Zamestnanci vidia iba vlastný čas, kým im nedáte pohľad na tím.",
+        "Rögzítse az időt időzítővel, csak órákat tartalmazó napi sorokkal vagy naptárban, projektekhez, feladatokhoz és jegyekhez. Minden órát a munkatárs valós költségén számol el a rendszer, a fizetéséből és az adott hónap munkanapjaiból, így minden projekt megmutatja, mennyibe került a munka. A munkatársak csak a saját idejüket látják, amíg nem ad nekik csapatnézetet.",
+      ),
+      icon: Icons.Timer || ListTodo,
+      color: "#0d9488",
+      bgColor: "rgba(13, 148, 136, 0.12)",
+    },
+    {
       id: "projects",
       category: "operations",
       title: t("Projects", "Projekty", "Projektek"),

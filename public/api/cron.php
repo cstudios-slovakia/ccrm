@@ -128,6 +128,16 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// 2d. Public holidays for time tracking: refresh this year and next (SK, HU) from
+// Nager.Date, at most once a month (api/holidays_lib.php). A dead API is not fatal.
+$holidayRefresh = null;
+try {
+    require_once __DIR__ . '/holidays_lib.php';
+    $holidayRefresh = ccrm_holidays_refresh_cron($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
@@ -136,6 +146,7 @@ try {
         'message' => 'Queue processed successfully.',
         'taskReminders' => $taskReminders,
         'ticketPoll' => $ticketPollResult,
+        'holidayRefresh' => $holidayRefresh,
         'mailFiling' => $mailFiling === null ? null : [
             'ran' => $mailFiling['ran'] ?? false,
             'seen' => $mailFiling['seen'] ?? 0,

@@ -315,6 +315,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         defaultSection: "operations"
       },
       {
+        id: "time-tracking",
+        label: t("Time tracking", "Evidencia času", "Időkövetés"),
+        description: t("Timer, daily log & the real cost of every hour", "Časovač, denný záznam a skutočná cena každej hodiny", "Időzítő, napi napló és minden óra valós költsége"),
+        icon: Icons.Timer || ListTodo,
+        color: "#0d9488",
+        bgColor: "rgba(13, 148, 136, 0.12)",
+        defaultSection: "operations"
+      },
+      {
         id: "projects",
         label: t("Projects", "Projekty", "Projektek"),
         description: t("Project timelines, budget & milestones", "Časové osy, rozpočty a míľniky projektov", "Projekt ütemtervek, költségvetések"),

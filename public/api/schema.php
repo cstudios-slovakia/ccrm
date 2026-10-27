@@ -1138,6 +1138,62 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_tte_ticket` (`ticket_id`),
               INDEX `idx_tte_logged` (`logged_at`),
               CONSTRAINT `fk_tte_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Time tracking: one row per stretch of work, owned by the login that did it.
+            // No foreign keys on purpose: an entry must outlive its task, ticket, project
+            // and even its user (shown greyed out, `title_snapshot` keeps a readable title).
+            "CREATE TABLE IF NOT EXISTS `time_entries` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `user_id` VARCHAR(50) NOT NULL COMMENT 'Owner: the login whose time this is',
+              `recorded_by_user_id` VARCHAR(50) NOT NULL COMMENT 'Who typed it in; differs from user_id when a manager logs time for someone',
+              `employee_id` VARCHAR(50) NULL COMMENT 'Resolved from user_id when saved; supplies the salary for the cost rate',
+              `project_id` VARCHAR(50) NULL COMMENT 'NULL = Assign project state',
+              `task_id` VARCHAR(50) NULL,
+              `ticket_id` VARCHAR(50) NULL,
+              `description` VARCHAR(500) NULL COMMENT 'The title ONLY for entries with no task and no ticket; NULL when linked',
+              `title_snapshot` VARCHAR(500) NULL COMMENT 'Written on every save; never shown while the task/ticket exists, never editable',
+              `legacy_note` VARCHAR(500) NULL COMMENT 'Read-only note migrated from ticket_time_entries',
+              `entry_date` DATE NOT NULL COMMENT 'Company-timezone date the time counts for',
+              `start_at` DATETIME NULL COMMENT 'UTC; NULL for hours-only entries',
+              `end_at` DATETIME NULL COMMENT 'UTC; NULL while running or hours-only',
+              `duration_sec` INT NULL,
+              `billable` TINYINT(1) NOT NULL DEFAULT 1,
+              `billable_rate` DECIMAL(10,2) NULL,
+              `cost_rate` DECIMAL(10,4) NULL COMMENT 'Snapshot of the hourly cost rate',
+              `cost_rate_source` VARCHAR(32) NOT NULL DEFAULT 'none' COMMENT 'monthly | daily | hourly | contractor_hourly | contractor_daily | contractor_monthly | none',
+              `cost_rate_basis_days` TINYINT NULL COMMENT 'Working days of the month the rate was divided by',
+              `cost` DECIMAL(12,2) NULL,
+              `tags` TEXT NULL COMMENT 'JSON array of strings',
+              `source` VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT 'timer | manual | day | calendar | timesheet | extension | activity | toggl | clockify | ticket_legacy',
+              `origin_type` VARCHAR(16) NULL COMMENT 'task | ticket | project | calendar | activity',
+              `origin_id` VARCHAR(64) NULL,
+              `device_id` VARCHAR(64) NULL,
+              `external_id` VARCHAR(100) NULL COMMENT 'Toggl/Clockify id, or tte:<id> for migrated ticket time',
+              `approval_status` VARCHAR(16) NULL,
+              `running_guard` VARCHAR(50) GENERATED ALWAYS AS (IF(`start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL, `user_id`, NULL)) STORED COMMENT 'UNIQUE: one running timer per user',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `deleted_at` DATETIME NULL,
+              UNIQUE KEY `uq_te_running` (`running_guard`),
+              UNIQUE KEY `uq_te_external` (`source`, `external_id`),
+              INDEX `idx_te_user_date` (`user_id`, `entry_date`),
+              INDEX `idx_te_project_date` (`project_id`, `entry_date`),
+              INDEX `idx_te_task` (`task_id`),
+              INDEX `idx_te_ticket` (`ticket_id`),
+              INDEX `idx_te_employee_date` (`employee_id`, `entry_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Public holidays of Slovakia and Hungary, cached from Nager.Date (api/holidays.php).
+            // Only days of work rest are stored. `manual` rows are reserved; overrides live in the settings blob.
+            "CREATE TABLE IF NOT EXISTS `public_holidays` (
+              `country` CHAR(2) NOT NULL,
+              `date` DATE NOT NULL,
+              `local_name` VARCHAR(200) NOT NULL,
+              `name_en` VARCHAR(200) NOT NULL,
+              `source` ENUM('api', 'builtin', 'manual') NOT NULL DEFAULT 'api',
+              `fetched_at` DATETIME NOT NULL,
+              PRIMARY KEY (`country`, `date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -1587,8 +1643,23 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         ccrm_migrate_tickets($pdo);
         ccrm_seed_default_tickets($pdo);
+        ccrm_migrate_time_tracking($pdo);
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
+    }
+
+    /**
+     * Time tracking additions to existing tables. The `time_entries` and
+     * `public_holidays` tables themselves are in ccrm_schema_statements().
+     *
+     * `employees.work_country` (SK | HU | NULL): whose public-holiday calendar a
+     * person works by. NULL means the company default. It decides which days are
+     * working days for the monthly cost rate; it is never derived from the UI language.
+     */
+    function ccrm_migrate_time_tracking(PDO $pdo): void {
+        if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'work_country')) {
+            $pdo->exec("ALTER TABLE `employees` ADD COLUMN `work_country` CHAR(2) NULL COMMENT 'SK | HU; NULL = company default' AFTER `address_country`");
+        }
     }
 
     /**

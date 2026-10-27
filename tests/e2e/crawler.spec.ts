@@ -23,6 +23,7 @@ interface ModuleUnderTest {
 const MODULES: ModuleUnderTest[] = [
   { name: 'Dashboard', hash: '#dashboard' },
   { name: 'Tasks', hash: '#tasks' },
+  { name: 'Time Tracking', hash: '#time-tracking' },
   { name: 'Leads / Pipeline', hash: '#leads', drilldown: true },
   { name: 'Clients Register', hash: '#clients', drilldown: true },
   { name: 'Projects', hash: '#projects', drilldown: true },

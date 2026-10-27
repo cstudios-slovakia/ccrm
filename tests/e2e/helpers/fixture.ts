@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { installTimeTrackingMock, timeTrackingSeed } from './timeTrackingMock';
 
 /**
  * Deterministic CRM dataset served to the app in place of the PHP backend.
@@ -990,6 +991,8 @@ export async function installBackendMocks(
      * without the password (api/passkeys.php allows 300 s). 0 closes the window.
      */
     passkeyPwWindowMs?: number;
+    /** Replaces the seeded role registry, for specs that need a role with exactly some permissions. */
+    roles?: { name: string; permissions: Record<string, string> }[];
   } = {},
 ) {
   const baseUser = options.user ?? TEST_USER;
@@ -1017,6 +1020,8 @@ export async function installBackendMocks(
    * choice would come straight back as the seed.
    */
   let pushedIntegrationsConfig: unknown;
+  /** task id -> the title the app last pushed: time tracking joins a linked entry's title from it. */
+  const pushedTaskTitles = new Map<string, string>();
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -1047,7 +1052,11 @@ export async function installBackendMocks(
         projectTypes?: { id?: string; listColumns?: unknown }[];
         customDashboards?: { id?: string }[];
         settings?: { integrationsConfig?: unknown };
+        tasks?: { id?: string; title?: string }[];
       };
+      for (const tk of body?.tasks ?? []) {
+        if (tk?.id && typeof tk.title === 'string') pushedTaskTitles.set(tk.id, tk.title);
+      }
       if (body?.settings?.integrationsConfig !== undefined) {
         pushedIntegrationsConfig = body.settings.integrationsConfig;
       }
@@ -1138,6 +1147,23 @@ export async function installBackendMocks(
       contentType: 'application/json',
       body: JSON.stringify({ success: true, user: signedIn }),
     });
+  });
+
+  // Time tracking has its own endpoints (never the sync blob). After the catch-all, which would
+  // otherwise answer them with empty lists.
+  await installTimeTrackingMock(page, {
+    user: signedIn,
+    users: [TEST_USER, SECOND_USER, ...(options.extraUsers ?? [])].map((u) => ({ id: u.id, name: u.name })),
+    roles: options.roles ?? ROLES,
+    tasks: TASKS,
+    projects: PROJECTS,
+    employees: {
+      [TEST_USER.id]: { id: 'emp-erik', kind: 'employee', salaryType: 'monthly', salaryAmount: 3200 },
+      // A freelancer: hourly, no employer multiplier. The specs that need him add his login via extraUsers.
+      'user-free': { id: 'emp-free', kind: 'contractor', salaryType: 'hourly', salaryAmount: 20 },
+    },
+    seed: timeTrackingSeed({ erik: TEST_USER.id, maria: SECOND_USER.id, free: 'user-free' }),
+    tasksRenamed: pushedTaskTitles,
   });
 
   // Dashboard widgets query the analytics endpoint per widget, so this must be
