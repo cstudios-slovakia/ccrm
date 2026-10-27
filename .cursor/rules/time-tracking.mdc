@@ -1,0 +1,10 @@
+---
+description: Building the Time Tracking module ("make phase N"): status, decisions, per-phase checklists and the spec
+alwaysApply: false
+---
+
+The Time Tracking module is built in phases from ONE file: `docs/TIME-TRACKING.md`.
+
+When asked to "make phase N" (or the next phase), open it and follow Part A: check the status
+table, build only that phase's checklist, run the tests, tick the boxes and fill the status row in
+the same commit as the build, report, then stop.

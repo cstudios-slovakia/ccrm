@@ -64,6 +64,11 @@ The order when finishing a change:
 `npm run deploy` re-runs the tests and refuses to ship if they fail
 (`DEPLOY_SKIP_QA=1` overrides, and means shipping unverified).
 
+## Time tracking module
+
+Built in phases from ONE file, [`docs/TIME-TRACKING.md`](docs/TIME-TRACKING.md): status table,
+decisions, per-phase checklists, spec. When asked to "make phase N", follow its Part A.
+
 ## Things that will bite you
 
 - `npm run build` rewrites `dist/`, which is committed. Use `npx tsc --noEmit`

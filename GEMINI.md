@@ -18,6 +18,10 @@
 The order when finishing a change: **test -> bump version -> changelog -> build
 -> commit**.
 
+### 0b. Time Tracking Module
+
+- Built in phases from ONE file: [`docs/TIME-TRACKING.md`](docs/TIME-TRACKING.md) (status table, decisions, per-phase checklists, spec). When asked to "make phase N", follow its Part A.
+
 ### 1. Commit & Version Bumping Protocol
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
