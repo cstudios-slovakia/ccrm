@@ -4,6 +4,8 @@ import type { AiCustomTemplate, CompanyBillingSettings, InvoiceOffer } from "../
 import type { Language } from "../utils/translations";
 import { DefaultOfferTemplate } from "./pdf/DefaultOfferTemplate";
 import { CustomAiOfferTemplate } from "./pdf/CustomAiOfferTemplate";
+import { OfferBlockDocument } from "./pdf/OfferBlockDocument";
+import { normalizeOfferDocument } from "../utils/offerDocument";
 
 interface DocumentPreviewModalProps {
   document: InvoiceOffer;
@@ -35,6 +37,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     doc.mode === "custom"
       ? aiCustomTemplates.find(tpl => tpl.id === doc.customTemplateId) || aiCustomTemplates[0] || null
       : null;
+  const reconstructed = doc.mode === "custom" ? normalizeOfferDocument(template?.document) : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
@@ -77,7 +80,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 bg-slate-100">
-          {doc.mode === "custom" ? (
+          {doc.mode === "custom" && reconstructed && template ? (
+            <OfferBlockDocument
+              offer={doc}
+              companySettings={companySettings}
+              template={template}
+              document={reconstructed}
+              systemCurrency={currency}
+              language={lang}
+            />
+          ) : doc.mode === "custom" ? (
             <CustomAiOfferTemplate
               offer={doc}
               companySettings={companySettings}

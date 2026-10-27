@@ -3,8 +3,9 @@ import { gotoView, startSession } from './helpers/appDriver';
 import { buildSyncPayload } from './helpers/fixture';
 
 /**
- * The price offer editor: an inline, what-you-see-is-what-you-get document
- * instead of the old five-step popup.
+ * The price offer editor: its own view, a what-you-see-is-what-you-get document
+ * instead of the old five-step popup. The offers list is not on the page while
+ * it is open.
  *
  * Pinned as journeys because the crawler cannot judge any of it: it would never
  * notice that an overlay crept back in, that Preview still printed a
@@ -261,7 +262,7 @@ test.describe('Price offer inline editor', () => {
     await expect(menu).toBeHidden();
   });
 
-  test('choosing Standard opens the editor in the page flow, with no overlay', async ({ page }) => {
+  test('choosing Standard opens the editor as its own view, with no overlay', async ({ page }) => {
     await startSession(page);
     await seedInvoicing(page);
     await gotoView(page, '#invoices');
@@ -282,16 +283,10 @@ test.describe('Price offer inline editor', () => {
     });
     expect(insideFixed).toBe(false);
 
-    // It pushes the offers list down rather than covering it. Measured in one
-    // go: the page is still easing the editor into view, so two separate
-    // measurements would be taken at different scroll positions.
-    const gap = await page.evaluate(() => {
-      const box = document.querySelector('[data-offer-editor]')!.getBoundingClientRect();
-      // The offers list, not the document's own line-items table inside the editor.
-      const table = document.querySelector('.table-page-wrap table')!.getBoundingClientRect();
-      return table.top - box.bottom;
-    });
-    expect(gap).toBeGreaterThanOrEqual(-1);
+    // The list is a different view. None of it — the table, the page title —
+    // stays on the page while the document is open.
+    await expect(page.locator('.table-page-wrap')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /^(Price Offers|Cenové ponuky|Árajánlatok)$/ })).toHaveCount(0);
   });
 
   test('every field is typed into in place, with no edit buttons, and totals follow', async ({ page }) => {
@@ -464,20 +459,19 @@ test.describe('Price offer inline editor', () => {
     await expect(editorOf(page)).toHaveCount(0);
   });
 
-  test('opening another offer while one has changes asks first, and only one editor is ever open', async ({ page }) => {
+  test('editing a saved offer replaces the list, and Cancel brings the list back', async ({ page }) => {
     await startSession(page);
     await seedInvoicing(page, { offers: [SEEDED_OFFER] });
     await gotoView(page, '#invoices');
 
-    await chooseTemplate(page, standard);
-    await subjectField(editorOf(page)).fill('Rozpracované');
-
-    await page.locator('tbody tr').filter({ hasText: 'Ponuka — uložená' }).getByTitle(/^(Edit|Upraviť)$/).click();
-    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
-    await page.getByTestId('confirm-dialog-confirm').click();
-
+    await page.locator('.table-page-wrap tbody tr').filter({ hasText: 'Ponuka — uložená' }).getByTitle(/^(Edit|Upraviť)$/).click();
     await expect(editorOf(page)).toHaveCount(1);
+    await expect(page.locator('.table-page-wrap')).toHaveCount(0);
     await expect(subjectField(editorOf(page))).toHaveValue('Rekonštrukcia strechy');
+
+    await page.getByRole('button', { name: /^(Cancel|Zrušiť)$/ }).click();
+    await expect(editorOf(page)).toHaveCount(0);
+    await expect(page.locator('.table-page-wrap tbody tr').filter({ hasText: 'Ponuka — uložená' })).toHaveCount(1);
   });
 
   test('an AI template with one entry opens directly and shows its own branding', async ({ page }) => {
@@ -766,7 +760,7 @@ test.describe('AI price offer templates', () => {
     await expect(page.getByTestId('ai-template-name')).toHaveCount(0);
   });
 
-  test('a generated template offers a rename that is pre-selected, saved on Enter, and visible in the picker', async ({ page }) => {
+  test('a generated template opens the review with the name focused, and Enter saves it into the picker', async ({ page }) => {
     await startSession(page);
     await seedInvoicing(page);
     const synced = recordSyncedTemplates(page);
@@ -780,47 +774,33 @@ test.describe('AI price offer templates', () => {
     const upload = page.getByTestId('ai-template-upload');
     await upload.setInputFiles({ name: 'sample.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') });
 
-    const dialog = page.getByTestId('template-rename-dialog');
-    await expect(dialog).toBeVisible();
-    const input = page.getByTestId('template-rename-input');
+    const review = page.getByTestId('template-review');
+    await expect(review).toBeVisible();
+    const input = page.getByTestId('template-review-name');
     await expect(input).toBeFocused();
     await expect(input).toHaveValue('Navrhnutý názov');
-    // The proposed text is selected, so typing replaces it.
     expect(await input.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd, el.value.length])).toEqual([0, 15, 15]);
 
-    // Empty is refused; a clash with another template is allowed but warned about.
     await input.fill('   ');
-    await expect(page.getByTestId('template-rename-save')).toBeDisabled();
+    await expect(page.getByTestId('template-review-save')).toBeDisabled();
     await input.fill('Moja šablóna');
-    await expect(page.getByTestId('template-rename-duplicate')).toHaveCount(0);
+    await expect(page.getByTestId('template-review-duplicate')).toHaveCount(0);
 
-    // Tab stays inside the dialog.
-    await input.focus();
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Tab');
-    await expect(dialog.locator(':focus')).toHaveCount(1);
-
-    await input.focus();
-    await page.keyboard.press('Enter');
-    await expect(dialog).toHaveCount(0);
+    await input.press('Enter');
+    await expect(review).toHaveCount(0);
     await expect(page.getByTestId('ai-template-name')).toHaveText('Moja šablóna');
-    await expect(upload).toBeFocused(); // focus goes back to the control that started it
 
-    // The rename is an update of the same row, and reaches the server.
     await expect.poll(() => synced.pushed.get('act-new')?.name, { timeout: 10_000 }).toBe('Moja šablóna');
     expect(synced.pushed.size).toBe(1);
-    // The look read from the sample travels with it.
     expect(synced.pushed.get('act-new')?.layout?.headerStyle).toBe('dark-band');
 
-    // Back in the editor the new name is what tells the template apart.
     await page.getByRole('button', { name: /Späť na cenové ponuky/ }).click();
     await chooseTemplate(page, /AI template|AI šablóna/);
     await expect(editorOf(page).getByRole('button', { name: /Moja šablóna/ }).first()).toBeVisible();
     await expect(editorOf(page).locator('[data-offer-template="act-new"]')).toBeVisible();
   });
 
-  test('Escape keeps the proposed name, and a card is renamed in place afterwards', async ({ page }) => {
+  test('Cancel discards a generated draft, and a saved card is still renamed in place', async ({ page }) => {
     await startSession(page);
     await seedInvoicing(page, { templates: [template('tpl-1', 'Modrá šablóna', { layout: plainBlue.layout, sectionsOrder: BLOCKS })] });
     const synced = recordSyncedTemplates(page);
@@ -833,14 +813,13 @@ test.describe('AI price offer templates', () => {
     await openOfferSettingsTab(page, aiTab);
     await page.getByTestId('ai-template-upload').setInputFiles({ name: 'sample.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') });
 
-    // Same name as the existing one: allowed, but the dialog warns.
-    await expect(page.getByTestId('template-rename-dialog')).toBeVisible();
-    await expect(page.getByTestId('template-rename-duplicate')).toBeVisible();
+    await expect(page.getByTestId('template-review')).toBeVisible();
+    await expect(page.getByTestId('template-review-duplicate')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('template-rename-dialog')).toHaveCount(0);
-    await expect(page.getByTestId('ai-template-name')).toHaveCount(2);
+    await expect(page.getByTestId('template-review')).toHaveCount(0);
+    await expect(page.getByTestId('ai-template-name')).toHaveCount(1);
+    await expect(page.getByTestId('ai-template-name')).toHaveText('Modrá šablóna');
 
-    // Rename the new card in place.
     const card = page.getByTestId('ai-template-name').first();
     await card.hover();
     await page.getByTitle(/Premenovať šablónu/).first().click();
@@ -848,7 +827,37 @@ test.describe('AI price offer templates', () => {
     await field.fill('Signum — oranžová');
     await field.press('Enter');
     await expect(page.getByTestId('ai-template-name').first()).toHaveText('Signum — oranžová');
-    await expect.poll(() => synced.pushed.get('act-new')?.name, { timeout: 10_000 }).toBe('Signum — oranžová');
+    await expect.poll(() => synced.pushed.get('tpl-1')?.name, { timeout: 10_000 }).toBe('Signum — oranžová');
+  });
+
+  test('a reconstructed template renders its own blocks, and the review lists what the PDF left out', async ({ page }) => {
+    await startSession(page);
+    await seedInvoicing(page, {
+      templates: [template('tpl-doc', 'Rekonštrukcia', {
+        document: {
+          blocks: [
+            { id: 'b1', type: 'text', text: 'Nadpis zo vzoru' },
+            { id: 'b2', type: 'field', fieldId: 'offer.clientName' },
+            { id: 'b3', type: 'customField', key: 'site_code', label: 'Kód stavby' },
+          ],
+          customFields: [{ key: 'site_code', label: 'Kód stavby' }],
+        },
+      })],
+    });
+    await gotoView(page, '#invoices');
+    await chooseTemplate(page, /AI template|AI šablóna/);
+    const doc = editorOf(page).locator('[data-offer-template="tpl-doc"]');
+    await expect(doc).toBeVisible();
+    await expect(doc).toContainText('Nadpis zo vzoru');
+    await expect(doc.getByPlaceholder('Kód stavby')).toBeVisible();
+    await expect(doc).not.toContainText('Prečo strechu zveriť nám');
+    await expect(doc).not.toContainText('Rozsah dodávky a položiek');
+
+    await page.getByRole('button', { name: /^(Cancel|Zrušiť)$/ }).click();
+    await openOfferSettingsTab(page, aiTab);
+    await page.getByTestId('ai-template-review').click();
+    await expect(page.getByTestId('template-review-items-warning')).toBeVisible();
+    await expect(page.getByTestId('template-review-extracted')).toContainText('Kód stavby');
   });
 });
 

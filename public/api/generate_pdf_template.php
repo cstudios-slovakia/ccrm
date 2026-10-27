@@ -2,10 +2,10 @@
 /**
  * AI PDF Template Generator Endpoint
  *
- * Reads an uploaded sample price offer (the PDF itself — text AND page images, so
- * colours, bands, table heads and card styles are visible to the model) and turns
- * it into a template blueprint: colours, a bounded set of layout variants, section
- * headings and block order. All eleven required blocks are always guaranteed.
+ * Reads an uploaded sample price offer (the PDF itself — text AND page images)
+ * and reconstructs it as a block document: the blocks the PDF actually has,
+ * in its reading order. The rules live in offer_document.php, the same ones
+ * src/utils/offerDocument.ts enforces. A theme-shaped answer is not a template.
  *
  * It never invents a template. If the AI call cannot be made or fails, the answer
  * is `success: false` with a stable `code` (the vocabulary of src/utils/aiConfig.ts)
@@ -14,6 +14,7 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/offer_document.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -34,31 +35,6 @@ const CCRM_PDF_TPL_SECTIONS = [
     'header', 'client_metadata', 'greeting', 'usp_grid', 'reassurance',
     'items_table', 'total_box', 'key_parameters', 'next_steps', 'signoff', 'footer'
 ];
-const CCRM_PDF_TPL_HEADER_STYLES = ['light', 'dark-band', 'accent-band'];
-const CCRM_PDF_TPL_TABLE_STYLES = ['filled-primary', 'filled-dark', 'underline'];
-const CCRM_PDF_TPL_USP_STYLES = ['soft', 'left-border', 'outlined'];
-const CCRM_PDF_TPL_BANNER_STYLES = ['gradient', 'solid-dark', 'outlined'];
-const CCRM_PDF_TPL_FONTS = ['sans', 'serif', 'mono'];
-const CCRM_PDF_TPL_BADGES = ['rounded', 'square', 'pill'];
-
-/**
- * The blueprint is model output, so every field is untrusted. Colours end up in
- * a style attribute in the browser and are also used with an appended alpha
- * pair, so anything that is not a plain hex colour is replaced by the default.
- */
-function ccrm_pdf_tpl_color($value, string $fallback): string {
-    if (!is_string($value)) {
-        return $fallback;
-    }
-    $v = trim($value);
-    if (!preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $v)) {
-        return $fallback;
-    }
-    if (strlen($v) === 4) {
-        $v = '#' . $v[1] . $v[1] . $v[2] . $v[2] . $v[3] . $v[3];
-    }
-    return strtolower($v);
-}
 
 /** Trim an untrusted string field to a sane column length. */
 function ccrm_pdf_tpl_text($value, string $fallback, int $max = 255): string {
@@ -67,20 +43,6 @@ function ccrm_pdf_tpl_text($value, string $fallback, int $max = 255): string {
         return $fallback;
     }
     return mb_substr($v, 0, $max);
-}
-
-/** One of an allow-list, else the default. */
-function ccrm_pdf_tpl_enum($value, array $allowed, string $fallback): string {
-    return (is_string($value) && in_array($value, $allowed, true)) ? $value : $fallback;
-}
-
-/** A section title override: one line, control characters gone, length-capped; '' keeps the built-in label. */
-function ccrm_pdf_tpl_heading($value): string {
-    if (!is_string($value)) {
-        return '';
-    }
-    $v = preg_replace('/[\x00-\x1f\x7f\s]+/u', ' ', $value);
-    return mb_substr(trim((string)$v), 0, 90);
 }
 
 /**
@@ -121,106 +83,83 @@ function ccrm_pdf_tpl_read_sample(string $pdfUrl) {
 }
 
 /**
- * Turn the model's JSON into the template the app stores. Pure: no I/O, so it can
- * be exercised from the CLI (scripts/test-pdf-template-blueprint.php).
+ * Turn the model's JSON into the template the app stores. Pure: no I/O.
+ * A payload with no usable block document (including the old theme JSON) is
+ * not a template — the caller answers `ai_unusable` and stores nothing.
+ * The colour / layout columns stay filled with the safe defaults because those
+ * columns are NOT NULL; a reconstruction does not read them.
+ *
+ * @return array|null
  */
-function ccrm_pdf_tpl_build(array $blueprint, string $pdfName, string $pdfUrl): array {
-    // Only known section ids survive — the renderer has no notion of any other —
-    // and every required block the order left out is appended.
-    $sectionsOrder = is_array($blueprint['sectionsOrder'] ?? null) ? array_filter($blueprint['sectionsOrder'], 'is_string') : [];
-    $sectionsOrder = array_values(array_unique(array_intersect($sectionsOrder, CCRM_PDF_TPL_SECTIONS)));
-    foreach (CCRM_PDF_TPL_SECTIONS as $req) {
-        if (!in_array($req, $sectionsOrder, true)) {
-            $sectionsOrder[] = $req;
-        }
-    }
-
-    $colors = is_array($blueprint['colors'] ?? null) ? $blueprint['colors'] : [];
-    $layoutIn = is_array($blueprint['layout'] ?? null) ? $blueprint['layout'] : [];
-    $headingsIn = is_array($layoutIn['headings'] ?? null) ? $layoutIn['headings'] : [];
-    $font = ccrm_pdf_tpl_enum($layoutIn['fontFamily'] ?? null, CCRM_PDF_TPL_FONTS, 'sans');
-
+function ccrm_pdf_tpl_build(array $blueprint, string $pdfName, string $pdfUrl): ?array {
+    $document = ccrm_offer_document_normalize($blueprint);
+    if ($document === null) return null;
     return [
         'id' => 'act-' . bin2hex(random_bytes(6)),
         'name' => ccrm_pdf_tpl_text($blueprint['name'] ?? null, pathinfo($pdfName, PATHINFO_FILENAME) ?: 'AI Custom Template', 150),
-        'description' => ccrm_pdf_tpl_text($blueprint['description'] ?? null, 'AI-analyzed custom price offer template', 500),
+        'description' => ccrm_pdf_tpl_text($blueprint['description'] ?? null, 'Reconstructed from the uploaded price offer', 500),
         'sourcePdfUrl' => $pdfUrl,
         'sourcePdfName' => $pdfName,
         'colors' => [
-            'primary' => ccrm_pdf_tpl_color($colors['primary'] ?? null, '#0f172a'),
-            'secondary' => ccrm_pdf_tpl_color($colors['secondary'] ?? null, '#334155'),
-            'background' => ccrm_pdf_tpl_color($colors['background'] ?? null, '#ffffff'),
-            'accent' => ccrm_pdf_tpl_color($colors['accent'] ?? null, '#f97316'),
-            'text' => ccrm_pdf_tpl_color($colors['text'] ?? null, '#1e293b')
+            'primary' => '#0f172a',
+            'secondary' => '#334155',
+            'background' => '#ffffff',
+            'accent' => '#f97316',
+            'text' => '#1e293b'
         ],
-        // Fixed columns of the table; the font is an allow-listed name, not a CSS stack.
-        'typography' => ['fontFamily' => $font, 'headingStyle' => 'bold'],
+        'typography' => ['fontFamily' => 'sans', 'headingStyle' => 'bold'],
         'layout' => [
-            'headerStyle' => ccrm_pdf_tpl_enum($layoutIn['headerStyle'] ?? null, CCRM_PDF_TPL_HEADER_STYLES, 'light'),
-            'tableHeaderStyle' => ccrm_pdf_tpl_enum($layoutIn['tableHeaderStyle'] ?? null, CCRM_PDF_TPL_TABLE_STYLES, 'filled-primary'),
-            'uspCardStyle' => ccrm_pdf_tpl_enum($layoutIn['uspCardStyle'] ?? null, CCRM_PDF_TPL_USP_STYLES, 'soft'),
-            'totalBannerStyle' => ccrm_pdf_tpl_enum($layoutIn['totalBannerStyle'] ?? null, CCRM_PDF_TPL_BANNER_STYLES, 'gradient'),
-            'fontFamily' => $font,
-            'headings' => [
-                'usp' => ccrm_pdf_tpl_heading($headingsIn['usp'] ?? null),
-                'items' => ccrm_pdf_tpl_heading($headingsIn['items'] ?? null),
-                'nextStep' => ccrm_pdf_tpl_heading($headingsIn['nextStep'] ?? null)
-            ]
+            'headerStyle' => 'light',
+            'tableHeaderStyle' => 'filled-primary',
+            'uspCardStyle' => 'soft',
+            'totalBannerStyle' => 'gradient',
+            'fontFamily' => 'sans',
+            'headings' => ['usp' => '', 'items' => '', 'nextStep' => '']
         ],
-        'sectionsOrder' => $sectionsOrder,
-        'customBannerText' => ccrm_pdf_tpl_text($blueprint['customBannerText'] ?? null, '', 255),
-        'badgeStyle' => ccrm_pdf_tpl_enum($blueprint['badgeStyle'] ?? null, CCRM_PDF_TPL_BADGES, 'rounded'),
+        'sectionsOrder' => CCRM_PDF_TPL_SECTIONS,
+        'customBannerText' => '',
+        'badgeStyle' => 'rounded',
+        'document' => $document,
         'createdAt' => date('Y-m-d H:i:s')
     ];
 }
 
-/** The instructions for the model: the exact schema, and where to read each value from. */
+/** The instructions for the model. The normaliser, not this text, is what gets stored. */
 function ccrm_pdf_tpl_prompt(string $pdfText, string $langName): string {
     $hint = $pdfText !== '' ? "\n\nText extracted from the PDF (a hint only — the attached PDF pages are the source of truth):\n```\n" . mb_substr($pdfText, 0, 4000) . "\n```" : '';
-    return "You are a document designer. The attached PDF is a sample business price offer. Read how it LOOKS from its pages — its colours, header, table, cards and price banner — and describe that look as a template blueprint. Do not invent a style that the pages do not show; copy the colours you can see.
+    return "You reconstruct the attached price-offer PDF as a block document. The PDF is the only source of the layout. Copy its reading order, the colours you can see, its headings and its sentences. Reconstruct the first four pages and ignore the rest.
 
-The blueprint describes a fixed document with these blocks, which the app always prints:
-header, client_metadata, greeting, usp_grid (four value cards), reassurance, items_table, total_box (the price banner), key_parameters (three highlight boxes), next_steps, signoff, footer.
-You choose HOW each is styled from the allowed values below. You cannot add or remove blocks.
+Return ONLY a JSON object. Human-readable strings (name, description, labels, text) are in {$langName}. No HTML. No CSS. Colours are #rrggbb. fontSize is one of sm, md, lg, xl, title.
 
-Return ONLY a JSON object with exactly this structure:
 {
-  \"name\": \"Short template name (max 60 characters)\",
-  \"description\": \"One sentence describing the look\",
-  \"colors\": {
-    \"primary\": \"#rrggbb main brand colour used for headings\",
-    \"secondary\": \"#rrggbb second brand colour\",
-    \"accent\": \"#rrggbb highlight colour (the orange, green, ... used for accents)\",
-    \"background\": \"#rrggbb page colour (almost always #ffffff)\",
-    \"text\": \"#rrggbb body text colour (a dark colour)\"
-  },
-  \"layout\": {
-    \"headerStyle\": \"light | dark-band | accent-band\",
-    \"tableHeaderStyle\": \"filled-primary | filled-dark | underline\",
-    \"uspCardStyle\": \"soft | left-border | outlined\",
-    \"totalBannerStyle\": \"gradient | solid-dark | outlined\",
-    \"fontFamily\": \"sans | serif | mono\",
-    \"headings\": {
-      \"usp\": \"the sample's own title of the benefits/why-us section, or empty\",
-      \"items\": \"the sample's own title of the scope/items section, or empty\",
-      \"nextStep\": \"the sample's own title of the next-step section, or empty\"
-    }
-  },
-  \"sectionsOrder\": [\"header\", \"client_metadata\", \"greeting\", \"usp_grid\", \"reassurance\", \"items_table\", \"total_box\", \"key_parameters\", \"next_steps\", \"signoff\", \"footer\"],
-  \"customBannerText\": \"the sample's wording above the total price, or empty\",
-  \"badgeStyle\": \"rounded | square | pill\"
+  \"name\": \"short template name\",
+  \"description\": \"one sentence\",
+  \"customFields\": [{\"key\": \"site_code\", \"label\": \"label copied from the PDF\"}],
+  \"blocks\": []
 }
 
-How to choose:
-- headerStyle: dark-band = a full-width dark header with the logo/name and contacts on it; accent-band = the same in the accent colour; light = a plain header on white.
-- tableHeaderStyle: filled-primary = coloured header row; filled-dark = black/charcoal header row; underline = no fill, only a line.
-- uspCardStyle: soft = grey boxes; left-border = cards with a thick coloured left edge; outlined = cards with a coloured outline.
-- totalBannerStyle: gradient = colour gradient; solid-dark = a solid black/charcoal bar; outlined = white with a coloured border.
-- fontFamily: serif only if the sample is clearly set in a serif face, mono only for a monospaced face; otherwise sans.
-- badgeStyle: the corner shape of the cards: rounded, square (sharp), or pill.
-- sectionsOrder: keep the order in which the sample prints these blocks; use only the ids above.
-- Write the human-readable values (name, description, headings, customBannerText) in {$langName}. Copy headings and banner wording from the sample when it has them; leave the string empty when it does not.
-- Colours are hex only, never names." . $hint;
+A block is one of:
+- {\"type\":\"stack\",\"children\":[blocks]}
+- {\"type\":\"columns\",\"columns\":[[blocks],[blocks]]} — exactly 2 or 3 columns, never a column inside a column
+- {\"type\":\"text\",\"text\":\"a sentence from the PDF\",\"style\":{optional}}
+- {\"type\":\"field\",\"fieldId\":\"catalog id\",\"label\":\"optional\",\"style\":{optional}}
+- {\"type\":\"itemsTable\",\"columns\":[\"name\",\"quantity\",\"unit\",\"unitPrice\",\"totalPrice\"],\"style\":{optional}}
+- {\"type\":\"totals\",\"subtotal\":true,\"vat\":true,\"total\":true,\"priceRange\":false,\"style\":{optional}}
+- {\"type\":\"uspCards\",\"style\":{optional}}
+- {\"type\":\"customField\",\"key\":\"site_code\",\"label\":\"Label\",\"style\":{optional}}
+- {\"type\":\"divider\",\"style\":{optional}}
+- {\"type\":\"spacer\"}
+
+style, when present, is an object: color, background, borderColor (#rrggbb); fontSize (sm|md|lg|xl|title); weight (regular|medium|bold); align (left|center|right); radius (none|sm|md|pill); border (none|left|all).
+
+Catalog ids — bind a value you can see to one of these, and never copy the sample company's name, IČO, IBAN, phone or address into a text block (those bind to company.*):
+company.name company.subtitle company.logo company.street company.city company.postalCode company.country company.companyId company.taxId company.vatId company.email company.phone company.phoneSecondary company.website company.iban company.swift company.bankName company.socialProof
+offer.documentNumber offer.title offer.subject offer.location offer.issuedAt offer.validUntil offer.clientName offer.clientEmail offer.clientPhone offer.clientStreet offer.clientCity offer.clientPostalCode offer.clientCountry offer.clientIco offer.clientDic offer.clientIcdph offer.greetingNote offer.introNote offer.reassuranceNote offer.nextStepsNote offer.closingNote offer.signOffTeam offer.durationText offer.startDateText offer.warrantyText
+
+itemsTable columns, and only these: name description quantity unit unitPrice vatRate discountPct totalPrice.
+A labelled value that matches no catalog id is a customField block plus a customFields entry. key is lowercase letters, digits and underscores. Static text is for sentences only.
+
+Do not invent a benefits grid, a reassurance line, three parameter cards, or a next-step section unless they are on the page. Leave out any block the PDF does not have." . $hint;
 }
 
 if (defined('CCRM_PDF_TEMPLATE_LIB')) {
@@ -333,6 +272,7 @@ if ($res === false || $httpCode !== 200) {
 }
 
 $parsedAi = json_decode((string)$res, true);
+ccrm_ai_capture_usage($pdo, 'offer_template', $parsedAi, $model);
 $aiContent = trim((string)($parsedAi['choices'][0]['message']['content'] ?? ''));
 $blueprint = $aiContent !== '' ? json_decode($aiContent, true) : null;
 if (!is_array($blueprint) || $blueprint === []) {
@@ -340,7 +280,9 @@ if (!is_array($blueprint) || $blueprint === []) {
     tpl_error(502, 'ai_empty', 'OpenAI returned no usable template.');
 }
 
-echo json_encode([
-    'success' => true,
-    'template' => ccrm_pdf_tpl_build($blueprint, $pdfName, $pdfUrl)
-], JSON_UNESCAPED_UNICODE);
+$template = ccrm_pdf_tpl_build($blueprint, $pdfName, $pdfUrl);
+if ($template === null) {
+    error_log('[generate_pdf_template] model JSON had no usable document (model ' . $model . ')');
+    tpl_error(502, 'ai_unusable', 'The model did not return a usable document.');
+}
+echo json_encode(['success' => true, 'template' => $template], JSON_UNESCAPED_UNICODE);

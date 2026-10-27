@@ -225,7 +225,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
                 >
                   <Sparkles className="size-4 mt-0.5 shrink-0 text-purple-500" />
                   {entryText(aiLabel, aiDesc)}
-                  <ChevronDown className={cn("size-4 mt-0.5 shrink-0 text-slate-400 transition-transform", aiExpanded && "rotate-180")} />
+                  <ChevronDown className={cn("size-4 ml-auto self-center shrink-0 text-slate-400 transition-transform", aiExpanded && "rotate-180")} />
                 </button>
                 {aiExpanded &&
                   aiTemplates.map(tpl => (

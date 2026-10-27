@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
-  FileText, Search, Eye, Trash2, Pencil, Copy,
+  Search, Eye, Trash2, Pencil, Copy,
   AlertCircle, Layers, TrendingUp, Award, Lock, Settings
 } from "lucide-react";
 import type {
@@ -18,6 +19,7 @@ import { useConfirmDialog } from "./ui/ConfirmDialog";
 import { NewOfferMenu } from "./priceOffers/NewOfferMenu";
 import type { NewOfferChoice } from "./priceOffers/NewOfferMenu";
 import { OfferEditor } from "./priceOffers/OfferEditor";
+import { TemplateReview } from "./priceOffers/TemplateReview";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, nowLocalStamp, formatDateLocalized } from "../utils/localTime";
@@ -93,8 +95,8 @@ interface PriceOffersViewProps {
 const OFFER_PREFIX = "CP";
 
 /**
- * Which editor is open, if any. Only one at a time: opening another one (a
- * different menu entry, or the edit button of a row) replaces it, after asking
+ * Which editor is open, if any. While it is open the list is not rendered —
+ * the editor is its own view. Opening another one replaces it, after asking
  * when the open one has unsaved changes. `key` remounts the editor so it
  * re-seeds even when the same entry is chosen twice.
  */
@@ -149,6 +151,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   const canDelete = access.delete;
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [showSettings, setShowSettings] = useState(openOnSettings);
+  const [reviewDraft, setReviewDraft] = useState<AiCustomTemplate | null>(null);
+  const [resumeAiTab, setResumeAiTab] = useState(false);
   const currency = systemCurrency || "EUR";
   const money = (value: unknown, decimals = 2) =>
     formatMoney(num(value), currency, lang, {
@@ -202,6 +206,14 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
       setEditorDirty(false);
     }
   }, [editorSession, editingOffer]);
+
+  // The list and the editor are different views of the same scroll container.
+  // Opening either one starts it at the top, so a row clicked far down the
+  // table does not land the document mid-page.
+  const editorKey = editorSession?.key ?? 0;
+  useEffect(() => {
+    document.querySelector("main.workspace")?.scrollTo(0, 0);
+  }, [editorKey, showSettings]);
 
   // ------------------------------------------------------------ list selectors
   const filteredOffers = useMemo(() => {
@@ -463,12 +475,45 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
   const billingConfigured = Boolean(companyBillingSettings?.companyName);
 
+  const saveReview = (tpl: AiCustomTemplate) => {
+    if (!setAiCustomTemplates) return;
+    const name = tpl.name.trim();
+    if (!name) return;
+    const clash = aiCustomTemplates.some(item => item.id !== tpl.id && item.name.trim().toLowerCase() === name.toLowerCase());
+    setAiCustomTemplates(prev => (prev.some(item => item.id === tpl.id) ? prev.map(item => (item.id === tpl.id ? tpl : item)) : [tpl, ...prev]));
+    if (clash) {
+      toast(
+        t(
+          "Another template already has this name — they will be hard to tell apart.",
+          "Iná šablóna už má tento názov — budú sa ťažko rozlišovať.",
+          "Egy másik sablon már ezt a nevet viseli — nehéz lesz megkülönböztetni őket."
+        ),
+        "warning"
+      );
+    }
+    setReviewDraft(null);
+  };
+
+  if (reviewDraft) {
+    return (
+      <div className="space-y-6 pb-16 font-sans animate-fade-in">
+        <TemplateReview
+          template={reviewDraft}
+          otherNames={aiCustomTemplates.filter(item => item.id !== reviewDraft.id).map(item => item.name)}
+          lang={lang}
+          onSave={saveReview}
+          onCancel={() => setReviewDraft(null)}
+        />
+      </div>
+    );
+  }
+
   // ---------------------------------------------------------------------------
   if (showSettings) {
     return (
       <div className="space-y-6 pb-16 font-sans animate-fade-in">
         <PageHeader
-          icon={<FileText className="h-6 w-6 text-indigo-600" />}
+          icon={<SectionIcon id="invoices" />}
           title={t("Price Offers", "Cenové ponuky", "Árajánlatok")}
           subtitle={t(
             "Defaults, connectors and templates for your price offers.",
@@ -491,9 +536,50 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           setDocuments={setInvoicesOffers}
           lang={lang}
           canEdit={canConfigure}
-          onBack={() => setShowSettings(false)}
+          onBack={() => { setResumeAiTab(false); setShowSettings(false); }}
+          onReview={template => { setResumeAiTab(true); setReviewDraft(template); }}
+          initialTab={resumeAiTab ? "ai" : "defaults"}
           onOpenCompanySettings={onOpenSettings}
           integrationsConfig={integrationsConfig}
+        />
+      </div>
+    );
+  }
+
+  // The editor replaces the list. Same treatment as offer settings: a view of
+  // its own, never a block sitting above the table.
+  if (canEdit && editorSession && (!editorSession.offerId || editingOffer)) {
+    return (
+      <div className="space-y-6 pb-16 font-sans animate-fade-in">
+        {confirmDialog}
+        <OfferEditor
+          key={editorSession.key}
+          lang={lang}
+          systemLanguage={systemLanguage}
+          mode={editorSession.mode}
+          initialTemplateId={editorSession.templateId}
+          existing={editingOffer}
+          leads={leads}
+          setLeads={setLeads}
+          warehouseItems={warehouseItems}
+          companyBillingSettings={companyBillingSettings}
+          aiCustomTemplates={aiCustomTemplates}
+          enabledProviders={enabledProviders}
+          invoicingIntegrations={invoicingIntegrations}
+          availableVatRates={availableVatRates}
+          priceLevels={priceLevels}
+          currency={currency}
+          currentUser={currentUser}
+          canEdit={canEdit}
+          canConfigure={canConfigure}
+          defaultStatus={defaultOfferStatus(offerStatuses)}
+          onOpenOfferSettings={openOfferSettings}
+          nextDocumentNumber={nextDocumentNumber}
+          saving={isExternalLoading}
+          saveError={externalError}
+          onIssue={handleSaveOffer}
+          onCancel={closeEditor}
+          onDirtyChange={setEditorDirty}
         />
       </div>
     );
@@ -506,7 +592,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
       {/* 1. SECTION HEADER & COMMAND BAR */}
       <PageHeader
-        icon={<FileText className="h-6 w-6 text-indigo-600" />}
+        icon={<SectionIcon id="invoices" />}
         title={t("Price Offers", "Cenové ponuky", "Árajánlatok")}
         subtitle={t(
               "Issue price offers linked to leads and warehouse stock. Invoices live in the Documents registry.",
@@ -575,39 +661,6 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
         </div>
       )}
 
-      {/* 2b. INLINE EDITOR — in the page flow, pushing the list down; never an overlay */}
-      {canEdit && editorSession && (!editorSession.offerId || editingOffer) && (
-        <OfferEditor
-          key={editorSession.key}
-          lang={lang}
-          systemLanguage={systemLanguage}
-          mode={editorSession.mode}
-          initialTemplateId={editorSession.templateId}
-          existing={editingOffer}
-          leads={leads}
-          setLeads={setLeads}
-          warehouseItems={warehouseItems}
-          companyBillingSettings={companyBillingSettings}
-          aiCustomTemplates={aiCustomTemplates}
-          enabledProviders={enabledProviders}
-          invoicingIntegrations={invoicingIntegrations}
-          availableVatRates={availableVatRates}
-          priceLevels={priceLevels}
-          currency={currency}
-          currentUser={currentUser}
-          canEdit={canEdit}
-          canConfigure={canConfigure}
-          defaultStatus={defaultOfferStatus(offerStatuses)}
-          onOpenOfferSettings={openOfferSettings}
-          nextDocumentNumber={nextDocumentNumber}
-          saving={isExternalLoading}
-          saveError={externalError}
-          onIssue={handleSaveOffer}
-          onCancel={closeEditor}
-          onDirtyChange={setEditorDirty}
-        />
-      )}
-
       {/* 3. KPI OVERVIEW */}
       <StatGrid count={4}>
         {[
@@ -634,8 +687,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                 : t("no decided offers yet", "zatiaľ žiadne uzavreté ponuky", "még nincs lezárt ajánlat")
           },
           {
-            icon: <FileText className="h-6 w-6" />,
-            tone: "bg-purple-50 text-purple-600",
+            icon: <SectionIcon id="invoices" className="h-6 w-6" />,
+            tone: "bg-emerald-50 text-emerald-600",
             label: t("Offers total", "Celkom ponúk", "Összes árajánlat"),
             value: String(metrics.totalCount)
           }
@@ -813,7 +866,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                   <td colSpan={7} className="p-12 text-center">
                     <div className="max-w-sm mx-auto space-y-2.5">
                       <div className="h-12 w-12 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
-                        <FileText className="h-6 w-6" />
+                        <SectionIcon id="invoices" className="h-6 w-6" />
                       </div>
                       <div className="font-bold text-slate-700 text-body">
                         {invoicesOffers.length === 0

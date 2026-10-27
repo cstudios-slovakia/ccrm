@@ -1,19 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowLeft, FileText, Lock, Plus, Save, Share2, Sparkles, Tag, Trash2 } from "lucide-react";
+import { ArrowLeft, FileText, Lock, Pencil, Plus, Save, Share2, Sparkles, Tag, Trash2 } from "lucide-react";
 import type { AiCustomTemplate, CompanyBillingSettings, ExternalInvoicingConfig, InvoiceOffer } from "../types";
 import type { OfferStatusDef } from "../utils/offerStatuses";
 import { OfferStatusSettings } from "./OfferStatusSettings";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
-import { InlineRenameName } from "./ui/InlineRenameName";
+import { InlineRenameName, type InlineRenameHandle } from "./ui/InlineRenameName";
 import { AiKeyBanner } from "./ui/AiKeyBanner";
 import { Tabs, type TabItem } from "./layout/Tabs";
 import { TemplateRenameDialog } from "./priceOffers/TemplateRenameDialog";
 import { translateAiApiError } from "../utils/aiConfig";
+import { normalizeOfferDocument } from "../utils/offerDocument";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { pickOfferDefaults, withOfferDefaults } from "../utils/offerDefaults";
 import type { OfferDefaults } from "../utils/offerDefaults";
+
+type SettingsTab = "defaults" | "accounting" | "ai" | "statuses";
 
 interface OfferSettingsProps {
   companyBillingSettings: CompanyBillingSettings | null | undefined;
@@ -34,10 +37,14 @@ interface OfferSettingsProps {
   /** False renders every field read-only; saving, uploading and deleting are hidden. */
   canEdit: boolean;
   onBack: () => void;
+  /** Opens the reconstruction review. Nothing is stored until that screen saves. */
+  onReview?: (template: AiCustomTemplate) => void;
   /** Opens Settings → Invoicing, where the company identity lives. */
   onOpenCompanySettings?: () => void;
   /** Integrations config, to tell whether the OpenAI key behind the template generator is set. */
   integrationsConfig?: unknown;
+  /** Which tab to open on. The review screen unmounts settings, so coming back can resume AI templates. */
+  initialTab?: SettingsTab;
 }
 
 /** The `success: false` body of /api/generate_pdf_template.php (vocabulary of utils/aiConfig.ts, plus pdf_* codes). */
@@ -46,8 +53,6 @@ interface GenerationFailure {
   message?: string;
   providerMessage?: string;
 }
-
-type SettingsTab = "defaults" | "accounting" | "ai" | "statuses";
 
 /** The largest sample PDF the generator takes; the server refuses anything bigger. */
 const MAX_SAMPLE_PDF_BYTES = 10 * 1024 * 1024;
@@ -73,6 +78,73 @@ type TestStatus = { success: boolean; message: string } | null;
 const inputClass = "w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 disabled:bg-slate-50 disabled:text-slate-500";
 const labelClass = "type-overline text-slate-600 block mb-1";
 
+/** Same icon button as the row actions on offers, leads and projects. */
+const templateActionClass = "p-2 rounded-xl text-slate-400 transition-all cursor-pointer";
+
+const AiTemplateCardHeader: React.FC<{
+  template: AiCustomTemplate;
+  canEdit: boolean;
+  lang: Language;
+  renameTitle: string;
+  description: string;
+  onRename: (next: string) => void;
+  onReview?: () => void;
+  onDelete?: () => void;
+}> = ({ template, canEdit, lang, renameTitle, description, onRename, onReview, onDelete }) => {
+  const renameRef = useRef<InlineRenameHandle>(null);
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <div className="font-bold text-ui text-slate-900 truncate">
+          <InlineRenameName
+            value={template.name}
+            canEdit={canEdit}
+            onCommit={onRename}
+            renameTitle={renameTitle}
+            hideButton
+            handleRef={renameRef}
+          >
+            <span data-testid="ai-template-name">{template.name}</span>
+          </InlineRenameName>
+        </div>
+        <div className="text-caption text-slate-500">{description}</div>
+      </div>
+      {canEdit && onDelete && (
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => renameRef.current?.startEdit()}
+            className={`${templateActionClass} hover:text-indigo-600 hover:bg-indigo-50`}
+            title={renameTitle}
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          {onReview && (
+            <button
+              type="button"
+              data-testid="ai-template-review"
+              onClick={onReview}
+              className={`${templateActionClass} hover:text-indigo-600 hover:bg-indigo-50`}
+              title={lang === "sk" ? "Skontrolovať šablónu" : lang === "hu" ? "Sablon áttekintése" : "Review template"}
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
+          )}
+          <HoldToConfirmButton
+            tone="danger"
+            lang={lang}
+            what={template.name}
+            onConfirm={onDelete}
+            className={`${templateActionClass} hover:text-rose-600 hover:bg-rose-50`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </HoldToConfirmButton>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /**
  * Settings of the Price offers module: the texts a new offer starts with, the
  * SuperFaktúra / iDoklad connectors offers can be issued through, and the AI
@@ -95,8 +167,10 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   lang,
   canEdit,
   onBack,
+  onReview,
   onOpenCompanySettings,
-  integrationsConfig
+  integrationsConfig,
+  initialTab = "defaults"
 }) => {
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
   const toast = (message: string, variant?: "error" | "warning") => {
@@ -117,7 +191,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   const [idkStatus, setIdkStatus] = useState<TestStatus>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const [pdfUploadStatus, setPdfUploadStatus] = useState<string | null>(null);
-  const [tab, setTab] = useState<SettingsTab>("defaults");
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   /** The template just generated, while the rename dialog is open. */
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -239,11 +313,8 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
       });
       const genData = await readJson(genRes, "/api/generate_pdf_template.php");
       if (genRes.ok && genData.success && genData.template) {
-        const generated = genData.template as AiCustomTemplate;
-        setAiCustomTemplates?.(prev => [generated, ...prev]);
         setPdfUploadStatus(null);
-        toast(t("AI Custom Template successfully generated and saved!", "Vlastná AI šablóna bola úspešne vygenerovaná a uložená!", "Egyedi AI sablon sikeresen létrehozva!"));
-        setRenaming({ id: generated.id, name: generated.name });
+        onReview?.(genData.template as AiCustomTemplate);
       } else {
         // Nothing is created on failure: a template that ignores the PDF is worse than an error.
         throw new Error(describeGenerationFailure(genData, genRes.status));
@@ -660,9 +731,9 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                 </h4>
                 <p className="text-ui text-slate-500 mt-0.5">
                   {t(
-                    "Upload a sample offer PDF (up to 10 MB). AI reads its colors, header, table, cards and wording from the pages and builds a template that looks like it — all mandatory fields guaranteed.",
-                    "Nahrajte ukážkové PDF cenovej ponuky (do 10 MB). AI z jeho strán prečíta farby, hlavičku, tabuľku, karty a formulácie a vytvorí šablónu, ktorá mu je podobná — s garanciou všetkých povinných údajov.",
-                    "Töltsön fel egy minta árajánlat-PDF-et (legfeljebb 10 MB). Az AI az oldalakról kiolvassa a színeket, a fejlécet, a táblázatot, a kártyákat és a szövegezést, és hasonló kinézetű sablont készít — minden kötelező adat garantálva."
+                    "Upload a sample offer PDF (up to 10 MB). A plain one-column quote comes out very close; a dense designed page needs a few corrections on the next screen.",
+                    "Nahrajte ukážkové PDF cenovej ponuky (do 10 MB). Jednoduchá jednosĺpcová ponuka vyjde veľmi blízko; hustá grafická stránka potrebuje na ďalšej obrazovke zopár opráv.",
+                    "Töltsön fel egy minta árajánlat-PDF-et (legfeljebb 10 MB). Egy egyszerű egyoszlopos árajánlat nagyon közel kerül; egy sűrű, tervezett oldal a következő képernyőn néhány javítást kér."
                   )}
                 </p>
               </div>
@@ -711,42 +782,29 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-4 pt-2">
                 {aiCustomTemplates.map(template => (
                   <div key={template.id} className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-bold text-ui text-slate-900 truncate">
-                          <InlineRenameName
-                            value={template.name}
-                            canEdit={canEdit && Boolean(setAiCustomTemplates)}
-                            onCommit={next => renameTemplate(template.id, next)}
-                            renameTitle={t("Rename template", "Premenovať šablónu", "Sablon átnevezése")}
-                          >
-                            <span data-testid="ai-template-name">{template.name}</span>
-                          </InlineRenameName>
-                        </div>
-                        <div className="text-caption text-slate-500">{template.description || t("AI-generated template", "AI vygenerovaná šablóna", "AI által generált sablon")}</div>
-                      </div>
-                      {canEdit && setAiCustomTemplates && (
-                        <HoldToConfirmButton
-                          tone="danger"
-                          lang={lang}
-                          what={template.name}
-                          onConfirm={() =>
-                            deleteRecordsWithUndo({
-                              collection: "aiCustomTemplates",
-                              allRecords: aiCustomTemplates,
-                              targets: [template],
-                              setRecords: setAiCustomTemplates,
-                              lang,
-                              entity: "template",
-                              titleOf: x => x.name,
-                            })
-                          }
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded-md"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </HoldToConfirmButton>
-                      )}
-                    </div>
+                    <AiTemplateCardHeader
+                      template={template}
+                      canEdit={canEdit && Boolean(setAiCustomTemplates)}
+                      lang={lang}
+                      renameTitle={t("Rename template", "Premenovať šablónu", "Sablon átnevezése")}
+                      description={template.description || t("AI-generated template", "AI vygenerovaná šablóna", "AI által generált sablon")}
+                      onRename={next => renameTemplate(template.id, next)}
+                      onReview={normalizeOfferDocument(template.document) ? () => onReview?.(template) : undefined}
+                      onDelete={
+                        setAiCustomTemplates
+                          ? () =>
+                              deleteRecordsWithUndo({
+                                collection: "aiCustomTemplates",
+                                allRecords: aiCustomTemplates,
+                                targets: [template],
+                                setRecords: setAiCustomTemplates,
+                                lang,
+                                entity: "template",
+                                titleOf: x => x.name,
+                              })
+                          : undefined
+                      }
+                    />
                     <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
                       <span className="type-overline text-slate-400">{t("Palette:", "Paleta:", "Paletta:")}</span>
                       <div className="flex items-center gap-1">

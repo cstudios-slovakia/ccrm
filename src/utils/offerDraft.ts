@@ -2,6 +2,7 @@ import type {
   CompanyBillingSettings, InvoiceOffer, InvoiceOfferItem, InvoiceOfferMode,
   Lead, UspCardItem, WarehouseItem
 } from "../types";
+import { normalizeCustomFieldValues } from "./offerDocument.ts";
 
 /**
  * The price offer editor works on one `InvoiceOffer`-shaped draft instead of a
@@ -263,6 +264,7 @@ function finalizeOffer(draft: InvoiceOffer, o: AssembleOptions, sampleClientName
   const orNull = (v?: string | null) => v?.trim() || null;
   const client = clientFields(o.lead, o.defaultCountry);
   const existing = o.existing;
+  const customFields = normalizeCustomFieldValues(draft.customFields);
   return {
     id: existing?.id || draft.id || o.fallbackId,
     documentNumber: existing?.documentNumber || draft.documentNumber || o.fallbackDocumentNumber,
@@ -293,6 +295,7 @@ function finalizeOffer(draft: InvoiceOffer, o: AssembleOptions, sampleClientName
     nextStepsNote: orNull(draft.nextStepsNote),
     closingNote: orNull(draft.closingNote),
     signOffTeam: orNull(draft.signOffTeam),
+    customFields: Object.keys(customFields).length ? customFields : null,
     customTemplateId: draft.mode === "custom" ? draft.customTemplateId || o.activeTemplateId || null : null,
     status: existing?.status || draft.status || "draft",
     // The issue date is editable on an existing offer too. Valid-until moves

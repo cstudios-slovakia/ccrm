@@ -10,6 +10,8 @@ import type {
 import type { Language } from "../../utils/translations";
 import { DefaultOfferTemplate } from "../pdf/DefaultOfferTemplate";
 import { CustomAiOfferTemplate } from "../pdf/CustomAiOfferTemplate";
+import { OfferBlockDocument } from "../pdf/OfferBlockDocument";
+import { normalizeOfferDocument } from "../../utils/offerDocument";
 import type { OfferEditing, OfferSectionAlert } from "../pdf/offerEditing";
 import { ClientSelect } from "../ui/ClientSelect";
 import { CustomSelect } from "../ui/CustomSelect";
@@ -71,7 +73,8 @@ interface OfferEditorProps {
 type EditorView = "edit" | "preview";
 
 /**
- * The inline price offer editor.
+ * The price offer editor. The list view swaps to this and back; the document
+ * is never stacked above the table.
  *
  * For the Standard and AI templates the editor *is* the document: the template
  * renders with every editable field in place, and Preview shows the very same
@@ -209,6 +212,10 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
   const activeTemplate = useMemo(
     () => aiCustomTemplates.find(tpl => tpl.id === draft.customTemplateId) || aiCustomTemplates[0] || null,
     [aiCustomTemplates, draft.customTemplateId]
+  );
+  const reconstructed = useMemo(
+    () => (mode === "custom" ? normalizeOfferDocument(activeTemplate?.document) : null),
+    [mode, activeTemplate]
   );
 
   const assembleOptions: AssembleOptions = {
@@ -494,7 +501,18 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
 
   // ----------------------------------------------------------------- render
   const documentFor = (offer: InvoiceOffer, withEditing: boolean) =>
-    mode === "custom" ? (
+    mode === "custom" && reconstructed && activeTemplate ? (
+      <OfferBlockDocument
+        offer={offer}
+        companySettings={companyBillingSettings}
+        template={activeTemplate}
+        document={reconstructed}
+        systemCurrency={currency}
+        language={lang}
+        editing={withEditing ? editing : undefined}
+        sectionAlert={sectionAlert}
+      />
+    ) : mode === "custom" ? (
       <CustomAiOfferTemplate
         offer={offer}
         companySettings={companyBillingSettings}

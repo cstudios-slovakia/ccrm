@@ -1,0 +1,49 @@
+{
+  "realistic": {
+    "name": "Strecha",
+    "description": "Ponuka",
+    "unplacedFields": ["company.iban"],
+    "customFields": [{ "key": "site_code", "label": "Kód stavby" }],
+    "blocks": [
+      {
+        "type": "columns",
+        "columns": [
+          [
+            {
+              "type": "field",
+              "fieldId": "company.name",
+              "label": "Firma",
+              "style": { "weight": "bold", "fontSize": "lg", "color": "#ABC", "background": "red", "align": "nope" }
+            },
+            { "type": "field", "fieldId": "company.email" }
+          ],
+          [
+            { "type": "field", "fieldId": "offer.clientName" },
+            { "type": "text", "text": "Dobrý deň, posielame ponuku." }
+          ]
+        ]
+      },
+      {
+        "type": "itemsTable",
+        "columns": ["name", "notes", "quantity", "unit", "unitPrice", "totalPrice"]
+      },
+      { "type": "totals", "subtotal": true, "vat": true, "total": true },
+      { "type": "customField", "key": "site_code", "label": "Kód stavby" }
+    ]
+  },
+  "hostile": {
+    "blocks": [
+      { "type": "text", "text": "Hello <b>there</b>", "style": "color:red" },
+      { "type": "nope" },
+      { "type": "field", "fieldId": "offer.nope" },
+      {
+        "type": "columns",
+        "columns": [
+          [{ "type": "text", "text": "left" }],
+          [{ "type": "columns", "columns": [[{ "type": "text", "text": "in" }], [{ "type": "text", "text": "nested" }]] }],
+          [{ "type": "text", "text": "right" }]
+        ]
+      }
+    ]
+  }
+}

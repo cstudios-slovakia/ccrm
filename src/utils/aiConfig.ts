@@ -116,6 +116,13 @@ export const translateAiApiError = (error: AiApiError, lang: Language): string =
         "OpenAI vrátil prázdnu odpoveď. Skúste generovanie zopakovať.",
         "Az OpenAI üres választ adott. Próbálja meg újra."
       );
+    case "ai_unusable":
+      return pick(
+        lang,
+        "The model did not return a usable document. Try generating it again.",
+        "Model nevrátil použiteľný dokument. Skúste generovanie zopakovať.",
+        "A modell nem adott használható dokumentumot. Próbálja meg újra."
+      );
     case "company_not_found":
       return pick(
         lang,
