@@ -60,6 +60,7 @@ found — not that nothing was checked.
 |---|---|---|
 | `npm run test:qa` | **Scoped** — only the tests covering what git says changed (see below) | seconds–minutes |
 | `npm run test:qa:full` | Everything, on purpose | ~30 min |
+| `npm run test:qa:pending` | The commits made with a `QA: pending` line, run in one batch | minutes |
 | `npm run test:qa:nav` | Shell navigation and header controls | ~1 min |
 | `npm run test:qa:crawler` | Per-module deep audit | minutes |
 | `npm run test:qa:recorder` | Chrome Recorder replays | ~1 min |
@@ -73,8 +74,8 @@ found — not that nothing was checked.
 | `npm run test:qa:typecheck` | Type-check the suite itself | seconds |
 
 **`npm run test:qa` is scoped, not full.** `scripts/qa/run-qa.mjs` diffs the
-working tree (and any unpushed commits) against `origin/<branch>` / `origin/dev`
-/ `origin/main`, maps changed files to the test titles that cover them, and runs
+working tree (and any unpushed commits) against the nearest of `origin/<branch>`
+/ `origin/main` / `origin/dev` (fewest commits ahead; `--since` overrides), maps changed files to the test titles that cover them, and runs
 only those. It prints the scope and the reason on every run. It escalates to a
 full run on its own only when the change touches real harness plumbing —
 `playwright.config.ts`, `scripts/qa/`, or the shared fixtures under
@@ -84,14 +85,29 @@ the suite-wide `crawler.spec.ts` / `darkmode.spec.ts` / `navigation.spec.ts` —
 scopes to that spec's own tests, so `--files tests/e2e/navigation.spec.ts`
 re-runs its 2 tests, not all 87.
 
+**A full run is never started by accident.** When the selection would be the
+full suite and neither `--full`, `QA_ALLOW_FULL=1` nor `CI` is set, the runner
+prints why (the forcing files and the base) and exits with code 3 without
+starting a browser. This covers `npm test` too. Agents pass `--files`.
+
+**Exit codes:** `0` passed or nothing to test, `1` defects or failed tests,
+`2` not admitted (lock, RAM or port wait timed out), `3` refused a full run.
+
+**`QA: pending`.** A session that cannot get a verdict (exit 2, a cut-off call,
+or "skip QA") commits with a `QA: pending` line in the message body.
+`npm run test:qa:pending` later runs, in one batch, the files of those commits
+since the last passing batch (a marker in the git common dir, shared by every
+worktree). Because a commit touching `scripts/qa/` forces the full suite, that
+batch then needs `QA_ALLOW_FULL=1 npm run test:qa:pending`.
+
 **Run `npm run test:qa:full` only when a human asks for it.** AI agents should
-default to plain `npm run test:qa` after finishing a change and never reach for
-`:full` on their own just to "be thorough" — that turns a routine change into a
+run `node scripts/qa/run-qa.mjs --files <files they changed>` after finishing a
+change and never reach for `:full` on their own just to "be thorough" — that turns a routine change into a
 ~30-minute run for no extra signal, since the scoped run already covers what
 changed. Ask the user first if you think a full run is warranted (e.g. a change
 whose blast radius the scoping table can't express).
 
-**In a shared worktree, name your files.** `npm run test:qa` diffs the *whole*
+**Agents: always name your files.** `npm run test:qa` diffs the *whole*
 working tree, so when several sessions edit the same checkout its scope is
 everyone's changes, not yours. `node scripts/qa/run-qa.mjs --files <your files>`
 (or `npm run test:qa:module <Module>`) keeps the run to what you touched.
@@ -116,7 +132,8 @@ time:
   includes the per-module crawler or dark-mode sweep)
   (`QA_GLOBAL_TIMEOUT_MS`). A run that needs longer is starved, not thorough.
 - It gives up after `QA_WAIT_MIN` minutes (default 30) with exit code 2 and
-  runs nothing, rather than start a run whose findings would be noise.
+  runs nothing, rather than start a run whose findings would be noise. Agents
+  set `QA_WAIT_MIN=10` and commit with `QA: pending` instead of waiting longer.
 
 When you see `Waiting:`, wait. Do not kill the other run, do not sweep
 processes by port, and do not take a different `QA_PORT` to squeeze in beside
@@ -134,6 +151,7 @@ runner kills its own process tree, so nothing is left behind to sweep.
 | `QA_GLOBAL_TIMEOUT_MS` | 15 min scoped, 45 min full | Ceiling on the whole run. |
 | `QA_MAX_CORES` | half the machine | Hard CPU ceiling; browsers are pinned to that many cores. `0` disables. |
 | `QA_VIDEO` | off | `QA_VIDEO=1` records video (one `ffmpeg` per worker). Traces already show failures. |
+| `QA_ALLOW_FULL` | off | `QA_ALLOW_FULL=1` lets a selection that is the full suite start (the deploy gate sets it; CI needs no switch). |
 | `QA_PORT` | `5273` | Port of the dev server the run starts. |
 | `QA_REUSE_SERVER` | off | `QA_REUSE_SERVER=1` reuses a server already on `QA_PORT` instead of starting one. |
 | `QA_KEEP_RUNS` | `10` | How many past run folders to keep on disk. |
@@ -460,13 +478,13 @@ icon card for any module whose image is missing.
 | Touched how `sync.php`/`api/*.php` stores or reads back a field | `npm run test:persistence` — GET-after-POST against the local Docker backend (see 5c) |
 | Touched the MCP gateway (`public/api/mcp*.php`) or a formula it ports | `npm run test:mcp` — roles, field stripping, TS↔PHP parity and write paths on a scratch database (see 5d) |
 | Touched permissions, `read_scope.php`, or who may read or write what on the server | `npm run test:rbac` - per-role read and write checks against a scratch database (see 5e) |
-| **Finished a feature or a fix** | **`npm run test:qa`** (scoped automatically) |
-| Several sessions share this checkout | `node scripts/qa/run-qa.mjs --files <your files>` — the automatic diff would scope to everyone's changes |
+| **Finished a feature or a fix** | **`QA_WAIT_MIN=10 node scripts/qa/run-qa.mjs --files <your files>`** — agents always pass `--files`; the automatic diff scopes to everyone's changes |
+| QA could not run (exit 2, cut off, told to skip) | commit with a `QA: pending` line; the batch is `npm run test:qa:pending` |
 | Another run is live (`Waiting:` printed) | nothing — it queues and starts when the other run ends |
 | Changed only pure logic in `src/utils` | `npm run test:unit` is enough; the scoped run adds only the shell tests |
 | You want everything run, on purpose | `npm run test:qa:full` — **ask the user first; don't default to this** |
-| About to deploy | automatic — `npm run deploy` gates on it (scoped) |
-| Opened a PR / pushed a branch | automatic — GitHub Actions runs it (scoped) |
+| About to deploy | automatic — `npm run deploy` gates on it (may run the full suite) |
+| Opened a PR / pushed to `main` | automatic — GitHub Actions runs it |
 
 ---
 
@@ -490,9 +508,13 @@ icon card for any module whose image is missing.
 
 ## 8. CI
 
-`.github/workflows/qa.yml` runs `npm run test:unit` and `npm run test:qa` on
-every push and pull request. It needs no secrets and no database — the backend
-is mocked.
+`.github/workflows/qa.yml` runs `npm run test:unit` and the QA audit on pull
+requests and on pushes to `main` (and by hand). It checks out full history and
+scopes the audit by event: a PR against `origin/<base branch>`, a push against
+the commit before it, and the full suite for a manual run or a push whose
+previous commit is unknown (first push, force-push). The full-run guard is off
+in CI, so a PR that touches the harness gets the full suite there. It needs no
+secrets and no database — the backend is mocked.
 
 CI runs **the same npm scripts you run locally**, so a red build reproduces with
 one command on your machine. The workflow also uploads `test-results/runs/` and

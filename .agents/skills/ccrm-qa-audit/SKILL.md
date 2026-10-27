@@ -20,18 +20,22 @@ This file is the deep reference: coverage ladder, categories, severity.
 
 ```powershell
 npm run test:qa:setup     # once per machine - downloads the Chromium build
-npm run test:qa           # only the tests covering what you changed
+node scripts/qa/run-qa.mjs --files <files you changed>   # only the tests covering them
 npm run test:qa:full      # the whole audit - ask for this on purpose
+npm run test:qa:pending   # batch run for commits made with a "QA: pending" line
 ```
 
-**`npm run test:qa` is scoped, not full.** It asks git what changed, maps those
+**A run is scoped, not full.** `npm run test:qa` asks git what changed (against
+the nearest of `origin/<branch>`, `origin/main`, `origin/dev`), maps those
 files to the tests covering them (`scripts/qa/run-qa.mjs`), and runs only those.
 Editing `EmailView.tsx` runs two tests instead of twenty-seven. Editing
 `App.tsx`, `src/utils/` or anything under `src/components/ui/` cannot be
 attributed to one module, so it runs the shell tests - navigation, header,
 recordings - rather than the whole crawler. Changing the harness
-itself (`tests/e2e/`, `playwright.config.ts`, `scripts/qa/`) escalates to a full
-run, since the code choosing the subset is the code that changed. Changing only
+itself (`tests/e2e/helpers/`, `playwright.config.ts`, `scripts/qa/`) escalates to
+a full run, since the code choosing the subset is the code that changed - but the
+runner then refuses with exit code 3 unless `--full`, `QA_ALLOW_FULL=1` or `CI`
+is set. Changing only
 PHP or docs runs nothing and starts no browser at all.
 
 A scoped run is a filter, never a verdict on the rest of the app. Before a
@@ -237,8 +241,9 @@ Two things to know when editing it:
 
 When asked to test the app, audit buttons, or check for UI errors:
 
-0. **Pick the scope deliberately, and say which you ran.** `npm run test:qa`
-   covers what changed and is the right answer for "does my change work?".
+0. **Pick the scope deliberately, and say which you ran.**
+   `node scripts/qa/run-qa.mjs --files <files you changed>` covers your change
+   and is the right answer for "does my change work?".
    `npm run test:qa:full` is for "is the whole app still fine?" — a release, a
    deploy, or an explicit request for a full audit.
 
@@ -248,7 +253,10 @@ When asked to test the app, audit buttons, or check for UI errors:
    start one unprompted after every change. If you think a full run is
    warranted and the user did not ask for one, say so and let them decide.
 
-1. Run `npm run test:qa` (add `npm run test:qa:setup` first if Chromium is missing).
+1. Run `QA_WAIT_MIN=10 node scripts/qa/run-qa.mjs --files <files you changed>`
+   (add `npm run test:qa:setup` first if Chromium is missing). Exit 2 (not
+   admitted) means commit with a `QA: pending` line instead of waiting; exit 3
+   means you forgot `--files`. See `.agents/rules/qa-before-ship.md`.
 2. Read `test-results/qa-audit-report.md` — start with the summary table.
    If this was a partial run, also read `qa-audit-report-latest-full.md`.
 3. For each defect, open the screenshot and trace the finding to the component in

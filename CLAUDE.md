@@ -22,7 +22,8 @@ audit, a dev server from another worktree.
 
 When asked to test the app, audit the UI, or verify a change:
 
-1. Run `npm run test:qa`.
+1. Run `node scripts/qa/run-qa.mjs --files <files you changed>` (never plain
+   `npm run test:qa`; a full run needs `--full` and is refused otherwise).
 2. Read `test-results/qa-audit-report.md` — summary table first. Every run is
    also saved whole in `test-results/runs/<timestamp>-<kind>/`.
 3. Report as **observed symptom → root cause → proposed fix**, grouped by root

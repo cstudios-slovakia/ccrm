@@ -232,7 +232,7 @@ Full guide: **[docs/TESTING.md](docs/TESTING.md)**.
 
 ```bash
 npm run test:qa:setup     # once per machine - downloads Chromium
-npm run test:qa           # audit the app in a real browser
+npm run test:qa           # audit the app in a real browser (scoped; a full run needs test:qa:full)
 npm run test:unit         # fast unit tests
 npm test                  # both
 ```
@@ -257,8 +257,8 @@ as the run ends; reopen it any time with `npm run test:qa:report`.
 
 **When to run it:** any time you like, and always when you finish a feature or
 a fix. It also runs automatically — `npm run deploy` refuses to ship if the
-audit finds a HIGH-severity defect, and GitHub Actions runs it on every push
-and pull request.
+audit finds a HIGH-severity defect, and GitHub Actions runs it on pull requests
+and on pushes to `main`.
 
 ## Development
 
