@@ -1,4 +1,5 @@
 import { PageHeader } from "./layout";
+import { SectionIcon } from "./icons/SectionIcon";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import {
@@ -1431,7 +1432,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     <div className="space-y-5 select-none animate-fade-in text-slate-800">
     {/* Module header (docs/VIEW-SIZE.md §6.2) */}
     <PageHeader
-      icon={<Mail className="text-pink-600" />}
+      icon={<SectionIcon id="email" />}
       title={t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
       subtitle={t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
       actions={

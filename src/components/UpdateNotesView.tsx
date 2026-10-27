@@ -1,6 +1,7 @@
 import { PageHeader } from "./layout";
+import { SectionIcon } from "./icons/SectionIcon";
 import React, { useState, useEffect } from "react";
-import { Sparkles, Calendar, Loader2 } from "lucide-react";
+import { Calendar, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
 import { fetchUpdateNotes, type UpdateEntry } from "../utils/updateNotes";
@@ -80,7 +81,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
     if (error || updates.length === 0) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-slate-200/80 shadow-xs">
-                <Sparkles className="h-10 w-10 text-slate-300" />
+                <SectionIcon id="updates" className="h-10 w-10" />
                 <h3 className="font-heading font-extrabold text-title-sm text-slate-700 mt-4">
                     {t(
                         "No updates found",
@@ -104,7 +105,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
         <div className="flex-1 flex flex-col gap-6 w-full">
             {/* Module header (docs/VIEW-SIZE.md §6.2) */}
             <PageHeader
-              icon={<Sparkles className="text-indigo-500" />}
+              icon={<SectionIcon id="updates" />}
               title={t("Product Updates & Releases", "Novinky a verzie systému", "Termékfrissítések és kiadások")}
               subtitle={t(
                 "Stay up to date with the latest features, enhancements, and bug fixes added to the platform.",

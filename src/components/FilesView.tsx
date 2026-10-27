@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { 
@@ -619,7 +620,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       
       {/* Title Header */}
       <PageHeader
-        icon={<FolderOpen className="h-6 w-6 text-amber-600" />}
+        icon={<SectionIcon id="files" />}
         title={getTranslation(systemLanguage, "files.title")}
         subtitle={getTranslation(systemLanguage, "files.subtitle")}
         actions={<>

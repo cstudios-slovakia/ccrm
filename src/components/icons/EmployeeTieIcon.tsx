@@ -5,13 +5,15 @@ interface EmployeeTieIconProps {
   size?: number;
   color?: string;
   style?: React.CSSProperties;
+  strokeWidth?: number;
 }
 
 export const EmployeeTieIcon: React.FC<EmployeeTieIconProps> = ({
   className = "w-5 h-5",
   size = 20,
   color,
-  style
+  style,
+  strokeWidth = 2,
 }) => {
   return (
     <svg
@@ -20,7 +22,7 @@ export const EmployeeTieIcon: React.FC<EmployeeTieIconProps> = ({
       viewBox="0 0 24 24"
       fill="none"
       stroke={color || "currentColor"}
-      strokeWidth="1.8"
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}

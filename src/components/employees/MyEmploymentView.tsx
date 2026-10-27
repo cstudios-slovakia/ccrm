@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { SECTION_VISUALS } from "../../utils/sectionVisuals";
 import {
   CalendarDays,
   Clock,
@@ -207,7 +208,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
   // ---- rendering ----------------------------------------------------------------------
   const header = embedded ? null : (
     <PageHeader
-      icon={<UserRound className="text-[#9e7638]" />}
+      icon={<UserRound style={{ color: SECTION_VISUALS.employees.color }} />}
       title={tr("myEmployment.title")}
       subtitle={tr("myEmployment.subtitle")}
     />

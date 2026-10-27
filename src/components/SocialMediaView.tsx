@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { createPortal } from "react-dom";
 import { 
   Share2, Calendar, BarChart3, List, Search, RefreshCw, 
@@ -1174,7 +1175,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
               paint its own glass hero bar with a gradient badge, which read as a
               second header competing with the app header above it. */}
           <PageHeader
-            icon={<Share2 className="h-6 w-6 text-rose-600" />}
+            icon={<SectionIcon id="social_media" />}
             title={t("Social Media Hub", "Správa sociálnych sietí", "Közösségi Média Hub")}
             subtitle={t(
                   "Multi-channel post manager, scheduled calendar & engagement analytics across 15+ networks.",

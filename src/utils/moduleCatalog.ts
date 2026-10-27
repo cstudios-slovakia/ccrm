@@ -27,6 +27,7 @@ import { SOCIAL_MEDIA_ENABLED } from "./featureFlags";
 import { isHomeDashboard } from "./dashboardWidgets";
 import { EmployeeTieIcon } from "../components/icons/EmployeeTieIcon";
 import { FlockIcon } from "../components/icons/FlockIcon";
+import { applySectionVisual } from "./sectionVisuals";
 
 /**
  * The one list of modules an admin can show or hide.
@@ -520,7 +521,7 @@ export function buildModuleCatalog(
     bgColor: "rgba(217, 119, 6, 0.12)",
   });
 
-  return list;
+  return list.map(applySectionVisual);
 }
 
 /**

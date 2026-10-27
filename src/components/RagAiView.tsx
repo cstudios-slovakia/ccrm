@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import {
-  Brain,
   Send,
   Sparkles,
   Database,
@@ -725,7 +725,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     <div className="space-y-6 select-none animate-fade-in text-slate-800">
       {/* Title Header */}
       <PageHeader
-        icon={<Brain className="h-6 w-6 text-purple-600" />}
+        icon={<SectionIcon id="rag_ai" />}
         title={t("Virtual Executive Team & RAG Suite", "Virtuálny tím vedenia & RAG AI", "Virtuális Vezetői Csapat és RAG AI")}
         subtitle={t(
               "OpenExecutive C-Suite architecture grounded in your live CRM records & episodic decisions",

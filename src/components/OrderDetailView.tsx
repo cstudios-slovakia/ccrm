@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
+import { SECTION_VISUALS } from "../utils/sectionVisuals";
 import { appliedPriceLevel, clientPriceLevelId, matchesItemQuery, packHint, resolveItemVatRate, resolveSellPrice, type PriceLevel } from "../utils/priceLevels";
 import {
-  ShoppingCart,
   Search,
   Plus,
   FileText,
@@ -464,8 +465,8 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
         onBack={onClose}
         backLabel={backLabel || t("Back to Orders", "Späť na objednávky", "Vissza a rendelésekhez")}
         avatar={
-          <div className="size-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-title shadow-md shrink-0">
-            <ShoppingCart className="size-6 text-white" />
+          <div className="size-12 rounded-2xl text-white flex items-center justify-center font-bold text-title shadow-md shrink-0" style={{ backgroundColor: SECTION_VISUALS.orders.color }}>
+            <SectionIcon id="orders" className="size-6" color="#ffffff" />
           </div>
         }
         title={

@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import type { PriceLevel } from "../utils/priceLevels";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
-  ShoppingCart,
   Search,
   Plus,
   Sliders,
@@ -688,7 +688,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     <div className="space-y-6 pb-16 font-sans animate-fade-in text-left">
       {/* 1. SECTION HEADER & COMMAND BAR */}
       <PageHeader
-        icon={<ShoppingCart className="h-6 w-6 text-indigo-600" />}
+        icon={<SectionIcon id="orders" />}
         title={t("Orders & Fulfillment", "Objednávky a expedícia", "Rendelések és kiszolgálás")}
         subtitle={t(
           "Manage customer orders, track fulfillment stages, warehouse dispatching and payments.",
@@ -732,8 +732,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       {/* 2. KPI OVERVIEW STRIP */}
       <StatGrid count={4}>
         <StatTile
-          icon={<ShoppingCart className="h-6 w-6" />}
-          tone="bg-indigo-50 text-indigo-600"
+          icon={<SectionIcon id="orders" className="h-6 w-6" />}
+          tone="bg-blue-50 text-blue-600"
           label={t("Total orders", "Všetky objednávky", "Összes rendelés")}
           value={String(stats.totalCount)}
           delta={
@@ -1097,7 +1097,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 <tr>
                   <td colSpan={8} className="p-12 text-center">
                     <EmptyState
-                      icon={<ShoppingCart className="h-10 w-10 text-slate-300" />}
+                      icon={<SectionIcon id="orders" className="h-10 w-10" />}
                       title={t("No orders found", "Žiadne objednávky sa nenašli", "Nem található rendelés")}
                       body={t(
                         "Create a new commercial or e-shop order to begin tracking fulfillment, deliveries and payments.",

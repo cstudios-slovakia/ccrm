@@ -18,6 +18,7 @@ import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { FlockIcon } from "./icons/FlockIcon";
 import { EmployeeTieIcon } from "./icons/EmployeeTieIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
+import { applySectionVisual } from "../utils/sectionVisuals";
 import { cn } from "../utils/cn";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
@@ -572,10 +573,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     });
 
     // Drop disabled modules and items the role may not open
-    return items.filter((item) => {
-      if (disabledModules.includes(item.id)) return false;
-      return canOpenRoute(item.id);
-    });
+    return items
+      .filter((item) => {
+        if (disabledModules.includes(item.id)) return false;
+        return canOpenRoute(item.id);
+      })
+      .map(applySectionVisual);
   }, [
     systemLanguage,
     customDashboards,

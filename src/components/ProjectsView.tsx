@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { createPortal } from "react-dom";
@@ -1694,7 +1695,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
       {/* Top Header Section */}
       <PageHeader
-        icon={<Briefcase className="h-6 w-6 text-purple-600" />}
+        icon={<SectionIcon id="projects" />}
         title={<>
           {t("Project Management", "Manažment projektov", "Projektmenedzsment")}
             {/* Read-only: the role can look at projects but not touch them. Said

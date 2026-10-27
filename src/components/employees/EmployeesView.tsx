@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { SectionIcon } from "../icons/SectionIcon";
 import {
   Users,
   Coins,
@@ -33,7 +34,6 @@ import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
 import { MyEmploymentView } from "./MyEmploymentView";
 import { PageHeader, Tabs, type TabItem } from "../layout";
-import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
 import { deleteRecordsWithUndo } from "../../utils/recordActions";
 import { asLang } from "../../utils/undoMessages";
 
@@ -402,7 +402,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
       {/* Module header: title first, then the sub-navigation (docs/VIEW-SIZE.md §6.1) */}
       {currentView !== "form" && (
         <PageHeader
-          icon={<EmployeeTieIcon className="size-6" color="#9e7638" />}
+          icon={<SectionIcon id="employees" />}
           title={t("People", "Ľudia", "Munkatársak")}
           subtitle={t(
             "Your employment, staff directory, payroll, time tracking & leave",

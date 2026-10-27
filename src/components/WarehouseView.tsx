@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
@@ -4859,7 +4860,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     <div className="space-y-6 pb-12">
       {/* 1. TOP HEADER & COMMAND BAR */}
       <PageHeader
-        icon={<Package className="h-6 w-6 text-blue-900" />}
+        icon={<SectionIcon id="warehouse" />}
         title={t("Warehouse & Inventory Management", "Skladové hospodárstvo a zásoby", "Raktár és készletgazdálkodás")}
         subtitle={t("Catalog, Multi-Warehouse balances, WAP costing & FEFO lot tracking", "Katalóg tovaru, stavy skladov, vážené nákupné ceny a exspirácie", "Termékkatalóg, raktárkészletek, WAP önköltség és FEFO tételkövetés")}
         actions={<>

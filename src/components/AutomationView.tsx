@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { 
   Play, Copy, Trash2, Plus, Settings, 
   GitFork, Brain, Database, Mail, 
@@ -1819,7 +1820,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
           own full-width white bar directly under the app header, which read as a
           second, competing header. */}
       <PageHeader
-        icon={<Workflow className="h-6 w-6 text-purple-600" />}
+        icon={<SectionIcon id="automation" />}
         title={t("Automations & Workflows", "Automatizácie a workflowy", "Automatizálás és munkafolyamatok")}
         subtitle={t(
               "Build event-driven triggers, branching logic and AI agents that run your CRM for you.",

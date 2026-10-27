@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { 
   Award, Compass, TrendingUp, Users, Target, PieChart, 
   BarChart3, MapPin, Coins, Globe, Crown, Medal, Flame, Trophy, Briefcase, X, Maximize2,
@@ -960,7 +961,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     <div className="space-y-8 select-none animate-fade-in text-slate-800 relative">
       {/* Title Header */}
       <PageHeader
-        icon={<BarChart3 className="h-6 w-6 text-indigo-600" />}
+        icon={<SectionIcon id="overview" />}
         title={getTranslation(systemLanguage, "header.title.dashboard")}
         subtitle={<>{systemName} &bull; {getTranslation(systemLanguage, "dashboard.subtitle")}</>}
         actions={<>

@@ -1,4 +1,6 @@
 import { StatGrid } from "../layout";
+import { SectionIcon } from "../icons/SectionIcon";
+import { SECTION_VISUALS } from "../../utils/sectionVisuals";
 import React, { useState, useMemo, useRef } from "react";
 import {
   Search,
@@ -26,7 +28,6 @@ import type {
   EmployeeSettings,
   EmployeeVacation
 } from "../../types";
-import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
 import { formatNumber } from "../../utils/currency";
 import { employeeKind, needsFullName, type EmployeeKind } from "../../utils/employeeIdentity";
 import { useUserPref } from "../../utils/userPrefs";
@@ -360,8 +361,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       {/* EMPTY STATE */}
       {filteredEmployees.length === 0 ? (
         <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center space-y-4">
-          <div className="w-16 h-16 rounded-3xl bg-[#c29b62]/15 text-[#9e7638] mx-auto flex items-center justify-center shadow-inner">
-            <EmployeeTieIcon className="w-8 h-8" color="#c29b62" />
+          <div className="w-16 h-16 rounded-3xl mx-auto flex items-center justify-center shadow-inner" style={{ backgroundColor: SECTION_VISUALS.employees.bg, color: SECTION_VISUALS.employees.color }}>
+            <SectionIcon id="employees" className="w-8 h-8" />
           </div>
           <div className="max-w-md mx-auto space-y-1.5">
             <h3 className="text-title-sm font-heading font-extrabold text-slate-900">

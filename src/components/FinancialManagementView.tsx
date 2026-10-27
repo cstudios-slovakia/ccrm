@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
+import { SectionIcon } from "./icons/SectionIcon";
 import { createPortal } from "react-dom";
 import {
   Coins, TrendingUp, TrendingDown,
@@ -5037,7 +5038,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     <div className="space-y-6 pb-16 font-sans">
       {/* 1. TOP HEADER & COMMAND BAR */}
       <PageHeader
-        icon={<Coins className="h-6 w-6 text-emerald-600" />}
+        icon={<SectionIcon id="financial" />}
         title={t("Financial Management & Revenue Control", "Finančný manažment a riadenie výnosov", "Pénzügyi menedzsment és bevételkezelés")}
         badge={<>
           {!canEdit && (
