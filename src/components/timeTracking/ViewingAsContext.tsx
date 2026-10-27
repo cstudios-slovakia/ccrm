@@ -45,7 +45,9 @@ const useStoreTick = (enabled: boolean) => {
     if (!enabled) return;
     const fn = () => setTick((n) => n + 1);
     listeners.add(fn);
-    return () => listeners.delete(fn);
+    return () => {
+      listeners.delete(fn);
+    };
   }, [enabled]);
 };
 
@@ -54,7 +56,9 @@ export function ViewingAsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const fn = () => setTick((n) => n + 1);
     listeners.add(fn);
-    return () => listeners.delete(fn);
+    return () => {
+      listeners.delete(fn);
+    };
   }, []);
   const value = useMemo(() => snapshot(), [tick]);
   return <ViewingAsContext.Provider value={value}>{children}</ViewingAsContext.Provider>;

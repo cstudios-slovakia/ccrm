@@ -18,7 +18,7 @@ import {
   Database 
 } from 'lucide-react';
 import FlockIcon from '../icons/FlockIcon';
-import { AI_MODEL_LUNA, upgradeSwarmModel } from '../../utils/aiModels';
+import { upgradeSwarmModel } from '../../utils/aiModels';
 import type { 
   SimulationParameters, 
   SwarmKnowledgeGraph, 

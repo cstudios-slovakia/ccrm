@@ -274,7 +274,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
       const node = document.elementFromPoint(x, y);
       return node?.closest("[data-cal-grid='hour']")?.getAttribute("data-cal-day") ?? null;
     };
-    const onMove = (e: PointerEvent) => {
+    const onMove = (e: globalThis.PointerEvent) => {
       const current = drag.current;
       if (!current || current.kind === "open") return;
       if (!current.moved && Math.hypot(e.clientX - current.originX, e.clientY - current.originY) < 4) return;
@@ -310,7 +310,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
       current.previewDay = day;
       setGhost({ kind: "entry", id: current.id!, day, span });
     };
-    const onUp = (e: PointerEvent) => {
+    const onUp = (e: globalThis.PointerEvent) => {
       const current = drag.current;
       if (!current) return;
       drag.current = null;

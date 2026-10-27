@@ -269,7 +269,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
           const seeCost = userId === (tt.userId || "") || tt.viewer.canCosts;
           const rateEntry = seeCost ? list.find((e) => "costRate" in e) : undefined;
           const costNumbers = list.map((e) => visibleEntryCost(e, tt.userId || "", tt.viewer.canCosts));
-          const cost = costNumbers.some((n) => n != null) ? costNumbers.reduce((sum, n) => sum + (n ?? 0), 0) : null;
+          const cost = costNumbers.some((n) => n != null) ? costNumbers.reduce((sum: number, n) => sum + (n ?? 0), 0) : null;
           const employee = deps.employees.find((e) => e.userId === userId);
           return (
             <Surface key={userId} padding="none" className="overflow-hidden">
