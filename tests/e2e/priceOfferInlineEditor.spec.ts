@@ -45,7 +45,7 @@ const COMPANY = {
 };
 
 /** A template stored before the layout variants existed: no `layout`, so it keeps its original look. */
-const template = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+const template = (id: string, name: string, extra: Record<string, unknown> = {}): Record<string, any> => ({
   id,
   name,
   colors: { primary: '#1e3a8a', secondary: '#2563eb', background: '#ffffff', accent: '#3b82f6', text: '#111827' },
