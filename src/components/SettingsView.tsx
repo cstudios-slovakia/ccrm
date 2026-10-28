@@ -2139,8 +2139,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return resolveRolePermissions(role);
   };
 
+  // Other people's accounts and the role registry are Admin-only on the server.
+  // pm_managers opens these two screens; it must not be able to write them,
+  // because writing them includes assigning the Admin role.
+  const canAdministerUsers = isAdminRoleName(currentUser?.role);
   const matrixLocked = (roleName: string) =>
-    isAdminRoleName(roleName) || getPermission("pm_managers") !== "edit";
+    isAdminRoleName(roleName) || !canAdministerUsers;
 
   const renderAccessCell = (roleName: string, key: string) => {
     const currentValue = resolvedForRole(roleName)[key] || "nothing";
@@ -2552,7 +2556,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Add/Remove Users logic
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     const nameVal = newManager.trim();
     const emailVal = newUserEmail.trim();
     const pwdVal = newUserPassword.trim();
@@ -2608,7 +2612,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleRemoveUser = (name: string) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     const target = users.find(u => u.name.toLowerCase() === name.toLowerCase());
     const adminCount = users.filter(u => (u.role || "").toLowerCase() === "admin").length;
     if (target && (target.role || "").toLowerCase() === "admin" && adminCount <= 1) {
@@ -2658,6 +2662,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleUpdateUser = (updated: UserProfile) => {
+    if (!canAdministerUsers) return;
     // Match on the identity the record had before this edit — matching on
     // updated.email loses the change whenever the email itself is what changed.
     const previousEmail = selectedUser?.email ?? updated.email;
@@ -2668,7 +2673,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Add Role logic
   const handleAddRole = (e: React.FormEvent) => {
     e.preventDefault();
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     const nameVal = newRoleName.trim();
     if (!nameVal) return;
     if (roles.some(r => r.name.toLowerCase() === nameVal.toLowerCase())) {
@@ -2692,7 +2697,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleRemoveRole = (roleName: string) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     if (isProtectedRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk" 
@@ -2728,7 +2733,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   // The server saves the role registry for Admin only, so the reset is Admin-only as well.
-  const canResetEmployeeRole = isAdminRoleName(currentUser?.role);
+  const canResetEmployeeRole = canAdministerUsers;
   const resetEmployeeRole = () => {
     if (!canResetEmployeeRole) return;
     if (!window.confirm(formatTranslation(userLanguage, "settings.rbac.reset_defaults_confirm", { role: EMPLOYEE_ROLE_NAME }))) return;
@@ -2737,7 +2742,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const updateRolePermission = (roleName: string, key: string, value: PermissionValue) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     if (isAdminRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk" 
@@ -2752,7 +2757,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const updateRoleSection = (roleName: string, section: PermissionSection, granted: boolean) => {
-    if (getPermission("pm_managers") !== "edit") return;
+    if (!canAdministerUsers) return;
     if (isAdminRoleName(roleName)) {
       (window as any).showToast(
         userLanguage === "sk"
@@ -2867,8 +2872,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     .filter(tab => getPermission(tab.permKey) !== "nothing")
     .filter(tab => !ADMIN_ONLY_TABS.has(tab.id) || isAdminRoleName(currentUser?.role));
   // Read-only alert component
-  const renderReadOnlyBanner = (permKey: string) => {
-    const isReadOnly = getPermission(permKey) === "view";
+  const renderReadOnlyBanner = (permKey: string, force = false) => {
+    const isReadOnly = force || getPermission(permKey) === "view";
     if (!isReadOnly) return null;
     return (
       <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2 mb-6 shadow-sm">
@@ -4120,7 +4125,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* TAB 2: Users & Managers Directory */}
         {activeSubTab === "managers" && getPermission("pm_managers") !== "nothing" && (
           <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("pm_managers")}
+            {renderReadOnlyBanner("pm_managers", !canAdministerUsers)}
             
             {!selectedUser ? (
               <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass animate-in fade-in duration-200">
@@ -4215,7 +4220,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               >
                                 <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
                               </button>
-                              {getPermission("pm_managers") === "edit" && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
+                              {canAdministerUsers && u.name.toLowerCase() !== currentUser.name.toLowerCase() && (
                                 <HoldToConfirmButton
                                     tone="danger"
                                     lang={userLanguage}
@@ -4282,7 +4287,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
                           <input
                             type="text"
-                            disabled={getPermission("pm_managers") === "view"}
+                            disabled={!canAdministerUsers}
                             value={selectedUser.name}
                             onChange={(e) => {
                               const updated = { ...selectedUser, name: e.target.value };
@@ -4297,7 +4302,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
                           <input
                             type="email"
-                            disabled={getPermission("pm_managers") === "view"}
+                            disabled={!canAdministerUsers}
                             value={selectedUser.email}
                             onChange={(e) => {
                               const updated = { ...selectedUser, email: e.target.value };
@@ -4313,7 +4318,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <input
                             type="text"
                             placeholder={getTranslation(userLanguage, "settings.managers.placeholder_password")}
-                            disabled={getPermission("pm_managers") === "view"}
+                            disabled={!canAdministerUsers}
                             value={selectedUser.password || ""}
                             onChange={(e) => {
                               const updated = { ...selectedUser, password: e.target.value };
@@ -4326,7 +4331,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {/* Security Access Level Role */}
                         <div className="space-y-1">
                           <label className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
-                          {getPermission("pm_managers") === "edit" ? (
+                          {canAdministerUsers ? (
                             <CustomSelect
                               value={selectedUser.role}
                               onChange={(v) => {
@@ -4360,7 +4365,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <button
                                   key={colorPreset}
                                   type="button"
-                                  disabled={getPermission("pm_managers") === "view"}
+                                  disabled={!canAdministerUsers}
                                   onClick={() => {
                                     const updated = { ...selectedUser, color: colorPreset };
                                     handleUpdateUser(updated);
@@ -4376,7 +4381,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             })}
 
                             {/* More colours: full palette + the browser's custom picker */}
-                            {getPermission("pm_managers") === "edit" && (
+                            {canAdministerUsers && (
                               <ColorPicker
                                 variant="palette"
                                 value={selectedUser.color}
@@ -4460,7 +4465,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
 
                     {/* SIMULATION FORM */}
-                    {getPermission("pm_managers") === "edit" && (
+                    {canAdministerUsers && (
                       <form 
                         onSubmit={(e) => {
                           e.preventDefault();
@@ -4516,7 +4521,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
             {/* Add User form - Gated to edit access */}
-            {!selectedUser && getPermission("pm_managers") === "edit" && (
+            {!selectedUser && canAdministerUsers && (
                 <form onSubmit={handleAddUser} className="p-5 border border-slate-200/80 bg-slate-50/50 rounded-2xl space-y-4 max-w-2xl mt-8">
                   <h4 className="text-ui font-bold text-slate-700 flex items-center gap-1">
                     <Plus className="h-4 w-4" /> {getTranslation(userLanguage, "settings.managers.form_title")}
@@ -4584,7 +4589,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* TAB 3: Roles & RBAC Matrix Editor */}
         {activeSubTab === "rbac" && getPermission("pm_managers") !== "nothing" && (
           <div className="ws-lg:col-span-12 space-y-6">
-            {renderReadOnlyBanner("pm_managers")}
+            {renderReadOnlyBanner("pm_managers", !canAdministerUsers)}
 
             <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
               <div className="border-b border-slate-200 pb-3 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-3">
@@ -4636,7 +4641,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               
                               {/* Delete action for custom roles */}
                               {!isAdmin && !isProtectedRoleName(role.name) && (
-                                getPermission("pm_managers") === "edit" ? (
+                                canAdministerUsers ? (
                                   <HoldToConfirmButton
                                       tone="danger"
                                       lang={userLanguage}
@@ -4669,7 +4674,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               )}
 
                               {/* Navigation layout upload button */}
-                              {getPermission("pm_managers") === "edit" && (
+                              {canAdministerUsers && (
                                 <div className="mt-2">
                                   <button
                                     type="button"
@@ -4738,7 +4743,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               {/* Add Custom Role - Gated */}
-              {getPermission("pm_managers") === "edit" && (
+              {canAdministerUsers && (
                 <form onSubmit={handleAddRole} className="p-5 border border-slate-200/85 bg-slate-50/50 rounded-2xl flex flex-col ws-sm:flex-row items-end gap-3 max-w-xl mt-6">
                   <div className="flex-1 space-y-1 w-full">
                     <label className="type-overline text-slate-400 block pl-0.5">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>

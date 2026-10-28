@@ -29,9 +29,9 @@ const TARGET = process.env.DEPLOY_TARGET || "main";
 const SKIP_MAIN = process.env.DEPLOY_SKIP_MAIN === "1";
 const SKIP_QA = process.env.DEPLOY_SKIP_QA === "1";
 
-function run(cmd) {
+function run(cmd, env) {
   console.log(`\n$ ${cmd}`);
-  execSync(cmd, { stdio: "inherit" });
+  execSync(cmd, { stdio: "inherit", ...(env && { env }) });
 }
 function capture(cmd) {
   return execSync(cmd, { encoding: "utf8" }).trim();
@@ -56,7 +56,8 @@ if (SKIP_QA) {
   console.log("\nRunning the test gate before shipping (DEPLOY_SKIP_QA=1 to skip).");
   try {
     run("npm run test:unit");
-    run("npm run test:qa");
+    console.log("The gate may run the FULL QA suite (QA_ALLOW_FULL=1) - shipping is where that is legitimate.");
+    run("npm run test:qa", { ...process.env, QA_ALLOW_FULL: "1" });
   } catch {
     console.error(
       "\nDeploy aborted: the tests failed. Nothing was built, committed or pushed.\n" +

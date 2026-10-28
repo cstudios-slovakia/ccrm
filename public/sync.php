@@ -1345,6 +1345,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         isset($settings['INVOICE_STATUSES']) ? json_decode($settings['INVOICE_STATUSES'], true) : null,
         ccrm_default_invoice_status_defs()
     );
+    // Order statuses (Settings → Orders). Null when never stored: the client
+    // turns that into the built-in list, the same way a missing offer list does
+    // on the server. An array is returned as stored and normalized client-side.
+    $orderStatuses = isset($settings['ORDER_STATUSES']) ? json_decode($settings['ORDER_STATUSES'], true) : null;
+    if (!is_array($orderStatuses)) {
+        $orderStatuses = null;
+    }
     // Settings → Tasks. Normalized on the way out for the same reason.
     $taskSettings = ccrm_normalize_task_settings(
         isset($settings['TASK_SETTINGS']) ? json_decode($settings['TASK_SETTINGS'], true) : null
@@ -1378,13 +1385,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $invoicingIntegrations = ccrm_mask_invoicing_secrets($invoicingIntegrations);
     }
 
-    // Ticket workflow configuration (statuses, mailbox, canned replies) is part of
-    // the ticket module: withheld as null, which the client reads as "use defaults".
-    $ticketStatuses = ($canTickets && isset($settings['TICKET_STATUSES'])) ? json_decode($settings['TICKET_STATUSES'], true) : null;
+    // Ticket workflow configuration (statuses, mailbox, canned replies) is edited
+    // on Settings → Tickets, which general_config opens, and it is also part of
+    // the ticket module. Withheld from everyone else: null is what the client
+    // reads as "use defaults", and a settings save would then write those
+    // defaults over the real configuration.
+    $canSeeTicketConfig = $canTickets || ccrm_can($scope, 'general_config');
+    $ticketStatuses = ($canSeeTicketConfig && isset($settings['TICKET_STATUSES'])) ? json_decode($settings['TICKET_STATUSES'], true) : null;
     if (!is_array($ticketStatuses)) {
         $ticketStatuses = null;
     }
-    $ticketSettings = ($canTickets && isset($settings['TICKET_SETTINGS'])) ? json_decode($settings['TICKET_SETTINGS'], true) : null;
+    $ticketSettings = ($canSeeTicketConfig && isset($settings['TICKET_SETTINGS'])) ? json_decode($settings['TICKET_SETTINGS'], true) : null;
     if (is_array($ticketSettings)) {
         $ticketSettings = ccrm_decrypt_config_secrets($ticketSettings, ['imapPassword', 'openAiKey']);
         $ticketSettings = ccrm_mask_secrets($ticketSettings, ['imapPassword', 'openAiKey']);
@@ -2114,6 +2125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'sectionsOrder' => json_decode($row['sections_order_json'] ?? '[]', true),
                     'customBannerText' => $row['custom_banner_text'],
                     'badgeStyle' => $row['badge_style'] ?? 'rounded',
+                    // NULL for a template generated before the variants existed.
+                    'layout' => isset($row['layout_json']) && $row['layout_json'] !== '' ? json_decode($row['layout_json'], true) : null,
                     'createdAt' => $row['created_at'],
                 ];
             }
@@ -2772,6 +2785,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'projectStatuses' => $projectStatuses,
             'offerStatuses' => $offerStatuses,
             'invoiceStatuses' => $invoiceStatuses,
+            'orderStatuses' => $orderStatuses,
             'priceLevels' => $priceLevels,
             'ticketStatuses' => $ticketStatuses,
             'ticketSettings' => $ticketSettings,
@@ -3166,21 +3180,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTicketSettings = ($existingTicketSettingsRaw !== false && $existingTicketSettingsRaw !== null) ? json_decode($existingTicketSettingsRaw, true) : [];
             if (!is_array($existingTicketSettings)) { $existingTicketSettings = []; }
             $ticketSettingsValue = ($existingTicketSettingsRaw !== false && $existingTicketSettingsRaw !== null) ? $existingTicketSettingsRaw : null;
-            if ($canEditTickets && array_key_exists('ticketSettings', $s) && is_array($s['ticketSettings'])) {
+            // Settings → Tickets is gated on general_config. $canEditTickets stays
+            // on the ticket columns that ride along on projects, leads and tasks,
+            // so a project save cannot overwrite a mailbox the caller never saw.
+            $canWriteTicketSettings = $canSettingsGeneral || $canEditTickets;
+            if ($canWriteTicketSettings && array_key_exists('ticketSettings', $s) && is_array($s['ticketSettings'])) {
                 $mergedTicketSettings = ccrm_merge_secrets($s['ticketSettings'], $existingTicketSettings, ['imapPassword', 'openAiKey']);
                 $mergedTicketSettings = ccrm_encrypt_config_secrets($mergedTicketSettings, ['imapPassword', 'openAiKey']);
                 $ticketSettingsValue = json_encode($mergedTicketSettings, JSON_UNESCAPED_UNICODE);
             }
 
             $settingsList = [
-                'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
-                'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
-                'SYSTEM_CURRENCY' => $s['systemCurrency'] ?? '',
-                'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
-                'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
-                'LEAD_CATEGORIES' => json_encode($s['leadCategories'] ?? []),
-                'DIVISIONS' => json_encode($s['divisions'] ?? []),
-                'DIVISION_COLORS' => json_encode($s['divisionColors'] ?? []),
+                // Every list and map below follows one contract: a key the client
+                // did not send means unchanged (null is skipped further down). It
+                // used to fall back to `[]` / a default, so any save that merely
+                // lacked a list (a script, an old tab, an API client) emptied the
+                // pipeline stages, sources and categories for everyone.
+                'SYSTEM_NAME' => isset($s['systemName']) && is_string($s['systemName']) && $s['systemName'] !== '' ? $s['systemName'] : null,
+                'SYSTEM_LANGUAGE' => isset($s['systemLanguage']) && is_string($s['systemLanguage']) && $s['systemLanguage'] !== '' ? $s['systemLanguage'] : null,
+                'SYSTEM_CURRENCY' => isset($s['systemCurrency']) && is_string($s['systemCurrency']) ? $s['systemCurrency'] : null,
+                // The stage list also never saves empty: a lead has to sit in some
+                // stage, and an empty list hides every lead from the pipeline.
+                'LEAD_STATES' => ccrm_settings_list_value($s, 'leadStates', false),
+                'LEAD_SOURCES' => ccrm_settings_list_value($s, 'leadSources', true),
+                'LEAD_CATEGORIES' => ccrm_settings_list_value($s, 'leadCategories', true),
+                'DIVISIONS' => ccrm_settings_list_value($s, 'divisions', true),
+                'DIVISION_COLORS' => ccrm_settings_list_value($s, 'divisionColors', true),
                 // Omitted (or empty) means unchanged, the same contract as the
                 // SLA and auto-assignment blobs below: a client that predates
                 // permanent ids must not be able to wipe the map and send every
@@ -3191,12 +3216,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_CATEGORY_IDS' => !empty($s['leadCategoryIds']) && is_array($s['leadCategoryIds'])
                     ? json_encode(ccrm_normalize_list_ids($s['leadCategories'] ?? [], $s['leadCategoryIds']), JSON_UNESCAPED_UNICODE)
                     : null,
-                'LEAD_STATE_COLORS' => json_encode($s['leadStateColors'] ?? []),
-                'LEAD_SOURCE_COLORS' => json_encode($s['leadSourceColors'] ?? []),
-                'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
-                'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
-                'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
-                'LEAD_STATE_FOLLOWUP' => json_encode($s['leadStateFollowUp'] ?? (object)[]),
+                'LEAD_STATE_COLORS' => ccrm_settings_list_value($s, 'leadStateColors', true),
+                'LEAD_SOURCE_COLORS' => ccrm_settings_list_value($s, 'leadSourceColors', true),
+                'LEAD_CATEGORY_COLORS' => ccrm_settings_list_value($s, 'leadCategoryColors', true),
+                'LEAD_STAGE_GROUPS' => ccrm_settings_list_value($s, 'leadStageGroups', true),
+                'LEAD_STATE_PARENTS' => ccrm_settings_list_value($s, 'leadStateParents', true),
+                'LEAD_STATE_FOLLOWUP' => ccrm_settings_list_value($s, 'leadStateFollowUp', true),
                 // Omitted means unchanged (null is skipped below), the same
                 // contract as the auto-assignment settings underneath: a client
                 // that knows nothing about SLA limits must not clear everyone
@@ -3229,8 +3254,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             )
                     ))
                     : null,
-                'TASK_STATES' => json_encode($s['taskStates'] ?? []),
-                'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
+                'TASK_STATES' => ccrm_settings_list_value($s, 'taskStates', false),
+                'TASK_STATE_COLORS' => ccrm_settings_list_value($s, 'taskStateColors', true),
                 // Omitted means unchanged: a client that predates Settings → Tasks
                 // must not switch the option off for everyone by saving an
                 // unrelated setting.
@@ -3253,7 +3278,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'INVOICE_STATUSES' => isset($s['invoiceStatuses']) && is_array($s['invoiceStatuses'])
                     ? json_encode(ccrm_normalize_offer_statuses($s['invoiceStatuses'], ccrm_default_invoice_status_defs()), JSON_UNESCAPED_UNICODE)
                     : null,
-                'TICKET_STATUSES' => $canEditTickets && isset($s['ticketStatuses']) && is_array($s['ticketStatuses'])
+                // Same contract as OFFER_STATUSES: omitted means unchanged. The
+                // client normalizes the list; the server only has to keep it.
+                'ORDER_STATUSES' => isset($s['orderStatuses']) && is_array($s['orderStatuses'])
+                    ? json_encode(array_values($s['orderStatuses']), JSON_UNESCAPED_UNICODE)
+                    : null,
+                'TICKET_STATUSES' => $canWriteTicketSettings && isset($s['ticketStatuses']) && is_array($s['ticketStatuses'])
                     ? json_encode(array_values($s['ticketStatuses']), JSON_UNESCAPED_UNICODE)
                     : null,
                 'TICKET_SETTINGS' => $ticketSettingsValue,
@@ -3275,7 +3305,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
                     'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
-                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'INVOICE_STATUSES', 'PRICE_LEVELS', 'TASK_SETTINGS',
+                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'INVOICE_STATUSES', 'ORDER_STATUSES', 'PRICE_LEVELS', 'TASK_SETTINGS',
                     'TICKET_STATUSES', 'TICKET_SETTINGS',
                 ]);
             }
@@ -3348,6 +3378,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // same class of bug ccrm_delete_omitted guards against for DB rows, but
         // this blob had no such guard. Refuse to replace a non-empty registry
         // with an empty one.
+        // A non-admin push echoes the roles they were shown. Writing them is
+        // Admin-only (a pm_managers editor could otherwise assign Admin). When
+        // the echo actually differs from the registry, say so — a silent skip
+        // advances the client's baseline and the new role vanishes on reload.
+        if (!$isAdmin && isset($payload['roles']) && is_array($payload['roles']) && $payload['roles']) {
+            $storedRolesRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC'")->fetchColumn();
+            $storedRoles = ($storedRolesRaw !== false && $storedRolesRaw !== null && $storedRolesRaw !== '')
+                ? json_decode($storedRolesRaw, true) : null;
+            if (!is_array($storedRoles) || !$storedRoles) {
+                $storedRoles = ccrm_fallback_roles();
+            }
+            $roleSig = function (array $role): string {
+                $perms = (isset($role['permissions']) && is_array($role['permissions'])) ? $role['permissions'] : [];
+                ksort($perms);
+                $layout = (isset($role['defaultNavLayout']) && is_array($role['defaultNavLayout']))
+                    ? array_values($role['defaultNavLayout']) : [];
+                return json_encode([
+                    strtolower(trim((string)($role['name'] ?? ''))),
+                    $perms,
+                    $layout,
+                ], JSON_UNESCAPED_UNICODE);
+            };
+            $storedByName = [];
+            foreach ($storedRoles as $er) {
+                if (is_array($er) && !empty($er['name'])) {
+                    $storedByName[strtolower(trim((string)$er['name']))] = $roleSig($er);
+                }
+            }
+            $incomingNames = [];
+            $rolesDiffer = false;
+            foreach ($payload['roles'] as $r) {
+                if (!is_array($r) || empty($r['name'])) continue;
+                $key = strtolower(trim((string)$r['name']));
+                $incomingNames[$key] = true;
+                if (!isset($storedByName[$key]) || $storedByName[$key] !== $roleSig($r)) {
+                    $rolesDiffer = true;
+                    break;
+                }
+            }
+            // Only someone who was shown the whole registry can be deleting a
+            // role by leaving it out. Everyone else was handed their own role.
+            if (!$rolesDiffer && ccrm_can($scope, 'pm_managers')) {
+                foreach ($storedByName as $key => $_) {
+                    if (!isset($incomingNames[$key])) {
+                        $rolesDiffer = true;
+                        break;
+                    }
+                }
+            }
+            if ($rolesDiffer) {
+                $ccrm_note_out_of_scope('roles');
+            }
+        }
         if ($isAdmin && isset($payload['roles']) && is_array($payload['roles'])) {
             $existingRolesRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'ROLES_RBAC'")->fetchColumn();
             $existingRolesCount = 0;
@@ -3427,6 +3510,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $existingRoles[$r['id']] = $r['role'];
             }
 
+            // A colleague's row in a non-admin push is refused below. Tag it only
+            // when the fields the users screen edits actually differ — a v1
+            // client sends every account on every save, and an unchanged echo
+            // is not lost work.
+            $roleRegistryForUsers = $isAdmin ? [] : ccrm_load_roles($pdo);
+            $userPushDiffers = function (array $stored, array $incoming) use ($roleRegistryForUsers, $existingHashes): bool {
+                if (trim((string)($incoming['name'] ?? '')) !== trim((string)($stored['name'] ?? ''))) return true;
+                if (strtolower(trim((string)($incoming['email'] ?? ''))) !== strtolower(trim((string)($stored['email'] ?? '')))) return true;
+                $wantRole = ccrm_canonical_role_name($roleRegistryForUsers, (string)($incoming['role'] ?? ''));
+                $haveRole = ccrm_canonical_role_name($roleRegistryForUsers, (string)($stored['role'] ?? ''));
+                if ($wantRole !== $haveRole) return true;
+                if (array_key_exists('color', $incoming)) {
+                    $haveColor = (string)($stored['color'] ?? '');
+                    if ($haveColor === '') $haveColor = '#3b82f6';
+                    if ((string)($incoming['color'] ?? '#3b82f6') !== $haveColor) return true;
+                }
+                if (array_key_exists('avatar', $incoming)
+                    && (string)($incoming['avatar'] ?? '') !== (string)($stored['avatar'] ?? '')) return true;
+                $pwd = isset($incoming['password']) ? trim((string)$incoming['password']) : '';
+                if ($pwd !== '' && !ccrm_is_hash($pwd)) {
+                    $hash = (string)($existingHashes[$stored['id']] ?? '');
+                    if ($hash === '' || !password_verify($pwd, $hash)) return true;
+                }
+                if (array_key_exists('activityLog', $incoming) && is_array($incoming['activityLog'])) {
+                    $meta = json_decode((string)($stored['metadata_json'] ?? ''), true);
+                    $storedLog = (is_array($meta) && isset($meta['activityLog']) && is_array($meta['activityLog']))
+                        ? array_values($meta['activityLog']) : [];
+                    if (json_encode(array_values($incoming['activityLog']), JSON_UNESCAPED_UNICODE) !== json_encode($storedLog, JSON_UNESCAPED_UNICODE)) return true;
+                }
+                return false;
+            };
+
             $existingUserIds = array_keys($existingHashes);
             $processedUserIds = [];
 
@@ -3488,6 +3603,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // SECURITY: a non-admin may only modify their OWN record and can
                 // never change their role (prevents self-promotion to admin).
                 if (!$isAdmin && !$isSelf) {
+                    if ($existingRecord === null || $userPushDiffers($existingRecord, $u)) {
+                        $ccrm_note_out_of_scope('users');
+                    }
                     continue;
                 }
                 if ($isAdmin) {
@@ -3636,6 +3754,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ccrm_remember_revoke_user($pdo, (string)$delUid);
                     }
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
+                }
+            } elseif ($isDeltaSync) {
+                $refusedUserDeletes = array_diff($deletionsFor('users', $existingUserIds), [$sessionUser['id']]);
+                if ($refusedUserDeletes) {
+                    $ccrm_note_out_of_scope('users:delete');
                 }
             }
         }
@@ -5656,14 +5779,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insAct = $pdo->prepare("INSERT INTO `ai_custom_templates` (
                 `id`, `name`, `description`, `source_pdf_url`, `source_pdf_name`,
-                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`, `layout_json`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `description` = VALUES(`description`),
                 `source_pdf_url` = VALUES(`source_pdf_url`), `source_pdf_name` = VALUES(`source_pdf_name`),
                 `colors_json` = VALUES(`colors_json`), `typography_json` = VALUES(`typography_json`),
                 `sections_order_json` = VALUES(`sections_order_json`), `custom_banner_text` = VALUES(`custom_banner_text`),
-                `badge_style` = VALUES(`badge_style`)");
+                `badge_style` = VALUES(`badge_style`), `layout_json` = VALUES(`layout_json`)");
 
             foreach ($payload['aiCustomTemplates'] as $act) {
                 $actId = $act['id'];
@@ -5677,7 +5800,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     json_encode($act['typography'] ?? (object)[], JSON_UNESCAPED_UNICODE),
                     json_encode($act['sectionsOrder'] ?? [], JSON_UNESCAPED_UNICODE),
                     $act['customBannerText'] ?? null,
-                    $act['badgeStyle'] ?? 'rounded'
+                    $act['badgeStyle'] ?? 'rounded',
+                    // A handful of enum values and three short headings; the renderer
+                    // validates them again, so this only bounds what a client can park here.
+                    isset($act['layout']) && is_array($act['layout']) && strlen((string)json_encode($act['layout'])) <= 4000
+                        ? json_encode($act['layout'], JSON_UNESCAPED_UNICODE)
+                        : null
                 ]);
                 $processedActIds[] = $actId;
             }
@@ -5908,7 +6036,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `status` = VALUES(`status`),
                 `due_date` = VALUES(`due_date`),
                 `paid_date` = VALUES(`paid_date`),
-                `payment_method` = VALUES(`payment_method`)");
+                `payment_method` = VALUES(`payment_method`),
+                `issue_date` = VALUES(`issue_date`)");
 
             foreach ($payload['employeeSalaries'] as $sal) {
                 $salId = $sal['id'];

@@ -1,11 +1,16 @@
-import React, { useEffect, useState } from "react";
-import { ArrowLeft, Lock, Plus, Save, Share2, Sparkles, Trash2 } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { ArrowLeft, FileText, Lock, Plus, Save, Share2, Sparkles, Tag, Trash2 } from "lucide-react";
 import type { AiCustomTemplate, CompanyBillingSettings, ExternalInvoicingConfig, InvoiceOffer } from "../types";
 import type { OfferStatusDef } from "../utils/offerStatuses";
 import { OfferStatusSettings } from "./OfferStatusSettings";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { InlineRenameName } from "./ui/InlineRenameName";
+import { AiKeyBanner } from "./ui/AiKeyBanner";
+import { Tabs, type TabItem } from "./layout/Tabs";
+import { TemplateRenameDialog } from "./priceOffers/TemplateRenameDialog";
+import { translateAiApiError } from "../utils/aiConfig";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { pickOfferDefaults, withOfferDefaults } from "../utils/offerDefaults";
 import type { OfferDefaults } from "../utils/offerDefaults";
@@ -31,7 +36,21 @@ interface OfferSettingsProps {
   onBack: () => void;
   /** Opens Settings → Invoicing, where the company identity lives. */
   onOpenCompanySettings?: () => void;
+  /** Integrations config, to tell whether the OpenAI key behind the template generator is set. */
+  integrationsConfig?: unknown;
 }
+
+/** The `success: false` body of /api/generate_pdf_template.php (vocabulary of utils/aiConfig.ts, plus pdf_* codes). */
+interface GenerationFailure {
+  code?: string;
+  message?: string;
+  providerMessage?: string;
+}
+
+type SettingsTab = "defaults" | "accounting" | "ai" | "statuses";
+
+/** The largest sample PDF the generator takes; the server refuses anything bigger. */
+const MAX_SAMPLE_PDF_BYTES = 10 * 1024 * 1024;
 
 const emptyIntegrations = (loaded?: ExternalInvoicingConfig | null): ExternalInvoicingConfig => ({
   superfaktura: {
@@ -76,7 +95,8 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   lang,
   canEdit,
   onBack,
-  onOpenCompanySettings
+  onOpenCompanySettings,
+  integrationsConfig
 }) => {
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
   const toast = (message: string, variant?: "error" | "warning") => {
@@ -97,6 +117,10 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
   const [idkStatus, setIdkStatus] = useState<TestStatus>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const [pdfUploadStatus, setPdfUploadStatus] = useState<string | null>(null);
+  const [tab, setTab] = useState<SettingsTab>("defaults");
+  /** The template just generated, while the rename dialog is open. */
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const patchDefaults = (patch: Partial<OfferDefaults>) => setDefaults(prev => ({ ...prev, ...patch }));
   const patchSf = (patch: Partial<ExternalInvoicingConfig["superfaktura"]>) =>
@@ -133,8 +157,50 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
     }
   };
 
+  /** Why a generation failed, in the user's language and naming the actual cause. */
+  const describeGenerationFailure = (body: GenerationFailure | null, status: number): string => {
+    const code = typeof body?.code === "string" ? body.code : "unknown";
+    if (code === "pdf_too_large") {
+      return t("The PDF is larger than 10 MB.", "PDF je väčšie ako 10 MB.", "A PDF nagyobb, mint 10 MB.");
+    }
+    if (code === "pdf_unreadable") {
+      return t(
+        "The uploaded PDF could not be read. Upload it again.",
+        "Nahraté PDF sa nepodarilo načítať. Nahrajte ho znova.",
+        "A feltöltött PDF nem olvasható. Töltse fel újra."
+      );
+    }
+    if (code === "forbidden" || status === 403) {
+      return t(
+        "Generating templates needs edit access to General configuration.",
+        "Generovanie šablón vyžaduje právo na úpravu Všeobecnej konfigurácie.",
+        "A sablonok létrehozásához az Általános konfiguráció szerkesztési joga szükséges."
+      );
+    }
+    return translateAiApiError(
+      {
+        code,
+        message: typeof body?.message === "string" ? body.message : `HTTP ${status}`,
+        providerMessage: typeof body?.providerMessage === "string" ? body.providerMessage : undefined,
+        status
+      },
+      lang
+    );
+  };
+
   const handleUploadAndGenerateAiTemplate = async (file: File) => {
     if (!canEdit) return;
+    if (file.size > MAX_SAMPLE_PDF_BYTES) {
+      toast(
+        t(
+          "Could not generate the AI template: the PDF is larger than 10 MB.",
+          "Chyba pri generovaní AI šablóny: PDF je väčšie ako 10 MB.",
+          "Az AI sablon létrehozása sikertelen: a PDF nagyobb, mint 10 MB."
+        ),
+        "error"
+      );
+      return;
+    }
     setIsUploadingPdf(true);
     setPdfUploadStatus(t("Uploading and analyzing PDF with AI...", "Nahrávam a analyzujem PDF pomocou AI...", "PDF feltöltése és elemzése AI-val..."));
     // A missing endpoint answers with the server's HTML 404 page, and a bare
@@ -159,22 +225,28 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
         throw new Error(uploadData.error || uploadData.message || "Upload failed");
       }
 
+      // The server reads the PDF itself from this stored path (so the model sees the
+      // pages, not just text); the extracted text only travels along as a hint.
       const genRes = await fetch("/api/generate_pdf_template.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pdfName: file.name,
           pdfUrl: uploadData.filePath,
-          pdfText: uploadData.extractedText || ""
+          pdfText: uploadData.extractedText || "",
+          systemLanguage: lang
         })
       });
       const genData = await readJson(genRes, "/api/generate_pdf_template.php");
-      if (genData.success && genData.template) {
-        setAiCustomTemplates?.(prev => [genData.template, ...prev]);
+      if (genRes.ok && genData.success && genData.template) {
+        const generated = genData.template as AiCustomTemplate;
+        setAiCustomTemplates?.(prev => [generated, ...prev]);
         setPdfUploadStatus(null);
         toast(t("AI Custom Template successfully generated and saved!", "Vlastná AI šablóna bola úspešne vygenerovaná a uložená!", "Egyedi AI sablon sikeresen létrehozva!"));
+        setRenaming({ id: generated.id, name: generated.name });
       } else {
-        throw new Error(genData.message || "Template generation failed");
+        // Nothing is created on failure: a template that ignores the PDF is worse than an error.
+        throw new Error(describeGenerationFailure(genData, genRes.status));
       }
     } catch (err: any) {
       setPdfUploadStatus(null);
@@ -183,6 +255,33 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
       setIsUploadingPdf(false);
     }
   };
+
+  /** A rename is an update to the existing row; a name that clashes is allowed, with a warning. */
+  const renameTemplate = (id: string, nextName: string) => {
+    const name = nextName.trim().slice(0, 150);
+    if (!name || !setAiCustomTemplates) return;
+    const clash = aiCustomTemplates.some(tpl => tpl.id !== id && tpl.name.trim().toLowerCase() === name.toLowerCase());
+    setAiCustomTemplates(prev => prev.map(tpl => (tpl.id === id ? { ...tpl, name } : tpl)));
+    if (clash) {
+      toast(
+        t(
+          "Another template already has this name — they will be hard to tell apart.",
+          "Iná šablóna už má tento názov — budú sa ťažko rozlišovať.",
+          "Egy másik sablon már ezt a nevet viseli — nehéz lesz megkülönböztetni őket."
+        ),
+        "warning"
+      );
+    }
+  };
+
+  const tabItems: TabItem<SettingsTab>[] = [
+    { key: "defaults", label: t("Default texts", "Predvolené texty", "Alapértelmezett szövegek"), icon: <FileText /> },
+    { key: "accounting", label: t("External accounting", "Externé účtovníctvo", "Külső könyvelés"), icon: <Share2 /> },
+    { key: "ai", label: t("AI templates", "AI šablóny", "AI sablonok"), icon: <Sparkles />, count: aiCustomTemplates.length },
+    { key: "statuses", label: t("Statuses", "Stavy", "Állapotok"), icon: <Tag /> }
+  ];
+  /** Defaults and connectors are saved together by the button in the header; the other tabs save as they change. */
+  const savesWithButton = tab === "defaults" || tab === "accounting";
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -200,9 +299,9 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
         </div>
       )}
 
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-8">
+      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
         {/* Header */}
-        <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-3 border-b border-slate-200 pb-4">
+        <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-3">
           <div>
             <button
               type="button"
@@ -217,9 +316,9 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
             </h3>
             <p className="text-ui text-slate-500 font-medium mt-0.5">
               {t(
-                "Default texts for new offers, accounting-service connectors and AI PDF templates.",
-                "Predvolené texty nových ponúk, prepojenia na účtovné služby a AI šablóny PDF.",
-                "Az új ajánlatok alapértelmezett szövegei, könyvelőszolgáltatás-kapcsolatok és AI PDF-sablonok."
+                "Default texts for new offers, accounting-service connectors, AI PDF templates and statuses.",
+                "Predvolené texty nových ponúk, prepojenia na účtovné služby, AI šablóny PDF a stavy.",
+                "Az új ajánlatok alapértelmezett szövegei, könyvelőszolgáltatás-kapcsolatok, AI PDF-sablonok és állapotok."
               )}
             </p>
             {onOpenCompanySettings && (
@@ -237,7 +336,7 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
             )}
           </div>
 
-          {canEdit && (
+          {canEdit && savesWithButton && (
             <button
               type="button"
               onClick={handleSave}
@@ -248,12 +347,19 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
             </button>
           )}
         </div>
+      </div>
 
-        <fieldset disabled={!canEdit} className="space-y-8 min-w-0">
+      <Tabs items={tabItems} value={tab} onChange={setTab} testId="offer-settings-tabs" />
+
+      {tab !== "statuses" && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm">
+          <fieldset disabled={!canEdit} className="space-y-8 min-w-0">
+            {tab === "defaults" && (
+              <>
           {/* SECTION 1: Default offer texts */}
           <div className="space-y-4">
             <h4 className="text-ui font-bold text-slate-800">
-              1. {t("Default offer texts", "Predvolené texty ponuky", "Alapértelmezett ajánlatszövegek")}
+              {t("Default offer texts", "Predvolené texty ponuky", "Alapértelmezett ajánlatszövegek")}
             </h4>
             <p className="text-ui text-slate-500 -mt-2">
               {t(
@@ -353,13 +459,23 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               </div>
             </div>
           </div>
-
+              </>
+            )}
+            {tab === "accounting" && (
+              <>
           {/* SECTION 2: External accounting connectors */}
-          <div className="space-y-4 pt-4 border-t border-slate-100">
+          <div className="space-y-4">
             <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
               <Share2 className="h-4 w-4 text-indigo-600" />
-              2. {t("External accounting APIs (SuperFaktúra & iDoklad)", "Externé účtovníctvo (SuperFaktúra a iDoklad)", "Külső számlázó integrációk")}
+              {t("External accounting APIs (SuperFaktúra & iDoklad)", "Externé účtovníctvo (SuperFaktúra a iDoklad)", "Külső számlázó integrációk")}
             </h4>
+            <p className="text-ui text-slate-500 -mt-2">
+              {t(
+                "Connect an accounting service to issue price offers through it.",
+                "Prepojte účtovnú službu, cez ktorú sa budú cenové ponuky vystavovať.",
+                "Kapcsoljon össze egy számlázó szolgáltatást, amelyen keresztül az árajánlatok kiállíthatók."
+              )}
+            </p>
 
             <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
               {/* SuperFaktura */}
@@ -530,34 +646,39 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               </div>
             </div>
           </div>
-
+              </>
+            )}
+            {tab === "ai" && (
+              <>
           {/* SECTION 3: AI custom PDF templates */}
-          <div className="space-y-4 pt-4 border-t border-slate-100">
+          <div className="space-y-4">
             <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-2">
               <div>
                 <h4 className="text-ui font-bold text-slate-800 flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-purple-600" />
-                  3. {t("AI custom PDF template generator", "AI Generátor vlastných PDF šablón", "AI egyedi PDF sablon generátor")}
+                  {t("AI custom PDF template generator", "AI Generátor vlastných PDF šablón", "AI egyedi PDF sablon generátor")}
                 </h4>
                 <p className="text-ui text-slate-500 mt-0.5">
                   {t(
-                    "Upload any sample offer PDF. AI will extract colors and styles and generate a customized template with all mandatory fields guaranteed.",
-                    "Nahrajte ukážkové PDF cenovej ponuky. AI analyzuje dizajn a vytvorí šablónu s garanciou všetkých povinných údajov.",
-                    "Töltsön fel egy mintát, és az AI generál egy kompatibilis sablont."
+                    "Upload a sample offer PDF (up to 10 MB). AI reads its colors, header, table, cards and wording from the pages and builds a template that looks like it — all mandatory fields guaranteed.",
+                    "Nahrajte ukážkové PDF cenovej ponuky (do 10 MB). AI z jeho strán prečíta farby, hlavičku, tabuľku, karty a formulácie a vytvorí šablónu, ktorá mu je podobná — s garanciou všetkých povinných údajov.",
+                    "Töltsön fel egy minta árajánlat-PDF-et (legfeljebb 10 MB). Az AI az oldalakról kiolvassa a színeket, a fejlécet, a táblázatot, a kártyákat és a szövegezést, és hasonló kinézetű sablont készít — minden kötelező adat garantálva."
                   )}
                 </p>
               </div>
 
               {canEdit && (
-                <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-ui font-bold shadow-md cursor-pointer transition-all flex items-center gap-2 shrink-0">
+                <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-ui font-bold shadow-md cursor-pointer transition-all flex items-center gap-2 shrink-0 focus-within:ring-2 focus-within:ring-purple-400 focus-within:ring-offset-2">
                   <Plus className="h-4 w-4" />
                   {isUploadingPdf
                     ? t("Processing with AI...", "Analyzujem pomocou AI...", "Feldolgozás...")
                     : t("Upload PDF & generate template", "Nahrať PDF a vygenerovať šablónu", "PDF feltöltése és generálás")}
                   <input
+                    ref={uploadInputRef}
                     type="file"
                     accept=".pdf"
-                    className="hidden"
+                    data-testid="ai-template-upload"
+                    className="sr-only"
                     disabled={isUploadingPdf}
                     onChange={e => {
                       const file = e.target.files?.[0];
@@ -568,6 +689,12 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                 </label>
               )}
             </div>
+
+            <AiKeyBanner
+              integrationsConfig={integrationsConfig}
+              language={lang}
+              feature={t("AI template generator", "Generátor AI šablón", "AI sablongenerátor")}
+            />
 
             {pdfUploadStatus && (
               <div className="p-3 bg-purple-50 border border-purple-200 text-purple-800 rounded-xl text-ui font-semibold flex items-center gap-2 animate-pulse">
@@ -586,7 +713,16 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                   <div key={template.id} className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="font-bold text-ui text-slate-900 truncate">{template.name}</div>
+                        <div className="font-bold text-ui text-slate-900 truncate">
+                          <InlineRenameName
+                            value={template.name}
+                            canEdit={canEdit && Boolean(setAiCustomTemplates)}
+                            onCommit={next => renameTemplate(template.id, next)}
+                            renameTitle={t("Rename template", "Premenovať šablónu", "Sablon átnevezése")}
+                          >
+                            <span data-testid="ai-template-name">{template.name}</span>
+                          </InlineRenameName>
+                        </div>
                         <div className="text-caption text-slate-500">{template.description || t("AI-generated template", "AI vygenerovaná šablóna", "AI által generált sablon")}</div>
                       </div>
                       {canEdit && setAiCustomTemplates && (
@@ -624,29 +760,50 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               </div>
             )}
           </div>
-        </fieldset>
-      </div>
-
-      {setOfferStatuses && (
-        <OfferStatusSettings
-          statuses={offerStatuses}
-          setStatuses={setOfferStatuses}
-          documents={documents}
-          setDocuments={setDocuments}
-          userLanguage={lang}
-          canEdit={canEdit}
-        />
+              </>
+            )}
+          </fieldset>
+        </div>
       )}
 
-      {setInvoiceStatuses && (
-        <OfferStatusSettings
-          kind="invoice"
-          statuses={invoiceStatuses}
-          setStatuses={setInvoiceStatuses}
-          documents={documents}
-          setDocuments={setDocuments}
-          userLanguage={lang}
-          canEdit={canEdit}
+      {tab === "statuses" && (
+        <>
+          {setOfferStatuses && (
+            <OfferStatusSettings
+              statuses={offerStatuses}
+              setStatuses={setOfferStatuses}
+              documents={documents}
+              setDocuments={setDocuments}
+              userLanguage={lang}
+              canEdit={canEdit}
+            />
+          )}
+
+          {setInvoiceStatuses && (
+            <OfferStatusSettings
+              kind="invoice"
+              statuses={invoiceStatuses}
+              setStatuses={setInvoiceStatuses}
+              documents={documents}
+              setDocuments={setDocuments}
+              userLanguage={lang}
+              canEdit={canEdit}
+            />
+          )}
+        </>
+      )}
+
+      {renaming && (
+        <TemplateRenameDialog
+          lang={lang}
+          initialName={renaming.name}
+          otherNames={aiCustomTemplates.filter(tpl => tpl.id !== renaming.id).map(tpl => tpl.name)}
+          returnFocusRef={uploadInputRef}
+          onSave={name => {
+            renameTemplate(renaming.id, name);
+            setRenaming(null);
+          }}
+          onKeep={() => setRenaming(null)}
         />
       )}
     </div>

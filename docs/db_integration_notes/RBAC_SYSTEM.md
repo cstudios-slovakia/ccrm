@@ -225,7 +225,7 @@ ticket write by the task editor.
 | `transcribe_meeting`, `upload_audio` | `meetings`, `leads` or `clients` (voice notes) — view / edit |
 | `transcribe_task` | `tasks` = edit |
 | `generate_report` | `leads` or `clients` = edit |
-| `generate_pdf_template` | `invoices` or `general_config` = edit |
+| `generate_pdf_template` | `general_config` = edit (the same gate as saving `aiCustomTemplates`) |
 | `idoklad.php`, `superfaktura.php` | `invoices` = edit; `test_connection`: `general_config` or `invoices` = edit |
 | `swarm.php` (SAI) | `leads` or `clients` ≥ view; the CRM context sources are filtered by module. SAI has no key of its own: its route follows `leads` |
 | `delete_file.php` | `files` delete; the legacy `emp_contract_*` names need `employees` = edit + `employees.files` |
