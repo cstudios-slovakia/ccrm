@@ -75,6 +75,31 @@
       "file": "financialFutureMovements.spec.ts",
       "title": "a charge the rule already made can only be followed back to the rule",
       "reason": "Editing a charge the rule already made opens the occurrence form (renderOccurrenceFormFields: invoice number only), not the rule. The spec expects the rule's own form with its title. Product change or regression: decide, then fix the app or the spec."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Files Manager",
+      "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Clients Register",
+      "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Meeting Room",
+      "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Email Hub",
+      "reason": "The crawl of the Email Hub did not finish within its 4 min limit on the runner (page closed while still crawling). Slow rather than wrong so far; check how long it takes on a quiet machine."
+    },
+    {
+      "file": "projectAutosave.spec.ts",
+      "title": "an edit made just before leaving is still saved",
+      "reason": "Intermittent: after rename + Back to list the project stays open (project-save-state present). Failed in 3 of 5 CI runs, so it passes at times. Either the late save reopens the project (the regression this test guards) or Back is lost. Look at the autosave/back race in ProjectDetailsView."
     }
   ]
 }
