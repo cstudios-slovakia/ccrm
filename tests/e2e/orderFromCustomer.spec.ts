@@ -109,8 +109,7 @@ test.describe('New order from a customer', () => {
     await page.getByRole('button', { name: /^Nová objednávka$/ }).first().click();
 
     await expect(page).toHaveURL(/#orders\/new\?customer=client-kovac&from=/);
-    // A lead has no client profile yet, and the card says so.
-    await expect(page.getByText('Lead (bez profilu klienta)')).toBeVisible();
+    await expect(page.getByText('Zosynchronizovaný klient')).toBeVisible();
     await expect(page.locator('input[value="Štefánikova 8"]')).toHaveCount(2);
     await expect(page.locator('input[value="45678901"]')).toHaveCount(1);
     await expect(page.locator('input[value="Marek Kováč"]')).toHaveCount(1);

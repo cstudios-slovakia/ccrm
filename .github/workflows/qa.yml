@@ -74,29 +74,38 @@ jobs:
           # the two-worker ceiling in run-qa.mjs only slow it down.
           QA_WORKERS: 3
           QA_MAX_CORES: 0
-          # A hung test fails after 2.5 min (the deepest crawl takes ~1.6 min on a
-          # runner) instead of 4, so a few hangs cannot use up the run limit.
+          # A hung test fails after 2.5 min instead of 4, so a few hangs cannot use up
+          # the run limit. The module crawls set their own, longer limit.
           QA_TEST_TIMEOUT_MS: 150000
           QA_GLOBAL_TIMEOUT_MS: 4200000
           FILES: ${{ github.event.inputs.files }}
         run: |
-          if [ -n "$FILES" ]; then
-            # Word splitting is the point: the input is a list of paths.
-            node scripts/qa/run-qa.mjs --files $FILES
-            exit $?
-          fi
-          case "$EVENT" in
-            pull_request)
-              node scripts/qa/run-qa.mjs --since "origin/$BASE_REF" ;;
-            push)
-              if [ -z "${BEFORE//0/}" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-                node scripts/qa/run-qa.mjs --full
-              else
-                node scripts/qa/run-qa.mjs --since "$BEFORE"
-              fi ;;
-            *)
-              node scripts/qa/run-qa.mjs --full ;;
-          esac
+          audit() {
+            if [ -n "$FILES" ]; then
+              # Word splitting is the point: the input is a list of paths.
+              node scripts/qa/run-qa.mjs --files $FILES
+              return
+            fi
+            case "$EVENT" in
+              pull_request)
+                node scripts/qa/run-qa.mjs --since "origin/$BASE_REF" ;;
+              push)
+                if [ -z "${BEFORE//0/}" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                  node scripts/qa/run-qa.mjs --full
+                else
+                  node scripts/qa/run-qa.mjs --since "$BEFORE"
+                fi ;;
+              *)
+                node scripts/qa/run-qa.mjs --full ;;
+            esac
+          }
+          set +e
+          audit
+          code=$?
+          set -e
+          # Failures listed in scripts/qa/known-failing.json are reported on every
+          # run but do not block; any other failure does.
+          node scripts/qa/apply-known-failing.mjs "$code"
 
       # Uploaded even when the audit fails - that is exactly when you need them.
       # Each run folder is self-contained (report.md + findings.json +

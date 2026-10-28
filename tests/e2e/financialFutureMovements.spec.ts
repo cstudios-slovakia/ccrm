@@ -106,7 +106,8 @@ test.describe('Finance — future movements', () => {
 
     // It opens the rule itself for editing, never a form for a new movement.
     await expect(page.locator('#transaction-edit-form')).toBeVisible(SETTLE);
-    await expect(page.locator('#transaction-edit-form input[type="text"]').first()).toHaveValue(/Mzdy — mesačné/);
+    // The invoice number comes first in the form now, so find the name by its value.
+    await expect(page.locator('#transaction-edit-form input[value*="Mzdy — mesačné"]')).toBeVisible();
   });
 
   test('switching it on draws the expected movements once, and they cannot be edited in place', async ({ page }) => {

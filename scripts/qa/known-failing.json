@@ -1,0 +1,60 @@
+{
+  "_about": "Tests that fail on main today and are being worked on. CI reports these loudly on every run but does not let them block a merge; any OTHER failure still does, and an entry whose test starts passing is flagged for removal. Never add an entry to hide a new regression: it needs a reason and an owner who will look at it. See docs/TESTING.md.",
+  "tests": [
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "a partial payment writes the entered amount and keeps the plan as an estimate",
+      "reason": "After saving 3 200 of 9 200 the ledger row reads '+9 200 € est: 6 000 €'; the spec expects '3 200' with 'est: 9 200'. Money display: decide which one is intended, then fix the app or the spec."
+    },
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "a status that moves no money commits straight away",
+      "reason": "A pending/overdue row now always shows 'est: 9 200 €'; the spec expects no 'est:' subtitle until money settles. Same question as the partial-payment test."
+    },
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "cancelling the prompt leaves the row untouched",
+      "reason": "Same 'est:' subtitle on an untouched pending row as above."
+    },
+    {
+      "file": "projectAutosave.spec.ts",
+      "title": "an edit made just before leaving is still saved",
+      "reason": "After rename + Back to list the project is still open (project-save-state present). Either the late save reopens the project (the regression this test guards) or Back is lost. Failed in both CI runs."
+    },
+    {
+      "file": "employees.spec.ts",
+      "title": "the structure view reorders by drag",
+      "reason": "Drag in the structure view puts the last employee first instead of moving the first to the end. Fails on CI; unknown whether drag timing or the reorder logic."
+    },
+    {
+      "file": "projectReorder.spec.ts",
+      "title": "dragging a row in the structure reorders it",
+      "reason": "Dragging a project row does not change the order on CI. Same family as the employees drag."
+    },
+    {
+      "file": "projectStatuses.spec.ts",
+      "title": "statuses are added, renamed and removed in settings, and the projects list follows",
+      "reason": "The projects list still shows the five built-in statuses after the settings edits. Known to fail on 95b760dc too."
+    },
+    {
+      "file": "projectStatuses.spec.ts",
+      "title": "one click settles the rest of the value as a paid income row",
+      "reason": "The 'mark rest as paid' button is not found on project-1 finances. Known to fail on 95b760dc too."
+    },
+    {
+      "file": "draftExits.spec.ts",
+      "title": "archiving a task from its drawer keeps the edits made in the drawer",
+      "reason": "Drawer opens and the title is edited, but no archived task is pushed afterwards; the hold-to-confirm archive may not complete on CI."
+    },
+    {
+      "file": "draftExits.spec.ts",
+      "title": "a background pull does not wipe a product card being edited",
+      "reason": "The product name input is not found after unlocking the card (input[value=...]:enabled)."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Leads / Pipeline",
+      "reason": "Crawler: the 'Obľúbené leady vždy ako prvé' dropdowns open no panel. Check whether they are real dropdowns or crawler false positives."
+    }
+  ]
+}

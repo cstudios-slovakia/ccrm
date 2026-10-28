@@ -69,8 +69,9 @@ test.describe('Settings → Finance', () => {
 
     // Settings swaps the screen for the category tree, with one way back.
     await page.getByRole('button', { name: /^(Settings|Nastavenia|Beállítások)$/ }).click();
+    // The screen names the tree twice (page title and section card); either proves it opened.
     await expect(
-      page.getByRole('heading', { name: /Movement Categories|Kategórie finančných pohybov/ })
+      page.getByRole('heading', { name: /Movement Categories|Kategórie finančných pohybov/ }).first()
     ).toBeVisible(SETTLE);
     await expect(page.getByRole('tab')).toHaveCount(0);
 

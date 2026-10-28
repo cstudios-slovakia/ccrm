@@ -122,7 +122,7 @@ test.describe('Project reordering', () => {
     const nameHeader = page.locator('thead').getByRole('button', { name: 'Projekt', exact: true });
     await clickTableHead(nameHeader);
     await clickTableHead(nameHeader);
-    await expect(page.locator('thead th[aria-sort="descending"]')).toHaveCount(1);
+    await expect(page.locator('.table-page-wrap thead th[aria-sort="descending"]')).toHaveCount(1);
     const sorted = await rowIds(page);
 
     // A sorted table refuses the drag that used to overwrite the structure.
@@ -131,7 +131,7 @@ test.describe('Project reordering', () => {
     // The structure is where it was, headers are plain labels, rows drag.
     await page.getByRole('button', { name: 'Zobrazenie štruktúry' }).click();
     await expect.poll(() => rowIds(page)).toEqual(structure);
-    await expect(page.locator('thead th[aria-sort]')).toHaveCount(0);
+    await expect(page.locator('.table-page-wrap thead th[aria-sort]')).toHaveCount(0);
     const last = structure[structure.length - 1];
     await dragOnto(page.locator(`tr[data-project-row="${last}"]`), page.locator(`tr[data-project-row="${structure[0]}"]`), 'top');
     const expected = [last, ...structure.slice(0, -1)];
@@ -139,7 +139,7 @@ test.describe('Project reordering', () => {
 
     // Back in the table the name sort is still on.
     await page.getByRole('button', { name: 'Zobrazenie zoznamu' }).click();
-    await expect(page.locator('thead th[aria-sort="descending"]')).toHaveCount(1);
+    await expect(page.locator('.table-page-wrap thead th[aria-sort="descending"]')).toHaveCount(1);
     await expect.poll(() => rowIds(page)).toEqual(sorted);
     await expect.poll(() => storedSort(store)?.order, { timeout: 10_000 }).toEqual(expected);
   });

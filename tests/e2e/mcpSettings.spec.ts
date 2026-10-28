@@ -162,10 +162,11 @@ test.describe('AI Assistant (MCP) settings', () => {
       env: { CCRM_API_URL: `${origin}/api`, CCRM_MCP_KEY: FULL_KEY },
     });
 
-    // The optional prompt carries the user, and never invents a role.
+    // The optional prompt carries the user and the role they really have (the
+    // fixture's Erik is an admin), and never an undefined one.
     const prompt = await copyField(page, 'mcp-field-prompt');
-    expect(prompt).toContain('erik@crm.com');
-    expect(prompt).not.toMatch(/Role: undefined|Role: Admin\)/);
+    expect(prompt).toContain('erik@crm.com, Role: Admin)');
+    expect(prompt).not.toMatch(/Role: undefined/);
   });
 
   test('without the full key, snippets stay copyable but carry a visible placeholder and a warning', async ({ page }) => {
