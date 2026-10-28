@@ -1,13 +1,17 @@
 import type { Locator, Page, Route } from '@playwright/test';
 import { buildSyncPayload } from './fixture';
 
-/** Matches the 500 ms hold, with margin for the pop and a slow CI frame. */
-export const HOLD_OK_MS = 650;
+/**
+ * Clears the 500 ms hold with room to spare. The app measures the hold on animation
+ * frames, and a runner with three browsers on four cores delivers some of them
+ * 150 ms late, so 650 ms was not enough there (undo toasts that never appeared,
+ * deletes that never happened). Pass a smaller number to test an early release.
+ */
+export const HOLD_OK_MS = 1200;
 
 /**
  * Presses and holds an element like a user would: hover → mouse down → wait →
- * mouse up. 650 ms clears the 500 ms hold; pass a smaller number to check that
- * an early release does nothing.
+ * mouse up. Pass a smaller number to check that an early release does nothing.
  */
 export async function holdToConfirm(locator: Locator, ms = HOLD_OK_MS): Promise<void> {
   const page = locator.page();

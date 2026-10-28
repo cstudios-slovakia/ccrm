@@ -1,4 +1,4 @@
-import type { Locator } from '@playwright/test';
+import { expect, type Locator } from '@playwright/test';
 
 /**
  * Clicks a button in a list table's head the way a user does: at its position.
@@ -10,10 +10,28 @@ import type { Locator } from '@playwright/test';
  * obstruction and retries until the test times out, so a wide table (which
  * depends on the runner's fonts) made every sort test hang in CI while passing
  * on a machine where the table fits.
+ *
+ * What `click()` guarded is kept: the click waits until the thing at the button's
+ * position is the button itself or that copy, so a menu still closing over the
+ * head does not swallow it.
  */
 export async function clickTableHead(button: Locator): Promise<void> {
   await button.scrollIntoViewIfNeeded();
-  const box = await button.boundingBox();
-  if (!box) throw new Error('clickTableHead: the head button has no box to click');
-  await button.page().mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const centre = async () => {
+    const box = await button.boundingBox();
+    return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null;
+  };
+  await expect
+    .poll(async () => {
+      const at = await centre();
+      if (!at) return false;
+      return button.evaluate((el, { x, y }) => {
+        const top = document.elementFromPoint(x, y);
+        return !!top && (el.contains(top) || !!top.closest('.table-page-head-mirror'));
+      }, at);
+    })
+    .toBe(true);
+  const at = await centre();
+  if (!at) throw new Error('clickTableHead: the head button has no box to click');
+  await button.page().mouse.click(at.x, at.y);
 }
