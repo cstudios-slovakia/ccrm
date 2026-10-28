@@ -10,6 +10,7 @@ import {
   waitForNoPopover,
   waitForOpaque,
   waitForStableRect,
+  waitForWorkspaceContent,
   type ConsoleCapture,
   type ViewState,
 } from './appDriver';
@@ -210,7 +211,17 @@ export class ViewCrawler {
    * screen, no error panel. `context` names how we got here.
    */
   async assertViewHealthy(context: string, expected: string): Promise<ViewState> {
-    const state = await readViewState(this.page);
+    let state = await readViewState(this.page);
+
+    // Opening a view swaps the outgoing one out before the lazy chunk of the new
+    // one has painted, so <main> is briefly empty — for seconds on a cold dev
+    // server on a CI runner. The navigation wait can return on the OLD view's
+    // text just before it unmounts. A view is only blank if it stays blank, so
+    // give it a real chance before reporting; a view that never renders still fails.
+    if (!state.errorScreen && state.textLength < 40) {
+      await waitForWorkspaceContent(this.page, 8_000);
+      state = await readViewState(this.page);
+    }
 
     if (state.errorScreen) {
       this.record({
