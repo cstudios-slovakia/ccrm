@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { clickTableHead } from './helpers/tableHead';
 
 /**
  * The projects table's columns: which ones it shows, in what order, and a
@@ -118,17 +119,17 @@ test.describe('Project list columns', () => {
     await closeViewMenu(page);
 
     const areaHeader = header(page, AREA).first();
-    await areaHeader.click(); // ascending: 62 before 145
+    await clickTableHead(areaHeader); // ascending: 62 before 145
     await expect(page.locator('tbody tr').first()).toContainText(ROOF_SMALL);
-    await areaHeader.click(); // descending
+    await clickTableHead(areaHeader); // descending
     await expect(page.locator('tbody tr').first()).toContainText(ROOF_BIG);
 
     // The project with no budget has no value to order by, so it goes last
     // whichever way the money column is sorted.
     const budgetHeader = header(page, BUDGET).first();
-    await budgetHeader.click();
+    await clickTableHead(budgetHeader);
     await expect(page.locator('tbody tr').last()).toContainText(ROOF_SMALL);
-    await budgetHeader.click();
+    await clickTableHead(budgetHeader);
     await expect(page.locator('tbody tr').last()).toContainText(ROOF_SMALL);
   });
 

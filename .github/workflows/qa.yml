@@ -15,6 +15,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      files:
+        description: "Run only these spec files (space separated), e.g. tests/e2e/projectFiles.spec.ts. Empty = the whole suite."
+        required: false
+        default: ""
 
 # A newer push to the same branch supersedes an in-flight run.
 concurrency:
@@ -25,7 +30,7 @@ jobs:
   test:
     name: Unit tests + QA audit
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -65,8 +70,21 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}
-          QA_WORKERS: 2
+          # A runner is dedicated to this job, so the desktop-friendly CPU cap and
+          # the two-worker ceiling in run-qa.mjs only slow it down.
+          QA_WORKERS: 3
+          QA_MAX_CORES: 0
+          # A hung test fails after 2.5 min (the deepest crawl takes ~1.6 min on a
+          # runner) instead of 4, so a few hangs cannot use up the run limit.
+          QA_TEST_TIMEOUT_MS: 150000
+          QA_GLOBAL_TIMEOUT_MS: 4200000
+          FILES: ${{ github.event.inputs.files }}
         run: |
+          if [ -n "$FILES" ]; then
+            # Word splitting is the point: the input is a list of paths.
+            node scripts/qa/run-qa.mjs --files $FILES
+            exit $?
+          fi
           case "$EVENT" in
             pull_request)
               node scripts/qa/run-qa.mjs --since "origin/$BASE_REF" ;;

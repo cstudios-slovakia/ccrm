@@ -70,7 +70,8 @@ const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readTe
 
 async function copyField(page: Page, id: string): Promise<string> {
   await copyButton(field(page, id)).click();
-  await expect(field(page, id).getByText(COPIED)).toBeVisible();
+  // Said twice: on the button and again in a screen-reader live region. The button's is the one seen.
+  await expect(field(page, id).getByText(COPIED).first()).toBeVisible();
   return clipboard(page);
 }
 

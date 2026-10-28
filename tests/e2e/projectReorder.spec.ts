@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
 import { TEST_USER, buildSyncPayload } from './helpers/fixture';
+import { clickTableHead } from './helpers/tableHead';
 
 /**
  * Projects can be put in a hand-set order by dragging a row (table) or a card
@@ -119,8 +120,8 @@ test.describe('Project reordering', () => {
     // Sort the table by name, descending, so it cannot match the structure by chance.
     await page.getByRole('button', { name: 'Zobrazenie zoznamu' }).click();
     const nameHeader = page.locator('thead').getByRole('button', { name: 'Projekt', exact: true });
-    await nameHeader.click();
-    await nameHeader.click();
+    await clickTableHead(nameHeader);
+    await clickTableHead(nameHeader);
     await expect(page.locator('thead th[aria-sort="descending"]')).toHaveCount(1);
     const sorted = await rowIds(page);
 

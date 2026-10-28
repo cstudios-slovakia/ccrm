@@ -11,6 +11,9 @@ import { gotoView, startSession } from './helpers/appDriver';
  *
  * Silvia is a pipeline lead with no client record, so everything here goes through
  * the lead's own form. The fixture runs in Slovak.
+ *
+ * Outside edit mode the panel shows the number and the address as tel:/mailto:
+ * links (v1.12.55); the inputs only exist once "edit" is pressed.
  */
 
 const LEAD_HASH = '#lead-lead-silvia';
@@ -41,6 +44,11 @@ test.describe('Lead detail — contact details', () => {
     await gotoView(page, LEAD_HASH);
 
     await expect(page.getByText('Bez klienta')).toBeVisible();
+    await expect(page.locator('a[href="tel:+421900111222"]')).toHaveText('+421 900 111 222');
+    await expect(page.locator('a[href="mailto:silvia@example.com"]')).toHaveText('silvia@example.com');
+
+    // The same values sit in the inputs once the form is opened for editing.
+    await page.getByTitle('Upraviť detaily leadu').click();
     await expect(page.locator('input[type="tel"]')).toHaveValue('+421 900 111 222');
     await expect(page.locator('input[type="email"]')).toHaveValue('silvia@example.com');
   });
@@ -59,7 +67,7 @@ test.describe('Lead detail — contact details', () => {
       .poll(() => pushed.get('lead-silvia')?.phone)
       .toBe('+421 911 000 111');
     expect(pushed.get('lead-silvia')?.email).toBe('silvia.new@example.com');
-    await expect(page.locator('input[type="tel"]')).toHaveValue('+421 911 000 111');
+    await expect(page.locator('a[href="tel:+421911000111"]')).toHaveText('+421 911 000 111');
   });
 
   test('the contact person is offered for a company, not for a private person', async ({ page }) => {
@@ -67,7 +75,7 @@ test.describe('Lead detail — contact details', () => {
 
     // Silvia is a private person.
     await gotoView(page, LEAD_HASH);
-    await expect(page.locator('input[type="tel"]')).toBeVisible();
+    await expect(page.locator('a[href^="tel:"]')).toBeVisible();
     await expect(page.getByText('Kontaktná osoba', { exact: true })).toHaveCount(0);
 
     // Novák Stavby is a company and has one on file.
