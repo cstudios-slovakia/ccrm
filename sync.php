@@ -3117,6 +3117,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
             }
         }
+        // ccrm_apply_schema() skips itself once SCHEMA_FINGERPRINT matches, and a
+        // worker still running the previous release's cached schema.php can stamp
+        // that marker without having added the column. The template upsert below
+        // names layout_json, so without this guard every save on such an install
+        // fails with "Unknown column" until someone runs `php ccrm migrate`.
+        if (isset($payload['aiCustomTemplates']) && is_array($payload['aiCustomTemplates']) && !$ccrm_skip_writes('general_config', 'aiCustomTemplates')) {
+            if (!ccrm_column_exists($pdo, 'ai_custom_templates', 'layout_json')) {
+                $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `layout_json` TEXT NULL AFTER `badge_style`");
+            }
+        }
 
         $pdo->beginTransaction();
 
