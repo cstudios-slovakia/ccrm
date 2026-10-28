@@ -57,16 +57,6 @@
       "reason": "Same as narrowing: profile button outside the window at 602 and 624 px."
     },
     {
-      "file": "passwordReset.spec.ts",
-      "title": "a reset link names the account",
-      "reason": "The reset page does not show the account e-mail (getByText erik@crm.com not found). First time this spec has run on a runner; not yet investigated."
-    },
-    {
-      "file": "passwordReset.spec.ts",
-      "title": "a dead link says so up front",
-      "reason": "The \"invalid or has expired\" message is not found. Not yet investigated; likely the same cause as the other reset test."
-    },
-    {
       "file": "warehouseWapFreeze.spec.ts",
       "title": "editing an item that has stock on hand never moves its purchase price",
       "reason": "The edited sell price (4.50) never reaches the server: 3.9 is still pushed. Either Save Changes loses the edit when the view is left at once, or the spec races it. Not yet investigated."
