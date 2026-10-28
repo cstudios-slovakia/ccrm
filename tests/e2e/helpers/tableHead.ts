@@ -12,8 +12,9 @@ import { expect, type Locator } from '@playwright/test';
  * on a machine where the table fits.
  *
  * What `click()` guarded is kept: the click waits until the thing at the button's
- * position is the button itself or that copy, so a menu still closing over the
- * head does not swallow it.
+ * position is that button, or a button of the same label in the copy. The copy
+ * is re-laid after every column change, and a click in that gap would land on
+ * the neighbouring column.
  */
 export async function clickTableHead(button: Locator): Promise<void> {
   await button.scrollIntoViewIfNeeded();
@@ -26,8 +27,12 @@ export async function clickTableHead(button: Locator): Promise<void> {
       const at = await centre();
       if (!at) return false;
       return button.evaluate((el, { x, y }) => {
-        const top = document.elementFromPoint(x, y);
-        return !!top && (el.contains(top) || !!top.closest('.table-page-head-mirror'));
+        const topButton = document.elementFromPoint(x, y)?.closest('button');
+        if (!topButton) return false;
+        return (
+          topButton === el ||
+          (!!topButton.closest('.table-page-head-mirror') && topButton.textContent === el.textContent)
+        );
       }, at);
     })
     .toBe(true);

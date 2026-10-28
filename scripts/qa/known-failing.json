@@ -38,11 +38,6 @@
     },
     {
       "file": "draftExits.spec.ts",
-      "title": "archiving a task from its drawer keeps the edits made in the drawer",
-      "reason": "Drawer opens and the title is edited, but no archived task is pushed afterwards; the hold-to-confirm archive may not complete on CI."
-    },
-    {
-      "file": "draftExits.spec.ts",
       "title": "a background pull does not wipe a product card being edited",
       "reason": "The product name input is not found after unlocking the card (input[value=...]:enabled)."
     },
@@ -75,6 +70,11 @@
       "file": "warehouseWapFreeze.spec.ts",
       "title": "editing an item that has stock on hand never moves its purchase price",
       "reason": "The edited sell price (4.50) never reaches the server: 3.9 is still pushed. Either Save Changes loses the edit when the view is left at once, or the spec races it. Not yet investigated."
+    },
+    {
+      "file": "financialFutureMovements.spec.ts",
+      "title": "a charge the rule already made can only be followed back to the rule",
+      "reason": "Editing a charge the rule already made opens the occurrence form (renderOccurrenceFormFields: invoice number only), not the rule. The spec expects the rule's own form with its title. Product change or regression: decide, then fix the app or the spec."
     }
   ]
 }
