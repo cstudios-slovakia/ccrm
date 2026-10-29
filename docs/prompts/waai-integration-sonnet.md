@@ -64,6 +64,7 @@ ask then.
 - WAAI branch `feat/ccrm-integration` (from `main`), one commit: string CRM ids end to end (Prisma migration, `crm-client`, `crm-sync`, Settings → CRM types), `CRM_ID_FORMAT=integer` for all-inclusive-crm, docs. Nothing is pushed.
 - End to end against a scratch CCRM and a scratch Postgres database: 18/18 (list in spec §4.3 "As built (phase 3)"). Scratch data removed.
 - The WAAI checkout is shared: another session had uncommitted changes in `packages/jobs/src/wa-bus.ts` (WhatsApp message editing). They are not part of this phase and were not committed.
+- Carried into phase 4 (Peter's decision): investigate and settle the fresh-database migration failure (`20260527085616_phase_7_migration`), and localise CCRM's `completion_refused` message by install language. Details in the spec, Phase 4.
 - Phase 4 starts with the §4.4 pairing rules and the directory; the task payload's `lead_id` / `project_id` / `start` are still unused.
 
 ### Phase 2 notes (what differs from the spec)

@@ -733,6 +733,20 @@ every branch of §4.4 (one client, client + its leads, two clients → ambiguous
 only, archived ignored, project contact phone, manual/blocked precedence); an e2e
 run with seeded data.
 
+Carried over from phase 3 (decided by Peter, 2026-10-29):
+
+- **Fresh-database migration.** `prisma migrate deploy` fails on an empty WAAI database at
+  `20260527085616_phase_7_migration` (`relation "summaries_conversation_id_window_from_at_to_at_latest_messa_key"
+  already exists`). Investigate the cause and settle how a new install gets its schema (fix the
+  migration, or another documented way) — phase 4 adds more WAAI migrations (`crm_entities`,
+  `conversation_crm_links`) and phase 8 deploys to a fresh VPS database. Test on a scratch
+  Postgres database, never on the dev one.
+- **Localised refusal message.** CCRM's `completion_refused` text ("This task requires a
+  conclusion before it can be completed.") is English whatever `SYSTEM_LANGUAGE` is, and WAAI
+  shows it to the user as is. Make CCRM answer it in the install language (en, sk, hu, as the
+  description footer already does) for both `PUT /tasks/external` and `POST /tasks/{id}/complete`,
+  with a test per language. The same goes for any other message that reaches a WAAI user.
+
 ### Phase 5 — Timeline
 
 Deliver: ENUM migration + `external_url`; `/timeline/external`; WAAI `timeline` job +
