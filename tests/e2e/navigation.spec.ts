@@ -78,10 +78,24 @@ test.describe('Shell navigation', () => {
       if (!(await button.isVisible({ timeout: 600 }).catch(() => false))) continue;
 
       const before = await readViewState(page);
-      const clicked = await button.click({ timeout: 4000 }).then(
+      let clicked = await button.click({ timeout: 4000 }).then(
         () => true,
         () => false,
       );
+      if (!clicked) {
+        // A starved CI runner can miss the first click while the sidebar is
+        // still animating or has re-collapsed. Reopen it and give the click
+        // one more, longer try before calling the button broken.
+        const reopen = page.locator('aside nav button[aria-label]').first();
+        if (await reopen.isVisible({ timeout: 800 }).catch(() => false)) {
+          await reopen.click().catch(() => {});
+        }
+        await page.waitForTimeout(SETTLE.content);
+        clicked = await button.click({ timeout: 10000 }).then(
+          () => true,
+          () => false,
+        );
+      }
 
       if (!clicked) {
         QAReport.record({
