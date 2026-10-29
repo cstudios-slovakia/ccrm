@@ -110,6 +110,13 @@ export const WhatsAppView: React.FC<Props> = ({ active, route, params, language,
     post({ type: "ccrm:appearance", theme: root.classList.contains("dark") ? "dark" : "light", locale: language });
   }, [post, language]);
 
+  // The message listener below must not be torn down (and its "WAAI never answered" timer restarted) when the
+  // language changes, so it reaches the latest `sendAppearance` through a ref.
+  const appearanceRef = useRef(sendAppearance);
+  useEffect(() => {
+    appearanceRef.current = sendAppearance;
+  });
+
   // Theme and language follow the CRM, live.
   useEffect(() => {
     if (!readySeen.current) return;
@@ -157,7 +164,7 @@ export const WhatsAppView: React.FC<Props> = ({ active, route, params, language,
       if (msg.type === "waai:ready") {
         readySeen.current = true;
         if (timer) clearTimeout(timer);
-        sendAppearance();
+        appearanceRef.current();
         if (msg.authed && msg.userCrmId === currentUserId) {
           // Already signed in as this person: nothing to trade, just open the page asked for.
           post({ type: "ccrm:navigate", path: lastPath.current ?? firstPath });
@@ -195,7 +202,7 @@ export const WhatsAppView: React.FC<Props> = ({ active, route, params, language,
       window.removeEventListener("message", onMessage);
       if (timer) clearTimeout(timer);
     };
-  }, [origin, frameSrc, attempt, currentUserId, firstPath, post, sendAppearance]);
+  }, [origin, frameSrc, attempt, currentUserId, firstPath, post]);
 
   // A link into the module (a chat from a client, a task's "Open chat") or the back button: move the frame.
   const wanted = waaiPathFromRoute(route, params);
