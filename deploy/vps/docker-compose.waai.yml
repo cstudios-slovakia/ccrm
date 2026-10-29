@@ -1,0 +1,22 @@
+# Scenario S1 overlay: Join CCRM with WAAI on the same VPS via private bridge network.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.waai.yml up -d
+#
+services:
+  caddy:
+    networks:
+      default:
+      waai_ccrm:
+
+  web:
+    networks:
+      default:
+      waai_ccrm:
+
+networks:
+  waai_ccrm:
+    name: waai_ccrm
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24

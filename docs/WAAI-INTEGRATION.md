@@ -844,6 +844,13 @@ deploy, issue the token, set envs, run the rollout steps one at a time and repor
 after each. Never paste secrets into chat logs, files or commits.
 **Stop for review** after the dry run and before switching push on for real data.
 
+**As prepared (phase 8):**
+- Scenario S1 Docker Compose overlays added:
+  - CCRM: `deploy/vps/docker-compose.waai.yml` (defines `waai_ccrm` bridge subnet `172.31.250.0/24`, connects `caddy` and `web`), `deploy/vps/Caddyfile.waai.snippet` (reverse proxy for WAAI with security headers).
+  - WAAI: `docker-compose.s1.yml` (disables standalone Caddy, joins `waai_ccrm` external bridge network, fixes `ai-worker` IP to `172.31.250.10`, aliases `web` to `waai-web`).
+- Docker build pre-requisites verified: `Dockerfile.worker` and `Dockerfile.web` copy and build `packages/crm-client`.
+- Ready for step-by-step rollout execution with Peter.
+
 ### Version/commit hygiene (CCRM)
 
 Order when a phase is finished: **test → bump version → changelog → build →

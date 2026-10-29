@@ -61,7 +61,23 @@ ask then.
 | 5 | Done (v1.13.18-Nectarine), **no stop required** — see "Phase 5 notes" and spec §4.6 "As built (phase 5)". |
 | 6 | Done (v1.13.19-Nectarine), **stopped for review** — see "Phase 6 notes" and spec §4.8 "As built (phase 6)". Review screenshots (light and dark) were **not** captured: Peter said to skip them. |
 | 7 | Done (v1.13.21-Nectarine), **no stop required** — see "Phase 7 notes" and spec §4.7 "As built (phase 7)". D7 decided: `frame-src 'self' https:`. The manual browser pass with the real WAAI was not run. |
-| 8 | Not started. |
+| 8 | Deployment & rollout runbook ready, awaiting Peter's deployment choices (D1, D3) — see "Phase 8 notes" and spec §4.10. |
+
+### Phase 8 notes
+
+- Confirmed pre-requisites: `Dockerfile.worker` and `Dockerfile.web` copy and build `packages/crm-client`.
+- Created Scenario S1 deployment overlays:
+  - WAAI (`waai-ccrm`): `docker-compose.s1.yml` (disables standalone Caddy, joins `waai_ccrm` external bridge network, fixes `ai-worker` IP to `172.31.250.10`, aliases `web` to `waai-web`).
+  - CCRM (`ccrm-waai`): `deploy/vps/docker-compose.waai.yml` (defines `waai_ccrm` bridge subnet `172.31.250.0/24`, connects `caddy` and `web`), `deploy/vps/Caddyfile.waai.snippet` (reverse proxy and security headers for WAAI domain).
+- Verification: CCRM unit test suite clean (1068 passed, 0 failed).
+- Rollout runbook ready for step-by-step execution with Peter:
+  1. Confirm VPS host (D1) and CCRM setup / topology (D3: S1 same host vs S2 shared hosting).
+  2. Configure environment variables and API token in CCRM / WAAI with `CRM_DRY_RUN=1`.
+  3. Validate ping, directory caching, and chat linking.
+  4. Enable live task push (`CRM_DRY_RUN=0`).
+  5. Enable timeline events and verify client timeline entries.
+  6. Admin SSO sign-in and embed test in browser.
+  7. Map remaining users and grant `whatsapp` permission to desired roles.
 
 ### Phase 7 notes
 
