@@ -32,6 +32,7 @@ const entry = (over: Partial<TimeEntry> = {}): TimeEntry => ({
   titleDeleted: false,
   description: "Work",
   legacyNote: null,
+  note: null,
   entryDate: "2026-10-26",
   startAt: null,
   endAt: null,

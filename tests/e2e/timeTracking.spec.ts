@@ -244,14 +244,46 @@ test.describe('Time tracking', () => {
     await expect.poll(async () => page.getByTestId('tt-example').locator('b').first().innerText()).not.toBe(daysBefore);
   });
 
-  test('starting from a task prefills the timer with the task and its project', async ({ page }) => {
+  test('a task card has no timer; the task drawer starts it with a Description', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#tasks');
     // Tomorrow and later stay folded, so the card is not in the document until the bucket opens.
     await page.getByRole('button', { name: /Budúce|Future|Jövőbeli/ }).click();
     const card = page.getByTestId('task-card').filter({ hasText: 'Objednať krytinu' });
-    await card.getByTestId('task-time-start').click();
+    await expect(card).toBeVisible();
+    await expect(page.getByTestId('task-time-start')).toHaveCount(0);
+
+    await card.getByText('Objednať krytinu').first().click();
+    await page.getByTestId('task-time-note').fill('Volal som dodávateľovi');
+    await page.getByTestId('task-time-start').click();
     await expect(page.getByTestId('header-timer-running')).toContainText('Objednať krytinu');
+
+    // The Description went onto the running entry and is editable while it runs.
+    await expect(page.getByTestId('task-time-note')).toHaveValue('Volal som dodávateľovi');
+    await page.getByTestId('task-time-note').fill('Volal som dodávateľovi, čaká na cenu');
+    // The drawer's own ■ stops it (its overlay covers the header); the click also blurs the field, which saves it.
+    await page.getByTestId('task-time-start').click();
+    await expect(page.getByTestId('header-timer-running')).toHaveCount(0);
+    await gotoView(page, '#time-tracking');
+    await expect(row(page, 'Objednať krytinu').getByTestId('time-entry-note')).toHaveText('Volal som dodávateľovi, čaká na cenu');
+  });
+
+  test('the timer bar takes a Description before Start, and the entry drawer edits it', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.getByTestId('timer-title').fill('Popisná práca');
+    await page.getByTestId('timer-note').fill('Prvý popis');
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('timer-note')).toHaveValue('Prvý popis');
+    await page.getByTestId('timer-stop').click();
+    await expect(row(page, 'Popisná práca').getByTestId('time-entry-note')).toHaveText('Prvý popis');
+
+    await row(page, 'Popisná práca').getByTestId('time-entry-title').click();
+    await expect(page.getByTestId('entry-note')).toHaveValue('Prvý popis');
+    await page.getByTestId('entry-note').fill('Druhý popis');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    await expect(row(page, 'Popisná práca').getByTestId('time-entry-note')).toHaveText('Druhý popis');
   });
 
   test('renaming a ticket-linked entry renames the ticket', async ({ page }) => {

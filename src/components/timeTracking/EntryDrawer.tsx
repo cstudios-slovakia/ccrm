@@ -70,6 +70,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const [person, setPerson] = useState(entry.userId);
   const [billable, setBillable] = useState(entry.billable);
   const [tags, setTags] = useState(entry.tags.join(", "));
+  const [note, setNote] = useState(entry.note ?? "");
 
   const linkedTask = taskId ? lookups.taskById.get(taskId) ?? null : null;
   const linkedTicket = ticketId ? deps.tickets.find((row) => row.id === ticketId) ?? null : null;
@@ -149,6 +150,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
         taskId,
         ticketId: taskId ? null : ticketId,
         billable,
+        note: note.trim() || null,
         tags: tags.split(",").map((x) => x.trim()).filter(Boolean),
       };
       if (!isLinked) patch.description = ownText.trim() || null;
@@ -167,6 +169,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
     try {
       await createEntry({
         description: entry.titleSource === "entry" ? entry.title : null,
+        note: entry.note,
         taskId: entry.taskId,
         ticketId: entry.taskId ? null : entry.ticketId,
         projectId: entry.projectId,
@@ -261,6 +264,21 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             {isLinked && hint && rename.can && <span className="type-meta text-slate-500">{hint}</span>}
             {entry.titleDeleted && <span className="type-meta text-amber-700">{t("The linked task or ticket was deleted.", "Prepojená úloha alebo tiket bol odstránený.", "A kapcsolt feladat vagy jegy törölve lett.")}</span>}
             {entry.legacyNote && <span className="type-meta text-slate-500">{entry.legacyNote}</span>}
+          </label>
+
+          {/* Description */}
+          <label className="grid gap-1">
+            <span className="type-label text-slate-600">{t("Description", "Popis", "Leírás")}</span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              readOnly={readOnly}
+              rows={3}
+              maxLength={1000}
+              placeholder={t("What did you work on? (optional)", "Čo ste robili? (voliteľné)", "Min dolgozott? (nem kötelező)")}
+              data-testid="entry-note"
+              className="resize-y rounded-xl border border-slate-200 px-3 py-2 text-ui outline-none focus:border-primary read-only:bg-slate-50"
+            />
           </label>
 
           {/* Project */}

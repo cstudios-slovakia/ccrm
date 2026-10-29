@@ -828,7 +828,6 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 task={draft}
                                 projects={projects}
                                 leads={leads}
-                                layout="section"
                                 onSaveProject={(_id, projectId) => update({ relatedProjectId: projectId })}
                             />
                             <TaskTimeBreakdown taskId={draft.id} users={users} />

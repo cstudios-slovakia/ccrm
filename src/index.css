@@ -1782,6 +1782,13 @@ dialog[open]::backdrop {
    the cell sticks. Square corners on purpose: a rounded stuck head would show
    rows in the corner gap; the card's own `overflow-clip` rounds it at rest. */
 @layer components {
+  /* The card around a page-sticky table is a stacking context of its own, so the head's and the
+     mirror's z-indexes (20, 25, 26) stay inside it. The glass themes get this from the card's
+     backdrop-filter; paper, minimalist and retro switch that off, and the head then competed with
+     the toolbar above it directly and was painted through a dropdown opened from there. */
+  :has(> .table-page-wrap) {
+    isolation: isolate;
+  }
   .table-page-wrap {
     overflow-x: auto;
   }

@@ -1,30 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Play, Plus, Square } from "lucide-react";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { isClosedProjectStatus } from "../../utils/projects";
 import { clientForTask, resolveTaskProject } from "../../utils/timeLinks.ts";
 import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
+import { TimeApiError, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Lead, Project, Task } from "../../types";
 import { readTimeCreate } from "./timeCreateBridge";
 
 /**
- * ▶ and the tracked-time chip on a task card, and the same control in the task drawer.
- * A task with several projects asks which one before the timer starts.
+ * ▶, the tracked-time chip and an optional Description, in the task drawer's Time tracking section.
+ * (Task cards in the lists carry no timer: tracking starts and stops from the task's edit view.)
+ * A task with several projects asks which one before the timer starts. The Description is typed
+ * before ▶ and travels with the new entry; while the timer runs here the field edits that entry.
  */
 export function TaskTimeControls({
   task,
   projects,
   leads,
   onSaveProject,
-  layout = "chip",
 }: {
   task: Task;
   projects: Project[];
   leads: Lead[];
   /** Writes the chosen project onto the task ("Save the project on the task"). */
   onSaveProject?: (taskId: string, projectId: string) => void;
-  layout?: "chip" | "section";
 }) {
   const tt = useTimeTracking();
   const statuses = useProjectStatuses();
@@ -33,15 +34,13 @@ export function TaskTimeControls({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("");
-  const anchor = useRef<HTMLSpanElement>(null);
+  const [note, setNote] = useState("");
   const runningHere = tt.running?.taskId === task.id;
+  const runningNote = runningHere ? tt.running?.note ?? "" : null;
+  // While the timer runs here the field mirrors the running entry.
   useEffect(() => {
-    const card = anchor.current?.closest("[data-task-card]");
-    if (!(card instanceof HTMLElement)) return;
-    card.classList.toggle("ring-2", runningHere);
-    card.classList.toggle("ring-rose-500", runningHere);
-    card.classList.toggle("ring-inset", runningHere);
-  }, [runningHere]);
+    if (runningNote !== null) setNote(runningNote);
+  }, [runningHere, runningNote]);
   if (!tt.enabled || !tt.viewer.canEdit) return null;
 
   const tracked = (tt.totals.byTask[task.id] ?? 0) + (runningHere ? elapsedSeconds(tt.running?.startAt ?? null, tt.nowMs) : 0);
@@ -50,13 +49,25 @@ export function TaskTimeControls({
   const begin = async (projectId: string | null, remember: boolean) => {
     setAsk(null);
     if (remember && projectId) onSaveProject?.(task.id, projectId);
-    await tt.start({
+    const started = await tt.start({
       taskId: task.id,
       projectId,
       description: null,
+      note: note.trim() || null,
       originType: "task",
       originId: task.id,
     });
+    if (started) setNote("");
+  };
+
+  const commitNote = async () => {
+    if (!runningHere || !tt.running || note.trim() === (tt.running.note ?? "").trim()) return;
+    try {
+      await updateEntry(tt.running.id, { note: note.trim() || null });
+      tt.bump();
+    } catch (e) {
+      tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
+    }
   };
 
   const onPlay = () => {
@@ -111,9 +122,25 @@ export function TaskTimeControls({
   );
 
   return (
-    <span ref={anchor} className={`relative ${layout === "section" ? "flex flex-wrap items-center gap-2" : "inline-flex items-center gap-1.5"}`} onClick={(e) => e.stopPropagation()}>
+    <span className="relative flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
       {button}
       {chip}
+      <input
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onBlur={() => void commitNote()}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          if (runningHere) (e.currentTarget as HTMLInputElement).blur();
+          else onPlay();
+        }}
+        maxLength={1000}
+        placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
+        aria-label={t("Description", "Popis", "Leírás")}
+        data-testid="task-time-note"
+        className="h-9 min-w-40 flex-1 basis-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none placeholder:text-slate-400 focus:border-primary"
+      />
       {ask && (
         <span
           role="dialog"

@@ -768,12 +768,12 @@ if ($action === 'start') {
             $stopped = $old['id'];
         }
         $ins = $pdo->prepare(
-            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `billable`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `note`, `entry_date`, `start_at`, `billable`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $ins->execute([
             $newId, $owner, $callerId, $employee['id'] ?? null, $links['project_id'], $links['task_id'], $links['ticket_id'],
-            $links['description'], $links['title_snapshot'], ccrm_tt_local_date($startUtc), $startUtc, $billable,
+            $links['description'], $links['title_snapshot'], ccrm_tt_clean_note($body['note'] ?? null), ccrm_tt_local_date($startUtc), $startUtc, $billable,
             json_encode(ccrm_tt_clean_tags($body['tags'] ?? []), JSON_UNESCAPED_UNICODE),
             ccrm_te_source($body['source'] ?? null, 'timer'), ccrm_te_origin($body['originType'] ?? null), ccrm_tt_nullable_id($body['originId'] ?? null),
             ccrm_tt_nullable_id($body['deviceId'] ?? null),
@@ -1004,11 +1004,11 @@ if ($action === 'create') {
     $id = ccrm_tt_new_id();
     try {
         $ins = $pdo->prepare(
-            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `note`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $ins->execute([
-            $id, $owner, $callerId, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'],
+            $id, $owner, $callerId, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'], ccrm_tt_clean_note($body['note'] ?? null),
             $entryDate, $startUtc, $endUtc, $duration, $billable,
             ($canCosts && isset($body['billableRate']) && is_numeric($body['billableRate']))
                 ? round((float)$body['billableRate'], 2)
@@ -1128,15 +1128,16 @@ if ($action === 'update') {
         $billableRate = ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate);
     }
     $tags = $has('tags') ? json_encode(ccrm_tt_clean_tags($body['tags']), JSON_UNESCAPED_UNICODE) : $row['tags'];
+    $note = $has('note') ? ccrm_tt_clean_note($body['note']) : ($row['note'] ?? null);
 
     try {
         $upd = $pdo->prepare(
-            "UPDATE `time_entries` SET `user_id` = ?, `employee_id` = ?, `project_id` = ?, `task_id` = ?, `ticket_id` = ?, `description` = ?, `title_snapshot` = ?, `entry_date` = ?,
+            "UPDATE `time_entries` SET `user_id` = ?, `employee_id` = ?, `project_id` = ?, `task_id` = ?, `ticket_id` = ?, `description` = ?, `title_snapshot` = ?, `note` = ?, `entry_date` = ?,
                `start_at` = ?, `end_at` = ?, `duration_sec` = ?, `billable` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ?, `tags` = ?
              WHERE `id` = ? AND `deleted_at` IS NULL"
         );
         $upd->execute([
-            $owner, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'], $entryDate,
+            $owner, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'], $note, $entryDate,
             $startUtc, $endUtc, $duration, $billable, $billableRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $tags, $id,
         ]);
     } catch (\PDOException $e) {

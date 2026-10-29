@@ -46,6 +46,8 @@ export interface EntryInput {
   ticketId?: string | null;
   /** The entry's own text; ignored by the server for a linked entry. */
   description?: string | null;
+  /** The Description of the work; kept on linked entries too. */
+  note?: string | null;
   entryDate?: string;
   startAt?: string | null;
   endAt?: string | null;

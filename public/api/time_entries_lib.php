@@ -525,6 +525,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'titleDeleted' => !$alive,
             'description' => $r['description'],
             'legacyNote' => $r['legacy_note'],
+            'note' => $r['note'] ?? null,
             'entryDate' => $r['entry_date'],
             'startAt' => ccrm_tt_iso($r['start_at']),
             'endAt' => ccrm_tt_iso($r['end_at']),
@@ -549,6 +550,12 @@ if (!function_exists('ccrm_tt_default_settings')) {
             $out['billableRate'] = $r['billable_rate'] === null ? null : (float)$r['billable_rate'];
         }
         return $out;
+    }
+
+    /** The Description of an entry: trimmed, 1000 characters at most, NULL when empty. */
+    function ccrm_tt_clean_note($raw): ?string {
+        $note = mb_substr(trim((string)($raw ?? '')), 0, 1000);
+        return $note !== '' ? $note : null;
     }
 
     function ccrm_tt_decode_tags($raw): array {

@@ -28,6 +28,9 @@ interface Props {
  * Typing matches open tasks by title; picking one LINKS it (the task, and its project) and
  * copies no text. While a timer runs, the title field edits the running entry — and when the
  * entry is linked, that title is the task's, so editing it renames the task.
+ *
+ * Under the row sits an optional Description of the work. It is typed before Start (or in manual
+ * mode) and travels with the new entry; while a timer runs the same field edits the running entry.
  */
 export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
   const tt = useTimeTracking();
@@ -39,6 +42,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [billable, setBillable] = useState(settings.billableByDefault);
+  const [note, setNote] = useState("");
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // Manual mode
@@ -53,6 +57,8 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
   // A running timer's title field mirrors the entry; editing it saves on blur / Enter.
   const [runningTitle, setRunningTitle] = useState("");
   useEffect(() => setRunningTitle(running?.title ?? ""), [running?.id, running?.title]);
+  const [runningNote, setRunningNote] = useState("");
+  useEffect(() => setRunningNote(running?.note ?? ""), [running?.id, running?.note]);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -97,6 +103,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
       description: task || ticket ? null : text.trim() || null,
       taskId: task?.id ?? null,
       ticketId: task ? null : ticket?.id ?? null,
+      note: note.trim() || null,
       projectId: projectId ?? undefined,
       billable,
       originType: task ? "task" : ticket ? "ticket" : undefined,
@@ -105,6 +112,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
     setBusy(false);
     if (started) {
       setText("");
+      setNote("");
       setTask(null);
       setTicket(null);
       setProjectId(null);
@@ -153,6 +161,11 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
     void saveRunning({ description: next || null });
   };
 
+  const commitRunningNote = () => {
+    if (!running || runningNote.trim() === (running.note ?? "").trim()) return;
+    void saveRunning({ note: runningNote.trim() || null });
+  };
+
   const addManual = async () => {
     if (busy) return;
     const seconds = parseDurationInput(dur);
@@ -168,6 +181,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
         description: task || ticket ? null : text.trim() || null,
         taskId: task?.id ?? null,
         ticketId: task ? null : ticket?.id ?? null,
+        note: note.trim() || null,
         projectId: projectId ?? undefined,
         entryDate: date,
         startAt: startIso,
@@ -179,6 +193,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
         originId: task?.id,
       });
       setText("");
+      setNote("");
       setTask(null);
       setTicket(null);
       setProjectId(null);
@@ -327,6 +342,22 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
           ))}
         </div>
       )}
+
+      <input
+        value={running ? runningNote : note}
+        onChange={(e) => (running ? setRunningNote(e.target.value) : setNote(e.target.value))}
+        onBlur={commitRunningNote}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          if (running) (e.currentTarget as HTMLInputElement).blur();
+          else if (mode === "timer") void onStart();
+        }}
+        maxLength={1000}
+        placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
+        aria-label={t("Description", "Popis", "Leírás")}
+        data-testid="timer-note"
+        className="h-9 w-full basis-full rounded-xl border border-transparent bg-transparent px-3 text-ui text-slate-700 outline-none placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white"
+      />
     </div>
   );
 }
@@ -334,6 +365,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
 /** Used by lists to ▶ Continue an entry: same title / links / project, a fresh timer. */
 export const continueInput = (e: TimeEntry) => ({
   description: e.titleSource === "entry" ? e.title : null,
+  note: e.note,
   taskId: e.taskId,
   ticketId: e.taskId ? null : e.ticketId,
   projectId: e.projectId,

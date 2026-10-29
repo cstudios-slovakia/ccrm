@@ -56,6 +56,7 @@ export function EntryRow({ entry, count = 1, deps, showPerson, selected, onSelec
           <span className="truncate">{entry.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</span>
           {count > 1 && <span className="shrink-0 rounded-full bg-slate-200 px-1.5 text-micro font-bold text-slate-600">{count}</span>}
         </span>
+        {entry.note && <span className="block truncate type-meta text-slate-500" data-testid="time-entry-note">{entry.note}</span>}
         {entry.legacyNote && <span className="block truncate type-meta text-slate-400">{entry.legacyNote}</span>}
         {entry.recordedByUserId !== entry.userId && (
           <span className="block type-meta text-slate-400">

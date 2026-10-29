@@ -49,6 +49,8 @@ export interface TimeEntry {
   /** The entry's OWN text; null whenever it is linked. */
   description: string | null;
   legacyNote: string | null;
+  /** The Description the person typed. Allowed on linked entries too. */
+  note: string | null;
   /** YYYY-MM-DD, company timezone. */
   entryDate: string;
   startAt: string | null;

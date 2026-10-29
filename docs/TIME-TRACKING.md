@@ -249,7 +249,7 @@ Decided by the project owner. Do not re-ask. If reality contradicts one, stop an
 | B10 | Toggl is a **one-way importer**, not a live sync. |
 | B11 | Chrome extension ships as a **zip first** (Web Store later). |
 | B12 | Activity capture ships, **opt-in, off by default**. |
-| B13 | A task- or ticket-linked entry has **no own note**. Only migrated ticket notes survive, read-only, in `legacy_note`. |
+| B13 | A task- or ticket-linked entry has **no own title**, but any entry may carry a **Description** (`note`): what was done in this stretch of time. It is typed before Start (timer bar, task drawer) or in the entry drawer, and shows under the title in lists. Migrated ticket notes stay read-only in `legacy_note`. *(Changed: it used to say linked entries have no note at all.)* |
 | B14 | **No `tickets.contract_id` column.** The contract is found from the ticket's project, else its client (finding A5.1). |
 | B15 | **Ticket time visibility:** admins, project managers and any role given the new toggle `tickets.time` (needs `tickets` ≥ view; on for Admin and Project Manager, off for new roles). Not visible to clients by default, never on non-employee surfaces (ticket widget, public ticket token). Setting `ticketTimeVisibleToClients` (default false) is stored and enforced in the endpoint that would serve it. No client-facing time view is built. Users with `time_tracking_team` see ticket entries through the Team views. |
 | B16 | Ticket `billable` defaults to `true` (no column, finding A5.2). |
@@ -333,6 +333,7 @@ default; managers can pick *Whole team* or one person.
 | `description` | varchar(500) NULL | the title **only** for entries with no task and no ticket; NULL when linked (C5) |
 | `title_snapshot` | varchar(500) NULL | written on every save; never shown while the task/ticket exists; never editable |
 | `legacy_note` | varchar(500) NULL | read-only; migrated ticket-time notes |
+| `note` | varchar(1000) NULL | the Description the person typed; allowed on linked entries too (B13) |
 | `entry_date` | DATE NOT NULL | company-timezone date |
 | `start_at`, `end_at` | DATETIME NULL | UTC. `start_at` NULL = hours-only entry; `end_at` NULL while running |
 | `duration_sec` | INT NULL | required unless running |
@@ -425,6 +426,7 @@ renames the **task** (or ticket).
 - The API joins `tasks.title` / `tickets.title` server-side (the ticket "subject" is the `title` column), so the extension and reports work without the sync blob.
 - **Editing the title of a linked entry** (drawer, inline in List/Day, timer bar while running) saves the **task** through the same frontend path `TaskEditDrawer` uses (`onSave`; for tickets `updateSelectedTicket`), so conflict handling, audit and permission checks apply. Next to the field a hint reads "Renames the task" / "Renames the ticket". If the user cannot edit the item, the field is read-only with a tooltip saying why.
 - Renaming a task renames every entry that points at it (live join). Intended.
+- The title rule is about the **title** only. `note` (the Description) is the entry's own text on every entry, linked or not; linking, unlinking and renaming never touch it.
 - **Unlinking** makes the entry's own title editable again, prefilled with the task's title at that moment.
 - **Linking** an existing standalone entry drops its description. If it was non-empty and differed from the task title, ask first ("The entry's title will be replaced by the task's title").
 - Timer bar autocomplete matches open tasks and tickets by title. Picking one **links** it (item + its project); it does not copy text.

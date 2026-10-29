@@ -44,7 +44,7 @@ export function timeTrackingSeed(users: { erik: string; maria: string; free: str
     d.setHours(h, m, 0, 0);
     return d.toISOString();
   };
-  const base = { recordedByUserId: users.erik, employeeId: null, ticketId: null, tags: [], approvalStatus: null, legacyNote: null, originType: null, originId: null, createdAt: ymd(today) + ' 08:00:00', titleDeleted: false, running: false };
+  const base = { recordedByUserId: users.erik, employeeId: null, ticketId: null, tags: [], approvalStatus: null, legacyNote: null, note: null, originType: null, originId: null, createdAt: ymd(today) + ' 08:00:00', titleDeleted: false, running: false };
   return [
     { ...base, id: 'te-seed-1', userId: users.erik, projectId: 'project-1', taskId: null, description: 'Návrh cenovej ponuky', entryDate: ymd(today), startAt: at(today, 8), endAt: at(today, 9, 30), durationSec: 5400, billable: true, source: 'timer' },
     { ...base, id: 'te-seed-2', userId: users.erik, projectId: 'project-1', taskId: 'task-3', description: null, entryDate: ymd(today), startAt: at(today, 10), endAt: at(today, 10, 45), durationSec: 2700, billable: true, source: 'timer' },
@@ -78,6 +78,9 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
 
   // The seeded entries are priced like any saved entry (the frozen rate of their own month).
   for (const e of entries) if (e.endAt || !e.startAt) Object.assign(e, price(e.userId, e.entryDate, e.durationSec));
+
+  // The server trims the Description and stores an empty one as NULL.
+  const cleanNote = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 1000) : null);
 
   const view = (e: Json): Json => {
     const task = e.taskId ? ctx.tasks.find((t) => t.id === e.taskId) : null;
@@ -197,7 +200,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (prev) finish(prev, now);
       const entry: Json = {
         id: `te-mock-${++idSeq}`, userId: caller, recordedByUserId: caller, employeeId: ctx.employees[caller]?.id ?? null, ticketId: links.ticketId,
-        projectId: links.projectId, taskId: links.taskId, description: links.description, titleSnapshot: links.titleSnapshot, legacyNote: null,
+        projectId: links.projectId, taskId: links.taskId, description: links.description, titleSnapshot: links.titleSnapshot, legacyNote: null, note: cleanNote(body.note),
         entryDate: ymd(new Date()), startAt: now, endAt: null, durationSec: null, billable: body.billable ?? settings.billableByDefault, tags: body.tags ?? [],
         source: body.source ?? 'timer', originType: body.originType ?? null, originId: body.originId ?? null, approvalStatus: null, createdAt: now.replace('T', ' ').slice(0, 19),
         costRate: null, costRateSource: 'none', costRateBasisDays: null, cost: null,
@@ -255,6 +258,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       const next: Json = {
         ...(existing ?? { id: `te-mock-${++idSeq}`, recordedByUserId: caller, ticketId: null, legacyNote: null, originType: null, originId: null, approvalStatus: null, createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19) }),
         userId: owner, projectId: links.projectId, taskId: links.taskId, ticketId: links.ticketId, description, titleSnapshot: links.titleSnapshot,
+        note: 'note' in body ? cleanNote(body.note) : existing?.note ?? null,
         entryDate, startAt, endAt, durationSec, billable: 'billable' in body ? !!body.billable : existing?.billable ?? settings.billableByDefault,
         tags: 'tags' in body ? body.tags : existing?.tags ?? [], source: body.source ?? existing?.source ?? 'manual',
       };
