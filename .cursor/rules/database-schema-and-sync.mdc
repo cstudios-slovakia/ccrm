@@ -1,0 +1,52 @@
+---
+description: Adding or changing database columns, tables, migrations, and sync.php queries without breaking production installs
+alwaysApply: true
+---
+
+Canonical source: `.agents/rules/database-schema-and-sync.md`. Follow it without exception whenever touching `schema.php`, `sync.php`, `api/*.php`, or any database table/column.
+
+# Database Schema, Migrations & `sync.php` Column Healing
+
+Production 500 errors (`SQLSTATE[42S22]: Column not found: 1054 Unknown column '...' in 'INSERT INTO'` or fatal migration errors) have repeatedly happened when a schema change was only applied in one place. Every database change **must** follow all rules below.
+
+## 1. The 4-Place Rule for New Columns
+
+Whenever you add a column to a table that `sync.php` (or an `api/*.php` endpoint) writes to or selects explicitly by name, you **must** update all four places in the same commit:
+
+1. **`CREATE TABLE IF NOT EXISTS` in `public/api/schema.php`** (`ccrm_schema_statements()`): so fresh installs create the column immediately.
+2. **Idempotent migration in `public/api/schema.php`** (`ccrm_apply_migrations()`):
+   ```php
+   if (ccrm_table_exists($pdo, 'table_name') && !ccrm_column_exists($pdo, 'table_name', 'col_name')) {
+       $pdo->exec("ALTER TABLE `table_name` ADD COLUMN `col_name` ...");
+   }
+   ```
+3. **Pre-transaction column healing in `public/sync.php`** (right *before* `$pdo->beginTransaction()`):
+   - `ccrm_apply_schema()` skips itself once `SCHEMA_FINGERPRINT` in `system_settings` matches. During a rollout, a PHP worker still holding the previous release's cached `schema.php` in OPcache can stamp that marker without having added the new column.
+   - Without column healing in `sync.php`, every save on that instance throws HTTP 500 (`Unknown column '...' in 'INSERT INTO'`) until `php ccrm migrate` is run manually.
+   - Heal the column right before `$pdo->beginTransaction()`, gated on the payload key that writes to that table (same pattern as `projects.value`, `projects.contact_phone`, `ai_custom_templates.layout_json`):
+     ```php
+     if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
+         if (!ccrm_column_exists($pdo, 'projects', 'new_col')) {
+             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `new_col` ...");
+         }
+     }
+     ```
+4. **Documentation in `entities_overview.md`**: document the column name, type, nullability, and purpose.
+
+## 2. Never Run DDL Inside a Transaction
+
+- MySQL / MariaDB answers `ALTER TABLE`, `CREATE TABLE`, `DROP INDEX`, etc. with an **implicit `COMMIT`**.
+- Running any DDL inside `$pdo->beginTransaction() ... $pdo->commit()` silently commits earlier writes, makes rollback impossible, and causes the final `$pdo->commit()` to throw `"There is no active transaction"`.
+- All column healing in `sync.php` **must** stay above `$pdo->beginTransaction()`.
+
+## 3. Migration Ordering, Helpers & Fingerprinting
+
+- **Order of operations**: In `ccrm_apply_migrations()`, always add columns *before* any backfill, catalogue step, or seed function that queries or writes those columns (e.g., `leads.price_level_id`, `orders` table creation before `ALTER TABLE orders`).
+- **Schema fingerprint (`ccrm_schema_fingerprint()`)**: `sync.php` calls `ccrm_apply_schema()` on every request, gated by the MD5 hash of `schema.php` and its helper files (`employee_name.php`, `lead_client_backfill.php`, `ticket_time_migration.php`). If a migration `require_once`s a new file, **you must add that file to `ccrm_schema_fingerprint()`** or edits to it will never trigger `ccrm_apply_schema()`.
+- **`function_exists` guards on included files**: Every helper file loaded by `schema.php` or `api/*.php` must wrap its functions in `if (!function_exists('...'))`. `php ccrm update` can load both `api/` and `dist/api/` (or `public/api/`) in one process; `require_once` does not deduplicate across different paths, and unguarded functions abort the update with a fatal redeclaration error.
+- **Standalone `api/*.php` endpoints**: Any endpoint that calls `ccrm_column_exists()`, `ccrm_table_exists()`, or a `ccrm_migrate_*()` helper must explicitly `require_once __DIR__ . '/schema.php';` — never assume `config.php` loaded it.
+
+## 4. Mirror `public/` to Root (`npm run sync:backend`)
+
+- `public/sync.php` + `public/api/*` are mirrored at the repo root (`sync.php`, `api/*`).
+- Always run `npm run sync:backend` (or `npm run build`, which runs it automatically) so both copies stay byte-for-byte identical. Never commit changes to `public/sync.php` or `public/api/schema.php` without syncing `sync.php` and `api/schema.php`.

@@ -1,22 +1,22 @@
 ---
 name: "entity-sync"
-description: "Syncs database entity changes to entities_overview.md"
+description: "Syncs database entity changes to schema.php, sync.php column healing, and entities_overview.md"
 ---
 
 # Entity Sync Skill
 
-This skill enforces database schema documentation integrity in this workspace.
+This skill enforces database schema, migration, column-healing, and documentation integrity in this workspace.
 
 ## Context
 The CCRM workspace uses a central database overview document at `entities_overview.md`.
-All database table structures and dynamic schema details are declared programmatically in `api/schema.php` and `sync.php`.
+All database table structures and dynamic schema details are declared programmatically in `public/api/schema.php` (`api/schema.php`) and `public/sync.php` (`sync.php`).
 
-## Instructions for Agents
-Whenever you:
-1. Create a new database table or junction table
-2. Alter or add columns to existing tables
-3. Modify default system settings or dynamic tables structure
+## Instructions for Agents (The 4-Place Rule)
+Whenever you create a new database table or add/alter columns on an existing table, you MUST immediately complete all 4 steps in the same commit:
 
-You MUST immediately:
-1. Open and update [entities_overview.md](file:///Users/erik/Documents/vibe%20coding/crm/entities_overview.md) to document the new table/column names, types, descriptions, and relations.
-2. Commit the changes to git as part of your task.
+1. **`CREATE TABLE IF NOT EXISTS` in `public/api/schema.php`** (`ccrm_schema_statements()`): include the new table or column so fresh installs have it from the start.
+2. **Idempotent migration in `public/api/schema.php`** (`ccrm_apply_migrations()`): add an `if (ccrm_table_exists(...) && !ccrm_column_exists(...)) ALTER TABLE ...` step before any backfill/seed step that uses the column. If you `require_once` a new helper file, guard its functions with `if (!function_exists(...))` and add the file to `ccrm_schema_fingerprint()`.
+3. **Pre-transaction column healing in `public/sync.php`**: if `sync.php` names the column in an `INSERT` or `UPDATE`, add a `!ccrm_column_exists($pdo, ...)` check and `ALTER TABLE` right **before** `$pdo->beginTransaction()` (never inside the transaction, as DDL triggers an implicit MySQL commit). Run `npm run sync:backend` so root `sync.php` and `api/schema.php` are mirrored.
+4. **Update `entities_overview.md`**: document the new table/column names, types, nullability, descriptions, and relations.
+
+Full reference: [`.agents/rules/database-schema-and-sync.md`](../../rules/database-schema-and-sync.md).

@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-token="$(grep -E '^CCRM_CRON_TOKEN=' .env | cut -d= -f2- || true)"
+token="$(grep -E '^CCRM_CRON_TOKEN=' .env | cut -d= -f2- | tr -d '\r' | sed 's/^["'\'']//;s/["'\'']$//' || true)"
 [ -n "$token" ] || exit 0   # not configured yet
 
 # Call Apache inside the container directly: no TLS round trip, no Caddy.

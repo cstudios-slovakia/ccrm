@@ -43,7 +43,19 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 - Money is summed per currency, never across currencies. Do not register columns where a total is meaningless (dates, ratings, percentages, text).
 - Full rule: [`.agents/rules/project-totals.md`](.agents/rules/project-totals.md).
 
-### 5. Audio Notification When Prompt Is Done
+### 5. Database Schema, Migrations & `sync.php` Column Healing
+
+- **The 4-Place Rule for New Columns**: Whenever you add a column to a table written by `sync.php` (or queried by name in `api/*.php`), you **must** update all 4 places in the same commit:
+  1. `CREATE TABLE IF NOT EXISTS` in `public/api/schema.php` (`ccrm_schema_statements()`).
+  2. Idempotent migration (`if (ccrm_table_exists(...) && !ccrm_column_exists(...)) ALTER TABLE ...`) in `ccrm_apply_migrations()` in `public/api/schema.php` — placed *before* any backfill/seed step that touches the column.
+  3. **Pre-transaction column healing in `public/sync.php`** right *before* `$pdo->beginTransaction()` (same pattern as `projects.value`, `projects.contact_phone`, `ai_custom_templates.layout_json`). Because `ccrm_apply_schema()` skips itself once `SCHEMA_FINGERPRINT` matches, a worker with a stale OPcache during deploy can stamp the marker without adding the column — without healing in `sync.php`, every save fails with HTTP 500 (`Unknown column '...' in 'INSERT INTO'`).
+  4. Document the column in [`entities_overview.md`](entities_overview.md).
+- **Never Run DDL Inside a Transaction**: `ALTER TABLE` / `CREATE TABLE` causes an implicit MySQL commit. All column healing in `sync.php` must stay above `$pdo->beginTransaction()`.
+- **Included Migration Helpers**: Any file `require_once`d by `schema.php` must wrap its functions in `if (!function_exists('...'))` and be added to `ccrm_schema_fingerprint()`. Any standalone `api/*.php` endpoint calling `schema.php` helpers must `require_once __DIR__ . '/schema.php';`.
+- **Mirror Backend Copies**: Always run `npm run sync:backend` so root `sync.php` and `api/*` match `public/sync.php` and `public/api/*`.
+- Full rule: [`.agents/rules/database-schema-and-sync.md`](.agents/rules/database-schema-and-sync.md).
+
+### 6. Audio Notification When Prompt Is Done
 
 - **Play Sound on Completion**: Whenever a user prompt/task is finished, play an audible macOS notification sound (e.g. `afplay /System/Library/Sounds/Glass.aiff`) so the user knows the work is done.
 
