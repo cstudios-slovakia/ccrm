@@ -70,7 +70,8 @@ const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readTe
 
 async function copyField(page: Page, id: string): Promise<string> {
   await copyButton(field(page, id)).click();
-  await expect(field(page, id).getByText(COPIED)).toBeVisible();
+  // Said twice: on the button and again in a screen-reader live region. The button's is the one seen.
+  await expect(field(page, id).getByText(COPIED).first()).toBeVisible();
   return clipboard(page);
 }
 
@@ -161,10 +162,11 @@ test.describe('AI Assistant (MCP) settings', () => {
       env: { CCRM_API_URL: `${origin}/api`, CCRM_MCP_KEY: FULL_KEY },
     });
 
-    // The optional prompt carries the user, and never invents a role.
+    // The optional prompt carries the user and the role they really have (the
+    // fixture's Erik is an admin), and never an undefined one.
     const prompt = await copyField(page, 'mcp-field-prompt');
-    expect(prompt).toContain('erik@crm.com');
-    expect(prompt).not.toMatch(/Role: undefined|Role: Admin\)/);
+    expect(prompt).toContain('erik@crm.com, Role: Admin)');
+    expect(prompt).not.toMatch(/Role: undefined/);
   });
 
   test('without the full key, snippets stay copyable but carry a visible placeholder and a warning', async ({ page }) => {

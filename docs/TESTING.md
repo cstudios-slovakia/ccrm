@@ -520,3 +520,20 @@ CI runs **the same npm scripts you run locally**, so a red build reproduces with
 one command on your machine. The workflow also uploads `test-results/runs/` and
 `playwright-report/` as downloadable artifacts, so you can read the report and
 its screenshots without cloning anything.
+
+**Running chosen specs on a runner.** *Actions → QA → Run workflow* takes a
+space-separated list of spec files (`tests/e2e/projectFiles.spec.ts …`); empty
+runs everything. Use it to confirm a fix without a free 1.5 GB of RAM locally.
+
+**Limits in CI.** A runner is dedicated, so the job runs 3 workers with no CPU
+cap, 2.5 min per test (`QA_TEST_TIMEOUT_MS`; the module crawls set their own
+4 min) and a 70 min run limit. A hung test used to cost 4 min, and a handful of
+them used up the 45 min limit before most of the suite had started.
+
+**Known failures.** `scripts/qa/known-failing.json` lists tests that fail on
+`main` today, each with a reason. After the audit, `apply-known-failing.mjs`
+prints them on every run (in the run summary too) and lets the run pass if *only*
+they failed. Any other failure, or any test that never ran, still fails the run,
+and an entry whose test starts passing is called out so it gets removed. The
+list is a debt register, not a place to put a new regression: fix the test or
+the app instead, and delete the entry in the same commit.

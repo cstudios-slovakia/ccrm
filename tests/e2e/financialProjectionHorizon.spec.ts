@@ -7,6 +7,10 @@ import { gotoView, startSession } from './helpers/appDriver';
  * horizon has to re-scale the dataset (4 past weeks + the current one + the
  * horizon's future weeks), relabel the chart, and survive a reload; Off drops
  * every future period again.
+ *
+ * The chart has two pills of the same buttons: how far back it reaches (1M, 3M,
+ * 6M, 12M) and how far forward it projects (Off, 3M, 6M, 12M). The counts above
+ * assume the shortest history (1M = 4 past weeks), which the tests pick first.
  */
 
 const HORIZONS = [
@@ -27,9 +31,23 @@ const horizonLabel = (page: Page, h: (typeof HORIZONS)[number]) =>
     .getByText(`Total Horizon: ${h.totalWeeks} Weeks (${h.months} Months Forward)`)
     .or(page.getByText(`Časový horizont: ${h.totalWeeks} týždňov (${h.skMonths} dopredu)`));
 
+/** A button of one of the two pills, found by the label the pill carries. */
+const pillButton = (page: Page, pill: RegExp, name: RegExp) =>
+  page
+    .locator('div')
+    .filter({ has: page.getByText(pill) })
+    .last()
+    .getByRole('button', { name });
+
+const horizonButton = (page: Page, name: RegExp) =>
+  pillButton(page, /^(Forecast horizon|Horizont prognózy|Előrejelzési időtáv)$/, name);
+const historyButton = (page: Page, name: RegExp) =>
+  pillButton(page, /^(History|História|Előzmények)$/, name);
+
 async function openFinanceOverview(page: Page) {
   await gotoView(page, '#financial');
-  await expect(page.getByRole('button', { name: /^3M$/ })).toBeVisible(SETTLE);
+  await expect(horizonButton(page, /^3M$/)).toBeVisible(SETTLE);
+  await historyButton(page, /^1M$/).click();
 }
 
 async function openWeeklyTable(page: Page) {
@@ -46,7 +64,7 @@ test.describe('Finance projection horizon', () => {
     await openWeeklyTable(page);
 
     for (const h of HORIZONS) {
-      await page.getByRole('button', { name: new RegExp(`^${h.months}M$`) }).click();
+      await horizonButton(page, new RegExp(`^${h.months}M$`)).click();
 
       await expect(horizonLabel(page, h)).toBeVisible(SETTLE);
       await expect(
@@ -73,10 +91,10 @@ test.describe('Finance projection horizon', () => {
     await openFinanceOverview(page);
 
     // Make sure a forecast is showing first, so Off has something to remove.
-    await page.getByRole('button', { name: /^3M$/ }).click();
+    await horizonButton(page, /^3M$/).click();
     await expect(page.getByText(/3-MONTH FUTURE FORECAST|3-MESAČNÁ PROGNÓZA/)).toBeVisible(SETTLE);
 
-    await page.getByRole('button', { name: /^(Off|Vyp\.)$/ }).click();
+    await horizonButton(page, /^(Off|Vyp\.)$/).click();
 
     await expect(page.getByText(/Forecast off|Prognóza vypnutá/)).toBeVisible(SETTLE);
     await expect(page.getByText(/FUTURE FORECAST|MESAČNÁ PROGNÓZA/)).toHaveCount(0);
@@ -99,7 +117,7 @@ test.describe('Finance projection horizon', () => {
     await openFinanceOverview(page);
 
     const sixMonths = HORIZONS[1];
-    await page.getByRole('button', { name: /^6M$/ }).click();
+    await horizonButton(page, /^6M$/).click();
     await expect(horizonLabel(page, sixMonths)).toBeVisible(SETTLE);
 
     await page.reload();
@@ -110,7 +128,7 @@ test.describe('Finance projection horizon', () => {
   test('a 12-month chart stays legible: no overlapping week labels', async ({ page }) => {
     await startSession(page);
     await openFinanceOverview(page);
-    await page.getByRole('button', { name: /^12M$/ }).click();
+    await horizonButton(page, /^12M$/).click();
     await expect(page.getByText(/12-MONTH FUTURE FORECAST|12-MESAČNÁ PROGNÓZA/)).toBeVisible(SETTLE);
 
     const boxes = await page

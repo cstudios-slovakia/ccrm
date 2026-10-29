@@ -75,7 +75,8 @@ test.describe('New order from a customer', () => {
 
     // Inside the Orders module, on a draft for this lead.
     await expect(page).toHaveURL(/#orders\/new\?customer=lead-silvia&from=/);
-    await expect(page.getByText('Zosynchronizovaný klient')).toBeVisible();
+    // A lead has no client profile yet, and the card says so.
+    await expect(page.getByText('Lead (bez profilu klienta)')).toBeVisible();
     // Billing and delivery both carry the lead's street, the delivery its phone.
     await expect(page.locator('input[value="Hlavná 1"]')).toHaveCount(2);
     await expect(page.locator('input[value="+421 900 111 222"]')).toHaveCount(1);

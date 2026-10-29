@@ -46,6 +46,7 @@ test.describe('Deep UI audit', () => {
 
   for (const mod of MODULES) {
     test(`${mod.name} (${mod.hash})`, async ({ page }) => {
+      test.setTimeout(4 * 60 * 1000);
       const crawler = new ViewCrawler(page, mod.name, consoleCapture);
 
       await gotoView(page, mod.hash);

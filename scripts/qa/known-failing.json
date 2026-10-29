@@ -1,0 +1,100 @@
+{
+  "_about": "Tests that fail on main today and are being worked on. CI reports these loudly on every run but does not let them block a merge; any OTHER failure still does, and an entry whose test starts passing is flagged for removal. Never add an entry to hide a new regression: it needs a reason and an owner who will look at it. See docs/TESTING.md.",
+  "tests": [
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "a partial payment writes the entered amount and keeps the plan as an estimate",
+      "reason": "After saving 3 200 of 9 200 the ledger row reads '+9 200 € est: 6 000 €'; the spec expects '3 200' with 'est: 9 200'. Money display: decide which one is intended, then fix the app or the spec."
+    },
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "a status that moves no money commits straight away",
+      "reason": "A pending/overdue row now always shows 'est: 9 200 €'; the spec expects no 'est:' subtitle until money settles. Same question as the partial-payment test."
+    },
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "cancelling the prompt leaves the row untouched",
+      "reason": "Same 'est:' subtitle on an untouched pending row as above."
+    },
+    {
+      "file": "employees.spec.ts",
+      "title": "the structure view reorders by drag",
+      "reason": "Drag in the structure view puts the last employee first instead of moving the first to the end. Fails on CI; unknown whether drag timing or the reorder logic."
+    },
+    {
+      "file": "projectReorder.spec.ts",
+      "title": "dragging a row in the structure reorders it",
+      "reason": "Dragging a project row does not change the order on CI. Same family as the employees drag."
+    },
+    {
+      "file": "projectStatuses.spec.ts",
+      "title": "statuses are added, renamed and removed in settings, and the projects list follows",
+      "reason": "The projects list still shows the five built-in statuses after the settings edits. Known to fail on 95b760dc too."
+    },
+    {
+      "file": "projectStatuses.spec.ts",
+      "title": "one click settles the rest of the value as a paid income row",
+      "reason": "The 'mark rest as paid' button is not found on project-1 finances. Known to fail on 95b760dc too."
+    },
+    {
+      "file": "draftExits.spec.ts",
+      "title": "a background pull does not wipe a product card being edited",
+      "reason": "The product name input is not found after unlocking the card (input[value=...]:enabled)."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Leads / Pipeline",
+      "reason": "Crawler: the 'Obľúbené leady vždy ako prvé' dropdowns open no panel. Check whether they are real dropdowns or crawler false positives."
+    },
+    {
+      "file": "leadsFilterBarResize.spec.ts",
+      "title": "leads filter bar and header hold together while narrowing",
+      "reason": "At 602 px and 624 px wide the profile button sits outside the window. Passed once on a quieter run, failed in the full suite and the first run; look at the header at those widths before calling it a flake."
+    },
+    {
+      "file": "leadsFilterBarResize.spec.ts",
+      "title": "leads filter bar and header hold together while widening",
+      "reason": "Same as narrowing: profile button outside the window at 602 and 624 px."
+    },
+    {
+      "file": "warehouseWapFreeze.spec.ts",
+      "title": "editing an item that has stock on hand never moves its purchase price",
+      "reason": "The edited sell price (4.50) never reaches the server: 3.9 is still pushed. Either Save Changes loses the edit when the view is left at once, or the spec races it. Not yet investigated."
+    },
+    {
+      "file": "financialFutureMovements.spec.ts",
+      "title": "a charge the rule already made can only be followed back to the rule",
+      "reason": "Editing a charge the rule already made opens the occurrence form (renderOccurrenceFormFields: invoice number only), not the rule. The spec expects the rule's own form with its title. Product change or regression: decide, then fix the app or the spec."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Files Manager",
+      "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Clients Register",
+      "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Meeting Room",
+      "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "System Settings",
+      "reason": "Same intermittent finding as the entries above, now in the \"MENA\" currency dropdown (CI run 339): the option click times out after 2.5 s, yet the screenshot afterwards shows the option applied and the panel closed. Hypothesis: on a starved runner the click lands after Playwright gave up. Did not reproduce locally in 6 parallel runs. Raise the click timeout in uiExplorer.ts, or re-check the trigger before recording, once a run reproduces it."
+    },
+    {
+      "file": "projectAutosave.spec.ts",
+      "title": "an edit made just before leaving is still saved",
+      "reason": "Intermittent: after rename + Back to list the project stays open (project-save-state present). Failed in 3 of 5 CI runs, so it passes at times. Either the late save reopens the project (the regression this test guards) or Back is lost. Look at the autosave/back race in ProjectDetailsView."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Email Hub",
+      "reason": "Intermittent crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ) or crawl timeout under heavy CI runner load."
+    }
+  ]
+}

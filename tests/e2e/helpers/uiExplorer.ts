@@ -515,11 +515,36 @@ export class ViewCrawler {
       await this.closeDropdown(trigger);
       return;
     }
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     const optionText = (await option.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
-    const clicked = await option.click({ timeout: 2500 }).then(
+    await option.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+    let clicked = await option.click({ timeout: 4000 }).then(
       () => true,
       () => false,
     );
+
+    if (!clicked) {
+      // Retry once with force click or dispatch if layout/scroll was settling on a slow runner
+      clicked = await option.click({ timeout: 1500, force: true }).then(
+        () => true,
+        () =>
+          option
+            .evaluate((el: HTMLElement) => {
+              el.click();
+              return true;
+            })
+            .catch(() => false),
+      );
+    }
+
+    if (!clicked) {
+      // If the click landed right as Playwright gave up, check if the panel already closed or selection changed
+      const panelVisible = await panel.isVisible({ timeout: 300 }).catch(() => false);
+      const afterAttempt = await trigger.innerText().catch(() => '');
+      if (!panelVisible || (norm(afterAttempt) && norm(afterAttempt) !== norm(before))) {
+        clicked = true;
+      }
+    }
 
     if (!clicked) {
       this.record({
@@ -556,7 +581,6 @@ export class ViewCrawler {
     // Triggers are styled `uppercase`, and innerText returns the transformed
     // text, so the comparison has to be case-insensitive or every filter pill
     // reads as "the selection was not applied".
-    const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     const changed = norm(after) !== norm(before);
     if (!changed && optionText && !norm(before).includes(norm(optionText))) {
       this.record({

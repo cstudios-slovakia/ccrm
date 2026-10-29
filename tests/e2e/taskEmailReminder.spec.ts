@@ -36,8 +36,10 @@ function recordSyncedTasks(page: Page) {
  */
 async function openEditDrawer(page: Page) {
   await page.getByRole('button', { name: /^(Tomorrow|Zajtra|Holnap) \(\d+\)/ }).first().click();
-  const card = page.locator('div.rounded-2xl').filter({ has: page.getByRole('heading', { name: EDIT_TASK }) }).last();
-  await card.getByTitle(/^(Edit Task|Upraviť úlohu|Feladat szerkesztése)$/).click();
+  // A task is a list row now; its checkbox is named for it. The row has a pencil for each
+  // breakpoint, only one of them shown.
+  const row = page.locator('div.group').filter({ has: page.getByLabel(`Select ${EDIT_TASK}`) }).last();
+  await row.getByTitle(/^(Edit Task|Upraviť úlohu|Feladat szerkesztése)$/).filter({ visible: true }).click();
   return page.locator('div.fixed.inset-0').filter({ hasText: /Edit Task|Upraviť úlohu|Feladat szerkesztése/ });
 }
 

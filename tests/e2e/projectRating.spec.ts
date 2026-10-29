@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { clickTableHead } from './helpers/tableHead';
 
 /**
  * A project's star rating — the same 1-5 priority a lead carries, and the same
@@ -120,12 +121,12 @@ test.describe('Project rating', () => {
     await gotoView(page, '#projects');
 
     const header = ratingHeader(page);
-    await header.click(); // ascending
+    await clickTableHead(header); // ascending
     await expect(page.locator('tbody tr').first()).toContainText(RATED_TWO);
     // Unrated has no rating to sort by, so it sits last either way.
     await expect(page.locator('tbody tr').last()).toContainText(UNRATED);
 
-    await header.click(); // descending
+    await clickTableHead(header); // descending
     await expect(page.locator('tbody tr').first()).toContainText(RATED_FIVE);
     await expect(page.locator('tbody tr').last()).toContainText(UNRATED);
   });
