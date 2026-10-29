@@ -62,3 +62,15 @@ export function withDaySeparators<M extends Timed>(
   }
   return out;
 }
+
+/** The stamp on a chat row: the time today, "Yesterday", the weekday within a week, else day and month. */
+export function rowStamp(date: Date | string | number, labels: DayLabels, locale?: string, now: Date = new Date()): string {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  if (dayKey(d) === dayKey(now)) return messageTime(d, locale);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (dayKey(d) === dayKey(yesterday)) return labels.yesterday;
+  if (now.getTime() - d.getTime() < 6 * 24 * 3600 * 1000) return d.toLocaleDateString(locale, { weekday: "short" });
+  return d.toLocaleDateString(locale, { day: "2-digit", month: "short" });
+}

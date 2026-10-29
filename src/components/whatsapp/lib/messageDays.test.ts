@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dayLabel, withDaySeparators } from "./messageDays.ts";
+import { dayLabel, rowStamp, withDaySeparators } from "./messageDays.ts";
 
 const labels = { today: "Today", yesterday: "Yesterday" };
 // Local-time dates, so the test does not depend on the machine's time zone.
@@ -43,4 +43,12 @@ test("a message with an unreadable timestamp is kept and gets no separator", () 
 
 test("an empty timeline has no separators", () => {
   assert.deepEqual(withDaySeparators([], labels), []);
+});
+
+test("a chat row shows the time today, then Yesterday, then the weekday, then the date", () => {
+  assert.match(rowStamp(at(2026, 10, 29, 9), labels, "en", now), /9:00|09:00/);
+  assert.equal(rowStamp(at(2026, 10, 28, 9), labels, "en", now), "Yesterday");
+  assert.equal(rowStamp(at(2026, 10, 25, 9), labels, "en", now), "Sun");
+  assert.match(rowStamp(at(2026, 9, 1, 9), labels, "en", now), /01.*Sep|Sep.*01/);
+  assert.equal(rowStamp("not a date", labels, "en", now), "");
 });
