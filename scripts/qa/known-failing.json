@@ -83,8 +83,8 @@
     },
     {
       "file": "crawler.spec.ts",
-      "title": "Email Hub",
-      "reason": "The crawl of the Email Hub did not finish within its 4 min limit on the runner (page closed while still crawling). Slow rather than wrong so far; check how long it takes on a quiet machine."
+      "title": "System Settings",
+      "reason": "Same intermittent finding as the entries above, now in the \"MENA\" currency dropdown (CI run 339): the option click times out after 2.5 s, yet the screenshot afterwards shows the option applied and the panel closed. Hypothesis: on a starved runner the click lands after Playwright gave up. Did not reproduce locally in 6 parallel runs. Raise the click timeout in uiExplorer.ts, or re-check the trigger before recording, once a run reproduces it."
     },
     {
       "file": "projectAutosave.spec.ts",
