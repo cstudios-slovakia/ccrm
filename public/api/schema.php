@@ -405,6 +405,10 @@ if (!function_exists('ccrm_schema_statements')) {
               `ticket_public_hash` VARCHAR(64) NULL UNIQUE COMMENT 'Cryptographically random unguessable token for public ticket status URL',
               `ticket_widget_config_json` TEXT NULL COMMENT 'JSON config for floating widget color, position, greeting, language',
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `hours_budget` DECIMAL(8,2) NULL COMMENT 'Hours the project is expected to take',
+              `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries',
+              `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing',
+              `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE

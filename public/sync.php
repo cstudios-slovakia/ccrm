@@ -3164,6 +3164,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'projects', 'completion_deadline')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `completion_deadline` DATE NULL AFTER `invoice_date`");
             }
+            if (!ccrm_column_exists($pdo, 'projects', 'hours_budget')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `hours_budget` DECIMAL(8,2) NULL COMMENT 'Hours the project is expected to take'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'billable_rate')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'is_internal')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'contact_phone')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it'");
+            }
+        }
+        if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
+            if (!ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
+                $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)'");
+            }
         }
 
         $pdo->beginTransaction();
