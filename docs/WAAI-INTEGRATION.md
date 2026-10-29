@@ -1,6 +1,6 @@
 # WAAI ↔ CCRM integration — analysis, architecture and implementation plan
 
-> **Status:** plan. Phase 1 (CCRM API core) is implemented on `1.13-nectarine` (v1.13.14); phases 2–9 are not started. Written 2026-10-29. Progress and deviations: `docs/prompts/waai-integration-sonnet.md`.
+> **Status:** plan. Phases 1 (CCRM API core, v1.13.14) and 2 (task endpoints, v1.13.15) are implemented on `1.13-nectarine`; phases 3–9 are not started. Written 2026-10-29. Progress and deviations: `docs/prompts/waai-integration-sonnet.md`.
 > **Repos:** CCRM = `Other_web_apps/ccrm/ccrm-app` (this repo), WAAI = `01_My_web_apps/waai`.
 > **Prior art you must read:** `Other_web_apps/all-inclusive-crm/docs/WaaiTaskBridge.md`
 > (the task-bridge design this plan reuses) and its PHP implementation in
@@ -265,6 +265,44 @@ only, no text).
 tasks get no `email_reminders_json`). Check whether `workflows_engine.php` fires on
 task creation; if it does, do **not** fire it for WAAI pushes (document it). This is
 decision D9.
+
+**As built (phase 2)** — `public/api/integration_tasks.php`; where it differs from the text above:
+
+- **Wire shapes.** `PUT /tasks/external/{externalId}` takes `revision` (positive int), `title`,
+  `description`, `status` (`open|completed`), `owner_id`, `assignee_ids`, `due {at, all_day}`,
+  top-level `start` (the old `context.start` is still read), optional `lead_id` / `project_id`
+  and `context {conversation, is_group, assignee_label, path}`. A `lead_id` / `project_id` key
+  that is **absent** leaves the link alone; `null` clears it (when the chat changed it). User ids
+  are strings (an integer is accepted and read as a string). Answers: 201 on create, 200
+  otherwise, with the task representation plus `stale` and `applied` (the changed fields).
+- **Footer** is written in the install language (`SYSTEM_LANGUAGE`: en, sk, hu); the chat link
+  is built from `CCRM_APP_URL` or the stored `APP_BASE_URL` — never from the request host, which
+  is the container name behind S1. Without a known base URL the footer simply has no link line.
+- **No date.** A first push with no `due` stores `today + default_deadline_days`, all day, with
+  `external_meta_json = {due_inferred: true, inferred_deadline: <date>}`. The sync response
+  carries `dueInferred`, which is true only while the deadline still equals `inferred_deadline`,
+  so a user moving it (the app's save leaves the meta alone) makes it a stated date. A later push
+  with a real date replaces it through the merge; a date the chat **takes back** leaves the
+  deadline as it is (`tasks.deadline` is NOT NULL).
+- **Completion.** A push that completes a task whose `requires_conclusion` is set and has no
+  conclusion answers **422 `completion_refused`** and rolls the whole push back (nothing is
+  applied; the same message as `POST /tasks/{id}/complete`). `completed_by` is the pushed owner;
+  for `/complete` it is the optional body `user_id`, else the client's first owner. Done is
+  final: once done in CCRM, a push changes nothing (but still advances the stored revision).
+- **Feed** pages by `(FLOOR(UNIX_TIMESTAMP(updated_at)), id)` — whole seconds, because
+  `tasks.updated_at` is `TIMESTAMP(3)` and the contract's cursor is `updated_since` in unix
+  seconds. `after_id` is a string. `open_only` drops done tasks. WAAI-origin tasks are in the
+  feed too (with `origin: "waai"`); tasks another client pushed never are.
+- **Task `url`** is `<base>#tasks?task=<id>`; the app does not open a specific task from that
+  link yet (it lands on Tasks). Opening the drawer from `?task=` comes with the task badges in
+  phase 6.
+- **D9.** Like the MCP task tools, these writes go straight to the tables: no `task_created` /
+  `task_status_changed` workflows, no assignment or completion e-mails, no ticket auto-resolve
+  (`ticket_task_links`). If a completion from WAAI should resolve a linked ticket, that is a
+  follow-up.
+- Rate limit, auth order and error envelope are those of phase 1; `integration_refs` rows for
+  tasks use `kind = 'task'`, `local_id` = the CCRM task id, `applied_snapshot` = the composed
+  values last applied (ids, not names, for people).
 
 ### 4.2 CCRM data-model changes (`public/api/schema.php`)
 

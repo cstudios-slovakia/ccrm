@@ -31,14 +31,20 @@ if (file_exists($configFile)) {
 }
 require_once __DIR__ . '/integration_lib.php';
 require_once __DIR__ . '/integration_directory.php';
+require_once __DIR__ . '/integration_tasks.php';
 
 /**
  * Documented routes: [method, path pattern, handler, scope]. Scope null = any valid token, an array =
- * any one of them. A path that matches with another method is a 405, not a 404.
+ * any one of them. The pattern's capture groups reach the handler as `$req['params']`. A path that
+ * matches with another method is a 405, not a 404.
  */
 $ccrmIntRoutes = [
     ['GET', '#^ping$#', 'ccrm_int_handle_ping', null],
     ['GET', '#^users$#', 'ccrm_int_handle_users', 'users:read'],
+    ['PUT', '#^tasks/external/([^/]+)$#', 'ccrm_int_handle_task_push', 'tasks:push'],
+    ['GET', '#^tasks/feed$#', 'ccrm_int_handle_task_feed', 'tasks:pull'],
+    ['POST', '#^tasks/lookup$#', 'ccrm_int_handle_task_lookup', ['tasks:push', 'tasks:pull']],
+    ['POST', '#^tasks/([^/]+)/complete$#', 'ccrm_int_handle_task_complete', 'tasks:pull'],
 ];
 
 function ccrm_int_handle_ping(\PDO $pdo, array $client, array $req): array {
@@ -83,10 +89,12 @@ try {
 
     $route = null;
     $allowed = [];
+    $params = [];
     foreach ($ccrmIntRoutes as $candidate) {
-        if (preg_match($candidate[1], $path)) {
+        if (preg_match($candidate[1], $path, $m)) {
             if ($candidate[0] === $method) {
                 $route = $candidate;
+                $params = array_slice($m, 1);
                 break;
             }
             $allowed[] = $candidate[0];
@@ -110,6 +118,7 @@ try {
         'method' => $method,
         'path' => $path,
         'raw' => $raw,
+        'params' => $params,
         'query' => $_GET,
     ]);
 } catch (CcrmIntApiException $e) {

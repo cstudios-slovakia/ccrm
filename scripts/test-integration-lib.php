@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 date_default_timezone_set('Europe/Bratislava');
 require_once __DIR__ . '/../public/api/integration_lib.php';
+require_once __DIR__ . '/../public/api/integration_tasks.php';
 
 $checks = 0;
 function check(bool $ok, string $description): void {
@@ -108,5 +109,59 @@ check(ccrm_int_json_object('{}') === [], 'an empty object is allowed');
 foreach (['', '[1,2]', '"x"', '{bad', 'null'] as $bad) {
     check(refused(fn() => ccrm_int_json_object($bad)) === '400:invalid_json:', 'refused body: ' . var_export($bad, true));
 }
+
+// ---- task deadlines (integration_tasks.php)
+$now = strtotime('2026-10-29 12:00:00');
+check(ccrm_int_parse_due(null) === null, 'no due is null');
+check(ccrm_int_parse_due(['at' => '2026-11-03T23:59:00+01:00', 'all_day' => true], 'due', $now) === ['date' => '2026-11-03', 'time' => null], 'an all-day deadline has a date and no time');
+check(ccrm_int_parse_due(['at' => '2026-11-03T08:30:00+01:00', 'all_day' => false], 'due', $now) === ['date' => '2026-11-03', 'time' => '08:30'], 'a timed deadline keeps its local HH:MM');
+check(ccrm_int_parse_due(['at' => '2026-11-03T08:30:00+01:00'], 'due', $now) === ['date' => '2026-11-03', 'time' => '08:30'], 'all_day defaults to false');
+check(ccrm_int_parse_due(['at' => '2026-11-03T22:59:00Z', 'all_day' => true], 'due', $now) === ['date' => '2026-11-03', 'time' => null], 'UTC 22:59 is the same local day (CET)');
+check(ccrm_int_parse_due(['at' => '2026-11-03T23:30:00Z', 'all_day' => true], 'due', $now) === ['date' => '2026-11-04', 'time' => null], 'UTC 23:30 is already the next local day');
+check(ccrm_int_parse_due(['at' => '2026-11-03'], 'due', $now) === ['date' => '2026-11-03', 'time' => '00:00'], 'a bare date is midnight local');
+// Spring forward 2027-03-28: 02:00 CET jumps to 03:00 CEST.
+check(ccrm_int_parse_due(['at' => '2027-03-28T00:30:00Z'], 'due', $now) === ['date' => '2027-03-28', 'time' => '01:30'], 'UTC 00:30 is 01:30 CET before the change');
+check(ccrm_int_parse_due(['at' => '2027-03-28T01:30:00Z'], 'due', $now) === ['date' => '2027-03-28', 'time' => '03:30'], 'UTC 01:30 is 03:30 CEST after the change');
+check(ccrm_int_parse_due(['at' => '2027-03-27T22:59:00Z', 'all_day' => true], 'due', $now) === ['date' => '2027-03-27', 'time' => null], 'a day before the change');
+foreach ([['at' => 5], ['nope' => 1], 'tomorrow', ['at' => 'tomorrow'], ['at' => '2026-11-03', 'all_day' => 'yes']] as $bad) {
+    check(refused(fn() => ccrm_int_parse_due($bad, 'due', $now)) === '422:validation_failed:due', 'refused due: ' . json_encode($bad));
+}
+check(ccrm_int_parse_start(null) === null && ccrm_int_parse_start('') === null, 'no start is null');
+check(ccrm_int_parse_start('2026-11-05T00:00:00+01:00', 'start', $now) === '2026-11-05', 'a start is the local date');
+check(refused(fn() => ccrm_int_parse_start('soon', 'start', $now)) === '422:validation_failed:start', 'a start must be ISO 8601');
+check(ccrm_int_due_to_iso('2026-11-03', null) === '2026-11-03T23:59:00+01:00', 'no time means 23:59 local, offset of that day');
+check(ccrm_int_due_to_iso('2026-10-24', '08:30') === '2026-10-24T08:30:00+02:00', 'summer time offset');
+check(ccrm_int_due_to_iso('2026-10-26', '08:30') === '2026-10-26T08:30:00+01:00', 'winter time offset after the change');
+check(ccrm_int_default_deadline(7, strtotime('2026-10-29 12:00:00')) === '2026-11-05', 'default deadline is today + N days');
+check(ccrm_int_default_deadline(0, strtotime('2026-10-29 23:30:00')) === '2026-10-29', 'zero days is today');
+check(ccrm_int_default_deadline(7, strtotime('2026-10-29 23:30:00 UTC')) === '2026-11-06', 'the day is the local one (UTC 23:30 is already tomorrow in Bratislava)');
+
+// ---- task states
+$states = ['todo', 'in_progress', 'review', 'finished'];
+check(ccrm_int_task_is_done('finished', $states) && ccrm_int_task_is_done('Done', $states) && !ccrm_int_task_is_done('review', $states), 'the last state and "done" are done');
+check(ccrm_int_task_is_done('done', []) && !ccrm_int_task_is_done('todo', []), 'without configured states only "done" is done');
+check(ccrm_int_task_initial_state($states) === 'todo' && ccrm_int_task_done_state($states) === 'finished', 'first state is new, last is done');
+check(ccrm_int_task_initial_state([]) === 'todo' && ccrm_int_task_done_state([]) === 'done', 'defaults without configured states');
+
+// ---- people
+$dir = ['names' => ['u1' => 'Anna', 'u2' => 'Boris', 'u3' => 'boris'], 'ids' => ['anna' => 'u1', 'boris' => null]];
+check(ccrm_int_user_id_for_name($dir, ' ANNA ') === 'u1', 'a name resolves case-insensitively');
+check(ccrm_int_user_id_for_name($dir, 'Boris') === null, 'a name shared by two users resolves to nobody');
+check(ccrm_int_user_id_for_name($dir, 'Nobody') === null && ccrm_int_user_id_for_name($dir, null) === null && ccrm_int_user_id_for_name($dir, '') === null, 'unknown and empty names resolve to nobody');
+check(ccrm_int_task_user(7, 'owner_id', ['names' => ['7' => 'Seven']]) === '7', 'a numeric id is accepted as a string');
+check(refused(fn() => ccrm_int_task_user('zzz', 'owner_id', $dir)) === '422:validation_failed:owner_id', 'an unknown user is refused');
+check(refused(fn() => ccrm_int_task_user(['u1'], 'owner_id', $dir)) === '422:validation_failed:owner_id', 'a non-scalar user is refused');
+
+// ---- chat paths and the description footer
+check(ccrm_int_parse_chat_path('/c/ckx8_a-B', 'p') === '/c/ckx8_a-B' && ccrm_int_parse_chat_path('/c/ckx8?m=ckm2', 'p') === '/c/ckx8?m=ckm2' && ccrm_int_parse_chat_path(null, 'p') === null && ccrm_int_parse_chat_path('', 'p') === null, 'chat paths');
+foreach (['//evil.example/c/x', 'https://evil.example/c/x', '/c/x?m=a&b=c', '/c/', '/tasks', '/c/x/y', '/c/x#frag', "/c/x\n", '/c/' . str_repeat('a', 65)] as $bad) {
+    check(refused(fn() => ccrm_int_parse_chat_path($bad, 'context.path')) === '422:validation_failed:context.path', 'refused path: ' . json_encode($bad));
+}
+$ctx = ['conversation' => 'Marek Novák', 'assignee_label' => 'Marek'];
+check(ccrm_int_task_footer('en', $ctx, 'https://crm.test/#whatsapp/c/x') === "WhatsApp chat: Marek Novák\nWhatsApp assignee: Marek\nOpen chat: https://crm.test/#whatsapp/c/x", 'footer (en)');
+check(str_contains(ccrm_int_task_footer('sk', $ctx, ''), 'Zodpovedný vo WhatsAppe: Marek') && !str_contains(ccrm_int_task_footer('sk', $ctx, ''), 'Otvoriť'), 'footer (sk) has no link line without a URL');
+check(str_contains(ccrm_int_task_footer('hu', $ctx, 'u'), 'Csevegés megnyitása: u'), 'footer (hu)');
+check(ccrm_int_task_footer('en', ['conversation' => '', 'assignee_label' => ''], '') === '', 'an empty context has no footer');
+check(ccrm_int_task_compose_description('Text', 'Footer') === "Text\n\nFooter" && ccrm_int_task_compose_description('', 'Footer') === 'Footer' && ccrm_int_task_compose_description('Text', '') === 'Text', 'description + footer');
 
 echo "OK {$checks} checks\n";

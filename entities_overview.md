@@ -153,8 +153,11 @@ General system and operational tasks.
 * `related_lead_id` VARCHAR(50)
 * `is_locking` TINYINT(1)
 * `archived` TINYINT(1)
+* `external_source` VARCHAR(20) [NULLable] (integration client code that pushed the task, e.g. waai; server-only, never written by a client save)
+* `external_url` VARCHAR(255) [NULLable] (path of the source chat in that system, e.g. /c/<id>)
+* `external_meta_json` TEXT [NULLable] (chat title, WhatsApp assignee label, `due_inferred` + `inferred_deadline` when the chat gave no date)
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) (indexed as `idx_task_updated`; the machine API's feed pages by it)
 
 ### `task_assignees`
 Junction table mapping users to tasks.
@@ -353,6 +356,50 @@ Security and privilege tracking log.
 * `action` VARCHAR(100)
 * `detail` TEXT
 * `created_at` TIMESTAMP
+
+### `integration_clients`
+One external system allowed to use the machine API (`/api/v1`, today only `waai`). JSON-valued columns are TEXT holding JSON.
+* `id` VARCHAR(50) [PK]
+* `code` VARCHAR(50) [UNIQUE] (e.g. waai)
+* `name` VARCHAR(100)
+* `is_active` TINYINT(1)
+* `scopes` TEXT (JSON list: users:read, directory:read, tasks:push, tasks:pull, whatsapp:links, timeline:push)
+* `allowed_ips` TEXT (JSON list of addresses / CIDR blocks; empty = any)
+* `require_direct` TINYINT(1) (refuse requests that went through a proxy)
+* `owner_user_ids` TEXT (JSON list of user ids: who `owner_id` may name, and whose tasks the feed returns)
+* `feed_scope` ENUM('owners','all')
+* `embed_url` VARCHAR(255) [NULLable] (origin of the embedded WhatsApp view)
+* `sso_secret` VARCHAR(255) [NULLable] (encrypted)
+* `default_deadline_days` INT (deadline given to a pushed task whose chat stated none)
+* `settings_json` TEXT [NULLable]
+* `created_at`, `updated_at` TIMESTAMP
+
+### `integration_tokens`
+API tokens; only the sha256 is stored, the plaintext is shown once. Several per client so a rotation can overlap.
+* `id` VARCHAR(50) [PK]
+* `client_id` VARCHAR(50) (references `integration_clients.id`, cascading deletion)
+* `prefix` VARCHAR(12) [UNIQUE]
+* `token_hash` CHAR(64)
+* `expires_at`, `revoked_at`, `last_used_at` DATETIME [NULLable]
+* `last_used_ip` VARCHAR(45) [NULLable]
+* `created_at` TIMESTAMP
+
+### `integration_refs`
+External id ↔ local row, plus the values last applied from the external system (three-way merge).
+* `id` BIGINT AUTO_INCREMENT [PK]
+* `client_id` VARCHAR(50) (references `integration_clients.id`, cascading deletion)
+* `kind` ENUM('task','timeline')
+* `external_id` VARCHAR(64)
+* `local_id` VARCHAR(50) [NULLable] (the `tasks.id`; no foreign key: a ref whose row is gone means "deleted in CCRM")
+* `revision` BIGINT (the sender's revision; an older one is ignored)
+* `applied_snapshot` TEXT [NULLable] (JSON)
+* `created_at`, `updated_at` TIMESTAMP
+* Unique: (`client_id`, `kind`, `external_id`)
+
+### `integration_rate`
+Per-token request counter, one row per minute.
+* `token_prefix` VARCHAR(12), `window_start` INT [PK together]
+* `hits` INT
 
 ---
 

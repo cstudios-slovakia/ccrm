@@ -112,6 +112,7 @@ function setup() {
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} && mkdir -p ${SCRATCH_DIR}/api`);
   docker('cp', root + 'public/api/.', `${WEB}:${SCRATCH_DIR}/api`);
   docker('cp', root + 'public/.htaccess', `${WEB}:${SCRATCH_DIR}/.htaccess`);
+  docker('cp', root + 'public/sync.php', `${WEB}:${SCRATCH_DIR}/sync.php`);   // the task checks save through the real sync endpoint
   docker('exec', WEB, 'sh', '-c', `sed "s/define('DB_NAME', '[^']*')/define('DB_NAME', '${SCRATCH_DB}')/" /var/www/html/config.php > ${SCRATCH_DIR}/config.php`);
   docker('exec', WEB, 'chown', '-R', 'www-data:www-data', SCRATCH_DIR);
 
@@ -127,6 +128,8 @@ function setup() {
   // A phone for /users: it lives on the linked employee, not on the user.
   sql(`DELETE FROM employees WHERE id='intp-emp';
        INSERT INTO employees (id,name,user_id,phone,is_active) VALUES ('intp-emp','Int Probe Phone','intp-phone','0905 123 456',1);`);
+  // Fixed settings, so the task checks do not depend on how the dev database is configured.
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TASK_STATES', '["todo","in_progress","review","done"]'), ('SYSTEM_LANGUAGE', 'en'), ('APP_BASE_URL', 'https://crm.test/');`);
 }
 
 function teardown() {
@@ -360,6 +363,366 @@ async function apiChecks(state) {
   check('... and the API recovers', (await call('/ping', { token: state.token2 })).status === 200);
 }
 
+// ----------------------------------------------------------------------------- 2b. tasks
+const ADMIN_ID = USERS.admin[0], ADMIN_NAME = USERS.admin[1];
+const PHONE_ID = USERS.phone[0], PHONE_NAME = USERS.phone[1];
+const VIEWER_ID = USERS.viewer[0], VIEWER_NAME = USERS.viewer[1];
+
+const jrow = (q) => { const out = sql(q).split('\n').slice(1).filter(Boolean)[0]; return out ? JSON.parse(out) : null; };
+const taskRow = (id) => jrow(`SELECT JSON_OBJECT('title',title,'description',description,'deadline',CAST(deadline AS CHAR),'deadline_time',deadline_time,'status',status,'owner',owner,'created_by',created_by,
+  'start_date',CAST(start_date AS CHAR),'lead',related_lead_id,'project',related_project_id,'completed_by',completed_by,'completed_at',completed_at,'conclusion',conclusion,'priority',priority,
+  'ext_source',external_source,'ext_url',external_url,'meta',external_meta_json,'updated',CAST(updated_at AS CHAR)) AS j FROM tasks WHERE id=${sq(id)}`);
+const assigneesOf = (id) => sql(`SELECT user_name FROM task_assignees WHERE task_id=${sq(id)} ORDER BY user_name`).split('\n').slice(1).filter(Boolean);
+
+// Europe/Bratislava wall-clock parts of an instant, independent of the machine running the probe.
+const tzParts = (iso) => {
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bratislava', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso));
+  const g = (t) => p.find((x) => x.type === t).value;
+  return { date: `${g('year')}-${g('month')}-${g('day')}`, time: `${g('hour')}:${g('minute')}` };
+};
+const todayPlus = (n) => { const t = new Date(tzParts(new Date().toISOString()).date + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+const lastSundayOfMarch = (year) => { const d = new Date(Date.UTC(year, 3, 0)); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d.toISOString().slice(0, 10); };
+
+async function syncApi(session, { method = 'GET', body } = {}) {
+  const res = await fetch(`${BASE}/intprobe/sync.php`, {
+    method,
+    headers: { Cookie: `CCRMSESSID=${session}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const raw = await res.text();
+  let json = null;
+  try { json = JSON.parse(raw); } catch { /* not JSON */ }
+  return { status: res.status, json, raw };
+}
+
+async function taskChecks(state) {
+  const token = state.token2;
+  const session = state.adminSession;
+  let rev = Date.now();
+  const nextRev = () => ++rev;
+  const put = (ext, body, opts = {}) => call(`/tasks/external/${ext}`, { method: 'PUT', token, body, ...opts });
+  const payload = (over = {}) => ({
+    revision: 'revision' in over ? over.revision : nextRev(), title: 'Poslať ponuku', description: 'Detail ponuky', status: 'open', owner_id: ADMIN_ID, assignee_ids: [ADMIN_ID],
+    due: { at: `${todayPlus(30)}T10:00:00Z`, all_day: true },
+    context: { conversation: 'Marek Novák', is_group: false, assignee_label: 'Marek', path: '/c/ckx8abc' },
+    ...over,
+  });
+  const resetRate = () => sql(`DELETE FROM integration_rate;`);
+  resetRate();
+  sql(`UPDATE integration_clients SET default_deadline_days = 7 WHERE code='waai';`);
+
+  section('task push: validation');
+  setClient(`scopes='["tasks:pull"]'`);
+  const noPush = await put('waaitask0001', payload());
+  check('a token without tasks:push cannot push -> 403', noPush.status === 403 && errCode(noPush) === 'forbidden_scope', noPush.raw);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+  for (const ext of ['short', 'x'.repeat(65), 'has space ok1', 'waaitask0001%0A']) {
+    const r = await put(ext, payload());
+    check(`external id "${ext.slice(0, 20)}" is refused -> 422 (not 404)`, r.status === 422 && 'externalId' in (r.json?.error?.fields ?? {}), `${r.status} ${r.raw}`);
+  }
+  check('a non-object body -> 400', (await put('waaitask0001', '[1,2]')).status === 400);
+  check('no body -> 400', (await call('/tasks/external/waaitask0001', { method: 'PUT', token })).status === 400);
+  const refuse = async (patch, field) => {
+    const r = await put('waaitask0001', payload(patch));
+    check(`push refuses a bad ${field} -> 422`, r.status === 422 && r.json?.error?.fields && field in r.json.error.fields, `${r.status} ${r.raw}`);
+  };
+  await refuse({ revision: undefined }, 'revision');
+  await refuse({ revision: '5' }, 'revision');
+  await refuse({ revision: 0 }, 'revision');
+  await refuse({ title: '' }, 'title');
+  await refuse({ title: '<b></b>' }, 'title');
+  await refuse({ title: 'x'.repeat(256) }, 'title');
+  await refuse({ description: 'x'.repeat(5001) }, 'description');
+  await refuse({ status: 'archived' }, 'status');
+  await refuse({ owner_id: VIEWER_ID }, 'owner_id');
+  await refuse({ owner_id: 'nobody-here' }, 'owner_id');
+  await refuse({ owner_id: undefined }, 'owner_id');
+  await refuse({ assignee_ids: ['nobody-here'] }, 'assignee_ids');
+  await refuse({ assignee_ids: 'intp-admin' }, 'assignee_ids');
+  await refuse({ assignee_ids: Array.from({ length: 21 }, () => ADMIN_ID) }, 'assignee_ids');
+  await refuse({ due: { at: 'tomorrow' } }, 'due');
+  await refuse({ due: { at: '2020-01-01T10:00:00Z' } }, 'due');
+  await refuse({ start: 'soon' }, 'start');
+  await refuse({ lead_id: 'no-such-lead' }, 'lead_id');
+  await refuse({ project_id: 'no-such-project' }, 'project_id');
+  await refuse({ lead_id: 5 }, 'lead_id');
+  await refuse({ context: { path: '//evil.example/c/x' } }, 'context.path');
+  await refuse({ context: { path: 'https://evil.example/c/x' } }, 'context.path');
+  await refuse({ context: { path: '/c/x?m=1&admin=1' } }, 'context.path');
+  check('nothing was created by the refused pushes', cell(`SELECT COUNT(*) FROM tasks WHERE external_source IS NOT NULL`) === '0');
+  check('... and no ref row is left behind', cell(`SELECT COUNT(*) FROM integration_refs WHERE kind='task'`) === '0');
+
+  section('task push: create, repeat, stale');
+  const EXT = 'waaitask0001';
+  const created = await put(EXT, payload());
+  const t = created.json;
+  const id = t?.id;
+  check('first push -> 201 with a tsk_ id', created.status === 201 && /^tsk_[0-9a-f]{16}$/.test(id ?? ''), created.raw);
+  check('the representation: origin, external id, state, due, people, flags', t?.origin === 'waai' && t.external_id === EXT && t.title === 'Poslať ponuku' && t.state.code === 'todo' && t.done === false
+    && t.due.all_day === true && t.due.at.startsWith(todayPlus(30) + 'T23:59:00') && t.created_by === ADMIN_ID && JSON.stringify(t.assignee_ids) === `["${ADMIN_ID}"]`
+    && t.is_automation === false && t.stale === false && t.applied.includes('title') && Number.isInteger(t.updated_at) && t.lead_id === null && t.project_id === null && t.start === null, created.raw);
+  check('url is a hash link on the configured base', t?.url === `https://crm.test/#tasks?task=${id}`, t?.url);
+  let row = taskRow(id);
+  check('stored like a hand-made task: owner and creator are user names, priority medium', row.owner === ADMIN_NAME && row.created_by === ADMIN_NAME && row.priority === 'medium' && row.status === 'todo'
+    && row.deadline === todayPlus(30) && row.deadline_time === null, JSON.stringify(row));
+  check('the owner is also the assignee (visibility)', JSON.stringify(assigneesOf(id)) === JSON.stringify([ADMIN_NAME]));
+  check('source columns are set; the path is stored, not a URL', row.ext_source === 'waai' && row.ext_url === '/c/ckx8abc', JSON.stringify(row));
+  check('the description carries a footer with the chat, the WhatsApp assignee and a link back (built by CCRM)', row.description === 'Detail ponuky\n\nWhatsApp chat: Marek Novák\nWhatsApp assignee: Marek\nOpen chat: https://crm.test/#whatsapp/c/ckx8abc', JSON.stringify(row.description));
+  check('the chat title is kept as metadata, no message text', JSON.parse(row.meta).conversation === 'Marek Novák' && JSON.parse(row.meta).due_inferred === undefined, row.meta);
+
+  const before = row.updated;
+  await new Promise((r) => setTimeout(r, 30));
+  const repeatRev = nextRev();
+  const repeat = await put(EXT, payload({ revision: repeatRev }));
+  check('the same payload again -> 200, same task, nothing applied', repeat.status === 200 && repeat.json.id === id && repeat.json.stale === false && repeat.json.applied.length === 0, repeat.raw);
+  check('... no duplicate task, no duplicate ref', cell(`SELECT COUNT(*) FROM tasks WHERE external_source='waai'`) === '1' && cell(`SELECT COUNT(*) FROM integration_refs WHERE kind='task' AND external_id=${sq(EXT)}`) === '1');
+  check('... and updated_at did not move (no write)', taskRow(id).updated === before, `${before} -> ${taskRow(id).updated}`);
+
+  const stale = await put(EXT, payload({ revision: 1, title: 'Old title' }));
+  check('an old revision -> 200 {stale:true}, nothing applied', stale.status === 200 && stale.json.stale === true && stale.json.applied.length === 0 && stale.json.title === 'Poslať ponuku', stale.raw);
+  const sameRev = await put(EXT, payload({ revision: repeatRev, title: 'Same revision' }));
+  check('the same revision again is stale too', sameRev.json?.stale === true && taskRow(id).title === 'Poslať ponuku', sameRev.raw);
+
+  const retitle = await put(EXT, payload({ title: 'Poslať ponuku na kuchyňu' }));
+  check('a changed field is applied: only that one', retitle.status === 200 && JSON.stringify(retitle.json.applied) === '["title"]' && taskRow(id).title === 'Poslať ponuku na kuchyňu', retitle.raw);
+  check('the change moved updated_at (so open clients see it)', taskRow(id).updated !== before);
+  const audit = sql(`SELECT detail FROM audit_log WHERE action='integration_task_push' ORDER BY id`).split('\n').slice(1).filter(Boolean);
+  check('pushes are audited with ids only', audit.length >= 2 && audit.every((d) => /^(create|update) tsk_[0-9a-f]{16} ext=waaitask0001$/.test(d)), audit.join(' | '));
+
+  section('task push: CCRM edits survive (three-way merge, real sync.php)');
+  // A CCRM user moves the deadline and renames the task through the app's own save.
+  let g = await syncApi(session);
+  const mine = g.json?.tasks?.find((x) => x.id === id);
+  check('sync GET exposes the source: externalSource, externalUrl, dueInferred=false', mine?.externalSource === 'waai' && mine.externalUrl === '/c/ckx8abc' && mine.dueInferred === false, JSON.stringify(mine));
+  const edited = await syncApi(session, { method: 'POST', body: { syncProtocol: 2, baseSyncedAt: g.json.serverTime, tasks: [{ ...mine, deadline: todayPlus(40), title: 'Edited in CCRM' }] } });
+  check('the user\'s save succeeds', edited.status === 200 && edited.json?.success === true, edited.raw.slice(0, 300));
+  row = taskRow(id);
+  check('the edit is stored, and the server-only columns survived the save', row.deadline === todayPlus(40) && row.title === 'Edited in CCRM' && row.ext_source === 'waai' && row.ext_url === '/c/ckx8abc' && !!row.meta, JSON.stringify(row));
+  const unchanged = await put(EXT, payload({ title: 'Poslať ponuku na kuchyňu' }));
+  check('a push where the chat changed nothing leaves the user\'s edits alone', unchanged.json?.applied.length === 0 && taskRow(id).title === 'Edited in CCRM' && taskRow(id).deadline === todayPlus(40), unchanged.raw);
+  const partly = await put(EXT, payload({ title: 'Poslať ponuku na kuchyňu', description: 'Nový detail' }));
+  check('a field the chat changed is applied, the others stay', JSON.stringify(partly.json?.applied) === '["description"]' && taskRow(id).title === 'Edited in CCRM' && taskRow(id).deadline === todayPlus(40) && taskRow(id).description.startsWith('Nový detail\n\nWhatsApp chat'), partly.raw);
+  const moved = await put(EXT, payload({ title: 'Poslať ponuku na kuchyňu', description: 'Nový detail', due: { at: `${todayPlus(50)}T10:00:00Z`, all_day: true } }));
+  check('when the chat moves the date again, it wins over the user\'s edit', JSON.stringify(moved.json?.applied) === '["due"]' && taskRow(id).deadline === todayPlus(50), moved.raw);
+
+  section('task push: a stale app cannot clobber or delete');
+  g = await syncApi(session);
+  const stalePicture = g.json.tasks.find((x) => x.id === id);
+  const staleClock = g.json.serverTime;
+  await new Promise((r) => setTimeout(r, 40));
+  const apiWrite = await put(EXT, payload({ title: 'Poslať ponuku na kuchyňu', description: 'Nový detail', due: { at: `${todayPlus(50)}T10:00:00Z`, all_day: true }, assignee_ids: [ADMIN_ID, PHONE_ID] }));
+  check('the push after the app\'s last read applies', JSON.stringify(apiWrite.json?.applied) === '["assignee_ids"]', apiWrite.raw);
+  const staleSave = await syncApi(session, { method: 'POST', body: { syncProtocol: 2, baseSyncedAt: staleClock, tasks: [{ ...stalePicture, title: 'Stale title' }] } });
+  check('a stale save is reported as a conflict for that task', staleSave.status === 200 && (staleSave.json?.conflicts?.tasks ?? []).includes(id), staleSave.raw.slice(0, 300));
+  check('... the API\'s write stays: assignees and title intact, the task still exists', JSON.stringify(assigneesOf(id)) === JSON.stringify([ADMIN_NAME, PHONE_NAME].sort()) && taskRow(id).title === 'Edited in CCRM');
+  const noTaskSave = await syncApi(session, { method: 'POST', body: { syncProtocol: 2, baseSyncedAt: staleClock, tasks: [] } });
+  check('a snapshot that omits the task does not delete it', noTaskSave.status === 200 && taskRow(id) !== null);
+
+  section('task push: people and links');
+  check('the first assignee is the owner; every assignee is stored', taskRow(id).owner === ADMIN_NAME && apiWrite.json.assignee_ids.length === 2 && apiWrite.json.assignee_ids[0] === ADMIN_ID, JSON.stringify(taskRow(id)));
+  const pe = await put('waaitask0002', payload({ assignee_ids: [PHONE_ID, ADMIN_ID, PHONE_ID] }));
+  check('the first listed assignee becomes `owner`; duplicates collapse', pe.status === 201 && taskRow(pe.json.id).owner === PHONE_NAME && taskRow(pe.json.id).created_by === ADMIN_NAME && assigneesOf(pe.json.id).length === 2, pe.raw);
+  const empty = await put('waaitask0003', payload({ assignee_ids: [] }));
+  check('no assignees -> the owner', empty.status === 201 && taskRow(empty.json.id).owner === ADMIN_NAME && JSON.stringify(assigneesOf(empty.json.id)) === JSON.stringify([ADMIN_NAME]), empty.raw);
+  sql(`DELETE FROM users WHERE id IN ('intp-dup1','intp-dup2'); INSERT INTO users (id,name,email,password_hash,role) VALUES ('intp-dup1','Int Probe Twin','dup1@probe.test','x','Viewer'),('intp-dup2','Int Probe Twin','dup2@probe.test','x','Viewer');`);
+  const twin = await put('waaitask0004', payload({ assignee_ids: ['intp-dup1', ADMIN_ID] }));
+  check('a name shared by two users is never guessed: that assignee is left out of the answer', twin.status === 201 && JSON.stringify(twin.json.assignee_ids) === `["${ADMIN_ID}"]` && twin.json.created_by === ADMIN_ID, twin.raw);
+  sql(`DELETE FROM users WHERE id IN ('intp-dup1','intp-dup2');`);
+
+  const leadId = 'intp-lead-1';
+  sql(`DELETE FROM leads WHERE id=${sq(leadId)}; INSERT INTO leads (id,name,owner,created_at) VALUES (${sq(leadId)},'Int Probe Lead',${sq(ADMIN_NAME)},CURDATE());`);
+  const projectId = cell(`SELECT id FROM projects LIMIT 1`);
+  const linked = await put('waaitask0005', payload({ lead_id: leadId, project_id: projectId, start: `${todayPlus(2)}T00:00:00+01:00` }));
+  check('lead_id, project_id and start are stored and returned', linked.status === 201 && linked.json.lead_id === leadId && linked.json.project_id === projectId && linked.json.start === todayPlus(2)
+    && taskRow(linked.json.id).lead === leadId && taskRow(linked.json.id).project === projectId, linked.raw);
+  const relinked = await put('waaitask0005', payload({ lead_id: null, project_id: projectId, start: `${todayPlus(2)}T00:00:00+01:00` }));
+  check('a link the chat removes is cleared (three-way merged)', JSON.stringify(relinked.json?.applied) === '["lead_id"]' && taskRow(linked.json.id).lead === null && taskRow(linked.json.id).project === projectId, relinked.raw);
+  sql(`UPDATE tasks SET related_lead_id=${sq(leadId)} WHERE id=${sq(linked.json.id)};`);
+  const keep = await put('waaitask0005', payload({ lead_id: null, project_id: projectId, start: `${todayPlus(2)}T00:00:00+01:00` }));
+  check('a link a CCRM user set survives a push where the chat changed nothing', keep.json?.applied.length === 0 && taskRow(linked.json.id).lead === leadId, keep.raw);
+  const noKeys = await put('waaitask0005', payload({ title: 'No link keys' }));
+  check('a payload without lead_id / project_id does not touch the links', taskRow(linked.json.id).lead === leadId && taskRow(linked.json.id).project === projectId && noKeys.json.applied.includes('title'), noKeys.raw);
+  const ctxStart = await put('waaitask0006', payload({ context: { path: '/c/ckx8abc', start: `${todayPlus(3)}` } }));
+  check('start in the old context shape is understood', ctxStart.status === 201 && ctxStart.json.start === todayPlus(3), ctxStart.raw);
+
+  section('task push: deadlines');
+  const noDue = await put('waaitask0007', payload({ due: undefined }));
+  check('no date in the chat -> today + 7 days, all day', noDue.status === 201 && taskRow(noDue.json.id).deadline === todayPlus(7) && taskRow(noDue.json.id).deadline_time === null && noDue.json.due.all_day === true, noDue.raw);
+  let m = JSON.parse(taskRow(noDue.json.id).meta);
+  check('... remembered as inferred', m.due_inferred === true && m.inferred_deadline === todayPlus(7), JSON.stringify(m));
+  g = await syncApi(session);
+  check('the app is told: dueInferred=true', g.json.tasks.find((x) => x.id === noDue.json.id)?.dueInferred === true);
+  const stillNone = await put('waaitask0007', payload({ due: undefined, title: 'Still no date' }));
+  check('a push that still has no date keeps the inferred one', JSON.stringify(stillNone.json?.applied) === '["title"]' && taskRow(noDue.json.id).deadline === todayPlus(7), stillNone.raw);
+  const nowStated = await put('waaitask0007', payload({ title: 'Still no date', due: { at: `${todayPlus(12)}T10:00:00Z`, all_day: true } }));
+  m = JSON.parse(taskRow(noDue.json.id).meta);
+  check('a date stated later replaces the inferred one and clears the mark', JSON.stringify(nowStated.json?.applied) === '["due"]' && taskRow(noDue.json.id).deadline === todayPlus(12) && m.due_inferred === undefined, JSON.stringify([nowStated.json?.applied, m]));
+  const vanished = await put('waaitask0007', payload({ title: 'Still no date', due: undefined }));
+  check('a date the chat takes back leaves the deadline alone (a task always has one)', taskRow(noDue.json.id).deadline === todayPlus(12) && !vanished.json.applied.includes('due'), vanished.raw);
+  sql(`UPDATE integration_clients SET default_deadline_days = 3 WHERE code='waai';`);
+  const three = await put('waaitask0008', payload({ due: undefined }));
+  check('the default is per client (3 days here)', taskRow(three.json.id).deadline === todayPlus(3), three.raw);
+  sql(`UPDATE integration_clients SET default_deadline_days = 7 WHERE code='waai';`);
+  // The user moves an inferred deadline in the app: it is a stated one from then on.
+  g = await syncApi(session);
+  const inferredTask = g.json.tasks.find((x) => x.id === three.json.id);
+  await syncApi(session, { method: 'POST', body: { syncProtocol: 2, baseSyncedAt: g.json.serverTime, tasks: [{ ...inferredTask, deadline: todayPlus(9) }] } });
+  g = await syncApi(session);
+  check('... a user moving it clears dueInferred', g.json.tasks.find((x) => x.id === three.json.id)?.dueInferred === false && taskRow(three.json.id).deadline === todayPlus(9));
+
+  const timed = await put('waaitask0009', payload({ due: { at: `${todayPlus(20)}T08:30:00Z`, all_day: false } }));
+  const want = tzParts(`${todayPlus(20)}T08:30:00Z`);
+  check('a timed deadline is stored as local date + HH:MM', timed.status === 201 && taskRow(timed.json.id).deadline === want.date && taskRow(timed.json.id).deadline_time === want.time && timed.json.due.all_day === false, `${timed.raw} want ${JSON.stringify(want)}`);
+  check('... and read back as ISO 8601 with the offset of that day', new Date(timed.json.due.at).toISOString() === `${todayPlus(20)}T08:30:00.000Z`, timed.json.due.at);
+  const dstYear = new Date().getUTCFullYear() + 1;
+  const dstDay = lastSundayOfMarch(dstYear);
+  for (const [at, exp] of [[`${dstDay}T00:30:00Z`, '01:30'], [`${dstDay}T01:30:00Z`, '03:30']]) {
+    const r = await put('waaitask1' + at.slice(11, 13) + at.slice(14, 16), payload({ due: { at, all_day: false } }));
+    check(`DST ${dstDay}: ${at.slice(11, 16)}Z is stored as local ${exp}`, r.status === 201 && taskRow(r.json.id).deadline === dstDay && taskRow(r.json.id).deadline_time === exp, `${r.raw} ${JSON.stringify(taskRow(r.json?.id))}`);
+    check(`... and the same instant comes back`, new Date(r.json?.due?.at).toISOString().slice(0, 16) === at.slice(0, 16), r.json?.due?.at);
+  }
+  const day = await put('waaitask0010', payload({ due: { at: `${dstDay}T22:59:00Z`, all_day: true } }));
+  check('an all-day deadline keeps the local day around the change', taskRow(day.json.id).deadline === tzParts(`${dstDay}T22:59:00Z`).date && taskRow(day.json.id).deadline_time === null, day.raw);
+
+  section('task push: text is cleaned');
+  const dirty = await put('waaitask0011', payload({
+    title: '<b>Call</b> <script>alert(1)</script>Marek\u202E\u0000\u200Bnow',
+    description: 'Line 1\u202E\r\n<img src=x onerror=alert(1)>Line 2\u0000\n\n\n\nFamily 👨\u200D👩\u200D👧 &lt;b&gt;x&lt;/b&gt;',
+    context: { conversation: '<i>Marek</i>\u202E', assignee_label: 'Me\u0000', path: '/c/ckx8abc' },
+  }));
+  row = taskRow(dirty.json?.id);
+  check('markup, NUL, bidi overrides and zero-width spaces are gone from the title', dirty.status === 201 && row.title === 'Call alert(1)Mareknow', JSON.stringify(row?.title));
+  check('the description: no tags, no NUL/bidi, blank runs collapsed, the ZWJ emoji sequence kept', !/[<>]/.test(row.description) && !/[\u202E\u0000]/.test(row.description) && row.description.includes('Line 1\nLine 2\n\nFamily 👨\u200D👩\u200D👧 x'), JSON.stringify(row.description));
+  check('the footer is built from the cleaned context', row.description.includes('WhatsApp chat: Marek\n') && row.description.includes('WhatsApp assignee: Me\n'), JSON.stringify(row.description));
+
+  section('task push: completion');
+  const done1 = await put('waaitask0012', payload({ status: 'completed' }));
+  check('created as completed -> done state, attributed to the owner', done1.status === 201 && done1.json.done === true && done1.json.state.code === 'done' && taskRow(done1.json.id).completed_by === ADMIN_NAME && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(taskRow(done1.json.id).completed_at), done1.raw);
+  const afterDone = await put('waaitask0012', payload({ status: 'open', title: 'Changed after done' }));
+  check('done is final: later changes and `open` are ignored', afterDone.status === 200 && afterDone.json.applied.length === 0 && afterDone.json.done === true && taskRow(done1.json.id).title === 'Poslať ponuku', afterDone.raw);
+  const open1 = await put('waaitask0013', payload());
+  const complete1 = await put('waaitask0013', payload({ status: 'completed' }));
+  check('open -> completed on update completes the task', JSON.stringify(complete1.json?.applied) === '["status"]' && complete1.json.state.code === 'done' && taskRow(open1.json.id).completed_by === ADMIN_NAME, complete1.raw);
+  const inProg = await put('waaitask0014', payload());
+  sql(`UPDATE tasks SET status='in_progress' WHERE id=${sq(inProg.json.id)};`);
+  const stillOpen = await put('waaitask0014', payload({ status: 'open', title: 'Retitled while in progress' }));
+  check('`open` never moves a task between non-done states', taskRow(inProg.json.id).status === 'in_progress' && !stillOpen.json.applied.includes('status') && taskRow(inProg.json.id).title === 'Retitled while in progress', stillOpen.raw);
+
+  const needs = await put('waaitask0015', payload());
+  sql(`UPDATE tasks SET requires_conclusion=1 WHERE id=${sq(needs.json.id)};`);
+  const refusedDone = await put('waaitask0015', payload({ status: 'completed', title: 'Should not apply' }));
+  check('a push that completes a task needing a conclusion -> 422 completion_refused', refusedDone.status === 422 && errCode(refusedDone) === 'completion_refused', refusedDone.raw);
+  check('... and rolls back entirely (title and status unchanged)', taskRow(needs.json.id).status === 'todo' && taskRow(needs.json.id).title === 'Poslať ponuku');
+
+  section('task push: deleted in CCRM');
+  const gone = await put('waaitask0016', payload());
+  sql(`DELETE FROM tasks WHERE id=${sq(gone.json.id)};`);   // what the app's delete does: a hard delete
+  const after410 = await put('waaitask0016', payload({ title: 'Back from the dead' }));
+  check('a push for a task a user deleted -> 410 gone, not recreated', after410.status === 410 && errCode(after410) === 'gone' && cell(`SELECT COUNT(*) FROM tasks WHERE title='Back from the dead'`) === '0', after410.raw);
+  const luk = await call('/tasks/lookup', { method: 'POST', token, body: { external_ids: ['waaitask0016', 'waaitask0001', 'waaitaskNone1'] } });
+  check('lookup lists it under deleted, the live one as an item, the unknown one as not_found', luk.status === 200 && JSON.stringify(luk.json.deleted.external_ids) === '["waaitask0016"]' && luk.json.items.length === 1 && luk.json.items[0].external_id === 'waaitask0001'
+    && JSON.stringify(luk.json.not_found.external_ids) === '["waaitaskNone1"]', luk.raw);
+
+  section('task feed, lookup, complete (CCRM-origin tasks)');
+  resetRate();
+  const T = `'2031-02-03 04:05:06.000'`;
+  const seed = (tid, owner, status, createdBy) => sql(`DELETE FROM tasks WHERE id=${sq(tid)}; INSERT INTO tasks (id,title,deadline,status,owner,created_by,updated_at) VALUES (${sq(tid)},${sq('Feed ' + tid)},'2031-03-01',${sq(status)},${sq(owner)},${sq(createdBy ?? owner)},${T});`);
+  seed('tsk_feed_a1', ADMIN_NAME, 'todo');
+  seed('tsk_feed_a2', ADMIN_NAME, 'todo');
+  seed('tsk_feed_a3', VIEWER_NAME, 'todo');
+  sql(`INSERT INTO task_assignees (task_id,user_name) VALUES ('tsk_feed_a3', ${sq(ADMIN_NAME)});`);
+  seed('tsk_feed_a4', ADMIN_NAME, 'done');
+  seed('tsk_feed_x1', VIEWER_NAME, 'todo');
+  seed('tsk_feed_x2', ADMIN_NAME, 'todo');
+  sql(`DELETE FROM integration_clients WHERE code='other'; INSERT INTO integration_clients (id,code,name,is_active,scopes,allowed_ips,owner_user_ids) VALUES ('intc_other','other','Other',1,'[]','[]','[]');
+       INSERT INTO integration_refs (client_id,kind,external_id,local_id,revision) VALUES ('intc_other','task','otherext0001','tsk_feed_x2',1);`);
+  const feed = (qs) => call(`/tasks/feed?${qs}`, { token });
+  const SINCE = 1900000000;   // far below the seeded updated_at (2031), far above everything else
+  const ids = (r) => r.json?.items?.map((i) => i.id);
+
+  setClient(`scopes='["tasks:push"]'`);
+  check('the feed needs tasks:pull -> 403', (await feed(`updated_since=${SINCE}`)).status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+  const all1 = await feed(`updated_since=${SINCE}`);
+  check('feed (owners scope): the owner\'s tasks, including one where the owner is only an assignee', all1.status === 200 && JSON.stringify(ids(all1)) === '["tsk_feed_a1","tsk_feed_a2","tsk_feed_a3","tsk_feed_a4"]', all1.raw.slice(0, 400));
+  const a1 = all1.json?.items?.[0];
+  check('a CCRM-origin task: origin crm, no external id, string ids, ISO due, done flag', a1?.origin === 'crm' && a1.external_id === null && a1.created_by === ADMIN_ID && a1.state.code === 'todo' && a1.done === false && a1.due.all_day === true
+    && a1.due.at.startsWith('2031-03-01T23:59:00') && a1.updated_at >= SINCE && all1.json.items[3].done === true && a1.is_automation === false, JSON.stringify(a1));
+  check('the other client\'s task and a non-owner\'s task are not in the feed', !ids(all1).includes('tsk_feed_x1') && !ids(all1).includes('tsk_feed_x2'));
+  const paged = [];
+  let cursor = `updated_since=${SINCE}&limit=2`, pages = 0, hasMore = true, lastNext = null;
+  while (hasMore && pages < 6) {
+    const r = await feed(cursor);
+    paged.push(...ids(r));
+    hasMore = r.json.has_more;
+    lastNext = r.json.next;
+    cursor = `updated_since=${r.json.next.updated_since}&after_id=${encodeURIComponent(r.json.next.after_id)}&limit=2`;
+    pages++;
+  }
+  check('paging with limit=2 across equal updated_at returns every task exactly once, in id order', JSON.stringify(paged) === '["tsk_feed_a1","tsk_feed_a2","tsk_feed_a3","tsk_feed_a4"]' && pages === 2, `${paged} pages=${pages}`);
+  check('the cursor is (seconds, string id) of the last item', lastNext?.after_id === 'tsk_feed_a4' && Number.isInteger(lastNext.updated_since), JSON.stringify(lastNext));
+  const tail = await feed(`updated_since=${lastNext.updated_since}&after_id=${lastNext.after_id}`);
+  check('after the last cursor the feed is empty', tail.json?.items.length === 0 && tail.json.has_more === false && tail.json.next.after_id === 'tsk_feed_a4', tail.raw);
+  check('open_only leaves out done tasks', JSON.stringify(ids(await feed(`updated_since=${SINCE}&open_only=1`))) === '["tsk_feed_a1","tsk_feed_a2","tsk_feed_a3"]');
+  for (const bad of ['limit=0', 'limit=101', 'limit=x', 'updated_since=-1', 'updated_since=abc', 'after_id=a%20b']) {
+    check(`feed refuses ${bad} -> 422`, (await feed(bad)).status === 422, bad);
+  }
+  setClient(`feed_scope='all'`);
+  check('feed_scope=all adds the other users\' tasks, but never another client\'s', JSON.stringify(ids(await feed(`updated_since=${SINCE}`))) === '["tsk_feed_a1","tsk_feed_a2","tsk_feed_a3","tsk_feed_a4","tsk_feed_x1"]');
+  setClient(`feed_scope='owners'`);
+  setClient(`owner_user_ids='[]'`);
+  check('without owners the owners scope is empty', (await feed(`updated_since=${SINCE}`)).json?.items.length === 0);
+  setClient(`owner_user_ids='["${ADMIN_ID}"]'`);
+  check('pushed (WAAI-origin) tasks appear in the feed with origin waai', (await feed('updated_since=0&limit=100')).json?.items.some((i) => i.id === id && i.origin === 'waai' && i.external_id === EXT));
+
+  const look = (body, tok = token) => call('/tasks/lookup', { method: 'POST', token: tok, body });
+  const l1 = await look({ task_ids: ['tsk_feed_a2', 'tsk_feed_x1', 'tsk_feed_x2', 'tsk_none_1', id] });
+  check('lookup by task id: visible ones as items, everything else not_found (hidden = missing)', l1.status === 200 && JSON.stringify(l1.json.items.map((i) => i.id).sort()) === JSON.stringify(['tsk_feed_a2', id].sort())
+    && JSON.stringify(l1.json.not_found.task_ids) === '["tsk_feed_x1","tsk_feed_x2","tsk_none_1"]' && l1.json.deleted.external_ids.length === 0, l1.raw);
+  setClient(`scopes='["tasks:push"]'`);
+  const l2 = await look({ task_ids: ['tsk_feed_a2', id], external_ids: [EXT] });
+  check('with tasks:push only: its own pushed task is visible, a CCRM-origin task is not', JSON.stringify(l2.json?.items.map((i) => i.id)) === JSON.stringify([id]) && JSON.stringify(l2.json.not_found.task_ids) === '["tsk_feed_a2"]', l2.raw);
+  setClient(`scopes='["tasks:pull"]'`);
+  const l3 = await look({ task_ids: ['tsk_feed_a2', id], external_ids: [EXT] });
+  check('with tasks:pull only: the feed scope is visible, external ids are not resolvable', l3.json?.items.map((i) => i.id).sort().join() === ['tsk_feed_a2', id].sort().join() && JSON.stringify(l3.json.not_found.external_ids) === JSON.stringify([EXT]), l3.raw);
+  setClient(`scopes='["users:read"]'`);
+  check('lookup needs tasks:push or tasks:pull -> 403', (await look({ task_ids: [] })).status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+  check('lookup refuses integer ids, a bad external id, a non-list and > 200 ids -> 422', (await look({ task_ids: [5] })).status === 422 && (await look({ external_ids: ['x'] })).status === 422
+    && (await look({ task_ids: 'a' })).status === 422 && (await look({ task_ids: Array.from({ length: 201 }, (_, i) => 'tsk_n' + i) })).status === 422);
+  check('lookup with nothing asked for is an empty answer', JSON.stringify((await look({})).json) === '{"items":[],"deleted":{"external_ids":[]},"not_found":{"task_ids":[],"external_ids":[]}}');
+
+  const comp = (tid, body, tok = token) => call(`/tasks/${tid}/complete`, { method: 'POST', token: tok, ...(body !== undefined ? { body } : {}) });
+  const c1 = await comp('tsk_feed_a1');
+  check('complete -> 200, done, attributed to the client\'s first owner', c1.status === 200 && c1.json.done === true && c1.json.state.code === 'done' && taskRow('tsk_feed_a1').completed_by === ADMIN_NAME && /^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(taskRow('tsk_feed_a1').completed_at), c1.raw);
+  const upd = taskRow('tsk_feed_a1').updated;
+  await new Promise((r) => setTimeout(r, 30));
+  const c2 = await comp('tsk_feed_a1');
+  check('completing again is safe: 200, unchanged', c2.status === 200 && c2.json.done === true && taskRow('tsk_feed_a1').updated === upd, c2.raw);
+  const c3 = await comp('tsk_feed_a2', { user_id: PHONE_ID, conclusion: '<b>Done</b> by phone' });
+  check('the completion can be attributed to a user and carry a (cleaned) conclusion', c3.status === 200 && taskRow('tsk_feed_a2').completed_by === PHONE_NAME && taskRow('tsk_feed_a2').conclusion === 'Done by phone', c3.raw);
+  check('an unknown user_id -> 422; a non-object body -> 400', (await comp('tsk_feed_a3', { user_id: 'nobody' })).status === 422 && (await comp('tsk_feed_a3', [1])).status === 400);
+  check('a task outside the feed scope or unknown -> 404 not_found', (await comp('tsk_feed_x1')).status === 404 && errCode(await comp('tsk_feed_x2')) === 'not_found' && (await comp('tsk_nope_1')).status === 404 && (await comp('a%20b')).status === 404);
+  setClient(`scopes='["tasks:push"]'`);
+  check('complete needs tasks:pull -> 403', (await comp('tsk_feed_a3')).status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+  sql(`UPDATE tasks SET requires_conclusion=1 WHERE id='tsk_feed_a3';`);
+  const c4 = await comp('tsk_feed_a3');
+  check('a task that needs a conclusion -> 422 completion_refused, left open', c4.status === 422 && errCode(c4) === 'completion_refused' && taskRow('tsk_feed_a3').status === 'todo', c4.raw);
+  const c5 = await comp('tsk_feed_a3', { conclusion: 'Handled' });
+  check('... with a conclusion it completes', c5.status === 200 && c5.json.done === true && taskRow('tsk_feed_a3').conclusion === 'Handled', c5.raw);
+  const doneInFeed = await feed(`updated_since=${SINCE}&open_only=1`);
+  check('a completed task drops out of the open feed', doneInFeed.json?.items.length === 0 || !ids(doneInFeed).includes('tsk_feed_a1'));
+  const au = sql(`SELECT detail FROM audit_log WHERE action='integration_task_complete' ORDER BY id`).split('\n').slice(1).filter(Boolean);
+  check('completions are audited with ids only (and the no-op repeat is not)', au.length === 3 && au.every((d) => /^complete tsk_feed_a[123]$/.test(d)), au.join(' | '));
+
+  section('task API: the pushed task as a user sees it');
+  g = await syncApi(session);
+  const shown = g.json.tasks.find((x) => x.id === id);
+  check('the app\'s task list contains the pushed task with its assignees', !!shown && shown.owner === ADMIN_NAME && shown.assignedUsers.includes(PHONE_NAME) && shown.createdBy === ADMIN_NAME, JSON.stringify(shown));
+  check('the audit trail holds no task text', cell(`SELECT COUNT(*) FROM audit_log WHERE action LIKE 'integration_task%' AND (detail LIKE '%Poslať%' OR detail LIKE '%Marek%')`) === '0');
+}
+
 // ----------------------------------------------------------------------------- 3. cross-cutting
 async function crossChecks(state) {
   section('cookies and logs');
@@ -385,6 +748,7 @@ try {
   setup();
   await adminChecks(state);
   await apiChecks(state);
+  await taskChecks(state);
   await crossChecks(state);
 } catch (e) {
   failures++;

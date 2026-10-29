@@ -336,6 +336,12 @@ export interface Task {
   conclusion?: string;
   /** Expected effort, in minutes. Compared with tracked time; null when unset. */
   estimateMinutes?: number | null;
+  /** Integration that pushed the task in over the machine API ("waai"); read-only, set by the server. */
+  externalSource?: string | null;
+  /** Path of the source chat in that system (WhatsApp: `/c/<id>`); read-only. */
+  externalUrl?: string | null;
+  /** The chat gave no deadline, so CCRM filled one in and nobody has moved it since; read-only. */
+  dueInferred?: boolean;
 }
 
 /** Settings → Tasks. Stored as one blob, like {@link ProjectAutoCreateSettings}. */

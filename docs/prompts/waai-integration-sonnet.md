@@ -56,7 +56,24 @@ ask then.
 |---|---|
 | 0 | CCRM worktree `../ccrm-waai` on `1.13-nectarine`. WAAI branch not created yet (waits for D4). |
 | 1 | Done — see "Phase 1 notes" below and the changelog entry. |
-| 2–8 | Not started. |
+| 2 | Done (v1.13.15-Nectarine) — see "Phase 2 notes" and spec §4.1 "As built (phase 2)". |
+| 3–8 | Not started. Phase 3 waits for D4 (WAAI base branch). |
+
+### Phase 2 notes (what differs from the spec)
+
+- Full list of the as-built wire shapes, the date/completion rules and D9 are in the spec
+  (§4.1 "As built (phase 2)"). In short: absent `lead_id`/`project_id` = untouched, `null` =
+  cleared; a first push with no date stores today + 7 days and is marked "not stated in chat"
+  (`dueInferred` in the sync response); completing a task that needs a conclusion is 422
+  `completion_refused` for both `PUT` and `/complete`.
+- The task `url` is `<base>#tasks?task=<id>`. The SPA does not open a task from that link yet —
+  it needs `TaskDashboardView` to read `?task=`, which belongs with the task badges (phase 6).
+- Writes do not fire workflows, e-mails or ticket auto-resolve (same as the MCP task tools).
+- Verification: `npm run test:integration` (214 checks, now including the real `sync.php`),
+  `scripts/test-integration-lib.php` (113), `npm run test:unit`, `npx tsc -p tsconfig.app.json`.
+  The scoped browser audit (`src/types/index.ts`) fails with two findings that are identical on
+  the untouched `1.13-nectarine`: sidebar item #1 on the dashboard ("nothing changed") and the
+  header "Spustiť časovač" button. Not caused by this phase; not on a known-failing list here.
 
 ### Phase 1 notes (what differs from the spec)
 

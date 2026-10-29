@@ -1850,6 +1850,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_tickets($pdo);
         ccrm_seed_default_tickets($pdo);
         ccrm_migrate_time_tracking($pdo);
+        ccrm_migrate_integration_tasks($pdo);
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
         ccrm_migrate_ai_models($pdo);
@@ -1863,6 +1864,34 @@ if (!function_exists('ccrm_schema_statements')) {
      * person works by. NULL means the company default. It decides which days are
      * working days for the monthly cost rate; it is never derived from the UI language.
      */
+    /**
+     * Columns for tasks pushed in by an external system over the machine API (docs/WAAI-INTEGRATION.md
+     * §4.2). Server-only: sync.php's task upsert names its columns, so they survive any client save.
+     *
+     * `external_source` = integration client code ('waai'), `external_url` = the path of the source chat
+     * in that system, `external_meta_json` = chat title and whether the deadline was inferred.
+     */
+    function ccrm_migrate_integration_tasks(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'tasks')) {
+            return;
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'external_source')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `external_source` VARCHAR(20) NULL COMMENT 'Integration client code that pushed this task (waai)'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'external_url')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Path of the source chat in the external system'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'external_meta_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `external_meta_json` TEXT NULL COMMENT 'Chat title, assignee label, due_inferred'");
+        }
+        // The machine API's feed pages by updated_at.
+        $idx = $pdo->prepare("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND INDEX_NAME = 'idx_task_updated' LIMIT 1");
+        $idx->execute();
+        if (!$idx->fetchColumn()) {
+            $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_updated (`updated_at`)");
+        }
+    }
+
     function ccrm_migrate_time_tracking(PDO $pdo): void {
         if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'work_country')) {
             $pdo->exec("ALTER TABLE `employees` ADD COLUMN `work_country` CHAR(2) NULL COMMENT 'SK | HU; NULL = company default' AFTER `address_country`");

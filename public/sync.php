@@ -717,6 +717,17 @@ function ccrm_ts_to_micro(string $ts): ?float {
 }
 
 /**
+ * True while a pushed task still carries the deadline CCRM filled in because the chat gave none
+ * (external_meta_json.due_inferred): a user moving the deadline makes it a stated one.
+ */
+function ccrm_task_due_inferred(array $row): bool {
+    $meta = json_decode((string)($row['external_meta_json'] ?? ''), true);
+    return is_array($meta) && !empty($meta['due_inferred'])
+        && ($meta['inferred_deadline'] ?? null) === ($row['deadline'] ?? null)
+        && ($row['deadline_time'] ?? null) === null;
+}
+
+/**
  * The DB clock the client echoes back as baseSyncedAt. NOW(3) is preferred so
  * the concurrency guard can tell two writes in the same second apart; hosts
  * that reject fractional-second NOW() fall back to whole seconds. Always a
@@ -1220,6 +1231,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
                 'conclusion' => $row['conclusion'] ?? null,
                 'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
+                // Pushed in over the machine API (server-only columns, never written back by a client save).
+                'externalSource' => $row['external_source'] ?? null,
+                'externalUrl' => $row['external_url'] ?? null,
+                'dueInferred' => ccrm_task_due_inferred($row),
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
             ];
