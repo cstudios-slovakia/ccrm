@@ -838,6 +838,68 @@ if (!function_exists('ccrm_schema_statements')) {
               FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Machine API (/api/v1, docs/WAAI-INTEGRATION.md §4.1): one row per external
+            // system (today only 'waai'). The JSON-valued columns are TEXT holding JSON,
+            // which MySQL and MariaDB both accept.
+            "CREATE TABLE IF NOT EXISTS `integration_clients` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `code` VARCHAR(50) NOT NULL UNIQUE,
+              `name` VARCHAR(100) NOT NULL,
+              `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+              `scopes` TEXT NOT NULL,
+              `allowed_ips` TEXT NOT NULL,
+              `require_direct` TINYINT(1) NOT NULL DEFAULT 0,
+              `owner_user_ids` TEXT NOT NULL,
+              `feed_scope` ENUM('owners','all') NOT NULL DEFAULT 'owners',
+              `embed_url` VARCHAR(255) NULL,
+              `sso_secret` VARCHAR(255) NULL COMMENT 'enc:v1: (ccrm_encrypt_secret)',
+              `default_deadline_days` INT NOT NULL DEFAULT 7,
+              `settings_json` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Several tokens per client so a rotation can overlap. Only sha256 is stored.
+            "CREATE TABLE IF NOT EXISTS `integration_tokens` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `client_id` VARCHAR(50) NOT NULL,
+              `prefix` VARCHAR(12) NOT NULL UNIQUE,
+              `token_hash` CHAR(64) NOT NULL,
+              `expires_at` DATETIME NULL,
+              `revoked_at` DATETIME NULL,
+              `last_used_at` DATETIME NULL,
+              `last_used_ip` VARCHAR(45) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX idx_int_token_client (`client_id`),
+              FOREIGN KEY (`client_id`) REFERENCES `integration_clients` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // External id <-> local row, plus the last values applied from the external
+            // side (three-way merge). No FK on local_id: tasks are hard-deleted by sync.php,
+            // and a ref whose row is gone is how "deleted in CCRM" is recognised.
+            "CREATE TABLE IF NOT EXISTS `integration_refs` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `client_id` VARCHAR(50) NOT NULL,
+              `kind` ENUM('task','timeline') NOT NULL,
+              `external_id` VARCHAR(64) NOT NULL,
+              `local_id` VARCHAR(50) NULL,
+              `revision` BIGINT NOT NULL DEFAULT 0,
+              `applied_snapshot` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY uq_int_ref (`client_id`, `kind`, `external_id`),
+              INDEX idx_int_ref_local (`local_id`),
+              FOREIGN KEY (`client_id`) REFERENCES `integration_clients` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Per-token request counter, one row per minute window.
+            "CREATE TABLE IF NOT EXISTS `integration_rate` (
+              `token_prefix` VARCHAR(12) NOT NULL,
+              `window_start` INT NOT NULL,
+              `hits` INT NOT NULL DEFAULT 0,
+              PRIMARY KEY (`token_prefix`, `window_start`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Web Push Subscriptions (Browser & Mobile PWA push endpoints)
             "CREATE TABLE IF NOT EXISTS `push_subscriptions` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,

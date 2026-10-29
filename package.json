@@ -26,6 +26,7 @@
     "test:qa": "node scripts/qa/run-qa.mjs",
     "test:persistence": "node scripts/probe-persistence.mjs",
     "test:persistence:projects": "node scripts/probe-project-tabs.mjs",
+    "test:integration": "node scripts/test-integration-api.mjs",
     "test:mcp": "node --experimental-strip-types scripts/probe-mcp/run.mjs",
     "test:rbac": "node --experimental-strip-types scripts/probe-rbac/run.mjs",
     "test:time-tracking": "node --experimental-strip-types scripts/probe-time-tracking/run.mjs",

@@ -33,6 +33,9 @@ DirectoryIndex index.html index.php
     RewriteRule ^uploads/.*\.(php|phtml|php[0-9]|phps|pht|phar|cgi|pl|py|rb|asp|aspx|jsp|sh|shtml|htaccess|user\.ini)$ - [F,L,NC]
     # Route manifest.json dynamically to api/manifest.php so PWA installation uses configured system name
     RewriteRule ^manifest\.json$ api/manifest.php [L,QSA]
+    # Machine API v1 (WAAI): every /api/v1/... request goes to one front controller, which reads the
+    # route from REQUEST_URI. The E= flag hands the Authorization header to PHP on hosts that drop it.
+    RewriteRule ^api/v1(/.*)?$ api/integration.php [E=HTTP_AUTHORIZATION:%{HTTP:Authorization},L,QSA]
 </IfModule>
 
 # Block direct access to sensitive directories that must never be web-served:

@@ -1990,6 +1990,7 @@ HTACCESS;
             'user.role_change' => 'User role changed',
             'user.delete'      => 'User removed',
             'generate_mcp_key' => 'MCP API key created',
+            'integration.token_issue' => 'Integration API token created',
             'api_key.reset'    => 'Lead intake API key reset',
             'error_logs.clear' => 'Error logs cleared',
         ];

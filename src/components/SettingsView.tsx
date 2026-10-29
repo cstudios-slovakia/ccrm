@@ -89,6 +89,7 @@ import { SaveStatus } from "./settings/SectionCard";
 import { useAutosave } from "./settings/useAutosave";
 import { ScrollFade } from "./settings/ScrollFade";
 import { AiUsagePanel } from "./settings/AiUsagePanel";
+import { WaaiIntegrationSettings } from "./settings/WaaiIntegrationSettings";
 
 /** The billing fields the company forms own. Saving writes only these, so a payment or shipping edit made elsewhere is never overwritten. */
 const COMPANY_FORM_KEYS: Array<keyof CompanyBillingSettings> = [
@@ -7338,6 +7339,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         );
       case "integrations/usage":
         return <AiUsagePanel lang={userLanguage} />;
+      case "integrations/waai":
+        return <WaaiIntegrationSettings activeLang={userLanguage} />;
       default:
         return null;
     }
