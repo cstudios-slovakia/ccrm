@@ -4,6 +4,9 @@
 #
 services:
   caddy:
+    environment:
+      WAAI_DOMAIN: ${WAAI_DOMAIN:-waai.fzqms.eu}
+      WAAI_EMBED_ORIGINS: ${WAAI_EMBED_ORIGINS:-https://crm.fzqms.eu}
     networks:
       default:
       waai_ccrm:
