@@ -51,7 +51,9 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
 
   const load = useCallback(async () => {
     try {
-      setData(await listMailboxes());
+      const list = await listMailboxes();
+      // An answer without the lists (an older backend, a mock) must not take the whole page down.
+      setData({ ...list, mailboxes: list?.mailboxes ?? [], userMailboxes: list?.userMailboxes ?? [] });
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
