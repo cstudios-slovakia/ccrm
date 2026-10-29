@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/integration_lib.php';
 
 header('Content-Type: application/json');
@@ -189,6 +190,7 @@ function ccrm_int_admin_validate(\PDO $pdo, array $in): array {
 
 try {
     $pdo = get_db_connection();
+    ccrm_apply_schema($pdo);
 } catch (\Throwable $e) {
     error_log('[integration_admin] database connection failed: ' . $e->getMessage());
     ccrm_int_admin_reply(500, ['success' => false, 'message' => 'Database connection failed.']);

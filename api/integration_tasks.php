@@ -472,6 +472,11 @@ if (!function_exists('ccrm_int_handle_task_push')) {
             'assignee_label' => $in['context']['assignee_label'],
         ];
 
+        // Pre-transaction column healing: ensure external_* columns exist even if a stale worker stamped SCHEMA_FINGERPRINT.
+        if (function_exists('ccrm_migrate_integration_tasks')) {
+            ccrm_migrate_integration_tasks($pdo);
+        }
+
         $pdo->beginTransaction();
         try {
             $pdo->prepare("INSERT IGNORE INTO `integration_refs` (`client_id`, `kind`, `external_id`, `revision`) VALUES (?, 'task', ?, 0)")
@@ -844,6 +849,11 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         }
 
         [$scopeSql, $scopeParams] = ccrm_int_task_scope($client, $dir);
+        // Pre-transaction column healing: ensure external_* columns exist even if a stale worker stamped SCHEMA_FINGERPRINT.
+        if (function_exists('ccrm_migrate_integration_tasks')) {
+            ccrm_migrate_integration_tasks($pdo);
+        }
+
         $pdo->beginTransaction();
         try {
             $row = null;

@@ -40,44 +40,45 @@ Asked in one message; answers so far:
 
 1. **D4** — WAAI base branch: **`main`** (decided 2026-10-29). `feat/ccrm-integration` was created from it.
 2. **D5** — CCRM base branch: **`1.13-nectarine`** (decided, see above).
-3. **D7** — relax CCRM's CSP to `frame-src 'self' https:`? Not needed before phase 7 — ask
-   then.
-4. **D11** — default deadline for tasks the chat gave no date: today + 7 days. Not needed
-   before phase 2 — the default is built in and configurable per client, so go ahead unless
-   Peter says otherwise.
-
-D1/D3 (which VPS, which CCRM install, same host or not) are only needed for phase 8 —
-ask then.
+3. **D7** — relax CCRM's CSP to `frame-src 'self' https:`? **Decided: yes** (2026-10-29, phase 7).
+4. **D11** — default deadline for tasks the chat gave no date: **Decided: today + 7 days**, configurable per client (`dueInferred`).
+5. **D1 / D3** — **Decided (2026-10-29):** Both CCRM and WAAI are installed on the **same new VPS** as standalone applications (no connection between them yet) → **Scenario S1** (`deploy/vps/docker-compose.waai.yml` + `docker-compose.s1.yml` over private `waai_ccrm` network). Live connection & rollout will execute in the next session.
 
 ## Progress
 
 | Phase | Status |
 |---|---|
-| 0 | CCRM worktree `../ccrm-waai` on `1.13-nectarine`. WAAI branch `feat/ccrm-integration` created from `main` (D4). |
-| 1 | Done — see "Phase 1 notes" below and the changelog entry. |
+| 0 | Done — CCRM worktree `../ccrm-waai` on `1.13-nectarine`; WAAI worktree `../waai-ccrm` on `feat/ccrm-integration` (from `main`, D4). |
+| 1 | Done (v1.13.14-Nectarine) — see "Phase 1 notes" below and the changelog entry. |
 | 2 | Done (v1.13.15-Nectarine) — see "Phase 2 notes" and spec §4.1 "As built (phase 2)". |
-| 3 | Done, **stopped for review** — see "Phase 3 notes" and spec §4.3 "As built (phase 3)". Also v1.13.16-Nectarine: a date the chat takes back falls to today + 7 days again (unless a CCRM user moved it). D9 confirmed: no workflows, e-mails or ticket auto-resolve for WAAI tasks. |
-| 4 | Done (v1.13.17-Nectarine), **no stop required** - see "Phase 4 notes" and spec §4.1 / §4.3 "As built (phase 4)". The fresh-database migration is fixed and the localised messages are in. |
-| 5 | Done (v1.13.18-Nectarine), **no stop required** — see "Phase 5 notes" and spec §4.6 "As built (phase 5)". |
+| 3 | Done (`ba6056a`), **stopped for review** — see "Phase 3 notes" and spec §4.3 "As built (phase 3)". Also v1.13.16-Nectarine: a date the chat takes back falls to today + 7 days again (unless a CCRM user moved it). D9 confirmed: no workflows, e-mails or ticket auto-resolve for WAAI tasks. |
+| 4 | Done (v1.13.17-Nectarine, `1a2bc8f`), **no stop required** — see "Phase 4 notes" and spec §4.1 / §4.3 "As built (phase 4)". The fresh-database migration is fixed and the localised messages are in. |
+| 5 | Done (v1.13.18-Nectarine, `24cc325`), **no stop required** — see "Phase 5 notes" and spec §4.6 "As built (phase 5)". |
 | 6 | Done (v1.13.19-Nectarine), **stopped for review** — see "Phase 6 notes" and spec §4.8 "As built (phase 6)". Review screenshots (light and dark) were **not** captured: Peter said to skip them. |
-| 7 | Done (v1.13.21-Nectarine), **no stop required** — see "Phase 7 notes" and spec §4.7 "As built (phase 7)". D7 decided: `frame-src 'self' https:`. The manual browser pass with the real WAAI was not run. |
-| 8 | Deployment & rollout runbook ready, awaiting Peter's deployment choices (D1, D3) — see "Phase 8 notes" and spec §4.10. |
+| 7 | Done (v1.13.21–v1.13.22-Nectarine, `e8f39fd`–`0497af4`), **no stop required** — see "Phase 7 notes" and spec §4.7 "As built (phase 7)". D7 decided: `frame-src 'self' https:`. The manual browser pass with the real WAAI was not run locally (deferred to VPS rollout). |
+| 8 | **Prepared & verified (v1.13.23–v1.13.25-Nectarine, `c40891e`)** — Scenario S1 overlays, schema/column healing, and rollout runbook verified. Standalone CCRM and WAAI are installed on the new VPS (not connected yet); ready to connect and roll out in the next session. See "Phase 8 notes" below and spec §5 Phase 8. |
 
-### Phase 8 notes
+### Phase 8 notes (verified 2026-10-29 — ready for next session)
 
-- Confirmed pre-requisites: `Dockerfile.worker` and `Dockerfile.web` copy and build `packages/crm-client`.
-- Created Scenario S1 deployment overlays:
-  - WAAI (`waai-ccrm`): `docker-compose.s1.yml` (disables standalone Caddy, joins `waai_ccrm` external bridge network, fixes `ai-worker` IP to `172.31.250.10`, aliases `web` to `waai-web`).
-  - CCRM (`ccrm-waai`): `deploy/vps/docker-compose.waai.yml` (defines `waai_ccrm` bridge subnet `172.31.250.0/24`, connects `caddy` and `web`), `deploy/vps/Caddyfile.waai.snippet` (reverse proxy and security headers for WAAI domain).
-- Verification: CCRM unit test suite clean (1068 passed, 0 failed).
-- Rollout runbook ready for step-by-step execution with Peter:
-  1. Confirm VPS host (D1) and CCRM setup / topology (D3: S1 same host vs S2 shared hosting).
-  2. Configure environment variables and API token in CCRM / WAAI with `CRM_DRY_RUN=1`.
-  3. Validate ping, directory caching, and chat linking.
-  4. Enable live task push (`CRM_DRY_RUN=0`).
-  5. Enable timeline events and verify client timeline entries.
-  6. Admin SSO sign-in and embed test in browser.
-  7. Map remaining users and grant `whatsapp` permission to desired roles.
+- **Topology confirmed (D1, D3):** Peter installed both CCRM and WAAI on the new VPS as standalone applications with no connection between them yet → **Scenario S1** applies.
+- **Confirmed pre-requisites & overlays:**
+  - `Dockerfile.worker` and `Dockerfile.web` copy and build `packages/crm-client`.
+  - WAAI (`../waai-ccrm`, branch `feat/ccrm-integration`, commit `c40891e`): `docker-compose.s1.yml` (disables standalone Caddy, joins `waai_ccrm` external bridge network, fixes `ai-worker` IP to `172.31.250.10`, aliases `web` to `waai-web`).
+  - CCRM (`../ccrm-waai`, branch `1.13-nectarine`, v1.13.25-Nectarine): `deploy/vps/docker-compose.waai.yml` (defines `waai_ccrm` bridge subnet `172.31.250.0/24`, connects `caddy` and `web`), `deploy/vps/Caddyfile.waai.snippet` (reverse proxy and security headers for WAAI domain).
+- **Full verification pass (2026-10-29):**
+  - **CCRM (`../ccrm-waai`):** `npx tsc --noEmit` clean; `npm run test:unit` **1068 passed, 0 failed**; `npm run test:integration` **352 passed, 0 failed**; `npm run sync:backend` in sync; 4-place schema rule (`CREATE TABLE IF NOT EXISTS tasks`, idempotent migrations, pre-transaction healing in `sync.php`, `integration_tasks.php`, `integration_whatsapp.php`, `ccrm_apply_schema` in `integration*.php` / `waai_sso.php`, `entities_overview.md`) and `require_direct` proxy header checks (`X-Forwarded-Proto` / `X-Forwarded-Host` behind Caddy `mod_remoteip`) verified.
+  - **WAAI (`../waai-ccrm`):** `pnpm typecheck` clean (8/8 packages); `pnpm test` **137 passed, 0 failed** (`crm-client` 103, `web` 34); `pnpm lint` 0 errors (3 existing warnings).
+- **Important branch / push state for the next session:**
+  - **CCRM:** `1.13-nectarine` is pushed to `origin/1.13-nectarine`. Ensure the VPS CCRM checkout tracks `1.13-nectarine` (`git config ccrm.deployBranch 1.13-nectarine` + `/opt/ccrm-stack/update.sh`).
+  - **WAAI:** `feat/ccrm-integration` (`c40891e` in `../waai-ccrm`) is **not pushed to `origin` yet** (and `main` in `../waai` only has phase 3 `ba6056a` plus unpushed `main` commits). First step in the deployment session: push `feat/ccrm-integration` (or merge into `main` and push), pull on the VPS, rebuild WAAI containers, and run `prisma migrate deploy`.
+- **Rollout runbook for the next session (step-by-step with Peter):**
+  1. Push WAAI `feat/ccrm-integration` (or merge to `main`) and update both standalone installs on the VPS to the integration commits (`1.13-nectarine` on CCRM, `feat/ccrm-integration` on WAAI + `prisma migrate deploy`).
+  2. Apply Scenario S1 Docker Compose overlays (`docker-compose.waai.yml` + `Caddyfile.waai.snippet` on CCRM; `docker-compose.s1.yml` on WAAI) so CCRM's Caddy serves both domains and `waai_ccrm` connects `ai-worker` (`172.31.250.10`) and `waai-web` to CCRM `web` and `caddy`.
+  3. Configure CCRM Settings → Integrations → WhatsApp (WAAI) (`allowed_ips = ["172.31.250.10"]`, `require_direct = true`, scopes, owners, `embed_url`), issue API token + rotate SSO secret, and set WAAI `.env` with `CRM_BASE_URL=http://web` and `CRM_DRY_RUN=1`.
+  4. Validate `ping`, user directory pairing, client/project directory caching, and chat linking (`whatsapp_links`). **Stop for Peter's review.**
+  5. Switch to live task push (`CRM_DRY_RUN=0`) and verify two-way task sync.
+  6. Verify `whatsapp` timeline events on linked clients.
+  7. Map admin user for SSO in WAAI Settings → CRM, verify `#whatsapp` embedded module in browser (Chrome + Firefox; SSO, deep links, theme/locale, voice notes, uploads), then map remaining users and grant `whatsapp` permission to roles.
 
 ### Phase 7 notes
 

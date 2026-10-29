@@ -251,6 +251,14 @@ if (!function_exists('ccrm_int_handle_whatsapp_links_put')) {
             'path' => $path,
         ];
 
+        // Pre-transaction column healing: ensure timeline external_url and whatsapp ENUM exist before beginTransaction().
+        if (function_exists('ccrm_migrate_integration_timeline')) {
+            ccrm_migrate_integration_timeline($pdo);
+        }
+        if (function_exists('ccrm_migrate_timeline_event_types')) {
+            ccrm_migrate_timeline_event_types($pdo);
+        }
+
         $pdo->beginTransaction();
         try {
             $pdo->prepare("INSERT IGNORE INTO `integration_refs` (`client_id`, `kind`, `external_id`, `revision`) VALUES (?, 'timeline', ?, 0)")

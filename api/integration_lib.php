@@ -251,7 +251,7 @@ if (!function_exists('ccrm_int_fail')) {
      */
     function ccrm_int_check_network(array $client): void {
         if ($client['require_direct']) {
-            foreach (['HTTP_X_FORWARDED_FOR', 'HTTP_FORWARDED', 'HTTP_X_REAL_IP'] as $key) {
+            foreach (['HTTP_X_FORWARDED_FOR', 'HTTP_FORWARDED', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST'] as $key) {
                 if (!empty($_SERVER[$key])) {
                     ccrm_int_fail(403, 'forbidden_network', 'Requests through a proxy are not allowed for this client.');
                 }

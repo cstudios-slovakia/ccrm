@@ -29,6 +29,7 @@ if (!file_exists($configFile)) {
 if (file_exists($configFile)) {
     require_once $configFile;
 }
+require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/integration_lib.php';
 require_once __DIR__ . '/integration_directory.php';
 require_once __DIR__ . '/integration_tasks.php';
@@ -86,6 +87,7 @@ try {
     if (!$pdo) {
         throw new RuntimeException('Database connection not established');
     }
+    ccrm_apply_schema($pdo);
     $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
     $path = ccrm_int_route_path();
 

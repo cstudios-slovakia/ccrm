@@ -14,6 +14,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/integration_lib.php';
 require_once __DIR__ . '/integration_tasks.php';
@@ -64,6 +65,7 @@ $sessionUser = ccrm_require_auth();
 
 try {
     $pdo = get_db_connection();
+    ccrm_apply_schema($pdo);
 } catch (\Throwable $e) {
     error_log('[waai_sso] database connection failed: ' . $e->getMessage());
     ccrm_waai_sso_reply(500, ['success' => false, 'code' => 'server_error']);
