@@ -38,12 +38,16 @@ export function prependOlder(current: readonly MessageDto[], older: readonly Mes
 
 /** The `after` cursor for the next poll: the newest message we hold. */
 export function newestSentAt(messages: readonly MessageDto[]): string | null {
-  return messages.length === 0 ? null : messages[messages.length - 1]!.sent_at;
+  // A message the user just wrote and WAAI has not confirmed yet (`local-…`) carries this browser's clock;
+  // polling from it could skip what arrived meanwhile.
+  const stored = messages.filter((m) => !m.id.startsWith("local-"));
+  return stored.length === 0 ? null : stored[stored.length - 1]!.sent_at;
 }
 
 /** The `before` cursor for loading older messages: the oldest message we hold. */
 export function oldestSentAt(messages: readonly MessageDto[]): string | null {
-  return messages.length === 0 ? null : messages[0]!.sent_at;
+  const stored = messages.filter((m) => !m.id.startsWith("local-"));
+  return stored.length === 0 ? null : stored[0]!.sent_at;
 }
 
 /** Lower case, accents removed: "stretnutie" finds "stretnútie". */

@@ -104,7 +104,7 @@ function ccrm_int_admin_origin(string $value): ?string {
 }
 
 /** Validates the editable fields. Returns the values ready to store, or answers 422. */
-function ccrm_int_admin_validate(\PDO $pdo, array $in): array {
+function ccrm_int_admin_validate(\PDO $pdo, array $in, array $existing = []): array {
     $errors = [];
 
     $name = trim((string)($in['name'] ?? ''));
@@ -162,6 +162,22 @@ function ccrm_int_admin_validate(\PDO $pdo, array $in): array {
         $embed = $origin ?? '';
     }
 
+    // The native module (docs/WAAI-NATIVE-MODULE.md §4.1). Both optional: a client that does not send them
+    // keeps what is stored, so an older settings screen cannot silently reset the choice.
+    $moduleUi = $in['module_ui'] ?? null;
+    if ($moduleUi !== null && !in_array($moduleUi, ['native', 'embedded'], true)) {
+        $errors['module_ui'] = 'Must be "native" or "embedded".';
+    }
+    $moduleTransport = $in['module_transport'] ?? null;
+    if ($moduleTransport !== null && !in_array($moduleTransport, ['proxy', 'direct'], true)) {
+        $errors['module_transport'] = 'Must be "proxy" or "direct".';
+    }
+    // Direct means the browser calls WAAI's own address, so there has to be one.
+    $effectiveTransport = $moduleTransport ?? ($existing['module_transport'] ?? 'proxy');
+    if ($effectiveTransport === 'direct' && $embed === '') {
+        $errors['embed_url'] = 'A direct connection needs the WAAI address.';
+    }
+
     $days = $in['default_deadline_days'] ?? 7;
     if (!is_int($days) && !(is_string($days) && ctype_digit($days))) {
         $errors['default_deadline_days'] = 'Must be a whole number of days.';
@@ -185,6 +201,8 @@ function ccrm_int_admin_validate(\PDO $pdo, array $in): array {
         'feed_scope' => $feedScope,
         'embed_url' => $embed !== '' ? $embed : null,
         'default_deadline_days' => $days,
+        'module_ui' => $moduleUi,
+        'module_transport' => $moduleTransport,
     ];
 }
 
@@ -215,20 +233,27 @@ try {
     $action = (string)($in['action'] ?? '');
 
     if ($action === 'save_client') {
-        $v = ccrm_int_admin_validate($pdo, $in);
         $row = ccrm_int_admin_client_row($pdo);
+        $v = ccrm_int_admin_validate($pdo, $in, $row ? ccrm_int_module_settings($row) : []);
+        // `settings_json` also holds whatever else is kept there; only the module keys change.
+        $stored = $row ? json_decode((string)($row['settings_json'] ?? ''), true) : [];
+        $settings = is_array($stored) ? $stored : [];
+        $current = $row ? ccrm_int_module_settings($row) : ['module_ui' => 'embedded', 'module_transport' => 'proxy'];
+        $settings['module_ui'] = $v['module_ui'] ?? $current['module_ui'];
+        $settings['module_transport'] = $v['module_transport'] ?? $current['module_transport'];
+        $settingsJson = json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($row) {
             $pdo->prepare(
                 "UPDATE `integration_clients` SET `name`=?, `is_active`=?, `scopes`=?, `allowed_ips`=?, `require_direct`=?,
-                        `owner_user_ids`=?, `feed_scope`=?, `embed_url`=?, `default_deadline_days`=? WHERE `id`=?"
+                        `owner_user_ids`=?, `feed_scope`=?, `embed_url`=?, `default_deadline_days`=?, `settings_json`=? WHERE `id`=?"
             )->execute([$v['name'], $v['is_active'], $v['scopes'], $v['allowed_ips'], $v['require_direct'],
-                        $v['owner_user_ids'], $v['feed_scope'], $v['embed_url'], $v['default_deadline_days'], $row['id']]);
+                        $v['owner_user_ids'], $v['feed_scope'], $v['embed_url'], $v['default_deadline_days'], $settingsJson, $row['id']]);
         } else {
             $pdo->prepare(
                 "INSERT INTO `integration_clients` (`id`, `code`, `name`, `is_active`, `scopes`, `allowed_ips`, `require_direct`,
-                        `owner_user_ids`, `feed_scope`, `embed_url`, `default_deadline_days`) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                        `owner_user_ids`, `feed_scope`, `embed_url`, `default_deadline_days`, `settings_json`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute(['intc_' . bin2hex(random_bytes(8)), CCRM_INT_ADMIN_CODE, $v['name'], $v['is_active'], $v['scopes'], $v['allowed_ips'],
-                        $v['require_direct'], $v['owner_user_ids'], $v['feed_scope'], $v['embed_url'], $v['default_deadline_days']]);
+                        $v['require_direct'], $v['owner_user_ids'], $v['feed_scope'], $v['embed_url'], $v['default_deadline_days'], $settingsJson]);
         }
         ccrm_audit_log($pdo, $auditActor, 'integration.client_save', 'Saved integration client ' . CCRM_INT_ADMIN_CODE);
         ccrm_int_admin_reply(200, ccrm_int_admin_status($pdo));

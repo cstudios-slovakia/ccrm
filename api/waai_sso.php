@@ -80,17 +80,29 @@ try {
     $stmt = $pdo->prepare("SELECT * FROM `integration_clients` WHERE `code` = 'waai' LIMIT 1");
     $stmt->execute();
     $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+    // Configured = an active connection with a sign-in secret. The WAAI address is not needed when the browser
+    // reaches WAAI through this CRM (`proxy`); it is for the embedded interface and for "open standalone".
+    $module = $row !== null ? ccrm_int_module_settings($row) : ['module_ui' => 'embedded', 'module_transport' => 'proxy'];
+    $standalone = $row !== null && !empty($row['embed_url']) ? (string)$row['embed_url'] : null;
     $configured = $row !== null
         && (int)$row['is_active'] === 1
-        && !empty($row['embed_url'])
-        && !empty($row['sso_secret']);
+        && !empty($row['sso_secret'])
+        && ($module['module_ui'] === 'native' ? ($module['module_transport'] === 'proxy' || $standalone !== null) : $standalone !== null);
 
     $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
     if ($method === 'GET') {
         ccrm_waai_sso_reply(200, [
             'success' => true,
             'configured' => $configured,
-            'embed_url' => $configured ? (string)$row['embed_url'] : null,
+            // The base the native module calls: this CRM's own path, or WAAI's address (docs/WAAI-NATIVE-MODULE.md §4.1).
+            'module' => [
+                'ui' => $module['module_ui'],
+                'transport' => $module['module_transport'],
+                'base' => $module['module_transport'] === 'direct' && $standalone !== null ? $standalone . '/api/ccrm/v1' : '/waai-api',
+            ],
+            'standalone_url' => $configured ? $standalone : null,
+            // The embedded interface's frame address; the same as `standalone_url`.
+            'embed_url' => $configured ? $standalone : null,
             'can_manage' => !empty($scope['isAdmin']),
             'user_id' => (string)($sessionUser['id'] ?? ''),
         ]);

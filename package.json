@@ -8,6 +8,7 @@
     "build": "node scripts/sync-backend.mjs && tsc -b && vite build",
     "build:extension": "node scripts/build-extension.mjs",
     "sync:backend": "node scripts/sync-backend.mjs",
+    "sync:waai-contract": "node scripts/sync-waai-contract.mjs",
     "check:backend": "node scripts/sync-backend.mjs --check",
     "deploy": "node scripts/deploy.mjs",
     "lint": "eslint .",

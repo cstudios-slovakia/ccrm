@@ -160,9 +160,26 @@ if (!function_exists('ccrm_int_fail')) {
         return array_values(array_filter(array_map('strval', $data), static fn(string $v): bool => $v !== ''));
     }
 
+    /**
+     * The WhatsApp module's own settings, kept in `settings_json` (docs/WAAI-NATIVE-MODULE.md §4.1):
+     * `module_ui` = native | embedded (which interface the module shows), `module_transport` = proxy | direct
+     * (how the browser reaches WAAI: through this CRM's /waai-api path, or at WAAI's own address).
+     * Anything missing or unknown reads as the default, so a row written before these existed keeps working.
+     *
+     * @return array{module_ui: string, module_transport: string}
+     */
+    function ccrm_int_module_settings(array $row): array {
+        $s = json_decode((string)($row['settings_json'] ?? ''), true);
+        $s = is_array($s) ? $s : [];
+        return [
+            'module_ui' => ($s['module_ui'] ?? '') === 'native' ? 'native' : 'embedded',
+            'module_transport' => ($s['module_transport'] ?? '') === 'direct' ? 'direct' : 'proxy',
+        ];
+    }
+
     /** A client row as the rest of the API uses it: JSON columns decoded, flags as booleans. */
     function ccrm_int_client_view(array $row): array {
-        return [
+        return ccrm_int_module_settings($row) + [
             'id' => (string)$row['id'],
             'code' => (string)$row['code'],
             'name' => (string)$row['name'],

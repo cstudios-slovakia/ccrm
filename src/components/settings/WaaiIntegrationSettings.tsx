@@ -15,6 +15,8 @@ interface ClientView {
   owner_user_ids: string[];
   feed_scope: "owners" | "all";
   embed_url: string | null;
+  module_ui: "native" | "embedded";
+  module_transport: "proxy" | "direct";
   has_sso_secret: boolean;
   default_deadline_days: number;
 }
@@ -77,6 +79,30 @@ const Field: React.FC<{ label: string; hint?: string; error?: string; children: 
   </label>
 );
 
+/** A labelled group of radio buttons, each with a line of explanation. */
+function Choice<V extends string>({ name, label, value, onChange, options }: {
+  name: string;
+  label: string;
+  value: V;
+  onChange: (v: V) => void;
+  options: { value: V; label: string; hint: string }[];
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="type-label text-slate-800 mb-1">{label}</legend>
+      {options.map((o) => (
+        <label key={o.value} className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition-colors ${value === o.value ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white hover:bg-slate-50"}`}>
+          <input type="radio" name={name} className="mt-1 h-4 w-4 shrink-0 accent-indigo-600" checked={value === o.value} onChange={() => onChange(o.value)} />
+          <span className="flex flex-col">
+            <span className="type-label text-slate-800">{o.label}</span>
+            <span className="type-meta text-slate-500">{o.hint}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 const fmtDate = (value: string | null, lang: Language): string => {
   if (!value) return "—";
   const d = new Date(value.replace(" ", "T"));
@@ -124,6 +150,8 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
   // The form: separate state so typing does not touch what the server last returned.
   const [active, setActive] = useState(true);
   const [address, setAddress] = useState("");
+  const [moduleUi, setModuleUi] = useState<"native" | "embedded">("embedded");
+  const [transport, setTransport] = useState<"proxy" | "direct">("proxy");
   const [owners, setOwners] = useState<string[]>([]);
   const [scopes, setScopes] = useState<string[]>([...WAAI_SCOPES]);
   const [ipText, setIpText] = useState("");
@@ -145,6 +173,8 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
     if (c) {
       setActive(c.is_active);
       setAddress(c.embed_url ?? "");
+      setModuleUi(c.module_ui);
+      setTransport(c.module_transport);
       setOwners(c.owner_user_ids);
       setScopes(c.scopes);
       setIpText(c.allowed_ips.join("\n"));
@@ -178,6 +208,10 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
     const errors: Record<string, string> = {};
     const origin = normalizeEmbedOrigin(address);
     if (origin === null) errors.embed_url = t("Use the address without a path, e.g. https://wa.example.sk", "Zadajte adresu bez cesty, napr. https://wa.example.sk", "Útvonal nélküli címet adjon meg, pl. https://wa.example.sk");
+    // A direct connection is the browser calling WAAI's own address; the embedded interface loads from it too.
+    if ((transport === "direct" || moduleUi === "embedded") && origin === "") {
+      errors.embed_url = t("Enter the WAAI address.", "Zadajte adresu WAAI.", "Adja meg a WAAI címét.");
+    }
     const { ips, invalid } = parseIpList(ipText);
     if (invalid.length) errors.allowed_ips = t(`Not an IP address or block: ${invalid.join(", ")}`, `Nie je IP adresa ani blok: ${invalid.join(", ")}`, `Nem IP-cím vagy tartomány: ${invalid.join(", ")}`);
     if (!/^\d{1,3}$/.test(days) || Number(days) > 365) errors.default_deadline_days = t("A number of days from 0 to 365", "Počet dní od 0 do 365", "Napok száma 0 és 365 között");
@@ -196,6 +230,8 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         owner_user_ids: owners,
         feed_scope: feedScope,
         embed_url: origin ?? "",
+        module_ui: moduleUi,
+        module_transport: transport,
         default_deadline_days: Number(days),
       });
       if (r.ok) {
@@ -342,12 +378,48 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
           />
           <Field
             label={t("WAAI address", "Adresa WAAI", "A WAAI címe")}
-            hint={t("Where the WhatsApp view loads from, e.g. https://wa.example.sk. Needed later for the WhatsApp module.", "Odkiaľ sa načíta pohľad WhatsApp, napr. https://wa.example.sk. Potrebné neskôr pre modul WhatsApp.", "Innen töltődik be a WhatsApp nézet, pl. https://wa.example.sk. Később a WhatsApp modulhoz kell.")}
+            hint={t(
+              "The standalone WAAI, e.g. https://wa.example.sk. Optional for the native interface through this CRM (then only used for “Open in a new tab”); needed for the embedded interface and for a direct connection.",
+              "Samostatná WAAI, napr. https://wa.example.sk. Pre natívne rozhranie cez toto CRM je voliteľná (použije sa len pri „Otvoriť v novej karte“); potrebná je pre vložené rozhranie a pre priame pripojenie.",
+              "Az önálló WAAI, pl. https://wa.example.sk. A CRM-en keresztüli natív felülethez nem kötelező (csak a „Megnyitás új lapon” használja); a beágyazott felülethez és a közvetlen kapcsolathoz szükséges."
+            )}
             error={fieldErrors.embed_url}
           >
             <input className={inputCls} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="https://wa.example.sk" inputMode="url" autoComplete="off" />
           </Field>
         </div>
+
+        <SettingsGroup
+          title={t("WhatsApp module", "Modul WhatsApp", "WhatsApp modul")}
+          description={t(
+            "How the WhatsApp module looks and how it reaches WAAI.",
+            "Ako modul WhatsApp vyzerá a ako sa dostane k WAAI.",
+            "Hogyan néz ki a WhatsApp modul, és hogyan éri el a WAAI-t."
+          )}
+        >
+          <div className="grid grid-cols-1 gap-5 ws-lg:grid-cols-2">
+            <Choice
+              name="waai-module-ui"
+              label={t("Interface", "Rozhranie", "Felület")}
+              value={moduleUi}
+              onChange={setModuleUi}
+              options={[
+                { value: "native", label: t("Native", "Natívne", "Natív"), hint: t("Part of the CRM: same look, dialogs and text size. Still being completed.", "Súčasť CRM: rovnaký vzhľad, dialógy a veľkosť písma. Stále sa dokončuje.", "A CRM része: azonos megjelenés, párbeszédablakok és betűméret. Még készül.") },
+                { value: "embedded", label: t("Embedded", "Vložené", "Beágyazott"), hint: t("The full WAAI app in a frame. Needs the WAAI address.", "Celá aplikácia WAAI v ráme. Vyžaduje adresu WAAI.", "A teljes WAAI alkalmazás egy keretben. A WAAI címe szükséges.") },
+              ]}
+            />
+            <Choice
+              name="waai-module-transport"
+              label={t("Connection", "Pripojenie", "Kapcsolat")}
+              value={transport}
+              onChange={setTransport}
+              options={[
+                { value: "proxy", label: t("Through this CRM", "Cez toto CRM", "Ezen a CRM-en keresztül"), hint: t("The browser talks to the CRM's own address (/waai-api); no extra DNS record. Needs the proxy of the VPS setup.", "Prehliadač komunikuje s adresou samotného CRM (/waai-api); netreba ďalší DNS záznam. Vyžaduje proxy z nastavenia VPS.", "A böngésző a CRM saját címével kommunikál (/waai-api); nincs szükség extra DNS-rekordra. A VPS-beállítás proxyját igényli.") },
+                { value: "direct", label: t("Directly to WAAI", "Priamo na WAAI", "Közvetlenül a WAAI-hoz"), hint: t("The browser calls the WAAI address. WAAI needs MODULE_API_CORS=1, and this CRM must allow that address in its security policy (connect-src, media-src).", "Prehliadač volá adresu WAAI. WAAI potrebuje MODULE_API_CORS=1 a toto CRM musí túto adresu povoliť vo svojej bezpečnostnej politike (connect-src, media-src).", "A böngésző a WAAI címét hívja. A WAAI-nak MODULE_API_CORS=1 kell, és ennek a CRM-nek engedélyeznie kell a címet a biztonsági szabályzatában (connect-src, media-src).") },
+              ]}
+            />
+          </div>
+        </SettingsGroup>
 
         <SettingsGroup
           title={t("Owners", "Vlastníci", "Tulajdonosok")}
@@ -528,7 +600,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
               ? t("A secret is set.", "Kľúč je nastavený.", "A kulcs be van állítva.")
               : t("No secret yet: the WhatsApp module cannot sign anyone in.", "Zatiaľ žiadny kľúč: modul WhatsApp nemôže nikoho prihlásiť.", "Még nincs kulcs: a WhatsApp modul nem tud senkit beléptetni.")}
             {" "}
-            {status.client?.embed_url
+            {status.client?.embed_url || (status.client?.module_ui === "native" && status.client.module_transport === "proxy")
               ? ""
               : t("Enter the WAAI address above as well.", "Zadajte vyššie aj adresu WAAI.", "Adja meg fent a WAAI címét is.")}
           </p>

@@ -15,6 +15,7 @@ import { TEST_USER } from './helpers/fixture';
 
 const WAAI = 'https://wa.test';
 const TOKEN = 'header.payload.signature';
+const EMBEDDED = { ui: 'embedded', transport: 'proxy', base: '/waai-api' };
 
 interface Frame {
   signedIn: boolean;
@@ -34,8 +35,8 @@ async function installWaai(page: Page, over: Partial<Frame> = {}, configured = t
     if (method === 'GET') {
       return route.fulfill({
         json: configured
-          ? { success: true, configured: true, embed_url: WAAI, can_manage: true, user_id: TEST_USER.id }
-          : { success: true, configured: false, embed_url: null, can_manage: true, user_id: TEST_USER.id },
+          ? { success: true, configured: true, module: EMBEDDED, standalone_url: WAAI, embed_url: WAAI, can_manage: true, user_id: TEST_USER.id }
+          : { success: true, configured: false, module: EMBEDDED, standalone_url: null, embed_url: null, can_manage: true, user_id: TEST_USER.id },
       });
     }
     state.tokensIssued++;

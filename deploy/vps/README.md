@@ -61,6 +61,29 @@ sudo ufw allow 22,80,443/tcp && sudo ufw allow 443/udp && sudo ufw enable
 Track another branch with
 `docker compose exec -u www-data web git config ccrm.deployBranch <branch>`.
 
+## WhatsApp (WAAI) on the same VPS
+
+WAAI runs next to the CRM on a private Docker network (`waai_ccrm`); only Caddy is public.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.waai.yml up -d
+```
+
+- **The module needs no DNS record for WAAI.** The overlay mounts `Caddyfile.waai-routes` into the CRM's
+  site block: the browser calls `https://<CCRM_DOMAIN>/waai-api/...` and Caddy forwards it to WAAI's
+  module API (`waai-web:3000/api/ccrm/v1/...`). Nothing else of WAAI is reachable that way. Leave the
+  module's connection on "Through this CRM" (Settings → Integrations → WhatsApp (WAAI)).
+- **WAAI's own address comes later.** When DNS for `WAAI_DOMAIN` points at the server, add
+  `-f docker-compose.waai-standalone.yml` (it has no default for `WAAI_DOMAIN`, on purpose). Until then
+  Caddy would keep failing the certificate request for it.
+- A CRM without WAAI starts as before: without the overlay `waai-web` is never mentioned.
+- **First user:** nobody can open WAAI's settings without its address, so map the first administrator with
+  `docker compose exec web node apps/web/scripts/map-crm-user.mjs --email <waai-admin-email> --crm-user <crm-user-id>`
+  on the WAAI stack (see WAAI's `docs/DEPLOYMENT.md`).
+- WAAI needs `CCRM_ORIGIN=https://<CCRM_DOMAIN>` and `CCRM_SSO_SECRET` (from the same settings page).
+- Check a changed Caddyfile before restarting: `docker run --rm -e CCRM_DOMAIN=x.example -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile`
+  (add `-v` lines for the overlay files you use).
+
 ## Operating notes
 
 - **State lives in four places:** `/srv/ccrm` (config.php, api_key.txt,

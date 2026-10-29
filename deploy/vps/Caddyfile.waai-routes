@@ -1,0 +1,17 @@
+# The WhatsApp module's connection to WAAI, on the CRM's own address (docs/WAAI-NATIVE-MODULE.md §4.1).
+# The browser calls https://<CCRM_DOMAIN>/waai-api/...; Caddy sends it to WAAI's module API over the
+# private network, so the module needs no DNS record of its own. WAAI's other routes (its normal pages,
+# cookie sign-in) are not reachable this way: only /api/ccrm/v1.
+#
+# Mounted into the CRM's site block by docker-compose.waai.yml. Without that overlay this file is not
+# read, and a CRM without WAAI starts as before (waai-web does not resolve there).
+handle_path /waai-api/* {
+	rewrite * /api/ccrm/v1{path}
+	reverse_proxy waai-web:3000 {
+		# The QR / link-status stream is Server-Sent Events; do not buffer it.
+		flush_interval -1
+		transport http {
+			response_header_timeout 190s
+		}
+	}
+}

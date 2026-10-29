@@ -45,6 +45,12 @@ and where the results go.
    `vite.config.ts` proxies `/sync.php`, `/upload.php` and `/api/*` from the
    dev server to the Docker container on `:8080`, so the app behaves like
    production while the frontend still gets full HMR.
+
+   It also proxies `/waai-api/*` to WAAI's module API (`/api/ccrm/v1/*` on the
+   WAAI web app, `http://localhost:3000` unless `WAAI_DEV_URL` says otherwise)
+   for the native WhatsApp module. The module's design is
+   `docs/WAAI-NATIVE-MODULE.md`; `npm run sync:waai-contract` copies WAAI's API
+   contract (`WAAI_REPO` names the WAAI checkout when it is not next to this one).
 5. Open the printed `localhost` URL. Since `config.php` already points at a
    real (empty) database, the setup wizard skips straight to **Seed with
    Demo Data** / **Start Fresh** and admin-account creation.

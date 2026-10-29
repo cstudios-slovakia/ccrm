@@ -5,7 +5,7 @@ import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import { TimeTrackingProvider } from "./hooks/useTimeTracking";
 import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
-import { WhatsAppView } from "./components/WhatsAppView";
+import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
 import { crmHashForRecord } from "./utils/waaiEmbed";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
 import type { TimeDeps } from "./components/timeTracking/shared";
@@ -4468,7 +4468,7 @@ ${log.payload || ''}
   const whatsappRoute = parseAppHash(activeTab);
   const whatsappActive = whatsappRoute.route.split("/")[0].toLowerCase() === "whatsapp";
   const whatsappHost = whatsappEnabled && currentUser && (whatsappOpened || whatsappActive) ? (
-    <WhatsAppView
+    <WhatsAppModule
       active={whatsappActive}
       route={whatsappRoute.route}
       params={whatsappRoute.params}
