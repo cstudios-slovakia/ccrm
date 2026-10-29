@@ -1,4 +1,4 @@
-import { settingsNavEn, settingsNavSk, settingsNavHu } from "./translations.settingsNav";
+import { settingsNavEn, settingsNavSk, settingsNavHu } from "./translations.settingsNav.ts";
 
 export type Language = "en" | "sk" | "hu";
 
@@ -106,6 +106,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.modules.hide_category": "Hide All in Category",
     "settings.modules.status.visible": "Visible",
     "settings.modules.status.hidden": "Hidden",
+    "settings.modules.toast.visible": "Module is now visible",
+    "settings.modules.toast.hidden": "Module is now hidden",
     "settings.modules.no_results": "No modules match your search query.",
 
     // Licensing — the banner, the settings section, and the coded answers
@@ -952,6 +954,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.modules.hide_category": "Skryť celú kategóriu",
     "settings.modules.status.visible": "Zobrazený",
     "settings.modules.status.hidden": "Skrytý",
+    "settings.modules.toast.visible": "Modul je teraz viditeľný",
+    "settings.modules.toast.hidden": "Modul je teraz skrytý",
     "settings.modules.no_results": "Žiadne moduly nevyhovujú vášmu vyhľadávaniu.",
 
     // Licencovanie — banner, sekcia v nastaveniach a kódy, ktoré vracia
@@ -1797,6 +1801,8 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.modules.hide_category": "Összes elrejtése a kategóriában",
     "settings.modules.status.visible": "Látható",
     "settings.modules.status.hidden": "Rejtett",
+    "settings.modules.toast.visible": "A modul mostantól látható",
+    "settings.modules.toast.hidden": "A modul mostantól rejtve van",
     "settings.modules.no_results": "Nincs találat a keresési feltételeknek megfelelően.",
 
     // Licencelés — a szalag, a beállítási szakasz és az api/license.php által
