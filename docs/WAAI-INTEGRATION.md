@@ -282,8 +282,9 @@ decision D9.
   `external_meta_json = {due_inferred: true, inferred_deadline: <date>}`. The sync response
   carries `dueInferred`, which is true only while the deadline still equals `inferred_deadline`,
   so a user moving it (the app's save leaves the meta alone) makes it a stated date. A later push
-  with a real date replaces it through the merge; a date the chat **takes back** leaves the
-  deadline as it is (`tasks.deadline` is NOT NULL).
+  with a real date replaces it through the merge; a date the chat **takes back** falls to
+  `today + default_deadline_days` and is marked `due_inferred` again (`tasks.deadline` is NOT NULL) —
+  but only while the deadline is still the one the chat last set; a date a CCRM user moved stays.
 - **Completion.** A push that completes a task whose `requires_conclusion` is set and has no
   conclusion answers **422 `completion_refused`** and rolls the whole push back (nothing is
   applied; the same message as `POST /tasks/{id}/complete`). `completed_by` is the pushed owner;

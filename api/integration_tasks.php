@@ -475,7 +475,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                     $applied = array_keys($composed);
                     $created = true;
                 } else {
-                    $applied = ccrm_int_task_merge($pdo, $row, json_decode((string)$ref['applied_snapshot'], true) ?: [], $composed, $in, $meta, $ownerName, $assigneeNames, $states);
+                    $applied = ccrm_int_task_merge($pdo, $client, $row, json_decode((string)$ref['applied_snapshot'], true) ?: [], $composed, $in, $meta, $ownerName, $assigneeNames, $states);
                 }
                 $pdo->prepare("UPDATE `integration_refs` SET `local_id` = ?, `revision` = ?, `applied_snapshot` = ? WHERE `id` = ?")
                     ->execute([$row['id'], $in['revision'], json_encode($composed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $ref['id']]);
@@ -534,7 +534,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
      *
      * @return list<string>
      */
-    function ccrm_int_task_merge(\PDO $pdo, array $row, array $snapshot, array $composed, array $in, array $meta, string $ownerName, array $assigneeNames, array $states): array {
+    function ccrm_int_task_merge(\PDO $pdo, array $client, array $row, array $snapshot, array $composed, array $in, array $meta, string $ownerName, array $assigneeNames, array $states): array {
         $changed = [];
         foreach ($composed as $field => $value) {
             if (!array_key_exists($field, $snapshot) || $snapshot[$field] !== $value) {
@@ -563,9 +563,20 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                         $set('description', $composed['description']);
                         break;
                     case 'due':
-                        // A date taken away in the chat leaves the deadline as it is: a task always has one.
                         if ($composed['due'] === null) {
-                            continue 2;
+                            // A date taken back in the chat: a task always has a deadline, so fall back to the
+                            // default and mark it "not stated" again — but only while the deadline is still the
+                            // one the chat set. A CCRM user who moved it keeps their date.
+                            $was = $snapshot['due'] ?? null;
+                            if (!is_array($was) || (string)$row['deadline'] !== $was['date'] || ($row['deadline_time'] ?? null) !== $was['time']) {
+                                continue 2;
+                            }
+                            $fallback = ccrm_int_default_deadline($client['default_deadline_days']);
+                            $set('deadline', $fallback);
+                            $set('deadline_time', null);
+                            $newMeta['due_inferred'] = true;
+                            $newMeta['inferred_deadline'] = $fallback;
+                            break;
                         }
                         $set('deadline', $composed['due']['date']);
                         $set('deadline_time', $composed['due']['time']);

@@ -558,7 +558,15 @@ async function taskChecks(state) {
   m = JSON.parse(taskRow(noDue.json.id).meta);
   check('a date stated later replaces the inferred one and clears the mark', JSON.stringify(nowStated.json?.applied) === '["due"]' && taskRow(noDue.json.id).deadline === todayPlus(12) && m.due_inferred === undefined, JSON.stringify([nowStated.json?.applied, m]));
   const vanished = await put('waaitask0007', payload({ title: 'Still no date', due: undefined }));
-  check('a date the chat takes back leaves the deadline alone (a task always has one)', taskRow(noDue.json.id).deadline === todayPlus(12) && !vanished.json.applied.includes('due'), vanished.raw);
+  m = JSON.parse(taskRow(noDue.json.id).meta);
+  check('a date the chat takes back falls to today + 7 days, marked "not stated" again', taskRow(noDue.json.id).deadline === todayPlus(7) && vanished.json.applied.includes('due') && m.due_inferred === true && m.inferred_deadline === todayPlus(7), JSON.stringify([vanished.raw, m]));
+  g = await syncApi(session);
+  check('... and the app is told: dueInferred=true', g.json.tasks.find((x) => x.id === noDue.json.id)?.dueInferred === true);
+  // A CCRM user moved the date the chat had set: taking the date back must not override the user.
+  const userMoved = await put('waaitask0090', payload({ due: { at: `${todayPlus(15)}T10:00:00Z`, all_day: true } }));
+  sql(`UPDATE tasks SET deadline=${sq(todayPlus(18))} WHERE id=${sq(userMoved.json.id)};`);
+  const userMovedBack = await put('waaitask0090', payload({ due: undefined }));
+  check('a date a CCRM user moved survives the chat taking the date back', taskRow(userMoved.json.id).deadline === todayPlus(18) && !userMovedBack.json.applied.includes('due') && JSON.parse(taskRow(userMoved.json.id).meta).due_inferred === undefined, userMovedBack.raw);
   sql(`UPDATE integration_clients SET default_deadline_days = 3 WHERE code='waai';`);
   const three = await put('waaitask0008', payload({ due: undefined }));
   check('the default is per client (3 days here)', taskRow(three.json.id).deadline === todayPlus(3), three.raw);
