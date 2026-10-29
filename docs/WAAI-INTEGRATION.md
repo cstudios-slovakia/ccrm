@@ -803,6 +803,8 @@ WAAI unit suite: 103 checks pass, full workspace typecheck, test, and lint clean
 
 ### Phase 6 — CCRM UI
 
+**Done (v1.13.19-Nectarine)**, stopped for review — see "As built (phase 6)" in §4.8. The review screenshots were not captured (skipped by Peter).
+
 Deliver: §4.8. Tests: unit tests for `whatsappLinks.ts`; QA audit scoped to the
 changed files: `node scripts/qa/run-qa.mjs --files <files>` — read
 `test-results/qa-audit-report.md`; extend the QA seed/mocks so the chip, timeline
