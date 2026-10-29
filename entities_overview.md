@@ -121,11 +121,12 @@ Junction table mapping leads to business categories.
 Interaction history logged against leads (emails, call logs, meetings).
 * `id` VARCHAR(50) [PK]
 * `lead_id` VARCHAR(50)
-* `type` VARCHAR(50) (e.g., note, phone, email, offer, appointment)
+* `type` VARCHAR(50) (e.g., note, phone, email, offer, appointment, status_change, whatsapp)
 * `timestamp` DATETIME
 * `title` VARCHAR(255)
 * `content` TEXT
 * `author` VARCHAR(100) (CRM user whose action produced the entry; NULL for entries nobody triggered here — incoming mail, public-form inquiries, imports — and for rows written before the column existed)
+* `external_url` VARCHAR(255) [NULLable] (deep link path into the external system, e.g. /c/<id>?m=<id>)
 * `created_at` TIMESTAMP
 
 ---

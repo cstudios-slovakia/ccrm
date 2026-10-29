@@ -50,6 +50,7 @@ $ccrmIntRoutes = [
     ['PUT', '#^whatsapp/links/([^/]+)$#', 'ccrm_int_handle_whatsapp_links_put', 'whatsapp:links'],
     ['DELETE', '#^whatsapp/links/([^/]+)$#', 'ccrm_int_handle_whatsapp_links_delete', 'whatsapp:links'],
     ['PUT', '#^whatsapp/numbers$#', 'ccrm_int_handle_whatsapp_numbers_put', 'whatsapp:links'],
+    ['PUT', '#^timeline/external/([^/]+)$#', 'ccrm_int_handle_timeline_push', 'timeline:push'],
 ];
 
 function ccrm_int_handle_ping(\PDO $pdo, array $client, array $req): array {

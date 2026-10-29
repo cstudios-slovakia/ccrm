@@ -510,6 +510,12 @@ caught by a sweep). `PUT /timeline/external/{externalId}` body:
 - Project timelines (per-type `proj_timeline_<type>` tables) are out of scope for v1.
 - Content is AI-extracted text only, never message bodies.
 
+**As built (phase 5):**
+- CCRM: `timeline_events` `type` ENUM extended with `'whatsapp'`, `external_url VARCHAR(255) NULL` column added with automatic schema migration `ccrm_migrate_integration_timeline` and ENUM migration `ccrm_migrate_timeline_event_types`.
+- Sync protocol: GET includes `externalUrl` for events with external deep-link; POST preserves `external_url` and accepts `'whatsapp'` in `$allowedEventTypes`.
+- Endpoint: `PUT /api/v1/timeline/external/{externalId}` with scope `timeline:push`. Idempotent upsert, stale revision detection (`{stale: true}`), 410 Gone if deleted in CCRM, strict payload validation.
+- WAAI: `Task` table extended with `crm_timeline_created_hash` and `crm_timeline_done_hash` (`20261029160000_crm_timeline`). `crm-client` implements `putTimeline`. `jobs` adds `timeline` job. `ai-worker` adds `timeline.ts` (localized titles in sk/en/hu, payload builder, single push, sweep). Enqueued upon task creation and completion.
+
 ### 4.7 The WhatsApp module: embedding + SSO
 
 **Hosting topology (decision D2):** WAAI on a subdomain of the CCRM site, e.g.
@@ -776,10 +782,13 @@ Carried over from phase 3 (decided by Peter, 2026-10-29):
 
 ### Phase 5 — Timeline
 
+**Done (v1.13.18-Nectarine)** — see "As built (phase 5)" in §4.6.
+
 Deliver: ENUM migration + `external_url`; `/timeline/external`; WAAI `timeline` job +
 sweep; localized titles.
 Tests: idempotent upsert, stale revision, 410 after delete in CCRM, missing lead →
-422, entries appear on the client timeline.
+422, entries appear on the client timeline. CCRM integration suite: 323 checks pass.
+WAAI unit suite: 103 checks pass, full workspace typecheck, test, and lint clean.
 
 ### Phase 6 — CCRM UI
 

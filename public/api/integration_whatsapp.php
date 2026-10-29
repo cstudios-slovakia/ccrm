@@ -194,4 +194,133 @@ if (!function_exists('ccrm_int_handle_whatsapp_links_put')) {
         }
         return [200, ['stored' => count($rows)]];
     }
+
+    /**
+     * PUT /timeline/external/{externalId} — upsert of one timeline entry (docs/WAAI-INTEGRATION.md §4.1, §4.6).
+     * Creates or updates a timeline_events row with type='whatsapp' linked via integration_refs(kind='timeline').
+     * If the ref exists but the row was deleted in CCRM, answers 410. If the revision is not newer, answers stale:true.
+     *
+     * @return array{0: int, 1: array}
+     */
+    function ccrm_int_handle_timeline_push(\PDO $pdo, array $client, array $req): array {
+        $externalId = (string)($req['params'][0] ?? '');
+        if (!preg_match('/^[A-Za-z0-9_:-]{1,64}$/D', $externalId)) {
+            ccrm_int_fail(422, 'validation_failed', 'Validation failed.', ['external_id' => 'Must match [A-Za-z0-9_:-]{1,64}.']);
+        }
+        $body = ccrm_int_json_object($req['raw']);
+
+        $revision = $body['revision'] ?? null;
+        if (!is_int($revision) || $revision <= 0) {
+            ccrm_int_fail(422, 'validation_failed', 'Validation failed.', ['revision' => 'Must be a positive integer.']);
+        }
+
+        $kind = $body['kind'] ?? null;
+        if (!is_string($kind) || !in_array($kind, ['task_created', 'task_done', 'summary'], true)) {
+            ccrm_int_fail(422, 'validation_failed', 'Validation failed.', ['kind' => 'Must be task_created, task_done, or summary.']);
+        }
+
+        $leadId = $body['lead_id'] ?? null;
+        if (!is_string($leadId) || $leadId === '') {
+            ccrm_int_fail(422, 'validation_failed', 'Validation failed.', ['lead_id' => 'lead_id is required.']);
+        }
+        ccrm_int_task_row_exists($pdo, 'leads', $leadId, 'lead_id');
+
+        $projectId = $body['project_id'] ?? null;
+        if ($projectId !== null && $projectId !== '') {
+            ccrm_int_task_row_exists($pdo, 'projects', $projectId, 'project_id');
+        } else {
+            $projectId = null;
+        }
+
+        $timestamp = ccrm_int_parse_instant($body['at'] ?? null, 'at');
+        if ($timestamp === null) {
+            ccrm_int_fail(422, 'validation_failed', 'Validation failed.', ['at' => 'at timestamp is required.']);
+        }
+
+        $title = ccrm_int_clean_text($body['title'] ?? null, 'title', 255, false, true);
+        $content = ccrm_int_clean_text($body['content'] ?? null, 'content', 65535, true);
+        $path = ccrm_int_parse_chat_path($body['path'] ?? null, 'path');
+
+        $snapshot = [
+            'kind' => $kind,
+            'lead_id' => $leadId,
+            'project_id' => $projectId,
+            'timestamp' => $timestamp,
+            'title' => $title,
+            'content' => $content,
+            'path' => $path,
+        ];
+
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("INSERT IGNORE INTO `integration_refs` (`client_id`, `kind`, `external_id`, `revision`) VALUES (?, 'timeline', ?, 0)")
+                ->execute([$client['id'], $externalId]);
+            $stmt = $pdo->prepare("SELECT * FROM `integration_refs` WHERE `client_id` = ? AND `kind` = 'timeline' AND `external_id` = ? FOR UPDATE");
+            $stmt->execute([$client['id'], $externalId]);
+            $ref = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$ref) {
+                throw new \RuntimeException('Cannot lock the external reference.');
+            }
+
+            $row = null;
+            if ($ref['local_id'] !== null) {
+                $stmt = $pdo->prepare("SELECT * FROM `timeline_events` WHERE `id` = ? FOR UPDATE");
+                $stmt->execute([$ref['local_id']]);
+                $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+                if ($row === null) {
+                    ccrm_int_fail(410, 'gone', ccrm_int_message($pdo, 'timeline_gone'));
+                }
+            }
+
+            $created = false;
+            if ($row !== null && $revision <= (int)$ref['revision']) {
+                $stale = true;
+                $localId = $row['id'];
+            } else {
+                $stale = false;
+                if ($row === null) {
+                    $localId = 'te_' . bin2hex(random_bytes(8));
+                    $ins = $pdo->prepare(
+                        "INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `extra_time`,
+                                                       `file_name`, `file_size`, `file_type`, `attachments_json`, `is_outgoing`, `author`,
+                                                       `audio_file`, `transcription`, `hidden`, `external_url`)
+                         VALUES (?, ?, 'whatsapp', ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, 0, ?)"
+                    );
+                    $ins->execute([$localId, $leadId, $timestamp, $title, $content, $path]);
+                    $created = true;
+                } else {
+                    $localId = $row['id'];
+                    $upd = $pdo->prepare("UPDATE `timeline_events` SET `lead_id` = ?, `timestamp` = ?, `title` = ?, `content` = ?, `external_url` = ? WHERE `id` = ?");
+                    $upd->execute([$leadId, $timestamp, $title, $content, $path, $localId]);
+                }
+                $pdo->prepare("UPDATE `integration_refs` SET `local_id` = ?, `revision` = ?, `applied_snapshot` = ? WHERE `id` = ?")
+                    ->execute([$localId, $revision, json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $ref['id']]);
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+
+        if (!$stale) {
+            ccrm_int_audit($pdo, $client, 'integration_timeline_push', ($created ? 'create ' : 'update ') . $localId . ' ext=' . $externalId);
+        }
+
+        return [
+            $created ? 201 : 200,
+            [
+                'id' => $localId,
+                'external_id' => $externalId,
+                'lead_id' => $leadId,
+                'type' => 'whatsapp',
+                'timestamp' => $timestamp,
+                'title' => $title,
+                'content' => $content,
+                'external_url' => $path,
+                'stale' => $stale,
+            ]
+        ];
+    }
 }

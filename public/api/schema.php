@@ -106,7 +106,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `timeline_events` (
               `id` VARCHAR(50) NOT NULL,
               `lead_id` VARCHAR(50) NOT NULL,
-              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change') NOT NULL DEFAULT 'note',
+              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp') NOT NULL DEFAULT 'note',
               `timestamp` DATETIME NOT NULL,
               `title` VARCHAR(255) NOT NULL,
               `content` TEXT NULL,
@@ -121,6 +121,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `audio_file` VARCHAR(255) NULL COMMENT 'Voice note recorded onto the timeline: the path api/upload_audio.php stored the recording at',
               `transcription` TEXT NULL COMMENT 'Speech-to-text transcript of `audio_file`, produced by api/transcribe_meeting.php',
               `hidden` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'mail entries only: removed from the lead timeline by the user; kept so the mailbox importer does not file it again',
+              `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
@@ -1249,6 +1250,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `description` VARCHAR(500) NULL COMMENT 'The title ONLY for entries with no task and no ticket; NULL when linked',
               `title_snapshot` VARCHAR(500) NULL COMMENT 'Written on every save; never shown while the task/ticket exists, never editable',
               `legacy_note` VARCHAR(500) NULL COMMENT 'Read-only note migrated from ticket_time_entries',
+              `note` VARCHAR(1000) NULL COMMENT 'The Description the person typed; allowed on linked entries too',
               `entry_date` DATE NOT NULL COMMENT 'Company-timezone date the time counts for',
               `start_at` DATETIME NULL COMMENT 'UTC; NULL for hours-only entries',
               `end_at` DATETIME NULL COMMENT 'UTC; NULL while running or hours-only',
@@ -1884,6 +1886,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_time_tracking($pdo);
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);
+        ccrm_migrate_integration_timeline($pdo);
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
         ccrm_migrate_ai_models($pdo);
@@ -1945,6 +1948,16 @@ if (!function_exists('ccrm_schema_statements')) {
         }
     }
 
+    /**
+     * Timeline additions for the machine API (docs/WAAI-INTEGRATION.md §4.2, §4.6):
+     * deep-link path back into the external system (WAAI chat).
+     */
+    function ccrm_migrate_integration_timeline(PDO $pdo): void {
+        if (ccrm_table_exists($pdo, 'timeline_events') && !ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system'");
+        }
+    }
+
     function ccrm_migrate_time_tracking(PDO $pdo): void {
         if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'work_country')) {
             $pdo->exec("ALTER TABLE `employees` ADD COLUMN `work_country` CHAR(2) NULL COMMENT 'SK | HU; NULL = company default' AFTER `address_country`");
@@ -1987,6 +2000,9 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm schema] tickets.time grant skipped: ' . $e->getMessage());
+        }
+        if (ccrm_table_exists($pdo, 'time_entries') && !ccrm_column_exists($pdo, 'time_entries', 'note')) {
+            $pdo->exec("ALTER TABLE `time_entries` ADD COLUMN `note` VARCHAR(1000) NULL COMMENT 'The Description the person typed; allowed on linked entries too' AFTER `legacy_note`");
         }
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
@@ -2342,12 +2358,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if ($columnType === false || $columnType === null) {
             return; // timeline_events not provisioned yet — CREATE TABLE covers it.
         }
-        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
+        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp'];
         foreach ($required as $value) {
             if (strpos($columnType, "'" . $value . "'") === false) {
                 $pdo->exec(
                     "ALTER TABLE `timeline_events` MODIFY COLUMN `type`
-                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change')
+                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp')
                      NOT NULL DEFAULT 'note'"
                 );
                 return;

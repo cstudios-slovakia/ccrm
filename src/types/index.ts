@@ -31,6 +31,7 @@ export type LeadEventType =
   // it), so it survives the sync round-trip like any other logged event and its
   // date/time stay editable afterwards.
   | "status_change"
+  | "whatsapp"
   // Written when a proforma is issued from Invoicing. It is not a hand-loggable
   // document type, so it is not in DOCUMENT_EVENT_TYPES.
   | "proforma_invoice"
@@ -77,6 +78,7 @@ export interface TimelineEvent {
   // Mail entries only: removed from the lead timeline by the user. The row is
   // kept so the mailbox importer does not file the message again.
   hidden?: boolean;
+  externalUrl?: string; // deep link into the external system (e.g. /c/xyz?m=abc)
 }
 
 /**

@@ -1083,6 +1083,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             if (isset($te['transcription']) && $te['transcription'] !== '' && $te['transcription'] !== null) {
                 $event['transcription'] = $te['transcription'];
             }
+            if (isset($te['external_url']) && $te['external_url'] !== '' && $te['external_url'] !== null) {
+                $event['externalUrl'] = $te['external_url'];
+            }
             $timelineByLead[$te['lead_id']][] = $event;
         }
 
@@ -4537,11 +4540,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Sync lead chronological event logs timeline
+                $existingExtUrls = [];
+                $extUrlStmt = $pdo->prepare("SELECT `id`, `external_url` FROM `timeline_events` WHERE `lead_id` = ? AND `external_url` IS NOT NULL");
+                $extUrlStmt->execute([$leadId]);
+                while ($r = $extUrlStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $existingExtUrls[$r['id']] = $r['external_url'];
+                }
                 $delTimeline = $pdo->prepare("DELETE FROM `timeline_events` WHERE `lead_id` = ? AND `id` NOT LIKE 'email-%'");
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`, `external_url`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     // Editing an entry the mail importer owns: only these columns
                     // are the user's to change. Everything else belongs to the
                     // message and is rewritten from IMAP on the next read.
@@ -4551,7 +4560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // client sends it flagged `hidden`, and the row stays behind as
                     // a tombstone — deleting it would let the next mailbox read
                     // file the message again.
-                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
+                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
                         if (strpos($teId, 'email-') === 0) {
@@ -4649,7 +4658,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             !empty($te['isOutgoing']) ? 1 : 0,
                             $teAuthor,
                             $teAudioFile,
-                            $teTranscription
+                            $teTranscription,
+                            $existingExtUrls[$teId] ?? null
                         ];
 
                         $isNewTe = true;

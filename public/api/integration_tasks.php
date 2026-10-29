@@ -89,6 +89,11 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                 'sk' => 'Úloha bola v CCRM vymazaná.',
                 'hu' => 'A feladatot törölték a CCRM-ben.',
             ],
+            'timeline_gone' => [
+                'en' => 'The timeline event was deleted in CCRM.',
+                'sk' => 'Udalosť na časovej osi bola v CCRM vymazaná.',
+                'hu' => 'Az idővonal-bejegyzést törölték a CCRM-ben.',
+            ],
             'task_not_found' => [
                 'en' => 'No such task.',
                 'sk' => 'Taká úloha neexistuje.',

@@ -58,7 +58,13 @@ ask then.
 | 2 | Done (v1.13.15-Nectarine) — see "Phase 2 notes" and spec §4.1 "As built (phase 2)". |
 | 3 | Done, **stopped for review** — see "Phase 3 notes" and spec §4.3 "As built (phase 3)". Also v1.13.16-Nectarine: a date the chat takes back falls to today + 7 days again (unless a CCRM user moved it). D9 confirmed: no workflows, e-mails or ticket auto-resolve for WAAI tasks. |
 | 4 | Done (v1.13.17-Nectarine), **no stop required** - see "Phase 4 notes" and spec §4.1 / §4.3 "As built (phase 4)". The fresh-database migration is fixed and the localised messages are in. |
-| 5–8 | Not started. |
+| 5 | Done (v1.13.18-Nectarine), **no stop required** — see "Phase 5 notes" and spec §4.6 "As built (phase 5)". |
+| 6–8 | In progress / Not started. |
+
+### Phase 5 notes
+
+- CCRM (`1.13-nectarine`): `timeline_events` ENUM migration (`'whatsapp'`), `external_url` column + automatic migration, `PUT /api/v1/timeline/external/{externalId}` (scope `timeline:push`) with idempotent upsert, stale revision handling, 410 gone after CCRM deletion, payload validation; sync GET/POST `externalUrl` exposure and preservation. `npm run test:integration`: 323 checks pass, 0 failed.
+- WAAI (`feat/ccrm-integration`): `crm_timeline_created_hash` and `crm_timeline_done_hash` on `Task` (`20261029160000_crm_timeline`), `putTimeline` client method, `timeline` queue job, localized title generation (sk/en/hu), task creation and completion triggers, background timeline sweep. 103 unit tests pass. Full workspace typecheck, test, and lint clean.
 
 ### Phase 4 notes
 

@@ -943,6 +943,80 @@ async function directoryChecks(state) {
   sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('SYSTEM_LANGUAGE', 'en');`);
 }
 
+async function timelineChecks(state) {
+  section('timeline push: validation and scopes');
+  const token = state.token2;
+  const session = state.adminSession;
+
+  // Ensure test client lead exists
+  sql(`INSERT IGNORE INTO leads (id, name, client_type, created_at, updated_at) VALUES ('client-intp1', 'Acme s.r.o.', 'company', NOW(), NOW())`);
+
+  const EXT = 'task_created:waaitask0001';
+  const good = (overrides = {}) => ({
+    revision: 1000,
+    kind: 'task_created',
+    lead_id: 'client-intp1',
+    at: '2026-10-29T14:03:00+01:00',
+    title: 'Zaslať cenovú ponuku',
+    content: 'Do piatku · zodpovedný: Peter · z chatu „Marek Novák“',
+    path: '/c/ckx8abc?m=ckm2xyz',
+    ...overrides,
+  });
+
+  // Scope check
+  setClient(`scopes='["tasks:push"]'`);
+  const noScope = await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good() });
+  check('timeline push needs timeline:push -> 403', noScope.status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+
+  // Validation
+  check('timeline push refuses invalid external_id -> 422', (await call('/timeline/external/bad%20id!', { method: 'PUT', token, body: good() })).status === 422);
+  check('timeline push refuses non-object body -> 400', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: 'bad' })).status === 400);
+  check('timeline push refuses missing revision -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ revision: null }) })).status === 422);
+  check('timeline push refuses negative revision -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ revision: -1 }) })).status === 422);
+  check('timeline push refuses unknown kind -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ kind: 'other' }) })).status === 422);
+  check('timeline push refuses missing lead_id -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ lead_id: '' }) })).status === 422);
+  check('timeline push refuses non-existent lead_id -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ lead_id: 'no-such-lead-999' }) })).status === 422);
+  check('timeline push refuses non-existent project_id -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ project_id: 'no-such-proj-999' }) })).status === 422);
+  check('timeline push refuses missing at -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ at: null }) })).status === 422);
+  check('timeline push refuses invalid at -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ at: 'yesterday' }) })).status === 422);
+  check('timeline push refuses empty title -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ title: '' }) })).status === 422);
+  check('timeline push refuses bad path -> 422', (await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ path: 'https://evil.com' }) })).status === 422);
+
+  section('timeline push: upsert and staleness');
+  const first = await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good() });
+  check('first timeline push creates row -> 201', first.status === 201 && first.json?.type === 'whatsapp' && first.json?.external_url === '/c/ckx8abc?m=ckm2xyz' && first.json?.stale === false, first.raw);
+  const localId = first.json?.id;
+
+  const row = sql(`SELECT id, lead_id, type, timestamp, title, content, external_url FROM timeline_events WHERE id=${sq(localId)}`).split('\n').slice(1).filter(Boolean)[0];
+  check('timeline_events row stored correctly', row && row.includes('client-intp1') && row.includes('whatsapp') && row.includes('/c/ckx8abc?m=ckm2xyz'), row);
+
+  // Stale revision
+  const stale = await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ revision: 500, title: 'Old update' }) });
+  check('stale revision returns stale: true -> 200', stale.status === 200 && stale.json?.stale === true, stale.raw);
+  check('stale revision did not change title', cell(`SELECT title FROM timeline_events WHERE id=${sq(localId)}`) === 'Zaslať cenovú ponuku');
+
+  // Idempotent / updated revision
+  const update = await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ revision: 2000, title: 'Zaslať upravenú ponuku' }) });
+  check('newer revision updates existing row -> 200', update.status === 200 && update.json?.id === localId && update.json?.title === 'Zaslať upravenú ponuku' && update.json?.stale === false, update.raw);
+  check('database row updated', cell(`SELECT title FROM timeline_events WHERE id=${sq(localId)}`) === 'Zaslať upravenú ponuku');
+
+  section('timeline push: 410 gone after CCRM delete');
+  // User deletes event in CCRM
+  sql(`DELETE FROM timeline_events WHERE id=${sq(localId)}`);
+  const gone = await call(`/timeline/external/${EXT}`, { method: 'PUT', token, body: good({ revision: 3000 }) });
+  check('pushing deleted timeline event returns 410 gone', gone.status === 410 && gone.json?.error?.code === 'gone', gone.raw);
+
+  section('timeline entries appear on client timeline via sync');
+  const EXT2 = 'task_created:waaitask0002';
+  const push2 = await call(`/timeline/external/${EXT2}`, { method: 'PUT', token, body: good({ revision: 1000, title: 'Nová ponuka z WhatsAppu' }) });
+  check('second push created -> 201', push2.status === 201, push2.raw);
+  const syncRes = await syncApi(session);
+  const clientObj = syncRes.json?.leads?.find((l) => l.id === 'client-intp1');
+  const te = clientObj?.timeline?.find((e) => e.id === push2.json.id);
+  check('event appears in client timeline from sync GET', te?.type === 'whatsapp' && te?.title === 'Nová ponuka z WhatsAppu' && te?.externalUrl === '/c/ckx8abc?m=ckm2xyz', JSON.stringify(clientObj?.timeline));
+}
+
 // ----------------------------------------------------------------------------- 3. cross-cutting
 async function crossChecks(state) {
   section('cookies and logs');
@@ -970,6 +1044,7 @@ try {
   await apiChecks(state);
   await taskChecks(state);
   await directoryChecks(state);
+  await timelineChecks(state);
   await crossChecks(state);
 } catch (e) {
   failures++;
