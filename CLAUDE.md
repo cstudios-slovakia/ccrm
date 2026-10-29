@@ -57,6 +57,11 @@ These live in `.agents/rules/` and apply to every change:
   `SUMMABLE_PROJECT_COLUMNS` so it is totalled automatically.
 - [`licensing.md`](.agents/rules/licensing.md) — a licence gates updates and
   nothing else; never let one disable part of the running app.
+- [`database-schema-and-sync.md`](.agents/rules/database-schema-and-sync.md) —
+  **4-place rule for every new DB column**: add to `CREATE TABLE` in
+  `schema.php`, add an idempotent migration in `ccrm_apply_migrations()`, add
+  **pre-transaction column healing** in `sync.php` (above `beginTransaction()`),
+  update `entities_overview.md`, and run `npm run sync:backend`.
 
 The order when finishing a change:
 
@@ -88,6 +93,15 @@ decisions, per-phase checklists, spec. When asked to "make phase N", follow its 
   migration code inside those files; if a migration `require`s another file, add
   it to the fingerprint or edits to it will never re-run. Never put per-request
   work into a migration, and never call DDL from the poll path.
+- **Adding a column to a table `sync.php` writes to without column healing causes
+  production 500s (`Unknown column '...' in 'INSERT INTO'`)**: a worker running
+  a cached `schema.php` during deploy can stamp `SCHEMA_FINGERPRINT` before the
+  migration runs, causing `ccrm_apply_schema()` to skip itself on subsequent
+  requests. Every new column written in `sync.php` **must** also be healed via
+  `if (!ccrm_column_exists(...)) ALTER TABLE ...` right **before**
+  `$pdo->beginTransaction()` in `public/sync.php` (never inside the transaction
+  — MySQL implicitly commits on DDL). See
+  [`.agents/rules/database-schema-and-sync.md`](.agents/rules/database-schema-and-sync.md).
 - Settings is one registry, not a list of tabs: categories, sections, permissions, search
   keywords and the old `#settings/<id>` redirects all live in
   `src/components/settings/settingsRegistry.ts`. Adding a section is a registry entry,
