@@ -73,6 +73,31 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         return in_array($v, ['en', 'sk', 'hu'], true) ? $v : 'sk';
     }
 
+    /**
+     * Messages a WAAI user can read (an error list in WAAI shows the envelope's `message` as it is), in the
+     * install language like the task footer. Other messages are for the administrator and stay English.
+     */
+    function ccrm_int_message(\PDO $pdo, string $key): string {
+        $texts = [
+            'completion_refused' => [
+                'en' => 'This task requires a conclusion before it can be completed.',
+                'sk' => 'Táto úloha vyžaduje záver, až potom ju možno dokončiť.',
+                'hu' => 'Ehhez a feladathoz lezárás (következtetés) szükséges, mielőtt befejezhető.',
+            ],
+            'task_gone' => [
+                'en' => 'The task was deleted in CCRM.',
+                'sk' => 'Úloha bola v CCRM vymazaná.',
+                'hu' => 'A feladatot törölték a CCRM-ben.',
+            ],
+            'task_not_found' => [
+                'en' => 'No such task.',
+                'sk' => 'Taká úloha neexistuje.',
+                'hu' => 'Nincs ilyen feladat.',
+            ],
+        ];
+        return $texts[$key][ccrm_int_language($pdo)] ?? $texts[$key]['en'];
+    }
+
     /** Base URL of this CCRM for links (config pin, else the last sign-in's URL), with a trailing slash, or ''. */
     function ccrm_int_base_url(\PDO $pdo): string {
         if (defined('CCRM_APP_URL') && is_string(CCRM_APP_URL) && CCRM_APP_URL !== '') {
@@ -396,9 +421,9 @@ if (!function_exists('ccrm_int_handle_task_push')) {
     }
 
     /** A completion needs a conclusion when the task asks for one (the rule of src/utils/taskConclusion.ts). */
-    function ccrm_int_task_require_conclusion(array $row, string $incoming): void {
+    function ccrm_int_task_require_conclusion(\PDO $pdo, array $row, string $incoming): void {
         if ((int)($row['requires_conclusion'] ?? 0) === 1 && trim((string)($row['conclusion'] ?? '')) === '' && trim($incoming) === '') {
-            ccrm_int_fail(422, 'completion_refused', 'This task requires a conclusion before it can be completed.');
+            ccrm_int_fail(422, 'completion_refused', ccrm_int_message($pdo, 'completion_refused'));
         }
     }
 
@@ -460,7 +485,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
                 if ($row === null) {
                     // The ref outlives the task: a CCRM user deleted it. Never recreate what was deleted.
-                    ccrm_int_fail(410, 'gone', 'The task was deleted in CCRM.');
+                    ccrm_int_fail(410, 'gone', ccrm_int_message($pdo, 'task_gone'));
                 }
             }
 
@@ -593,7 +618,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                         if ($composed['status'] !== 'completed') {
                             continue 2;
                         }
-                        ccrm_int_task_require_conclusion($row, '');
+                        ccrm_int_task_require_conclusion($pdo, $row, '');
                         $set('status', ccrm_int_task_done_state($states));
                         $set('completed_by', $ownerName);
                         $set('completed_at', date('Y-m-d H:i'));
@@ -823,10 +848,10 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
             }
             if ($row === null) {
-                ccrm_int_fail(404, 'not_found', 'No such task.');
+                ccrm_int_fail(404, 'not_found', ccrm_int_message($pdo, 'task_not_found'));
             }
             if (!ccrm_int_task_is_done((string)$row['status'], $states)) {
-                ccrm_int_task_require_conclusion($row, $conclusion);
+                ccrm_int_task_require_conclusion($pdo, $row, $conclusion);
                 $pdo->prepare(
                     "UPDATE `tasks` SET `status` = ?, `completed_by` = ?, `completed_at` = ?, `conclusion` = COALESCE(?, `conclusion`), `updated_at` = NOW(3) WHERE `id` = ?"
                 )->execute([ccrm_int_task_done_state($states), $byName, date('Y-m-d H:i'), $conclusion === '' ? null : $conclusion, $id]);

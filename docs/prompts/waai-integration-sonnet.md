@@ -57,7 +57,18 @@ ask then.
 | 1 | Done — see "Phase 1 notes" below and the changelog entry. |
 | 2 | Done (v1.13.15-Nectarine) — see "Phase 2 notes" and spec §4.1 "As built (phase 2)". |
 | 3 | Done, **stopped for review** — see "Phase 3 notes" and spec §4.3 "As built (phase 3)". Also v1.13.16-Nectarine: a date the chat takes back falls to today + 7 days again (unless a CCRM user moved it). D9 confirmed: no workflows, e-mails or ticket auto-resolve for WAAI tasks. |
-| 4–8 | Not started. |
+| 4 | Done (v1.13.17-Nectarine), **no stop required** - see "Phase 4 notes" and spec §4.1 / §4.3 "As built (phase 4)". The fresh-database migration is fixed and the localised messages are in. |
+| 5–8 | Not started. |
+
+### Phase 4 notes
+
+- CCRM (`1.13-nectarine`): `GET /directory`, `PUT/DELETE /whatsapp/links/{ref}`, `PUT /whatsapp/numbers`, `projects.contact_phone`, `whatsapp_links` / `whatsapp_numbers`, the sync GET/POST changes, and CCRM's WAAI-visible messages (completion refused, deleted, not found) in en/sk/hu. `npm run test:integration` 301/301.
+- WAAI (`feat/ccrm-integration`): directory cache, link rules, push of links, link chip and Settings section, task payload with `lead_id` / `project_id` / `start`. Nothing is pushed. End to end against scratch CCRM + scratch Postgres: 25/25.
+- **A mistake to know about:** the phase 3 commit (`ba6056a`) had landed on WAAI's `main`, because another session switched the shared checkout back to `main` while phase 3 was being committed. `feat/ccrm-integration` was moved to that commit and phase 4 was done in a separate worktree, `../waai-ccrm`. `main` still contains `ba6056a` (it has 21 unpushed commits besides): taking it back off `main` is Peter's call and was not done, because the shared checkout has another session's uncommitted work on `main`.
+- The fresh-database migration failure was a 63-character identifier cut; fixed by guarding the rename in `20260527085616_phase_7_migration` (spec §4.3).
+- `Dockerfile.worker` / `Dockerfile.web` never copied `packages/crm-client`; fixed, not built here. Confirm first thing in phase 8.
+- Decisions taken: an unknown linked record is ignored and reported (`ignored`) instead of failing the PUT; the WAAI-visible CCRM messages are localised, the administrator-facing ones are not; `whatsappLinks` in the sync GET is fail-closed (administrators only) until phase 7 adds the `whatsapp` permission.
+- Left for later phases: the project contact-phone field and everything that shows links in the app (phase 6), timeline (phase 5), embed/SSO (phase 7).
 
 ### Phase 3 notes
 

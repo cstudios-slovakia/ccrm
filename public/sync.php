@@ -376,7 +376,7 @@ function ccrm_decode_attr_value($stored) {
 }
 
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries', 'whatsapp_links', 'whatsapp_numbers'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -1697,6 +1697,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'hoursBudget' => isset($pRow['hours_budget']) ? (float)$pRow['hours_budget'] : null,
                     'billableRate' => isset($pRow['billable_rate']) ? (float)$pRow['billable_rate'] : null,
                     'isInternal' => isset($pRow['is_internal']) && (int)$pRow['is_internal'] === 1,
+                    'contactPhone' => $pRow['contact_phone'] ?? null,
                     'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                     // Widget and public status-board settings. `ticketPublicHash` is the
                     // key to the public board, so it stays server-side without `tickets`.
@@ -2707,6 +2708,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
     }
 
+    // WhatsApp chats WAAI has paired with clients, leads and projects, and the "is this number on
+    // WhatsApp" answers (docs/WAAI-INTEGRATION.md §4.2). Read-only here: only the machine API writes
+    // them. Gated by the `whatsapp` permission, so until that module exists only an administrator gets them.
+    $whatsappLinks = [];
+    $whatsappNumbers = [];
+    if (ccrm_can($scope, 'whatsapp')) {
+        try {
+            $waStmt = $pdo->query("SELECT `conversation_ref`, `entity_type`, `entity_id`, `link_source`, `title`, `is_group`, `phone_digits`, `owner_user_id`, `path`, `last_message_at` FROM `whatsapp_links` ORDER BY `conversation_ref`, `entity_type`, `entity_id`");
+            while ($wa = $waStmt->fetch(PDO::FETCH_ASSOC)) {
+                $whatsappLinks[] = [
+                    'conversationRef' => $wa['conversation_ref'],
+                    'entityType' => $wa['entity_type'],
+                    'entityId' => $wa['entity_id'],
+                    'source' => $wa['link_source'],
+                    'title' => $wa['title'],
+                    'isGroup' => (int)$wa['is_group'] === 1,
+                    'phone' => $wa['phone_digits'],
+                    'ownerUserId' => $wa['owner_user_id'],
+                    'path' => $wa['path'],
+                    'lastMessageAt' => $wa['last_message_at'],
+                ];
+            }
+            $nStmt = $pdo->query("SELECT `phone_digits`, `status`, `checked_at` FROM `whatsapp_numbers` ORDER BY `phone_digits`");
+            while ($n = $nStmt->fetch(PDO::FETCH_ASSOC)) {
+                $whatsappNumbers[] = ['phone' => $n['phone_digits'], 'status' => $n['status'], 'checkedAt' => $n['checked_at']];
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm sync] whatsapp links skipped: ' . $e->getMessage());
+        }
+    }
+
     echo json_encode([
         'installed' => true,
         // Lets the client tell a real read apart from the unauthenticated
@@ -2740,6 +2772,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'customDashboards' => $customDashboards,
         'projectTypes' => $projectTypes,
         'projects' => $projects,
+        'whatsappLinks' => $whatsappLinks,
+        'whatsappNumbers' => $whatsappNumbers,
         'warehouses' => $warehouses,
         'suppliers' => $suppliers,
         'warehouseItems' => $warehouseItems,
@@ -3906,7 +3940,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -4029,6 +4063,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $internalSent = array_key_exists('isInternal', $p) ? 1 : 0;
                 $projInternal = $internalSent ? (!empty($p['isInternal']) ? 1 : 0) : 0;
 
+                // The phone WAAI pairs a WhatsApp chat to this project by. Free text like leads.phone;
+                // a client that does not send the key leaves the stored value alone, "" clears it.
+                $contactPhoneSent = array_key_exists('contactPhone', $p) ? 1 : 0;
+                $projContactPhone = null;
+                if ($contactPhoneSent) {
+                    $projContactPhone = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$p['contactPhone']));
+                    $projContactPhone = $projContactPhone === '' ? null : mb_substr($projContactPhone, 0, 50);
+                }
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -4055,9 +4098,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projHours,
                     $projBillableRate,
                     $projInternal,
+                    $projContactPhone,
                     $hoursSent,
                     $rateSent,
                     $internalSent,
+                    $contactPhoneSent,
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

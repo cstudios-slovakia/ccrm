@@ -900,6 +900,38 @@ if (!function_exists('ccrm_schema_statements')) {
               PRIMARY KEY (`token_prefix`, `window_start`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Chats WAAI has paired with a lead/client or a project (docs/WAAI-INTEGRATION.md §4.2, §4.4).
+            // One row per (conversation, entity); the chat's title, phone and path repeat on each row so
+            // the table reads without a join. Written only by PUT/DELETE /api/v1/whatsapp/links, never by
+            // sync.php. No FK on entity_id: a deleted lead or project must not be blocked by a link, and
+            // WAAI replaces the whole set on its next push.
+            "CREATE TABLE IF NOT EXISTS `whatsapp_links` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `client_id` VARCHAR(50) NOT NULL,
+              `conversation_ref` VARCHAR(64) NOT NULL,
+              `entity_type` ENUM('lead','project') NOT NULL,
+              `entity_id` VARCHAR(50) NOT NULL,
+              `link_source` ENUM('auto','manual') NOT NULL DEFAULT 'auto',
+              `title` VARCHAR(255) NOT NULL DEFAULT '',
+              `is_group` TINYINT(1) NOT NULL DEFAULT 0,
+              `phone_digits` VARCHAR(20) NULL,
+              `owner_user_id` VARCHAR(50) NULL COMMENT 'CCRM user who owns the WhatsApp account',
+              `path` VARCHAR(255) NOT NULL,
+              `last_message_at` DATETIME NULL,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+              UNIQUE KEY uq_wa_link (`conversation_ref`, `entity_type`, `entity_id`),
+              INDEX idx_wa_link_entity (`entity_type`, `entity_id`),
+              FOREIGN KEY (`client_id`) REFERENCES `integration_clients` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Result of WAAI's on-demand "is this number on WhatsApp?" check (decision D6).
+            "CREATE TABLE IF NOT EXISTS `whatsapp_numbers` (
+              `phone_digits` VARCHAR(20) NOT NULL PRIMARY KEY,
+              `status` ENUM('registered','not_registered') NOT NULL,
+              `checked_at` DATETIME NOT NULL,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Web Push Subscriptions (Browser & Mobile PWA push endpoints)
             "CREATE TABLE IF NOT EXISTS `push_subscriptions` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -1851,6 +1883,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_seed_default_tickets($pdo);
         ccrm_migrate_time_tracking($pdo);
         ccrm_migrate_integration_tasks($pdo);
+        ccrm_migrate_integration_directory($pdo);
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
         ccrm_migrate_ai_models($pdo);
@@ -1889,6 +1922,26 @@ if (!function_exists('ccrm_schema_statements')) {
         $idx->execute();
         if (!$idx->fetchColumn()) {
             $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_updated (`updated_at`)");
+        }
+    }
+
+    /**
+     * Directory additions for the machine API (docs/WAAI-INTEGRATION.md §4.2): the phone a project's
+     * WhatsApp chat is paired by, and the indexes `GET /directory` pages by (`updated_at`, id).
+     */
+    function ccrm_migrate_integration_directory(PDO $pdo): void {
+        if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'contact_phone')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it'");
+        }
+        foreach (['leads' => 'idx_lead_updated', 'projects' => 'idx_project_updated'] as $table => $name) {
+            if (!ccrm_table_exists($pdo, $table)) {
+                continue;
+            }
+            $idx = $pdo->prepare("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1");
+            $idx->execute([$table, $name]);
+            if (!$idx->fetchColumn()) {
+                $pdo->exec("ALTER TABLE `{$table}` ADD INDEX {$name} (`updated_at`)");
+            }
         }
     }
 

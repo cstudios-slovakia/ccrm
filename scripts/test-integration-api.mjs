@@ -731,6 +731,218 @@ async function taskChecks(state) {
   check('the audit trail holds no task text', cell(`SELECT COUNT(*) FROM audit_log WHERE action LIKE 'integration_task%' AND (detail LIKE '%Poslať%' OR detail LIKE '%Marek%')`) === '0');
 }
 
+// ----------------------------------------------------------------------------- 2c. directory and chat links
+async function directoryChecks(state) {
+  const token = state.token2;
+  const session = state.adminSession;
+  const SINCE = 1900000000;   // far below the seeded updated_at (2031), far above everything the clone holds
+  sql(`DELETE FROM integration_rate;`);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}', owner_user_ids='["${USERS.admin[0]}"]'`);
+
+  section('directory');
+  sql(`DELETE FROM whatsapp_links; DELETE FROM whatsapp_numbers;
+       DELETE FROM leads WHERE id IN ('client-intp1','lead-intp1','lead-intp2');
+       DELETE FROM projects WHERE id='project-intp1'; DELETE FROM project_types WHERE id='intptype'; DROP TABLE IF EXISTS proj_data_intptype;
+       INSERT INTO leads (id,name,owner,created_at,phone,country,client_id,adjustment,archived) VALUES
+         ('client-intp1','Probe Client','x','2031-01-01','0905 111 222','Slovakia',NULL,0,0),
+         ('lead-intp1','Probe Lead','x','2031-01-01','+421 905 333 444','Slovakia','client-intp1',0,0),
+         ('lead-intp2','Probe Adjusted','x','2031-01-01',NULL,NULL,NULL,5,1);
+       UPDATE leads SET updated_at='2031-01-01 00:00:00' WHERE id IN ('client-intp1','lead-intp1');
+       UPDATE leads SET updated_at='2031-01-01 00:00:01' WHERE id='lead-intp2';
+       INSERT INTO project_types (id,name,icon,color,attributes_json) VALUES ('intptype','Probe type','Box','#000000',
+         ${sq(JSON.stringify([{ id: 'contactattr', name: 'Contact', type: 'contact', required: false }, { id: 'noteattr', name: 'Note', type: 'textfield', required: false }]))});
+       CREATE TABLE proj_data_intptype (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50) NOT NULL, attr_contactattr LONGTEXT NULL, attr_noteattr LONGTEXT NULL);
+       INSERT INTO projects (id,project_type_id,name,lead_id,client_id,status,contact_phone) VALUES ('project-intp1','intptype','Probe Project','lead-intp1','client-intp1','active','0911 000 111');
+       UPDATE projects SET updated_at='2031-01-01 00:00:01' WHERE id='project-intp1';
+       INSERT INTO proj_data_intptype (id,project_id,attr_contactattr,attr_noteattr) VALUES ('pd1','project-intp1','lead-intp2','not a lead');`);
+
+  const dir = (qs = '') => call(`/directory?updated_since=${SINCE}${qs}`, { token });
+  setClient(`scopes='["tasks:push"]'`);
+  check('the directory needs directory:read -> 403', (await dir()).status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+
+  const all = await dir();
+  const keys = all.json?.items?.map((i) => `${i.type}:${i.id}`);
+  check('lead, client and project rows come back ordered by (updated_at, type:id)', all.status === 200
+    && JSON.stringify(keys) === '["lead:client-intp1","lead:lead-intp1","lead:lead-intp2","project:project-intp1"]' && all.json.has_more === false, all.raw.slice(0, 500));
+  const [client, lead, adjusted, project] = all.json?.items ?? [];
+  check('client: is_client, raw phone and country, link to the clients page', client?.is_client === true && client.client_id === null && client.phone === '0905 111 222' && client.country === 'Slovakia'
+    && client.archived === false && client.url === 'https://crm.test/#clients/client-intp1' && /^2031-01-01T00:00:00[+-]\d\d:\d\d$/.test(client.updated_at), JSON.stringify(client));
+  check('lead: not a client, linked to its client by client_id', lead?.is_client === false && lead.client_id === 'client-intp1' && lead.phone === '+421 905 333 444' && lead.url === 'https://crm.test/#leads/lead-intp1', JSON.stringify(lead));
+  check('a record with a value adjustment is a client; archived and empty phone are reported as they are', adjusted?.is_client === true && adjusted.archived === true && adjusted.phone === null && adjusted.country === null, JSON.stringify(adjusted));
+  check('project: contact phone, client, lead, status and the contact attribute\'s lead ids', project?.contact_phone === '0911 000 111' && project.client_id === 'client-intp1' && project.lead_id === 'lead-intp1'
+    && JSON.stringify(project.contact_lead_ids) === '["lead-intp2"]' && project.status === 'active' && project.name === 'Probe Project' && project.url === 'https://crm.test/#projects/project-intp1', JSON.stringify(project));
+  check('no financial or other private fields leak into an item', !all.raw.includes('"value"') && !all.raw.includes('adjustment') && !all.raw.includes('"email"') && !all.raw.includes('"owner"'));
+
+  const seen = [];
+  const cursorTs = Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM leads WHERE id='lead-intp2'`));
+  let qs = `updated_since=${SINCE}&limit=3`, pages = 0, more = true, firstNext = null;
+  while (more && pages < 5) {
+    const r = await call(`/directory?${qs}`, { token });
+    seen.push(...r.json.items.map((i) => `${i.type}:${i.id}`));
+    more = r.json.has_more;
+    firstNext ??= r.json.next;
+    qs = `updated_since=${r.json.next.updated_since}&after_id=${encodeURIComponent(r.json.next.after_id)}&limit=3`;
+    pages++;
+  }
+  check('the cursor is (seconds, "type:id") of the last item', firstNext?.after_id === 'lead:lead-intp2' && firstNext.updated_since === cursorTs, JSON.stringify(firstNext));
+  check('paging with limit=3 across equal updated_at returns every row exactly once, in two pages', JSON.stringify(seen) === JSON.stringify(keys) && pages === 2, `${seen.join(',')} pages=${pages}`);
+  const tail = await call(`/directory?updated_since=${cursorTs}&after_id=project%3Aproject-intp1`, { token });
+  check('after the last cursor the directory is empty and the cursor stays', tail.json?.items.length === 0 && tail.json.has_more === false && tail.json.next.after_id === 'project:project-intp1', tail.raw);
+  for (const bad of ['limit=0', 'limit=201', 'limit=x', 'after_id=lead', 'after_id=lead%3A', 'after_id=other%3Aabc', 'after_id=lead%3Aa%20b', 'updated_since=-1', 'updated_since=abc']) {
+    check(`directory refuses ${bad} -> 422`, (await call(`/directory?${bad}`, { token })).status === 422, bad);
+  }
+  check('POST on /directory -> 405 with Allow: GET', (await call('/directory', { method: 'POST', token, body: {} })).headers.get('allow') === 'GET');
+
+  section('project contact phone through the app\'s sync');
+  let g = await syncApi(session);
+  const proj = g.json?.projects?.find((p) => p.id === 'project-intp1');
+  check('sync GET carries the project\'s contactPhone', proj?.contactPhone === '0911 000 111', JSON.stringify(proj)?.slice(0, 300));
+  const saveProject = (patch, drop = []) => {
+    const p = { ...proj, ...patch };
+    for (const k of drop) delete p[k];
+    return syncApi(session, { method: 'POST', body: { syncProtocol: 2, baseSyncedAt: g.json.serverTime, projects: [p] } });
+  };
+  const phoneOf = () => cell(`SELECT IFNULL(contact_phone,'<null>') FROM projects WHERE id='project-intp1'`);
+  let saved = await saveProject({ contactPhone: ' +421 911 222 333 ' });
+  check('the app\'s save stores the contact phone, trimmed', saved.status === 200 && saved.json?.success === true && phoneOf() === '+421 911 222 333', `${saved.raw.slice(0, 200)} ${phoneOf()}`);
+  g = await syncApi(session);
+  saved = await saveProject({}, ['contactPhone']);
+  check('a client that does not send the key leaves it alone', saved.status === 200 && phoneOf() === '+421 911 222 333', phoneOf());
+  g = await syncApi(session);
+  saved = await saveProject({ contactPhone: 'x'.repeat(80) });
+  check('it is cut to 50 characters', phoneOf() === 'x'.repeat(50), phoneOf());
+  g = await syncApi(session);
+  saved = await saveProject({ contactPhone: '' });
+  check('an empty value clears it', phoneOf() === '<null>', phoneOf());
+  sql(`UPDATE projects SET contact_phone='0911 000 111' WHERE id='project-intp1';`);
+
+  section('chat links');
+  const REF = 'ckx8abcdef01';
+  const link = (ref, body, opts = {}) => call(`/whatsapp/links/${ref}`, { method: 'PUT', token, body, ...opts });
+  const good = (over = {}) => ({
+    title: 'Marek Novák', is_group: false, phone: '421905333444', owner_id: USERS.admin[0], path: `/c/${REF}`, last_message_at: '2026-10-29T14:03:00+01:00',
+    links: [{ entity_type: 'lead', entity_id: 'client-intp1', source: 'auto' }, { entity_type: 'project', entity_id: 'project-intp1', source: 'auto' }],
+    ...over,
+  });
+  const rowsOf = (ref) => sql(`SELECT CONCAT_WS('|', entity_type, entity_id, link_source, title, is_group, IFNULL(phone_digits,'-'), IFNULL(owner_user_id,'-'), path, IFNULL(last_message_at,'-')) FROM whatsapp_links WHERE conversation_ref=${sq(ref)} ORDER BY entity_type, entity_id`).split('\n').slice(1).filter(Boolean);
+
+  setClient(`scopes='["tasks:push"]'`);
+  check('links need whatsapp:links -> 403', (await link(REF, good())).status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+  const put1 = await link(REF, good());
+  check('PUT stores one row per entity with the chat\'s title, phone, owner, path and local last-message time', put1.status === 200 && put1.json.links.length === 2 && put1.json.ignored.length === 0
+    && JSON.stringify(rowsOf(REF)) === JSON.stringify([`lead|client-intp1|auto|Marek Novák|0|421905333444|${USERS.admin[0]}|/c/${REF}|${tzParts('2026-10-29T14:03:00+01:00').date} ${tzParts('2026-10-29T14:03:00+01:00').time}:00`, `project|project-intp1|auto|Marek Novák|0|421905333444|${USERS.admin[0]}|/c/${REF}|${tzParts('2026-10-29T14:03:00+01:00').date} ${tzParts('2026-10-29T14:03:00+01:00').time}:00`]), `${put1.raw} ${rowsOf(REF)}`);
+  const stamp = () => cell(`SELECT MAX(updated_at) FROM whatsapp_links WHERE conversation_ref=${sq(REF)}`);
+  const before = stamp();
+  await new Promise((r) => setTimeout(r, 30));
+  const put2 = await link(REF, good());
+  check('repeating the same PUT is idempotent: same rows, updated_at untouched', put2.status === 200 && rowsOf(REF).length === 2 && stamp() === before, `${before} -> ${stamp()}`);
+  const put3 = await link(REF, good({ title: 'Marek N.', links: [{ entity_type: 'lead', entity_id: 'client-intp1', source: 'manual' }] }));
+  check('a PUT replaces the whole set: the project link is gone, the lead link is manual and carries the new title', put3.status === 200 && JSON.stringify(rowsOf(REF).map((r) => r.split('|').slice(0, 4).join('|'))) === '["lead|client-intp1|manual|Marek N."]', rowsOf(REF).join(' ; '));
+  const dup = await link(REF, good({ links: [{ entity_type: 'lead', entity_id: 'lead-intp1', source: 'manual' }, { entity_type: 'lead', entity_id: 'lead-intp1', source: 'auto' }] }));
+  check('the same entity twice collapses; manual beats auto', dup.status === 200 && dup.json.links.length === 1 && dup.json.links[0].source === 'manual' && rowsOf(REF).length === 1, dup.raw);
+  const ghost = await link(REF, good({ links: [{ entity_type: 'lead', entity_id: 'client-intp1', source: 'auto' }, { entity_type: 'lead', entity_id: 'lead-deleted', source: 'auto' }, { entity_type: 'project', entity_id: 'project-gone', source: 'auto' }] }));
+  check('a link to a lead or project that does not exist is ignored and reported, the rest is stored', ghost.status === 200 && ghost.json.links.length === 1 && JSON.stringify(ghost.json.ignored) === '[{"entity_type":"lead","entity_id":"lead-deleted"},{"entity_type":"project","entity_id":"project-gone"}]' && rowsOf(REF).length === 1, ghost.raw);
+  const none = await link(REF, good({ links: [] }));
+  check('an empty link list removes every link of the conversation', none.status === 200 && none.json.links.length === 0 && rowsOf(REF).length === 0, none.raw);
+  const group = await link('grp0000000001', good({ is_group: true, phone: null, owner_id: null, last_message_at: null, path: '/c/grp0000000001', links: [{ entity_type: 'project', entity_id: 'project-intp1', source: 'manual' }] }));
+  check('a group has no phone, owner or last message', group.status === 200 && rowsOf('grp0000000001')[0] === 'project|project-intp1|manual|Marek Novák|1|-|-|/c/grp0000000001|-', `${group.raw} ${rowsOf('grp0000000001')}`);
+
+  section('chat links: validation');
+  const refuse = async (what, over, ref = REF) => {
+    const r = await link(ref, good(over));
+    check(`${what} -> 422`, r.status === 422 && errCode(r) === 'validation_failed', `${r.status} ${r.raw}`);
+  };
+  await refuse('a path that is not a chat path', { path: '/c/../etc' });
+  await refuse('a path with a message suffix (links point at the chat)', { path: `/c/${REF}?m=abc` });
+  await refuse('a missing path', { path: undefined });
+  await refuse('a phone with a plus sign or spaces', { phone: '+421 905 333 444' });
+  await refuse('a phone that is too short', { phone: '123' });
+  await refuse('an owner that is not a CCRM user', { owner_id: 'nobody-here' });
+  await refuse('a non-boolean is_group', { is_group: 'yes' });
+  await refuse('a title over 255 characters', { title: 'x'.repeat(256) });
+  await refuse('a last_message_at without a time zone', { last_message_at: '2026-10-29T14:03:00' });
+  await refuse('links that are not a list', { links: { a: 1 } });
+  await refuse('more than 50 links', { links: Array.from({ length: 51 }, (_, i) => ({ entity_type: 'lead', entity_id: `l${i}`, source: 'auto' })) });
+  await refuse('an unknown entity type', { links: [{ entity_type: 'ticket', entity_id: 'x', source: 'auto' }] });
+  await refuse('an unknown source', { links: [{ entity_type: 'lead', entity_id: 'client-intp1', source: 'blocked' }] });
+  await refuse('an entity id with spaces', { links: [{ entity_type: 'lead', entity_id: 'a b', source: 'auto' }] });
+  await refuse('a conversation ref with a dot', {}, 'bad.ref');
+  check('a missing links key -> 422', (await link(REF, (({ links, ...rest }) => rest)(good()))).status === 422);
+  check('a non-object body -> 400', (await link(REF, [1])).status === 400);
+  const markup = await link(REF, good({ title: '<b>Marek</b> &lt;i&gt;Novák&lt;/i&gt;', links: [{ entity_type: 'lead', entity_id: 'client-intp1', source: 'auto' }] }));
+  check('the title is cleaned like any text from the chat app (no markup)', markup.status === 200 && rowsOf(REF)[0].split('|')[3] === 'Marek Novák', rowsOf(REF).join(' ; '));
+  check('rows written by one failed PUT never appear (validation happens first)', rowsOf(REF).length === 1);
+
+  section('chat links: delete and read');
+  const del = await call(`/whatsapp/links/${REF}`, { method: 'DELETE', token });
+  check('DELETE removes the conversation\'s links', del.status === 200 && del.json.deleted === 1 && rowsOf(REF).length === 0, del.raw);
+  const del2 = await call(`/whatsapp/links/${REF}`, { method: 'DELETE', token });
+  check('DELETE again is safe: 200, nothing deleted', del2.status === 200 && del2.json.deleted === 0, del2.raw);
+  check('PATCH on a link -> 405 with Allow: PUT, DELETE', (await call(`/whatsapp/links/${REF}`, { method: 'PATCH', token, body: {} })).headers.get('allow') === 'PUT, DELETE');
+  setClient(`scopes='["tasks:push"]'`);
+  check('DELETE needs whatsapp:links -> 403', (await call(`/whatsapp/links/${REF}`, { method: 'DELETE', token })).status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+  const audit = sql(`SELECT detail FROM audit_log WHERE action='integration_whatsapp_links' ORDER BY id`).split('\n').slice(1).filter(Boolean);
+  check('link writes are audited with the reference and a count only', audit.length > 0 && audit.every((d) => /^(set|delete) [A-Za-z0-9_-]+ n=\d+$/.test(d)), audit.join(' | '));
+  check('the audit trail holds no chat title', cell(`SELECT COUNT(*) FROM audit_log WHERE action='integration_whatsapp_links' AND detail LIKE '%Marek%'`) === '0');
+
+  await link(REF, good());
+  await link('grp0000000001', good({ is_group: true, phone: null, owner_id: null, last_message_at: null, path: '/c/grp0000000001', links: [{ entity_type: 'project', entity_id: 'project-intp1', source: 'manual' }] }));
+  const nums = await call('/whatsapp/numbers', { method: 'PUT', token, body: { items: [{ phone: '421905333444', status: 'registered', checked_at: '2026-10-29T10:00:00Z' }, { phone: '421900000001', status: 'not_registered', checked_at: '2026-10-29T10:00:00Z' }] } });
+  check('numbers: a batch is stored', nums.status === 200 && nums.json.stored === 2 && cell(`SELECT COUNT(*) FROM whatsapp_numbers`) === '2', nums.raw);
+  await call('/whatsapp/numbers', { method: 'PUT', token, body: { items: [{ phone: '421900000001', status: 'registered', checked_at: '2026-10-30T10:00:00Z' }] } });
+  check('numbers: a newer answer replaces the status', cell(`SELECT status FROM whatsapp_numbers WHERE phone_digits='421900000001'`) === 'registered');
+  await call('/whatsapp/numbers', { method: 'PUT', token, body: { items: [{ phone: '421900000001', status: 'not_registered', checked_at: '2026-10-01T10:00:00Z' }] } });
+  check('numbers: an older answer arriving late does not overwrite a newer one', cell(`SELECT status FROM whatsapp_numbers WHERE phone_digits='421900000001'`) === 'registered');
+  for (const [what, items] of [['a non-list', { a: 1 }], ['a bad status', [{ phone: '421900000002', status: 'maybe' }]], ['a bad phone', [{ phone: '+421900000002', status: 'registered' }]], ['501 items', Array.from({ length: 501 }, (_, i) => ({ phone: String(421000000000 + i), status: 'registered' }))], ['a non-object item', ['x']]]) {
+    const r = await call('/whatsapp/numbers', { method: 'PUT', token, body: { items } });
+    check(`numbers refuses ${what} -> 422`, r.status === 422, r.raw);
+  }
+  setClient(`scopes='["tasks:push"]'`);
+  check('numbers need whatsapp:links -> 403', (await call('/whatsapp/numbers', { method: 'PUT', token, body: { items: [] } })).status === 403);
+  setClient(`scopes='${JSON.stringify(ALL_SCOPES)}'`);
+
+  section('chat links as the app sees them');
+  g = await syncApi(session);
+  const l = g.json?.whatsappLinks?.find((x) => x.conversationRef === REF && x.entityId === 'client-intp1');
+  check('sync GET carries the links for an administrator', l?.entityType === 'lead' && l.source === 'auto' && l.title === 'Marek Novák' && l.isGroup === false && l.phone === '421905333444' && l.ownerUserId === USERS.admin[0] && l.path === `/c/${REF}` && g.json.whatsappLinks.length === 3, JSON.stringify(g.json?.whatsappLinks));
+  check('... and the number checks', g.json?.whatsappNumbers?.some((n) => n.phone === '421900000001' && n.status === 'registered' && !!n.checkedAt), JSON.stringify(g.json?.whatsappNumbers));
+  const viewerSession = await login(USERS.viewer[0] + '@probe.test');
+  const vg = await syncApi(viewerSession);
+  check('a user without the whatsapp permission gets neither', vg.status === 200 && Array.isArray(vg.json?.whatsappLinks) && vg.json.whatsappLinks.length === 0 && vg.json.whatsappNumbers.length === 0, vg.raw.slice(0, 200));
+  const writeAttempt = await syncApi(session, { method: 'POST', body: { syncProtocol: 2, baseSyncedAt: g.json.serverTime, whatsappLinks: [], whatsappNumbers: [] } });
+  check('a save from the app cannot touch the link tables', writeAttempt.status === 200 && cell(`SELECT COUNT(*) FROM whatsapp_links`) === '3' && cell(`SELECT COUNT(*) FROM whatsapp_numbers`) === '2', writeAttempt.raw.slice(0, 200));
+  check('deleting the lead does not fail and the link rows are left for WAAI to drop', (() => { sql(`DELETE FROM leads WHERE id='lead-intp1'`); return cell(`SELECT COUNT(*) FROM whatsapp_links`) === '3'; })());
+
+  section('messages in the install language');
+  const needs = await call('/tasks/external/waaitasklang01', { method: 'PUT', token, body: { revision: Date.now(), title: 'Language check', description: '', status: 'open', owner_id: USERS.admin[0], assignee_ids: [USERS.admin[0]], context: { conversation: 'Marek', is_group: false, assignee_label: '', path: '/c/ckx8abc' } } });
+  sql(`UPDATE tasks SET requires_conclusion=1 WHERE id=${sq(needs.json.id)};`);
+  const WANT = {
+    en: 'This task requires a conclusion before it can be completed.',
+    sk: 'Táto úloha vyžaduje záver, až potom ju možno dokončiť.',
+    hu: 'Ehhez a feladathoz lezárás (következtetés) szükséges, mielőtt befejezhető.',
+  };
+  const GONE = { en: 'The task was deleted in CCRM.', sk: 'Úloha bola v CCRM vymazaná.', hu: 'A feladatot törölték a CCRM-ben.' };
+  const MISSING = { en: 'No such task.', sk: 'Taká úloha neexistuje.', hu: 'Nincs ilyen feladat.' };
+  for (const lang of ['en', 'sk', 'hu', 'de']) {
+    sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('SYSTEM_LANGUAGE', ${sq(lang)});`);
+    const k = lang === 'de' ? 'sk' : lang;   // an unsupported language falls back to the app default, Slovak
+    const viaPut = await call('/tasks/external/waaitasklang01', { method: 'PUT', token, body: { revision: Date.now() + 1, title: 'Language check', description: '', status: 'completed', owner_id: USERS.admin[0], assignee_ids: [USERS.admin[0]] } });
+    check(`completion_refused via PUT is in ${lang === 'de' ? 'the default (sk) for an unsupported language' : lang}`, viaPut.status === 422 && viaPut.json?.error?.message === WANT[k], viaPut.raw);
+    const viaComplete = await call(`/tasks/${needs.json.id}/complete`, { method: 'POST', token });
+    check(`completion_refused via /complete is in ${k}`, viaComplete.status === 422 && viaComplete.json?.error?.message === WANT[k], viaComplete.raw);
+    const missing = await call('/tasks/tsk_nope_lang/complete', { method: 'POST', token });
+    check(`not_found is in ${k}`, missing.status === 404 && missing.json?.error?.message === MISSING[k], missing.raw);
+  }
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('SYSTEM_LANGUAGE', 'hu');`);
+  sql(`DELETE FROM tasks WHERE id=${sq(needs.json.id)};`);
+  const goneRes = await call('/tasks/external/waaitasklang01', { method: 'PUT', token, body: { revision: Date.now() + 2, title: 'Language check', description: '', status: 'open', owner_id: USERS.admin[0], assignee_ids: [USERS.admin[0]] } });
+  check('gone (task deleted in CCRM) is in hu', goneRes.status === 410 && goneRes.json?.error?.message === GONE.hu, goneRes.raw);
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('SYSTEM_LANGUAGE', 'en');`);
+}
+
 // ----------------------------------------------------------------------------- 3. cross-cutting
 async function crossChecks(state) {
   section('cookies and logs');
@@ -757,6 +969,7 @@ try {
   await adminChecks(state);
   await apiChecks(state);
   await taskChecks(state);
+  await directoryChecks(state);
   await crossChecks(state);
 } catch (e) {
   failures++;

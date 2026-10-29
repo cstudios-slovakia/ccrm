@@ -32,6 +32,7 @@ if (file_exists($configFile)) {
 require_once __DIR__ . '/integration_lib.php';
 require_once __DIR__ . '/integration_directory.php';
 require_once __DIR__ . '/integration_tasks.php';
+require_once __DIR__ . '/integration_whatsapp.php';
 
 /**
  * Documented routes: [method, path pattern, handler, scope]. Scope null = any valid token, an array =
@@ -45,6 +46,10 @@ $ccrmIntRoutes = [
     ['GET', '#^tasks/feed$#', 'ccrm_int_handle_task_feed', 'tasks:pull'],
     ['POST', '#^tasks/lookup$#', 'ccrm_int_handle_task_lookup', ['tasks:push', 'tasks:pull']],
     ['POST', '#^tasks/([^/]+)/complete$#', 'ccrm_int_handle_task_complete', 'tasks:pull'],
+    ['GET', '#^directory$#', 'ccrm_int_handle_directory', 'directory:read'],
+    ['PUT', '#^whatsapp/links/([^/]+)$#', 'ccrm_int_handle_whatsapp_links_put', 'whatsapp:links'],
+    ['DELETE', '#^whatsapp/links/([^/]+)$#', 'ccrm_int_handle_whatsapp_links_delete', 'whatsapp:links'],
+    ['PUT', '#^whatsapp/numbers$#', 'ccrm_int_handle_whatsapp_numbers_put', 'whatsapp:links'],
 ];
 
 function ccrm_int_handle_ping(\PDO $pdo, array $client, array $req): array {

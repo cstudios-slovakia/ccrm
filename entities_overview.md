@@ -281,8 +281,9 @@ Individual instances of active project lifecycles.
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains)
 * `ticket_public_hash` VARCHAR(64) [UNIQUE] (Random token for public `#public-tickets/<hash>` status page)
 * `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
+* `contact_phone` VARCHAR(50) [NULLable] (phone of the project contact as typed; WAAI pairs WhatsApp chats to the project by it; written by the app's save only when the payload carries `contactPhone`)
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP
+* `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging]
 
 ### `project_managers`
 Junction table mapping project managers to projects.
@@ -400,6 +401,22 @@ External id ↔ local row, plus the values last applied from the external system
 Per-token request counter, one row per minute.
 * `token_prefix` VARCHAR(12), `window_start` INT [PK together]
 * `hits` INT
+
+### `whatsapp_links`
+Chats WAAI has paired with a client/lead or a project. Written only by `PUT/DELETE /api/v1/whatsapp/links/{ref}`, never by `sync.php`; returned by the sync GET to users with the `whatsapp` permission.
+* `id` BIGINT AUTO_INCREMENT [PK]
+* `client_id` VARCHAR(50) (references `integration_clients.id`, cascading deletion)
+* `conversation_ref` VARCHAR(64) (WAAI's conversation id)
+* `entity_type` ENUM('lead','project'), `entity_id` VARCHAR(50) (no foreign key: a deleted record must not be blocked by a link)
+* `link_source` ENUM('auto','manual')
+* `title` VARCHAR(255), `is_group` TINYINT(1), `phone_digits` VARCHAR(20) [NULLable], `owner_user_id` VARCHAR(50) [NULLable] (the CCRM user who owns the WhatsApp account)
+* `path` VARCHAR(255) (`/c/<id>`), `last_message_at` DATETIME [NULLable], `updated_at` TIMESTAMP(3)
+* Unique: (`conversation_ref`, `entity_type`, `entity_id`); index (`entity_type`, `entity_id`)
+
+### `whatsapp_numbers`
+WAAI's answers to "is this number on WhatsApp?" (checked on click only).
+* `phone_digits` VARCHAR(20) [PK]
+* `status` ENUM('registered','not_registered'), `checked_at` DATETIME, `updated_at` TIMESTAMP(3)
 
 ---
 

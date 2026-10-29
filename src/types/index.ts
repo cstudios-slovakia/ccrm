@@ -727,6 +727,11 @@ export interface Project {
    */
   customFileFields?: ProjectCustomFileField[];
   archived?: boolean;
+  /**
+   * Phone of the project's contact, as typed. WAAI pairs WhatsApp chats to the project by it.
+   * Absent on save means "unchanged", so an older client cannot wipe it.
+   */
+  contactPhone?: string | null;
   /** Hours the project is expected to take. Null while unset. */
   hoursBudget?: number | null;
   /** Default billable hourly rate for time logged on this project. */
