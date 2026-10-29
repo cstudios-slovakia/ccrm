@@ -8,6 +8,7 @@ import { buildSyncPayload } from './fixture';
  * deletes that never happened). Pass a smaller number to test an early release.
  */
 export const HOLD_OK_MS = 1200;
+export const SHORT_HOLD_MS = 100;
 
 /**
  * Presses and holds an element like a user would: hover → mouse down → wait →
