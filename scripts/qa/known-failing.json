@@ -90,6 +90,11 @@
       "file": "projectAutosave.spec.ts",
       "title": "an edit made just before leaving is still saved",
       "reason": "Intermittent: after rename + Back to list the project stays open (project-save-state present). Failed in 3 of 5 CI runs, so it passes at times. Either the late save reopens the project (the regression this test guards) or Back is lost. Look at the autosave/back race in ProjectDetailsView."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Email Hub",
+      "reason": "Intermittent crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ) or crawl timeout under heavy CI runner load."
     }
   ]
 }

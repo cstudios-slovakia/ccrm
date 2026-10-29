@@ -18,7 +18,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const runCode = Number(process.argv[2] ?? 1);
+const rawCode = process.argv[2];
+const runCode = rawCode === 'True' || rawCode === 'true' ? 0 : (Number.isFinite(Number(rawCode)) ? Number(rawCode) : 1);
 const REPORT = path.join(ROOT, 'test-results', 'qa-results.json');
 const LIST = path.join(ROOT, 'scripts', 'qa', 'known-failing.json');
 
