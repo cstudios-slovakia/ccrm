@@ -67,6 +67,7 @@ import {
     ArrowLeft,
     ArrowRight,
     Milestone,
+    MessageCircle,
     PencilLine,
     Phone,
     Mail,
@@ -274,6 +275,7 @@ import {
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
 import { typePx, useViewSize } from "../utils/viewSize";
+import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 
 // "1 deň / 2-4 dni / 5+ dní" — Slovak counts differently above four, and a badge
@@ -3055,6 +3057,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     badgeBg:
                         "bg-emerald-50 text-emerald-700 border-emerald-200",
                 };
+            // Pushed in by WAAI (task created / done in a linked chat); never logged by hand.
+            case "whatsapp":
+                return {
+                    dotBg: "bg-green-600 border-green-700 text-white shadow-md shadow-green-500/20",
+                    badgeBg: "bg-green-50 text-green-700 border-green-200",
+                };
             case "appointment":
                 return {
                     dotBg: "bg-purple-600 border-purple-700 text-white shadow-md shadow-purple-500/20",
@@ -3126,6 +3134,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return <Truck className="h-3.5 w-3.5 stroke-[2.5]" />;
             case "status_change":
                 return <Milestone className="h-3.5 w-3.5 stroke-[2.5]" />;
+            case "whatsapp":
+                return <MessageCircle className="h-3.5 w-3.5 stroke-[2.5]" />;
             default:
                 return <Clock className="h-3.5 w-3.5 stroke-[2.5]" />;
         }
@@ -3160,6 +3170,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return t("Delivery note", "Dodací list", "Szállítólevél");
             case "status_change":
                 return t("State change", "Zmena stavu", "Állapotváltozás");
+            case "whatsapp":
+                return "WhatsApp";
             default:
                 return type;
         }
@@ -6132,12 +6144,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     person only matters when the lead is not a private person. */}
                                 <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <label className="type-overline text-slate-500">
-                                            {getTranslation(
-                                                systemLanguage,
-                                                "profile.phone_number",
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <label className="type-overline text-slate-500">
+                                                {getTranslation(
+                                                    systemLanguage,
+                                                    "profile.phone_number",
+                                                )}
+                                            </label>
+                                            {!isEditingLead && activeLead && (
+                                                <WhatsAppChip lead={activeLead} leads={leads} userLanguage={systemLanguage} />
                                             )}
-                                        </label>
+                                        </div>
                                         {!isEditingLead && leadPhone.trim() ? (
                                             <a
                                                 href={`tel:${leadPhone.replace(/[^\d+]/g, "")}`}
@@ -8533,6 +8550,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 })()}
                                                             </TimelineCollapsible>
                                                         )}
+                                                        {event.externalUrl && <OpenInChatLink path={event.externalUrl} userLanguage={systemLanguage} />}
 
                                                         {renderEventAttachments(
                                                             event,
@@ -9042,6 +9060,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 })()}
                                                             </TimelineCollapsible>
                                                         )}
+                                                        {event.externalUrl && <OpenInChatLink path={event.externalUrl} userLanguage={systemLanguage} />}
                                                         <FiledMailBody event={event} language={systemLanguage} />
 
                                                         {/* Attached documents. Events logged before multi-file

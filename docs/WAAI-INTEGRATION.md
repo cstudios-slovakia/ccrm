@@ -630,6 +630,17 @@ registered: a clear "This number is not on WhatsApp" screen.
   codebase writes raw palette classes — do not introduce semantic tokens here);
   every string in en/sk/hu.
 
+**As built (phase 6):**
+
+- `src/utils/whatsappLinks.ts` (+ tests): `normalizePhoneDigits` (same rules as WAAI's), `linksForLead`, `linksForProject`, `orderLinks`, `resolveWhatsAppState` (`chat` / `start` / `none`), `chatHref` / `startChatHref`, and the parser for the sync response. The chats reach the UI through `WhatsAppLinksContext` (`src/hooks/useWhatsAppLinks.tsx`), filled by `App.tsx` from `whatsappLinks` / `whatsappNumbers`; they are read-only and never sent back.
+- `src/components/WhatsAppChip.tsx`: `WhatsAppChip` (one chat → link, several → menu, no chat but a usable number → "Start chat", a number WAAI found is not on WhatsApp → nothing), `OpenInChatLink` (timeline) and `TaskWhatsAppMarks` (task badge, "Open in chat", "deadline not stated in chat"). Mounted in the client profile (`ClientsView`, looked up through the client record's family), the lead detail (`LeadsDatagrid`), and the project's paired-client and contact-attribute cards. The menu is a portal, so a drawer cannot clip it.
+- Project form: **Contact phone** (`projects.contact_phone`) next to the priority, autosaved with the other fields, with the chip for the project's chats beside it.
+- Timeline: `whatsapp` has its own icon, colour, label and "Open in chat" link in `ClientsView` and `LeadsDatagrid`, and a `timeline.badge.whatsapp` string. The other `status_change` mentions (`AutomationView`, `leadSla`, `TicketsView`, `PublicProjectTicketsView`) are about pipeline or ticket states, not timeline types, and are unchanged.
+- Tasks: the badge and link in `EntityTasksPanel` (client and project task panels), `TaskDashboardView` rows and `TaskEditDrawer`.
+- Not built: a timeline type filter chip (no timeline type filter exists in the app) and the optional project list column.
+- A chip links to `#whatsapp/…`, and the module does not exist before phase 7: until then such a link opens the dashboard. Until phase 7 adds the `whatsapp` permission, only administrators receive the chats (spec §4.2), so nobody else sees a chip.
+- QA data: `tests/e2e/helpers/whatsappSeed.ts` seeds chats, a WhatsApp timeline entry and a task per spec instead of the shared fixture, because the crawler would click a chip into the missing module.
+
 ### 4.9 Security checklist
 
 - API tokens and SSO secret: generated server-side, shown once, stored hashed

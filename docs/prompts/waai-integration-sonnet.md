@@ -59,7 +59,16 @@ ask then.
 | 3 | Done, **stopped for review** — see "Phase 3 notes" and spec §4.3 "As built (phase 3)". Also v1.13.16-Nectarine: a date the chat takes back falls to today + 7 days again (unless a CCRM user moved it). D9 confirmed: no workflows, e-mails or ticket auto-resolve for WAAI tasks. |
 | 4 | Done (v1.13.17-Nectarine), **no stop required** - see "Phase 4 notes" and spec §4.1 / §4.3 "As built (phase 4)". The fresh-database migration is fixed and the localised messages are in. |
 | 5 | Done (v1.13.18-Nectarine), **no stop required** — see "Phase 5 notes" and spec §4.6 "As built (phase 5)". |
-| 6–8 | In progress / Not started. |
+| 6 | Done (v1.13.19-Nectarine), **stopped for review** — see "Phase 6 notes" and spec §4.8 "As built (phase 6)". Review screenshots (light and dark) were **not** captured: Peter said to skip them. |
+| 7–8 | Not started. |
+
+### Phase 6 notes
+
+- CCRM (`1.13-nectarine`): chat chip (client, lead, project, contact cards), project contact phone field, `whatsapp` timeline entries with a link back into the chat, WhatsApp badge / "Open in chat" / "deadline not stated in chat" on tasks. Nothing is pushed.
+- Verification: `npm run test:unit` 1060 pass, 0 fail (5 skipped, not ours); `npx tsc -p tsconfig.app.json --noEmit` and `tsconfig.qa.json` clean; the scoped browser run `tests/e2e/whatsappLinks.spec.ts` 7/7. Only that spec was run: the crawler over the changed modules and the screenshots were not (the machine ran out of memory twice, and the screenshot run was killed).
+- Links go to `#whatsapp/…`, which opens the dashboard until phase 7 adds the module; chats reach only administrators until the `whatsapp` permission exists (phase 7).
+- Not built: a timeline type filter chip (none exists) and the optional project list column.
+- The worktree is shared with the time-tracking session: its uncommitted changes (including two hunks in `TaskDashboardView.tsx` and one in `TaskEditDrawer.tsx`) are not part of this commit.
 
 ### Phase 5 notes
 

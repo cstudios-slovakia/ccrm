@@ -52,6 +52,7 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt, removeByIds } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { WhatsAppChip } from "./WhatsAppChip";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
@@ -337,6 +338,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
   const [division, setDivision] = useState("");
+  /* Phone of the project's contact. WAAI pairs WhatsApp chats to the project by it. */
+  const [contactPhone, setContactPhone] = useState("");
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
      a click saves on the spot. */
   const [rating, setRating] = useState(0);
@@ -356,6 +359,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // anyone who may edit sees the inputs, and every change saves on its own.
   const isEditingAttrs = canEdit;
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
+  // The leads named by this project's contact attributes: their WhatsApp chats count as the project's.
+  const contactLeadIds = useMemo(
+    () => (projectType?.attributes || [])
+      .filter(a => a.type === "contact")
+      .map(a => dynamicData[a.id])
+      .filter((v): v is string => typeof v === "string" && v !== ""),
+    [projectType, dynamicData],
+  );
   // The label being typed for a checkbox this project adds, per checkbox attribute.
   const [newChecklistLabels, setNewChecklistLabels] = useState<Record<string, string>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
@@ -518,6 +529,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     finishedAt: p.finishedAt || "",
     status: p.status || "active",
     division: p.division || "",
+    contactPhone: p.contactPhone || "",
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
@@ -548,6 +560,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       finishedAt: finishedAt || null,
       status,
       division: division || null,
+      contactPhone: contactPhone.trim() || null,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -629,6 +642,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setFinishedAt(s.finishedAt);
     setStatus(s.status);
     setDivision(s.division);
+    setContactPhone(s.contactPhone);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
@@ -653,6 +667,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     finishedAt,
     status,
     division,
+    contactPhone,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
@@ -2205,6 +2220,31 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             </div>
 
+            {/* Contact phone: who the project talks to. WAAI pairs WhatsApp chats to
+                the project by this number, so the hint says so. */}
+            <div>
+              <label htmlFor="project-contact-phone" className="block type-overline text-slate-400 mb-1">
+                {t("Contact phone", "Telefón kontaktu", "Kapcsolattartó telefonszáma")}
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  id="project-contact-phone"
+                  type="tel"
+                  value={contactPhone}
+                  readOnly={!canEdit}
+                  onChange={e => setContactPhone(e.target.value)}
+                  placeholder={canEdit ? "+421 900 000 000" : "—"}
+                  className="w-full max-w-64 px-3 py-2 rounded-xl border-2 border-slate-200 bg-slate-50 text-body font-bold text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all read-only:bg-transparent read-only:border-transparent read-only:pl-0"
+                />
+                <WhatsAppChip project={{ id: project.id, leadId: associatedLeadId || null, clientId: associatedClientId || null, contactPhone: project.contactPhone }} contactLeadIds={contactLeadIds} leads={leads} userLanguage={userLanguage} />
+              </div>
+              {canEdit && (
+                <p className="mt-1 text-caption text-slate-400">
+                  {t("Used to pair WhatsApp chats with this project.", "Podľa neho sa k projektu priraďujú WhatsApp chaty.", "Ennek alapján rendeli a rendszer a WhatsApp-csevegéseket a projekthez.")}
+                </p>
+              )}
+            </div>
+
             {/* Invoice date and deadline. Each has its own switch on the project
                 type (Projects -> Settings -> project type): the invoice date is
                 a plain date; the deadline is what counts down and flags a delay,
@@ -2835,6 +2875,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 <div className="flex items-center gap-1.5 text-slate-500">
                                   <Phone className="h-3 w-3 text-slate-400 shrink-0" />
                                   <span>{contact.phone}</span>
+                                  <WhatsAppChip lead={contact} leads={leads} userLanguage={userLanguage} className="ml-1" />
                                 </div>
                               )}
                             </div>
@@ -2983,6 +3024,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
                       ) : noneAdded}
                     </span>
+                    <WhatsAppChip lead={pairedLead} leads={leads} userLanguage={userLanguage} className="mt-1" />
                   </div>
                   <div className="space-y-0.5 min-w-0">
                     <span className="type-overline text-emerald-700/60 block">

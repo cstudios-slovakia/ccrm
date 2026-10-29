@@ -24,6 +24,7 @@ import { TaskEditDrawer } from "./TaskEditDrawer";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { TaskPillText } from "./TaskPillText";
+import { TaskWhatsAppMarks } from "./WhatsAppChip";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import {
   buildProjectTasks,
@@ -457,6 +458,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 {formatDue(task)}
               </span>
             )}
+            <TaskWhatsAppMarks task={task} userLanguage={userLanguage} />
             {(() => {
               const titleMatch = (task.title || "").match(/\[(TCK-[A-Za-z0-9_-]+)\]/i);
               const tckId = task.relatedTicketId || (titleMatch ? titleMatch[1].toUpperCase() : "");

@@ -30,6 +30,7 @@ import { useTaskSettings } from "../hooks/useTaskSettings";
 import { CONCLUSION_MAX, cleanConclusion, needsConclusionToFinish, canUntickConclusion } from "../utils/taskConclusion";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
+import { TaskWhatsAppMarks } from "./WhatsAppChip";
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
 // in favour of a "Custom" option that lets the user type any specific time.
@@ -603,6 +604,12 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 />
                             </div>
                         </div>
+
+                        {task.externalSource === "waai" && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <TaskWhatsAppMarks task={task} userLanguage={systemLanguage} />
+                            </div>
+                        )}
 
                         <div className="space-y-1">
                             <label className="type-overline text-slate-500">

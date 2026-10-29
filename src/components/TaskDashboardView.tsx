@@ -82,6 +82,7 @@ import { PageHeader } from "./layout";
 import { consumeLaunchIntent, parseLaunchIntent } from "../utils/launchIntent";
 import { isEmbedUrl } from "../utils/pwaInstallLogic";
 import { openTasksMiniWindow } from "../utils/popOut";
+import { TaskWhatsAppMarks } from "./WhatsAppChip";
 import { useListFilter } from "../hooks/useListFilter";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
@@ -3042,6 +3043,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 className={`font-bold text-micro px-1.5 py-0.5 rounded border cursor-pointer shrink-0 transition-colors flex items-center gap-1 ${
                                     assignerFilter === task.createdBy
                                         ? "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-400"
+                        <TaskWhatsAppMarks task={task} userLanguage={systemLanguage} showNote={false} />
                                         : "bg-amber-50/80 text-amber-700 border-amber-200/80 hover:bg-amber-100"
                                 }`}
                             >
@@ -3210,6 +3212,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="flex items-center gap-2 flex-wrap">
                             <span
                                 onClick={() => setEditingTask(task)}
+                            <TaskWhatsAppMarks task={task} userLanguage={systemLanguage} showNote={false} />
                                 className="font-extrabold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
                             >
                                 <TaskPillText
@@ -4963,6 +4966,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                     </span>
                                                                 )}
                                                             </>
+                                                        <TaskWhatsAppMarks task={ev.task} userLanguage={systemLanguage} showNote={false} />
                                                         ) : (
                                                             <span className="text-micro font-bold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded-md">
                                                                 <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />

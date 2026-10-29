@@ -8,7 +8,7 @@ import {
   Calendar, ArrowUp, ArrowDown, ArrowUpDown, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
-  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
+  ChevronLeft, ChevronRight, Milestone, MessageCircle, Coins, Archive, ArchiveRestore, Settings,
   AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
@@ -63,6 +63,7 @@ import { isOutgoingMail } from "../utils/mailTimeline";
 import { FiledMailBody, MailAccountBadge } from "./FiledMail";
 import { fetchFiledMail, shouldReadStoredBody } from "../utils/filedMail";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
+import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo } from "../utils/leadActions";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
@@ -3277,6 +3278,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           cardBorder: "border-l-4 border-l-emerald-500 border-y-slate-200 border-r-slate-200",
           badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200"
         };
+      // Pushed in by WAAI (task created / done in a linked chat); never logged by hand.
+      case "whatsapp":
+        return {
+          dotBg: "bg-green-600 border-green-700 text-white shadow-md shadow-green-500/20",
+          cardBorder: "border-l-4 border-l-green-500 border-y-slate-200 border-r-slate-200",
+          badgeBg: "bg-green-50 text-green-700 border-green-200"
+        };
       case "appointment":
         return {
           dotBg: "bg-rose-600 border-rose-700 text-white shadow-md shadow-rose-500/20",
@@ -3303,6 +3311,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       // Automatic pipeline-state entry. It keeps the neutral slate default from
       // getEventColors — written by the system, not logged by a person.
       case "status_change": return <Milestone className="h-3 w-3 stroke-[2.5]" />;
+      case "whatsapp": return <MessageCircle className="h-3 w-3 stroke-[2.5]" />;
       default: return <Clock className="h-3 w-3 stroke-[2.5]" />;
     }
   };
@@ -3618,7 +3627,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {/* Phone & Email */}
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="type-overline text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.phone")}</label>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="type-overline text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.phone")}</label>
+                    {!isEditingProfile && (() => {
+                      // A client profile gathers the records of one customer; the chip looks up the client record's family.
+                      const record = activeClient.associatedLeads.find((l) => (l.id || "").startsWith("client-")) ?? activeClient.associatedLeads[0];
+                      return record ? <WhatsAppChip lead={{ ...record, phone: activeClient.phone }} leads={leads} userLanguage={systemLanguage} /> : null;
+                    })()}
+                  </div>
                   <input
                     type="text"
                     required
@@ -4538,6 +4554,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     );
                                   })()}
                                   </TimelineCollapsible>
+                                  {event.externalUrl && <OpenInChatLink path={event.externalUrl} userLanguage={systemLanguage} />}
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
@@ -4730,6 +4747,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     );
                                   })()}
                                   </TimelineCollapsible>
+                                  {event.externalUrl && <OpenInChatLink path={event.externalUrl} userLanguage={systemLanguage} />}
                                   <FiledMailBody event={event} language={systemLanguage} />
 
                                   {/* Extra values */}

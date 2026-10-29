@@ -67,6 +67,8 @@ import { startViewSizeWatcher } from "./utils/viewSize";
 import { baselineOf, diffRecords, skipHoldsBaseline, skipIsLostWork, type RecordBaseline } from "./utils/syncDiff";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
+import { WhatsAppLinksContext } from "./hooks/useWhatsAppLinks";
+import { EMPTY_WHATSAPP_DATA, parseWhatsAppData, sameWhatsAppData, type WhatsAppData } from "./utils/whatsappLinks";
 import { adoptableSessionUser } from "./utils/sessionUser";
 import { parseUnifiedEntryKey, pendingDeletionIds, pendingDeletionKeys, pendingDeletionRecords, unifiedEntryKey, withoutPendingDeletions } from "./utils/pendingDeletions";
 import { createUndoQueue } from "./utils/undoQueue";
@@ -760,6 +762,8 @@ function App() {
   }, []);
   // What the server withheld from this session (sync.php `readScope`).
   const [readScope, setReadScope] = useState<ReadScope>(EMPTY_READ_SCOPE);
+  // WhatsApp chats WAAI paired with clients, leads and projects. Read-only: never pushed back.
+  const [whatsAppData, setWhatsAppData] = useState<WhatsAppData>(EMPTY_WHATSAPP_DATA);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -2170,6 +2174,11 @@ ${log.payload || ''}
     setListFilter: (key, value) => setListFilterRef.current(key, value)
   }), [userPrefs]);
 
+  const whatsAppContext = useMemo(
+    () => ({ ...whatsAppData, viewerId: currentUser?.id ?? null }),
+    [whatsAppData, currentUser?.id],
+  );
+
   const errorSidebarEnabled = userPrefs.errorSidebarEnabled;
 
   // The appearance and the palette live in two places on purpose: localStorage,
@@ -2694,6 +2703,10 @@ ${log.payload || ''}
       {
         const incomingScope = parseReadScope(data.readScope);
         setReadScope((prev) => (sameReadScope(prev, incomingScope) ? prev : incomingScope));
+      }
+      {
+        const incomingWa = parseWhatsAppData(data.whatsappLinks, data.whatsappNumbers);
+        setWhatsAppData((prev) => (sameWhatsAppData(prev, incomingWa) ? prev : incomingWa));
       }
       if (data.leads && Array.isArray(data.leads)) {
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
@@ -4480,6 +4493,7 @@ ${log.payload || ''}
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
     <ReadScopeContext.Provider value={readScope}>
+    <WhatsAppLinksContext.Provider value={whatsAppContext}>
     <ProjectStatusesProvider value={projectStatuses}>
     <OrderStatusesProvider value={orderStatuses}>
     <TaskSettingsProvider value={taskSettings}>
@@ -5088,6 +5102,7 @@ ${log.payload || ''}
     </TaskSettingsProvider>
     </OrderStatusesProvider>
     </ProjectStatusesProvider>
+    </WhatsAppLinksContext.Provider>
     </ReadScopeContext.Provider>
     </UserPrefsContext.Provider>
   );
