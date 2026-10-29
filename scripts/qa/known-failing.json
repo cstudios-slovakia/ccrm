@@ -82,11 +82,6 @@
       "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
     },
     {
-      "file": "crawler.spec.ts",
-      "title": "System Settings",
-      "reason": "Same intermittent finding as the entries above, now in the \"MENA\" currency dropdown (CI run 339): the option click times out after 2.5 s, yet the screenshot afterwards shows the option applied and the panel closed. Hypothesis: on a starved runner the click lands after Playwright gave up. Did not reproduce locally in 6 parallel runs. Raise the click timeout in uiExplorer.ts, or re-check the trigger before recording, once a run reproduces it."
-    },
-    {
       "file": "projectAutosave.spec.ts",
       "title": "an edit made just before leaving is still saved",
       "reason": "Intermittent: after rename + Back to list the project stays open (project-save-state present). Failed in 3 of 5 CI runs, so it passes at times. Either the late save reopens the project (the regression this test guards) or Back is lost. Look at the autosave/back race in ProjectDetailsView."
