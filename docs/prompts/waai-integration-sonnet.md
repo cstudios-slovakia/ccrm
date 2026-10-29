@@ -38,8 +38,7 @@ Each repository's own `CLAUDE.md`/`AGENTS.md` rules apply to changes in that rep
 
 Asked in one message; answers so far:
 
-1. **D4** — WAAI base branch: `feat/clickup-sync` or `main`? **Still open — needed before
-   phase 3.**
+1. **D4** — WAAI base branch: **`main`** (decided 2026-10-29). `feat/ccrm-integration` was created from it.
 2. **D5** — CCRM base branch: **`1.13-nectarine`** (decided, see above).
 3. **D7** — relax CCRM's CSP to `frame-src 'self' https:`? Not needed before phase 7 — ask
    then.
@@ -54,17 +53,25 @@ ask then.
 
 | Phase | Status |
 |---|---|
-| 0 | CCRM worktree `../ccrm-waai` on `1.13-nectarine`. WAAI branch not created yet (waits for D4). |
+| 0 | CCRM worktree `../ccrm-waai` on `1.13-nectarine`. WAAI branch `feat/ccrm-integration` created from `main` (D4). |
 | 1 | Done — see "Phase 1 notes" below and the changelog entry. |
 | 2 | Done (v1.13.15-Nectarine) — see "Phase 2 notes" and spec §4.1 "As built (phase 2)". |
-| 3–8 | Not started. Phase 3 waits for D4 (WAAI base branch). |
+| 3 | Done, **stopped for review** — see "Phase 3 notes" and spec §4.3 "As built (phase 3)". Also v1.13.16-Nectarine: a date the chat takes back falls to today + 7 days again (unless a CCRM user moved it). D9 confirmed: no workflows, e-mails or ticket auto-resolve for WAAI tasks. |
+| 4–8 | Not started. |
+
+### Phase 3 notes
+
+- WAAI branch `feat/ccrm-integration` (from `main`), one commit: string CRM ids end to end (Prisma migration, `crm-client`, `crm-sync`, Settings → CRM types), `CRM_ID_FORMAT=integer` for all-inclusive-crm, docs. Nothing is pushed.
+- End to end against a scratch CCRM and a scratch Postgres database: 18/18 (list in spec §4.3 "As built (phase 3)"). Scratch data removed.
+- The WAAI checkout is shared: another session had uncommitted changes in `packages/jobs/src/wa-bus.ts` (WhatsApp message editing). They are not part of this phase and were not committed.
+- Phase 4 starts with the §4.4 pairing rules and the directory; the task payload's `lead_id` / `project_id` / `start` are still unused.
 
 ### Phase 2 notes (what differs from the spec)
 
 - Full list of the as-built wire shapes, the date/completion rules and D9 are in the spec
   (§4.1 "As built (phase 2)"). In short: absent `lead_id`/`project_id` = untouched, `null` =
   cleared; a first push with no date stores today + 7 days and is marked "not stated in chat"
-  (`dueInferred` in the sync response); completing a task that needs a conclusion is 422
+  (`dueInferred` in the sync response; a date the chat later takes back falls to the default again, v1.13.16); completing a task that needs a conclusion is 422
   `completion_refused` for both `PUT` and `/complete`.
 - The task `url` is `<base>#tasks?task=<id>`. The SPA does not open a task from that link yet —
   it needs `TaskDashboardView` to read `?task=`, which belongs with the task badges (phase 6).
