@@ -60,7 +60,15 @@ ask then.
 | 4 | Done (v1.13.17-Nectarine), **no stop required** - see "Phase 4 notes" and spec §4.1 / §4.3 "As built (phase 4)". The fresh-database migration is fixed and the localised messages are in. |
 | 5 | Done (v1.13.18-Nectarine), **no stop required** — see "Phase 5 notes" and spec §4.6 "As built (phase 5)". |
 | 6 | Done (v1.13.19-Nectarine), **stopped for review** — see "Phase 6 notes" and spec §4.8 "As built (phase 6)". Review screenshots (light and dark) were **not** captured: Peter said to skip them. |
-| 7–8 | Not started. |
+| 7 | Done (v1.13.21-Nectarine), **no stop required** — see "Phase 7 notes" and spec §4.7 "As built (phase 7)". D7 decided: `frame-src 'self' https:`. The manual browser pass with the real WAAI was not run. |
+| 8 | Not started. |
+
+### Phase 7 notes
+
+- CCRM (`1.13-nectarine`): the `whatsapp` module and permission, `WhatsAppView` (kept alive after the first open), `api/waai_sso.php`, the sign-in secret in Settings → Integrations → WhatsApp (WAAI), the sidebar badge, the CSP `frame-src 'self' https:`. WAAI (`feat/ccrm-integration`, separate worktree `../waai-ccrm`): the `ccrm` SSO provider and `users.crm_user_id`, `/embed/sso`, embed mode and the postMessage bridge, the Caddy `frame-ancestors`, `/open` with the `check_number` bus message, the mapping table in Settings → CRM. Nothing is pushed.
+- Verification: see the spec. **Not done:** a run against the real WAAI in a browser (needs Postgres, Redis and a free machine; the machine was out of RAM), Firefox/Safari, a GIF. The stand-in browser spec and the unit/integration tests cover the protocol, the token and the permission.
+- Phase 8 starts with: `CCRM_SSO_SECRET` / `CCRM_ORIGIN` / `WAAI_EMBED_ORIGINS` in WAAI's `.env.production`, the SSO mapping of each CRM user in WAAI, and a real-browser pass on the VPS (Chrome + Firefox) before the module is switched on for anyone but an administrator.
+- A mistake to know about: none new. The `ccrm-waai` worktree is shared with the time-tracking session; its hunks (`TaskDashboardView`, `TaskEditDrawer`, `schema.php`, `time_entries*`) were left out of the phase 7 commits.
 
 ### Phase 6 notes
 

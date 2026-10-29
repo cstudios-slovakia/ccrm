@@ -11,6 +11,7 @@ import {
   LifeBuoy,
   ListTodo,
   Mail,
+  MessageCircle,
   Package,
   PencilLine,
   Share2,
@@ -86,6 +87,7 @@ const ICONS: Record<SectionVisualId, IconType> = {
   sai: FlockIcon,
   email: Mail,
   social_media: Share2,
+  whatsapp: MessageCircle,
   files: FolderOpen,
   updates: Sparkles,
 };
@@ -122,6 +124,7 @@ export const SECTION_VISUALS: Record<SectionVisualId, SectionVisual> = {
   sai: build("sai"),
   email: build("email"),
   social_media: build("social_media"),
+  whatsapp: build("whatsapp"),
   files: build("files"),
   updates: build("updates"),
 };

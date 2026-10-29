@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { WAAI_SCOPES, isIpOrCidr, normalizeEmbedOrigin, parseIpList, waaiEnvSnippet } from "./waaiIntegration.ts";
+import { WAAI_SCOPES, isIpOrCidr, normalizeEmbedOrigin, parseIpList, waaiEnvSnippet, waaiSsoEnvSnippet } from "./waaiIntegration.ts";
 
 test("isIpOrCidr accepts addresses and CIDR blocks of both families", () => {
   for (const ok of ["10.0.0.1", "172.31.250.0/24", "0.0.0.0/0", "255.255.255.255", "2001:db8::/32", "::1", "fe80::1", "::ffff:10.0.0.1"]) {
@@ -51,6 +51,14 @@ test("normalizeEmbedOrigin refuses paths, credentials, queries and non-URLs", ()
 test("waaiEnvSnippet writes the three WAAI variables, with a placeholder until a token exists", () => {
   assert.equal(waaiEnvSnippet("https://crm.example.sk/", "ccrm_int_x"), "CRM_BASE_URL=https://crm.example.sk\nCRM_API_TOKEN=ccrm_int_x\nCRM_DRY_RUN=1");
   assert.match(waaiEnvSnippet("https://crm.example.sk"), /CRM_API_TOKEN=<token>/);
+});
+
+test("waaiSsoEnvSnippet names the CRM origin twice and lists a rotating secret new-first", () => {
+  assert.equal(
+    waaiSsoEnvSnippet("https://crm.example.sk/", "new"),
+    "CCRM_ORIGIN=https://crm.example.sk\nCCRM_SSO_SECRET=new\nWAAI_EMBED_ORIGINS=https://crm.example.sk",
+  );
+  assert.match(waaiSsoEnvSnippet("https://crm.example.sk", "new", "old"), /CCRM_SSO_SECRET=new,old\n/);
 });
 
 test("the scope list is the one the server grants", () => {

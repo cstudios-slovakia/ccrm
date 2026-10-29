@@ -33,6 +33,7 @@ const MODULES = [
   { name: 'Overview', hash: '#overview' },
   { name: 'Tasks', hash: '#tasks' },
   { name: 'Time Tracking', hash: '#time-tracking' },
+  { name: 'WhatsApp', hash: '#whatsapp' },
   { name: 'System Settings', hash: '#settings' },
   { name: 'Personal Settings', hash: '#personal-settings' },
 ];

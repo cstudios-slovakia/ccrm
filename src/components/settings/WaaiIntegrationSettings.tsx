@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Check, Copy, KeyRound, LoaderCircle, Trash2 } from "lucide-react";
 import type { Language } from "../../utils/translations";
-import { WAAI_SCOPES, normalizeEmbedOrigin, parseIpList, waaiEnvSnippet } from "../../utils/waaiIntegration";
+import { WAAI_SCOPES, normalizeEmbedOrigin, parseIpList, waaiEnvSnippet, waaiSsoEnvSnippet } from "../../utils/waaiIntegration";
 import { SectionCard, SettingsGroup } from "./SectionCard";
 import { useConfirmDialog } from "../ui/ConfirmDialog";
 
@@ -36,7 +36,7 @@ interface Status {
 }
 
 /** What the endpoint answers: the status, plus the one-time token after issuing, or the refused fields. */
-type Reply = Status & { success?: boolean; token?: string; fields?: Record<string, string> };
+type Reply = Status & { success?: boolean; token?: string; sso_secret?: string; fields?: Record<string, string> };
 
 const ENDPOINT = "/api/integration_admin.php";
 
@@ -133,6 +133,9 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
   const [expiry, setExpiry] = useState("");
   // The plaintext token lives in the browser only until the admin leaves or dismisses it.
   const [newToken, setNewToken] = useState<string | null>(null);
+  // Same for a new sign-in secret.
+  const [newSecret, setNewSecret] = useState<string | null>(null);
+  const [rotating, setRotating] = useState(false);
   // Earliest expiry the date picker offers: tomorrow (fixed on mount, so render stays pure).
   const [minExpiry] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 10));
 
@@ -248,6 +251,39 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
     const r = await call({ action: "revoke_token", id: tok.id });
     if (r.ok) applyStatus(r.data);
     else showToast(t("Could not revoke the token.", "Token sa nepodarilo odvolať.", "A tokent nem sikerült visszavonni."), "error");
+  };
+
+  const rotateSecret = async () => {
+    if (status?.client?.has_sso_secret) {
+      const ok = await confirm({
+        title: t("Create a new sign-in secret?", "Vytvoriť nový prihlasovací kľúč?", "Új belépési kulcsot hoz létre?"),
+        message: t(
+          "The old one stops working in CCRM at once. People already inside WhatsApp stay signed in; the next sign-in needs the new secret in WAAI. Put it in WAAI first as `new,old` if you want no gap.",
+          "Starý okamžite prestane fungovať v CRM. Kto je už vo WhatsAppe, zostane prihlásený; ďalšie prihlásenie potrebuje nový kľúč vo WAAI. Ak nechcete medzeru, vložte ho do WAAI najprv ako `nový,starý`.",
+          "A régi azonnal megszűnik működni a CCRM-ben. Aki már a WhatsAppban van, bejelentkezve marad; a következő belépéshez az új kulcs kell a WAAI-ban. Ha nem akar kiesést, előbb `új,régi` alakban tegye a WAAI-ba."
+        ),
+        confirmLabel: t("Create new secret", "Vytvoriť nový kľúč", "Új kulcs létrehozása"),
+        cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setRotating(true);
+    try {
+      const r = await call({ action: "rotate_sso_secret" });
+      if (r.ok && r.data.sso_secret) {
+        applyStatus(r.data);
+        setNewSecret(r.data.sso_secret);
+      } else if (r.status === 409) {
+        showToast(t("Save the connection settings first.", "Najprv uložte nastavenia pripojenia.", "Először mentse a kapcsolat beállításait."), "error");
+      } else {
+        showToast(t("Could not create the secret.", "Kľúč sa nepodarilo vytvoriť.", "A kulcsot nem sikerült létrehozni."), "error");
+      }
+    } catch {
+      showToast(t("Could not create the secret.", "Kľúč sa nepodarilo vytvoriť.", "A kulcsot nem sikerült létrehozni."), "error");
+    } finally {
+      setRotating(false);
+    }
   };
 
   if (loadFailed) {
@@ -466,6 +502,60 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
               ? t(`WAAI last called CCRM on ${fmtDate(lastUsed, activeLang)}.`, `WAAI naposledy volal CRM ${fmtDate(lastUsed, activeLang)}.`, `A WAAI utoljára ${fmtDate(lastUsed, activeLang)} hívta a CCRM-et.`)
               : t("WAAI has not called CCRM yet.", "WAAI zatiaľ nevolal CRM.", "A WAAI még nem hívta a CCRM-et.")}
           </p>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title={t("Sign-in to the WhatsApp module", "Prihlásenie do modulu WhatsApp", "Belépés a WhatsApp modulba")}
+        description={t(
+          "The WhatsApp module shows WAAI inside CCRM and signs each user in as the WAAI user they are linked to. CCRM signs a 60-second token with this secret; WAAI checks it with the same secret. It is separate from the access token above and is shown once.",
+          "Modul WhatsApp zobrazí WAAI priamo v CRM a prihlási každého používateľa ako používateľa WAAI, s ktorým je prepojený. CRM podpíše 60-sekundový token týmto kľúčom a WAAI ho overí rovnakým kľúčom. Je oddelený od prístupového tokenu vyššie a zobrazí sa raz.",
+          "A WhatsApp modul a WAAI-t a CCRM-ben jeleníti meg, és mindenkit azon WAAI-felhasználóként léptet be, akihez kötve van. A CCRM ezzel a kulccsal ír alá egy 60 másodperces tokent, a WAAI ugyanezzel a kulccsal ellenőrzi. Független a fenti hozzáférési tokentől, és egyszer látható."
+        )}
+        action={
+          <button type="button" className={primaryBtn} disabled={rotating || !hasClient} onClick={rotateSecret}>
+            {rotating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+            {status.client?.has_sso_secret ? t("Create new secret", "Vytvoriť nový kľúč", "Új kulcs létrehozása") : t("Create secret", "Vytvoriť kľúč", "Kulcs létrehozása")}
+          </button>
+        }
+      >
+        {!hasClient && (
+          <p className="type-body text-slate-500">{t("Save the connection settings first, then create the secret.", "Najprv uložte nastavenia pripojenia, potom vytvorte kľúč.", "Először mentse a kapcsolat beállításait, utána hozza létre a kulcsot.")}</p>
+        )}
+        {hasClient && (
+          <p className="type-body text-slate-600">
+            {status.client?.has_sso_secret
+              ? t("A secret is set.", "Kľúč je nastavený.", "A kulcs be van állítva.")
+              : t("No secret yet: the WhatsApp module cannot sign anyone in.", "Zatiaľ žiadny kľúč: modul WhatsApp nemôže nikoho prihlásiť.", "Még nincs kulcs: a WhatsApp modul nem tud senkit beléptetni.")}
+            {" "}
+            {status.client?.embed_url
+              ? ""
+              : t("Enter the WAAI address above as well.", "Zadajte vyššie aj adresu WAAI.", "Adja meg fent a WAAI címét is.")}
+          </p>
+        )}
+
+        {newSecret && (
+          <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="type-label text-amber-900">
+              {t("Copy it now. It is not shown again.", "Skopírujte ho hneď. Znova sa nezobrazí.", "Másolja ki most. Többé nem jelenik meg.")}
+            </p>
+            <p className="type-meta text-amber-900">
+              {t(
+                "Put these lines in WAAI's .env (the web container, and caddy for the last one), then restart them. To swap without a gap, write CCRM_SSO_SECRET as new,old first.",
+                "Tieto riadky vložte do .env súboru WAAI (kontajner web a pre posledný riadok caddy) a reštartujte ich. Ak chcete kľúč vymeniť bez prerušenia, najprv zapíšte CCRM_SSO_SECRET ako nový,starý.",
+                "Ezeket a sorokat tegye a WAAI .env fájljába (a web konténerhez, az utolsót pedig a caddyhez), majd indítsa újra őket. Kiesés nélküli cseréhez az CCRM_SSO_SECRET-et írja előbb új,régi alakban."
+              )}
+            </p>
+            <div className="flex flex-wrap items-start gap-2">
+              <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl bg-white px-3 py-2 font-mono text-caption text-slate-800" data-testid="waai-new-secret">{waaiSsoEnvSnippet(window.location.origin, newSecret)}</pre>
+              <CopyButton text={waaiSsoEnvSnippet(window.location.origin, newSecret)} t={t} />
+            </div>
+            <div>
+              <button type="button" className={secondaryBtn} onClick={() => setNewSecret(null)}>
+                {t("I have saved it", "Uložil som si ho", "Elmentettem")}
+              </button>
+            </div>
+          </div>
         )}
       </SectionCard>
     </div>

@@ -45,6 +45,7 @@ export type SectionVisualId =
   | "sai"
   | "email"
   | "social_media"
+  | "whatsapp"
   | "files"
   | "updates";
 
@@ -90,6 +91,7 @@ export const SECTION_PALETTE: Record<SectionVisualId, SectionPaletteEntry> = {
 
   email: entry("email", "communication", "Mail", "#be123c"),
   social_media: entry("social_media", "communication", "Share2", "#e11d48"),
+  whatsapp: entry("whatsapp", "communication", "MessageCircle", "#15803d"),
 
   files: entry("files", "reference", "FolderOpen", "#b45309"),
   updates: entry("updates", "reference", "Sparkles", "#d97706"),

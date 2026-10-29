@@ -71,6 +71,13 @@ const withTasksSection = (layout: string[]): string[] => {
     const at = next.indexOf("tasks");
     next.splice(at === -1 ? next.length : at + 1, 0, "time-tracking");
   }
+  // WhatsApp arrived later still: behind Time tracking. Roles without the `whatsapp` permission never see it
+  // (canOpenRoute), and admins can hide it for everyone in Settings -> Visible modules.
+  if (!next.includes("whatsapp")) {
+    next = [...next];
+    const at = next.indexOf("time-tracking");
+    next.splice(at === -1 ? next.length : at + 1, 0, "whatsapp");
+  }
   // My employment used to be its own nav item; it now lives as a tab of People (`employees`).
   if (next.includes("my-employment")) {
     next = next.filter((id) => id !== "my-employment");
@@ -110,6 +117,8 @@ interface SidebarProps {
   defaultPage?: string;
   onSaveDefaultPage?: (pageId: string) => void;
   disabledModules?: string[];
+  /** Unread counts by module id (WhatsApp: chats with something unread). */
+  badges?: Record<string, number>;
 }
 
 export const getSidebarItemColors = (item: any, isActive: boolean) => {
@@ -139,6 +148,8 @@ interface SidebarDockButtonProps {
   isActive: boolean;
   isExpanded: boolean;
   isDockMode: boolean;
+  /** A count on the icon (0 or absent = none). */
+  badge?: number;
   mouseY: MotionValue<number>;
   widthClasses: {
     collapsed: string;
@@ -170,6 +181,7 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
   isActive,
   isExpanded,
   isDockMode,
+  badge,
   mouseY,
   widthClasses,
   dragOverIndex,
@@ -283,14 +295,24 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
         className={commonClass}
         title={!isDockMode || isExpanded ? item.label : undefined}
       >
-        <Icon
-          className={cn(
-            widthClasses.iconSize,
-            "shrink-0 transition-transform duration-200",
-            "shrink-0"
-          )}
-          style={{ color: item.color || item.customColor }}
-        />
+        <span className="relative shrink-0 inline-flex">
+          <Icon
+            className={cn(
+              widthClasses.iconSize,
+              "shrink-0 transition-transform duration-200",
+              "shrink-0"
+            )}
+            style={{ color: item.color || item.customColor }}
+          />
+          {badge ? (
+            <span
+              aria-label={String(badge)}
+              className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-emerald-600 text-white text-micro font-bold leading-4 text-center shadow-sm"
+            >
+              {badge > 99 ? "99+" : badge}
+            </span>
+          ) : null}
+        </span>
         {innerLabel}
       </motion.button>
     );
@@ -445,7 +467,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSaveCustomDashboards,
   defaultPage,
   onSaveDefaultPage,
-  disabledModules = []
+  disabledModules = [],
+  badges
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -533,6 +556,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "dashboard",
       "tasks",
       "time-tracking",
+      "whatsapp",
       "overview",
       "projects",
       "tickets",
@@ -587,6 +611,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
       { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
       { id: "time-tracking", label: systemLanguage === "sk" ? "Evidencia času" : systemLanguage === "hu" ? "Időkövetés" : "Time tracking", icon: Icons.Timer || ListTodo, color: "#0d9488" },
+      { id: "whatsapp", label: "WhatsApp", icon: Icons.MessageCircle || Mail, color: "#16a34a" },
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
       { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)" },
       { id: "tickets", label: getTranslation(systemLanguage, "sidebar.tickets"), icon: Icons.LifeBuoy || Icons.Ticket || LayoutDashboard, color: "#6366f1" },
@@ -1562,6 +1587,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 isActive={isActive}
                 isExpanded={isExpanded}
                 isDockMode={isDockMode}
+                badge={badges?.[item.id]}
                 mouseY={dockMouseY}
                 widthClasses={widthClasses}
                 dragOverIndex={dragOverIndex}

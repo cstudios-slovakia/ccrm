@@ -5,6 +5,8 @@ import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
 import { TimeTrackingProvider } from "./hooks/useTimeTracking";
 import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
+import { WhatsAppView } from "./components/WhatsAppView";
+import { crmHashForRecord } from "./utils/waaiEmbed";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
@@ -444,7 +446,7 @@ function App() {
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "whatsapp", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -456,6 +458,12 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
+  // The WhatsApp module keeps its frame alive (hidden) once opened, so coming back is instant and the badge stays live.
+  const [whatsappOpened, setWhatsappOpened] = useState(false);
+  const [whatsappUnread, setWhatsappUnread] = useState(0);
+  useEffect(() => {
+    if (activeTab.split("?")[0].split("/")[0].toLowerCase() === "whatsapp") setWhatsappOpened(true);
+  }, [activeTab]);
   const [isInitialSyncResolved, setIsInitialSyncResolved] = useState(false);
 
   // Executive Copilot State
@@ -4117,6 +4125,18 @@ ${log.payload || ''}
             leadStateParents={leadStateParents}
           />
         );
+      case "whatsapp":
+        // The frame itself is the persistent host in the workspace (see whatsappHost); the route only reveals it.
+        return whatsappEnabled ? null : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => { setCurrentUser(null); window.location.href = "/"; }}
+          />
+        );
       case "time-tracking":
         return timeDeps && timeEnabled ? (
           <TimeTrackingView
@@ -4444,6 +4464,22 @@ ${log.payload || ''}
 
   // Everything the Time Tracking module needs from the rest of the app (see components/timeTracking/shared.tsx).
   const timeEnabled = !!currentUser?.id && access.can("time_tracking") && !(integrationsConfig?.disabledModules || []).includes("time-tracking");
+  const whatsappEnabled = !!currentUser?.id && access.can("whatsapp") && !(integrationsConfig?.disabledModules || []).includes("whatsapp");
+  const whatsappRoute = parseAppHash(activeTab);
+  const whatsappActive = whatsappRoute.route.split("/")[0].toLowerCase() === "whatsapp";
+  const whatsappHost = whatsappEnabled && currentUser && (whatsappOpened || whatsappActive) ? (
+    <WhatsAppView
+      active={whatsappActive}
+      route={whatsappRoute.route}
+      params={whatsappRoute.params}
+      language={userLanguage}
+      currentUserId={String(currentUser.id)}
+      onUnread={setWhatsappUnread}
+      onOpenRecord={(kind, id) => {
+        window.location.hash = crmHashForRecord(kind, id, (leadId) => leads.find((l) => l.id === leadId));
+      }}
+    />
+  ) : null;
   const timeDeps: TimeDeps | null = currentUser ? {
     language: userLanguage,
     currency: systemCurrency || "EUR",
@@ -4617,6 +4653,7 @@ ${log.payload || ''}
               defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
               onSaveDefaultPage={handleSaveDefaultPage}
               disabledModules={integrationsConfig?.disabledModules || []}
+              badges={{ whatsapp: whatsappUnread }}
             />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
@@ -4766,7 +4803,8 @@ ${log.payload || ''}
                 </Suspense>
               </ErrorBoundary>
             </div>
-            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center type-overline text-slate-400 select-none">
+            {whatsappHost}
+            <footer className={`mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center type-overline text-slate-400 select-none${whatsappActive ? " hidden" : ""}`}>
               <span>
                 v{VERSION}
                 {cerpVersion ? ` with ${cerpVersion.startsWith("v") ? cerpVersion : `v${cerpVersion}`}` : ""}

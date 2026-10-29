@@ -539,6 +539,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       });
     }
 
+    items.push({
+      id: "whatsapp",
+      label: "WhatsApp",
+      description: t("Your WhatsApp chats, digest & tasks inside the CRM", "Vaše WhatsApp chaty, prehľad a úlohy priamo v CRM", "WhatsApp-csevegések, összefoglaló és feladatok a CRM-ben"),
+      icon: Icons.MessageCircle || Icons.Mail,
+      color: "#16a34a",
+      bgColor: "rgba(22, 163, 74, 0.12)",
+      defaultSection: "collaboration"
+    });
+
     // 4. SYSTEM & PERSONAL
     items.push({
       id: "personal-settings",

@@ -114,6 +114,8 @@ if (!function_exists('ccrm_permission_sections')) {
                 $toggle('time_tracking_costs', 'nothing', 'nothing', ['key' => 'time_tracking', 'level' => 'view']),
                 $toggle('time_tracking_salary_report', 'nothing', 'nothing', ['key' => 'time_tracking', 'level' => 'view']),
             ]],
+            // WAAI (WhatsApp) shown inside the CRM. Nobody has it until an administrator grants it; admins always do.
+            ['id' => 'whatsapp', 'permissions' => [$access('whatsapp', 'nothing', 'nothing')]],
             ['id' => 'files', 'permissions' => [
                 $access('files', 'edit', 'nothing', ['keys' => ['files.view', 'files.create'], 'edit' => ['files.create']]),
                 $toggle('files.delete', 'edit', 'nothing', ['key' => 'files', 'level' => 'edit'], ['files.delete']),
@@ -412,6 +414,7 @@ if (!function_exists('ccrm_permission_sections')) {
             'time_tracking_team' => 'nothing',
             'time_tracking_costs' => 'nothing',
             'time_tracking_salary_report' => 'nothing',
+            'whatsapp' => 'nothing',
             'files' => 'nothing',
             'files.delete' => 'nothing',
             'email' => 'nothing',

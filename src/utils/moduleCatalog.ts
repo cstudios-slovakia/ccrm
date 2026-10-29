@@ -447,6 +447,20 @@ export function buildModuleCatalog(
       bgColor: "rgba(180, 83, 9, 0.12)",
     },
     {
+      id: "whatsapp",
+      category: "collaboration",
+      title: t("WhatsApp", "WhatsApp", "WhatsApp"),
+      description: t("Your WhatsApp chats, digest and tasks, inside the CRM", "Vaše WhatsApp chaty, prehľad a úlohy priamo v CRM", "WhatsApp-csevegései, összefoglalója és feladatai a CRM-ben"),
+      longDescription: t(
+        "The full WAAI app inside the CRM, already signed in as you: chats with a composer and voice notes, the AI digest, tasks and the AI lookup. Chats are paired with your clients, leads and projects, so a client's page opens its chat in one click, and the tasks WAAI finds in a conversation land on the right client and project.",
+        "Celá aplikácia WAAI priamo v CRM, už prihlásená ako vy: chaty s písaním správ a hlasovými správami, AI prehľad, úlohy a AI vyhľadávanie. Chaty sú spárované s vašimi klientmi, leadmi a projektmi, takže stránka klienta otvorí jeho chat jedným klikom a úlohy, ktoré WAAI nájde v konverzácii, pristanú pri správnom klientovi a projekte.",
+        "A teljes WAAI alkalmazás a CRM-ben, már az Ön nevében belépve: csevegések íróval és hangüzenetekkel, az AI-összefoglaló, feladatok és az AI-keresés. A csevegések párosítva vannak az ügyfelekkel, érdeklődőkkel és projektekkel, így az ügyfél oldaláról egy kattintással megnyílik a csevegése, a WAAI által a beszélgetésben talált feladatok pedig a megfelelő ügyfélhez és projekthez kerülnek.",
+      ),
+      icon: Icons.MessageCircle || PencilLine,
+      color: "#16a34a",
+      bgColor: "rgba(22, 163, 74, 0.12)",
+    },
+    {
       id: "email",
       category: "collaboration",
       title: t("Mail Client", "Pošta", "Levelezés"),

@@ -66,6 +66,20 @@ export function normalizeEmbedOrigin(input: string): string | null {
 }
 
 /**
+ * The lines for single sign-on in WAAI's `.env` (the `web` container for the first two, `caddy` for the third):
+ * who the CRM is, the secret it signs with, and which origin may frame WAAI. While a secret is being swapped,
+ * WAAI takes two separated by a comma: the new one first, the old one until nobody needs it.
+ */
+export function waaiSsoEnvSnippet(crmOrigin: string, secret: string, previousSecret?: string | null): string {
+  const origin = crmOrigin.replace(/\/+$/, "");
+  return [
+    `CCRM_ORIGIN=${origin}`,
+    `CCRM_SSO_SECRET=${previousSecret ? `${secret},${previousSecret}` : secret}`,
+    `WAAI_EMBED_ORIGINS=${origin}`,
+  ].join("\n");
+}
+
+/**
  * The lines to put in WAAI's `.env` (the `ai-worker` container only). `CRM_DRY_RUN=1` is the first rollout step:
  * WAAI logs what it would send and sends nothing.
  */

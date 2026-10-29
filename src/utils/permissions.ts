@@ -183,6 +183,11 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     ],
   },
   {
+    // WAAI (WhatsApp) shown inside the CRM. Nobody has it until an administrator grants it; admins always do.
+    id: "whatsapp",
+    permissions: [access("whatsapp", "nothing", "nothing")],
+  },
+  {
     id: "files",
     permissions: [
       access("files", "edit", "nothing", { keys: ["files.view", "files.create"], edit: ["files.create"] }),
@@ -345,6 +350,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   time_tracking_team: "nothing",
   time_tracking_costs: "nothing",
   time_tracking_salary_report: "nothing",
+  whatsapp: "nothing",
   files: "nothing",
   "files.delete": "nothing",
   email: "nothing",
@@ -449,6 +455,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   // old address of that tab.
   if (base === "employees" || base === "my-employment") return "people";
   if (base === "time-tracking") return "time_tracking";
+  if (base === "whatsapp") return "whatsapp";
   // SAI rehearses sales conversations against the lead / client base. It has no permission key of
   // its own; it follows leads so a role with no sales access (Employee) is not offered it.
   if (base === "sai") return "leads";

@@ -6,6 +6,7 @@
  * POST {action: save_client}    — create or update the client (config only, never secrets).
  * POST {action: issue_token}    — a new API token. The plaintext is in this one response and nowhere else.
  * POST {action: revoke_token}   — revoke one token by id.
+ * POST {action: rotate_sso_secret} — a new single sign-on secret. The plaintext is in this one response and nowhere else.
  *
  * The token-authenticated API itself is integration.php.
  */
@@ -271,6 +272,22 @@ try {
             ->execute([date('Y-m-d H:i:s'), $tok['id']]);
         ccrm_audit_log($pdo, $auditActor, 'integration.token_revoke', 'Revoked API token ' . $tok['id'] . ' (' . $tok['prefix'] . ')');
         ccrm_int_admin_reply(200, ccrm_int_admin_status($pdo));
+    }
+
+    if ($action === 'rotate_sso_secret') {
+        $row = ccrm_int_admin_client_row($pdo);
+        if (!$row) {
+            ccrm_int_admin_reply(409, ['success' => false, 'message' => 'Save the connection settings first.']);
+        }
+        // 256 bits, stored like the other CCRM secrets. WAAI needs it as CCRM_SSO_SECRET; while it is being
+        // swapped WAAI accepts two, comma separated, so nobody is signed out half way.
+        $secret = bin2hex(random_bytes(32));
+        $pdo->prepare("UPDATE `integration_clients` SET `sso_secret` = ? WHERE `id` = ?")
+            ->execute([ccrm_encrypt_secret($secret), $row['id']]);
+        ccrm_audit_log($pdo, $auditActor, 'integration.sso_secret_rotate', 'Rotated the single sign-on secret for ' . CCRM_INT_ADMIN_CODE);
+        $status = ccrm_int_admin_status($pdo);
+        $status['sso_secret'] = $secret;
+        ccrm_int_admin_reply(200, $status);
     }
 
     ccrm_int_admin_reply(400, ['success' => false, 'message' => 'Unknown action.']);

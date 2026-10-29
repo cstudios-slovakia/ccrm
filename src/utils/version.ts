@@ -1,4 +1,4 @@
-export const VERSION = "1.13.20-Nectarine";
+export const VERSION = "1.13.21-Nectarine";
 // Release codename ("Nectarine"), used to name the RAG assistant. Kept as its own
 // export because RagAiView reads it at module scope — dropping it silently named
 // the assistant `undefined`.

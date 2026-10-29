@@ -18,7 +18,7 @@
  *   CCRM_PROBE_KEEP=1 (leave the scratch copy in place).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const WEB = process.env.CCRM_PROBE_WEB_CONTAINER || 'crm';
@@ -1017,6 +1017,119 @@ async function timelineChecks(state) {
   check('event appears in client timeline from sync GET', te?.type === 'whatsapp' && te?.title === 'Nová ponuka z WhatsAppu' && te?.externalUrl === '/c/ckx8abc?m=ckm2xyz', JSON.stringify(clientObj?.timeline));
 }
 
+// ----------------------------------------------------------------------------- 2d. single sign-on for the WhatsApp module
+const SSO = `${BASE}/intprobe/api/waai_sso.php`;
+
+async function sso(session, { method = 'GET', headers = {} } = {}) {
+  const res = await fetch(SSO, { method, headers: { ...(session ? { Cookie: `CCRMSESSID=${session}` } : {}), ...headers } });
+  const raw = await res.text();
+  let json = null;
+  try { json = JSON.parse(raw); } catch { /* not JSON */ }
+  return { status: res.status, headers: res.headers, raw, json };
+}
+
+/** Decode and verify an HS256 token the way WAAI does; null when the signature is wrong. */
+function readToken(token, secret) {
+  const [h, p, s] = String(token).split('.');
+  if (!h || !p || !s) return null;
+  const expected = createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url');
+  if (expected !== s) return null;
+  return { header: JSON.parse(Buffer.from(h, 'base64url').toString()), claims: JSON.parse(Buffer.from(p, 'base64url').toString()) };
+}
+
+async function ssoChecks(state) {
+  const session = state.adminSession;
+  section('sign-in secret (admin endpoint)');
+  const viewerSession = await login(USERS.viewer[0] + '@probe.test');
+  const denied = await admin(viewerSession, { method: 'POST', body: { action: 'rotate_sso_secret' } });
+  check('a non-admin cannot create the secret -> 403', denied.status === 403, denied.status);
+  check('there is no secret yet', (await admin(session)).json?.client?.has_sso_secret === false);
+
+  const made = await admin(session, { method: 'POST', body: { action: 'rotate_sso_secret' } });
+  const secret = made.json?.sso_secret;
+  check('rotate_sso_secret returns a 256-bit secret once', made.status === 200 && /^[0-9a-f]{64}$/.test(secret ?? '') && made.json.client.has_sso_secret === true, made.raw);
+  state.ssoSecret = secret;
+  const stored = cell(`SELECT sso_secret FROM integration_clients WHERE code='waai'`);
+  check('it is stored encrypted, not in the clear', stored?.startsWith('enc:v1:') && !stored.includes(secret), stored?.slice(0, 20));
+  check('GET never repeats it', !(await admin(session)).raw.includes(secret));
+  check('the rotation is audited without the secret', (() => {
+    const row = cell(`SELECT detail FROM audit_log WHERE action='integration.sso_secret_rotate' ORDER BY id DESC LIMIT 1`);
+    return !!row && !row.includes(secret);
+  })());
+  const second = await admin(session, { method: 'POST', body: { action: 'rotate_sso_secret' } });
+  check('rotating again gives a different secret', /^[0-9a-f]{64}$/.test(second.json?.sso_secret ?? '') && second.json.sso_secret !== secret, second.raw);
+  state.ssoSecret = second.json.sso_secret;
+
+  section('sign-in token (waai_sso.php)');
+  check('no session -> 401', (await sso(null)).status === 401);
+  check('no session, POST -> 401', (await sso(null, { method: 'POST' })).status === 401);
+  const noPerm = await sso(viewerSession);
+  check('a user without the whatsapp permission -> 403', noPerm.status === 403 && noPerm.json?.code === 'forbidden', noPerm.raw);
+  const noPermPost = await sso(viewerSession, { method: 'POST' });
+  check('... and gets no token', noPermPost.status === 403 && !noPermPost.raw.includes('token"'), noPermPost.raw);
+
+  const status = await sso(session);
+  check('GET tells an administrator where WAAI is and that it can be managed', status.status === 200 && status.json.configured === true && status.json.embed_url === 'https://wa.example.sk' && status.json.can_manage === true && status.json.user_id === USERS.admin[0], status.raw);
+
+  const minted = await sso(session, { method: 'POST' });
+  const parsed = readToken(minted.json?.token, state.ssoSecret);
+  const now = Math.floor(Date.now() / 1000);
+  check('POST returns an HS256 token signed with the connection secret', minted.status === 200 && parsed?.header?.alg === 'HS256', minted.raw);
+  const k = parsed?.claims ?? {};
+  check('claims: issuer = this CCRM, audience waai, subject = the user, 60 seconds', k.iss === 'https://crm.test' && k.aud === 'waai' && k.sub === USERS.admin[0] && k.email === USERS.admin[0] + '@probe.test' && k.name === USERS.admin[1]
+    && k.exp - k.iat === 60 && Math.abs(k.iat - now) < 30 && /^[0-9a-f]{32}$/.test(k.jti ?? ''), JSON.stringify(k));
+  check('the old secret no longer verifies it', readToken(minted.json.token, secret) === null);
+  const again = await sso(session, { method: 'POST' });
+  check('every token has its own jti', again.status === 200 && readToken(again.json.token, state.ssoSecret)?.claims.jti !== k.jti);
+  check('no cookie, no caching', !again.headers.getSetCookie().some((c) => !c.startsWith('CCRMSESSID')) && /no-store/.test(again.headers.get('cache-control') ?? ''));
+  const cross = await sso(session, { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' } });
+  check('a cross-site request cannot ride the session', cross.status === 401 || cross.status === 403, cross.status);
+  const wrongMethod = await sso(session, { method: 'DELETE' });
+  check('another method -> 405', wrongMethod.status === 405, wrongMethod.status);
+
+  section('sign-in token: permission, configuration, rate limit');
+  const roles = JSON.stringify([
+    { name: 'Admin', permissions: {} },
+    { name: 'Viewer', permissions: {} },
+    { name: 'WaPerm', permissions: { whatsapp: 'view' } },
+  ]);
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(roles)});
+       DELETE FROM users WHERE id='intp-wa' OR email='intp-wa@probe.test';
+       INSERT INTO users (id,name,email,password_hash,role) VALUES ('intp-wa','Int Probe WA','intp-wa@probe.test','x','WaPerm');`);
+  const waSession = await login('intp-wa@probe.test');
+  const waGet = await sso(waSession);
+  check('a role with the whatsapp permission may use the module', waGet.status === 200 && waGet.json?.configured === true && waGet.json.can_manage === false, waGet.raw);
+  const waPost = await sso(waSession, { method: 'POST' });
+  check('... and gets a token for itself', waPost.status === 200 && readToken(waPost.json?.token, state.ssoSecret)?.claims.sub === 'intp-wa', waPost.raw);
+  const stillNo = await sso(viewerSession);
+  check('a role without it is still refused', stillNo.status === 403, stillNo.raw);
+  const waSync = await syncApi(waSession);
+  check('the sync GET now hands that role the WhatsApp links', waSync.status === 200 && waSync.json?.whatsappLinks?.length > 0, waSync.raw.slice(0, 200));
+
+  sql(`UPDATE integration_clients SET is_active=0 WHERE code='waai'`);
+  const off = await sso(session);
+  check('a disabled connection is "not configured"', off.status === 200 && off.json.configured === false && off.json.embed_url === null, off.raw);
+  const offPost = await sso(session, { method: 'POST' });
+  check('... and issues no token -> 409', offPost.status === 409 && offPost.json?.code === 'not_configured', offPost.raw);
+  sql(`UPDATE integration_clients SET is_active=1 WHERE code='waai'`);
+  sql(`UPDATE integration_clients SET sso_secret=NULL WHERE code='waai'`);
+  const noSecret = await sso(session, { method: 'POST' });
+  check('no secret -> 409, no token', noSecret.status === 409 && !noSecret.raw.includes('"token"'), noSecret.raw);
+  await admin(session, { method: 'POST', body: { action: 'rotate_sso_secret' } }).then((r) => { state.ssoSecret = r.json.sso_secret; });
+
+  sql(`DELETE FROM rate_limits WHERE bucket='waai_sso'`);
+  let limited = null;
+  for (let i = 0; i < 25 && limited === null; i++) {
+    const r = await sso(waSession, { method: 'POST' });
+    if (r.status === 429) limited = { at: i + 1, retry: r.headers.get('retry-after') };
+  }
+  check('more than 20 tokens a minute -> 429 with Retry-After', limited !== null && limited.at === 21 && Number(limited.retry) > 0, JSON.stringify(limited));
+  sql(`DELETE FROM rate_limits WHERE bucket='waai_sso'`);
+  check('the limit is per user (the administrator is not held up)', (await sso(session, { method: 'POST' })).status === 200);
+  const secretInLog = (spawnSync('docker', ['logs', '--tail', '3000', WEB], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+  check('no token or secret reaches the server log', !(secretInLog.stdout + secretInLog.stderr).includes(state.ssoSecret) && !(secretInLog.stdout + secretInLog.stderr).includes('eyJhbGciOiJIUzI1NiI'), '');
+}
+
 // ----------------------------------------------------------------------------- 3. cross-cutting
 async function crossChecks(state) {
   section('cookies and logs');
@@ -1045,6 +1158,7 @@ try {
   await taskChecks(state);
   await directoryChecks(state);
   await timelineChecks(state);
+  await ssoChecks(state);
   await crossChecks(state);
 } catch (e) {
   failures++;

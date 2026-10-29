@@ -113,6 +113,8 @@ const RULES = [
      it adds is covered by the same journey spec. */
   [/^src\/(components\/timeTracking\/|hooks\/useTime|utils\/(timeTracking|timeCost|holidays|timeLinks))/, ['Time tracking', 'Time Tracking']],
   [/^src\/components\/SettingsView\./, ['System Settings', 'Time tracking']],
+  /* The WhatsApp module: its view, the pure protocol helpers and the spec that stands in for WAAI. */
+  [/^src\/(components\/WhatsAppView\.|utils\/waaiEmbed)|^tests\/e2e\/whatsappModule\.spec\./, ['WhatsApp', 'WhatsApp module']],
   [/^src\/components\/(SocialMediaView|RagAiView|UnifiedEntryView)\./, ['Shell navigation']],
 
   // --- the frame ---------------------------------------------------------
