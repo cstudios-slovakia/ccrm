@@ -45,6 +45,16 @@ const en = {
   reconnecting: "Reconnecting…",
   summary: "Summary",
   tasks: "Tasks",
+  combinedView: "Combined",
+  aiView: "AI view",
+  chatView: "Chat",
+  live: "Live",
+  listTitle: "Chats",
+  subtitleCalm: "Everything is calm.",
+  needsLook: (n: number): string => (n === 1 ? "needs a look" : "need a look"),
+  refresh: "Refresh chats",
+  toggleSearch: "Search chats and messages",
+  liveGroup: "Live group",
 };
 
 export type ChatsMessages = typeof en;
@@ -91,6 +101,16 @@ const sk: ChatsMessages = {
   reconnecting: "Pripájam sa znova…",
   summary: "Súhrn",
   tasks: "Úlohy",
+  combinedView: "Kombinované",
+  aiView: "AI pohľad",
+  chatView: "Chat",
+  live: "Naživo",
+  listTitle: "Chaty",
+  subtitleCalm: "Všetko je v pokoji.",
+  needsLook: (n: number): string => (n === 1 ? "vyžaduje pozornosť" : "vyžadujú pozornosť"),
+  refresh: "Obnoviť chaty",
+  toggleSearch: "Hľadať v chatoch a správach",
+  liveGroup: "Skupina naživo",
 };
 
 const hu: ChatsMessages = {
@@ -135,6 +155,16 @@ const hu: ChatsMessages = {
   reconnecting: "Újracsatlakozás…",
   summary: "Összegzés",
   tasks: "Feladatok",
+  combinedView: "Kombinált",
+  aiView: "AI nézet",
+  chatView: "Csevegés",
+  live: "Élő",
+  listTitle: "Csevegések",
+  subtitleCalm: "Minden nyugodt.",
+  needsLook: (n: number): string => (n === 1 ? "figyelmet igényel" : "figyelmet igényelnek"),
+  refresh: "Csevegések frissítése",
+  toggleSearch: "Keresés csevegésekben és üzenetekben",
+  liveGroup: "Élő csoport",
 };
 
 export function chatsMessages(lang: string): ChatsMessages {

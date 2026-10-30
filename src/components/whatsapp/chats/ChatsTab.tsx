@@ -179,7 +179,7 @@ export const ChatsTab = ({ client, route, params, language, active, onOpenRecord
               active={active}
               onRead={() => void list.refresh()}
               onBack={() => go(null)}
-              fallback={selected ? { title: selected.title, avatar_url: selected.avatar_url, is_group: selected.is_group } : null}
+              fallback={selected ? { title: selected.title, avatar_url: selected.avatar_url, is_group: selected.is_group, last_message_at: selected.last_message_at } : null}
               onOpenRecord={onOpenRecord}
             />
           ) : (

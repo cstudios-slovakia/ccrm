@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronUp, ListTodo, Loader2, RotateCw, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ChevronUp, Columns2, Loader2, RotateCw, Sparkles } from "lucide-react";
 import type { ConversationResponse, MessageDto, QuotedMessage } from "../api/contract.ts";
 import type { WaaiClient } from "../api/waaiClient.ts";
 import { withDaySeparators, type TimelineItem } from "../lib/messageDays.ts";
@@ -23,12 +23,17 @@ interface Props {
   onRead: () => void;
   onBack: () => void;
   /** The header data when the list already has it (title, picture) while the full header loads. */
-  fallback: { title: string; avatar_url: string | null; is_group: boolean } | null;
+  fallback: { title: string; avatar_url: string | null; is_group: boolean; last_message_at: string | null } | null;
   onOpenRecord?: (kind: "lead" | "project" | "task", id: string) => void;
 }
 
 /** How close to the bottom still counts as "reading the latest": new messages keep it pinned. */
 const STICKY_PX = 120;
+
+/** Side by side needs room for two readable halves; narrower, "Combined" is not offered and the AI view stands in. */
+const SPLIT_MIN_PX = 800;
+
+type ViewTab = "combined" | "ai" | "chat";
 
 export const ConversationPane = ({
   client,
@@ -43,7 +48,9 @@ export const ConversationPane = ({
   onOpenRecord,
 }: Props) => {
   const [header, setHeader] = useState<{ id: string; data: ConversationResponse } | null>(null);
+  const [headerFailed, setHeaderFailed] = useState(false);
   const msgs = useMessages(client, conversationId, deepLinkId, active, onRead);
+  const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const heightBefore = useRef<number | null>(null);
@@ -51,8 +58,20 @@ export const ConversationPane = ({
 
   const [quoted, setQuoted] = useState<QuotedMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<MessageDto | null>(null);
-  const [summaryOpen, setSummaryOpen] = useState(false);
-  const [tasksOpen, setTasksOpen] = useState(false);
+
+  // The preferred pane. WAAI opens every chat on Combined where it fits: the chat on the left, the AI view on the right.
+  const [tabPref, setTabPref] = useState<ViewTab>("combined");
+  const [canSplit, setCanSplit] = useState(false);
+  // Where Combined does not fit the AI view stands in - except for a link to one message, which must show the chat.
+  const tab: ViewTab = tabPref === "combined" && !canSplit ? (deepLinkId ? "chat" : "ai") : tabPref;
+
+  useEffect(() => {
+    const el = root.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([entry]) => setCanSplit((entry?.contentRect.width ?? 0) >= SPLIT_MIN_PX));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const crmLinksHook = useChatCrmLinks({
     client,
@@ -66,7 +85,9 @@ export const ConversationPane = ({
     client
       .get<ConversationResponse>(`/conversations/${encodeURIComponent(conversationId)}`, { signal: abort.signal })
       .then((data) => setHeader({ id: conversationId, data }))
-      .catch(() => undefined);
+      .catch(() => {
+        if (!abort.signal.aborted) setHeaderFailed(true);
+      });
     return () => abort.abort();
   }, [client, conversationId]);
   const info = header?.id === conversationId ? header.data : null;
@@ -98,7 +119,7 @@ export const ConversationPane = ({
     } else if (pinned.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [msgs.messages, msgs.loading, msgs]);
+  }, [msgs.messages, msgs.loading, msgs, tab]);
 
   useEffect(() => {
     if (!highlight) return;
@@ -132,78 +153,115 @@ export const ConversationPane = ({
 
   const title = info?.title ?? fallback?.title ?? "";
   const isGroup = info?.is_group ?? fallback?.is_group ?? false;
-  const subtitle = info ? (info.is_self_chat ? t.selfChat : info.is_group ? t.group : null) : null;
+  const subtitle = info?.is_self_chat ? t.selfChat : isGroup ? t.liveGroup : t.live;
+  const lastMessageAt = info?.last_message_at ?? fallback?.last_message_at ?? null;
+  // The AI view picks its first window from the chat's latest message, so it waits until that is known.
+  const headerReady = info !== null || fallback !== null || headerFailed;
+  const aiActive = active && tab !== "chat";
+
+  const aiView: ReactNode = headerReady ? (
+    <SummaryPanel
+      client={client}
+      conversationId={conversationId}
+      language={locale}
+      active={aiActive}
+      lastMessageAt={lastMessageAt}
+      tasks={
+        <section aria-label={t.tasks}>
+          <h3 className="type-overline pb-2 text-slate-500">{t.tasks}</h3>
+          <ChatTasks
+            client={client}
+            conversationId={conversationId}
+            language={locale}
+            active={aiActive}
+            onOpenRecord={onOpenRecord}
+            senderName={info?.sender_name}
+          />
+        </section>
+      }
+    />
+  ) : (
+    <div className="flex flex-1 items-center justify-center" role="status">
+      <Loader2 className="size-6 animate-spin text-green-600" aria-hidden />
+    </div>
+  );
+
+  const toggle = (value: ViewTab, label: string, icon?: ReactNode) => (
+    <button
+      key={value}
+      type="button"
+      role="tab"
+      aria-selected={tab === value}
+      data-testid={`wa-view-${value}`}
+      onClick={() => setTabPref(value)}
+      className={`type-label flex cursor-pointer items-center gap-1.5 rounded-full px-4 py-1.5 transition-colors ${
+        tab === value ? "bg-green-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-800"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="wa-conversation">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label={t.back}
-            className="-ml-2 rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 active:bg-slate-200 ws-lg:hidden cursor-pointer"
-          >
-            <ArrowLeft className="size-5" />
-          </button>
+    <div ref={root} className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="wa-conversation">
+      {/* Header: the back arrow stays until the list sits beside the chat. */}
+      <header className="flex items-center gap-2 px-3 pb-2 pt-3 md:px-5 md:pt-4">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label={t.back}
+          className="-ml-1 flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 active:bg-slate-200 ws-lg:hidden"
+        >
+          <ArrowLeft className="size-5" />
+        </button>
+        <div className="hidden ws-lg:block">
           <Avatar client={client} src={info?.avatar_url ?? fallback?.avatar_url ?? null} name={title} group={isGroup} />
-          <div className="min-w-0">
-            <h2 className="type-card-title truncate text-slate-800">{title}</h2>
-            {subtitle && <p className="type-meta text-slate-500">{subtitle}</p>}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col items-center ws-lg:items-start">
+          <h2 className="type-card-title max-w-full truncate text-slate-800">{title}</h2>
+          <div className="mt-px flex max-w-full items-center gap-2 text-slate-500">
+            <span className="type-meta">{subtitle}</span>
+            {info?.crm_links.supported && (
+              <CrmLinkChip
+                conversationId={conversationId}
+                crmLinks={crmLinksHook.crmLinks}
+                language={locale}
+                onLink={crmLinksHook.linkEntity}
+                onUnlink={crmLinksHook.unlinkEntity}
+                onSearch={crmLinksHook.searchEntities}
+                searchResults={crmLinksHook.searchResults}
+                searching={crmLinksHook.searching}
+                saving={crmLinksHook.saving}
+                onOpenRecord={onOpenRecord}
+              />
+            )}
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {info?.crm_links.supported && (
-            <CrmLinkChip
-              conversationId={conversationId}
-              crmLinks={crmLinksHook.crmLinks}
-              language={locale}
-              onLink={crmLinksHook.linkEntity}
-              onUnlink={crmLinksHook.unlinkEntity}
-              onSearch={crmLinksHook.searchEntities}
-              searchResults={crmLinksHook.searchResults}
-              searching={crmLinksHook.searching}
-              saving={crmLinksHook.saving}
-              onOpenRecord={onOpenRecord}
-            />
-          )}
-
-          <button
-            type="button"
-            onClick={() => {
-              setSummaryOpen((o) => !o);
-              setTasksOpen(false);
-            }}
-            className={`type-meta inline-flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 font-medium transition-colors ${
-              summaryOpen ? "border-green-600 bg-green-50 text-green-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-            title={t.summary}
-          >
-            <Sparkles className="size-4 text-green-600" />
-            <span className="hidden ws-sm:inline">{t.summary}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setTasksOpen((o) => !o);
-              setSummaryOpen(false);
-            }}
-            className={`type-meta inline-flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 font-medium transition-colors ${
-              tasksOpen ? "border-green-600 bg-green-50 text-green-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            }`}
-            title={t.tasks}
-          >
-            <ListTodo className="size-4 text-green-600" />
-            <span className="hidden ws-sm:inline">{t.tasks}</span>
-          </button>
-        </div>
+        {/* Balances the back button so the title is truly centered while it shows. */}
+        <div className="size-9 shrink-0 ws-lg:hidden" aria-hidden />
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Messages and Composer */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* View toggle: Combined (where it fits) / AI view / Chat */}
+      <div className="flex justify-center px-4 pb-3">
+        <div role="tablist" className="flex gap-0 rounded-full border border-slate-200 bg-white p-1 shadow-xs">
+          {canSplit && toggle("combined", t.combinedView, <Columns2 className="size-3" />)}
+          {toggle("ai", t.aiView, <Sparkles className="size-3" />)}
+          {toggle("chat", t.chatView)}
+        </div>
+      </div>
+
+      {/* Panes. Combined puts the chat on the left and the AI view on the right. */}
+      <div className={`flex min-h-0 flex-1 overflow-hidden ${tab === "combined" ? "flex-row" : "flex-col"}`}>
+        <div className={`min-h-0 min-w-0 overflow-hidden ${tab === "ai" ? "flex flex-1" : tab === "combined" ? "order-2 flex flex-1" : "hidden"}`}>
+          {aiView}
+        </div>
+
+        <div
+          className={`min-h-0 min-w-0 flex-col overflow-hidden ${
+            tab === "chat" ? "flex flex-1" : tab === "combined" ? "order-1 flex flex-1 border-r border-slate-100" : "hidden"
+          }`}
+        >
           <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50 px-4 py-4">
             {msgs.loading && (
               <div className="flex justify-center py-10" role="status">
@@ -293,35 +351,6 @@ export const ConversationPane = ({
             locale={locale}
           />
         </div>
-
-        {/* Side panel for Summary or Tasks */}
-        {(summaryOpen || tasksOpen) && (
-          <aside className="w-80 shrink-0 border-l border-slate-200 bg-white overflow-y-auto p-4 ws-xl:w-96" aria-label="Conversation Details">
-            {summaryOpen && (
-              <SummaryPanel
-                client={client}
-                conversationId={conversationId}
-                language={locale}
-                onClose={() => setSummaryOpen(false)}
-                onOpenTasks={() => {
-                  setSummaryOpen(false);
-                  setTasksOpen(true);
-                }}
-                senderName={info?.sender_name}
-              />
-            )}
-            {tasksOpen && (
-              <ChatTasks
-                client={client}
-                conversationId={conversationId}
-                language={locale}
-                onClose={() => setTasksOpen(false)}
-                onOpenRecord={onOpenRecord}
-                senderName={info?.sender_name}
-              />
-            )}
-          </aside>
-        )}
       </div>
     </div>
   );

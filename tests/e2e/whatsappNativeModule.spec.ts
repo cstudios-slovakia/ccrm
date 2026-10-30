@@ -400,6 +400,10 @@ test.describe('Native WhatsApp module', () => {
     await tab(page, 'Nastavenia').click();
     await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#whatsapp/settings');
     await expect(tab(page, 'Nastavenia')).toHaveAttribute('aria-selected', 'true');
+    // WAAI's own settings: a menu of five sections beside the open one, which starts on System.
+    await expect(page.getByTestId('wa-settings-system')).toHaveAttribute('aria-current', 'page');
+    await page.getByTestId('wa-settings-whatsapp').click();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#whatsapp/settings/whatsapp');
     await expect(page.getByRole('button', { name: 'Prepojiť účet WhatsApp' })).toBeVisible();
 
     // A task footer's deep link opens the chat tab and renders the target message.
@@ -407,6 +411,65 @@ test.describe('Native WhatsApp module', () => {
     await expect(tab(page, 'Chaty')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('wa-conversation')).toBeVisible();
     await expect(page.locator('#wa-msg-m1')).toContainText('Pošlite prosím cenovú ponuku.');
+  });
+
+  test('the digest writes itself when it is opened, as in WAAI, and the refresh button writes it again', async ({ page }) => {
+    await startSession(page);
+    await installNative(page);
+    const asked: { window: string; regenerate: boolean }[] = [];
+    await page.route('**/waai-api/digest', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      asked.push(route.request().postDataJSON());
+      return route.fulfill({
+        json: {
+          id: 'dig2',
+          window: 'd30',
+          cached: false,
+          chat_count: 1,
+          narrative: `Nový súhrn číslo ${asked.length} pre **Acme Stavba**.`,
+          tasks: [],
+          meetings: [],
+          has_audio: false,
+          audio_url: null,
+          auto_audio: false,
+          created_at: '2026-10-30T09:20:00.000Z',
+        },
+      });
+    });
+    await page.goto('/#whatsapp/digest');
+    // Nobody pressed anything: opening the tab asked for the digest, and let WAAI write it.
+    await expect(page.getByText(/Nový súhrn číslo 1/)).toBeVisible({ timeout: 15_000 });
+    expect(asked[0]).toMatchObject({ regenerate: false });
+
+    await page.getByTestId('wa-digest-regenerate').click();
+    await expect(page.getByText(/Nový súhrn číslo 2/)).toBeVisible();
+    expect(asked[1]).toMatchObject({ regenerate: true });
+  });
+
+  test('a chat has WAAI\'s views: AI view and Chat, and Combined where both fit', async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await startSession(page);
+    await installNative(page);
+    await page.goto('/#whatsapp/c/abc123');
+    await expect(page.getByTestId('wa-conversation')).toBeVisible({ timeout: 15_000 });
+
+    // Wide enough: both halves at once.
+    await expect(page.getByTestId('wa-view-combined')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('wa-ai-view')).toBeVisible();
+    await expect(page.locator('#wa-msg-m1')).toBeVisible();
+
+    await page.getByTestId('wa-view-chat').click();
+    await expect(page.locator('#wa-msg-m1')).toBeVisible();
+    await expect(page.getByTestId('wa-ai-view')).toBeHidden();
+
+    await page.getByTestId('wa-view-ai').click();
+    await expect(page.getByTestId('wa-ai-view')).toBeVisible();
+    await expect(page.locator('#wa-msg-m1')).toBeHidden();
+
+    // Too narrow for two halves: Combined is not offered and the AI view opens.
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await expect(page.getByTestId('wa-view-combined')).toHaveCount(0);
+    await expect(page.getByTestId('wa-view-ai')).toBeVisible();
   });
 
   test('a user WAAI does not know gets a clear screen', async ({ page }) => {

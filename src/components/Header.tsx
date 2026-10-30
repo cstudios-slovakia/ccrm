@@ -805,7 +805,7 @@ export const Header: React.FC<HeaderProps> = ({
                         {/* Pulsing DEMO MODE badge */}
                         {isDemoMode && (
                             <a
-                                href="#settings"
+                                href="#settings/system/reset"
                                 className="px-1.5 xs:px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white type-overline xs:text-micro shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
                             >
                                 <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-white animate-pulse" />

@@ -14,6 +14,8 @@ export interface UseChatSummaryOptions {
   conversationId: string;
   active?: boolean;
   initialLanguage?: SummaryLanguage;
+  /** The window the panel opens on; WAAI opens on the narrowest one that holds the chat's latest message. */
+  initialWindow?: SummaryWindowKey;
 }
 
 export interface UseChatSummaryReturn {
@@ -51,8 +53,9 @@ export function useChatSummary({
   conversationId,
   active = true,
   initialLanguage = "en",
+  initialWindow = "today",
 }: UseChatSummaryOptions): UseChatSummaryReturn {
-  const [windowKey, setWindowKey] = useState<SummaryWindowKey>("today");
+  const [windowKey, setWindowKey] = useState<SummaryWindowKey>(initialWindow);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [language, setLanguage] = useState<SummaryLanguage>(initialLanguage);

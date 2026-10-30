@@ -21,7 +21,7 @@ export const HomeBody = ({
   admin: boolean;
   onOpenRecord: (kind: "lead" | "project" | "task", id: string) => void;
 }) => {
-  if (tab === "digest") return <DigestTab client={client} language={language} admin={admin} />;
+  if (tab === "digest") return <DigestTab client={client} language={language} />;
   if (tab === "tasks") return <TasksTab client={client} language={language} onOpenRecord={onOpenRecord} />;
   if (tab === "ask") return <AskTab client={client} language={language} />;
   return <SettingsTab client={client} language={language} route={route} admin={admin} />;

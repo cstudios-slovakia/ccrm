@@ -1,15 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, Link2, Loader2, Plus, SlidersHorizontal, Smartphone, Sparkles, UserCircle } from "lucide-react";
 import { HoldToConfirmButton } from "../../ui/HoldToConfirm";
 import { SecretInput } from "../../ui/SecretInput";
-import { Surface } from "../../layout";
 import { SECRET_MASK } from "../../../utils/aiConfig";
 import type { Language } from "../../../utils/translations";
 import type { WaaiClient } from "../api/waaiClient.ts";
 import { WaaiApiError } from "../api/waaiClient.ts";
 import { primaryButton, secondaryButton } from "../StateCard";
 import { homeCopy, type HomeCopy } from "../home/copy";
-import { SETTINGS_SECTIONS, settingsRoute, settingsSection, type SettingsSection } from "../home/settingsRoute";
+import { settingsRoute, settingsSection, visibleSections, type SettingsSection } from "../home/settingsRoute";
 import type { AiSettings, CrmSettings, PeopleResponse, PreferencesResponse, WaAccountRow } from "../home/types";
 
 const field = "type-body min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-slate-800";
@@ -87,9 +86,11 @@ const Accounts = ({ client, t, admin }: { client: WaaiClient; t: HomeCopy; admin
     </ul>
   );
 
+  // WAAI lists the accounts first (an administrator sees everyone's) and ends the section on a wide "add" button.
   return (
     <div className="flex flex-col gap-4">
-      <button type="button" className={primaryButton} onClick={() => void link()}>{t.settings.link}</button>
+      {own.error ? <p className="type-body text-rose-600">{own.error}</p> : null}
+      {admin ? list(all.data?.accounts, true) : list(own.data?.accounts, false)}
       {note ? <p className="type-body text-amber-700">{note}</p> : null}
       {qr ? (
         <div>
@@ -97,14 +98,10 @@ const Accounts = ({ client, t, admin }: { client: WaaiClient; t: HomeCopy; admin
           <img className="mt-2 w-48 rounded-2xl border border-slate-200" src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`} alt={t.settings.qr} />
         </div>
       ) : null}
-      {own.error ? <p className="type-body text-rose-600">{own.error}</p> : null}
-      {list(own.data?.accounts, false)}
-      {admin ? (
-        <div>
-          <h3 className="type-label mb-2 text-slate-500">{t.settings.accounts}</h3>
-          {list(all.data?.accounts, true)}
-        </div>
-      ) : null}
+      <button type="button" className={`${primaryButton} w-full justify-center`} onClick={() => void link()}>
+        <Plus className="size-4" />
+        {t.settings.link}
+      </button>
     </div>
   );
 };
@@ -339,33 +336,122 @@ export const SettingsTab = ({
 }) => {
   const t = homeCopy(language);
   const lang = (language === "sk" || language === "hu" ? language : "en") as Language;
-  const section = settingsSection(route);
-  const visible = SETTINGS_SECTIONS.filter((key) => admin || key === "accounts" || key === "reactions" || key === "language" || key === "reset");
-  const panels: Record<SettingsSection, ReactNode> = {
-    accounts: <Accounts client={client} t={t} admin={admin} />,
-    reactions: <Reactions client={client} t={t} />,
-    language: <Language client={client} t={t} />,
-    ai: admin ? <Ai client={client} t={t} language={lang} /> : <p className="type-body text-slate-500">{t.settings.adminOnly}</p>,
-    crm: admin ? <Crm client={client} t={t} /> : <p className="type-body text-slate-500">{t.settings.adminOnly}</p>,
-    people: admin ? <People client={client} t={t} /> : <p className="type-body text-slate-500">{t.settings.adminOnly}</p>,
-    members: admin ? <Members client={client} t={t} /> : <p className="type-body text-slate-500">{t.settings.adminOnly}</p>,
-    invites: admin ? <Invites client={client} t={t} /> : <p className="type-body text-slate-500">{t.settings.adminOnly}</p>,
-    reset: (
+  const sections = visibleSections(admin);
+  // A bare address is the menu on a phone and the first section beside the menu on a desktop, as in WAAI.
+  const requested = settingsSection(route);
+  const active = requested && sections.includes(requested) ? requested : null;
+  const current: SettingsSection = active ?? sections[0]!;
+
+  const card = "rounded-2xl border border-slate-200 bg-white p-4 shadow-xs";
+  const block = (title: string, body: ReactNode, aside?: ReactNode) => (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="type-overline text-slate-500">{title}</h3>
+        {aside}
+      </div>
+      <div className={card}>{body}</div>
+    </section>
+  );
+
+  const nodes: Record<SettingsSection, ReactNode> = {
+    system: (
+      <>
+        {block(t.settings.languageTitle, <Language client={client} t={t} />)}
+        {block(t.settings.reactionsTitle, <Reactions client={client} t={t} />)}
+      </>
+    ),
+    whatsapp: (
+      <>
+        {block(t.settings.sectionWhatsApp, <Accounts client={client} t={t} admin={admin} />)}
+        {admin ? block(t.settings.membersTitle, <Members client={client} t={t} />) : null}
+        {admin ? block(t.settings.invitesTitle, <Invites client={client} t={t} />) : null}
+      </>
+    ),
+    ai: block(t.settings.sectionAi, <Ai client={client} t={t} language={lang} />),
+    crm: (
+      <>
+        {block(t.settings.sectionCrm, <Crm client={client} t={t} />)}
+        {block(t.settings.peopleTitle, <People client={client} t={t} />)}
+      </>
+    ),
+    account: block(
+      t.settings.sectionAccount,
       <div className="flex flex-col gap-3">
-        <h3 className="type-card-title text-slate-800">{t.settings.resetTitle}</h3>
+        <h4 className="type-card-title text-slate-800">{t.settings.resetTitle}</h4>
         <p className="type-body text-slate-500">{t.settings.resetBody}</p>
         <HoldToConfirmButton lang={lang} onConfirm={() => void client.post("/reset-data")} tone="danger">{t.settings.resetHold}</HoldToConfirmButton>
-      </div>
+      </div>,
     ),
   };
+
+  const labels: Record<SettingsSection, string> = {
+    system: t.settings.sectionSystem,
+    whatsapp: t.settings.sectionWhatsApp,
+    ai: t.settings.sectionAi,
+    crm: t.settings.sectionCrm,
+    account: t.settings.sectionAccount,
+  };
+  const icons: Record<SettingsSection, typeof Link2> = {
+    system: SlidersHorizontal,
+    whatsapp: Smartphone,
+    ai: Sparkles,
+    crm: Link2,
+    account: UserCircle,
+  };
+
   return (
-    <Surface className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2">
-        {visible.map((key) => (
-          <a key={key} className={key === section ? primaryButton : secondaryButton} href={`#${settingsRoute(key)}`}>{t.settings[key]}</a>
-        ))}
+    <div className="flex flex-col gap-6 py-2 ws-md:flex-row ws-md:gap-8 ws-md:py-4" data-testid="wa-settings">
+      {/* Desktop: the section menu stays beside the section. */}
+      <nav aria-label={t.settings.title} className="hidden w-56 shrink-0 ws-md:block">
+        <h2 className="type-page-title mb-4 px-2 text-slate-800">{t.settings.title}</h2>
+        <div className="flex flex-col gap-1">
+          {sections.map((id) => {
+            const Icon = icons[id];
+            return (
+              <a
+                key={id}
+                href={`#${settingsRoute(id)}`}
+                aria-current={current === id ? "page" : undefined}
+                data-testid={`wa-settings-${id}`}
+                className={`type-label flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-all duration-200 ${
+                  current === id ? "border-green-200 bg-green-50 text-green-700" : "border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                }`}
+              >
+                <Icon className="size-4" />
+                {labels[id]}
+              </a>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Phone: the header, then the menu of sections or the open one. */}
+      <header className="flex items-center gap-2 ws-md:hidden">
+        {active !== null ? (
+          <a href={`#${settingsRoute(null)}`} aria-label={t.settings.back} className="-ml-1.5 flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100">
+            <ArrowLeft className="size-5" />
+          </a>
+        ) : null}
+        <h2 className="type-page-title text-slate-800">{active !== null ? labels[current] : t.settings.title}</h2>
+      </header>
+
+      <div className={`flex flex-col gap-2 ws-md:hidden ${active !== null ? "hidden" : ""}`}>
+        {sections.map((id) => {
+          const Icon = icons[id];
+          return (
+            <a key={id} href={`#${settingsRoute(id)}`} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 transition-all hover:border-green-200 active:scale-[0.99]">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700">
+                <Icon className="size-5" />
+              </span>
+              <span className="type-card-title flex-1 text-slate-800">{labels[id]}</span>
+              <ChevronRight className="size-5 text-slate-400" />
+            </a>
+          );
+        })}
       </div>
-      {panels[section]}
-    </Surface>
+
+      {/* The section: always beside the menu on a desktop, only once opened on a phone. */}
+      <div className={`min-w-0 flex-1 flex-col gap-5 ws-md:flex ${active !== null ? "flex" : "hidden"}`}>{nodes[current]}</div>
+    </div>
   );
 };

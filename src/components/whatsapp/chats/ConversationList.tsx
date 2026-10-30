@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Search, SearchX } from "lucide-react";
+import { Loader2, RefreshCw, Search, SearchX, X } from "lucide-react";
 import { EmptyState } from "../../layout";
 import type {
   ChatListItem,
@@ -115,6 +115,10 @@ export const ConversationList = ({
   onSync,
 }: Props) => {
   const [query, setQuery] = useState("");
+  // WAAI keeps the search box folded away until the magnifier is pressed; a query already typed keeps it open.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const showSearch = searchOpen || query !== "";
+  const needsLook = useMemo(() => data.conversations.filter((c) => c.unread_count > 0).length, [data.conversations]);
   const [hits, setHits] = useState<MessageSearchHitDto[]>([]);
   const [searching, setSearching] = useState(false);
   const shown = useMemo(() => filterChats(data.conversations, query), [data.conversations, query]);
@@ -153,19 +157,59 @@ export const ConversationList = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-slate-100 p-3">
-        <label className="relative block">
-          <span className="sr-only">{t.search}</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t.search}
-            data-testid="wa-chat-search"
-            className="type-body w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-slate-800 placeholder:text-slate-400 transition-colors focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20"
-          />
-        </label>
+      <div className="border-b border-slate-100 px-5 pb-3 pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="type-page-title leading-tight text-slate-800">{t.listTitle}</h2>
+            <p className="type-meta mt-1 truncate text-slate-500" data-testid="wa-chats-subtitle">
+              {syncing ? t.syncing : needsLook > 0 ? <><b className="font-semibold text-slate-800">{needsLook}</b> {t.needsLook(needsLook)}</> : t.subtitleCalm}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {data.has_wa_account && (
+              <button
+                type="button"
+                onClick={onSync}
+                disabled={syncing}
+                title={t.refresh}
+                aria-label={t.refresh}
+                data-testid="wa-chats-refresh"
+                className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 disabled:opacity-50"
+              >
+                <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (showSearch) setQuery("");
+                setSearchOpen(!showSearch);
+              }}
+              title={t.toggleSearch}
+              aria-label={t.toggleSearch}
+              aria-expanded={showSearch}
+              data-testid="wa-chats-search-toggle"
+              className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+            >
+              {showSearch ? <X className="size-3.5" /> : <Search className="size-3.5" />}
+            </button>
+          </div>
+        </div>
+        {showSearch && (
+          <label className="relative mt-3 block">
+            <span className="sr-only">{t.search}</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t.toggleSearch}
+              data-testid="wa-chat-search"
+              className="type-body w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-slate-800 placeholder:text-slate-400 transition-colors focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20"
+            />
+          </label>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {data.conversations.length === 0 ? (
