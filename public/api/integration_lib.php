@@ -50,7 +50,7 @@ if (!function_exists('ccrm_int_fail')) {
 
     /** Every scope a token's client can be granted. A route names the one it needs. */
     function ccrm_int_scopes(): array {
-        return ['users:read', 'directory:read', 'tasks:push', 'tasks:pull', 'whatsapp:links', 'timeline:push'];
+        return ['users:read', 'directory:read', 'tasks:push', 'tasks:pull', 'whatsapp:links', 'timeline:push', 'ai:key'];
     }
 
     // ------------------------------------------------------------------ tokens

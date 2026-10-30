@@ -138,7 +138,7 @@ function teardown() {
   try { docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR}`); } catch (e) { console.log('cleanup (files):', e.message); }
 }
 
-const ALL_SCOPES = ['users:read', 'directory:read', 'tasks:push', 'tasks:pull', 'whatsapp:links', 'timeline:push'];
+const ALL_SCOPES = ['users:read', 'directory:read', 'tasks:push', 'tasks:pull', 'whatsapp:links', 'timeline:push', 'ai:key'];
 const setClient = (assignments) => sql(`UPDATE integration_clients SET ${assignments} WHERE code='waai';`);
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 

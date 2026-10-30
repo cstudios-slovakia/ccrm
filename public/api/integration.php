@@ -34,6 +34,7 @@ require_once __DIR__ . '/integration_lib.php';
 require_once __DIR__ . '/integration_directory.php';
 require_once __DIR__ . '/integration_tasks.php';
 require_once __DIR__ . '/integration_whatsapp.php';
+require_once __DIR__ . '/integration_ai.php';
 
 /**
  * Documented routes: [method, path pattern, handler, scope]. Scope null = any valid token, an array =
@@ -52,6 +53,7 @@ $ccrmIntRoutes = [
     ['DELETE', '#^whatsapp/links/([^/]+)$#', 'ccrm_int_handle_whatsapp_links_delete', 'whatsapp:links'],
     ['PUT', '#^whatsapp/numbers$#', 'ccrm_int_handle_whatsapp_numbers_put', 'whatsapp:links'],
     ['PUT', '#^timeline/external/([^/]+)$#', 'ccrm_int_handle_timeline_push', 'timeline:push'],
+    ['GET', '#^ai/openai-key$#', 'ccrm_int_handle_ai_openai_key', 'ai:key'],
 ];
 
 function ccrm_int_handle_ping(\PDO $pdo, array $client, array $req): array {

@@ -175,6 +175,7 @@ const Ai = ({ client, t, language }: { client: WaaiClient; t: HomeCopy; language
       <label className="type-label text-slate-500">{t.settings.openai}
         <SecretInput language={language} value={openai} onChange={setOpenai} />
       </label>
+      {ai.data.openai_key_source === "crm" ? <p className="type-meta -mt-2 text-slate-500">{t.settings.openaiFromCrm}</p> : null}
       <div className="flex flex-wrap gap-2">
         <button type="button" className={primaryButton} onClick={() => void client.put("/admin/ai/openai-key", { key: openai === SECRET_MASK ? "" : openai })}>{t.save}</button>
         <button type="button" className={secondaryButton} onClick={() => void client.del("/admin/ai/openai-key")}>{t.settings.remove}</button>

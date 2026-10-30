@@ -224,6 +224,7 @@ otherwise — WAAI's client depends on them:
 | `DELETE /whatsapp/links/{conversationRef}` | `whatsapp:links` | Conversation gone in WAAI. |
 | `PUT /whatsapp/numbers` | `whatsapp:links` | Batch `{items:[{phone, status:'registered'|'not_registered', checked_at}]}` (≤ 500). |
 | `PUT /timeline/external/{externalId}` | `timeline:push` | Upsert of one timeline entry (§4.6). 410 when a CCRM user deleted it. |
+| `GET /ai/openai-key` | `ai:key` | `{key}`: the OpenAI key from Settings → AI integration, decrypted, or `null`. WAAI uses it only while its own OpenAI key setting is empty (cached 60 s, never stored). |
 
 **Task representation** — same shape as the bridge (`id, url, origin, external_id,
 title, description, state{code,label}, done, due{at,all_day}, created_by,

@@ -744,6 +744,8 @@ export interface WaAccountsResponse {
 export interface AiSettingsResponse {
   provider: string;
   openai_key_set: boolean;
+  /** Whose key the AI features use: WAAI's own, the CRM's (while WAAI has none), or nobody's. */
+  openai_key_source?: 'own' | 'crm' | 'none';
   anthropic_key_set: boolean;
   prompts: {
     general: string;

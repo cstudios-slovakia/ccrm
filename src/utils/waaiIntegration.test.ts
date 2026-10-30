@@ -62,5 +62,5 @@ test("waaiSsoEnvSnippet names the CRM origin twice and lists a rotating secret n
 });
 
 test("the scope list is the one the server grants", () => {
-  assert.deepEqual([...WAAI_SCOPES], ["users:read", "directory:read", "tasks:push", "tasks:pull", "whatsapp:links", "timeline:push"]);
+  assert.deepEqual([...WAAI_SCOPES], ["users:read", "directory:read", "tasks:push", "tasks:pull", "whatsapp:links", "timeline:push", "ai:key"]);
 });

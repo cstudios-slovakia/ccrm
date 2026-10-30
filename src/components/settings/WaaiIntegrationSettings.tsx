@@ -52,6 +52,7 @@ const SCOPE_LABEL: Record<string, [string, string, string]> = {
   "tasks:pull": ["Read and complete tasks", "Čítať a dokončovať úlohy", "Feladatok olvasása és befejezése"],
   "whatsapp:links": ["Pair chats with clients and projects", "Párovať chaty s klientmi a projektmi", "Csevegések párosítása ügyfelekkel és projektekkel"],
   "timeline:push": ["Add entries to the client timeline", "Pridávať záznamy do histórie klienta", "Bejegyzések hozzáadása az ügyfél idővonalához"],
+  "ai:key": ["Use the OpenAI key from CCRM when WAAI has none of its own", "Použiť kľúč OpenAI z CCRM, ak WAAI nemá vlastný", "A CCRM OpenAI-kulcsának használata, ha a WAAI-nak nincs sajátja"],
 };
 
 const inputCls =

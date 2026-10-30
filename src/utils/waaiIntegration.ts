@@ -3,7 +3,7 @@
 // administrator copies into WAAI's environment. docs/WAAI-INTEGRATION.md §4.1 and §4.7.
 
 /** Every scope the machine API knows (api/integration_lib.php ccrm_int_scopes), in the server's order. */
-export const WAAI_SCOPES = ["users:read", "directory:read", "tasks:push", "tasks:pull", "whatsapp:links", "timeline:push"] as const;
+export const WAAI_SCOPES = ["users:read", "directory:read", "tasks:push", "tasks:pull", "whatsapp:links", "timeline:push", "ai:key"] as const;
 export type WaaiScope = (typeof WAAI_SCOPES)[number];
 
 const isIpv4 = (v: string): boolean => {
