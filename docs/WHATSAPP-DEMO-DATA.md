@@ -8,7 +8,7 @@ One file describes the story; two loaders read it.
 |---|---|
 | `public/api/demo_seed/whatsapp_demo.json` | The dataset: account, 4 chats with messages, extracted tasks, summaries, links, number checks. Days are offsets from today, so a demo opens on recent data whenever it is seeded. Mirrored to `api/demo_seed/` by `sync:backend`. |
 | `public/api/demo_seed/whatsapp.php` | **CCRM side — done.** A `demo_seed` module (runs after `tasks`, before `offers`). Writes what a real WAAI push leaves in CCRM. Idempotent, `demo-whatsapp-*` ids. |
-| WAAI loader | **WAAI side — not written yet** (next session). Writes conversations, messages, summaries and tasks into WAAI's Postgres from the same JSON. |
+| WAAI loader | **WAAI side — done.** `apps/web/scripts/seed-demo-ccrm.mjs` in the WAAI repo (branch `feat/ccrm-demo-seed`), shipped in the web image. Writes conversations, messages, media, reactions, summaries and tasks into WAAI's Postgres from the same JSON. On a VPS run `deploy/vps/seed-waai-demo.sh` (`--wipe` removes it). |
 
 Chats and messages never live in CCRM. The native module reads them from WAAI (`/waai-api`), so without
 the WAAI loader a demo instance shows the CRM-side surfaces (chips, task badges, timeline entries) but an
@@ -82,7 +82,7 @@ Verified on a scratch MySQL 8 database (not the dev data): seeds in en, sk and h
 the prefix wipe plus `demo_whatsapp_wipe_numbers()` leaves no row behind, `php -l` clean, `sync:backend --check`
 in sync. Not run: the app against the seeded data (the QA suite mocks `/sync.php`; this is real-backend data).
 
-## WAAI loader — for the next session
+## WAAI loader
 
 Read the same JSON and write, per chat, into WAAI's Postgres (idempotent, like `seed-demo.ts`):
 
@@ -106,3 +106,14 @@ Read the same JSON and write, per chat, into WAAI's Postgres (idempotent, like `
 Open decision for the deploy session: let the real bridge produce the CCRM side instead (load only WAAI
 data, connect WAAI to the demo instance, let `crm-sync` push), or keep the direct seed above. The direct seed
 works with no WAAI running; the bridge is the more faithful demo but needs the instance reachable from WAAI.
+
+## Deployed and verified (2026-10-30, test server 91.99.28.82)
+
+CRM seeder and WAAI loader both run there: 4 chats, 41 messages, 9 tasks, 6 links, 6 number checks. Checked in the browser: chat list and unread counts, messages, generated image, document, quote, voice note (plays, 0:08, transcription), WhatsApp badge and "Open in chat" on tasks, timeline entries and the "Open chat" chip on a lead, link popover (client and project), no console errors.
+
+Two things to know:
+
+- **Directory order.** WAAI computes `auto` links from its own copy of the CRM directory. On an existing install that copy is older than the seeded project phones, so the project chip is missing until Settings → CRM → "Obnoviť adresár" (refresh directory) is pressed once. On a fresh install the directory is read after the seed, so nothing is needed.
+- **The demo account is visible in Settings → WhatsApp** ("Alex", connected). It is marked deliberately disconnected so the worker never opens a session; "Reconnect" on it would start a real QR session. Do not press it on a demo.
+
+The loader was hot-copied into the running `waai-web-1` container (the image has no copy yet; it is lost when the container is recreated). The CRM files were copied into `/srv/ccrm/api/` by hand: before a licensed `php ccrm update` there, delete the untracked `api/demo_seed/whatsapp.php` and `whatsapp_demo.json` and `git checkout -- api`, or the pull refuses.

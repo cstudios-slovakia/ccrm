@@ -81,6 +81,10 @@ docker compose -f docker-compose.yml -f docker-compose.waai.yml up -d
   `docker compose exec web node apps/web/scripts/map-crm-user.mjs --email <waai-admin-email> --crm-user <crm-user-id>`
   on the WAAI stack (see WAAI's `docs/DEPLOYMENT.md`).
 - WAAI needs `CCRM_ORIGIN=https://<CCRM_DOMAIN>` and `CCRM_SSO_SECRET` (from the same settings page).
+- **Demo data in the WhatsApp module:** on a demo install (`DEMO_MODE` on) run `./seed-waai-demo.sh` once WAAI is up.
+  It loads the four demo chats into WAAI from the dataset the CRM ships (`api/demo_seed/whatsapp_demo.json`), no
+  WhatsApp account needed; the CRM side comes with the CRM's own demo seeder. `./seed-waai-demo.sh --wipe` removes it.
+  Details: `docs/WHATSAPP-DEMO-DATA.md`.
 - Check a changed Caddyfile before restarting: `docker run --rm -e CCRM_DOMAIN=x.example -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy validate --config /etc/caddy/Caddyfile`
   (add `-v` lines for the overlay files you use).
 
