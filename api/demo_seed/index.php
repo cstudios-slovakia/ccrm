@@ -24,6 +24,7 @@ if (!function_exists('demo_seed_modules')) {
             'clients',
             'projects',
             'tasks',
+            'whatsapp',
             'offers',
             'warehouse',
             'finance',

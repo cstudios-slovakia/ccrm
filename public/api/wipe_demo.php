@@ -94,6 +94,9 @@ try {
     // records deleted below.
     $pdo->exec("UPDATE `employee_salaries` SET `financial_record_id` = NULL WHERE `financial_record_id` LIKE 'demo-%'");
     demo_wipe_by_prefix($pdo, ['demo-']);
+    // whatsapp_numbers is keyed by phone, so the prefix wipe cannot find the demo rows.
+    require_once __DIR__ . '/demo_seed/whatsapp.php';
+    demo_whatsapp_wipe_numbers($pdo);
 
     // Wipe customizable lists if "Keep Configs" was false
     if (!$keepConfigs) {

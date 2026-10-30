@@ -1,0 +1,250 @@
+{
+  "_about": "Shared source of truth for the WhatsApp demo. api/demo_seed/whatsapp.php seeds the CCRM side from it (links, numbers, tasks, timeline); a WAAI loader seeds conversations, messages, summaries and tasks from the same file. Days are offsets from today (negative = past), times are local HH:MM. See docs/WHATSAPP-DEMO-DATA.md.",
+  "version": 1,
+  "account": {
+    "sessionId": "demo-ccrm-wa",
+    "ownerCrmUser": "Alex",
+    "phone": "421900123456"
+  },
+  "projectContactPhones": {
+    "demo-projects-1": "+421 903 245 118",
+    "demo-projects-3": "+49 89 2155 4780"
+  },
+  "numbers": [
+    { "phone": "421903245118", "status": "registered", "checkedDay": -4 },
+    { "phone": "4934199026118", "status": "registered", "checkedDay": -3 },
+    { "phone": "36304821170", "status": "registered", "checkedDay": -6 },
+    { "phone": "498921554780", "status": "registered", "checkedDay": -1 },
+    { "phone": "421918402665", "status": "registered", "checkedDay": -2 },
+    { "phone": "421907316520", "status": "not_registered", "checkedDay": -2 }
+  ],
+  "chats": [
+    {
+      "ref": "demo-wa-slavin",
+      "title": "Marek Šimko – Vila Slavín",
+      "isGroup": false,
+      "phone": "421903245118",
+      "locale": "sk",
+      "unread": 2,
+      "members": ["Marek Šimko"],
+      "links": [
+        { "entityType": "lead", "entityId": "demo-clients-1", "source": "auto" },
+        { "entityType": "project", "entityId": "demo-projects-1", "source": "auto" }
+      ],
+      "messages": [
+        { "id": "m01", "day": -4, "time": "09:12", "dir": "in", "sender": "Marek Šimko", "kind": "text", "body": "Dobrý deň, tu Marek Šimko z Vily Slavín. Ako sme na tom s doskami pre 2. etapu?" },
+        { "id": "m02", "day": -4, "time": "09:20", "dir": "out", "kind": "text", "body": "Dobrý deň, pán Šimko. Objednávku u importéra sme potvrdili, dosky budú v dielni o tri týždne." },
+        { "id": "m03", "day": -4, "time": "09:31", "dir": "in", "sender": "Marek Šimko", "kind": "text", "body": "Dobre. Potrebujeme presný harmonogram dodávky, kvôli murárom aj montáži." },
+        { "id": "m04", "day": -4, "time": "09:34", "dir": "out", "kind": "text", "body": "Rozumiem, pošlem vám upravený harmonogram dodávky do dvoch dní." },
+        { "id": "m05", "day": -2, "time": "14:08", "dir": "out", "kind": "document", "body": "Harmonogram dodávky – Vila Slavín.pdf", "fileName": "Harmonogram dodávky – Vila Slavín.pdf", "mime": "application/pdf", "reactions": [{ "emoji": "👍", "by": "Marek Šimko" }] },
+        { "id": "m06", "day": -2, "time": "14:20", "dir": "in", "sender": "Marek Šimko", "kind": "text", "body": "Ďakujem, vyzerá to dobre." },
+        { "id": "m07", "day": -2, "time": "14:25", "dir": "out", "kind": "image", "body": "Takto vyzerá prvá dávka dosiek v dielni.", "mime": "image/png", "placeholder": "slabs" },
+        { "id": "m08", "day": -1, "time": "10:05", "dir": "in", "sender": "Marek Šimko", "kind": "text", "body": "Účtovníčka sa pýta, či môžete poslať priebežnú faktúru za zameranie a dosky ešte tento týždeň." },
+        { "id": "m09", "day": -1, "time": "10:12", "dir": "out", "kind": "text", "body": "Pozriem to s kolegom z fakturácie a ozvem sa.", "quote": "m08" },
+        { "id": "m10", "day": -1, "time": "10:15", "dir": "in", "sender": "Marek Šimko", "kind": "text", "body": "A potvrďte mi prosím, či stihneme začať s montážou na začiatku budúceho týždňa." },
+        { "id": "m11", "day": -1, "time": "10:22", "dir": "out", "kind": "text", "body": "Overím to s montážnou čatou a dám vám vedieť dnes alebo zajtra." },
+        { "id": "m12", "day": 0, "time": "08:41", "dir": "in", "sender": "Marek Šimko", "kind": "text", "body": "Dobré ráno, ešte k tej faktúre – kedy ju môžeme čakať?" },
+        { "id": "m13", "day": 0, "time": "08:43", "dir": "in", "sender": "Marek Šimko", "kind": "text", "body": "A pošlite nám prosím aj orientačný termín CNC rezania." }
+      ],
+      "tasks": [
+        {
+          "n": 1, "sourceMessage": "m04", "status": "completed", "assignee": "Alex",
+          "due": { "day": -2, "time": null },
+          "completed": { "day": -2, "time": "14:08" },
+          "leadId": "demo-clients-1", "projectId": "demo-projects-1",
+          "title": { "en": "Send the revised delivery schedule to Marek Šimko", "sk": "Poslať Marekovi Šimkovi upravený harmonogram dodávky", "hu": "Módosított szállítási ütemterv küldése Šimko Mareknek" },
+          "description": { "en": "He needs the exact slab delivery dates to coordinate the bricklayers and the installation.", "sk": "Potrebuje presné dátumy dodania dosiek, aby zladil murárov a montáž.", "hu": "A pontos lapszállítási dátumokra van szüksége a kőművesek és a beépítés összehangolásához." }
+        },
+        {
+          "n": 2, "sourceMessage": "m11", "status": "open", "assignee": "Alex",
+          "due": { "day": 1, "time": null },
+          "leadId": "demo-clients-1", "projectId": "demo-projects-1",
+          "title": { "en": "Confirm the installation start with the crew and tell Marek Šimko", "sk": "Overiť začiatok montáže s čatou a dať vedieť Marekovi Šimkovi", "hu": "Egyeztetni a beépítés kezdetét a csapattal, és értesíteni Šimko Mareket" },
+          "description": { "en": "He wants to start at the beginning of next week; the crew has to confirm.", "sk": "Chce začať na začiatku budúceho týždňa; čata to musí potvrdiť.", "hu": "A jövő hét elején szeretne kezdeni; a csapatnak ezt meg kell erősítenie." }
+        },
+        {
+          "n": 3, "sourceMessage": "m09", "status": "open", "assignee": "Jordan",
+          "due": null,
+          "leadId": "demo-clients-1", "projectId": "demo-projects-1",
+          "title": { "en": "Send the interim invoice for the measurement and slabs to Vila Slavín", "sk": "Poslať Vile Slavín priebežnú faktúru za zameranie a dosky", "hu": "A felmérés és a lapok részszámlájának elküldése a Vila Slavínnak" },
+          "description": { "en": "Their accountant asked for it this week; no date was agreed in the chat.", "sk": "Ich účtovníčka o ňu žiadala tento týždeň; v chate sa nedohodol dátum.", "hu": "A könyvelőjük erre a hétre kérte; a csevegésben nem egyeztek meg dátumban." }
+        }
+      ],
+      "summary": {
+        "narrative": {
+          "en": "Marek Šimko from Vila Slavín is following up on the slabs for stage 2. The delivery schedule was sent and acknowledged. Open: the interim invoice and the installation start.",
+          "sk": "Marek Šimko z Vily Slavín sleduje dosky pre 2. etapu. Harmonogram dodávky bol odoslaný a potvrdený. Otvorené zostáva: priebežná faktúra a začiatok montáže.",
+          "hu": "Šimko Marek a Vila Slavíntól a 2. szakasz lapjait követi. Az ütemtervet elküldtük és visszaigazolták. Nyitott: a részszámla és a beépítés kezdete."
+        },
+        "actionItems": [
+          { "task": 3, "text": { "en": "Send the interim invoice", "sk": "Poslať priebežnú faktúru", "hu": "Részszámla küldése" } },
+          { "task": 2, "text": { "en": "Confirm the installation start", "sk": "Potvrdiť začiatok montáže", "hu": "A beépítés kezdetének megerősítése" } }
+        ]
+      },
+      "timeline": [
+        {
+          "kind": "summary", "day": -1, "time": "18:00",
+          "title": { "en": "WhatsApp summary: Marek Šimko – Vila Slavín", "sk": "Súhrn z WhatsAppu: Marek Šimko – Vila Slavín", "hu": "WhatsApp-összefoglaló: Marek Šimko – Vila Slavín" },
+          "content": { "en": "The delivery schedule was acknowledged. Marek asked about the interim invoice and about starting the installation at the beginning of next week.", "sk": "Harmonogram dodávky bol potvrdený. Marek sa pýtal na priebežnú faktúru a na začiatok montáže na začiatku budúceho týždňa.", "hu": "Az ütemtervet visszaigazolták. Marek a részszámláról és a beépítés jövő hét eleji kezdéséről kérdezett." },
+          "message": "m11"
+        }
+      ]
+    },
+    {
+      "ref": "demo-wa-weber",
+      "title": "Sandra Weber",
+      "isGroup": false,
+      "phone": "4934199026118",
+      "locale": "de",
+      "unread": 0,
+      "members": ["Sandra Weber"],
+      "links": [
+        { "entityType": "lead", "entityId": "demo-clients-8", "source": "auto" }
+      ],
+      "messages": [
+        { "id": "m01", "day": -3, "time": "11:02", "dir": "in", "sender": "Sandra Weber", "kind": "text", "body": "Guten Tag, hier ist Sandra Weber aus Leipzig. Wir hatten Ihnen wegen der Terrassenverkleidung geschrieben." },
+        { "id": "m02", "day": -3, "time": "11:10", "dir": "out", "kind": "text", "body": "Guten Tag, Frau Weber, vielen Dank für Ihre Nachricht. Wir arbeiten gerade am Entwurf des Angebots." },
+        { "id": "m03", "day": -3, "time": "11:14", "dir": "in", "sender": "Sandra Weber", "kind": "text", "body": "Die Terrasse hat etwa 38 m². Reicht das für eine erste Kalkulation?" },
+        { "id": "m04", "day": -3, "time": "11:20", "dir": "out", "kind": "text", "body": "Für den ersten Entwurf ja. Ich schicke Ihnen übermorgen Fotos unserer Terrassenmuster aus Porzellan." },
+        { "id": "m05", "day": -1, "time": "09:15", "dir": "out", "kind": "image", "body": "Porzellan 20 mm, Farbe Beton – die Muster, die ich erwähnt hatte.", "mime": "image/png", "placeholder": "samples" },
+        { "id": "m06", "day": -1, "time": "09:48", "dir": "in", "sender": "Sandra Weber", "kind": "text", "body": "Danke, die Muster gefallen uns! Besonders die dunkle Variante.", "quote": "m05" },
+        { "id": "m07", "day": -1, "time": "16:30", "dir": "in", "sender": "Sandra Weber", "kind": "text", "body": "Könnten Sie mir das Angebot bis in einer Woche um 12 Uhr schicken? Dann habe ich einen Termin mit dem Architekten." },
+        { "id": "m08", "day": -1, "time": "16:36", "dir": "out", "kind": "text", "body": "Ja, das schaffen wir. Ich beginne morgen mit der Kalkulation.", "reactions": [{ "emoji": "👍", "by": "Sandra Weber" }] },
+        { "id": "m09", "day": -1, "time": "16:40", "dir": "in", "sender": "Sandra Weber", "kind": "text", "body": "Perfekt, vielen Dank!" }
+      ],
+      "tasks": [
+        {
+          "n": 4, "sourceMessage": "m04", "status": "completed", "assignee": "Alex",
+          "due": { "day": -1, "time": null },
+          "completed": { "day": -1, "time": "09:15" },
+          "leadId": "demo-clients-8", "projectId": null,
+          "title": { "en": "Send Sandra Weber photos of the porcelain terrace samples", "sk": "Poslať Sandre Weber fotky vzoriek porcelánovej terasy", "hu": "A porcelán teraszminták fotóinak elküldése Sandra Webernek" },
+          "description": { "en": "20 mm porcelain, concrete colour; promised for the day after the first call.", "sk": "Porcelán 20 mm, farba betón; sľúbené na deň po prvom hovore.", "hu": "20 mm-es porcelán, beton szín; az első beszélgetés utáni napra ígérve." }
+        },
+        {
+          "n": 5, "sourceMessage": "m08", "status": "open", "assignee": "Alex",
+          "start": { "day": 0 },
+          "due": { "day": 6, "time": "12:00" },
+          "leadId": "demo-clients-8", "projectId": null,
+          "title": { "en": "Send the terrace offer to Sandra Weber", "sk": "Poslať Sandre Weber ponuku na terasu", "hu": "A teraszajánlat elküldése Sandra Webernek" },
+          "description": { "en": "About 38 m² of porcelain; she has a meeting with the architect right after the deadline.", "sk": "Približne 38 m² porcelánu; hneď po termíne má stretnutie s architektom.", "hu": "Körülbelül 38 m² porcelán; a határidő után rögtön találkozója van az építésszel." }
+        }
+      ],
+      "summary": {
+        "narrative": {
+          "en": "Sandra Weber is planning a 38 m² porcelain terrace. She liked the dark sample and wants the offer within a week.",
+          "sk": "Sandra Weber plánuje terasu z porcelánu s plochou 38 m². Páčila sa jej tmavá vzorka a ponuku chce do týždňa.",
+          "hu": "Sandra Weber egy 38 m²-es porcelánteraszt tervez. A sötét minta tetszett neki, az ajánlatot egy héten belül kéri."
+        },
+        "actionItems": [
+          { "task": 5, "text": { "en": "Send the terrace offer", "sk": "Poslať ponuku na terasu", "hu": "A teraszajánlat elküldése" } }
+        ]
+      },
+      "timeline": []
+    },
+    {
+      "ref": "demo-wa-dvorak",
+      "title": "Dvořák – parapety",
+      "isGroup": true,
+      "phone": null,
+      "locale": "cs",
+      "unread": 2,
+      "members": ["Petr Dvořák", "Lenka Černá"],
+      "links": [
+        { "entityType": "lead", "entityId": "demo-clients-4", "source": "manual" },
+        { "entityType": "project", "entityId": "demo-projects-4", "source": "manual" }
+      ],
+      "messages": [
+        { "id": "m01", "day": -3, "time": "13:05", "dir": "in", "sender": "Petr Dvořák", "kind": "text", "body": "Dobrý den, k parapetům: investor se nemůže rozhodnout mezi profilem A a B." },
+        { "id": "m02", "day": -3, "time": "13:09", "dir": "in", "sender": "Lenka Černá", "kind": "text", "body": "Potřebovali bychom od vás oba vzorky, ať je může porovnat přímo na místě." },
+        { "id": "m03", "day": -3, "time": "13:20", "dir": "out", "kind": "text", "body": "Dobrý den, oba vzorky máme na skladě." },
+        { "id": "m04", "day": -3, "time": "13:22", "dir": "out", "kind": "text", "body": "Sam vám je pošle kurýrem do dvou dnů." },
+        { "id": "m05", "day": -1, "time": "10:30", "dir": "out", "kind": "text", "body": "Vzorky odešly dnes ráno, číslo zásilky 7731904.", "reactions": [{ "emoji": "👍", "by": "Petr Dvořák" }] },
+        { "id": "m06", "day": -1, "time": "10:41", "dir": "in", "sender": "Lenka Černá", "kind": "text", "body": "Super, díky! 🙏" },
+        { "id": "m07", "day": -1, "time": "11:02", "dir": "in", "sender": "Petr Dvořák", "kind": "text", "body": "Investor se rozhodne do týdne, pak potřebujeme potvrdit termín výroby." },
+        { "id": "m08", "day": 0, "time": "09:15", "dir": "in", "sender": "Lenka Černá", "kind": "text", "body": "Investor vybral profil B (zkosená hrana). Můžete nám poslat upravený výkres? Potřebujeme ho zítra do 12:00." },
+        { "id": "m09", "day": 0, "time": "09:16", "dir": "in", "sender": "Petr Dvořák", "kind": "text", "body": "A potvrďte prosím, že termín výroby zůstává." }
+      ],
+      "tasks": [
+        {
+          "n": 6, "sourceMessage": "m04", "status": "completed", "assignee": "Sam",
+          "due": { "day": -1, "time": null },
+          "completed": { "day": -1, "time": "10:30" },
+          "leadId": "demo-clients-4", "projectId": "demo-projects-4",
+          "title": { "en": "Send both sill profile samples to Interiéry Dvořák", "sk": "Poslať Interiéry Dvořák oba vzorky profilov parapetov", "hu": "Mindkét párkányprofil-minta elküldése az Interiéry Dvořáknak" },
+          "description": { "en": "By courier; the investor compares profiles A and B on site.", "sk": "Kuriérom; investor porovná profily A a B na mieste.", "hu": "Futárral; a beruházó a helyszínen hasonlítja össze az A és B profilt." }
+        },
+        {
+          "n": 7, "sourceMessage": "m08", "status": "open", "assignee": "Alex",
+          "due": { "day": 1, "time": "12:00" },
+          "leadId": "demo-clients-4", "projectId": "demo-projects-4",
+          "title": { "en": "Send the revised shop drawing with sill profile B to Interiéry Dvořák", "sk": "Poslať Interiéry Dvořák upravený dielenský výkres s profilom B", "hu": "A B profillal módosított műhelyrajz elküldése az Interiéry Dvořáknak" },
+          "description": { "en": "The investor chose profile B (chamfered edge). Also confirm that the production date stays.", "sk": "Investor vybral profil B (skosená hrana). Potvrdiť aj, že termín výroby zostáva.", "hu": "A beruházó a B profilt (letört él) választotta. Meg kell erősíteni, hogy a gyártási határidő marad." }
+        }
+      ],
+      "summary": {
+        "narrative": {
+          "en": "The investor chose sill profile B. The client wants a revised drawing by tomorrow noon and a confirmation of the production date.",
+          "sk": "Investor vybral profil parapetov B. Klient chce upravený výkres do zajtra do poludnia a potvrdenie termínu výroby.",
+          "hu": "A beruházó a B párkányprofilt választotta. Az ügyfél holnap délig kéri a módosított rajzot és a gyártási határidő megerősítését."
+        },
+        "actionItems": [
+          { "task": 7, "text": { "en": "Send the revised drawing with profile B", "sk": "Poslať upravený výkres s profilom B", "hu": "A B profillal módosított rajz elküldése" } }
+        ]
+      },
+      "timeline": []
+    },
+    {
+      "ref": "demo-wa-kovacs",
+      "title": "Kovács Gábor",
+      "isGroup": false,
+      "phone": "36304821170",
+      "locale": "hu",
+      "unread": 2,
+      "members": ["Kovács Gábor"],
+      "links": [
+        { "entityType": "lead", "entityId": "demo-clients-5", "source": "auto" }
+      ],
+      "messages": [
+        { "id": "m01", "day": -6, "time": "14:02", "dir": "in", "sender": "Kovács Gábor", "kind": "text", "body": "Szia! A győri felújításokhoz szeretnénk árajánlatot a második fázisra." },
+        { "id": "m02", "day": -6, "time": "14:10", "dir": "out", "kind": "text", "body": "Szia Gábor! Természetesen. Hány mosdópultra és mennyi falburkolatra gondoltok?" },
+        { "id": "m03", "day": -6, "time": "14:15", "dir": "in", "sender": "Kovács Gábor", "kind": "audio", "body": null, "mime": "audio/wav", "seconds": 8, "transcription": "Hat mosdópult kellene kvarcból, és körülbelül ötven négyzetméter falburkolat. A határidő a hónap vége lenne." },
+        { "id": "m04", "day": -6, "time": "14:21", "dir": "out", "kind": "text", "body": "Értem, köszi! Az ajánlatot a következő napokban elkészítem.", "quote": "m03" },
+        { "id": "m05", "day": -5, "time": "09:40", "dir": "in", "sender": "Kovács Gábor", "kind": "text", "body": "Küldenél színmintákat is a kvarcból? A feleségem is szeretne választani." },
+        { "id": "m06", "day": -5, "time": "09:46", "dir": "out", "kind": "text", "body": "Persze, a kollégám, Jordan holnap postázza a mintatáblát." },
+        { "id": "m07", "day": -2, "time": "10:30", "dir": "in", "sender": "Kovács Gábor", "kind": "text", "body": "Megjött a mintatábla, köszi! Mennyi a kék kvarc szállítási ideje?" },
+        { "id": "m08", "day": -2, "time": "10:40", "dir": "out", "kind": "text", "body": "Szerintem 3–4 hét, de holnap megkérdezem a beszállítót, és szólok.", "reactions": [{ "emoji": "👍", "by": "Kovács Gábor" }] },
+        { "id": "m09", "day": 0, "time": "08:10", "dir": "in", "sender": "Kovács Gábor", "kind": "image", "body": "Itt lesznek a mosdópultok – a helyszín.", "mime": "image/png", "placeholder": "site" },
+        { "id": "m10", "day": 0, "time": "08:12", "dir": "in", "sender": "Kovács Gábor", "kind": "text", "body": "Mi a helyzet a kék kvarccal? Szeretnénk ma dönteni." }
+      ],
+      "tasks": [
+        {
+          "n": 8, "sourceMessage": "m06", "status": "completed", "assignee": "Jordan",
+          "due": { "day": -4, "time": null },
+          "completed": { "day": -4, "time": "11:30" },
+          "leadId": "demo-clients-5", "projectId": null,
+          "title": { "en": "Post the quartz colour sample board to Gábor Kovács", "sk": "Poslať Gáborovi Kovácsovi poštou vzorkovník kremeňa", "hu": "A kvarc mintatábla postázása Kovács Gábornak" },
+          "description": { "en": "His wife wants to choose the colour as well.", "sk": "Farbu chce vyberať aj jeho manželka.", "hu": "A színt a felesége is szeretné kiválasztani." }
+        },
+        {
+          "n": 9, "sourceMessage": "m08", "status": "open", "assignee": "Alex",
+          "due": { "day": -1, "time": null },
+          "leadId": "demo-clients-5", "projectId": null,
+          "title": { "en": "Ask the supplier for the blue quartz lead time and tell Gábor Kovács", "sk": "Opýtať sa dodávateľa na dodaciu lehotu modrého kremeňa a dať vedieť Gáborovi Kovácsovi", "hu": "A kék kvarc szállítási idejének megkérdezése a beszállítótól, és értesíteni Kovács Gábort" },
+          "description": { "en": "He wants to decide today; our estimate was 3–4 weeks.", "sk": "Chce sa rozhodnúť ešte dnes; náš odhad boli 3 – 4 týždne.", "hu": "Ma szeretne dönteni; a becslésünk 3–4 hét volt." }
+        }
+      ],
+      "summary": {
+        "narrative": {
+          "en": "Gábor Kovács wants a phase 2 quote for the Győr renovations. The sample board arrived; he now waits for the blue quartz lead time.",
+          "sk": "Gábor Kovács chce ponuku fázy 2 pre rekonštrukcie v Győri. Vzorkovník dorazil; teraz čaká na dodaciu lehotu modrého kremeňa.",
+          "hu": "Kovács Gábor árajánlatot kér a győri felújítások 2. fázisára. A mintatábla megérkezett; most a kék kvarc szállítási idejére vár."
+        },
+        "actionItems": [
+          { "task": 9, "text": { "en": "Get the blue quartz lead time", "sk": "Zistiť dodaciu lehotu modrého kremeňa", "hu": "A kék kvarc szállítási idejének kiderítése" } }
+        ]
+      },
+      "timeline": []
+    }
+  ]
+}
