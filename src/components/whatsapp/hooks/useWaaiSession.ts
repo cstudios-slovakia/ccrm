@@ -50,7 +50,14 @@ export function useWaaiSession(base: string | null): { state: SessionState; retr
   useEffect(() => {
     if (!base) return;
     let cancelled = false;
-    const client = new WaaiClient({ base, fetchSsoToken: () => fetchSsoToken() });
+    const client = new WaaiClient({
+      base,
+      fetchSsoToken: async () => {
+        const token = await fetchSsoToken();
+        if (cancelled) throw new DOMException("Aborted", "AbortError");
+        return token;
+      },
+    });
     setState({ kind: "connecting" });
     (async () => {
       try {

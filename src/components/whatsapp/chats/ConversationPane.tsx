@@ -8,7 +8,7 @@ import type { ChatsMessages } from "./chatsI18n.ts";
 import { MessageBubble } from "./MessageBubble";
 import { useMessages } from "./useMessages.ts";
 import { Composer, withOwnReaction } from "./composer";
-import { ChatTasks, CrmLinkChip, SummaryPanel, TaskUpdateComposer } from "./panel";
+import { ChatTasks, CrmLinkChip, SummaryPanel } from "./panel";
 import { useChatCrmLinks } from "../hooks/useChatCrmLinks.ts";
 
 interface Props {
@@ -53,7 +53,6 @@ export const ConversationPane = ({
   const [editingMessage, setEditingMessage] = useState<MessageDto | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [tasksOpen, setTasksOpen] = useState(false);
-  const [taskComposerOpen, setTaskComposerOpen] = useState(false);
 
   const crmLinksHook = useChatCrmLinks({
     client,
@@ -255,6 +254,7 @@ export const ConversationPane = ({
                       t={t}
                       locale={locale}
                       message={item.message}
+                      quickReactions={info?.quick_reactions}
                       showSender={isGroup && showsSender(items, i)}
                       highlighted={highlight === item.message.id}
                       onJumpTo={jumpTo}
@@ -323,18 +323,6 @@ export const ConversationPane = ({
           </aside>
         )}
       </div>
-
-      {taskComposerOpen && (
-        <TaskUpdateComposer
-          isOpen={taskComposerOpen}
-          client={client}
-          conversationId={conversationId}
-          completedTasks={[]}
-          language={locale}
-          onClose={() => setTaskComposerOpen(false)}
-          onSuccess={() => msgs.reload()}
-        />
-      )}
     </div>
   );
 };

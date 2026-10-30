@@ -1140,7 +1140,8 @@ export async function installBackendMocks(
 
   // Everything else under /api/ and the upload endpoints: succeed quietly so a
   // missing PHP backend never shows up as an app defect.
-  await page.route('**/api/**', (route) =>
+  await page.route((url) => url.pathname === '/api/waai_sso.php', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, configured: false, module: { ui: 'native', transport: 'proxy', base: '/waai-api' }, standalone_url: null, embed_url: null, can_manage: signedIn.role === 'admin', user_id: signedIn.id }) }));
+  await page.route((url) => url.pathname.startsWith('/api/') && url.pathname !== '/api/waai_sso.php', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',

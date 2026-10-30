@@ -31,6 +31,7 @@ interface Props {
   /** The route is `whatsapp…`; false while another module is showing (the module stays alive, hidden). */
   active: boolean;
   route: string;
+  params: URLSearchParams;
   language: string;
   config: ModuleConfig;
   onUnread: (chats: number) => void;
@@ -56,7 +57,7 @@ function accountPill(accounts: MetaResponse["wa_accounts"], t: WaMessages): { la
   }
 }
 
-export const NativeModule = ({ active, route, language, config, onUnread, onOpenRecord }: Props) => {
+export const NativeModule = ({ active, route, params, language, config, onUnread, onOpenRecord }: Props) => {
   const t = useMemo(() => waMessages(language), [language]);
   const { state, retry } = useWaaiSession(config.configured ? config.base : null);
   const client = state.kind === "ready" ? state.client : null;
@@ -169,7 +170,7 @@ export const NativeModule = ({ active, route, language, config, onUnread, onOpen
           <ChatsTab
             client={state.client}
             route={route}
-            params={new URLSearchParams(window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?") + 1) : "")}
+            params={params}
             language={language}
             active={active}
             onOpenRecord={onOpenRecord}

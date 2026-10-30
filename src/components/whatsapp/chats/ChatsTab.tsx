@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Loader2, MessageCircle, RotateCw } from "lucide-react";
 import { EmptyState } from "../../layout";
 import type { ResyncResponse, WaHealthResponse } from "../api/contract.ts";
@@ -41,6 +41,28 @@ export const ChatsTab = ({ client, route, params, language, active, onOpenRecord
   const [health, setHealth] = useState<WaHealthResponse | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncFailed, setSyncFailed] = useState(false);
+  const lastChatHashRef = useRef<string | null>(null);
+  const wasActiveRef = useRef(active);
+
+  useEffect(() => {
+    if (where.conversationId) {
+      lastChatHashRef.current = whatsAppHash({ ...where, messageId: null });
+    }
+  }, [where]);
+
+  useEffect(() => {
+    const becameActive = active && !wasActiveRef.current;
+    wasActiveRef.current = active;
+    if (
+      becameActive &&
+      parsed.view === "chats" &&
+      !where.conversationId &&
+      !where.userId &&
+      lastChatHashRef.current
+    ) {
+      window.location.hash = lastChatHashRef.current;
+    }
+  }, [active, parsed.view, where.conversationId, where.userId]);
 
   usePoll(
     async () => {
@@ -52,8 +74,11 @@ export const ChatsTab = ({ client, route, params, language, active, onOpenRecord
   );
 
   const go = useCallback(
-    (conversationId: string | null) => {
-      window.location.hash = whatsAppHash({ ...where, conversationId, messageId: null });
+    (conversationId: string | null, messageId: string | null = null) => {
+      if (conversationId === null) {
+        lastChatHashRef.current = null;
+      }
+      window.location.hash = whatsAppHash({ ...where, conversationId, messageId });
     },
     [where],
   );
@@ -123,8 +148,10 @@ export const ChatsTab = ({ client, route, params, language, active, onOpenRecord
             t={t}
             locale={language}
             data={list.data}
+            userId={where.userId}
             selectedId={where.conversationId}
-            onSelect={go}
+            onSelect={(id) => go(id)}
+            onSelectMessage={(conversationId, messageId) => go(conversationId, messageId)}
             syncing={syncing}
             syncFailed={syncFailed}
             onSync={() => void sync()}

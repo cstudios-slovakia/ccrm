@@ -23,6 +23,8 @@ export interface MessageActionsProps {
   onEdit?: (message: MessageDto) => void;
   onDelete?: (messageId: string, scope: DeleteMessageScope) => void;
   onReactionChange?: (messageId: string, emoji: string | null) => void;
+  locale?: string;
+  quickReactions?: string[];
   t?: ComposerMessages;
   trigger?: React.ReactNode;
   className?: string;
@@ -36,11 +38,13 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onEdit,
   onDelete,
   onReactionChange,
+  locale,
+  quickReactions,
   t: customT,
   trigger,
   className = "",
 }) => {
-  const t = customT ?? composerMessages();
+  const t = customT ?? composerMessages(locale);
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showForwardDialog, setShowForwardDialog] = useState(false);
@@ -135,6 +139,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             <ReactionBar
               client={client}
               message={message}
+              emojis={quickReactions}
               onReactionChange={onReactionChange}
               onClose={() => setIsOpen(false)}
               t={t}

@@ -44,6 +44,7 @@ export const WhatsAppModule = (props: Props) => {
       <NativeModule
         active={active}
         route={route}
+        params={props.params}
         language={language}
         config={config}
         onUnread={onUnread}

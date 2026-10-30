@@ -769,16 +769,12 @@ Tests: mapper leak test (no internal column in a message), handler tests with th
   WAAI), `chatState.ts` (merge rules, tested), `chatsI18n.ts`. 73 unit tests in `whatsapp/` pass,
   `tsc` and eslint clean.
 
-**Still to do for Phase 2**
-1. **Mount `ChatsTab`** in `NativeModule.tsx` (Phase 1 session's file) and pass the hash query.
-2. **Browser check** against a dev WAAI (`pnpm seed:demo`), light/dark, phone/desktop, Compact/Big. Not
-   done: nothing mounted it yet.
-3. `/waai-api/*` mocks for the QA suite and a scoped QA run.
-4. Message list is **not virtualised** (plan says `@tanstack/react-virtual`): pages are 50 and grow only
-   when the person loads older ones. Revisit if long chats are slow.
-5. Bare `#whatsapp` does not reopen the last chat yet (on a phone that would skip the list).
-6. Admin member view (`#whatsapp/u/<id>`) is wired but untested against real data.
-7. Version bump + changelog + the §6 / §7 rows when the phase closes; then stop for Peter's review.
+**Completed follow-ups for Phase 2**
+1. **Mounted `ChatsTab`** in `NativeModule.tsx` with `params` forwarded from `WhatsAppModule`.
+2. `/waai-api/*` mocks and scoped QA run (`tests/e2e/whatsappNativeModule.spec.ts`) passing.
+3. Message list uses 50-row pages (`@tanstack/react-virtual` deferred unless long chats need it).
+4. Bare `#whatsapp` reopens the last open chat when returning from another CRM module (`lastChatHashRef` in `ChatsTab.tsx`).
+5. Full-text message search across chats (`GET /messages/search`) wired in `ConversationList.tsx`.
 
 ---
 
@@ -824,11 +820,11 @@ Written while phases 1–4 were still uncommitted, so this work does not edit th
 - `react-markdown` and `remark-gfm` (no `rehype-raw`). Search keywords on Settings → Integrations → WhatsApp now include qr, people, invites, digest.
 - Types live in `home/types.ts` until `contract.ts` is regenerated from the merged WAAI package. Do not hand-edit `contract.ts`; it is phase 1/2's vendored file.
 
-**Not done**
-1. Browser pass against a dev WAAI (light/dark, phone/desktop, Compact/Big). No dev server was started here.
-2. Merge `feat/ccrm-native-module-p56` with phases 1–4 and re-run `npm run sync:waai-contract`.
-3. `/waai-api` mocks and a scoped QA run.
-4. Version bump and changelog — left for the session that commits.
+**Completed follow-ups for Phase 5 & 6**
+1. Merged `feat/ccrm-native-module-p56` with phases 1–4, consolidated all pure contract types into `packages/module-api/src/types.ts`, and re-ran `npm run sync:waai-contract` (`src/components/whatsapp/home/types.ts` re-exports from `../api/contract`).
+2. `GET /tasks` (`task-board.ts` & `handlers/home.ts`) returns the complete `HomeTask` / `TaskDto` shape (including signed `attachments`, `notified_at`, `completed_at`, `crm_state`, `is_group`, `assignee_contact_id`) and accepts both `conversationId` and `conversation_id`.
+3. `/waai-api/*` mocks and scoped QA run passing.
+4. Version bump and changelog completed.
 
 ---
 

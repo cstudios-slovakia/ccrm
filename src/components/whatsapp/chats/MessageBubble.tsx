@@ -1,12 +1,13 @@
 import { memo, useEffect, useState } from "react";
 import { Clock, ExternalLink, FileText } from "lucide-react";
-import type { DeleteMessageScope, LinkPreviewResponse, MessageDto, QuotedMessage } from "../api/contract.ts";
+import type { DeleteMessageScope, LinkPreviewResponse, MessageDto, QuotedMessage, ReactionResponse } from "../api/contract.ts";
 import type { WaaiClient } from "../api/waaiClient.ts";
 import { messageTime } from "../lib/messageDays.ts";
 import { bubbleSegments, firstUrl } from "../lib/messageText.ts";
 import { Avatar } from "./Avatar";
 import type { ChatsMessages } from "./chatsI18n.ts";
 import { MessageActions } from "./composer/MessageActions";
+import { nextReaction, ownReaction } from "./composer/optimistic.ts";
 
 // A preview is fetched once per address for the whole session; "error" is remembered too, so a dead link
 // is not retried on every poll.
@@ -115,6 +116,7 @@ interface Props {
   onDelete?: (messageId: string, scope: DeleteMessageScope) => void;
   onReactionChange?: (messageId: string, emoji: string | null) => void;
   currentWaAccountId?: string;
+  quickReactions?: string[];
 }
 
 const Bubble = ({
@@ -130,17 +132,32 @@ const Bubble = ({
   onDelete,
   onReactionChange,
   currentWaAccountId,
+  quickReactions,
 }: Props) => {
   const out = m.direction === "out";
   const isLocal = m.id.startsWith("local-");
   const url = m.kind === "text" && m.body ? firstUrl(m.body) : null;
   const transcript = m.kind === "audio" && m.transcription ? m.transcription : null;
 
+  const toggleReaction = async (emoji: string) => {
+    if (isLocal) return;
+    const prev = ownReaction(m.reactions);
+    const next = nextReaction(m.reactions, emoji);
+    onReactionChange?.(m.id, next);
+    try {
+      await client.post<ReactionResponse>(`/messages/${encodeURIComponent(m.id)}/reaction`, { emoji: next });
+    } catch {
+      onReactionChange?.(m.id, prev);
+    }
+  };
+
   const actions = !isLocal && (
     <div className="mb-1 opacity-0 transition-opacity group-hover:opacity-100">
       <MessageActions
         client={client}
         message={m}
+        locale={locale}
+        quickReactions={quickReactions}
         currentWaAccountId={currentWaAccountId}
         onReply={onReply}
         onEdit={onEdit}
@@ -194,14 +211,16 @@ const Bubble = ({
         {m.reactions.length > 0 && (
           <div className={`-mt-1 flex flex-wrap gap-1 ${out ? "justify-end" : "justify-start"}`}>
             {m.reactions.map((g) => (
-              <span
+              <button
                 key={g.emoji}
+                type="button"
+                onClick={() => void toggleReaction(g.emoji)}
                 title={g.reactors.map((r) => (r.mine ? t.you : (r.name ?? ""))).filter(Boolean).join(", ")}
-                className={`type-meta inline-flex items-center gap-1 rounded-full border bg-white px-1.5 shadow-sm ${g.mine ? "border-green-400" : "border-slate-200"}`}
+                className={`type-meta inline-flex cursor-pointer items-center gap-1 rounded-full border bg-white px-1.5 shadow-sm transition-colors hover:bg-slate-50 ${g.mine ? "border-green-400" : "border-slate-200"}`}
               >
                 <span>{g.emoji}</span>
                 {g.count > 1 && <span className="text-slate-500">{g.count}</span>}
-              </span>
+              </button>
             ))}
           </div>
         )}

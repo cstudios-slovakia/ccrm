@@ -1,7 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCw, Search, SearchX } from "lucide-react";
 import { EmptyState } from "../../layout";
-import type { ChatListItem, ChatSummaryPreview, ConversationsResponse } from "../api/contract.ts";
+import type {
+  ChatListItem,
+  ChatSummaryPreview,
+  ConversationsResponse,
+  MessageSearchHitDto,
+  MessageSearchResponse,
+} from "../api/contract.ts";
 import type { WaaiClient } from "../api/waaiClient.ts";
 import { rowStamp } from "../lib/messageDays.ts";
 import { Avatar } from "./Avatar";
@@ -13,8 +19,10 @@ interface Props {
   t: ChatsMessages;
   locale: string;
   data: ConversationsResponse;
+  userId?: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onSelectMessage?: (conversationId: string, messageId: string) => void;
   syncing: boolean;
   syncFailed: boolean;
   onSync: () => void;
@@ -93,10 +101,55 @@ const Row = ({
 };
 
 /** The left pane: search box and the chats, newest first (the order WAAI returns them in). */
-export const ConversationList = ({ client, t, locale, data, selectedId, onSelect, syncing, syncFailed, onSync }: Props) => {
+export const ConversationList = ({
+  client,
+  t,
+  locale,
+  data,
+  userId,
+  selectedId,
+  onSelect,
+  onSelectMessage,
+  syncing,
+  syncFailed,
+  onSync,
+}: Props) => {
   const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<MessageSearchHitDto[]>([]);
+  const [searching, setSearching] = useState(false);
   const shown = useMemo(() => filterChats(data.conversations, query), [data.conversations, query]);
   const done = useMemo(() => new Set(data.completed_task_ids), [data.completed_task_ids]);
+  const labels = { today: t.today, yesterday: t.yesterday };
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setHits([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      client
+        .get<MessageSearchResponse>("/messages/search", {
+          query: { q: trimmed, ...(userId ? { user: userId } : {}) },
+        })
+        .then((res) => {
+          if (!cancelled) setHits(res.hits ?? []);
+        })
+        .catch(() => {
+          if (!cancelled) setHits([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [client, query, userId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -134,23 +187,66 @@ export const ConversationList = ({ client, t, locale, data, selectedId, onSelect
               ) : undefined
             }
           />
-        ) : shown.length === 0 ? (
+        ) : shown.length === 0 && hits.length === 0 && !searching ? (
           <p className="type-body p-6 text-center text-slate-500">{t.noMatch}</p>
         ) : (
-          <ul>
-            {shown.map((chat) => (
-              <Row
-                key={chat.id}
-                client={client}
-                t={t}
-                locale={locale}
-                chat={chat}
-                summary={summaryLine(data.summaries[chat.id], done)}
-                selected={chat.id === selectedId}
-                onSelect={() => onSelect(chat.id)}
-              />
-            ))}
-          </ul>
+          <>
+            {shown.length > 0 && (
+              <ul>
+                {shown.map((chat) => (
+                  <Row
+                    key={chat.id}
+                    client={client}
+                    t={t}
+                    locale={locale}
+                    chat={chat}
+                    summary={summaryLine(data.summaries[chat.id], done)}
+                    selected={chat.id === selectedId}
+                    onSelect={() => onSelect(chat.id)}
+                  />
+                ))}
+              </ul>
+            )}
+            {hits.length > 0 && (
+              <ul data-testid="wa-message-search-hits">
+                {hits.map((hit) => (
+                  <li key={hit.message_id}>
+                    <button
+                      type="button"
+                      data-testid="wa-search-hit"
+                      onClick={() =>
+                        onSelectMessage
+                          ? onSelectMessage(hit.conversation_id, hit.message_id)
+                          : onSelect(hit.conversation_id)
+                      }
+                      className="flex w-full items-start gap-3 border-b border-slate-100 px-4 py-3 text-left transition-colors duration-150 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      <Avatar
+                        client={client}
+                        src={hit.avatar_url}
+                        name={hit.conversation_title ?? "Chat"}
+                        group={hit.is_group}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="type-label truncate text-slate-800">
+                            {hit.conversation_title ?? "Chat"}
+                          </span>
+                          <span className="type-meta shrink-0 text-slate-400">
+                            {rowStamp(hit.sent_at, labels, locale)}
+                          </span>
+                        </span>
+                        <span className="type-meta mt-0.5 line-clamp-2 block text-slate-500">
+                          {hit.sender ? `${hit.sender}: ` : ""}
+                          {hit.snippet}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
         {syncFailed && <p className="type-meta px-4 py-2 text-rose-600">{t.syncFailed}</p>}
       </div>

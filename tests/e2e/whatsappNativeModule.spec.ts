@@ -5,8 +5,8 @@ import { TEST_USER } from './helpers/fixture';
 /**
  * The native WhatsApp module (docs/WAAI-NATIVE-MODULE.md): ordinary CRM screens on WAAI's module API.
  * WAAI is a stand-in: `page.route` answers `/waai-api/*` like the real `/api/ccrm/v1/*` (token exchange,
- * `/meta`, `/unread`, the error envelope) and records what it was asked. The real WAAI is exercised by hand
- * and by WAAI's own tests, because it needs Postgres and Redis.
+ * `/meta`, `/unread`, `/conversations`, `/digest`, `/tasks`, `/search`, `/preferences`, `/wa-accounts`,
+ * `/admin/*`, and the error envelope) and records what it was asked.
  *
  * The fixture runs in Slovak.
  */
@@ -30,7 +30,11 @@ interface Waai {
 
 const envelope = (code: string, message = 'x') => ({ error: { code, message, request_id: 'req-1' } });
 
-async function installNative(page: Page, over: Partial<Waai> = {}, config: { configured?: boolean; canManage?: boolean; standalone?: string | null } = {}) {
+async function installNative(
+  page: Page,
+  over: Partial<Waai> = {},
+  config: { configured?: boolean; canManage?: boolean; standalone?: string | null } = {},
+) {
   const waai: Waai = {
     exchanges: [],
     bearers: [],
@@ -64,7 +68,8 @@ async function installNative(page: Page, over: Partial<Waai> = {}, config: { con
 
   await page.route('**/waai-api/**', async (route) => {
     const req = route.request();
-    const path = new URL(req.url()).pathname.replace(/^\/waai-api/, '');
+    const url = new URL(req.url());
+    const path = url.pathname.replace(/^\/waai-api/, '');
     const method = req.method();
 
     if (path === '/session' && method === 'POST') {
@@ -88,7 +93,7 @@ async function installNative(page: Page, over: Partial<Waai> = {}, config: { con
       return route.fulfill({
         json: {
           api_version: waai.apiVersion,
-          features: ['session', 'meta', 'unread', 'media'],
+          features: ['session', 'meta', 'unread', 'media', 'chats', 'chat_write', 'chat_ai', 'home', 'settings'],
           user: { id: 'u1', role: 'admin', name: 'peter@example.sk', crm_user_id: TEST_USER.id },
           ai_configured: true,
           standalone_url: null,
@@ -102,6 +107,249 @@ async function installNative(page: Page, over: Partial<Waai> = {}, config: { con
         return route.fulfill({ status: 401, json: envelope('invalid_token') });
       }
       return route.fulfill({ json: waai.unread });
+    }
+    if (path === '/wa/health') {
+      return route.fulfill({
+        json: { ok: true, worker_offline: false, disconnected: [], connecting: [] },
+      });
+    }
+    if (path === '/conversations' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          conversations: [
+            {
+              id: 'abc123',
+              title: 'Acme Stavba',
+              is_group: false,
+              owner_email: 'peter@example.sk',
+              avatar_url: null,
+              unread_count: 1,
+              last_message_at: '2026-04-20T09:15:00.000Z',
+              last_message: {
+                kind: 'text',
+                body: 'Pošlite prosím cenovú ponuku.',
+                sender: 'Acme Stavba',
+                direction: 'in',
+              },
+            },
+          ],
+          summaries: {},
+          completed_task_ids: [],
+          ai_configured: true,
+          has_wa_account: waai.accounts.length > 0,
+          user_name: 'Peter',
+          user_avatar_url: null,
+        },
+      });
+    }
+    if (path === '/conversations/abc123' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          id: 'abc123',
+          title: 'Acme Stavba',
+          is_group: false,
+          avatar_url: null,
+          last_message_at: '2026-04-20T09:15:00.000Z',
+          detected_locale: 'sk',
+          sender_name: 'Peter',
+          is_self_chat: false,
+          unread_count: 0,
+          quick_reactions: ['👍', '❤️', '😂', '😮', '😢', '🙏'],
+          crm_links: { supported: true, links: [], ambiguous: null },
+        },
+      });
+    }
+    if (path === '/conversations/abc123/messages' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          messages: [
+            {
+              id: 'm1',
+              conversation_id: 'abc123',
+              kind: 'text',
+              direction: 'in',
+              sender: 'Acme Stavba',
+              sender_avatar_url: null,
+              body: 'Pošlite prosím cenovú ponuku.',
+              translation_note: null,
+              media: null,
+              transcription: null,
+              transcription_status: null,
+              sent_at: '2026-04-20T09:15:00.000Z',
+              edited_at: null,
+              quoted: null,
+              task_update_id: null,
+              reactions: [],
+            },
+          ],
+          next_cursor: null,
+          server_time: '2026-04-20T09:16:00.000Z',
+        },
+      });
+    }
+    if (path === '/conversations/abc123/mark-read' && method === 'POST') {
+      return route.fulfill({ json: { unread_count: 0 } });
+    }
+    if (path === '/messages/search' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          hits: [
+            {
+              message_id: 'm1',
+              conversation_id: 'abc123',
+              conversation_title: 'Acme Stavba',
+              avatar_url: null,
+              is_group: false,
+              kind: 'text',
+              direction: 'in',
+              sender: 'Acme Stavba',
+              snippet: 'Pošlite prosím cenovú ponuku.',
+              sent_at: '2026-04-20T09:15:00.000Z',
+            },
+          ],
+          next_cursor: null,
+        },
+      });
+    }
+    if (path === '/digest') {
+      return route.fulfill({
+        json: {
+          id: 'dig1',
+          window: (url.searchParams.get('window') ?? 'today') as 'today',
+          cached: true,
+          chat_count: 1,
+          narrative: 'Prehľad dnešných správ pre **Acme Stavba**.',
+          tasks: [],
+          meetings: [],
+          has_audio: false,
+          audio_url: null,
+          auto_audio: false,
+          created_at: '2026-04-20T09:20:00.000Z',
+        },
+      });
+    }
+    if (path === '/tasks' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          tasks: [
+            {
+              id: 't1',
+              title: 'Pripraviť cenovú ponuku pre Acme',
+              description: 'Do piatku',
+              assignee: 'Peter',
+              assignee_contact_id: null,
+              start_at: null,
+              due_at: '2026-04-24T12:00:00.000Z',
+              status: 'open',
+              completed_at: null,
+              notified_at: null,
+              created_at: '2026-04-20T09:15:00.000Z',
+              conversation_id: 'abc123',
+              conversation_title: 'Acme Stavba',
+              source_message_id: 'm1',
+              is_group: false,
+              origin: 'waai',
+              crm_sync_state: 'none',
+              crm_state: null,
+              crm_error: null,
+              crm_url: null,
+              crm_task_id: null,
+              crm_linked: false,
+              attachments: [],
+            },
+          ],
+          crm_push_enabled: true,
+        },
+      });
+    }
+    if (path === '/search') {
+      return route.fulfill({
+        json: {
+          answer: 'Zákazník žiada cenovú ponuku [1].',
+          sources: [
+            {
+              index: 1,
+              message_id: 'm1',
+              conversation_id: 'abc123',
+              conversation_title: 'Acme Stavba',
+              is_group: false,
+              sender: 'Acme Stavba',
+              snippet: 'Pošlite prosím cenovú ponuku.',
+              sent_at: '2026-04-20T09:15:00.000Z',
+            },
+          ],
+        },
+      });
+    }
+    if (path === '/preferences' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          auto_detect_summary_lang: true,
+          quick_reactions: ['👍', '❤️', '😂', '😮', '😢', '🙏'],
+          quick_reaction_count: 6,
+        },
+      });
+    }
+    if (path === '/wa-accounts' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          accounts: waai.accounts.map((a) => ({
+            ...a,
+            phone_number: '+421905123456',
+            last_error: null,
+            owner_email: 'peter@example.sk',
+            owner_user_id: null,
+          })),
+        },
+      });
+    }
+    if (path === '/admin/ai' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          provider: 'openai',
+          openai_key_set: true,
+          anthropic_key_set: false,
+          prompts: {
+            general: '',
+            general_file_name: null,
+            summary: '',
+            summary_file_name: null,
+            task: '',
+            task_file_name: null,
+          },
+          models: { text: 'gpt-4o-mini', embed: 'text-embedding-3-small', transcribe: 'whisper-1' },
+          cost_limit_usd: 25,
+          speech: { model: 'tts-1', speed: 1 },
+          digest_audio_auto: false,
+        },
+      });
+    }
+    if (path === '/admin/crm' && method === 'GET') {
+      return route.fulfill({
+        json: {
+          push_enabled: true,
+          pull_enabled: true,
+          paused_reason: null,
+          default_country: 'SK',
+          last_ping: { ok: true, at: '2026-04-20T09:00:00.000Z' },
+          accounts: [],
+          contacts: [],
+          linked_chats: [],
+          task_errors: [],
+        },
+      });
+    }
+    if (path === '/admin/people' && method === 'GET') {
+      return route.fulfill({ json: { crm_users: [], waai_users: [] } });
+    }
+    if (path === '/admin/members' && method === 'GET') {
+      return route.fulfill({ json: { members: [] } });
+    }
+    if (path === '/admin/wa-invites' && method === 'GET') {
+      return route.fulfill({ json: { invites: [] } });
+    }
+    if (path === '/admin/wa-accounts' && method === 'GET') {
+      return route.fulfill({ json: { accounts: [] } });
     }
     return route.fulfill({ status: 404, json: envelope('route_not_found') });
   });
@@ -122,6 +370,7 @@ test.describe('Native WhatsApp module', () => {
       await expect(tab(page, name)).toBeVisible();
     }
     await expect(tab(page, 'Chaty')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('wa-chat-row').first()).toContainText('Acme Stavba');
 
     expect(waai.exchanges).toEqual([{ token: SSO_TOKEN }]);
     expect(waai.bearers.length).toBeGreaterThan(0);
@@ -132,20 +381,32 @@ test.describe('Native WhatsApp module', () => {
     await expect(page.locator('iframe')).toHaveCount(0);
   });
 
-  test('the tabs follow the address, and clicking one moves it', async ({ page }) => {
+  test('the tabs follow the address, clicking one moves it, and a deep link opens the chat and message', async ({ page }) => {
     await startSession(page);
     await installNative(page);
     await page.goto('/#whatsapp/digest');
     await expect(tab(page, 'Súhrn')).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+    await expect(page.getByText(/Prehľad dnešných správ/)).toBeVisible();
+
+    await tab(page, 'Úlohy').click();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#whatsapp/tasks');
+    await expect(tab(page, 'Úlohy')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Pripraviť cenovú ponuku pre Acme')).toBeVisible();
 
     await tab(page, 'Opýtať sa').click();
     await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#whatsapp/search');
     await expect(tab(page, 'Opýtať sa')).toHaveAttribute('aria-selected', 'true');
 
-    // An address that exists today (a task footer's link) opens the chat tab.
+    await tab(page, 'Nastavenia').click();
+    await expect.poll(() => page.evaluate(() => window.location.hash)).toBe('#whatsapp/settings');
+    await expect(tab(page, 'Nastavenia')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: 'Prepojiť účet WhatsApp' })).toBeVisible();
+
+    // A task footer's deep link opens the chat tab and renders the target message.
     await page.evaluate(() => { window.location.hash = '#whatsapp/c/abc123?m=m1'; });
     await expect(tab(page, 'Chaty')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByText('V tomto rozhraní zatiaľ nie je')).toBeVisible();
+    await expect(page.getByTestId('wa-conversation')).toBeVisible();
+    await expect(page.locator('#wa-msg-m1')).toContainText('Pošlite prosím cenovú ponuku.');
   });
 
   test('a user WAAI does not know gets a clear screen', async ({ page }) => {

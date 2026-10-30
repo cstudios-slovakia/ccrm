@@ -114,7 +114,7 @@ const RULES = [
   [/^src\/(components\/timeTracking\/|hooks\/useTime|utils\/(timeTracking|timeCost|holidays|timeLinks))/, ['Time tracking', 'Time Tracking']],
   [/^src\/components\/SettingsView\./, ['System Settings', 'Time tracking']],
   /* The WhatsApp module: its view, the pure protocol helpers and the spec that stands in for WAAI. */
-  [/^src\/(components\/WhatsAppView\.|utils\/waaiEmbed)|^tests\/e2e\/whatsappModule\.spec\./, ['WhatsApp', 'WhatsApp module']],
+  [/^src\/components\/whatsapp\/|^tests\/e2e\/whatsapp(NativeModule|Links)\.spec\./, ['WhatsApp', 'Native WhatsApp module', 'WhatsApp links']],
   [/^src\/components\/(SocialMediaView|RagAiView|UnifiedEntryView)\./, ['Shell navigation']],
 
   // --- the frame ---------------------------------------------------------

@@ -9,6 +9,7 @@ import { composerMessages, type ComposerMessages } from "./composerI18n.ts";
 export interface ReactionBarProps {
   client: WaaiClient;
   message: MessageDto;
+  emojis?: string[];
   onReactionChange?: (messageId: string, emoji: string | null) => void;
   onClose?: () => void;
   t?: ComposerMessages;
@@ -20,6 +21,7 @@ const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const
 export const ReactionBar: React.FC<ReactionBarProps> = ({
   client,
   message,
+  emojis,
   onReactionChange,
   onClose,
   t: customT,
@@ -28,6 +30,7 @@ export const ReactionBar: React.FC<ReactionBarProps> = ({
   const t = customT ?? composerMessages();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const currentMine = ownReaction(message.reactions);
+  const quickList = emojis && emojis.length > 0 ? emojis : QUICK_EMOJIS;
 
   const handleSelectEmoji = async (emoji: string) => {
     const next = nextReaction(message.reactions, emoji);
@@ -55,7 +58,7 @@ export const ReactionBar: React.FC<ReactionBarProps> = ({
         data-testid="wa-reaction-bar"
         className="flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-lg"
       >
-        {QUICK_EMOJIS.map((emoji) => {
+        {quickList.map((emoji) => {
           const isSelected = currentMine === emoji;
           return (
             <button
