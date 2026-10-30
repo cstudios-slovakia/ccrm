@@ -8,6 +8,7 @@ import { parseWhatsAppRoute, whatsAppHash, type ChatsRoute } from "../lib/chatRo
 import { chatsMessages } from "./chatsI18n.ts";
 import { ConversationList } from "./ConversationList";
 import { ConversationPane } from "./ConversationPane";
+import { OpenByPhone } from "../open";
 import { useConversationList } from "./useConversationList.ts";
 
 /** WAAI's warning toast asks every 30 s. */
@@ -22,13 +23,14 @@ interface Props {
   language: string;
   /** False while another module is showing: nothing polls. */
   active: boolean;
+  onOpenRecord?: (kind: "lead" | "project" | "task", id: string) => void;
 }
 
 /**
  * The Chats tab (docs/WAAI-NATIVE-MODULE.md §4.6): the chat list and the open conversation. From `ws-lg` they
  * sit side by side; below it one of the two fills the width and a back button returns to the list.
  */
-export const ChatsTab = ({ client, route, params, language, active }: Props) => {
+export const ChatsTab = ({ client, route, params, language, active, onOpenRecord }: Props) => {
   const t = useMemo(() => chatsMessages(language), [language]);
   const parsed = useMemo(() => parseWhatsAppRoute(route, params), [route, params]);
   const where = useMemo<ChatsRoute>(
@@ -71,7 +73,8 @@ export const ChatsTab = ({ client, route, params, language, active }: Props) => 
   }, [client, list]);
 
   const selected = list.data?.conversations.find((c) => c.id === where.conversationId) ?? null;
-  const showPane = where.conversationId !== null;
+  const isOpenView = parsed.view === "open";
+  const showPane = where.conversationId !== null || isOpenView;
 
   const banner = health && (health.worker_offline || health.disconnected.length > 0) && (
     <div role="status" data-testid="wa-health-banner" className="type-body flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-amber-800">
@@ -128,7 +131,17 @@ export const ChatsTab = ({ client, route, params, language, active }: Props) => 
           />
         </div>
         <div className={`min-h-0 min-w-0 ws-lg:block ${showPane ? "block" : "hidden"}`}>
-          {where.conversationId ? (
+          {isOpenView ? (
+            <OpenByPhone
+              client={client}
+              phone={parsed.phone}
+              leadId={parsed.leadId}
+              projectId={parsed.projectId}
+              onOpenConversation={(id) => go(id)}
+              onBack={() => go(null)}
+              locale={language}
+            />
+          ) : where.conversationId ? (
             <ConversationPane
               key={where.conversationId}
               client={client}
@@ -140,6 +153,7 @@ export const ChatsTab = ({ client, route, params, language, active }: Props) => 
               onRead={() => void list.refresh()}
               onBack={() => go(null)}
               fallback={selected ? { title: selected.title, avatar_url: selected.avatar_url, is_group: selected.is_group } : null}
+              onOpenRecord={onOpenRecord}
             />
           ) : (
             <div className="flex h-full items-center justify-center p-8">

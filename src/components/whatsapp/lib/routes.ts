@@ -1,9 +1,10 @@
 /**
  * The module's address space. `#whatsapp…` addresses already exist in the wild - client chips and the
  * footers of tasks that WAAI wrote into the CRM link to `#whatsapp/c/<id>` - so these formats must keep
- * working (docs/WAAI-NATIVE-MODULE.md §4.6). `src/utils/waaiEmbed.ts` still owns the path helpers of the
- * embedded interface until the iframe goes (Phase 8).
+ * working (docs/WAAI-NATIVE-MODULE.md §4.6).
  */
+
+import { recordHref, type ClientRecordLike } from "../../../utils/clientRecord.ts";
 
 export type WaTab = "chats" | "digest" | "tasks" | "ask" | "settings";
 
@@ -40,4 +41,24 @@ export function routeForTab(tab: WaTab): string {
     default:
       return "whatsapp";
   }
+}
+
+/**
+ * Where "open in CRM" goes (the address without the `#`). A "lead" is a client when it is one - a `client-…` id or
+ * a lead with a confirmed value adjustment, the app's one rule (`recordHref`) - and clients are routed by name;
+ * a plain lead by id. A project is `projects/<id>`; a task opens the task list on that task.
+ */
+export function crmHashForRecord(
+  kind: "lead" | "project" | "task",
+  id: string,
+  findLead: (leadId: string) => ClientRecordLike | undefined,
+): string {
+  if (kind === "project") return `projects/${id}`;
+  if (kind === "task") return `tasks?task=${id}`;
+  return recordHref(findLead(id) ?? { id }).replace(/^#/, "");
+}
+
+/** What the sidebar shows for the module: nothing for zero, `99+` above that. */
+export function unreadLabel(chats: number): string {
+  return chats <= 0 ? "" : chats > 99 ? "99+" : String(chats);
 }

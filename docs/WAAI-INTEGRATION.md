@@ -518,6 +518,9 @@ caught by a sweep). `PUT /timeline/external/{externalId}` body:
 
 ### 4.7 The WhatsApp module: embedding + SSO
 
+> [!NOTE]
+> **Iframe embedding retired (Phases 7 & 8).** The iframe-based embedding architecture described in this section has been superseded by the native module implementation. The iframe path (`WhatsAppView.tsx`, `/embed/sso`, postMessage bridge, and CSP `frame-src https:`) has been retired. The module now renders as native CRM components calling WAAI's module API (`/api/ccrm/v1`). See [`docs/WAAI-NATIVE-MODULE.md`](./WAAI-NATIVE-MODULE.md) for the active architecture, contract, and deployment guide.
+
 **Hosting topology (decision D2):** WAAI on a subdomain of the CCRM site, e.g.
 `wa.example.sk` next to `crm.example.sk`. Same *site*, different *origin*: session
 cookies with `SameSite=Lax` are sent inside the iframe, Safari/Firefox do not block

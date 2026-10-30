@@ -238,7 +238,7 @@ try {
         // `settings_json` also holds whatever else is kept there; only the module keys change.
         $stored = $row ? json_decode((string)($row['settings_json'] ?? ''), true) : [];
         $settings = is_array($stored) ? $stored : [];
-        $current = $row ? ccrm_int_module_settings($row) : ['module_ui' => 'embedded', 'module_transport' => 'proxy'];
+        $current = $row ? ccrm_int_module_settings($row) : ['module_ui' => 'native', 'module_transport' => 'proxy'];
         $settings['module_ui'] = $v['module_ui'] ?? $current['module_ui'];
         $settings['module_transport'] = $v['module_transport'] ?? $current['module_transport'];
         $settingsJson = json_encode($settings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

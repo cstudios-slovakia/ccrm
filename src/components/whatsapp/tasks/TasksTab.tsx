@@ -4,9 +4,9 @@ import { Surface } from "../../layout";
 import type { WaaiClient } from "../api/waaiClient.ts";
 import { WaaiApiError } from "../api/waaiClient.ts";
 import { primaryButton, secondaryButton } from "../StateCard";
-import { homeCopy } from "./copy";
-import { selectAll, toggleSelected } from "./taskSelection";
-import type { HomeTask, TasksResponse } from "./types";
+import { homeCopy } from "../home/copy";
+import { selectAll, toggleSelected } from "../home/taskSelection";
+import type { HomeTask, TasksResponse } from "../home/types";
 
 type Filter = "all" | "open" | "completed";
 

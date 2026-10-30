@@ -43,6 +43,8 @@ const en = {
   syncWarning: (labels: string) => `Sync is interrupted for ${labels}. New messages may be missing.`,
   workerOffline: "The WhatsApp service is not running. New messages will not arrive.",
   reconnecting: "Reconnecting…",
+  summary: "Summary",
+  tasks: "Tasks",
 };
 
 export type ChatsMessages = typeof en;
@@ -87,6 +89,8 @@ const sk: ChatsMessages = {
   syncWarning: (labels) => `Synchronizácia je prerušená pre ${labels}. Nové správy môžu chýbať.`,
   workerOffline: "Služba WhatsApp nebeží. Nové správy nebudú prichádzať.",
   reconnecting: "Pripájam sa znova…",
+  summary: "Súhrn",
+  tasks: "Úlohy",
 };
 
 const hu: ChatsMessages = {
@@ -129,6 +133,8 @@ const hu: ChatsMessages = {
   syncWarning: (labels) => `A szinkronizálás megszakadt: ${labels}. Új üzenetek hiányozhatnak.`,
   workerOffline: "A WhatsApp szolgáltatás nem fut. Új üzenetek nem érkeznek.",
   reconnecting: "Újracsatlakozás…",
+  summary: "Összegzés",
+  tasks: "Feladatok",
 };
 
 export function chatsMessages(lang: string): ChatsMessages {

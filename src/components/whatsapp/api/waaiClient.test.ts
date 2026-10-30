@@ -283,3 +283,16 @@ test("stream() renews the token on a 401 like any other call", async () => {
   assert.deepEqual(seen, ["ok"]);
   assert.equal(h.tokens.issued, 2);
 });
+
+test("stream() supports POST with body", async () => {
+  const seen: string[] = [];
+  const h = harness((call) => {
+    assert.equal(call.method, "POST");
+    assert.equal(call.headers["Content-Type"], "application/json");
+    assert.equal(call.headers.Accept, "text/event-stream");
+    assert.equal(call.body, JSON.stringify({ window: "today" }));
+    return new Response("event: delta\ndata: {\"delta\":\"hello\"}\n\n", { status: 200, headers: { "content-type": "text/event-stream" } });
+  });
+  await h.client.stream("/conversations/c1/summary", (e) => seen.push(`${e.event}:${e.data}`), { body: { window: "today" } });
+  assert.deepEqual(seen, ['delta:{"delta":"hello"}']);
+});

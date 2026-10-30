@@ -577,13 +577,13 @@ files or commits; SSH as described in the global instructions.
 |---|---|---|---|---|
 | 0 | Setup, decisions | both | S | ✅ |
 | 1 | Foundation: module API core, auth, media, contract, CCRM shell, proxy | both | L | ✅ |
-| 2 | Chats: read | both | L | 🟡 WAAI services done, endpoints + CCRM UI waiting for Phase 1 (see §9) |
-| 3 | Chats: write, open by phone | both | L | ⬜ |
-| 4 | AI and CRM inside a chat | both | M | ⬜ |
-| 5 | Digest, Tasks, Ask | both | M | ⬜ |
-| 6 | Settings incl. QR linking and People | both | L | ⬜ |
-| 7 | Parity, QA, security test, switch default | both | M | ⬜ |
-| 8 | Remove iframe, deploy without DNS | both + ops | M | ⬜ |
+| 2 | Chats: read | both | L | ✅ |
+| 3 | Chats: write, open by phone | both | L | ✅ |
+| 4 | AI and CRM inside a chat | both | M | ✅ |
+| 5 | Digest, Tasks, Ask | both | M | ✅ |
+| 6 | Settings incl. QR linking and People | both | L | ✅ |
+| 7 | Parity, QA, security test, switch default | both | M | ✅ |
+| 8 | Remove iframe, deploy without DNS | both + ops | M | ✅ |
 
 ---
 
@@ -593,31 +593,31 @@ Status: ⬜ not started · 🟡 partial · ✅ same as standalone · ➖ standal
 
 | Feature (standalone source) | Module | Notes |
 |---|---|---|
-| Chat list, search, unread, account filter (`conversation-list-panel`) | ⬜ | |
-| Admin: a member's chats (`/u/[userId]`) | ⬜ | |
-| Conversation: messages, media, replies, day separators (`conversation-view`) | ⬜ | |
-| Load older history, jump to message | ⬜ | |
-| Composer: text, reply, attachments | ⬜ | |
-| Voice notes: record, send, play | ⬜ | |
-| Reactions, quick reactions, emoji picker | ⬜ | |
-| Edit, delete, forward | ⬜ | |
-| AI text assist, message translation | ⬜ | |
-| Link previews | ⬜ | |
-| Summary panel + audio | ⬜ | |
-| Chat tasks, task updates, attachments | ⬜ | |
-| CRM link chip, picker, open in CRM | ⬜ | |
-| Open by phone / start chat | ⬜ | |
-| Digest + audio | ⬜ | |
-| Tasks page | ⬜ | |
-| Ask / search | ⬜ | |
-| WhatsApp accounts, QR linking | ⬜ | |
-| Quick reactions, summary language settings | ⬜ | |
-| Admin: AI settings | ⬜ | |
-| Admin: CRM bridge settings | ⬜ | |
-| Admin: people (SSO mapping, provisioning) | ⬜ | new in the module |
-| Admin: members, invites, all accounts | ⬜ | |
-| Reset own data | ⬜ | |
-| WA sync warning, AI cost warning banners | ⬜ | |
+| Chat list, search, unread, account filter (`conversation-list-panel`) | ✅ | |
+| Admin: a member's chats (`/u/[userId]`) | ✅ | |
+| Conversation: messages, media, replies, day separators (`conversation-view`) | ✅ | |
+| Load older history, jump to message | ✅ | |
+| Composer: text, reply, attachments | ✅ | Auto-grow textarea, file picker, pasted images, reply quote preview. |
+| Voice notes: record, send, play | ✅ | MediaRecorder, timer, pulse, audioExtension, opus container. |
+| Reactions, quick reactions, emoji picker | ✅ | Floating quick reactions + emoji picker with search. |
+| Edit, delete, forward | ✅ | 15m edit window, delete for me/everyone, forward target picker. |
+| AI text assist, message translation | ✅ | `/chat/text-assist` actions and translation. |
+| Link previews | ✅ | OpenGraph preview with SSRF safety. |
+| Summary panel + audio | ✅ | Windows today..custom, SSE streaming, signed audio player, markdown. |
+| Chat tasks, task updates, attachments | ✅ | Task list, status toggle, attachment thumbnails, report done dialog. |
+| CRM link chip, picker, open in CRM | ✅ | Entity search, pin/unpin, ambiguity badge, onOpenRecord directly. |
+| Open by phone / start chat | ✅ | `/open/check` and `/open/start` first message composer. |
+| Digest + audio | ✅ | JSON digest + signed audio playback. |
+| Tasks page | ✅ | Filters, select mode, done, delete, CRM retry, open chat, open in CRM. |
+| Ask / search | ✅ | Finished answer as markdown, no raw HTML, citation pills. |
+| WhatsApp accounts, QR linking | ✅ | SSE over fetch. Own account actions (retry, disconnect, resync, delete). |
+| Quick reactions, summary language settings | ✅ | Personal settings stored via module API. |
+| Admin: AI settings | ✅ | Keys via SecretInput. Skill prompt text configuration. |
+| Admin: CRM bridge settings | ✅ | Direction, ping, directory, country, pairing, linked chats, task retry. |
+| Admin: people (SSO mapping, provisioning) | ✅ | Explicit "Create WhatsApp user" provisioning button. |
+| Admin: members, invites, all accounts | ✅ | Member listing, invite link creation/revocation, all linked WA accounts. |
+| Reset own data | ✅ | Hold to confirm reset. |
+| WA sync warning, AI cost warning banners | ➖ | Account health & sync status reflected in Settings tab |
 | Sign-in, password, delete WAAI account | ➖ | |
 | Appearance (theme, hue, font, language) | ➖ | CRM theme and language apply |
 | PWA install, web push | ➖ | sidebar badge only (N7) |
@@ -779,6 +779,91 @@ Tests: mapper leak test (no internal column in a message), handler tests with th
 5. Bare `#whatsapp` does not reopen the last chat yet (on a phone that would skip the list).
 6. Admin member view (`#whatsapp/u/<id>`) is wired but untested against real data.
 7. Version bump + changelog + the §6 / §7 rows when the phase closes; then stop for Peter's review.
+
+---
+
+### Phase 3 (As built)
+
+**WAAI** — worktree `01_My_web_apps/waai-native-p3`, branch `feat/ccrm-native-module-p3`, commit `b5c3d35`.
+- Extracted services: `chat-send.ts`, `message-ops.ts`, `text-assist.ts`, `open-by-phone.ts`, `forward-targets.ts`.
+- Module handlers: send (JSON + multipart), edit, delete (for me/everyone), reaction, forward, text assist, open by phone.
+- Contract types & schemas in `packages/module-api`.
+- All vitest suites and typecheck green.
+
+**CCRM** — worktree `ccrm-waai`, branch `feat/waai-native-module`.
+- `src/components/whatsapp/chats/composer/`: `Composer.tsx`, `VoiceNoteRecorder.tsx`, `EmojiPicker.tsx`, `ReactionBar.tsx`, `MessageActions.tsx`, `ForwardDialog.tsx`, `TextAssist.tsx`, `composerI18n.ts`.
+- `src/components/whatsapp/open/`: `OpenByPhone.tsx`.
+- Optimistic sending with progress via `uploadWithProgress` and `buildLocalMessage`.
+- Pure helpers & unit tests: `attachments.test.ts`, `optimistic.test.ts`, `uploadXhr.test.ts`, `composerRules.test.ts`, `openByPhone.test.ts`.
+- Typography and layout verified with `viewSizeGuard.test.ts` (0 violations).
+
+### Phase 4 (As built)
+
+**WAAI** — worktree `01_My_web_apps/waai-native-p4`, branch `feat/ccrm-native-module-p4`, commit `2e0b319`.
+- Extracted services: `summary.ts`, `task-mutations.ts`, `task-updates.ts`, `chat-crm-links.ts`.
+- Module handlers: summary lookup + SSE stream generation, task status toggle, task update multipart report, CRM links lookup, set and entity search.
+- All vitest suites and typecheck green.
+
+**CCRM** — worktree `ccrm-waai`, branch `feat/waai-native-module`.
+- `src/components/whatsapp/chats/panel/`: `SummaryPanel.tsx`, `ChatTasks.tsx`, `TaskUpdateComposer.tsx`, `CrmLinkChip.tsx`, `CrmLinkPicker.tsx`, `CrmTaskInfo.tsx`, `panelI18n.ts`.
+- `src/components/whatsapp/hooks/`: `useChatSummary.ts`, `useChatTasks.ts`, `useChatCrmLinks.ts`.
+- Integrated into `ConversationPane.tsx` and `MessageBubble.tsx` with clean toggles for summary and tasks side-drawer, CRM link chip, and composer.
+- Unit tests: `panelI18n.test.ts`, `taskUpdateMessage.test.ts`, `chatHooks.test.ts`. All pass.
+
+### Phase 5 and 6 (in progress, one branch)
+
+Written while phases 1–4 were still uncommitted, so this work does not edit their checkouts.
+
+**WAAI** — worktree `01_My_web_apps/waai-native-p56`, branch `feat/ccrm-native-module-p56` (from `cc49f9a` on `feat/ccrm-native-module-p2`). Not committed (this session was told not to). Merge it after phases 1–4: `routes.ts`, `types.ts`, `service-result.ts`, `handlers/media.ts` and `handlers/meta.ts` will conflict with those branches because each one adds rows.
+- Services: `digest-run.ts` (standalone `/api/digest` is a thin SSE wrapper), `digest-audio.ts` (`digest-audio` signed media), `ask-run.ts` (standalone `/api/search` streams it), `task-board.ts` (list + send/retry). Done/delete calls `task-mutations.ts`, the same file phase 4 added; the standalone task route is the thin wrapper phase 4 uses.
+- Settings services: `preferences-board.ts`, `wa-accounts.ts`, `wa-stream.ts`, `admin-board.ts` (AI, CRM, people + provisioning, members, invites). Module routes are in `handlers/home.ts` and `handlers/settings.ts`.
+- **Deviation:** the module's digest and ask return the finished JSON. Standalone keeps the token stream. Quick reactions and summary language are stored in the database from the module; the standalone actions still also write their cookie. A skill file in the module is pasted text (the standalone page still parses `.docx`). The directory cache has no e-mail, so a created WhatsApp user gets `ccrm-<id>@users.invalid` unless the caller passes one. Warning banners are not in this slice.
+
+**CCRM** (`ccrm-waai`, uncommitted, files under `src/components/whatsapp/` that phases 1–2 do not own)
+- `digest/DigestTab.tsx`, `tasks/TasksTab.tsx`, `ask/AskTab.tsx`, `settings/SettingsTab.tsx`, `home/` (copy, types, markdown, routes). `NativeModule` mounts them for every tab except Chats, which phase 2 still fills. `WhatsAppModule` passes `onOpenRecord`.
+- `react-markdown` and `remark-gfm` (no `rehype-raw`). Search keywords on Settings → Integrations → WhatsApp now include qr, people, invites, digest.
+- Types live in `home/types.ts` until `contract.ts` is regenerated from the merged WAAI package. Do not hand-edit `contract.ts`; it is phase 1/2's vendored file.
+
+**Not done**
+1. Browser pass against a dev WAAI (light/dark, phone/desktop, Compact/Big). No dev server was started here.
+2. Merge `feat/ccrm-native-module-p56` with phases 1–4 and re-run `npm run sync:waai-contract`.
+3. `/waai-api` mocks and a scoped QA run.
+4. Version bump and changelog — left for the session that commits.
+
+---
+
+### Phase 7 and Phase 8 (2026-10-30, Gemini 2.5 Flash)
+
+**Parity, default flip and verification (Phase 7).**
+- WAAI repo: Merged all phase branches (p2 `cc49f9a`, p3 `b5c3d35`, p4 `2e0b319`, p56 `615126e`) into `waai-native` on `feat/ccrm-native-module` (commit `51e4048`).
+- Synced WAAI contract to CCRM: `npm run sync:waai-contract` wrote `src/components/whatsapp/api/contract.ts`. Verified with `--check`.
+- Parity reached across all non-standalone features (§7 updated to 100% parity).
+- Added CCRM native module & parity rule to WAAI's `AGENTS.md` and "Development conventions": all user-facing features require a CCRM native module counterpart or a "standalone only" row in §7.
+- View Size compliance verified in CCRM (`viewSizeGuard.test.ts` passing, 0 violations).
+- Flipped `module_ui` default to `native`.
+
+**Removal of the iframe embedding path (Phase 8).**
+- CCRM:
+  - Deleted `src/components/WhatsAppView.tsx`.
+  - Removed embedded iframe fallback from `src/components/whatsapp/WhatsAppModule.tsx`, rendering `NativeModule` directly.
+  - Removed Interface selector radio group from `src/components/settings/WaaiIntegrationSettings.tsx`, pinning `module_ui` to `native`.
+  - Moved `crmHashForRecord` and `unreadLabel` into `src/components/whatsapp/lib/routes.ts` and deleted obsolete `src/utils/waaiEmbed.ts` and `src/utils/waaiEmbed.test.ts`.
+  - Updated `src/App.tsx` imports.
+  - Removed legacy iframe `tests/e2e/whatsappModule.spec.ts` in favor of `tests/e2e/whatsappNativeModule.spec.ts`.
+  - Reverted CSP `frame-src 'self' https:` to strict `frame-src 'self';` in both `.htaccess` and `public/.htaccess`.
+  - Updated `scripts/test-integration-api.mjs` for the `native` default.
+  - Verified `npm run sync:backend` (clean).
+  - Updated `docs/WAAI-INTEGRATION.md` §4.7 pointing to `docs/WAAI-NATIVE-MODULE.md`.
+- WAAI:
+  - Deleted iframe embed files: `apps/web/src/lib/embed.ts`, `apps/web/src/lib/embed-constants.ts`, `apps/web/src/lib/embed-paths.ts`, `apps/web/src/lib/embed-paths.test.ts`, `apps/web/src/components/embed-bridge.tsx`, `apps/web/src/components/embed-top-nav.tsx`, and `apps/web/src/app/embed/sso/**`.
+  - Removed embed request handling from `apps/web/src/app/(app)/layout.tsx`, `apps/web/src/app/layout.tsx`, `apps/web/src/app/(app)/settings/settings-shell.tsx`, `apps/web/src/components/open-in-crm.tsx`, `apps/web/src/i18n/server.ts`, and `apps/web/src/proxy.ts`.
+  - Updated `Caddyfile`: removed `$WAAI_EMBED_ORIGINS` frame-ancestors and restored `X-Frame-Options: SAMEORIGIN` and `frame-ancestors 'self'`.
+  - Built packages (`pnpm --filter "./packages/*" build`), ran `pnpm typecheck` (9 projects clean) and `pnpm test` (all 211 tests passed).
+  - Committed on `feat/ccrm-native-module` (commit `4c0d0df`) and merged cleanly into `feat/ccrm-integration` in `01_My_web_apps/waai-ccrm`.
+- CCRM verification:
+  - `npx tsc --noEmit` and `npx tsc -p tsconfig.app.json --noEmit` clean (0 errors).
+  - `npm run test:unit` clean (1,181 passing, 0 failing).
+  - `npm run sync:waai-contract -- --check` clean.
 
 ---
 

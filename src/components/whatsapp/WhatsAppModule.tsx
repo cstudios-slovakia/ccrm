@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Loader2, RotateCw } from "lucide-react";
-import { WhatsAppView } from "../WhatsAppView";
 import { fetchModuleConfig, type ModuleConfig } from "./api/crmConnection.ts";
 import { waMessages } from "./i18n.ts";
 import { NativeModule } from "./NativeModule";
 import { primaryButton, StateCard } from "./StateCard";
 
 /**
- * The WhatsApp module's entry: asks the CRM how the connection is set up (Settings → Integrations →
- * WhatsApp) and shows the native interface or, until it is retired, the embedded WAAI frame. Takes the
- * props of `WhatsAppView`, so `App` hosts either without knowing which.
+ * The WhatsApp module entry: asks the CRM how the connection is set up (Settings → Integrations →
+ * WhatsApp) and renders the native module.
  */
 
 interface Props {
@@ -20,7 +18,6 @@ interface Props {
   language: "en" | "sk" | "hu";
   currentUserId: string;
   onUnread: (chats: number) => void;
-  /** WAAI asked for a CRM record (the embedded interface's `waai:open-crm`). */
   onOpenRecord: (kind: "lead" | "project" | "task", id: string) => void;
 }
 
@@ -42,9 +39,18 @@ export const WhatsAppModule = (props: Props) => {
     };
   }, [attempt]);
 
-  // The embedded interface does its own thing, as it did before.
-  if (config?.ui === "embedded") return <WhatsAppView {...props} />;
-  if (config) return <NativeModule active={active} route={route} language={language} config={config} onUnread={onUnread} />;
+  if (config) {
+    return (
+      <NativeModule
+        active={active}
+        route={route}
+        language={language}
+        config={config}
+        onUnread={onUnread}
+        onOpenRecord={props.onOpenRecord}
+      />
+    );
+  }
 
   return (
     <div className={active ? "flex flex-1 flex-col" : "hidden"}>

@@ -172,7 +172,7 @@ if (!function_exists('ccrm_int_fail')) {
         $s = json_decode((string)($row['settings_json'] ?? ''), true);
         $s = is_array($s) ? $s : [];
         return [
-            'module_ui' => ($s['module_ui'] ?? '') === 'native' ? 'native' : 'embedded',
+            'module_ui' => 'native',
             'module_transport' => ($s['module_transport'] ?? '') === 'direct' ? 'direct' : 'proxy',
         ];
     }

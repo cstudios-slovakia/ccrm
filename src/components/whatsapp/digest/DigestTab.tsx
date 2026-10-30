@@ -4,9 +4,9 @@ import { Surface } from "../../layout";
 import type { WaaiClient } from "../api/waaiClient.ts";
 import { WaaiApiError } from "../api/waaiClient.ts";
 import { primaryButton, secondaryButton } from "../StateCard";
-import { AiMarkdown } from "./AiMarkdown";
-import { homeCopy } from "./copy";
-import type { DigestResponse, DigestWindow } from "./types";
+import { AiMarkdown } from "../home/AiMarkdown";
+import { homeCopy } from "../home/copy";
+import type { DigestResponse, DigestWindow } from "../home/types";
 
 const WINDOWS: DigestWindow[] = ["today", "d3", "d7", "d30"];
 

@@ -21,6 +21,11 @@ export interface MessagesState {
   consumeTarget: () => void;
   loadOlder: () => Promise<void>;
   reload: () => void;
+  appendOptimistic: (msg: MessageDto) => void;
+  settleOptimistic: (localId: string, stored: MessageDto) => void;
+  dropOptimistic: (localId: string) => void;
+  updateMessage: (msg: MessageDto) => void;
+  removeMessage: (id: string) => void;
 }
 
 /**
@@ -151,6 +156,26 @@ export function useMessages(
     }
   }, [client, conversationId, loadingOlder]);
 
+  const appendOptimistic = useCallback((msg: MessageDto) => {
+    setMessages((held) => [...held, msg]);
+  }, []);
+
+  const settleOptimistic = useCallback((localId: string, stored: MessageDto) => {
+    setMessages((held) => held.map((m) => (m.id === localId ? stored : m)));
+  }, []);
+
+  const dropOptimistic = useCallback((localId: string) => {
+    setMessages((held) => held.filter((m) => m.id !== localId));
+  }, []);
+
+  const updateMessage = useCallback((msg: MessageDto) => {
+    setMessages((held) => held.map((m) => (m.id === msg.id ? msg : m)));
+  }, []);
+
+  const removeMessage = useCallback((id: string) => {
+    setMessages((held) => held.filter((m) => m.id !== id));
+  }, []);
+
   return {
     messages,
     loading,
@@ -161,5 +186,10 @@ export function useMessages(
     consumeTarget: () => setTargetId(null),
     loadOlder,
     reload: () => setAttempt((n) => n + 1),
+    appendOptimistic,
+    settleOptimistic,
+    dropOptimistic,
+    updateMessage,
+    removeMessage,
   };
 }

@@ -1,11 +1,12 @@
 import { memo, useEffect, useState } from "react";
-import { ExternalLink, FileText } from "lucide-react";
-import type { LinkPreviewResponse, MessageDto } from "../api/contract.ts";
+import { Clock, ExternalLink, FileText } from "lucide-react";
+import type { DeleteMessageScope, LinkPreviewResponse, MessageDto, QuotedMessage } from "../api/contract.ts";
 import type { WaaiClient } from "../api/waaiClient.ts";
 import { messageTime } from "../lib/messageDays.ts";
 import { bubbleSegments, firstUrl } from "../lib/messageText.ts";
 import { Avatar } from "./Avatar";
 import type { ChatsMessages } from "./chatsI18n.ts";
+import { MessageActions } from "./composer/MessageActions";
 
 // A preview is fetched once per address for the whole session; "error" is remembered too, so a dead link
 // is not retried on every poll.
@@ -109,20 +110,54 @@ interface Props {
   showSender: boolean;
   highlighted: boolean;
   onJumpTo: (id: string) => void;
+  onReply?: (quoted: QuotedMessage) => void;
+  onEdit?: (message: MessageDto) => void;
+  onDelete?: (messageId: string, scope: DeleteMessageScope) => void;
+  onReactionChange?: (messageId: string, emoji: string | null) => void;
+  currentWaAccountId?: string;
 }
 
-const Bubble = ({ client, t, locale, message: m, showSender, highlighted, onJumpTo }: Props) => {
+const Bubble = ({
+  client,
+  t,
+  locale,
+  message: m,
+  showSender,
+  highlighted,
+  onJumpTo,
+  onReply,
+  onEdit,
+  onDelete,
+  onReactionChange,
+  currentWaAccountId,
+}: Props) => {
   const out = m.direction === "out";
+  const isLocal = m.id.startsWith("local-");
   const url = m.kind === "text" && m.body ? firstUrl(m.body) : null;
   const transcript = m.kind === "audio" && m.transcription ? m.transcription : null;
+
+  const actions = !isLocal && (
+    <div className="mb-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <MessageActions
+        client={client}
+        message={m}
+        currentWaAccountId={currentWaAccountId}
+        onReply={onReply}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onReactionChange={onReactionChange}
+      />
+    </div>
+  );
 
   return (
     <div
       id={`wa-msg-${m.id}`}
       data-testid="wa-message"
-      className={`flex items-end gap-2 ${out ? "justify-end" : "justify-start"}`}
+      className={`group flex items-end gap-1.5 ${out ? "justify-end" : "justify-start"}`}
     >
       {!out && showSender && <Avatar client={client} src={m.sender_avatar_url} name={m.sender ?? "?"} size="sm" />}
+      {out && actions}
       <div className="flex max-w-5/6 flex-col ws-lg:max-w-2/3">
         <div
           className={`rounded-2xl px-3 py-2 shadow-sm transition-shadow duration-300 ${
@@ -150,9 +185,10 @@ const Bubble = ({ client, t, locale, message: m, showSender, highlighted, onJump
           )}
           {m.translation_note && <p className="type-meta mt-1 text-slate-500">{m.translation_note}</p>}
           {url && <LinkPreviewCard client={client} url={url} out={out} />}
-          <p className="type-meta mt-1 text-right text-slate-400">
+          <p className="type-meta mt-1 flex items-center justify-end gap-1 text-slate-400">
             {m.edited_at && <span className="mr-1">{t.edited}</span>}
             {messageTime(m.sent_at, locale)}
+            {isLocal && <Clock className="size-3 animate-spin text-slate-400" />}
           </p>
         </div>
         {m.reactions.length > 0 && (
@@ -170,6 +206,7 @@ const Bubble = ({ client, t, locale, message: m, showSender, highlighted, onJump
           </div>
         )}
       </div>
+      {!out && actions}
     </div>
   );
 };

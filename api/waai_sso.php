@@ -82,12 +82,12 @@ try {
     $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
     // Configured = an active connection with a sign-in secret. The WAAI address is not needed when the browser
     // reaches WAAI through this CRM (`proxy`); it is for the embedded interface and for "open standalone".
-    $module = $row !== null ? ccrm_int_module_settings($row) : ['module_ui' => 'embedded', 'module_transport' => 'proxy'];
+    $module = $row !== null ? ccrm_int_module_settings($row) : ['module_ui' => 'native', 'module_transport' => 'proxy'];
     $standalone = $row !== null && !empty($row['embed_url']) ? (string)$row['embed_url'] : null;
     $configured = $row !== null
         && (int)$row['is_active'] === 1
         && !empty($row['sso_secret'])
-        && ($module['module_ui'] === 'native' ? ($module['module_transport'] === 'proxy' || $standalone !== null) : $standalone !== null);
+        && ($module['module_transport'] === 'proxy' || $standalone !== null);
 
     $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
     if ($method === 'GET') {

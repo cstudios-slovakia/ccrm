@@ -10,13 +10,15 @@ import {
   UserX,
   Wrench,
 } from "lucide-react";
-import { EmptyState, Page, PageHeader, Surface, Tabs, type TabItem } from "../layout";
+import { Page, PageHeader, Tabs, type TabItem } from "../layout";
 import type { MetaResponse } from "./api/contract.ts";
 import type { ModuleConfig } from "./api/crmConnection.ts";
 import { REQUIRED_WAAI_API } from "./api/waaiClient.ts";
 import { useUnread } from "./hooks/useUnread.ts";
 import { useWaaiSession } from "./hooks/useWaaiSession.ts";
 import { waMessages, type WaMessages } from "./i18n.ts";
+import { ChatsTab } from "./chats/ChatsTab";
+import { HomeBody } from "./home/HomeBody";
 import { routeForTab, tabFromRoute, WA_TABS, type WaTab } from "./lib/routes.ts";
 import { primaryButton, secondaryButton, StateCard } from "./StateCard";
 
@@ -32,6 +34,7 @@ interface Props {
   language: string;
   config: ModuleConfig;
   onUnread: (chats: number) => void;
+  onOpenRecord: (kind: "lead" | "project" | "task", id: string) => void;
 }
 
 /** One pill for the state of the user's WhatsApp accounts. */
@@ -53,7 +56,7 @@ function accountPill(accounts: MetaResponse["wa_accounts"], t: WaMessages): { la
   }
 }
 
-export const NativeModule = ({ active, route, language, config, onUnread }: Props) => {
+export const NativeModule = ({ active, route, language, config, onUnread, onOpenRecord }: Props) => {
   const t = useMemo(() => waMessages(language), [language]);
   const { state, retry } = useWaaiSession(config.configured ? config.base : null);
   const client = state.kind === "ready" ? state.client : null;
@@ -162,20 +165,25 @@ export const NativeModule = ({ active, route, language, config, onUnread }: Prop
             window.location.hash = `#${routeForTab(next)}`;
           }}
         />
-        <Surface>
-          <EmptyState
-            icon={<MessageCircle />}
-            title={t.comingSoon.title}
-            body={t.comingSoon.body(t.tabs[tab])}
-            action={
-              config.canManage ? (
-                <a className={secondaryButton} href="#settings/integrations/waai">
-                  {t.comingSoon.switchBack}
-                </a>
-              ) : undefined
-            }
+        {tab === "chats" ? (
+          <ChatsTab
+            client={state.client}
+            route={route}
+            params={new URLSearchParams(window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?") + 1) : "")}
+            language={language}
+            active={active}
+            onOpenRecord={onOpenRecord}
           />
-        </Surface>
+        ) : (
+          <HomeBody
+            tab={tab}
+            route={route}
+            client={state.client}
+            language={language}
+            admin={state.meta.user.role === "admin"}
+            onOpenRecord={onOpenRecord}
+          />
+        )}
       </Page>
     );
   }

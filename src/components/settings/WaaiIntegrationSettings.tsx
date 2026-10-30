@@ -150,7 +150,6 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
   // The form: separate state so typing does not touch what the server last returned.
   const [active, setActive] = useState(true);
   const [address, setAddress] = useState("");
-  const [moduleUi, setModuleUi] = useState<"native" | "embedded">("embedded");
   const [transport, setTransport] = useState<"proxy" | "direct">("proxy");
   const [owners, setOwners] = useState<string[]>([]);
   const [scopes, setScopes] = useState<string[]>([...WAAI_SCOPES]);
@@ -173,7 +172,6 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
     if (c) {
       setActive(c.is_active);
       setAddress(c.embed_url ?? "");
-      setModuleUi(c.module_ui);
       setTransport(c.module_transport);
       setOwners(c.owner_user_ids);
       setScopes(c.scopes);
@@ -208,8 +206,8 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
     const errors: Record<string, string> = {};
     const origin = normalizeEmbedOrigin(address);
     if (origin === null) errors.embed_url = t("Use the address without a path, e.g. https://wa.example.sk", "Zadajte adresu bez cesty, napr. https://wa.example.sk", "Útvonal nélküli címet adjon meg, pl. https://wa.example.sk");
-    // A direct connection is the browser calling WAAI's own address; the embedded interface loads from it too.
-    if ((transport === "direct" || moduleUi === "embedded") && origin === "") {
+    // A direct connection is the browser calling WAAI's own address.
+    if (transport === "direct" && origin === "") {
       errors.embed_url = t("Enter the WAAI address.", "Zadajte adresu WAAI.", "Adja meg a WAAI címét.");
     }
     const { ips, invalid } = parseIpList(ipText);
@@ -230,7 +228,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         owner_user_ids: owners,
         feed_scope: feedScope,
         embed_url: origin ?? "",
-        module_ui: moduleUi,
+        module_ui: "native",
         module_transport: transport,
         default_deadline_days: Number(days),
       });
@@ -379,9 +377,9 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
           <Field
             label={t("WAAI address", "Adresa WAAI", "A WAAI címe")}
             hint={t(
-              "The standalone WAAI, e.g. https://wa.example.sk. Optional for the native interface through this CRM (then only used for “Open in a new tab”); needed for the embedded interface and for a direct connection.",
-              "Samostatná WAAI, napr. https://wa.example.sk. Pre natívne rozhranie cez toto CRM je voliteľná (použije sa len pri „Otvoriť v novej karte“); potrebná je pre vložené rozhranie a pre priame pripojenie.",
-              "Az önálló WAAI, pl. https://wa.example.sk. A CRM-en keresztüli natív felülethez nem kötelező (csak a „Megnyitás új lapon” használja); a beágyazott felülethez és a közvetlen kapcsolathoz szükséges."
+              "The standalone WAAI, e.g. https://wa.example.sk. Optional when connecting through this CRM (used for “Open in a new tab”); required for a direct connection.",
+              "Samostatná WAAI, napr. https://wa.example.sk. Pri pripojení cez toto CRM je voliteľná (použije sa pri „Otvoriť v novej karte“); potrebná je pre priame pripojenie.",
+              "Az önálló WAAI, pl. https://wa.example.sk. A CRM-en keresztüli kapcsolathoz nem kötelező (a „Megnyitás új lapon” használja); közvetlen kapcsolathoz szükséges."
             )}
             error={fieldErrors.embed_url}
           >
@@ -392,22 +390,12 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         <SettingsGroup
           title={t("WhatsApp module", "Modul WhatsApp", "WhatsApp modul")}
           description={t(
-            "How the WhatsApp module looks and how it reaches WAAI.",
-            "Ako modul WhatsApp vyzerá a ako sa dostane k WAAI.",
-            "Hogyan néz ki a WhatsApp modul, és hogyan éri el a WAAI-t."
+            "How the WhatsApp module reaches WAAI.",
+            "Ako sa modul WhatsApp dostane k WAAI.",
+            "Hogyan éri el a WhatsApp modul a WAAI-t."
           )}
         >
           <div className="grid grid-cols-1 gap-5 ws-lg:grid-cols-2">
-            <Choice
-              name="waai-module-ui"
-              label={t("Interface", "Rozhranie", "Felület")}
-              value={moduleUi}
-              onChange={setModuleUi}
-              options={[
-                { value: "native", label: t("Native", "Natívne", "Natív"), hint: t("Part of the CRM: same look, dialogs and text size. Still being completed.", "Súčasť CRM: rovnaký vzhľad, dialógy a veľkosť písma. Stále sa dokončuje.", "A CRM része: azonos megjelenés, párbeszédablakok és betűméret. Még készül.") },
-                { value: "embedded", label: t("Embedded", "Vložené", "Beágyazott"), hint: t("The full WAAI app in a frame. Needs the WAAI address.", "Celá aplikácia WAAI v ráme. Vyžaduje adresu WAAI.", "A teljes WAAI alkalmazás egy keretben. A WAAI címe szükséges.") },
-              ]}
-            />
             <Choice
               name="waai-module-transport"
               label={t("Connection", "Pripojenie", "Kapcsolat")}

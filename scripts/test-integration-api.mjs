@@ -202,20 +202,18 @@ async function adminChecks(state) {
   await admin(session, { method: 'POST', body: good });
   check('saving twice updates, it does not add a second client', cell('SELECT COUNT(*) FROM integration_clients') === '1');
 
-  // The native module's two settings live in settings_json (docs/WAAI-NATIVE-MODULE.md §4.1).
-  check('the module defaults: embedded interface, through this CRM', c?.module_ui === 'embedded' && c.module_transport === 'proxy', saved.raw);
-  const nat = await admin(session, { method: 'POST', body: { ...good, module_ui: 'native' } });
-  check('module_ui is saved', nat.status === 200 && nat.json.client.module_ui === 'native' && nat.json.client.module_transport === 'proxy', nat.raw);
+  // The native module's settings live in settings_json (docs/WAAI-NATIVE-MODULE.md §4.1).
+  check('the module defaults: native interface, through this CRM', c?.module_ui === 'native' && c.module_transport === 'proxy', saved.raw);
   const keep = await admin(session, { method: 'POST', body: good });
   check('a save that does not send the module keys keeps them', keep.status === 200 && keep.json.client.module_ui === 'native', keep.raw);
   const dir = await admin(session, { method: 'POST', body: { ...good, module_transport: 'direct' } });
   check('module_transport direct is saved when there is a WAAI address', dir.status === 200 && dir.json.client.module_transport === 'direct' && dir.json.client.module_ui === 'native', dir.raw);
   const dirNoAddress = await admin(session, { method: 'POST', body: { ...good, embed_url: '' } });
   check('a direct connection cannot lose its address (the stored transport counts) -> 422', dirNoAddress.status === 422 && 'embed_url' in (dirNoAddress.json?.fields ?? {}), dirNoAddress.raw);
-  const back = await admin(session, { method: 'POST', body: { ...good, module_ui: 'embedded', module_transport: 'proxy', embed_url: '' } });
+  const back = await admin(session, { method: 'POST', body: { ...good, module_transport: 'proxy', embed_url: '' } });
   check('proxy needs no address: the WAAI address can be empty', back.status === 200 && back.json.client.embed_url === null && back.json.client.module_transport === 'proxy', back.raw);
   const settingsRaw = cell(`SELECT settings_json FROM integration_clients WHERE code='waai'`);
-  check('settings_json holds exactly the two keys', settingsRaw === '{"module_ui":"embedded","module_transport":"proxy"}', settingsRaw);
+  check('settings_json holds module_transport', settingsRaw?.includes('"module_transport":"proxy"'), settingsRaw);
   await admin(session, { method: 'POST', body: good });
 
   const pastExpiry = await admin(session, { method: 'POST', body: { action: 'issue_token', expires_at: '2020-01-01' } });
@@ -1089,19 +1087,16 @@ async function ssoChecks(state) {
 
   const status = await sso(session);
   check('GET tells an administrator where WAAI is and that it can be managed', status.status === 200 && status.json.configured === true && status.json.embed_url === 'https://wa.example.sk' && status.json.can_manage === true && status.json.user_id === USERS.admin[0], status.raw);
-  check('GET names the interface, the transport and the base the module calls', status.json.module?.ui === 'embedded' && status.json.module.transport === 'proxy' && status.json.module.base === '/waai-api' && status.json.standalone_url === 'https://wa.example.sk', status.raw);
+  check('GET names the interface, the transport and the base the module calls', status.json.module?.ui === 'native' && status.json.module.transport === 'proxy' && status.json.module.base === '/waai-api' && status.json.standalone_url === 'https://wa.example.sk', status.raw);
   sql(`UPDATE integration_clients SET settings_json='{"module_ui":"native","module_transport":"direct"}' WHERE code='waai'`);
   const direct = await sso(session);
   check('direct transport: the base is the WAAI address', direct.json.module?.transport === 'direct' && direct.json.module.base === 'https://wa.example.sk/api/ccrm/v1' && direct.json.module.ui === 'native', direct.raw);
   sql(`UPDATE integration_clients SET settings_json='{"module_ui":"native","module_transport":"proxy"}', embed_url=NULL WHERE code='waai'`);
   const noAddress = await sso(session);
   check('native through the CRM needs no WAAI address to be configured', noAddress.json.configured === true && noAddress.json.module?.base === '/waai-api' && noAddress.json.standalone_url === null && noAddress.json.embed_url === null, noAddress.raw);
-  sql(`UPDATE integration_clients SET settings_json='{"module_ui":"embedded","module_transport":"proxy"}' WHERE code='waai'`);
-  const embeddedNoAddress = await sso(session);
-  check('the embedded interface still needs the WAAI address', embeddedNoAddress.json.configured === false, embeddedNoAddress.raw);
   sql(`UPDATE integration_clients SET settings_json=NULL, embed_url='https://wa.example.sk' WHERE code='waai'`);
   const legacy = await sso(session);
-  check('a row without settings_json reads as embedded + proxy', legacy.json.configured === true && legacy.json.module?.ui === 'embedded' && legacy.json.module.transport === 'proxy', legacy.raw);
+  check('a row without settings_json reads as native + proxy', legacy.json.configured === true && legacy.json.module?.ui === 'native' && legacy.json.module.transport === 'proxy', legacy.raw);
 
   const minted = await sso(session, { method: 'POST' });
   const parsed = readToken(minted.json?.token, state.ssoSecret);

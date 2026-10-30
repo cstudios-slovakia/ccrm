@@ -162,13 +162,28 @@ export class WaaiClient {
   }
 
   /** Read a server-sent event stream until it ends or `opts.signal` aborts. */
-  stream(path: string, onEvent: (event: SseEvent) => void, opts: Pick<RequestOptions, "query" | "signal"> = {}): Promise<void> {
+  stream(
+    path: string,
+    onEvent: (event: SseEvent) => void,
+    opts: Pick<RequestOptions, "query" | "body" | "signal"> & { method?: string } = {},
+  ): Promise<void> {
     return this.authorized(async (token) => {
       let res: Response;
+      const method = opts.method ?? (opts.body !== undefined ? "POST" : "GET");
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        Accept: "text/event-stream",
+      };
+      let body: BodyInit | undefined;
+      if (opts.body !== undefined) {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify(opts.body);
+      }
       try {
         res = await this.fetchImpl(this.url(path, opts.query), {
-          method: "GET",
-          headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+          method,
+          headers,
+          body,
           credentials: "omit",
           cache: "no-store",
           signal: opts.signal,

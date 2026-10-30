@@ -6,7 +6,7 @@ import { TaskDashboardView } from "./components/TaskDashboardView";
 import { TimeTrackingProvider } from "./hooks/useTimeTracking";
 import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
 import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
-import { crmHashForRecord } from "./utils/waaiEmbed";
+import { crmHashForRecord } from "./components/whatsapp/lib/routes";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
