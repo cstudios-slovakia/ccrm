@@ -406,7 +406,7 @@ try {
             ['task-2', $demoText['task2_title'], $demoText['task2_body'], 'high', '2026-05-31', '10:00', $taskStates[0], 'Sam', 'lead-2', 1],
             ['task-3', $demoText['task3_title'], $demoText['task3_body'], 'medium', '2026-06-02', '12:00', $taskStates[0], 'Jordan', 'lead-1', 0],
         ];
-        $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"); /* recurring-template: initial task seed */
         foreach ($tasks as $t) {
             $insTask->execute($t);
         }

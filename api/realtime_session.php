@@ -319,7 +319,7 @@ if ($action === 'create_task') {
     $owner = trim($payload['assigned_to'] ?? $creator);
 
     try {
-        $ins = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, 'todo', ?, ?, NOW())");
+        $ins = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, 'todo', ?, ?, NOW())"); /* recurring-template: voice assistant creates normal tasks */
         $ins->execute([$taskId, $title, $description, $priority, $deadline, $deadlineTime, $owner, $creator]);
 
         if (!empty($owner)) {
@@ -581,7 +581,7 @@ if ($action === 'add_project_task') {
     $owner = trim($payload['assigned_to'] ?? $creator);
 
     try {
-        $ins = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_project_id`, `related_lead_id`, `created_at`) VALUES (?, ?, ?, ?, ?, '17:00', 'todo', ?, ?, ?, ?, NOW())");
+        $ins = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_project_id`, `related_lead_id`, `created_at`) VALUES (?, ?, ?, ?, ?, '17:00', 'todo', ?, ?, ?, ?, NOW())"); /* recurring-template: voice assistant creates normal tasks */
         $ins->execute([$taskId, $title, $description, $priority, $deadline, $owner, $creator, $proj['id'], $proj['lead_id']]);
 
         if (!empty($owner)) {
@@ -712,7 +712,7 @@ if ($action === 'delete_project') {
         $del = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
         $del->execute([$projId]);
 
-        $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?")->execute([$projId]);
+        $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?")->execute([$projId]); /* recurring-template: unlinking deleted project from all tasks and templates */
 
         if (!empty($safeId)) {
             @$pdo->prepare("DELETE FROM `proj_data_{$safeId}` WHERE `project_id` = ?")->execute([$projId]);

@@ -344,6 +344,10 @@ export interface Task {
   externalUrl?: string | null;
   /** The chat gave no deadline, so CCRM filled one in and nobody has moved it since; read-only. */
   dueInferred?: boolean;
+  /** ID of the RecurringTaskTemplate series that generated this task occurrence, if any. */
+  recurringSourceId?: string | null;
+  /** The unshifted scheduled date (YYYY-MM-DD) this occurrence was created for. */
+  recurringOccurrenceDate?: string | null;
 }
 
 /** Settings → Tasks. Stored as one blob, like {@link ProjectAutoCreateSettings}. */
@@ -356,6 +360,60 @@ export interface TaskSettings {
 
 /** When a task e-mail reminder goes out: the deadline's morning, 1 hour or 1 day before. */
 export type TaskEmailReminder = "morning" | "1h" | "1d";
+
+export type TaskRecurrenceMode = "schedule" | "after_completion";
+export type TaskRecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
+export type TaskWeekendRule = "keep" | "before" | "after";
+
+export interface TaskRecurrenceConfig {
+  /** For weekly: 1 = Monday ... 7 = Sunday */
+  dayOfWeek?: number;
+  /** For monthly: day of month (e.g. 15th) vs nth weekday (e.g. 3rd Friday, last Friday) */
+  monthlyType?: "day_of_month" | "nth_weekday";
+  /** For monthly day_of_month: 1-31 */
+  dayOfMonth?: number;
+  /** For monthly nth_weekday: 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last */
+  weekOfMonth?: number;
+  /** For yearly: month 1-12 */
+  month?: number;
+}
+
+export interface TaskRecurrence {
+  mode: TaskRecurrenceMode;
+  frequency: TaskRecurrenceFrequency;
+  interval: number; // >= 1
+  config?: TaskRecurrenceConfig;
+  weekendRule: TaskWeekendRule;
+  leadDays: number; // 0 - 365
+  startsOn: string; // YYYY-MM-DD
+  endsOn?: string | null; // YYYY-MM-DD
+  paused?: boolean;
+  lastOccurrence?: string | null; // YYYY-MM-DD
+  lastOccurrenceId?: string | null;
+}
+
+export interface RecurringTaskTemplate {
+  id: string;
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high";
+  owner: string;
+  assignedUsers: string[];
+  createdBy?: string;
+  createdAt?: string;
+  startDate?: string | null; // YYYY-MM-DD (next appearance date)
+  deadline?: string | null; // YYYY-MM-DD (next due date)
+  deadlineTime?: string | null;
+  relatedLeadId?: string | null;
+  relatedProjectId?: string | null;
+  relatedTicketId?: string | null;
+  isLocking?: boolean;
+  requiresConclusion?: boolean;
+  estimateMinutes?: number | null;
+  emailReminders?: Record<string, TaskEmailReminder>;
+  tags?: string[];
+  recurrence: TaskRecurrence;
+}
 
 export interface TimeLog {
   id: string;

@@ -312,7 +312,7 @@ function ccrm_vec_items(\PDO $pdo, callable $emit): void {
     }
 
     // Tasks (row-level visibility is applied again at search time)
-    ccrm_vec_paged($pdo, "SELECT `id`,`title`,`description`,`priority`,`status`,`owner`,`deadline`,`conclusion` FROM `tasks` WHERE IFNULL(`archived`,0)=0 {PAGE}", '`id`', function ($t) use ($emit, $kv) {
+    ccrm_vec_paged($pdo, "SELECT `id`,`title`,`description`,`priority`,`status`,`owner`,`deadline`,`conclusion` FROM `tasks` WHERE IFNULL(`archived`,0)=0 AND " . ccrm_sql_real_tasks() . " {PAGE}", '`id`', function ($t) use ($emit, $kv) {
         $emit(['type' => 'task', 'id' => $t['id'], 'label' => (string)$t['title'], 'perm' => 'tasks', 'perm2' => null,
             'text' => 'Task: ' . $t['title'] . "\n" . $kv(['Status' => $t['status'], 'Priority' => $t['priority'], 'Owner' => $t['owner'],
                 'Deadline' => $t['deadline'], 'Description' => ccrm_vec_plain($t['description'], 2500), 'Conclusion' => ccrm_vec_plain($t['conclusion'], 1500)])]);

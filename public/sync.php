@@ -14,6 +14,7 @@ require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/schema.php';
 require_once __DIR__ . '/api/warehouse_item_fields.php';
 require_once __DIR__ . '/api/task_reminders.php';
+require_once __DIR__ . '/api/recurring_tasks.php';
 require_once __DIR__ . '/api/read_scope.php';
 require_once __DIR__ . '/api/offer_document.php';
 
@@ -783,7 +784,7 @@ function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
  * deletion is irreversible (project_types DROPs its dynamic data tables) pass
  * $strict so even an N-1 wipe is refused.
  */
-function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false, bool $explicit = false): array {
+function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false, bool $explicit = false, ?string $taskKind = null): array {
     if (empty($toDelete)) {
         return [];
     }
@@ -797,7 +798,15 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
     // its next GET.
     $deleteCount = count($toDelete);
     try {
-        $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
+        if ($table === 'tasks') {
+            if ($taskKind === 'recurring') {
+                $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `tasks` WHERE `task_kind` = 'recurring'")->fetchColumn(); /* recurring-template: template count */
+            } else {
+                $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `tasks` WHERE " . ccrm_sql_real_tasks())->fetchColumn();
+            }
+        } else {
+            $serverTotal = (int) $pdo->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
+        }
     } catch (\Throwable $e) {
         // Cannot size the table, so cannot prove the delete is safe. Keep the data.
         error_log('[ccrm] BLOCKED delete-by-omission on `' . $table . '`: row count failed — ' . $e->getMessage());
@@ -847,7 +856,7 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
     return $toDelete;
 }
 
-function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false, bool $explicit = false): void {
+function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false, bool $explicit = false, ?string $taskKind = null): void {
     if (empty($idsToDelete)) {
         return;
     }
@@ -861,24 +870,31 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
         }
     }
 
-    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict, $explicit);
+    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict, $explicit, $taskKind);
     if (empty($toDelete)) {
         return;
     }
 
-    // Named (protocol-v2) deletions are recorded user intent, so they must not
-    // be blocked by the snapshot clock. The updated_at guard exists for
-    // delete-by-omission: a stale full snapshot must not wipe rows another user
-    // created after it was taken. A client that listed the id in `deleted` saw
-    // that row and chose to remove it — including a row they themselves created
-    // a moment earlier, whose updated_at is newer than the previous GET.
-    // TIMESTAMP(3) hosts make that race the common case for "create then
-    // immediately delete"; without this the DELETE matches zero rows and the
-    // lead reappears on the next refresh.
-    if ($baseSyncedAt !== null && !$explicit) {
-        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
+    if ($table === 'tasks') {
+        if ($taskKind === 'recurring') {
+            if ($baseSyncedAt !== null && !$explicit) {
+                $stmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ? AND `task_kind` = 'recurring' AND `updated_at` <= ?"); /* recurring-template: template deletion */
+            } else {
+                $stmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ? AND `task_kind` = 'recurring'"); /* recurring-template: template deletion */
+            }
+        } else {
+            if ($baseSyncedAt !== null && !$explicit) {
+                $stmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " AND `updated_at` <= ?");
+            } else {
+                $stmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks());
+            }
+        }
     } else {
-        $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
+        if ($baseSyncedAt !== null && !$explicit) {
+            $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
+        } else {
+            $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
+        }
     }
     foreach ($toDelete as $id) {
         if ($baseSyncedAt !== null && !$explicit) {
@@ -962,6 +978,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             fastcgi_finish_request();
         }
         ccrm_maybe_process_task_reminders($pdo);
+        ccrm_maybe_process_recurring_tasks($pdo);
     });
 
     // Identity of the session, resolved from `users` rather than taken from the
@@ -1180,6 +1197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         } catch (\Throwable $e) {}
     }
     $tasks = [];
+    $recurringTasks = [];
     $allKnownTags = [];
     if ($canTasks) {
         $assigneesByTask = [];
@@ -1203,7 +1221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         } catch (\Throwable $e) {}
 
-        $tasksStmt = $pdo->query("SELECT * FROM `tasks` ORDER BY `created_at` DESC");
+        $tasksStmt = $pdo->query("SELECT * FROM `tasks` WHERE " . ccrm_sql_real_tasks() . " ORDER BY `created_at` DESC");
         while ($row = $tasksStmt->fetch()) {
             $taskId = $row['id'];
             $assignedUsers = $assigneesByTask[$taskId] ?? [];
@@ -1238,12 +1256,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'externalSource' => $row['external_source'] ?? null,
                 'externalUrl' => $row['external_url'] ?? null,
                 'dueInferred' => ccrm_task_due_inferred($row),
+                'recurringSourceId' => $row['recurring_source_id'] ?? null,
+                'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
             ];
 
             if ($canTasksViewAll || ccrm_can_view_task($taskItem, $scope)) {
                 $tasks[] = $taskItem;
+            }
+        }
+
+        $recStmt = $pdo->query("SELECT * FROM `tasks` WHERE `task_kind` = 'recurring' ORDER BY `created_at` DESC"); /* recurring-template: fetch recurring task templates */
+        while ($row = $recStmt->fetch()) {
+            $rId = $row['id'];
+            $assignedUsers = $assigneesByTask[$rId] ?? [];
+            $relTicketId = !$canTickets ? null : (!empty($row['related_ticket_id']) ? $row['related_ticket_id'] : ($ticketByTask[$rId] ?? null));
+            $recItem = [
+                'id' => $rId,
+                'title' => $row['title'],
+                'description' => $row['description'] ?? '',
+                'priority' => $row['priority'],
+                'startDate' => $row['start_date'] ?? null,
+                'deadline' => $row['deadline'],
+                'deadlineTime' => $row['deadline_time'] ?? null,
+                'owner' => $row['owner'],
+                'createdBy' => $row['created_by'] ?? null,
+                'createdAt' => $row['created_at'] ?? null,
+                'relatedLeadId' => $row['related_lead_id'] ?? null,
+                'relatedProjectId' => $row['related_project_id'] ?? null,
+                'relatedTicketId' => $relTicketId,
+                'isLocking' => intval($row['is_locking']) === 1,
+                'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
+                'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
+                'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
+                'recurrence' => ccrm_recurring_validate_json(json_decode($row['recurrence_json'] ?? '[]', true) ?: []),
+                'assignedUsers' => $assignedUsers,
+                'tags' => $tagsByTask[$rId] ?? []
+            ];
+            if ($canTasksViewAll || ccrm_can_view_task($recItem, $scope)) {
+                $recurringTasks[] = $recItem;
             }
         }
     }
@@ -2766,6 +2818,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'db_info' => $dbInfo,
         'leads' => $leads,
         'tasks' => $tasks,
+        'recurringTasks' => $recurringTasks,
         'allTags' => $allKnownTags,
         'users' => $users,
         'roles' => $roles,
@@ -3017,7 +3070,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
             'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
             'aiCustomTemplates', 'clientCategories', 'employees', 'employeeSalaries', 'employeeVacations',
-            'orders', 'supportContracts', 'tickets',
+            'orders', 'supportContracts', 'tickets', 'recurringTasks',
         ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
                 $payload[$entity] = [];
@@ -3043,6 +3096,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Dynamic tables belonging to deleted project types. DDL implicitly commits in
     // MySQL, so these are collected during the transaction and executed after it.
     $deferredTableDrops = [];
+    $recurringTemplatesToProcess = [];
     // Private employee documents a save detached or whose employee it removed. Unlinked
     // only after the commit, and only if no record references them any more.
     $deferredEmployeeFileKeys = [];
@@ -3180,6 +3234,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
             if (!ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
                 $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)'");
+            }
+        }
+
+        if ((isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks'))
+            || (isset($payload['recurringTasks']) && is_array($payload['recurringTasks']))) {
+            if (!ccrm_column_exists($pdo, 'tasks', 'task_kind')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'recurrence_json')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'recurring_source_id')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'recurring_occurrence_date')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date'");
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_kind')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_kind` (`task_kind`)"); } catch (\Throwable $e) {}
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_recurring_source')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_recurring_source` (`recurring_source_id`)"); } catch (\Throwable $e) {}
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'uq_recurring_occurrence')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD UNIQUE KEY `uq_recurring_occurrence` (`recurring_source_id`, `recurring_occurrence_date`)"); } catch (\Throwable $e) {}
             }
         }
 
@@ -4256,7 +4335,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
                 // The project's tasks stay on the Tasks board; only the link to
                 // the project that no longer exists goes.
-                $unlinkProjTasks = $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?");
+                $unlinkProjTasks = $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?"); /* recurring-template: unlinking deleted project from all tasks and templates */
                 foreach ($projToDelete as $pid) {
                     $delProj->execute([$pid]);
                     $unlinkProjTasks->execute([$pid]);
@@ -4766,7 +4845,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // updated_at comes along so the conflict guard below can tell a stale
             // re-send apart from a genuine edit.
             $dbTasks = [];
-            $stmt = $pdo->query("SELECT `id`, `updated_at` FROM `tasks`");
+            $stmt = $pdo->query("SELECT `id`, `updated_at` FROM `tasks` WHERE " . ccrm_sql_real_tasks());
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $dbTasks[$row['id']] = $row;
             }
@@ -4791,7 +4870,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)");
+            $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)"); /* recurring-template: sync creates or updates normal tasks */
 
             // "Requires conclusion": which states finish a task, for the guard below.
             $conclusionTaskStates = json_decode((string)($pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn() ?: '[]'), true);
@@ -4812,6 +4891,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 $taskId = $t['id'];
+
+                // Write guard: tasks collection cannot touch or overwrite a recurring template
+                $chkKind = $pdo->prepare("SELECT `task_kind` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template check */
+                $chkKind->execute([$taskId]);
+                if ($chkKind->fetchColumn() === 'recurring') {
+                    if (is_array($t) && !empty($t['id'])) $conflictedIds['tasks'][] = (string)$t['id'];
+                    $processedTaskIds[] = $taskId;
+                    continue;
+                }
 
                 if ($visibleTaskIds !== null && isset($dbTasks[$taskId]) && !isset($visibleTaskIds[(string)$taskId])) {
                     $ccrm_note_out_of_scope('tasks:outside-scope');
@@ -4834,7 +4922,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $oldRequiresConclusion = false;
                 $oldRelatedTicketId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id` FROM `tasks` WHERE `id` = ? LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
@@ -4901,6 +4989,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $processedTaskIds[] = $taskId;
 
+                $isClosedNow = $conclusionIsDone($t['status'] ?? '') || !empty($t['completedAt']);
+                $wasClosedBefore = $oldTaskStatus !== null && ($conclusionIsDone($oldTaskStatus) || !empty($oldRow['completed_at']));
+                if ($isClosedNow && !$wasClosedBefore) {
+                    $srcStmt = $pdo->prepare("SELECT `recurring_source_id` FROM `tasks` WHERE `id` = ?"); /* recurring-template: check occurrence source */
+                    $srcStmt->execute([$taskId]);
+                    $recSrc = $srcStmt->fetchColumn();
+                    if ($recSrc) {
+                        $recurringTemplatesToProcess[(string)$recSrc] = true;
+                    }
+                }
+
                 // Workflow Triggers & Task Email/Push Notifications
                 require_once __DIR__ . '/api/workflows_engine.php';
                 require_once __DIR__ . '/api/task_reminders.php';
@@ -4931,7 +5030,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $otherTasksStmt = $pdo->prepare("
                                         SELECT t.`status`
                                         FROM `ticket_task_links` l
-                                        JOIN `tasks` t ON t.`id` = l.`task_id`
+                                        JOIN `tasks` t ON t.`id` = l.`task_id` AND " . ccrm_sql_real_tasks('t') . "
                                         WHERE l.`ticket_id` = ?
                                     ");
                                     $otherTasksStmt->execute([$linkedTckId]);
@@ -5011,6 +5110,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Task deletion is intentionally not inferred from an omitted snapshot.
             // It uses api/task.php so permission checks and server confirmation
             // cannot be bypassed by a stale or incomplete client payload.
+        }
+
+        // 4.4b. Synchronize Recurring Task Templates
+        if (isset($payload['recurringTasks']) && is_array($payload['recurringTasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
+            $dbTemplates = [];
+            $stmt = $pdo->query("SELECT `id`, `updated_at`, `recurrence_json` FROM `tasks` WHERE `task_kind` = 'recurring'"); /* recurring-template: sync existing templates */
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $dbTemplates[$row['id']] = $row;
+            }
+            $existingTemplateIds = array_keys($dbTemplates);
+            $processedTemplateIds = [];
+
+            $insRecTemplate = $pdo->prepare("/* recurring-template: sync recurring task template */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `email_reminders_json`, `requires_conclusion`, `estimate_minutes`, `task_kind`, `recurrence_json`) VALUES (?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'recurring', ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `estimate_minutes` = VALUES(`estimate_minutes`), `recurrence_json` = VALUES(`recurrence_json`)");
+
+            foreach ($payload['recurringTasks'] as $rt) {
+                if (!is_array($rt) || empty($rt['id']) || !isset($rt['title']) || $rt['title'] === '') {
+                    if (is_array($rt) && !empty($rt['id'])) $conflictedIds['recurringTasks'][] = (string)$rt['id'];
+                    continue;
+                }
+                $templateId = (string)$rt['id'];
+
+                if (ccrm_write_would_clobber($dbTemplates[$templateId] ?? null, $baseSyncedAt)) {
+                    $processedTemplateIds[] = $templateId;
+                    $conflictedIds['recurringTasks'][] = $templateId;
+                    continue;
+                }
+
+                $chkReal = $pdo->prepare("SELECT `id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                $chkReal->execute([$templateId]);
+                if ($chkReal->fetchColumn()) {
+                    $conflictedIds['recurringTasks'][] = $templateId;
+                    $processedTemplateIds[] = $templateId;
+                    continue;
+                }
+
+                $storedRow = $dbTemplates[$templateId] ?? null;
+                $storedRec = $storedRow ? (json_decode($storedRow['recurrence_json'] ?? '[]', true) ?: []) : null;
+
+                $incomingRec = is_array($rt['recurrence'] ?? null) ? $rt['recurrence'] : [];
+                $cleanRec = ccrm_recurring_validate_json($incomingRec, $storedRec);
+
+                if ($storedRec && !empty($storedRec['paused']) && empty($cleanRec['paused'])) {
+                    $today = date('Y-m-d');
+                    $cleanRec['lastOccurrence'] = ccrm_recurring_shift_cursor_on_resume($cleanRec, $today);
+                }
+
+                $recJson = json_encode($cleanRec, JSON_UNESCAPED_UNICODE);
+
+                $nextScheduled = ccrm_recurring_next_occurrence($cleanRec, $cleanRec['lastOccurrence'] ?? null);
+                $nextDeadline = $nextScheduled ? ccrm_recurring_shift_deadline($nextScheduled, $cleanRec['weekendRule'] ?? 'keep', $cleanRec['frequency'] ?? 'monthly') : null;
+                $nextStartDate = $nextDeadline ? ccrm_recurring_start_date($nextDeadline, (int)($cleanRec['leadDays'] ?? 0)) : null;
+
+                $insRecTemplate->execute([
+                    $templateId,
+                    $rt['title'],
+                    $rt['description'] ?? '',
+                    $rt['priority'] ?? 'medium',
+                    $nextStartDate,
+                    $nextDeadline,
+                    $rt['deadlineTime'] ?? null,
+                    $rt['owner'] ?? '',
+                    $rt['createdBy'] ?? null,
+                    !empty($rt['relatedLeadId']) ? $rt['relatedLeadId'] : null,
+                    !empty($rt['relatedProjectId']) ? $rt['relatedProjectId'] : null,
+                    !empty($rt['relatedTicketId']) ? $rt['relatedTicketId'] : null,
+                    !empty($rt['isLocking']) ? 1 : 0,
+                    !empty($rt['emailReminders']) ? json_encode($rt['emailReminders']) : null,
+                    !empty($rt['requiresConclusion']) ? 1 : 0,
+                    isset($rt['estimateMinutes']) ? (int)$rt['estimateMinutes'] : null,
+                    $recJson,
+                ]);
+
+                $delAss = $pdo->prepare("DELETE FROM `task_assignees` WHERE `task_id` = ?");
+                $delAss->execute([$templateId]);
+                if (isset($rt['assignedUsers']) && is_array($rt['assignedUsers'])) {
+                    $insAss = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
+                    foreach ($rt['assignedUsers'] as $un) {
+                        $insAss->execute([$templateId, $un]);
+                    }
+                }
+
+                try {
+                    $delTags = $pdo->prepare("DELETE FROM `task_tags` WHERE `task_id` = ?");
+                    $delTags->execute([$templateId]);
+                    if (isset($rt['tags']) && is_array($rt['tags'])) {
+                        $insTagDef = $pdo->prepare("INSERT IGNORE INTO `tags` (`id`, `name`) VALUES (?, ?)");
+                        $insTaskTag = $pdo->prepare("INSERT IGNORE INTO `task_tags` (`task_id`, `tag_name`) VALUES (?, ?)");
+                        foreach ($rt['tags'] as $tagName) {
+                            $cleanTag = trim((string)$tagName);
+                            if ($cleanTag !== '') {
+                                $cleanTag = ltrim($cleanTag, '#');
+                                $tagId = 'tag-' . substr(md5(strtolower($cleanTag)), 0, 16);
+                                $insTagDef->execute([$tagId, $cleanTag]);
+                                $insTaskTag->execute([$templateId, $cleanTag]);
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {}
+
+                $processedTemplateIds[] = $templateId;
+                $recurringTemplatesToProcess[$templateId] = true;
+            }
+
+            $templatesToDelete = $isDeltaSync
+                ? $deletionsFor('recurringTasks', $existingTemplateIds)
+                : array_values(array_diff($existingTemplateIds, $processedTemplateIds));
+
+            if (!empty($templatesToDelete)) {
+                ccrm_delete_omitted($pdo, 'tasks', $templatesToDelete, $baseSyncedAt, [], false, $isDeltaSync, 'recurring');
+            }
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks
@@ -6768,7 +6977,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $lCreated,
                                 ]);
                                 try {
-                                    $pdo->prepare("UPDATE `tasks` SET `related_ticket_id` = ? WHERE `id` = ? AND (`related_ticket_id` IS NULL OR `related_ticket_id` = '')")->execute([$tckId, $lTaskId]);
+                                    $pdo->prepare("UPDATE `tasks` SET `related_ticket_id` = ? WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " AND (`related_ticket_id` IS NULL OR `related_ticket_id` = '')")->execute([$tckId, $lTaskId]);
                                 } catch (\Throwable $e) {}
                                 $keepTaskIds[] = $lTaskId;
                             }
@@ -6815,6 +7024,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($deferredEmployeeFileKeys) {
             ccrm_employee_private_gc($pdo, $deferredEmployeeFileKeys);
+        }
+
+        foreach (array_keys($recurringTemplatesToProcess) as $tmplId) {
+            try {
+                ccrm_process_recurring_tasks($pdo, (string)$tmplId);
+            } catch (\Throwable $e) {
+                error_log('[ccrm recurring_tasks post-sync] ' . $e->getMessage());
+            }
         }
 
         // Now that the transaction is closed, drop the dynamic tables of any project

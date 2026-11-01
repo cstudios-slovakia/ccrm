@@ -6,6 +6,9 @@ import { referenceLeadName, referenceProjectName } from "../utils/readScope";
 import {
     CheckSquare,
     Calendar as CalendarIcon,
+    Repeat,
+    Play,
+    Pause,
     ChevronLeft,
     ChevronRight,
     Eye,
@@ -39,7 +42,10 @@ import {
     SlidersHorizontal,
     Ticket as TicketIcon,
 } from "lucide-react";
-import type { Task, UserProfile, Lead, Project, Ticket } from "../types";
+import type { Task, UserProfile, Lead, Project, Ticket, RecurringTaskTemplate } from "../types";
+import { describeRecurrence, getNextOccurrence, applyWeekendRule, getStartDate } from "../utils/recurringTasks";
+import { deleteRecurringOccurrenceWithUndo, deleteRecurringSeriesWithUndo } from "../utils/recurringTaskActions";
+import { RecurringOccurrenceDeleteDialog } from "./RecurringOccurrenceDeleteDialog";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -109,6 +115,17 @@ const getCalendarScopeCookie = (): "month" | "week" | "timeline" | "hide" => {
 const setCalendarScopeCookie = (scope: "month" | "week" | "timeline" | "hide") => {
     if (typeof document === "undefined") return;
     document.cookie = `ccrm_task_calendar_scope=${encodeURIComponent(scope)}; path=/; max-age=31536000; SameSite=Lax`;
+};
+
+const getShowPlannedRecurringCookie = (): boolean => {
+    if (typeof document === "undefined") return true;
+    const match = document.cookie.match(/(?:^|;\s*)ccrm_task_show_planned_recurring=([^;]+)/);
+    return match ? match[1] !== "0" : true;
+};
+
+const setShowPlannedRecurringCookie = (show: boolean) => {
+    if (typeof document === "undefined") return;
+    document.cookie = `ccrm_task_show_planned_recurring=${show ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax`;
 };
 
 // Reusable calendar date-range filter (item 9) — reuses the overview CalendarPane range picker
@@ -337,6 +354,8 @@ const BUCKET_TONES = {
 interface TaskDashboardViewProps {
     tasks: Task[];
     setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+    recurringTasks?: RecurringTaskTemplate[];
+    setRecurringTasks?: React.Dispatch<React.SetStateAction<RecurringTaskTemplate[]>>;
     leads: Lead[];
     /** For the task drawers' "Project" field and the project badge on a card. */
     projects?: Project[];
@@ -513,6 +532,8 @@ const ClosedTasksToggleBar: React.FC<{
 export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     tasks,
     setTasks,
+    recurringTasks = [],
+    setRecurringTasks,
     leads,
     projects = [],
     tickets = [],
@@ -738,9 +759,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
 
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
+    const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global" | "recurring">(
         "calendar",
     );
+    const [showPlannedRecurring, setShowPlannedRecurringState] = useState<boolean>(() => getShowPlannedRecurringCookie());
+    const setShowPlannedRecurring = (show: boolean) => {
+        setShowPlannedRecurringState(show);
+        setShowPlannedRecurringCookie(show);
+    };
+    const [recurringSearch, setRecurringSearch] = useState("");
+    const [editingTemplate, setEditingTemplate] = useState<RecurringTaskTemplate | null>(null);
+    const [seriesToDelete, setSeriesToDelete] = useState<RecurringTaskTemplate | null>(null);
+    const [occurrenceDeletingTask, setOccurrenceDeletingTask] = useState<Task | null>(null);
+    const [addInitialRepeat, setAddInitialRepeat] = useState(false);
     // Calendar scope: month view, week view, timeline activity log, or hidden (persisted in cookie)
     const [calendarScope, setCalendarScopeState] = useState<
         "month" | "week" | "timeline" | "hide"
@@ -1083,9 +1114,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // The create popup; `addDeadline` pre-fills its date (the calendar's "+" on a day).
-    const openAddTask = (deadline?: string) => {
+    const openAddTask = (deadline?: string, initialRepeat?: boolean) => {
         if (!taskAccess.create) return;
         setAddDeadline(deadline);
+        setAddInitialRepeat(Boolean(initialRepeat));
         setIsAddDrawerOpen(true);
     };
 
@@ -1500,6 +1532,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const handleDeleteTask = (task: Task) => {
         if (!mayDeleteTask(task)) return;
+        if (task.recurringSourceId) {
+            setOccurrenceDeletingTask(task);
+            return;
+        }
         deleteTasksWithUndo({ allTasks: tasks, targets: [task], setTasks, lang: systemLanguage });
     };
 
@@ -2168,6 +2204,55 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // --- RENDERING ---
 
+    // Ghost occurrences for schedule-mode recurring tasks on calendar
+    const plannedOccurrencesByDate = useMemo(() => {
+        const map = new Map<string, Array<{ template: RecurringTaskTemplate; occ: { scheduledDate: string; deadline: string; startDate: string } }>>();
+        if (!showPlannedRecurring || !recurringTasks || recurringTasks.length === 0) {
+            return map;
+        }
+
+        const existingKeys = new Set(
+            tasks
+                .filter((t) => t.recurringSourceId && t.recurringOccurrenceDate)
+                .map((t) => `${t.recurringSourceId}:${t.recurringOccurrenceDate}`)
+        );
+
+        // Visible range buffer: current month +- 1 month
+        const y = currentDate.getFullYear();
+        const m = currentDate.getMonth();
+        const rangeStart = new Date(Date.UTC(y, m - 1, 1)).toISOString().slice(0, 10);
+        const rangeEnd = new Date(Date.UTC(y, m + 2, 0)).toISOString().slice(0, 10);
+
+        for (const tpl of recurringTasks) {
+            if (tpl.recurrence.mode === "after_completion" || tpl.recurrence.paused) continue;
+            const endsOn = tpl.recurrence.endsOn;
+
+            let cur: string | null = tpl.recurrence.lastOccurrence ?? null;
+            for (let iter = 0; iter < 40; iter++) {
+                const next = getNextOccurrence(tpl.recurrence, cur);
+                if (!next) break;
+                if (endsOn && next > endsOn) break;
+                const deadline = applyWeekendRule(next, tpl.recurrence.weekendRule, tpl.recurrence.frequency);
+                const startDate = getStartDate(deadline, tpl.recurrence.leadDays);
+
+                if (next > rangeEnd && deadline > rangeEnd) {
+                    break;
+                }
+
+                if (deadline >= rangeStart && deadline <= rangeEnd) {
+                    const key = `${tpl.id}:${next}`;
+                    if (!existingKeys.has(key)) {
+                        const list = map.get(deadline) || [];
+                        list.push({ template: tpl, occ: { scheduledDate: next, deadline, startDate } });
+                        map.set(deadline, list);
+                    }
+                }
+                cur = next;
+            }
+        }
+        return map;
+    }, [showPlannedRecurring, recurringTasks, tasks, currentDate]);
+
     // --- RENDERING HELPERS ---
 
     const renderMonthGrid = (cfg: CalendarPanelConfig) => {
@@ -2257,7 +2342,29 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             {t.isLocking && (
                                                 <Lock className="inline h-2 w-2 mr-0.5 -mt-0.5 text-rose-500" />
                                             )}
+                                            {t.recurringSourceId && (
+                                                <Repeat className="inline h-2 w-2 mr-0.5 -mt-0.5 text-indigo-500" />
+                                            )}
                                             {t.title}
+                                        </div>
+                                    ))}
+
+                                    {/* Planned Recurring Ghost Pills */}
+                                    {showPlannedRecurring && plannedOccurrencesByDate.get(dateStr)?.map(({ template: tpl, occ }) => (
+                                        <div
+                                            key={`ghost-${tpl.id}-${occ.scheduledDate}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingTemplate(tpl);
+                                            }}
+                                            title={`${tpl.title} (${t("Planned recurring task", "Plánovaná opakovaná úloha", "Tervezett ismétlődő feladat")})`}
+                                            className="truncate text-micro font-bold px-1 py-0.5 rounded border border-dashed border-indigo-300 bg-indigo-50/40 text-indigo-700 opacity-70 hover:opacity-100 flex items-center gap-1 cursor-pointer transition-all"
+                                        >
+                                            <Repeat className="h-2 w-2 shrink-0 text-indigo-500" />
+                                            <span className="truncate">{tpl.title}</span>
+                                            <span className="text-micro uppercase tracking-wider font-semibold text-indigo-500/80 shrink-0">
+                                                {t("Planned", "Plánované", "Tervezett")}
+                                            </span>
                                         </div>
                                     ))}
 
@@ -2356,11 +2463,35 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 {tk.isLocking && (
                                                     <Lock className="inline h-2 w-2 mr-0.5 -mt-0.5 text-rose-500" />
                                                 )}
+                                                {tk.recurringSourceId && (
+                                                    <Repeat className="inline h-2 w-2 mr-0.5 -mt-0.5 text-indigo-500" />
+                                                )}
                                                 {tk.title}
                                             </span>
                                         </div>
                                     ))
                                 )}
+
+                                {/* Planned recurring ghosts for week */}
+                                {showPlannedRecurring && plannedOccurrencesByDate.get(dateStr)?.map(({ template: tpl, occ }) => (
+                                    <div
+                                        key={`ghost-week-${tpl.id}-${occ.scheduledDate}`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingTemplate(tpl);
+                                        }}
+                                        title={`${tpl.title} (${t("Planned recurring task", "Plánovaná opakovaná úloha", "Tervezett ismétlődő feladat")})`}
+                                        className="text-micro font-bold px-1.5 py-1 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/40 text-indigo-700 opacity-75 hover:opacity-100 cursor-pointer transition-all"
+                                    >
+                                        <span className="block font-bold tabular-nums text-indigo-500 opacity-70">
+                                            {t("Planned", "Plánované", "Tervezett")}
+                                        </span>
+                                        <span className="block truncate flex items-center gap-1">
+                                            <Repeat className="inline h-2.5 w-2.5 text-indigo-500 shrink-0" />
+                                            <span className="truncate">{tpl.title}</span>
+                                        </span>
+                                    </div>
+                                ))}
                             </div>
                         );
                     })}
@@ -2510,6 +2641,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                     ))}
                 </div>
+
+                {cfg.scope !== "hide" && cfg.scope !== "timeline" && (
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={showPlannedRecurring}
+                        onClick={() => setShowPlannedRecurring(!showPlannedRecurring)}
+                        title={t("Show planned recurring tasks", "Zobraziť plánované opakované úlohy", "Tervezett ismétlődő feladatok megjelenítése")}
+                        className={`inline-flex items-center gap-1.5 px-2.5 ws-sm:px-3 py-1.5 rounded-xl border text-caption font-bold transition-all cursor-pointer whitespace-nowrap ${
+                            showPlannedRecurring
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                        }`}
+                    >
+                        <Repeat className="h-3.5 w-3.5" />
+                        <span className="hidden ws-sm:inline">{t("Planned recurring", "Plánované opakované", "Tervezett ismétlődő")}</span>
+                    </button>
+                )}
 
                 {cfg.scope !== "hide" && cfg.scope !== "timeline" && (
                     <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
@@ -3046,6 +3195,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <TaskWhatsAppMarks task={task} userLanguage={systemLanguage} showNote={false} />
 
                         {renderLeadBadge(task, "max-w-35")}
+
+                        {Boolean(task.recurringSourceId) && (
+                            <span
+                                title={t("Part of a recurring series", "Súčasť opakovanej série", "Egy ismétlődő sorozat része")}
+                                className="inline-flex items-center gap-1 font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100 text-micro shrink-0"
+                            >
+                                <Repeat className="h-2.5 w-2.5 text-indigo-600" />
+                                <span>{t("Recurring", "Opakované", "Ismétlődő")}</span>
+                            </span>
+                        )}
 
                         {renderProjectBadge(
                             task,
@@ -4431,10 +4590,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         leadStageGroups={leadStageGroups}
                         leadStateParents={leadStateParents}
                         initialDeadline={addDeadline}
+                        initialRepeat={addInitialRepeat}
                         incomingTitle={incomingTitle}
                         onCreate={(created) => {
                             markFresh(created);
                             setTasks((prev) => [...created, ...prev]);
+                        }}
+                        onCreateRecurring={(tpl) => {
+                            if (setRecurringTasks) {
+                                setRecurringTasks((prev) => [tpl, ...(prev || [])]);
+                            }
                         }}
                         onClose={closeAddDrawer}
                     />
@@ -5005,6 +5170,334 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     }
 
+
+
+    const renderRecurringTasksView = () => {
+        const filtered = recurringTasks.filter((t) => {
+            if (!recurringSearch.trim()) return true;
+            return t.title.toLowerCase().includes(recurringSearch.toLowerCase().trim());
+        });
+
+        // Sort by next due date
+        const sorted = [...filtered].sort((a, b) => {
+            const da = a.deadline || "9999-99-99";
+            const db = b.deadline || "9999-99-99";
+            return da.localeCompare(db);
+        });
+
+        const handleTogglePause = (tpl: RecurringTaskTemplate) => {
+            const nextPaused = !tpl.recurrence.paused;
+            const updated: RecurringTaskTemplate = {
+                ...tpl,
+                recurrence: {
+                    ...tpl.recurrence,
+                    paused: nextPaused,
+                },
+            };
+            if (setRecurringTasks) {
+                setRecurringTasks((prev) => (prev || []).map((t) => (t.id === tpl.id ? updated : t)));
+            }
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    nextPaused
+                        ? t("Series paused", "Séria bola pozastavená", "Sorozat szüneteltetve")
+                        : t("Series resumed", "Séria bola obnovená", "Sorozat folytatva"),
+                    "info"
+                );
+            }
+        };
+
+        return (
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6">
+                {/* Header bar: Search & New Button */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                    <div className="relative flex-1 min-w-60 max-w-md">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                            type="text"
+                            value={recurringSearch}
+                            onChange={(e) => setRecurringSearch(e.target.value)}
+                            placeholder={t("Search recurring tasks...", "Hľadať opakované úlohy...", "Ismétlődő feladatok keresése...")}
+                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold placeholder:text-slate-400 focus:outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                        />
+                    </div>
+                    {taskAccess.create && (
+                        <button
+                            type="button"
+                            onClick={() => openAddTask(undefined, true)}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl font-bold text-ui shadow-sm transition-all cursor-pointer"
+                        >
+                            <Plus className="h-4 w-4 stroke-[3]" />
+                            <span>{t("New recurring task", "Nová opakovaná úloha", "Új ismétlődő feladat")}</span>
+                        </button>
+                    )}
+                </div>
+
+                {/* Empty State */}
+                {sorted.length === 0 ? (
+                    <div className="py-16 text-center space-y-4 max-w-md mx-auto">
+                        <div className="w-14 h-14 mx-auto rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                            <Repeat className="h-7 w-7" />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="type-page-title text-slate-800">
+                                {recurringSearch.trim()
+                                    ? t("No recurring tasks found", "Nenašli sa žiadne opakované úlohy", "Nem találhatók ismétlődő feladatok")
+                                    : t("No recurring tasks yet", "Zatiaľ žiadne opakované úlohy", "Még nincsenek ismétlődő feladatok")}
+                            </h3>
+                            <p className="text-caption text-slate-500 font-medium leading-relaxed">
+                                {recurringSearch.trim()
+                                    ? t("Try a different search query.", "Skúste iný vyhľadávací dotaz.", "Próbáljon másik keresési kifejezést.")
+                                    : t("Recurring tasks automatically create new tasks on a schedule or after completion.", "Opakované úlohy automaticky vytvárajú nové úlohy podľa plánu alebo po dokončení.", "Az ismétlődő feladatok automatikusan új feladatokat hoznak létre ütemezés szerint vagy befejezés után.")}
+                            </p>
+                        </div>
+                        {taskAccess.create && !recurringSearch.trim() && (
+                            <button
+                                type="button"
+                                onClick={() => openAddTask(undefined, true)}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-ui shadow-sm transition-all cursor-pointer"
+                            >
+                                <Plus className="h-4 w-4 stroke-[3]" />
+                                <span>{t("New recurring task", "Nová opakovaná úloha", "Új ismétlődő feladat")}</span>
+                            </button>
+                        )}
+                    </div>
+                ) : (
+                    <>
+                        {/* Desktop Table View */}
+                        <div className="hidden ws-sm:block overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-200 text-slate-400 type-overline">
+                                        <th className="py-3 px-3">{t("Task", "Úloha", "Feladat")}</th>
+                                        <th className="py-3 px-3">{t("Schedule", "Plán", "Ütemezés")}</th>
+                                        <th className="py-3 px-3">{t("Next Due", "Ďalší termín", "Következő határidő")}</th>
+                                        <th className="py-3 px-3">{t("Current Task", "Aktuálna úloha", "Jelenlegi feladat")}</th>
+                                        <th className="py-3 px-3">{t("Assignee", "Zodpovedný", "Felelős")}</th>
+                                        <th className="py-3 px-3">{t("Status", "Stav", "Állapot")}</th>
+                                        <th className="py-3 px-3 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
+                                    {sorted.map((tpl) => {
+                                        const openTask = tasks.find(
+                                            (tk) => tk.recurringSourceId === tpl.id && !tk.archived && !isDoneState(tk.status)
+                                        );
+                                        const isPaused = Boolean(tpl.recurrence.paused);
+                                        const isEnded = Boolean(
+                                            tpl.recurrence.endsOn && (!tpl.deadline || tpl.deadline > tpl.recurrence.endsOn) && !openTask
+                                        );
+
+                                        return (
+                                            <tr key={tpl.id} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="py-3.5 px-3 max-w-64">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setEditingTemplate(tpl)}
+                                                        className="text-left font-bold text-slate-900 hover:text-indigo-600 transition-colors cursor-pointer truncate block w-full"
+                                                        title={tpl.title}
+                                                    >
+                                                        {tpl.title}
+                                                    </button>
+                                                    {tpl.description && (
+                                                        <p className="text-caption text-slate-400 font-medium truncate mt-0.5" title={tpl.description}>
+                                                            {tpl.description}
+                                                        </p>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption font-semibold text-slate-600 max-w-56">
+                                                    {describeRecurrence(tpl.recurrence, systemLanguage)}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption font-bold text-slate-800 whitespace-nowrap">
+                                                    <div>{tpl.deadline ? formatTaskDate(tpl.deadline) : "—"}</div>
+                                                    {tpl.startDate && tpl.startDate !== tpl.deadline && (
+                                                        <div className="text-micro font-medium text-slate-400 mt-0.5">
+                                                            {t("Appears", "Zobrazí sa", "Megjelenik")}: {formatTaskDate(tpl.startDate)}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption">
+                                                    {openTask ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingTask(openTask)}
+                                                            className="text-left font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1.5 cursor-pointer max-w-56 truncate"
+                                                        >
+                                                            <span className="truncate">{openTask.title}</span>
+                                                            <span
+                                                                className="px-1.5 py-0.5 rounded text-micro shrink-0"
+                                                                style={{
+                                                                    backgroundColor: `${taskStateColors[openTask.status] || "#64748b"}20`,
+                                                                    color: taskStateColors[openTask.status] || "#64748b",
+                                                                }}
+                                                            >
+                                                                {stateLabel(openTask.status)}
+                                                            </span>
+                                                            {isTaskOverdue(openTask) && (
+                                                                <span className="text-rose-600 text-micro font-bold shrink-0">
+                                                                    ({t("Overdue", "Po termíne", "Késésben")})
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-slate-400 font-medium">
+                                                            {t("Next appears on", "Zobrazí sa", "Megjelenik")}: {tpl.startDate || tpl.deadline}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-caption">
+                                                    {renderAssigneeChips(
+                                                        tpl as any,
+                                                        "font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-30 border border-slate-200"
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 whitespace-nowrap">
+                                                    {isPaused ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                                            {t("Paused", "Pozastavené", "Szüneteltetve")}
+                                                        </span>
+                                                    ) : isEnded ? (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                                            {t("Ended", "Ukončené", "Lejárt")}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            {t("Active", "Aktívna", "Aktív")}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setEditingTemplate(tpl)}
+                                                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors cursor-pointer"
+                                                            title={t("Edit series", "Upraviť sériu", "Sorozat szerkesztése")}
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleTogglePause(tpl)}
+                                                            className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-amber-600 rounded-lg transition-colors cursor-pointer"
+                                                            title={isPaused ? t("Resume series", "Obnoviť sériu", "Sorozat folytatása") : t("Pause series", "Pozastaviť sériu", "Sorozat szüneteltetése")}
+                                                        >
+                                                            {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                                                        </button>
+                                                        {taskAccess.delete && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSeriesToDelete(tpl)}
+                                                                className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                                                title={t("Delete series", "Odstrániť sériu", "Sorozat törlése")}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Mobile Cards View */}
+                        <div className="ws-sm:hidden space-y-3">
+                            {sorted.map((tpl) => {
+                                const openTask = tasks.find(
+                                    (tk) => tk.recurringSourceId === tpl.id && !tk.archived && !isDoneState(tk.status)
+                                );
+                                const isPaused = Boolean(tpl.recurrence.paused);
+                                const isEnded = Boolean(
+                                    tpl.recurrence.endsOn && (!tpl.deadline || tpl.deadline > tpl.recurrence.endsOn) && !openTask
+                                );
+
+                                return (
+                                    <div key={tpl.id} className="p-4 rounded-2xl border border-slate-200 bg-white shadow-xs space-y-3">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTemplate(tpl)}
+                                                    className="font-bold text-ui text-slate-900 text-left hover:text-indigo-600"
+                                                >
+                                                    {tpl.title}
+                                                </button>
+                                                <p className="text-caption text-slate-500 font-semibold mt-0.5">
+                                                    {describeRecurrence(tpl.recurrence, systemLanguage)}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                {isPaused ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold bg-amber-100 text-amber-800">
+                                                        {t("Paused", "Pozastavené", "Szüneteltetve")}
+                                                    </span>
+                                                ) : isEnded ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold bg-slate-100 text-slate-600">
+                                                        {t("Ended", "Ukončené", "Lejárt")}
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700">
+                                                        {t("Active", "Aktívna", "Aktív")}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-caption">
+                                            <div>
+                                                <span className="text-slate-400 font-medium">{t("Next Due", "Ďalší termín", "Következő határidő")}:</span>{" "}
+                                                <span className="font-bold text-slate-800">{tpl.deadline ? formatTaskDate(tpl.deadline) : "—"}</span>
+                                            </div>
+                                            {openTask ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTask(openTask)}
+                                                    className="font-bold text-indigo-600 underline"
+                                                >
+                                                    {t("Open task", "Otvorená úloha", "Megnyitott feladat")}
+                                                </button>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingTemplate(tpl)}
+                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-caption font-bold"
+                                            >
+                                                {t("Edit", "Upraviť", "Szerkesztés")}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleTogglePause(tpl)}
+                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-caption font-bold"
+                                            >
+                                                {isPaused ? t("Resume", "Obnoviť", "Folytatás") : t("Pause", "Pozastaviť", "Szüneteltetés")}
+                                            </button>
+                                            {taskAccess.delete && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSeriesToDelete(tpl)}
+                                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-caption font-bold"
+                                                >
+                                                    {t("Delete", "Odstrániť", "Törlés")}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
+
+
     return (
         <div
             className={`w-full ${viewMode === "archive" || viewMode === "calendar" ? "h-auto shrink-0" : "h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
@@ -5024,6 +5517,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Globálne úlohy",
                                     "Globális feladatok",
                                 )
+                              : viewMode === "recurring"
+                                ? t(
+                                      "Recurring Tasks",
+                                      "Opakované úlohy",
+                                      "Ismétlődő feladatok",
+                                  )
                               : t(
                                   "Done & Archived Tasks",
                                   "Hotové a archivované úlohy",
@@ -5041,6 +5540,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Aktívne pracovné zaťaženie celého tímu.",
                                     "Az egész csapat aktív munkaterhelése.",
                                 )
+                              : viewMode === "recurring"
+                                ? t(
+                                      "Series rules that automatically generate tasks on a schedule or after completion.",
+                                      "Pravidlá sérií, ktoré automaticky vytvárajú úlohy podľa plánu alebo po dokončení.",
+                                      "Sorozatszabályok, amelyek automatikusan feladatokat hoznak létre ütemezés szerint veya befejezés után.",
+                                  )
                               : archiveTab === "done"
                                 ? t(
                                       "History of completed tasks, logging details, and timing status.",
@@ -5077,6 +5582,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                   "Global Tasks",
                                   "Globálne úlohy",
                                   "Globális feladatok",
+                              )}
+                          </button>
+                          <button
+                              onClick={() => setViewMode("recurring")}
+                className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                  viewMode === "recurring"
+                                      ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                      : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                              }`}
+                          >
+                              {t(
+                                  "Recurring",
+                                  "Opakované",
+                                  "Ismétlődő",
                               )}
                           </button>
                           <button
@@ -5125,6 +5644,35 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                   </div>
               </>}
             />
+
+
+            {isAddDrawerOpen && viewMode !== "calendar" && taskAccess.create && (
+                <QuickTaskModal
+                    tasks={tasks}
+                    leads={leads}
+                    projects={projects}
+                    users={users}
+                    taskStates={taskStates}
+                    systemLanguage={systemLanguage}
+                    currentUserName={myName}
+                    mailConfigured={mailConfigured}
+                    leadStageGroups={leadStageGroups}
+                    leadStateParents={leadStateParents}
+                    initialDeadline={addDeadline}
+                    initialRepeat={addInitialRepeat}
+                    incomingTitle={incomingTitle}
+                    onCreate={(created) => {
+                        markFresh(created);
+                        setTasks((prev) => [...created, ...prev]);
+                    }}
+                    onCreateRecurring={(template) => {
+                        if (setRecurringTasks) {
+                            setRecurringTasks((prev) => [template, ...(prev || [])]);
+                        }
+                    }}
+                    onClose={closeAddDrawer}
+                />
+            )}
 
             {viewMode === "archive" ? (
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
@@ -5482,6 +6030,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()
+            ) : viewMode === "recurring" ? (
+                renderRecurringTasksView()
             ) : calendarScope === "hide" ? (
                 <div className="flex-1 min-h-0">
                     {renderMyTaskListColumn(true)}
@@ -5523,6 +6073,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <TaskEditDrawer
                     key={editingTask.id}
                     task={editingTask}
+                    recurringTemplates={recurringTasks}
                     leads={leads}
                     projects={projects}
                     tickets={tickets}
@@ -5535,10 +6086,76 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     mailConfigured={mailConfigured}
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
+                    canDelete={mayDeleteTask(editingTask)}
                     existingTags={allExistingTags}
                     leadStageGroups={leadStageGroups}
                     leadStateParents={leadStateParents}
                     onTagClick={handleTagClick}
+                    onEditSeries={(templateId) => {
+                        const tpl = (recurringTasks || []).find((r) => r.id === templateId);
+                        if (tpl) {
+                            setEditingTask(null);
+                            setEditingTemplate(tpl);
+                        }
+                    }}
+                    onConvertToRecurring={(taskToConvert, recurrenceConfig) => {
+                        const templateId = `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+                        const effectiveDeadline = taskToConvert.deadline || toLocalDateStr(new Date());
+                        const newTemplate: RecurringTaskTemplate = {
+                            id: templateId,
+                            title: taskToConvert.title,
+                            description: taskToConvert.description,
+                            priority: taskToConvert.priority,
+                            deadline: effectiveDeadline,
+                            startDate: taskToConvert.startDate,
+                            deadlineTime: taskToConvert.deadlineTime,
+                            owner: taskToConvert.owner,
+                            createdBy: taskToConvert.createdBy,
+                            assignedUsers: taskToConvert.assignedUsers,
+                            relatedLeadId: taskToConvert.relatedLeadId,
+                            relatedProjectId: taskToConvert.relatedProjectId,
+                            isLocking: taskToConvert.isLocking,
+                            emailReminders: taskToConvert.emailReminders,
+                            requiresConclusion: taskToConvert.requiresConclusion,
+                            tags: taskToConvert.tags,
+                            recurrence: {
+                                ...recurrenceConfig,
+                                lastOccurrence: effectiveDeadline,
+                                lastOccurrenceId: taskToConvert.id,
+                            },
+                        };
+
+                        const updatedTask: Task = {
+                            ...taskToConvert,
+                            recurringSourceId: templateId,
+                            recurringOccurrenceDate: effectiveDeadline,
+                        };
+
+                        if (setRecurringTasks) {
+                            setRecurringTasks((prev) => [newTemplate, ...(prev || [])]);
+                        }
+                        setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+
+                        if (typeof (window as any).showToast === "function") {
+                            (window as any).showToast(
+                                t("Task converted to recurring series", "Úloha bola zmenená na opakovanú sériu", "A feladat ismétlődő sorozattá lett alakítva"),
+                                "success"
+                            );
+                        }
+                    }}
+                    onDeleteOccurrence={(task, choice) => {
+                        if (choice !== "cancel") {
+                            deleteRecurringOccurrenceWithUndo({
+                                occurrence: task,
+                                allTasks: tasks,
+                                setTasks,
+                                allTemplates: recurringTasks,
+                                setRecurringTasks,
+                                choice,
+                                lang: systemLanguage,
+                            });
+                        }
+                    }}
                     onSave={(next) => {
                         if (!mayEditTask(next)) return;
                         setTasks((prev) =>
@@ -5553,6 +6170,133 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     onClose={() => setEditingTask(null)}
                 />
             )}
+
+            {/* Template Edit Drawer */}
+            {editingTemplate && (
+                <TaskEditDrawer
+                    key={editingTemplate.id}
+                    task={editingTemplate}
+                    isTemplate={true}
+                    leads={leads}
+                    projects={projects}
+                    tickets={tickets}
+                    users={users}
+                    taskStates={taskStates}
+                    taskStateColors={taskStateColors}
+                    systemLanguage={systemLanguage}
+                    currentUser={currentUser}
+                    currentUserName={currentUser?.name || defaultUserName}
+                    mailConfigured={mailConfigured}
+                    canEdit={taskAccess.edit}
+                    canArchive={false}
+                    canDelete={taskAccess.delete}
+                    existingTags={allExistingTags}
+                    leadStageGroups={leadStageGroups}
+                    leadStateParents={leadStateParents}
+                    onTagClick={handleTagClick}
+                    onSave={() => {}}
+                    onSaveTemplate={(updatedTpl) => {
+                        if (setRecurringTasks) {
+                            setRecurringTasks((prev) =>
+                                (prev || []).map((t) => (t.id === updatedTpl.id ? updatedTpl : t))
+                            );
+                        }
+                    }}
+                    onDelete={async (tpl) => {
+                        deleteRecurringSeriesWithUndo({
+                            template: tpl as unknown as RecurringTaskTemplate,
+                            allTasks: tasks,
+                            setTasks,
+                            setRecurringTasks: setRecurringTasks || (() => {}),
+                            lang: systemLanguage,
+                        });
+                        return true;
+                    }}
+                    onClose={() => setEditingTemplate(null)}
+                />
+            )}
+
+            {/* Recurring Occurrence Delete Dialog */}
+            <RecurringOccurrenceDeleteDialog
+                task={occurrenceDeletingTask}
+                onChoice={(choice) => {
+                    if (choice !== "cancel" && occurrenceDeletingTask) {
+                        deleteRecurringOccurrenceWithUndo({
+                            occurrence: occurrenceDeletingTask,
+                            allTasks: tasks,
+                            setTasks,
+                            allTemplates: recurringTasks,
+                            setRecurringTasks,
+                            choice,
+                            lang: systemLanguage,
+                        });
+                    }
+                    setOccurrenceDeletingTask(null);
+                }}
+                t={t}
+            />
+
+            {/* Series Delete Confirm Dialog */}
+            {seriesToDelete && (() => {
+                const openOccurrence = tasks.find(
+                    (t) => t.recurringSourceId === seriesToDelete.id && !t.archived && !isDoneState(t.status)
+                );
+                return (
+                    <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+                        <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4">
+                            <div className="flex items-start gap-3">
+                                <span className="p-2 rounded-2xl bg-rose-50 text-rose-600 shrink-0">
+                                    <Trash2 className="h-5 w-5" />
+                                </span>
+                                <div>
+                                    <h3 className="type-page-title text-body font-bold text-slate-800">
+                                        {t("Delete recurring series", "Odstrániť opakovanú sériu", "Ismétlődő sorozat törlése")}
+                                    </h3>
+                                    <p className="text-caption text-slate-500 mt-1">
+                                        {openOccurrence
+                                            ? t(
+                                                  `Deleting "${seriesToDelete.title}" will also remove its open task "${openOccurrence.title}". Completed occurrences remain in history.`,
+                                                  `Odstránením série "${seriesToDelete.title}" sa odstráni aj otvorená úloha "${openOccurrence.title}". Už dokončené úlohy zostanú v histórii.`,
+                                                  `A(z) "${seriesToDelete.title}" sorozat törlésével a nyitott "${openOccurrence.title}" feladat is törlődik. A befejezett feladatok megmaradnak az előzményekben.`
+                                              )
+                                            : t(
+                                                  `Are you sure you want to delete the series "${seriesToDelete.title}"? Completed occurrences remain in history.`,
+                                                  `Naozaj chcete odstrániť sériu "${seriesToDelete.title}"? Už dokončené úlohy zostanú v histórii.`,
+                                                  `Biztosan törölni szeretné a(z) "${seriesToDelete.title}" sorozatot? A befejezett feladatok megmaradnak az előzményekben.`
+                                              )}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setSeriesToDelete(null)}
+                                    className="px-4 py-2 rounded-xl text-ui font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                                >
+                                    {t("Cancel", "Zrušiť", "Mégse")}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const tpl = seriesToDelete;
+                                        setSeriesToDelete(null);
+                                        deleteRecurringSeriesWithUndo({
+                                            template: tpl,
+                                            allTasks: tasks,
+                                            setTasks,
+                                            setRecurringTasks: setRecurringTasks || (() => {}),
+                                            lang: systemLanguage,
+                                        });
+                                    }}
+                                    className="px-4 py-2 rounded-xl text-ui font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition-colors cursor-pointer"
+                                >
+                                    {t("Delete Series", "Odstrániť sériu", "Sorozat törlése")}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {renderBulkActionToolbar()}
         </div>
     );

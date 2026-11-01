@@ -447,7 +447,7 @@ function mcp_project_milestones(\PDO $pdo, array $user, array $p): array {
         $taskStates = mcp_config_json($pdo, 'TASK_STATES', []);
         $stmt = $pdo->prepare(
             "SELECT id, title, description, priority, start_date, deadline, status, owner, completed_at, related_lead_id
-             FROM tasks WHERE related_project_id = ? AND is_locking = 1 AND archived = 0" . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
+             FROM tasks WHERE related_project_id = ? AND is_locking = 1 AND archived = 0 AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
              ORDER BY deadline ASC"
         );
         $stmt->execute(array_merge([$p['id']], $scopeParams));
@@ -709,7 +709,7 @@ function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
         [$scopeSql, $scopeParams] = mcp_task_scope($user);
         $stmt = $pdo->prepare(
             "SELECT id, title, priority, deadline, status, owner, related_lead_id, related_project_id
-             FROM tasks WHERE {$w} AND archived = 0" . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
+             FROM tasks WHERE {$w} AND archived = 0 AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
              ORDER BY deadline DESC LIMIT {$limit}"
         );
         $stmt->execute(array_merge($p, $scopeParams));
@@ -919,7 +919,7 @@ function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args
                 $rel = "related_lead_id IN ($ph)" . ($pids ? ' OR related_project_id IN (' . implode(',', array_fill(0, count($pids), '?')) . ')' : '');
                 $stmt = $pdo->prepare(
                     "SELECT id, title, priority, deadline, deadline_time, status, owner, is_locking, related_lead_id, related_project_id
-                     FROM tasks WHERE ($rel) AND archived = 0 AND {$openSql}" . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
+                     FROM tasks WHERE ($rel) AND archived = 0 AND {$openSql} AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
                      ORDER BY deadline ASC LIMIT 50"
                 );
                 $stmt->execute(array_merge($ids, $pids, $openParams, $scopeParams));

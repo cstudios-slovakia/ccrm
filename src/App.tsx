@@ -11,7 +11,7 @@ import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDi
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
@@ -258,7 +258,7 @@ const computeSettingsSig = (s: any): string => {
 // Used to tell a genuine unsaved edit apart from an automatic background push
 // (e.g. the settings-resync effect) that happens to land after the session died.
 const computePushSig = (p: {
-  leads?: unknown; tasks?: unknown; users?: unknown; roles?: unknown;
+  leads?: unknown; tasks?: unknown; recurringTasks?: unknown; users?: unknown; roles?: unknown;
   meetingNotes?: unknown; unifiedEntries?: unknown; unifiedEntriesData?: unknown;
   customDashboards?: unknown; projectTypes?: unknown; projects?: unknown;
   warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
@@ -271,7 +271,7 @@ const computePushSig = (p: {
   tickets?: unknown; supportContracts?: unknown;
   settings?: any;
 }): string => JSON.stringify([
-  p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
+  p.leads, p.tasks, p.recurringTasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
@@ -302,6 +302,7 @@ function App() {
   // freshly-created rows — the root cause of "assignment/recording resets" bugs).
   const leadsRef = useRef<Lead[]>([]);
   const tasksRef = useRef<Task[]>([]);
+  const recurringTasksRef = useRef<RecurringTaskTemplate[]>([]);
   const rolesRef = useRef<RolePermission[]>([]);
   const usersRef = useRef<UserProfile[]>([]);
   const meetingNotesRef = useRef<MeetingNote[]>([]);
@@ -776,7 +777,9 @@ function App() {
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [recurringTasks, setRecurringTasks] = useState<RecurringTaskTemplate[]>([]);
   const lastKnownTasksRef = useRef<Task[] | null>(null);
+  const lastKnownRecurringTasksRef = useRef<RecurringTaskTemplate[] | null>(null);
 
   const [unifiedEntries, setUnifiedEntries] = useState<UnifiedEntryRegistry[]>([]);
   const [unifiedEntriesData, setUnifiedEntriesData] = useState<Record<string, UnifiedEntryRow[]>>({});
@@ -1247,6 +1250,7 @@ ${log.payload || ''}
   // the freshest state for any entity the caller did not explicitly update.
   leadsRef.current = leads;
   tasksRef.current = tasks;
+  recurringTasksRef.current = recurringTasks;
   rolesRef.current = roles;
   usersRef.current = users;
   meetingNotesRef.current = meetingNotes;
@@ -1328,6 +1332,7 @@ ${log.payload || ''}
     // actually transmit.
     const liveLeads = nextLeads ?? leadsRef.current;
     const liveTasks = nextTasks ?? tasksRef.current;
+    const liveRecurringTasks = recurringTasksRef.current;
     const liveUsers = nextUsers ?? usersRef.current;
     const liveMeetingNotes = nextMeetingNotes ?? meetingNotesRef.current;
     const liveUnifiedEntries = nextUnifiedEntries ?? unifiedEntriesRef.current;
@@ -1358,6 +1363,7 @@ ${log.payload || ''}
       baseSyncedAt: baseSyncedAtRef.current,
       leads: liveLeads,
       tasks: liveTasks,
+      recurringTasks: liveRecurringTasks,
       users: liveUsers,
       roles: nextRoles ?? rolesRef.current,
       meetingNotes: liveMeetingNotes,
@@ -1447,6 +1453,7 @@ ${log.payload || ''}
       };
       narrow("leads", liveLeads);
       narrow("tasks", liveTasks);
+      narrow("recurringTasks", liveRecurringTasks);
       narrow("users", liveUsers);
       narrow("meetingNotes", liveMeetingNotes);
       narrow("customDashboards", liveCustomDashboards);
@@ -1827,6 +1834,15 @@ ${log.payload || ''}
       tasksRef.current = nextTasks;
       pushStateToServer(undefined, nextTasks);
       return nextTasks;
+    });
+  };
+
+  const updateRecurringTasksAndSync = (newRec: RecurringTaskTemplate[] | ((prev: RecurringTaskTemplate[]) => RecurringTaskTemplate[])) => {
+    setRecurringTasks(prev => {
+      const next = typeof newRec === "function" ? newRec(prev) : newRec;
+      recurringTasksRef.current = next;
+      pushStateToServer();
+      return next;
     });
   };
 
@@ -2783,6 +2799,10 @@ ${log.payload || ''}
         lastKnownTasksRef.current = incomingTasks;
         setTasks((prev) => JSON.stringify(prev) === JSON.stringify(data.tasks) ? prev : data.tasks);
       }
+      if (data.recurringTasks && Array.isArray(data.recurringTasks)) {
+        lastKnownRecurringTasksRef.current = data.recurringTasks;
+        setRecurringTasks((prev) => JSON.stringify(prev) === JSON.stringify(data.recurringTasks) ? prev : data.recurringTasks);
+      }
       if (data.users && Array.isArray(data.users)) {
         setUsers((prev) => JSON.stringify(prev) === JSON.stringify(data.users) ? prev : data.users);
         // Compare against the CURRENT user via the updater, not the one captured
@@ -3004,6 +3024,7 @@ ${log.payload || ''}
       syncedRecordsRef.current = {
         leads: baselineOf(rawData.leads ?? leadsRef.current),
         tasks: baselineOf(rawData.tasks ?? tasksRef.current),
+        recurringTasks: baselineOf(rawData.recurringTasks ?? recurringTasksRef.current),
         users: baselineOf(rawData.users ?? usersRef.current),
         meetingNotes: baselineOf(rawData.meetingNotes ?? meetingNotesRef.current),
         customDashboards: baselineOf(rawData.customDashboards ?? customDashboardsRef.current),
@@ -3038,6 +3059,7 @@ ${log.payload || ''}
       lastConfirmedPushSigRef.current = computePushSig({
         leads: data.leads ?? leadsRef.current,
         tasks: data.tasks ?? tasksRef.current,
+        recurringTasks: data.recurringTasks ?? recurringTasksRef.current,
         users: data.users ?? usersRef.current,
         roles: data.roles ?? rolesRef.current,
         meetingNotes: data.meetingNotes ?? meetingNotesRef.current,
@@ -3289,6 +3311,8 @@ ${log.payload || ''}
         <TaskDashboardView 
           tasks={tasks}
           setTasks={updateTasksAndSync}
+          recurringTasks={recurringTasks}
+          setRecurringTasks={updateRecurringTasksAndSync}
           leads={leads}
           projects={projects}
           users={users}
@@ -4316,6 +4340,8 @@ ${log.payload || ''}
           <TaskDashboardView 
             tasks={tasks}
             setTasks={updateTasksAndSync}
+            recurringTasks={recurringTasks}
+            setRecurringTasks={updateRecurringTasksAndSync}
             leads={leads}
             projects={projects}
             tickets={tickets}
@@ -4609,6 +4635,7 @@ ${log.payload || ''}
                 leadStageGroups={leadStageGroups}
                 leadStateParents={leadStateParents}
                 onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
+                onCreateRecurring={(template) => updateRecurringTasksAndSync((prev) => [template, ...(prev || [])])}
                 onClose={() => setQuickTaskOpen(false)}
               />
             )}
@@ -4710,6 +4737,7 @@ ${log.payload || ''}
               leadStageGroups={leadStageGroups}
               leadStateParents={leadStateParents}
               onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
+                onCreateRecurring={(template) => updateRecurringTasksAndSync((prev) => [template, ...(prev || [])])}
               onClose={() => setQuickTaskOpen(false)}
             />
           )}

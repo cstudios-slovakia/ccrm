@@ -277,7 +277,8 @@ if (!function_exists('ccrm_workflow_open_task_exists')) {
         $lastState = $states ? (string)end($states) : null;
 
         $sql = "SELECT COUNT(*) FROM `tasks`
-                 WHERE `workflow_id` = ?
+                 WHERE " . ccrm_sql_real_tasks() . "
+                   AND `workflow_id` = ?
                    AND `archived` = 0
                    AND LOWER(`status`) <> 'done'";
         $params = [$workflowId];
@@ -930,7 +931,7 @@ if (!function_exists('ccrm_execute_workflow')) {
                             $stmt = $pdo->prepare("
                                 INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `workflow_id`, `created_at`)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automation', ?, ?, CURRENT_TIMESTAMP())
-                            ");
+                            "); /* recurring-template: workflows create normal tasks */
                             $stmt->execute([$taskId, $title, $desc, $priority, $deadline, $deadlineTime, $taskStatus, $owner, $relatedLeadId, $workflowId]);
 
                             if (!empty($owner)) {

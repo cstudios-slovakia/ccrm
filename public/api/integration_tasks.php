@@ -490,7 +490,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
 
             $row = null;
             if ($ref['local_id'] !== null) {
-                $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ? FOR UPDATE");
+                $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ? AND " . ccrm_sql_real_tasks('t') . " FOR UPDATE");
                 $stmt->execute([$ref['local_id']]);
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
                 if ($row === null) {
@@ -526,7 +526,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         if (!$stale) {
             ccrm_int_audit($pdo, $client, 'integration_task_push', ($created ? 'create ' : 'update ') . $row['id'] . ' ext=' . $externalId);
         }
-        $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ?");
+        $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ? AND " . ccrm_sql_real_tasks('t'));
         $stmt->execute([$row['id']]);
         $fresh = ccrm_int_task_serialize_rows($pdo, $client, [$stmt->fetch(\PDO::FETCH_ASSOC)])[0];
         return [$created ? 201 : 200, $fresh + ['stale' => $stale, 'applied' => $applied]];
@@ -550,7 +550,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         $pdo->prepare(
             "INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`,
                                   `related_lead_id`, `related_project_id`, `completed_by`, `completed_at`, `external_source`, `external_url`, `external_meta_json`)
-             VALUES (?, ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" /* recurring-template: integration tasks are real tasks */
         )->execute([
             $id, $composed['title'], $composed['description'], $in['start'], $due['date'], $due['time'],
             $done ? ccrm_int_task_done_state($states) : ccrm_int_task_initial_state($states),
@@ -657,7 +657,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         if ($sets !== [] || in_array('assignee_ids', $applied, true)) {
             $sets[] = '`updated_at` = NOW(3)';
             $params[] = (string)$row['id'];
-            $pdo->prepare("UPDATE `tasks` SET " . implode(', ', $sets) . " WHERE `id` = ?")->execute($params);
+            $pdo->prepare("UPDATE `tasks` SET " . implode(', ', $sets) . " WHERE `id` = ? AND " . ccrm_sql_real_tasks())->execute($params);
         }
         return $applied;
     }
@@ -690,7 +690,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         $dir = ccrm_int_user_directory($pdo);
         [$scope, $params] = ccrm_int_task_scope($client, $dir);
         $sec = "FLOOR(UNIX_TIMESTAMP(t.`updated_at`))";
-        $where = [$scope];
+        $where = [$scope, ccrm_sql_real_tasks('t')];
         if ($since > 0) {
             // Lets MySQL use an index on updated_at before the exact whole-second comparison.
             $where[] = "t.`updated_at` >= FROM_UNIXTIME(CAST(? AS UNSIGNED))";
@@ -708,7 +708,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         }
 
         $stmt = $pdo->prepare(
-            "SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE " . implode(' AND ', $where)
+            "SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t /* recurring-template: filtered via $where ccrm_sql_real_tasks */ WHERE " . implode(' AND ', $where)
             . " ORDER BY `_ts` ASC, t.`id` ASC LIMIT " . ($limit + 1)
         );
         $stmt->execute($params);
@@ -758,7 +758,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
 
         $fetch = static function (array $ids, ?string $scopeSql, array $scopeParams) use ($pdo): array {
             $in = implode(',', array_fill(0, count($ids), '?'));
-            $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` IN ({$in})" . ($scopeSql !== null ? " AND {$scopeSql}" : ''));
+            $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` IN ({$in}) AND " . ccrm_sql_real_tasks('t') . ($scopeSql !== null ? " AND {$scopeSql}" : ''));
             $stmt->execute(array_merge($ids, $scopeParams));
             $out = [];
             foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
@@ -854,11 +854,17 @@ if (!function_exists('ccrm_int_handle_task_push')) {
             ccrm_migrate_integration_tasks($pdo);
         }
 
+        $chkKind = $pdo->prepare("SELECT `task_kind` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template refusal */
+        $chkKind->execute([$id]);
+        if ($chkKind->fetchColumn() === 'recurring') {
+            ccrm_int_fail(400, 'invalid_operation', 'Recurring task templates cannot be modified over the machine API.');
+        }
+
         $pdo->beginTransaction();
         try {
             $row = null;
             if (preg_match('/^[A-Za-z0-9_-]{1,50}$/D', $id)) {
-                $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ? AND {$scopeSql} FOR UPDATE");
+                $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ? AND {$scopeSql} AND " . ccrm_sql_real_tasks('t') . " FOR UPDATE");
                 $stmt->execute(array_merge([$id], $scopeParams));
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
             }
@@ -868,7 +874,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
             if (!ccrm_int_task_is_done((string)$row['status'], $states)) {
                 ccrm_int_task_require_conclusion($pdo, $row, $conclusion);
                 $pdo->prepare(
-                    "UPDATE `tasks` SET `status` = ?, `completed_by` = ?, `completed_at` = ?, `conclusion` = COALESCE(?, `conclusion`), `updated_at` = NOW(3) WHERE `id` = ?"
+                    "UPDATE `tasks` SET `status` = ?, `completed_by` = ?, `completed_at` = ?, `conclusion` = COALESCE(?, `conclusion`), `updated_at` = NOW(3) WHERE `id` = ? AND " . ccrm_sql_real_tasks()
                 )->execute([ccrm_int_task_done_state($states), $byName, date('Y-m-d H:i'), $conclusion === '' ? null : $conclusion, $id]);
                 $completedNow = true;
             } else {
@@ -884,7 +890,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         if ($completedNow) {
             ccrm_int_audit($pdo, $client, 'integration_task_complete', 'complete ' . $id);
         }
-        $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ?");
+        $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ? AND " . ccrm_sql_real_tasks('t'));
         $stmt->execute([$id]);
         return [200, ccrm_int_task_serialize_rows($pdo, $client, [$stmt->fetch(\PDO::FETCH_ASSOC)])[0]];
     }

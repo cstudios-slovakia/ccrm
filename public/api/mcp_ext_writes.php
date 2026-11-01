@@ -201,7 +201,7 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $deadline, $time, $status, $owner, $user, $projId, $leadId, $assignees) {
         $pdo->prepare(
             "INSERT INTO tasks (id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_project_id, related_lead_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" /* recurring-template: mcp creates normal tasks */
         )->execute([$id, $title, $args['description'] ?? null, $priority, $deadline, $time, $status, $owner, $user['name'], $projId, $leadId]);
         $ins = $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)");
         foreach (array_unique($assignees) as $a) $ins->execute([$id, $a]);
@@ -223,11 +223,16 @@ function mcp_require_conclusion_to_finish(array $row, $incoming): void {
 
 function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
+    $chkKind = $pdo->prepare("SELECT task_kind FROM tasks WHERE id = ? LIMIT 1"); /* recurring-template: template refusal */
+    $chkKind->execute([$id]);
+    if ($chkKind->fetchColumn() === 'recurring') {
+        throw new \InvalidArgumentException("Recurring task templates cannot be updated through MCP: {$id}");
+    }
     // Same visibility rule as the read tools: a caller without tasks.view_all may
     // only touch their own, created and assigned tasks (judged on the stored row,
     // like sync.php's visibleTaskIds check).
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
-    $cur = $pdo->prepare("SELECT status, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $cur = $pdo->prepare("SELECT status, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $cur->execute(array_merge([$id], $scopeParams));
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
@@ -272,7 +277,7 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     if (!$sets) return ['success' => true, 'message' => 'No fields updated'];
     $params[] = $id;
     mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner) {
-        $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
+        $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ? AND " . ccrm_sql_real_tasks())->execute($params);
         // The assignee list is the visibility rule, so a new owner must be on it.
         if ($newOwner !== null) $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)")->execute([$id, $newOwner]);
     });
@@ -282,18 +287,23 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
 
 function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
+    $chkKind = $pdo->prepare("SELECT task_kind FROM tasks WHERE id = ? LIMIT 1"); /* recurring-template: template refusal */
+    $chkKind->execute([$id]);
+    if ($chkKind->fetchColumn() === 'recurring') {
+        throw new \InvalidArgumentException("Recurring task templates cannot be completed through MCP: {$id}");
+    }
     $done = mcp_task_done_state($pdo);
     // Judged on the stored row, like sync.php: without tasks.view_all only the
     // caller's own, created and assigned tasks may be completed.
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
-    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $chk->execute(array_merge([$id], $scopeParams));
     $row = $chk->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
     // `note` is the older name of the same field.
     $conclusion = trim((string)($args['conclusion'] ?? $args['note'] ?? ''));
     mcp_require_conclusion_to_finish($row, $conclusion);
-    $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ?, conclusion = COALESCE(?, conclusion) WHERE id = ?");
+    $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ?, conclusion = COALESCE(?, conclusion) WHERE id = ? AND " . ccrm_sql_real_tasks());
     $stmt->execute([$done, $user['name'], date('Y-m-d H:i'), $conclusion === '' ? null : mb_substr($conclusion, 0, 5000), $id]);
     mcp_audit($pdo, $user, 'task_complete', "Marked task $id as done");
     return ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];

@@ -452,7 +452,7 @@ function ccrm_visible_task_ids(\PDO $pdo, array $scope, array $taskIds): array {
     }
     foreach (array_chunk($taskIds, 500) as $chunk) {
         $in = implode(',', array_fill(0, count($chunk), '?'));
-        $stmt = $pdo->prepare("SELECT `id`, `owner`, `created_by` FROM `tasks` WHERE `id` IN ($in)");
+        $stmt = $pdo->prepare("SELECT `id`, `owner`, `created_by` FROM `tasks` WHERE `id` IN ($in) AND " . ccrm_sql_real_tasks());
         $stmt->execute($chunk);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         if (!$rows) {

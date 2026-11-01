@@ -1819,6 +1819,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
             $offset = max(0, (int)($args['offset'] ?? 0));
 
+            $where[] = ccrm_sql_real_tasks();
             $sql = "SELECT id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_lead_id, related_project_id, created_at  
                     FROM tasks 
                     WHERE " . implode(' AND ', $where) . " 
@@ -1831,7 +1832,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         case 'get_task':
             [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $stmt = $pdo->prepare("SELECT * FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $stmt = $pdo->prepare("SELECT * FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
             $stmt->execute(array_merge([$args['id']], $scopeParams));
             $task = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) {
@@ -1865,7 +1866,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             // Comments are kept on the linked lead's timeline; without one there is nowhere to store them.
             [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $tStmt = $pdo->prepare("SELECT title, related_lead_id FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $tStmt = $pdo->prepare("SELECT title, related_lead_id FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
             $tStmt->execute(array_merge([$taskId], $scopeParams));
             $task = $tStmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) throw new \Exception("Task not found with ID: {$taskId}");
@@ -1945,7 +1946,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             // Linked tasks (only for callers who can see the tasks module, scoped by tasks.view_all)
             if (mcp_can('tasks')) {
                 [$scopeSql, $scopeParams] = mcp_task_scope($user);
-                $tStmt = $pdo->prepare("SELECT id, title, priority, deadline, status, owner FROM tasks WHERE related_project_id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : '') . " ORDER BY deadline ASC");
+                $tStmt = $pdo->prepare("SELECT id, title, priority, deadline, status, owner FROM tasks WHERE related_project_id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . " ORDER BY deadline ASC");
                 $tStmt->execute(array_merge([$args['id']], $scopeParams));
                 $proj['tasks'] = $tStmt->fetchAll(\PDO::FETCH_ASSOC);
             }
@@ -1972,7 +1973,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $id = 'tsk_' . bin2hex(random_bytes(8));
             $stmt = $pdo->prepare(
                 "INSERT INTO tasks (id, title, description, priority, deadline, status, owner, created_by, related_project_id, is_locking)
-                 VALUES (?, ?, 'Project Milestone', ?, ?, 'todo', ?, ?, ?, 1)"
+                 VALUES (?, ?, 'Project Milestone', ?, ?, 'todo', ?, ?, ?, 1)" /* recurring-template: milestone is a normal task */
             );
             $stmt->execute([$id, $title, $priority, $deadline, $user['name'], $user['name'], $projId]);
 

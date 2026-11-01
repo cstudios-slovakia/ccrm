@@ -1,0 +1,301 @@
+{
+  "scheduleCases": [
+    {
+      "name": "series created 1 nov",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-01"
+      },
+      "cursor": null,
+      "expect": {
+        "scheduledDate": "2026-11-15",
+        "deadline": "2026-11-15",
+        "startDate": "2026-11-12"
+      }
+    },
+    {
+      "name": "created 14 nov",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-14"
+      },
+      "cursor": null,
+      "expect": {
+        "scheduledDate": "2026-11-15",
+        "deadline": "2026-11-15",
+        "startDate": "2026-11-12"
+      }
+    },
+    {
+      "name": "created 16 nov startsOn today",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-16"
+      },
+      "cursor": null,
+      "expect": {
+        "scheduledDate": "2026-12-15",
+        "deadline": "2026-12-15",
+        "startDate": "2026-12-12"
+      }
+    },
+    {
+      "name": "created 16 nov with startsOn 1 nov",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-01"
+      },
+      "cursor": null,
+      "expect": {
+        "scheduledDate": "2026-11-15",
+        "deadline": "2026-11-15",
+        "startDate": "2026-11-12"
+      }
+    },
+    {
+      "name": "15 nov task closed, next occurrence is dec",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-01"
+      },
+      "cursor": "2026-11-15",
+      "expect": {
+        "scheduledDate": "2026-12-15",
+        "deadline": "2026-12-15",
+        "startDate": "2026-12-12"
+      }
+    },
+    {
+      "name": "every 2 months on 15th from 1 nov",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 2,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-01"
+      },
+      "sequence": [
+        { "cursor": null, "scheduledDate": "2026-11-15" },
+        { "cursor": "2026-11-15", "scheduledDate": "2027-01-15" },
+        { "cursor": "2027-01-15", "scheduledDate": "2027-03-15" }
+      ]
+    },
+    {
+      "name": "monthly on the 31st clamping",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 31 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-01"
+      },
+      "sequence": [
+        { "cursor": null, "scheduledDate": "2026-11-30" },
+        { "cursor": "2026-11-30", "scheduledDate": "2026-12-31" },
+        { "cursor": "2026-12-31", "scheduledDate": "2027-01-31" },
+        { "cursor": "2027-01-31", "scheduledDate": "2027-02-28" }
+      ]
+    },
+    {
+      "name": "monthly on 31st leap year february",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 31 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2028-01-01"
+      },
+      "sequence": [
+        { "cursor": null, "scheduledDate": "2028-01-31" },
+        { "cursor": "2028-01-31", "scheduledDate": "2028-02-29" }
+      ]
+    },
+    {
+      "name": "weekend rule after on saturday",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "after",
+        "leadDays": 3,
+        "startsOn": "2027-05-01"
+      },
+      "cursor": null,
+      "expect": {
+        "scheduledDate": "2027-05-15",
+        "deadline": "2027-05-17",
+        "startDate": "2027-05-14"
+      }
+    },
+    {
+      "name": "weekend rule before on saturday",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "before",
+        "leadDays": 3,
+        "startsOn": "2027-05-01"
+      },
+      "cursor": null,
+      "expect": {
+        "scheduledDate": "2027-05-15",
+        "deadline": "2027-05-14",
+        "startDate": "2027-05-11"
+      }
+    },
+    {
+      "name": "daily weekend before skips saturday sunday",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "daily",
+        "interval": 1,
+        "weekendRule": "before",
+        "leadDays": 0,
+        "startsOn": "2026-11-06"
+      },
+      "sequence": [
+        { "cursor": null, "scheduledDate": "2026-11-06" },
+        { "cursor": "2026-11-06", "scheduledDate": "2026-11-09" },
+        { "cursor": "2026-11-09", "scheduledDate": "2026-11-10" }
+      ]
+    },
+    {
+      "name": "weekly interval 2 on monday",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "weekly",
+        "interval": 2,
+        "config": { "dayOfWeek": 1 },
+        "weekendRule": "keep",
+        "leadDays": 1,
+        "startsOn": "2026-11-01"
+      },
+      "sequence": [
+        { "cursor": null, "scheduledDate": "2026-11-02" },
+        { "cursor": "2026-11-02", "scheduledDate": "2026-11-16" },
+        { "cursor": "2026-11-16", "scheduledDate": "2026-11-30" }
+      ]
+    },
+    {
+      "name": "monthly nth weekday last friday",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "nth_weekday", "dayOfWeek": 5, "weekOfMonth": -1 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-11-01"
+      },
+      "cursor": null,
+      "expect": {
+        "scheduledDate": "2026-11-27",
+        "deadline": "2026-11-27",
+        "startDate": "2026-11-24"
+      }
+    },
+    {
+      "name": "endsOn bounds the schedule",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "weekendRule": "keep",
+        "leadDays": 3,
+        "startsOn": "2026-10-01",
+        "endsOn": "2026-12-15"
+      },
+      "sequence": [
+        { "cursor": null, "scheduledDate": "2026-10-15" },
+        { "cursor": "2026-10-15", "scheduledDate": "2026-11-15" },
+        { "cursor": "2026-11-15", "scheduledDate": "2026-12-15" },
+        { "cursor": "2026-12-15", "scheduledDate": null }
+      ]
+    }
+  ],
+  "pauseResumeCases": [
+    {
+      "name": "paused 10 nov resumed 11 nov",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "startsOn": "2026-11-01",
+        "lastOccurrence": null
+      },
+      "resumeDate": "2026-11-11",
+      "expectNextDue": "2026-11-15"
+    },
+    {
+      "name": "paused 10 nov resumed 20 jan",
+      "recurrence": {
+        "mode": "schedule",
+        "frequency": "monthly",
+        "interval": 1,
+        "config": { "monthlyType": "day_of_month", "dayOfMonth": 15 },
+        "startsOn": "2026-11-01",
+        "lastOccurrence": "2026-11-15"
+      },
+      "resumeDate": "2027-01-20",
+      "expectNextDue": "2027-02-15"
+    }
+  ],
+  "afterCompletionCases": [
+    {
+      "name": "after completion every 3 months leadDays 14 closed 1 nov",
+      "frequency": "monthly",
+      "interval": 3,
+      "leadDays": 14,
+      "weekendRule": "keep",
+      "completedDate": "2026-11-01",
+      "expectDeadline": "2027-02-01",
+      "expectStartDate": "2027-01-18"
+    },
+    {
+      "name": "after completion deleted 5 nov without completion",
+      "frequency": "monthly",
+      "interval": 3,
+      "leadDays": 0,
+      "weekendRule": "keep",
+      "completedDate": "2026-11-05",
+      "expectDeadline": "2027-02-05",
+      "expectStartDate": "2027-02-05"
+    }
+  ]
+}

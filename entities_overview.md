@@ -157,6 +157,10 @@ General system and operational tasks.
 * `external_source` VARCHAR(20) [NULLable] (integration client code that pushed the task, e.g. waai; server-only, never written by a client save)
 * `external_url` VARCHAR(255) [NULLable] (path of the source chat in that system, e.g. /c/<id>)
 * `external_meta_json` TEXT [NULLable] (chat title, WhatsApp assignee label, `due_inferred` + `inferred_deadline` when the chat gave no date)
+* `task_kind` VARCHAR(20) [NULLable] (`NULL` = normal task, `'recurring'` = series template; indexed as `idx_task_kind`)
+* `recurrence_json` TEXT [NULLable] (Template only: `{mode, frequency, interval, config, weekendRule, leadDays, startsOn, endsOn, paused, lastOccurrence, lastOccurrenceId}`)
+* `recurring_source_id` VARCHAR(50) [NULLable] (Occurrence only: template id; indexed as `idx_task_recurring_source`)
+* `recurring_occurrence_date` DATE [NULLable] (Occurrence only: the unshifted scheduled date; `(recurring_source_id, recurring_occurrence_date)` unique)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP(3) (indexed as `idx_task_updated`; the machine API's feed pages by it)
 

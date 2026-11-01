@@ -4,6 +4,7 @@ import {
     Archive as ArchiveIcon,
     ArrowUpRight,
     CheckSquare,
+    Repeat,
     FolderKanban,
     Hash,
     Lock,
@@ -12,7 +13,10 @@ import {
     Trash2,
     X,
 } from "lucide-react";
-import type { Lead, Project, Task, Ticket, UserProfile } from "../types";
+import type { Lead, Project, Task, Ticket, UserProfile, RecurringTaskTemplate, TaskRecurrence } from "../types";
+import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
+import { RecurringOccurrenceDeleteDialog, type OccurrenceDeleteChoice } from "./RecurringOccurrenceDeleteDialog";
+import { describeRecurrence } from "../utils/recurringTasks";
 import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
@@ -145,7 +149,9 @@ const CLOSE_ANIMATION_MS = 350;
 
 interface TaskEditDrawerProps {
     /** The task as it is stored; the drawer edits its own copy until Save. */
-    task: Task;
+    task: Task | RecurringTaskTemplate;
+    isTemplate?: boolean;
+    recurringTemplates?: RecurringTaskTemplate[];
     leads: Lead[];
     projects?: Project[];
     tickets?: Ticket[];
@@ -170,6 +176,10 @@ interface TaskEditDrawerProps {
     leadStateParents?: Record<string, string>;
     onTagClick?: (tag: string) => void;
     onSave: (task: Task) => void;
+    onSaveTemplate?: (template: RecurringTaskTemplate) => void;
+    onConvertToRecurring?: (task: Task, recurrence: TaskRecurrence) => void;
+    onEditSeries?: (templateId: string) => void;
+    onDeleteOccurrence?: (task: Task, choice: OccurrenceDeleteChoice) => void;
     onToggleArchive?: (task: Task) => void;
     /** Resolves true once the task is really gone; the drawer only closes then. */
     onDelete?: (task: Task) => Promise<boolean>;
@@ -200,15 +210,32 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     existingTags = [],
     leadStageGroups,
     leadStateParents,
+    isTemplate: isTemplateProp = false,
+    recurringTemplates,
     onTagClick,
     onSave,
+    onSaveTemplate,
+    onConvertToRecurring,
+    onEditSeries,
+    onDeleteOccurrence,
     onToggleArchive,
     onDelete,
     onClose,
 }) => {
     const t: Translate = (en, sk, hu) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-    const [draft, setDraft] = useState<Task>(task);
+    const isTemplate = isTemplateProp || Boolean((task as any).recurrence);
+    const [draft, setDraft] = useState<Task>(task as Task);
+    const [templateRecurrence, setTemplateRecurrence] = useState<TaskRecurrence>(() =>
+        (task as any).recurrence ? (task as any).recurrence : createDefaultRecurrence((task as Task).deadline)
+    );
+    const [makeRepeating, setMakeRepeating] = useState(false);
+    const [occurrenceDeleteDialogOpen, setOccurrenceDeleteDialogOpen] = useState(false);
+    const recurringSeriesDescription = useMemo(() => {
+        if (isTemplate || !(task as Task).recurringSourceId || !recurringTemplates) return undefined;
+        const found = recurringTemplates.find((r) => r.id === (task as Task).recurringSourceId);
+        return found ? describeRecurrence(found.recurrence, systemLanguage) : undefined;
+    }, [isTemplate, task, recurringTemplates, systemLanguage]);
     const { offerConclusion } = useTaskSettings();
     const effectiveUser = useMemo<Pick<UserProfile, "name" | "role">>(
         () => currentUser ?? users.find((u) => u.name === currentUserName) ?? { name: currentUserName, role: "" },
@@ -328,8 +355,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
     // Does saving this draft finish a task that still lacks its conclusion?
     // Judged against the stored task, so only a real move to a done state counts.
-    const finishingWithoutConclusion = needsConclusionToFinish(
-        { ...task, requiresConclusion: draft.requiresConclusion, conclusion: draft.conclusion },
+    const finishingWithoutConclusion = !isTemplate && needsConclusionToFinish(
+        { ...(task as Task), requiresConclusion: draft.requiresConclusion, conclusion: draft.conclusion },
         draft.status,
         taskStates,
     );
@@ -406,10 +433,21 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                 <div className="pb-4 border-b border-slate-100 space-y-2">
                     <div className="flex items-center justify-between">
                         <span className="type-overline text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
-                            <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
-                            {canEdit
-                                ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
-                                : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
+                            {isTemplate ? (
+                                <>
+                                    <Repeat className="h-3.5 w-3.5 text-indigo-600" />
+                                    {canEdit
+                                        ? t("Edit Recurring Task", "Upraviť opakovanú úlohu", "Ismétlődő feladat szerkesztése")
+                                        : t("View Recurring Task", "Zobraziť opakovanú úlohu", "Ismétlődő feladat megtekintése")}
+                                </>
+                            ) : (
+                                <>
+                                    <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                                    {canEdit
+                                        ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                        : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
+                                </>
+                            )}
                         </span>
                         <button
                             type="button"
@@ -423,6 +461,25 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         {draft.title || t("Untitled Task", "Úloha bez názvu", "Névtelen feladat")}
                     </h1>
                 </div>
+                {!isTemplate && Boolean((task as Task).recurringSourceId) && (
+                    <div className="mt-3 p-3 bg-indigo-50/70 border border-indigo-200/70 rounded-2xl flex items-center justify-between text-caption font-semibold text-indigo-950">
+                        <div className="flex items-center gap-2">
+                            <Repeat className="h-4 w-4 text-indigo-600 shrink-0" />
+                            <span>
+                                {recurringSeriesDescription || t("Part of a recurring series", "Súčasť opakovanej série", "Egy ismétlődő sorozat része")}
+                            </span>
+                        </div>
+                        {onEditSeries && (
+                            <button
+                                type="button"
+                                onClick={() => onEditSeries((task as Task).recurringSourceId!)}
+                                className="text-indigo-600 hover:text-indigo-800 underline font-bold cursor-pointer shrink-0 ml-3"
+                            >
+                                {t("Edit series", "Upraviť sériu", "Sorozat szerkesztése")}
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 <form
                     onSubmit={(e) => {
@@ -445,6 +502,29 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             (!canUntick && task.requiresConclusion)
                                 ? true
                                 : (draft.requiresConclusion ? true : undefined);
+                        if (isTemplate && onSaveTemplate) {
+                            onSaveTemplate({
+                                ...(task as RecurringTaskTemplate),
+                                ...draft,
+                                tags: combinedTags,
+                                recurrence: templateRecurrence,
+                            });
+                            requestClose();
+                            return;
+                        }
+                        if (makeRepeating && onConvertToRecurring) {
+                            onConvertToRecurring(
+                                {
+                                    ...draft,
+                                    requiresConclusion: sanitizedRequiresConclusion,
+                                    conclusion: cleanConclusion(draft.conclusion ?? ""),
+                                    tags: combinedTags,
+                                },
+                                templateRecurrence,
+                            );
+                            requestClose();
+                            return;
+                        }
                         onSave({
                             ...draft,
                             requiresConclusion: sanitizedRequiresConclusion,
@@ -579,43 +659,92 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Deadline Date", "Termín", "Határidő")}
-                                </label>
-                                <input
-                                    type="date"
-                                    required
-                                    value={draft.deadline}
-                                    onChange={(e) => update({ deadline: e.target.value })}
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
-                                </label>
-                                <DeadlineTimePicker
-                                    value={draft.deadlineTime || ""}
-                                    onChange={(val) => update({ deadlineTime: val })}
-                                    t={t}
-                                    disabled={!canEdit}
-                                />
-                            </div>
-                        </div>
-
-                        {task.externalSource === "waai" && (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                                <TaskWhatsAppMarks task={task} userLanguage={systemLanguage} />
+                        {!isTemplate && !(task as Task).recurringSourceId && (
+                            <div className="flex items-center justify-between py-2 border-t border-b border-slate-100">
+                                <div className="flex items-center gap-1.5">
+                                    <Repeat className="w-3.5 h-3.5 text-indigo-600" />
+                                    <span className="type-overline text-slate-700 font-bold">
+                                        {t("Make this task repeat", "Nastaviť opakovanie úlohy", "Feladat ismétlődővé tétele")}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={makeRepeating}
+                                    aria-label={t("Make this task repeat", "Nastaviť opakovanie úlohy", "Feladat ismétlődővé tétele")}
+                                    onClick={() => setMakeRepeating(!makeRepeating)}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                        makeRepeating ? "bg-indigo-600" : "bg-slate-200"
+                                    }`}
+                                >
+                                    <span
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                            makeRepeating ? "translate-x-4" : "translate-x-0"
+                                        }`}
+                                    />
+                                </button>
                             </div>
                         )}
 
-                        <div className="space-y-1">
-                            <label className="type-overline text-slate-500">
-                                {t("Task Status", "Stav úlohy", "Feladat állapota")}
-                            </label>
-                            <CustomSelect
+                        {isTemplate || makeRepeating ? (
+                            <div className="space-y-3">
+                                <TaskRecurrenceFields
+                                    recurrence={templateRecurrence}
+                                    onChange={setTemplateRecurrence}
+                                    t={t}
+                                />
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                    </label>
+                                    <DeadlineTimePicker
+                                        value={draft.deadlineTime || ""}
+                                        onChange={(val) => update({ deadlineTime: val })}
+                                        t={t}
+                                        disabled={!canEdit}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Deadline Date", "Termín", "Határidő")}
+                                    </label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={draft.deadline}
+                                        onChange={(e) => update({ deadline: e.target.value })}
+                                        className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                    </label>
+                                    <DeadlineTimePicker
+                                        value={draft.deadlineTime || ""}
+                                        onChange={(val) => update({ deadlineTime: val })}
+                                        t={t}
+                                        disabled={!canEdit}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {!isTemplate && (task as Task).externalSource === "waai" && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                <TaskWhatsAppMarks task={task as Task} userLanguage={systemLanguage} />
+                            </div>
+                        )}
+
+                        {!isTemplate && (
+                            <div className="space-y-1">
+                                <label className="type-overline text-slate-500">
+                                    {t("Task Status", "Stav úlohy", "Feladat állapota")}
+                                </label>
+                                <CustomSelect
                                 value={draft.status}
                                 disabled={!canEdit}
                                 onChange={(val) => {
@@ -629,8 +758,9 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 options={taskStates.map((st) => ({ value: st, label: taskStateLabel(st, t), color: taskStateColors[st] || "#64748b" }))}
                             />
                         </div>
+                        )}
 
-                        {showConclusion && (
+                        {!isTemplate && showConclusion && (
                             <div className="space-y-1">
                                 <label className="type-overline text-slate-500 flex items-center justify-between">
                                     <span>{t("Conclusion", "Záver", "Összegzés")}</span>
@@ -788,7 +918,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     projects,
                                     leadStageGroups,
                                     leadStateParents,
-                                    draft.relatedLeadId || task.relatedLeadId,
+                                    draft.relatedLeadId || task.relatedLeadId || undefined,
                                 )}
                                 value={draft.relatedLeadId || ""}
                                 disabled={!canEdit}
@@ -824,13 +954,17 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                             <div className="type-label mb-2 text-slate-700">{t("Time tracking", "Evidencia času", "Időkövetés")}</div>
-                            <TaskTimeControls
-                                task={draft}
-                                projects={projects}
-                                leads={leads}
-                                onSaveProject={(_id, projectId) => update({ relatedProjectId: projectId })}
-                            />
-                            <TaskTimeBreakdown taskId={draft.id} users={users} />
+                            {!isTemplate && (
+                                <>
+                                    <TaskTimeControls
+                                        task={draft}
+                                        projects={projects}
+                                        leads={leads}
+                                        onSaveProject={(_id, projectId) => update({ relatedProjectId: projectId })}
+                                    />
+                                    <TaskTimeBreakdown taskId={draft.id} users={users} />
+                                </>
+                            )}
                             <label className="mt-3 grid gap-1">
                                 <span className="type-overline text-slate-500">{t("Estimate (minutes)", "Odhad (minúty)", "Becslés (perc)")}</span>
                                 <input
@@ -864,7 +998,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
                     </button>
 
-                    {draft.id && canArchive && onToggleArchive && (() => {
+                    {draft.id && canArchive && !isTemplate && onToggleArchive && (() => {
                         // Both parents flip only the stored task's flag, so
                         // edits made in the drawer before archiving were
                         // dropped without a word. Keep them first.
@@ -902,7 +1036,29 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         );
                     })()}
 
-                    {draft.id && canDelete && onDelete && (
+                    {draft.id && canDelete && !isTemplate && Boolean((task as Task).recurringSourceId) && onDeleteOccurrence ? (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setOccurrenceDeleteDialogOpen(true)}
+                                className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
+                            </button>
+                            <RecurringOccurrenceDeleteDialog
+                                task={occurrenceDeleteDialogOpen ? (task as Task) : null}
+                                onChoice={(c) => {
+                                    setOccurrenceDeleteDialogOpen(false);
+                                    if (c !== "cancel") {
+                                        onDeleteOccurrence(task as Task, c);
+                                        requestClose();
+                                    }
+                                }}
+                                t={t}
+                            />
+                        </>
+                    ) : draft.id && canDelete && onDelete && (
                         <HoldToConfirmButton
                             tone="danger"
                             lang={systemLanguage}

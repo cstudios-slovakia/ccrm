@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUpDown, Flame, FolderKanban, Lock, Minus, Plus, X } from "lucide-react";
-import type { Lead, Project, Task, UserProfile } from "../types";
+import { ArrowUpDown, Flame, FolderKanban, Lock, Minus, Plus, Repeat, X } from "lucide-react";
+import type { Lead, Project, Task, UserProfile, RecurringTaskTemplate, TaskRecurrence } from "../types";
+import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
 import type { Language } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
@@ -53,6 +54,8 @@ interface QuickTaskModalProps {
     incomingTitle?: { id: number; text: string };
     /** Receives the new tasks (one per title line); persisting them is the caller's job. */
     onCreate: (tasks: Task[]) => void;
+    onCreateRecurring?: (template: RecurringTaskTemplate) => void;
+    initialRepeat?: boolean;
     onClose: () => void;
     /** Renders in place (under the button that opened it) instead of floating under the header. */
     inline?: boolean;
@@ -77,6 +80,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     initialDeadline,
     incomingTitle,
     onCreate,
+    onCreateRecurring,
+    initialRepeat = false,
     onClose,
     inline = false,
 }) => {
@@ -98,6 +103,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
     const [deadline, setDeadline] = useState(() => initialDeadline || toLocalDateStr(new Date()));
     const [deadlineTime, setDeadlineTime] = useState("16:00");
+    const [isRecurring, setIsRecurring] = useState(Boolean(initialRepeat));
+    const [recurrence, setRecurrence] = useState<TaskRecurrence>(() => createDefaultRecurrence(initialDeadline || deadline));
     const [relatedLeadId, setRelatedLeadId] = useState("");
     const [relatedProjectId, setRelatedProjectId] = useState("");
     const [isLocking, setIsLocking] = useState(false);
@@ -172,6 +179,48 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         }
 
         const now = Date.now();
+
+        if (isRecurring) {
+            const template: RecurringTaskTemplate = {
+                id: `task-template-${now}-${Math.random().toString(36).slice(2, 7)}`,
+                title: lines[0],
+                description: description.trim(),
+                tags: Array.from(
+                    new Set([
+                        ...extractTagsFromText(lines[0]),
+                        ...extractTagsFromText(description),
+                    ]),
+                ),
+                priority,
+                deadline: null,
+                deadlineTime: deadlineTime || null,
+                owner: assignedUser || currentUserName,
+                createdBy: currentUserName,
+                createdAt: new Date().toISOString(),
+                assignedUsers: assignedUser ? [assignedUser] : [],
+                relatedLeadId: relatedLeadId || null,
+                relatedProjectId: relatedProjectId || null,
+                isLocking: relatedLeadId ? isLocking : false,
+                emailReminders,
+                requiresConclusion: offerConclusion && requiresConclusion ? true : undefined,
+                recurrence,
+            };
+            if (onCreateRecurring) {
+                onCreateRecurring(template);
+            }
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "Recurring task template created successfully!",
+                        "Šablóna opakovanej úlohy bola úspešne vytvorená!",
+                        "Ismétlődő feladatsablon sikeresen létrehozva!",
+                    ),
+                );
+            }
+            onClose();
+            return;
+        }
+
         const created: Task[] = lines.map((line, index) => ({
             id: `task-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
             title: line,
@@ -350,56 +399,129 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         />
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        <div className="space-y-1">
-                            <label className="type-overline text-slate-500">
-                                {t("Deadline Date", "Termín", "Határidő")}
-                            </label>
-                            <input
-                                type="date"
-                                required
-                                value={deadline}
-                                onChange={(e) => setDeadline(e.target.value)}
-                                className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-ui h-8.5"
+                    <div className="flex items-center justify-between py-1 border-t border-slate-100">
+                        <div className="flex items-center gap-1.5">
+                            <Repeat className="w-3.5 h-3.5 text-indigo-600" />
+                            <span className="type-overline text-slate-700 font-bold">
+                                {t("Repeat", "Opakovanie", "Ismétlés")}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={isRecurring}
+                            aria-label={t("Repeat", "Opakovanie", "Ismétlés")}
+                            onClick={() => setIsRecurring(!isRecurring)}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isRecurring ? "bg-indigo-600" : "bg-slate-200"
+                            }`}
+                        >
+                            <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    isRecurring ? "translate-x-4" : "translate-x-0"
+                                }`}
                             />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="type-overline text-slate-500">
-                                {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
-                            </label>
-                            <DeadlineTimePicker value={deadlineTime} onChange={setDeadlineTime} t={t} />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="type-overline text-slate-500">
-                                {t("Priority", "Priorita", "Prioritás")}
-                            </label>
-                            <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-8.5 items-center">
-                                {(["low", "medium", "high"] as const).map((prio) => {
-                                    const Icon = PRIORITY_ICON[prio];
-                                    return (
-                                        <button
-                                            key={prio}
-                                            type="button"
-                                            onClick={() => setPriority(prio)}
-                                            title={taskPriorityLabel(prio, t)}
-                                            className={`py-1 rounded-lg type-overline transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                                priority === prio
-                                                    ? prio === "high"
-                                                        ? "bg-rose-600 text-white shadow-xs"
-                                                        : prio === "medium"
-                                                          ? "bg-amber-500 text-white shadow-xs"
-                                                          : "bg-slate-600 text-white shadow-xs"
-                                                    : "bg-white text-slate-500 hover:bg-slate-100"
-                                            }`}
-                                        >
-                                            <Icon className="h-2.5 w-2.5" />
-                                            <span className="hidden sm:inline">{taskPriorityLabel(prio, t)}</span>
-                                        </button>
-                                    );
-                                })}
+                        </button>
+                    </div>
+
+                    {!isRecurring ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div className="space-y-1">
+                                <label className="type-overline text-slate-500">
+                                    {t("Deadline Date", "Termín", "Határidő")}
+                                </label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={deadline}
+                                    onChange={(e) => setDeadline(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-ui h-8.5"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="type-overline text-slate-500">
+                                    {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                </label>
+                                <DeadlineTimePicker value={deadlineTime} onChange={setDeadlineTime} t={t} />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="type-overline text-slate-500">
+                                    {t("Priority", "Priorita", "Prioritás")}
+                                </label>
+                                <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-8.5 items-center">
+                                    {(["low", "medium", "high"] as const).map((prio) => {
+                                        const Icon = PRIORITY_ICON[prio];
+                                        return (
+                                            <button
+                                                key={prio}
+                                                type="button"
+                                                onClick={() => setPriority(prio)}
+                                                title={taskPriorityLabel(prio, t)}
+                                                className={`py-1 rounded-lg type-overline transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                                    priority === prio
+                                                        ? prio === "high"
+                                                            ? "bg-rose-600 text-white shadow-xs"
+                                                            : prio === "medium"
+                                                              ? "bg-amber-500 text-white shadow-xs"
+                                                              : "bg-slate-600 text-white shadow-xs"
+                                                        : "bg-white text-slate-500 hover:bg-slate-100"
+                                                }`}
+                                            >
+                                                <Icon className="h-2.5 w-2.5" />
+                                                <span className="hidden sm:inline">{taskPriorityLabel(prio, t)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                    </label>
+                                    <DeadlineTimePicker value={deadlineTime} onChange={setDeadlineTime} t={t} />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="type-overline text-slate-500">
+                                        {t("Priority", "Priorita", "Prioritás")}
+                                    </label>
+                                    <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-8.5 items-center">
+                                        {(["low", "medium", "high"] as const).map((prio) => {
+                                            const Icon = PRIORITY_ICON[prio];
+                                            return (
+                                                <button
+                                                    key={prio}
+                                                    type="button"
+                                                    onClick={() => setPriority(prio)}
+                                                    title={taskPriorityLabel(prio, t)}
+                                                    className={`py-1 rounded-lg type-overline transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                                        priority === prio
+                                                            ? prio === "high"
+                                                                ? "bg-rose-600 text-white shadow-xs"
+                                                                : prio === "medium"
+                                                                  ? "bg-amber-500 text-white shadow-xs"
+                                                                  : "bg-slate-600 text-white shadow-xs"
+                                                            : "bg-white text-slate-500 hover:bg-slate-100"
+                                                    }`}
+                                                >
+                                                    <Icon className="h-2.5 w-2.5" />
+                                                    <span className="hidden sm:inline">{taskPriorityLabel(prio, t)}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                            <TaskRecurrenceFields
+                                recurrence={recurrence}
+                                onChange={setRecurrence}
+                                t={t}
+                            />
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <div className="space-y-1">

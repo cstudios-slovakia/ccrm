@@ -187,6 +187,7 @@ function ccrm_process_task_reminders(PDO $pdo, ?string $now = null): array {
            FROM `tasks` t
            LEFT JOIN `leads` l ON l.`id` = t.`related_lead_id`
           WHERE t.`archived` = 0
+            AND " . ccrm_sql_real_tasks('t') . "
             AND t.`email_reminders_json` IS NOT NULL AND t.`email_reminders_json` <> ''
             AND t.`deadline` BETWEEN ? AND ?"
     );

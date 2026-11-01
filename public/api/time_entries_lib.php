@@ -402,7 +402,12 @@ if (!function_exists('ccrm_tt_default_settings')) {
         $title = null;
 
         if ($taskId !== null) {
-            $stmt = $pdo->prepare("SELECT `title`, `related_project_id`, `related_ticket_id`, `related_lead_id` FROM `tasks` WHERE `id` = ? LIMIT 1");
+            $chkKind = $pdo->prepare("SELECT `task_kind` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template check */
+            $chkKind->execute([$taskId]);
+            if ($chkKind->fetchColumn() === 'recurring') {
+                return ['ok' => false, 'code' => 'task_is_recurring_template'];
+            }
+            $stmt = $pdo->prepare("SELECT `title`, `related_project_id`, `related_ticket_id`, `related_lead_id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
             $stmt->execute([$taskId]);
             $task = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) {
@@ -482,7 +487,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
     function ccrm_tt_entry_select(): string {
         return "SELECT te.*, t.`id` AS `task_exists`, t.`title` AS `task_title`, k.`id` AS `ticket_exists`, k.`title` AS `ticket_title`, p.`name` AS `project_name`
                 FROM `time_entries` te
-                LEFT JOIN `tasks` t ON t.`id` = te.`task_id`
+                LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND " . ccrm_sql_real_tasks('t')
                 LEFT JOIN `tickets` k ON k.`id` = te.`ticket_id`
                 LEFT JOIN `projects` p ON p.`id` = te.`project_id`";
     }

@@ -112,3 +112,4 @@ decisions, per-phase checklists, spec. When asked to "make phase N", follow its 
   mirrored by `npm run sync:backend`. Edit `public/`, then sync.
 - The production server has **no build step**. The compiled frontend is built
   locally and committed to `dist/`, then published by `php ccrm update`.
+- A `tasks` row with `task_kind = 'recurring'` is a template; read tasks through `ccrm_sql_real_tasks()`. The guard test enforces it.

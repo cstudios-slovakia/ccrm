@@ -154,13 +154,20 @@ if (!function_exists('ccrm_schema_statements')) {
               `external_url` VARCHAR(255) NULL COMMENT 'Path of the source chat in the external system',
               `external_meta_json` TEXT NULL COMMENT 'Chat title, assignee label, due_inferred flag',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
+              `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template',
+              `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor',
+              `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id',
+              `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
               FOREIGN KEY (`related_lead_id`) REFERENCES `leads` (`id`) ON DELETE SET NULL,
               INDEX idx_task_status (`status`),
               INDEX idx_task_deadline (`deadline`),
-              INDEX idx_task_project (`related_project_id`)
+              INDEX idx_task_project (`related_project_id`),
+              INDEX idx_task_kind (`task_kind`),
+              INDEX idx_task_recurring_source (`recurring_source_id`),
+              UNIQUE KEY uq_recurring_occurrence (`recurring_source_id`, `recurring_occurrence_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Task Assignees
@@ -1374,6 +1381,24 @@ if (!function_exists('ccrm_schema_statements')) {
         return (int)$stmt->fetchColumn() > 0;
     }
 
+    function ccrm_sql_real_tasks(string $alias = ''): string {
+        $alias = trim($alias);
+        if ($alias !== '') {
+            $a = trim($alias, '`.');
+            return "(`{$a}`.`task_kind` IS NULL)";
+        }
+        return "(`task_kind` IS NULL)";
+    }
+
+    function ccrm_index_exists(PDO $pdo, string $table, string $index): bool {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?"
+        );
+        $stmt->execute([$table, $index]);
+        return (int)$stmt->fetchColumn() > 0;
+    }
+
     function ccrm_column_exists(PDO $pdo, string $table, string $column): bool {
         $stmt = $pdo->prepare(
             "SELECT COUNT(*) FROM information_schema.COLUMNS
@@ -1395,6 +1420,33 @@ if (!function_exists('ccrm_schema_statements')) {
      * sync.php does on the first request, so existing installs pick this up
      * without a manual step.
      */
+    function ccrm_migrate_recurring_tasks(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'tasks')) {
+            return;
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'task_kind')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `task_kind` VARCHAR(20) NULL COMMENT 'NULL = normal task, recurring = series template'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'recurrence_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'recurring_source_id')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id'");
+        }
+        if (!ccrm_column_exists($pdo, 'tasks', 'recurring_occurrence_date')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date'");
+        }
+        if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_kind')) {
+            try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_kind` (`task_kind`)"); } catch (\Throwable $e) {}
+        }
+        if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_recurring_source')) {
+            try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_recurring_source` (`recurring_source_id`)"); } catch (\Throwable $e) {}
+        }
+        if (!ccrm_index_exists($pdo, 'tasks', 'uq_recurring_occurrence')) {
+            try { $pdo->exec("ALTER TABLE `tasks` ADD UNIQUE KEY `uq_recurring_occurrence` (`recurring_source_id`, `recurring_occurrence_date`)"); } catch (\Throwable $e) {}
+        }
+    }
+
     function ccrm_migrate_ai_models(PDO $pdo): void {
         if (!function_exists('ccrm_ai_model_upgrades')) {
             require_once __DIR__ . '/auth.php';
@@ -1790,7 +1842,7 @@ if (!function_exists('ccrm_schema_statements')) {
             // reliable creator history.
             $pdo->exec(
                 "INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`)
-                 SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''"
+                 SELECT `id`, `owner` FROM `tasks` WHERE `owner` <> ''" /* recurring-template: schema and migrations */
             );
         }
         // Completion attribution. Both fields used to live only in client memory, so
@@ -1897,6 +1949,7 @@ if (!function_exists('ccrm_schema_statements')) {
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
         ccrm_migrate_ai_models($pdo);
+        ccrm_migrate_recurring_tasks($pdo);
     }
 
     /**
@@ -2878,7 +2931,7 @@ if (!function_exists('ccrm_schema_statements')) {
             2 => ['Blocked', 'blocked'],
             3 => ['Done', 'done'],
         ];
-        $rename = $pdo->prepare("UPDATE `tasks` SET `status` = ? WHERE `status` = ?");
+        $rename = $pdo->prepare("UPDATE `tasks` SET `status` = ? WHERE `status` = ?"); /* recurring-template: schema and migrations */
         foreach ($legacyByPosition as $index => $legacyLabels) {
             if (!isset($taskStates[$index])) continue;
             foreach ($legacyLabels as $legacy) {
@@ -2924,7 +2977,7 @@ if (!function_exists('ccrm_schema_statements')) {
             // from winning over a populated lower-priority column.
             $candidate = "COALESCE(NULLIF(t.`created_by`, ''), NULLIF(t.`owner`, ''), NULLIF(a.`user_name`, ''))";
             $sql =
-                "UPDATE `tasks` t
+                "UPDATE `tasks` t /* recurring-template: schema and migrations */
                  LEFT JOIN (
                      SELECT `task_id`, MIN(`user_name`) AS `user_name`
                      FROM `task_assignees` GROUP BY `task_id`
@@ -4627,7 +4680,7 @@ if (!function_exists('ccrm_schema_statements')) {
                 } catch (\Throwable $e) {}
             }
             try {
-                $pdo->exec("UPDATE `tasks` t INNER JOIN `ticket_task_links` tt ON tt.task_id = t.id SET t.related_ticket_id = tt.ticket_id WHERE t.related_ticket_id IS NULL OR t.related_ticket_id = ''");
+                $pdo->exec("UPDATE `tasks` t INNER JOIN `ticket_task_links` tt ON tt.task_id = t.id SET t.related_ticket_id = tt.ticket_id WHERE t.related_ticket_id IS NULL OR t.related_ticket_id = ''"); /* recurring-template: schema and migrations */
                 $pdo->exec("UPDATE `projects` SET `name` = 'Vila Slavín – Kamenná fasáda a terasa' WHERE `id` = 'proj-vila-slavin' AND (`name` IS NULL OR `name` = '')");
                 $pdo->exec("UPDATE `projects` SET `name` = 'Kuchynský ostrov Neolith Calacatta' WHERE `id` = 'proj-kuchyna-neolith' AND (`name` IS NULL OR `name` = '')");
                 $pdo->exec("UPDATE `projects` SET `ticket_widget_enabled` = 1, `ticket_allowed_domains` = '[\"localhost\",\"127.0.0.1\",\"slavin-residence.sk\"]' WHERE `id` = 'proj-vila-slavin' AND (`ticket_allowed_domains` IS NULL OR `ticket_allowed_domains` = '' OR `ticket_allowed_domains` = '[]')");

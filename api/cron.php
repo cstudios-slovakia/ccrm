@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/workflows_engine.php';
 require_once __DIR__ . '/task_reminders.php';
+require_once __DIR__ . '/recurring_tasks.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -104,6 +105,14 @@ try {
 $taskReminders = null;
 try {
     $taskReminders = ccrm_process_task_reminders($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 2. Recurring task generation
+$recurringTasks = null;
+try {
+    $recurringTasks = ccrm_process_recurring_tasks($pdo);
 } catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }

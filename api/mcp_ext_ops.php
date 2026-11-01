@@ -82,7 +82,7 @@ function mcp_check_lead_state(\PDO $pdo, string $status): string {
  */
 function mcp_assert_lead_unlocked(\PDO $pdo, string $leadId): void {
     [$openSql, $openParams] = mcp_open_task_sql($pdo);
-    $stmt = $pdo->prepare("SELECT title FROM tasks WHERE related_lead_id = ? AND is_locking = 1 AND archived = 0 AND {$openSql}");
+    $stmt = $pdo->prepare("SELECT title FROM tasks WHERE related_lead_id = ? AND is_locking = 1 AND archived = 0 AND {$openSql} AND " . ccrm_sql_real_tasks());
     $stmt->execute(array_merge([$leadId], $openParams));
     $titles = $stmt->fetchAll(\PDO::FETCH_COLUMN);
     if ($titles) {
@@ -333,7 +333,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             if (mcp_can('tasks')) {
                 [$openSql, $openParams] = mcp_open_task_sql($pdo);
                 [$scopeSql, $scopeParams] = mcp_task_scope($user);
-                $stmt = $pdo->prepare("SELECT COUNT(*) FROM tasks WHERE related_lead_id IN ($ph) AND archived = 0 AND {$openSql}" . ($scopeSql ? " AND $scopeSql" : ''));
+                $stmt = $pdo->prepare("SELECT COUNT(*) FROM tasks WHERE related_lead_id IN ($ph) AND archived = 0 AND {$openSql} AND " . ccrm_sql_real_tasks() . ($scopeSql ? " AND $scopeSql" : ''));
                 $stmt->execute(array_merge($leadIds, $openParams, $scopeParams));
                 $out['open_tasks'] = (int)$stmt->fetchColumn();
             }
@@ -410,7 +410,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             // Adding an assignee also grants visibility of the task, so the stored
             // row must already be visible to this caller (same rule as sync.php).
             [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $stmt = $pdo->prepare("SELECT id, owner FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $stmt = $pdo->prepare("SELECT id, owner FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
             $stmt->execute(array_merge([$taskId], $scopeParams));
             $task = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) throw new \Exception("Task not found with ID: {$taskId}");
@@ -438,7 +438,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             // Tags travel with the task row in the app, so the same stored-row
             // visibility rule applies here.
             [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $chk = $pdo->prepare("SELECT id FROM tasks WHERE id = ?" . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $chk = $pdo->prepare("SELECT id FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
             $chk->execute(array_merge([$taskId], $scopeParams));
             if (!$chk->fetchColumn()) throw new \Exception("Task not found with ID: {$taskId}");
             $insTag = $pdo->prepare("INSERT IGNORE INTO tags (id, name) VALUES (?, ?)");

@@ -59,7 +59,7 @@ try {
     $pdo->exec("DELETE FROM `lead_categories`;");
     $pdo->exec("DELETE FROM `leads`;");
     $pdo->exec("DELETE FROM `task_assignees`;");
-    $pdo->exec("DELETE FROM `tasks`;");
+    $pdo->exec("DELETE FROM `tasks`;"); /* recurring-template: wipe demo deletes all tasks */
     $pdo->exec("DELETE FROM `financial_records`;");
 
     // Everything the modular demo seeders wrote (api/demo_seed/) carries an id

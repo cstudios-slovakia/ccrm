@@ -676,7 +676,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
             FROM `tasks` t
             LEFT JOIN `leads` l ON t.`lead_id` = l.`id`
             LEFT JOIN `projects` p ON t.`project_id` = p.`id`
-            WHERE (t.`archived` = 0 OR t.`archived` IS NULL)
+            WHERE (t.`archived` = 0 OR t.`archived` IS NULL) AND " . ccrm_sql_real_tasks('t')
             ORDER BY t.`created_at` DESC
             LIMIT 70
         ");

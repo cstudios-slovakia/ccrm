@@ -115,7 +115,7 @@ function demo_seed_whatsapp(PDO $pdo): void {
     // --- Clean own rows (links and refs go with the client by FK) ------------------
     $pdo->exec("DELETE FROM `timeline_events` WHERE `id` LIKE 'demo-whatsapp-%'");
     $pdo->exec("DELETE FROM `task_assignees` WHERE `task_id` LIKE 'demo-whatsapp-%'");
-    $pdo->exec("DELETE FROM `tasks` WHERE `id` LIKE 'demo-whatsapp-%'");
+    $pdo->exec("DELETE FROM `tasks` WHERE `id` LIKE 'demo-whatsapp-%'"); /* recurring-template: demo seed */
     $pdo->exec("DELETE FROM `integration_clients` WHERE `id` = " . $pdo->quote($clientId));
     demo_whatsapp_wipe_numbers($pdo);
 
@@ -148,7 +148,7 @@ function demo_seed_whatsapp(PDO $pdo): void {
         "INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`,
             `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`,
             `external_source`, `external_url`, `external_meta_json`, `created_at`)
-         VALUES (?, ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 'waai', ?, ?, ?)"
+         VALUES (?, ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 'waai', ?, ?, ?)" /* recurring-template: demo seed */
     );
     $insAssignee = $pdo->prepare("INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
     $insEvent = $pdo->prepare(

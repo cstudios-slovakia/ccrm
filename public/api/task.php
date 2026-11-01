@@ -40,12 +40,20 @@ if ($taskId === '' || strlen($taskId) > 50) {
     exit;
 }
 
+$chkKind = $pdo->prepare("SELECT `task_kind` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template refusal */
+$chkKind->execute([$taskId]);
+if ($chkKind->fetchColumn() === 'recurring') {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Recurring task templates cannot be deleted through this endpoint.']);
+    exit;
+}
+
 $taskStmt = $pdo->prepare(
     "SELECT t.`id`, t.`title`, t.`created_by`,
             u.`name` AS session_user_name
        FROM `tasks` t
        JOIN `users` u ON u.`id` = ?
-      WHERE t.`id` = ?
+      WHERE t.`id` = ? AND " . ccrm_sql_real_tasks('t') . "
       LIMIT 1"
 );
 $taskStmt->execute([$sessionUser['id'], $taskId]);
@@ -95,7 +103,7 @@ if (!$isAdmin) {
 
 try {
     $pdo->beginTransaction();
-    $deleteStmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ?");
+    $deleteStmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks());
     $deleteStmt->execute([$taskId]);
     if ($deleteStmt->rowCount() !== 1) {
         $pdo->rollBack();

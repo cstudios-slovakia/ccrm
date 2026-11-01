@@ -676,7 +676,7 @@ function ccrm_ttx_search_projects(\PDO $pdo, string $userId, string $q, ?string 
 }
 
 function ccrm_ttx_tasks(\PDO $pdo, array $scope, string $projectId): array {
-    $stmt = $pdo->prepare("SELECT `id`, `title` FROM `tasks` WHERE `related_project_id` = ? AND `archived` = 0 AND `completed_at` IS NULL ORDER BY `title` LIMIT 40");
+    $stmt = $pdo->prepare("SELECT `id`, `title` FROM `tasks` WHERE `related_project_id` = ? AND `archived` = 0 AND `completed_at` IS NULL AND " . ccrm_sql_real_tasks() . " ORDER BY `title` LIMIT 40");
     $stmt->execute([$projectId]);
     $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
     if (!$rows) {

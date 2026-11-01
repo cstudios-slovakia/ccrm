@@ -32,6 +32,7 @@
     "test:rbac": "node --experimental-strip-types scripts/probe-rbac/run.mjs",
     "test:time-tracking": "node --experimental-strip-types scripts/probe-time-tracking/run.mjs",
     "test:time-cost": "php scripts/test-time-cost.php",
+    "test:recurring-tasks": "php scripts/test-recurring-tasks.php",
     "test:qa:full": "node scripts/qa/run-qa.mjs --full",
     "test:qa:module": "node scripts/qa/run-qa.mjs --module",
     "test:qa:pending": "node scripts/qa/run-qa.mjs --pending",

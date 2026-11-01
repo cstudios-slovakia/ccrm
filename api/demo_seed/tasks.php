@@ -23,7 +23,7 @@ function demo_seed_tasks(PDO $pdo): void {
     $states = demo_task_states($pdo);
 
     $pdo->exec("DELETE FROM `task_assignees` WHERE `task_id` LIKE 'demo-tasks-%'");
-    $pdo->exec("DELETE FROM `tasks` WHERE `id` LIKE 'demo-tasks-%'");
+    $pdo->exec("DELETE FROM `tasks` WHERE `id` LIKE 'demo-tasks-%'"); /* recurring-template: demo seed */
 
     $c = static fn(int $n): string => demo_id('clients', $n);
     $p = static fn(int $n): string => demo_id('projects', $n);
@@ -107,7 +107,7 @@ function demo_seed_tasks(PDO $pdo): void {
     $ins = $pdo->prepare(
         "INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`,
             `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `created_at`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)" /* recurring-template: demo seed */
     );
     $insAss = $pdo->prepare("INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
 
