@@ -68,9 +68,12 @@ function ccrm_cli_pdo() {
         return null;
     }
 
+    // Licence code only. Do not load schema.php or run migrations here: this
+    // runs BEFORE git pull and publish, and a failed compile (require_once
+    // remembers the path even when the file does not parse) would make the
+    // real migration later in this same process skip the file it just deployed.
     foreach (['/api', '/dist/api', '/public/api'] as $dir) {
         if (file_exists(__DIR__ . $dir . '/license_client.php')) {
-            require_once __DIR__ . $dir . '/schema.php';
             require_once __DIR__ . $dir . '/license_client.php';
             break;
         }
@@ -78,11 +81,6 @@ function ccrm_cli_pdo() {
 
     try {
         $pdo = get_db_connection();
-        // The licences table may not exist yet on an install that has not been
-        // migrated since licensing shipped.
-        if (function_exists('ccrm_apply_schema')) {
-            ccrm_apply_schema($pdo);
-        }
         return $pdo;
     } catch (\Throwable $e) {
         echo "Error: could not connect to the database: " . $e->getMessage() . "\n";
@@ -758,7 +756,7 @@ function ccrm_migrate() {
         }
         ccrm_apply_schema($pdo);
         echo "Database schema migrated successfully.\n";
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         echo "Error running database migration: " . $e->getMessage() . "\n";
         exit(1);
     }

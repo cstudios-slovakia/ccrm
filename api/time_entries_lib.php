@@ -487,7 +487,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
     function ccrm_tt_entry_select(): string {
         return "SELECT te.*, t.`id` AS `task_exists`, t.`title` AS `task_title`, k.`id` AS `ticket_exists`, k.`title` AS `ticket_title`, p.`name` AS `project_name`
                 FROM `time_entries` te
-                LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND " . ccrm_sql_real_tasks('t')
+                LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND " . ccrm_sql_real_tasks('t') . "
                 LEFT JOIN `tickets` k ON k.`id` = te.`ticket_id`
                 LEFT JOIN `projects` p ON p.`id` = te.`project_id`";
     }

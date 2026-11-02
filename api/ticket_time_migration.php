@@ -50,7 +50,10 @@ if (!function_exists('ccrm_migrate_ticket_time_entries')) {
         if (!ccrm_table_exists($pdo, 'ticket_time_entries') || !ccrm_table_exists($pdo, 'time_entries')) {
             return;
         }
-        require_once __DIR__ . '/time_entries_lib.php';
+        // include, not require_once. php ccrm update compiles this file once
+        // before publish, when the copy on disk may not parse; require_once
+        // would then refuse to read the fixed file later in the same process.
+        include __DIR__ . '/time_entries_lib.php';
         $settings = ccrm_tt_load_settings($pdo);
         $rows = $pdo->query("SELECT * FROM `ticket_time_entries`")->fetchAll(\PDO::FETCH_ASSOC);
         if (!$rows) {
