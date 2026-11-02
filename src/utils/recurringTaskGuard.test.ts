@@ -91,3 +91,4 @@ describe('Recurring Task Guard: Leak-proofing backend SQL queries', () => {
     assert.strictEqual(scanContentForTaskLeaks(validWithAnnotation).length, 0);
   });
 });
+

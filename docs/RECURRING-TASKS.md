@@ -112,3 +112,4 @@ In Month and Week views of My Tasks calendar:
 - Computed client-side by pure engine `src/utils/recurringTasks.ts` for the visible range only.
 - Never enter task counts, badges, filters, search, or drag-and-drop.
 - Toggleable via "Show planned recurring tasks" switch next to calendar scope buttons (persisted via `ccrm_task_show_planned_recurring` cookie).
+

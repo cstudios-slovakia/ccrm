@@ -87,3 +87,4 @@ echo "\nCompleted {$checks} checks, {$fails} failures.\n";
 if ($fails > 0) {
     exit(1);
 }
+

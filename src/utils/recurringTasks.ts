@@ -486,3 +486,4 @@ export function describeRecurrence(
 
   return parts.join(" · ");
 }
+
