@@ -22,6 +22,10 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 
 - Built in phases from ONE file: [`docs/TIME-TRACKING.md`](docs/TIME-TRACKING.md) (status table, decisions, per-phase checklists, spec). When asked to "make phase N", follow its Part A.
 
+### 0c. Demo Mode Rebuild
+
+- Planned in phases in ONE file: [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). When asked to "make demo phase N", follow its Part A.
+
 ### 1. Commit & Version Bumping Protocol
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.

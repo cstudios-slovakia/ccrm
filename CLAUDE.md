@@ -75,6 +75,12 @@ The order when finishing a change:
 Built in phases from ONE file, [`docs/TIME-TRACKING.md`](docs/TIME-TRACKING.md): status table,
 decisions, per-phase checklists, spec. When asked to "make phase N", follow its Part A.
 
+## Demo mode rebuild
+
+Planned in phases in ONE file, [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md): analysis, decisions,
+the demo company's story, per-phase checklists and which phases run in parallel. When asked to
+"make demo phase N", follow its Part A.
+
 ## Things that will bite you
 
 - `npm run build` rewrites `dist/`, which is committed. Use `npx tsc --noEmit`
