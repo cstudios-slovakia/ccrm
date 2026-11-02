@@ -316,6 +316,39 @@ function ccrm_mask_employee_settings(?array $settings): ?array {
     return $settings;
 }
 
+if (!function_exists('ccrm_json_same')) {
+    /**
+     * Structural equality for JSON-shaped values. Key order does not count, so a
+     * settings blob the client echoed back compares equal to the projection it
+     * was shown.
+     */
+    function ccrm_json_same($a, $b): bool {
+        $canon = function ($value) use (&$canon): string {
+            if (is_array($value)) {
+                if ($value === []) {
+                    return '[]';
+                }
+                $keys = array_keys($value);
+                $isList = $keys === range(0, count($value) - 1);
+                if ($isList) {
+                    return '[' . implode(',', array_map($canon, $value)) . ']';
+                }
+                ksort($value);
+                $parts = [];
+                foreach ($value as $k => $v) {
+                    $parts[] = json_encode((string)$k, JSON_UNESCAPED_UNICODE) . ':' . $canon($v);
+                }
+                return '{' . implode(',', $parts) . '}';
+            }
+            if (is_float($value) && floor($value) == $value) {
+                $value = (int)$value;
+            }
+            return json_encode($value, JSON_UNESCAPED_UNICODE);
+        };
+        return $canon($a) === $canon($b);
+    }
+}
+
 /**
  * Project employeeSettings according to caller scope.
  */

@@ -6540,7 +6540,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.20. Synchronize Employee Settings
-        if (isset($payload['employeeSettings']) && is_array($payload['employeeSettings']) && !$ccrm_skip_writes('general_config', 'employeeSettings')) {
+        //
+        // The client sends this blob on every push. A role that can see People but
+        // cannot edit general_config is handed a projection (salary and leave
+        // types, no API tokens) and echoes it back. Recording that echo as
+        // permissionSkipped makes the app warn "some changes were not saved" on
+        // any save — a theme change, a login — even though nothing was edited.
+        // Only an incoming value that differs from the projection this caller was
+        // shown is a refused write.
+        if (isset($payload['employeeSettings']) && is_array($payload['employeeSettings'])) {
+            $canWriteEmployeeSettings = $isAdmin || ccrm_perm_can_edit($perms, 'general_config');
+            if (!$canWriteEmployeeSettings) {
+                $storedEmpSettingsRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'EMPLOYEE_SETTINGS'")->fetchColumn();
+                $storedEmpSettings = ($storedEmpSettingsRaw !== false && $storedEmpSettingsRaw !== null && $storedEmpSettingsRaw !== '')
+                    ? json_decode($storedEmpSettingsRaw, true) : null;
+                $visibleEmpSettings = ccrm_project_employee_settings(is_array($storedEmpSettings) ? $storedEmpSettings : null, $scope);
+                if (!ccrm_json_same($payload['employeeSettings'], $visibleEmpSettings ?? [])) {
+                    $ccrm_note_out_of_scope('employeeSettings');
+                }
+            } else {
             // The GET masks the Toggl / Clockify credentials, so what comes back is
             // the mask: keep the stored secret (the integrations pattern above).
             $incomingEmpSettings = $payload['employeeSettings'];
@@ -6560,6 +6578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $empSettingsVal = json_encode($incomingEmpSettings, JSON_UNESCAPED_UNICODE);
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EMPLOYEE_SETTINGS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             $insSet->execute([$empSettingsVal]);
+            }
         }
 
         // 4.21. Synchronize Orders & Order Items

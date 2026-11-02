@@ -342,6 +342,10 @@ function App() {
   const employeeSalariesRef = useRef<EmployeeSalary[]>([]);
   const employeeVacationsRef = useRef<EmployeeVacation[]>([]);
   const employeeSettingsRef = useRef<EmployeeSettings | null>(null);
+  // What the server last showed this session. The push echoes the blob on every
+  // save; when it still matches, leave it out so a role that may read People but
+  // not edit general settings is not told the echo failed to save.
+  const employeeSettingsSigRef = useRef<string | null>(null);
   const ticketsRef = useRef<Ticket[]>([]);
   const supportContractsRef = useRef<SupportContract[]>([]);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
@@ -1444,6 +1448,12 @@ ${log.payload || ''}
     // No server settings seen yet → these are defaults, not edits. sync.php
     // leaves every stored setting untouched when the block is absent.
     if (!serverSettingsAppliedRef.current) delete payload.settings;
+    if (
+      employeeSettingsSigRef.current !== null &&
+      JSON.stringify(payload.employeeSettings ?? null) === employeeSettingsSigRef.current
+    ) {
+      delete payload.employeeSettings;
+    }
 
     // Narrow the payload to what actually changed, but only once the server has
     // said it speaks v2. Under v1 an omitted record means "deleted", so sending a
@@ -1625,6 +1635,9 @@ ${log.payload || ''}
           }
           if (!skipHoldsBaseline(skipped, "unifiedEntriesData")) {
             Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
+          }
+          if (payload.employeeSettings !== undefined && !skipHoldsBaseline(skipped, "employeeSettings")) {
+            employeeSettingsSigRef.current = JSON.stringify(payload.employeeSettings ?? null);
           }
           const skippedWork = [...skipped].filter((tag) => skipIsLostWork(tag, payload as { [key: string]: unknown }));
           const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
@@ -2913,6 +2926,7 @@ ${log.payload || ''}
         // every sync poll re-ran the employee form's init effect and blanked a
         // half-typed "new employee" form at random.
         setEmployeeSettings(sameOr(data.employeeSettings));
+        employeeSettingsSigRef.current = JSON.stringify(data.employeeSettings ?? null);
       }
       // Absent key = a sync.php that predates the trend anchors. Keep whatever
       // is in memory rather than blanking the chart back to the default curve.
