@@ -37,6 +37,12 @@ test.describe('Recurring Tasks Module', () => {
     const badge = card.locator('span').filter({ hasText: /Recurring|Opakované|Ismétlődő/i });
     await expect(badge.first()).toBeVisible();
 
+    // Its tooltip spells out the series' rule and that it never ends
+    await expect(badge.first()).toHaveAttribute(
+      'title',
+      /(Každý týždeň|Every week|Minden héten).*(bez konca|no end|vég nélkül)/i,
+    );
+
     // Verify planned recurring toggle button is present next to calendar controls
     const toggle = page.getByRole('switch', { name: /Show planned recurring tasks|Zobraziť plánované opakované úlohy|Tervezett ismétlődő feladatok megjelenítése|Planned recurring|Plánované opakované|Tervezett ismétlődő/i });
     await expect(toggle).toBeVisible();

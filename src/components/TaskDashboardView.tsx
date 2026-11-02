@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project, Ticket, RecurringTaskTemplate } from "../types";
 import { describeRecurrence, getNextOccurrence, applyWeekendRule, getStartDate } from "../utils/recurringTasks";
+import { TaskRecurringMark } from "./TaskRecurringMark";
 import { deleteRecurringOccurrenceWithUndo, deleteRecurringSeriesWithUndo } from "../utils/recurringTaskActions";
 import { RecurringOccurrenceDeleteDialog } from "./RecurringOccurrenceDeleteDialog";
 import type { Language } from "../utils/translations";
@@ -3196,15 +3197,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {renderLeadBadge(task, "max-w-35")}
 
-                        {Boolean(task.recurringSourceId) && (
-                            <span
-                                title={t("Part of a recurring series", "Súčasť opakovanej série", "Egy ismétlődő sorozat része")}
-                                className="inline-flex items-center gap-1 font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100 text-micro shrink-0"
-                            >
-                                <Repeat className="h-2.5 w-2.5 text-indigo-600" />
-                                <span>{t("Recurring", "Opakované", "Ismétlődő")}</span>
-                            </span>
-                        )}
+                        <TaskRecurringMark task={task} templates={recurringTasks} language={systemLanguage} t={t} />
 
                         {renderProjectBadge(
                             task,

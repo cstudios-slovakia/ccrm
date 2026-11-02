@@ -42,6 +42,8 @@ import {
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
 import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { TaskRecurringMark } from "./TaskRecurringMark";
+import { useRecurringTemplates } from "../hooks/useRecurringTemplates";
 import {
   canArchiveTask,
   canDeleteTask,
@@ -114,6 +116,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       : "blue",
 }) => {
   const t: Translate = (en, sk, hu) => (userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en);
+  const recurringTemplates = useRecurringTemplates();
   const locale = userLanguage === "sk" ? "sk-SK" : userLanguage === "hu" ? "hu-HU" : "en-US";
 
   const userNames = users.map((u) => u.name).filter(Boolean);
@@ -458,6 +461,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 {formatDue(task)}
               </span>
             )}
+            <TaskRecurringMark task={task} templates={recurringTemplates} language={userLanguage} t={t} />
             <TaskWhatsAppMarks task={task} userLanguage={userLanguage} />
             {(() => {
               const titleMatch = (task.title || "").match(/\[(TCK-[A-Za-z0-9_-]+)\]/i);
@@ -857,6 +861,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           taskStates={taskStates}
           taskStateColors={taskStateColors}
           systemLanguage={userLanguage}
+          recurringTemplates={recurringTemplates}
           currentUser={currentUser}
           currentUserName={myName}
           mailConfigured={mailConfigured}

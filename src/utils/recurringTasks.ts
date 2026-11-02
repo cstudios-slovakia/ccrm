@@ -487,3 +487,44 @@ export function describeRecurrence(
   return parts.join(" · ");
 }
 
+
+/** `2026-12-31` → `31. 12. 2026` (sk), `2026. 12. 31` (hu, a suffix follows), `31 Dec 2026` (en). */
+function formatEndDate(iso: string, lang: "en" | "sk" | "hu"): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (lang === "sk") return `${d}. ${m}. ${y}`;
+  if (lang === "hu") return `${y}. ${String(m).padStart(2, "0")}. ${String(d).padStart(2, "0")}`;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d} ${months[m - 1] ?? ""} ${y}`;
+}
+
+/**
+ * One-line summary of a series for a tooltip on a task card: the cadence from
+ * {@link describeRecurrence}, then when it ends ("no end" / "until …"), then
+ * "paused" when it is. E.g. "Každý týždeň v pondelok, bez konca".
+ */
+export function describeRecurrenceWithEnd(
+  rec: TaskRecurrence,
+  lang: "en" | "sk" | "hu" = "en"
+): string {
+  const cadence = describeRecurrence(rec, lang);
+  const endsOn = isIsoDate(rec.endsOn) ? rec.endsOn : null;
+  const end = endsOn
+    ? lang === "sk"
+      ? `do ${formatEndDate(endsOn, lang)}`
+      : lang === "hu"
+        ? `${formatEndDate(endsOn, lang)}-ig`
+        : `until ${formatEndDate(endsOn, lang)}`
+    : lang === "sk"
+      ? "bez konca"
+      : lang === "hu"
+        ? "vég nélkül"
+        : "no end";
+  const paused = rec.paused
+    ? lang === "sk"
+      ? " (pozastavené)"
+      : lang === "hu"
+        ? " (szüneteltetve)"
+        : " (paused)"
+    : "";
+  return `${cadence}, ${end}${paused}`;
+}

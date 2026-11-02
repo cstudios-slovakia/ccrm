@@ -22,6 +22,7 @@ import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
 import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
 import { TaskSettingsProvider } from "./hooks/useTaskSettings";
+import { RecurringTemplatesProvider } from "./hooks/useRecurringTemplates";
 import { normalizeTicketStatuses, normalizeTicketSettings } from "./utils/tickets";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
@@ -4559,6 +4560,7 @@ ${log.payload || ''}
     <ProjectStatusesProvider value={projectStatuses}>
     <OrderStatusesProvider value={orderStatuses}>
     <TaskSettingsProvider value={taskSettings}>
+    <RecurringTemplatesProvider value={recurringTasks}>
     <TimeTrackingProvider enabled={timeEnabled} language={userLanguage} userId={currentUser?.id ?? null}>
     {timeDeps && timeEnabled && <ProjectRequestDialog deps={timeDeps} />}
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
@@ -5165,6 +5167,7 @@ ${log.payload || ''}
     </div>
     </QuickAddClientProvider>
     </TimeTrackingProvider>
+    </RecurringTemplatesProvider>
     </TaskSettingsProvider>
     </OrderStatusesProvider>
     </ProjectStatusesProvider>
