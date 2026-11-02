@@ -54,8 +54,8 @@ import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEditDrawer } from "./TaskEditDrawer";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
-import { QuickTaskModal } from "./QuickTaskModal";
-import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
+import { QuickTaskModal, type ComposerOrigin } from "./QuickTaskModal";
+import { TaskComposerBar } from "./TaskComposerBar";
 import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
@@ -773,6 +773,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [seriesToDelete, setSeriesToDelete] = useState<RecurringTaskTemplate | null>(null);
     const [occurrenceDeletingTask, setOccurrenceDeletingTask] = useState<Task | null>(null);
     const [addInitialRepeat, setAddInitialRepeat] = useState(false);
+    // The bar button the composer grew out of (and shrinks back into), and whether
+    // it opened dictating. `composerReturned` fades the bar's mic back in after a close.
+    const [composerOrigin, setComposerOrigin] = useState<ComposerOrigin | undefined>(undefined);
+    const [composerDictate, setComposerDictate] = useState(false);
+    const [composerReturned, setComposerReturned] = useState(false);
     // Calendar scope: month view, week view, timeline activity log, or hidden (persisted in cookie)
     const [calendarScope, setCalendarScopeState] = useState<
         "month" | "week" | "timeline" | "hide"
@@ -1115,14 +1120,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // The create popup; `addDeadline` pre-fills its date (the calendar's "+" on a day).
-    const openAddTask = (deadline?: string, initialRepeat?: boolean) => {
+    const openAddTask = (deadline?: string, initialRepeat?: boolean, origin?: ComposerOrigin, dictate = false) => {
         if (!taskAccess.create) return;
         setAddDeadline(deadline);
         setAddInitialRepeat(Boolean(initialRepeat));
+        setComposerOrigin(origin);
+        setComposerDictate(dictate);
+        setComposerReturned(false);
         setIsAddDrawerOpen(true);
     };
 
-    const closeAddDrawer = useCallback(() => setIsAddDrawerOpen(false), []);
+    const closeAddDrawer = useCallback(() => {
+        setIsAddDrawerOpen(false);
+        setComposerReturned(true);
+    }, []);
 
     // Deep links into this view. Read on mount (the address may carry them from
     // before sign-in) and on every hash change (the installed app was already open
@@ -1153,6 +1164,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }
             if (intent.newTask !== null) {
                 setAddDeadline(undefined);
+                setComposerOrigin(undefined);
+                setComposerDictate(false);
                 setIncomingTitle((prev) => ({ id: (prev?.id ?? 0) + 1, text: intent.newTask as string }));
                 setIsAddDrawerOpen(true);
             }
@@ -4585,6 +4598,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         initialDeadline={addDeadline}
                         initialRepeat={addInitialRepeat}
                         incomingTitle={incomingTitle}
+                        origin={composerOrigin}
+                        startDictation={composerDictate}
                         onCreate={(created) => {
                             markFresh(created);
                             setTasks((prev) => [...created, ...prev]);
@@ -4597,25 +4612,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         onClose={closeAddDrawer}
                     />
                 ) : (
-                    <VoiceTaskActionBar
+                    <TaskComposerBar
                         canCreate={taskAccess.create}
                         systemLanguage={systemLanguage}
-                        currentUser={currentUser}
-                        users={users}
-                        defaultAssignee={myName}
-                        defaultStatus={taskStates[0] || "New"}
-                        manualButtonText={t(
-                            "Create New Task",
-                            "Vytvoriť novú úlohu",
-                            "Új feladat",
-                        )}
-                        onManualCreateClick={() => openAddTask()}
+                        returned={composerReturned}
+                        onCreate={(origin) => openAddTask(undefined, false, origin)}
+                        onDictate={(origin) => openAddTask(undefined, false, origin, true)}
                         armRequest={voiceArmRequest}
                         onArmHandled={() => setVoiceArmRequest(0)}
-                        onTasksCreated={(createdTasks) => {
-                            markFresh(createdTasks);
-                            setTasks((prev) => [...createdTasks, ...prev]);
-                        }}
                     />
                 )}
             </div>
@@ -5654,6 +5658,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     initialDeadline={addDeadline}
                     initialRepeat={addInitialRepeat}
                     incomingTitle={incomingTitle}
+                    origin={composerOrigin}
+                    startDictation={composerDictate}
                     onCreate={(created) => {
                         markFresh(created);
                         setTasks((prev) => [...created, ...prev]);

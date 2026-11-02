@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense, type ComponentType } from "react";
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
@@ -10,7 +10,7 @@ import { crmHashForRecord } from "./components/whatsapp/lib/routes";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
-import { QuickTaskModal } from "./components/QuickTaskModal";
+import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
 import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
@@ -693,6 +693,12 @@ function App() {
   // Meeting Room state
   const [meetingsAction, setMeetingsAction] = useState<"list" | "new" | "record">("list");
   const [quickTaskOpen, setQuickTaskOpen] = useState(false);
+  // The header button the composer grew out of; it shrinks back into it on close.
+  const [quickTaskOrigin, setQuickTaskOrigin] = useState<ComposerOrigin | undefined>(undefined);
+  const openQuickTask = (e?: ReactMouseEvent<HTMLElement>) => {
+    setQuickTaskOrigin(composerOriginFrom(e, "plain"));
+    setQuickTaskOpen(true);
+  };
   // Server-backed state. The real rows arrive with the first sync GET (see
   // meeting_notes / project_types / projects in sync.php) and every edit is
   // pushed back through updateMeetingNotesAndSync & friends, exactly like leads
@@ -4604,7 +4610,7 @@ ${log.payload || ''}
                 {taskAccess.create && (
                   <button
                     type="button"
-                    onClick={() => setQuickTaskOpen(true)}
+                    onClick={(e) => openQuickTask(e)}
                     className="px-2 py-0.5 rounded-lg text-micro font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
@@ -4638,6 +4644,7 @@ ${log.payload || ''}
                 leadStateParents={leadStateParents}
                 onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
                 onCreateRecurring={(template) => updateRecurringTasksAndSync((prev) => [template, ...(prev || [])])}
+                origin={quickTaskOrigin}
                 onClose={() => setQuickTaskOpen(false)}
               />
             )}
@@ -4716,7 +4723,7 @@ ${log.payload || ''}
                 window.location.hash = "meetings";
               }
             }}
-            onAddTask={() => setQuickTaskOpen(true)}
+            onAddTask={(e) => openQuickTask(e)}
             onNavigateUpdates={() => {
               setActiveTab("updates");
               window.location.hash = "updates";
@@ -4740,6 +4747,7 @@ ${log.payload || ''}
               leadStateParents={leadStateParents}
               onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
                 onCreateRecurring={(template) => updateRecurringTasksAndSync((prev) => [template, ...(prev || [])])}
+              origin={quickTaskOrigin}
               onClose={() => setQuickTaskOpen(false)}
             />
           )}

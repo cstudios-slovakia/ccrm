@@ -200,7 +200,11 @@ test.describe('Deep links into Tasks', () => {
     await page.evaluate(() => {
       location.hash = '#tasks?newTask=Second';
     });
-    await expect(textarea).toHaveValue('First\nSecond');
+    // Two lines are two tasks: the composer lists them as numbered rows.
+    const form = page.locator('[data-quick-task-form]');
+    await expect(form).toContainText(/2 (tasks|úlohy|feladat)/);
+    await expect(form.getByRole('button', { name: 'First', exact: true })).toBeVisible();
+    await expect(form.getByRole('button', { name: 'Second', exact: true })).toBeVisible();
   });
 
   test('the created task is the shared text', async ({ page }) => {

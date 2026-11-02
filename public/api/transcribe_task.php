@@ -172,6 +172,13 @@ $todayDayOfWeek = date('l', strtotime($todayDate));
 $userContextList = !empty($_POST['users']) ? json_decode($_POST['users'], true) : $knownUsers;
 if (!is_array($userContextList)) $userContextList = $knownUsers;
 $usersString = implode(', ', array_unique(array_filter($userContextList)));
+// Lead / client names the client sent, so the memo can link the task ("call Novák about the offer").
+$leadContextList = !empty($_POST['leads']) ? json_decode($_POST['leads'], true) : [];
+if (!is_array($leadContextList)) $leadContextList = [];
+$leadContextList = array_slice(array_values(array_unique(array_filter(array_map(function ($n) {
+    return is_string($n) ? trim(mb_substr($n, 0, 120)) : '';
+}, $leadContextList)))), 0, 400);
+$leadsString = $leadContextList ? implode('; ', $leadContextList) : '(none)';
 
 $parsedTasks = [];
 
@@ -181,6 +188,7 @@ Analyze the transcribed voice recording and extract the structured task(s).
 
 Current Date Reference: {$todayDate} ({$todayDayOfWeek}).
 Available Team Members in CRM: {$usersString}.
+Known Leads / Clients in CRM: {$leadsString}.
 
 CRITICAL LANGUAGE REQUIREMENT:
 - You MUST write the task 'title' and 'description' in the EXACT SAME LANGUAGE that the user spoke in the voice memo (e.g. Slovak, Hungarian, English, Czech, German, etc.).
@@ -198,7 +206,8 @@ Instructions:
    - If no date is mentioned, default to '{$todayDate}'.
 6. 'deadlineTime': If user mentions a specific time ('o 14:00', 'at 3pm', '15:30-kor', 'ráno o deviatej'), format as 'HH:MM' (24-hour format like '14:00'). Otherwise set to null.
 7. 'assignedTo': If user mentions assigning to a team member (e.g. 'priraď Petrovi', 'assign to John', 'add to Roland', 'küldd Attilának'), match the name to the closest member in the Available Team Members list. Otherwise null.
-8. If the voice memo contains multiple distinct tasks, output multiple objects in the 'tasks' array. Otherwise output 1 task object.
+8. 'lead': If the task is about one of the Known Leads / Clients (a company or person named in the memo), return that entry's name exactly as listed. Otherwise null.
+9. If the voice memo contains multiple distinct tasks, output multiple objects in the 'tasks' array. Otherwise output 1 task object.
 
 Respond ONLY with valid JSON in this exact structure:
 {
@@ -209,7 +218,8 @@ Respond ONLY with valid JSON in this exact structure:
       \"priority\": \"low\" | \"medium\" | \"high\",
       \"deadline\": \"YYYY-MM-DD\",
       \"deadlineTime\": \"HH:MM\" or null,
-      \"assignedTo\": \"Member Name\" or null
+      \"assignedTo\": \"Member Name\" or null,
+      \"lead\": \"Lead or Client Name\" or null
     }
   ]
 }
@@ -266,7 +276,8 @@ if (empty($parsedTasks)) {
             'priority' => 'medium',
             'deadline' => $todayDate,
             'deadlineTime' => null,
-            'assignedTo' => null
+            'assignedTo' => null,
+            'lead' => null
         ]
     ];
 }

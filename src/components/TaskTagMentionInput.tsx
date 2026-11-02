@@ -19,6 +19,12 @@ interface TaskTagMentionInputProps {
     onTagAdded?: (tag: string) => void;
     mentionEntities?: MentionEntity[];
     onAssignEntity?: (entity: MentionEntity) => void;
+    id?: string;
+    /** Receives the underlying input / textarea element. */
+    inputRef?: (el: HTMLInputElement | HTMLTextAreaElement | null) => void;
+    onFocus?: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+    onBlur?: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+    ariaLabel?: string;
 }
 
 type AutocompleteMode = "none" | "tag" | "mention";
@@ -39,6 +45,11 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     onTagAdded,
     mentionEntities = [],
     onAssignEntity,
+    id,
+    inputRef: externalInputRef,
+    onFocus,
+    onBlur,
+    ariaLabel,
 }) => {
     const lang = getStoredLanguage();
     const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
@@ -178,6 +189,13 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     );
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        // Shift+Enter is "next line / next task", never "pick the suggestion":
+        // close the menu and let the parent have the key.
+        if (e.key === "Enter" && e.shiftKey && mode !== "none") {
+            setMode("none");
+            onKeyDown?.(e);
+            return;
+        }
         // If suggestion menu is open, handle arrows and Enter/Tab
         if (mode === "tag" && tagSuggestions.length > 0) {
             if (e.key === "ArrowDown") {
@@ -264,7 +282,14 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
         <div ref={containerRef} className="relative w-full">
             {multiline ? (
                 <textarea
-                    ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+                    ref={(el) => {
+                        inputRef.current = el;
+                        externalInputRef?.(el);
+                    }}
+                    id={id}
+                    aria-label={ariaLabel}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
                     rows={rows}
                     value={value}
                     onChange={handleChange}
@@ -280,7 +305,14 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                 />
             ) : (
                 <input
-                    ref={inputRef as React.RefObject<HTMLInputElement>}
+                    ref={(el) => {
+                        inputRef.current = el;
+                        externalInputRef?.(el);
+                    }}
+                    id={id}
+                    aria-label={ariaLabel}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
                     type="text"
                     value={value}
                     onChange={handleChange}

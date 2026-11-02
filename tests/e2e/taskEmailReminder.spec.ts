@@ -82,9 +82,12 @@ test.describe('Task e-mail reminder', () => {
     await popup.locator('textarea').first().fill(NEW_TASK);
 
     const field = popup.getByTestId('task-email-reminder');
-    await field.getByTestId('task-email-reminder-toggle').check();
-    await field.getByTestId('task-email-reminder-1d').click();
-    await expect(field.getByTestId('task-email-reminder-1d')).toHaveAttribute('aria-checked', 'true');
+    // The composer's option row: a switch, then a "when" dropdown under it.
+    await field.getByTestId('task-email-reminder-toggle').click();
+    await expect(field.getByTestId('task-email-reminder-toggle')).toHaveAttribute('aria-checked', 'true');
+    await field.getByRole('button', { name: /Morning of the due day|Ráno v deň termínu|A határidő napján reggel/ }).click();
+    await page.getByRole('option', { name: /1 day before|1 deň pred|1 nappal/ }).click();
+    await expect(field).toContainText(/1 day before|1 deň pred|1 nappal/);
 
     await popup.getByRole('button', { name: /^(Create task|Vytvoriť úlohu|Feladat létrehozása)$/ }).click();
     await expect.poll(() => pushedByTitle(pushed, NEW_TASK)?.emailReminders).toEqual({ Erik: '1d' });

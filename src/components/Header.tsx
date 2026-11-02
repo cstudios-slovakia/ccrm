@@ -53,7 +53,8 @@ interface HeaderProps {
     isDemoMode?: boolean;
     onOpenPersonalSettings: () => void;
     onNavigateMeetings?: (action: "list" | "new" | "record") => void;
-    onAddTask?: () => void;
+    /** Gets the click, so the new-task composer can grow out of the button. */
+    onAddTask?: (e?: React.MouseEvent<HTMLElement>) => void;
     onNavigateUpdates?: () => void;
     /** Route gate from the permission resolver; search hits and shortcuts into closed modules are dropped. */
     canOpenRoute?: (routeId: string) => boolean;

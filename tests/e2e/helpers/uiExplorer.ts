@@ -1248,10 +1248,15 @@ export class ViewCrawler {
       return;
     }
 
-    const submit = scope
-      .locator('button[type="submit"], button:has-text("Uložiť"), button:has-text("Save"), button:has-text("Vytvoriť"), button:has-text("Potvrdiť")')
-      .filter({ hasNotText: DESTRUCTIVE })
-      .first();
+    // The form's own submit button first: a secondary "Create & next" that sits
+    // before it in the DOM keeps the form open on purpose and is not the submit.
+    const typedSubmit = scope.locator('button[type="submit"]').filter({ hasNotText: DESTRUCTIVE }).first();
+    const submit = (await typedSubmit.isVisible({ timeout: 300 }).catch(() => false))
+      ? typedSubmit
+      : scope
+          .locator('button[type="submit"], button:has-text("Uložiť"), button:has-text("Save"), button:has-text("Vytvoriť"), button:has-text("Potvrdiť")')
+          .filter({ hasNotText: DESTRUCTIVE })
+          .first();
 
     if (!(await submit.isVisible({ timeout: 800 }).catch(() => false))) {
       // Some drawers are read-only detail panes; that is not a defect.

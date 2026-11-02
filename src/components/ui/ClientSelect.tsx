@@ -64,6 +64,8 @@ interface ClientSelectProps {
   /** Runs in place of plain selection once a record has just been created. */
   onCreated?: (lead: Lead) => void;
   searchPlaceholder?: string;
+  /** Skip the default trigger box and rely on `className` alone (passed to CustomSelect). */
+  unstyled?: boolean;
 }
 
 /** Everything the search box should match on, not just what the row shows. */
@@ -91,6 +93,7 @@ export const ClientSelect: React.FC<ClientSelectProps> = ({
   allowAdd = true,
   onCreated,
   searchPlaceholder,
+  unstyled = false,
 }) => {
   const quickAdd = useQuickAddClient();
   const language = getStoredLanguage();
@@ -158,6 +161,7 @@ export const ClientSelect: React.FC<ClientSelectProps> = ({
       disabled={disabled}
       size={size}
       icon={icon}
+      unstyled={unstyled}
       className={className}
       panelClassName={panelClassName}
       placeholder={placeholder}

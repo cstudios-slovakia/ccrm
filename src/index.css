@@ -1917,3 +1917,57 @@ dialog[open]::backdrop {
   .settings-results-in,
   .settings-menu-in { animation: none; }
 }
+
+/* ===========================================================================
+   NEW-TASK COMPOSER MOTION (src/components/QuickTaskModal.tsx)
+   ---------------------------------------------------------------------------
+   From the "New Task Modal Redesign" motion board. The card is a container
+   transform: it starts clipped to the exact rect of the button that opened it
+   (`--nt-from`, set per open in JS) and the clip grows to the whole card. The
+   clicked button's colour and label sit on top as a veil and dissolve into the
+   white card; closing plays it all backwards into the same button.
+   =========================================================================== */
+.nt-press { transition: transform 120ms ease, background-color 200ms ease, box-shadow 200ms ease; }
+.nt-press:active { transform: scale(0.98); }
+@keyframes nt-grow { from { clip-path: var(--nt-from); } to { clip-path: inset(-48px -48px -48px -48px round 24px); } }
+@keyframes nt-shrink { from { clip-path: inset(-48px -48px -48px -48px round 24px); } to { clip-path: var(--nt-from); } }
+.nt-grow { animation: nt-grow 480ms cubic-bezier(0.2, 0, 0, 1) both; }
+.nt-shrink { animation: nt-shrink 340ms cubic-bezier(0.3, 0, 0.8, 0.15) both; }
+@keyframes nt-veil-out { 0%, 28% { opacity: 1; } 72%, 100% { opacity: 0; } }
+@keyframes nt-veil-in { 0%, 35% { opacity: 0; } 80%, 100% { opacity: 1; } }
+.nt-veil-out { animation: nt-veil-out 480ms linear both; }
+.nt-veil-in { animation: nt-veil-in 340ms linear both; }
+@keyframes nt-label-out { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes nt-label-in { 0%, 70% { opacity: 0; } 100% { opacity: 1; } }
+.nt-veil-out .nt-label { animation: nt-label-out 120ms ease-out both; }
+.nt-veil-in .nt-label { animation: nt-label-in 340ms linear both; }
+@keyframes nt-ripple { from { transform: scale(0); opacity: 0.5; } to { transform: scale(60); opacity: 0; } }
+.nt-ripple { animation: nt-ripple 560ms cubic-bezier(0.2, 0, 0, 1) both; }
+@keyframes nt-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.nt-fade-in { animation: nt-fade-in 160ms ease-out both; }
+@keyframes nt-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.nt-rise { animation: nt-rise 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes nt-strip { from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } to { max-height: 80px; opacity: 1; } }
+.nt-strip { overflow: hidden; animation: nt-strip 280ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* Finishing a recording: the waveform settles flat, then the strip folds away. */
+@keyframes nt-strip-out { 0%, 35% { max-height: 80px; opacity: 1; } 100% { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0; } }
+.nt-strip-out { overflow: hidden; animation: nt-strip-out 420ms cubic-bezier(0.3, 0, 0.2, 1) both; }
+.nt-wave-stop { transform: scaleY(0.15); opacity: 0.5; transition: transform 160ms ease-out, opacity 160ms ease-out; }
+@keyframes nt-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.nt-dot { animation: nt-dot 1.2s ease-in-out infinite; }
+@keyframes nt-fill { 0% { background-color: var(--color-blue-100); border-color: var(--color-blue-400); } 100% { background-color: var(--nt-fill-bg); border-color: var(--color-blue-200); } }
+.nt-fill { --nt-fill-bg: #f8fbff; animation: nt-fill 900ms ease-out both; }
+[data-theme="dark"] .nt-fill { --nt-fill-bg: var(--color-blue-50); }
+@keyframes nt-word { from { opacity: 0; filter: blur(2px); } to { opacity: 1; filter: none; } }
+.nt-word { animation: nt-word 220ms ease-out both; }
+@keyframes nt-toast { 0% { opacity: 0; transform: translate(-50%, 10px); } 12% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 4px); } }
+.nt-toast { animation: nt-toast 2600ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes nt-menu { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.nt-menu { transform-origin: top center; animation: nt-menu 160ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .nt-grow, .nt-shrink, .nt-ripple, .nt-veil-out, .nt-veil-in, .nt-label, .nt-fade-in, .nt-rise, .nt-strip, .nt-fill, .nt-word, .nt-toast, .nt-menu { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+  .nt-veil-out .nt-label, .nt-veil-in .nt-label { animation-duration: 1ms !important; }
+  .nt-strip-out { animation-duration: 1ms !important; }
+  .nt-dot { animation: none !important; }
+  .nt-press { transition: none; }
+}

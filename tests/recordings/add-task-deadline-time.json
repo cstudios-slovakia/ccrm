@@ -1,5 +1,5 @@
 {
-  "title": "Dashboard: create task, fill every field, open Čas termínu",
+  "title": "Dashboard: create task, fill every field, open Čas",
   "steps": [
     {
       "type": "setViewport",
@@ -18,17 +18,26 @@
       "type": "click",
       "target": "main",
       "selectors": [
-        ["aria/Vytvoriť novú úlohu"],
-        ["text/Vytvoriť novú úlohu"],
-        ["aria/Create New Task"],
-        ["text/Create New Task"]
+        [
+          "aria/Vytvoriť novú úlohu"
+        ],
+        [
+          "text/Vytvoriť novú úlohu"
+        ],
+        [
+          "aria/Create New Task"
+        ],
+        [
+          "text/Create New Task"
+        ]
       ]
     },
     {
       "type": "waitForElement",
       "selectors": [
-        ["text/Vytvoriť novú úlohu"],
-        ["aria/Vytvoriť novú úlohu"]
+        [
+          "[data-quick-task-form]"
+        ]
       ],
       "visible": true,
       "timeout": 8000
@@ -36,15 +45,21 @@
     {
       "type": "change",
       "selectors": [
-        ["xpath///label[contains(., \"Názov\") or contains(., \"Task Title\") or contains(., \"Cím\")]/following::textarea[1]"],
-        ["textarea[placeholder*=\"Enter task name\"], textarea[placeholder*=\"Zadajte\"]"]
+        [
+          "#nt-name"
+        ],
+        [
+          "[data-quick-task-form] textarea"
+        ]
       ],
       "value": "Recorded QA task"
     },
     {
       "type": "change",
       "selectors": [
-        ["xpath///label[contains(., \"Termín\") or contains(., \"Deadline Date\") or contains(., \"Határidő\")][not(contains(., \"Čas\")) and not(contains(., \"Time\")) and not(contains(., \"időpont\"))]/following::input[@type=\"date\"][1]"]
+        [
+          "[data-quick-task-form] input[type=\"date\"]"
+        ]
       ],
       "value": "2026-09-10"
     },
@@ -52,13 +67,18 @@
       "type": "click",
       "target": "main",
       "selectors": [
-        ["xpath///label[contains(., \"Čas termínu\") or contains(., \"Deadline Time\") or contains(., \"Határidő időpont\")]/following::button[@aria-haspopup=\"listbox\"][1]"],
-        ["xpath///label[contains(., \"Čas termínu\") or contains(., \"Deadline Time\")]/../button[@aria-haspopup=\"listbox\"]"]
+        [
+          "xpath///span[normalize-space(.)=\"Čas\" or normalize-space(.)=\"Time\" or normalize-space(.)=\"Időpont\"]/following::button[@aria-haspopup=\"listbox\"][1]"
+        ]
       ]
     },
     {
       "type": "waitForElement",
-      "selectors": [["[role=\"listbox\"]"]],
+      "selectors": [
+        [
+          "[role=\"listbox\"]"
+        ]
+      ],
       "visible": true,
       "timeout": 5000
     }

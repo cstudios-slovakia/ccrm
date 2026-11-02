@@ -25,6 +25,89 @@ interface TaskEmailReminderFieldProps {
 const LOCALES: Record<string, string> = { sk: "sk-SK", hu: "hu-HU", en: "en-GB" };
 
 /**
+ * What the reminder will actually do: exactly when the mail arrives, or why it
+ * cannot be sent. Shared by this field and the new-task composer.
+ */
+export const taskEmailReminderHint = ({
+    task,
+    mine,
+    myEmail,
+    mailConfigured,
+    systemLanguage,
+    t,
+}: {
+    task: Pick<Task, "deadline" | "deadlineTime">;
+    mine: TaskEmailReminder | undefined;
+    myEmail: string;
+    mailConfigured: boolean;
+    systemLanguage: Language;
+    t: Translate;
+}): { tone: "warn" | "info"; text: string } | null => {
+    if (!mine) return null;
+    if (!myEmail) {
+        return {
+            tone: "warn" as const,
+            text: t(
+                "Your profile has no e-mail address, so nothing can be sent.",
+                "Váš profil nemá e-mailovú adresu, preto nie je kam poslať upozornenie.",
+                "A profiljában nincs e-mail-cím, így nem lehet értesítést küldeni.",
+            ),
+        };
+    }
+    if (!mailConfigured) {
+        return {
+            tone: "warn" as const,
+            text: t(
+                "No outgoing mail server is set up (Settings → Email Server), so nothing can be sent yet.",
+                "Nie je nastavený server odchádzajúcej pošty (Nastavenia → E-mailový server), preto sa zatiaľ nič neodošle.",
+                "Nincs beállítva kimenő levelezőszerver (Beállítások → E-mail szerver), ezért egyelőre semmi sem küldhető.",
+            ),
+        };
+    }
+    const sendAt = taskReminderSendAt(task, mine);
+    if (!sendAt) return null;
+    const due = taskDueAt(task);
+    const now = new Date();
+    if (due && now >= due) {
+        return {
+            tone: "warn" as const,
+            text: t(
+                "The deadline has already passed — no reminder will be sent.",
+                "Termín už uplynul — upozornenie sa neodošle.",
+                "A határidő már lejárt — nem küldünk emlékeztetőt.",
+            ),
+        };
+    }
+    if (now >= sendAt) {
+        return {
+            tone: "info" as const,
+            text: t(
+                `The reminder time has passed, so it goes out right away to ${myEmail}.`,
+                `Čas upozornenia už prešiel, odošle sa hneď na ${myEmail}.`,
+                `Az emlékeztető ideje már elmúlt, azonnal elküldjük ide: ${myEmail}.`,
+            ),
+        };
+    }
+    const locale = LOCALES[systemLanguage] || LOCALES.en;
+    const day = sendAt.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "numeric" });
+    const time = sendAt.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    const noTime = mine === "1h" && !task.deadlineTime;
+    return {
+        tone: "info" as const,
+        text:
+            t(`Sent ${day} at ${time} to ${myEmail}.`, `Príde ${day} o ${time} na ${myEmail}.`, `Érkezik: ${day} ${time}, ide: ${myEmail}.`) +
+            (noTime
+                ? " " +
+                  t(
+                      "The task has no deadline time, so it goes out in the morning.",
+                      "Úloha nemá čas termínu, preto príde ráno.",
+                      "A feladatnak nincs határidő-időpontja, ezért reggel érkezik.",
+                  )
+                : ""),
+    };
+};
+
+/**
  * "Notify me about the task by e-mail" — one checkbox per signed-in user, plus
  * when to send. Each user's choice is their own: ticking it here never turns a
  * colleague's reminder on or off. The server does the sending.
@@ -59,70 +142,7 @@ export const TaskEmailReminderField: React.FC<TaskEmailReminderFieldProps> = ({
 
     // Says exactly when the mail will arrive, so nobody has to guess what
     // "in the morning" means or wonder why a past-due task never mailed them.
-    const hint = (() => {
-        if (!mine) return null;
-        if (!myEmail) {
-            return {
-                tone: "warn" as const,
-                text: t(
-                    "Your profile has no e-mail address, so nothing can be sent.",
-                    "Váš profil nemá e-mailovú adresu, preto nie je kam poslať upozornenie.",
-                    "A profiljában nincs e-mail-cím, így nem lehet értesítést küldeni.",
-                ),
-            };
-        }
-        if (!mailConfigured) {
-            return {
-                tone: "warn" as const,
-                text: t(
-                    "No outgoing mail server is set up (Settings → Email Server), so nothing can be sent yet.",
-                    "Nie je nastavený server odchádzajúcej pošty (Nastavenia → E-mailový server), preto sa zatiaľ nič neodošle.",
-                    "Nincs beállítva kimenő levelezőszerver (Beállítások → E-mail szerver), ezért egyelőre semmi sem küldhető.",
-                ),
-            };
-        }
-        const sendAt = taskReminderSendAt(task, mine);
-        if (!sendAt) return null;
-        const due = taskDueAt(task);
-        const now = new Date();
-        if (due && now >= due) {
-            return {
-                tone: "warn" as const,
-                text: t(
-                    "The deadline has already passed — no reminder will be sent.",
-                    "Termín už uplynul — upozornenie sa neodošle.",
-                    "A határidő már lejárt — nem küldünk emlékeztetőt.",
-                ),
-            };
-        }
-        if (now >= sendAt) {
-            return {
-                tone: "info" as const,
-                text: t(
-                    `The reminder time has passed, so it goes out right away to ${myEmail}.`,
-                    `Čas upozornenia už prešiel, odošle sa hneď na ${myEmail}.`,
-                    `Az emlékeztető ideje már elmúlt, azonnal elküldjük ide: ${myEmail}.`,
-                ),
-            };
-        }
-        const locale = LOCALES[systemLanguage] || LOCALES.en;
-        const day = sendAt.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "numeric" });
-        const time = sendAt.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-        const noTime = mine === "1h" && !task.deadlineTime;
-        return {
-            tone: "info" as const,
-            text:
-                t(`Sent ${day} at ${time} to ${myEmail}.`, `Príde ${day} o ${time} na ${myEmail}.`, `Érkezik: ${day} ${time}, ide: ${myEmail}.`) +
-                (noTime
-                    ? " " +
-                      t(
-                          "The task has no deadline time, so it goes out in the morning.",
-                          "Úloha nemá čas termínu, preto príde ráno.",
-                          "A feladatnak nincs határidő-időpontja, ezért reggel érkezik.",
-                      )
-                    : ""),
-        };
-    })();
+    const hint = taskEmailReminderHint({ task, mine, myEmail, mailConfigured, systemLanguage, t });
 
     return (
         <div data-testid="task-email-reminder" className="p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-2.5">
