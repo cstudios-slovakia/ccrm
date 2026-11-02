@@ -36,6 +36,7 @@ import {
     type LeadSortKey,
     type BuiltinLeadColumnKey,
 } from "../utils/leadColumns";
+import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import {
     Users,
     MapPin,
@@ -7013,8 +7014,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         <input
                                                                             type="date"
                                                                             value={gateTaskDraft.deadline}
+                                                                            min={todayStr()}
                                                                             onChange={(e) =>
-                                                                                setGateTaskDraft((d) => ({ ...d, deadline: e.target.value }))
+                                                                                setGateTaskDraft((d) => ({ ...d, deadline: clampDeadline(e.target.value, todayStr()) }))
                                                                             }
                                                                             className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 focus:border-violet-400 focus:outline-none font-bold text-caption"
                                                                         />
@@ -7381,9 +7383,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             type="date"
                                             required
                                             value={inlineTaskDeadline}
+                                            min={todayStr()}
                                             onChange={(e) =>
                                                 setInlineTaskDeadline(
-                                                    e.target.value,
+                                                    clampDeadline(e.target.value, todayStr()),
                                                 )
                                             }
                                             className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 focus:border-violet-400 focus:outline-none font-bold text-micro"
@@ -9742,6 +9745,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
                     </td>
                 );
+            case "division":
+                return (
+                    <td
+                        key="division"
+                        onClick={() =>
+                            !isInlineEditing && startInlineEdit(lead)
+                        }
+                        className={`hidden ws-lg:table-cell px-0 ws-lg:px-4 cursor-pointer ${cellPy}`}
+                    >
+                        {lead.division ? (
+                            <span
+                                className="px-2 py-0.5 rounded-full text-micro font-bold border whitespace-nowrap"
+                                style={{
+                                    backgroundColor: `${divisionColors[lead.division] || "#3b82f6"}15`,
+                                    color: divisionColors[lead.division] || "#3b82f6",
+                                    borderColor: `${divisionColors[lead.division] || "#3b82f6"}30`,
+                                }}
+                            >
+                                {lead.division}
+                            </span>
+                        ) : (
+                            <span className="text-slate-300">—</span>
+                        )}
+                    </td>
+                );
             case "value":
                 return (
                     <td
@@ -10879,6 +10907,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 return (
                                                     <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.pm")}
+                                                    </th>
+                                                );
+                                            case "division":
+                                                return (
+                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                        {t("Division", "Divízia", "Divízió")}
                                                     </th>
                                                 );
                                             case "value":

@@ -88,6 +88,9 @@ import { PageHeader } from "./layout";
 import { consumeLaunchIntent, parseLaunchIntent } from "../utils/launchIntent";
 import { isEmbedUrl } from "../utils/pwaInstallLogic";
 import { openTasksMiniWindow } from "../utils/popOut";
+import { clampDeadline, deadlineChange, taskCreatedDate, todayStr as todayDateStr } from "../utils/taskDeadline";
+import { TaskDescriptionMark } from "./TaskDescriptionMark";
+import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { useListFilter } from "../hooks/useListFilter";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
 
@@ -1808,9 +1811,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setTasks((prev) =>
             prev.map((t) => {
                 if (selectedTaskIds.has(t.id)) {
-                    if (mayEditTask(t)) {
+                    // A deadline never lies before the day the task was created.
+                    if (mayEditTask(t) && !(taskCreatedDate(t) && newDateStr < taskCreatedDate(t))) {
                         modifiedCount++;
-                        return { ...t, deadline: newDateStr };
+                        return { ...t, ...deadlineChange(t, newDateStr) };
                     } else {
                         skippedCount++;
                     }
@@ -2160,9 +2164,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 <div className="pt-1 border-t border-slate-800">
                                     <input
                                         type="date"
+                                        min={todayDateStr()}
                                         onChange={(e) => {
                                             if (e.target.value) {
-                                                handleBulkReschedule(e.target.value);
+                                                handleBulkReschedule(clampDeadline(e.target.value, todayDateStr()));
                                             }
                                         }}
                                         className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-ui text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
@@ -3228,21 +3233,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 </span>
                             </>,
                         )}
+                        <DeadlinePostponedBadge task={task} language={systemLanguage} t={t} compact />
 
                         {renderAssigneeChips(
                             task,
                             "font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-30 border border-slate-200",
                         )}
 
-                        {task.description && (
-                            <span className="text-slate-400 font-medium truncate max-w-60 ws-sm:max-w-45" title={task.description}>
-                                <TaskPillText
-                                    text={task.description}
-                                    onTagClick={handleTagClick}
-                                    knownEntities={mentionEntities}
-                                />
-                            </span>
-                        )}
+                        <TaskDescriptionMark
+                            description={task.description}
+                            label={t("Has a description", "Má popis", "Van leírása")}
+                            onTagClick={handleTagClick}
+                            knownEntities={mentionEntities}
+                        />
                         {task.conclusion && (
                             <span
                                 className="inline-flex items-center gap-1 text-micro font-medium text-emerald-700 bg-emerald-50/80 border border-emerald-200/60 rounded-md px-1.5 py-0.5 truncate max-w-60 ws-sm:max-w-45"
@@ -3387,16 +3390,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 task,
                                 "text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30",
                             )}
+                            <TaskDescriptionMark
+                                description={task.description}
+                                label={t("Has a description", "Má popis", "Van leírása")}
+                                onTagClick={handleTagClick}
+                                knownEntities={mentionEntities}
+                            />
                         </div>
-                        {task.description && (
-                            <div className="text-micro font-semibold text-slate-500 truncate mt-0.5">
-                                <TaskPillText
-                                    text={task.description}
-                                    onTagClick={handleTagClick}
-                                    knownEntities={mentionEntities}
-                                />
-                            </div>
-                        )}
                         {task.conclusion && (
                             <div
                                 onClick={() => setEditingTask(task)}
@@ -3587,16 +3587,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 task,
                                 "text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30",
                             )}
+                            <TaskDescriptionMark
+                                description={task.description}
+                                label={t("Has a description", "Má popis", "Van leírása")}
+                                onTagClick={handleTagClick}
+                                knownEntities={mentionEntities}
+                            />
                         </div>
-                        {task.description && (
-                            <div className="text-micro font-semibold text-slate-500 truncate mt-0.5">
-                                <TaskPillText
-                                    text={task.description}
-                                    onTagClick={handleTagClick}
-                                    knownEntities={mentionEntities}
-                                />
-                            </div>
-                        )}
                         {task.conclusion && (
                             <div
                                 onClick={() => setEditingTask(task)}

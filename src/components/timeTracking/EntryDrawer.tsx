@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Clock, Copy, Trash2, Unlink, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
+import { CustomSelect } from "../ui/CustomSelect";
 import { resolveWorkCountry, type HolidayCountry } from "../../utils/holidays.ts";
 import { matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
 import { isClosedTicketStatus } from "../../utils/tickets";
@@ -395,11 +396,16 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           {viewer.canTeam && (
             <label className="grid gap-1">
               <span className="type-label text-slate-600">{t("Person", "Osoba", "Személy")}</span>
-              <select value={person} onChange={(e) => setPerson(e.target.value)} disabled={readOnly} className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="entry-person">
-                {deps.users.filter((u) => u.id).map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
+              <div data-testid="entry-person">
+                <CustomSelect
+                  searchable
+                  value={person}
+                  onChange={setPerson}
+                  disabled={readOnly}
+                  searchPlaceholder={t("Search person…", "Hľadať osobu…", "Személy keresése…")}
+                  options={deps.users.filter((u) => u.id).map((u) => ({ value: u.id as string, label: u.name }))}
+                />
+              </div>
             </label>
           )}
 

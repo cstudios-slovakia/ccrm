@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
-  AlignLeft,
   Archive as ArchiveIcon,
   ArrowUpRight,
   Calendar,
@@ -44,6 +43,9 @@ import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions"
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { TaskRecurringMark } from "./TaskRecurringMark";
 import { useRecurringTemplates } from "../hooks/useRecurringTemplates";
+import { TaskDescriptionMark } from "./TaskDescriptionMark";
+import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
+import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import {
   canArchiveTask,
   canDeleteTask,
@@ -486,12 +488,11 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 {task.assignedUsers.join(", ")}
               </span>
             )}
-            {task.description && (
-              <AlignLeft
-                className="h-3 w-3 text-slate-400"
-                aria-label={t("Has a description", "Má popis", "Van leírása")}
-              />
-            )}
+            <TaskDescriptionMark
+              description={task.description}
+              label={t("Has a description", "Má popis", "Van leírása")}
+            />
+            <DeadlinePostponedBadge task={task} language={userLanguage} t={t} compact />
             {task.isLocking && <Lock className="h-3 w-3 text-violet-500" />}
             {task.archived && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
@@ -581,7 +582,8 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                   <input
                     type="date"
                     value={deadline}
-                    onChange={(e) => setDeadline(e.target.value)}
+                    min={todayStr()}
+                    onChange={(e) => setDeadline(clampDeadline(e.target.value, todayStr()))}
                     className={`px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold ${accentClasses.focusInput} focus:outline-none`}
                   />
                 </label>

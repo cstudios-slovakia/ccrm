@@ -126,7 +126,7 @@ function ccrm_te_check_link_access(\PDO $pdo, array $scope, array $links, ?strin
     if ($links['task_id'] === null && $links['ticket_id'] !== null && !ccrm_can($scope, 'tickets')) {
         return 'forbidden_ticket';
     }
-    if ($explicitProject !== null && $explicitProject !== $links['derivedProject'] && !ccrm_can($scope, 'projects')) {
+    if ($explicitProject !== null && $explicitProject !== $links['derivedProject'] && !ccrm_can($scope, 'projects') && !ccrm_works_on_project($pdo, $scope, $explicitProject)) {
         return 'forbidden_project';
     }
     return null;
@@ -826,9 +826,9 @@ if ($action === 'stop') {
         }
         $projectId = $links['project_id'];
     }
-    // Only someone who can pick a project is asked for one: an Employee without the projects module
+    // Only someone who can pick a project (the module, or projects they work on) is asked for one: an Employee without the projects module
     // would otherwise never be able to stop a free-text timer.
-    if ($settings['requireProjectToStop'] && $projectId === null && ccrm_can($scope, 'projects')) {
+    if ($settings['requireProjectToStop'] && $projectId === null && (ccrm_can($scope, 'projects') || ccrm_workable_projects($pdo, $scope))) {
         ccrm_te_fail('project_required', 422);
     }
     if ($settings['requireTask'] && $row['task_id'] === null && $row['ticket_id'] === null) {

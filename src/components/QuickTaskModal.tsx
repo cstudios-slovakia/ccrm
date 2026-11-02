@@ -29,6 +29,7 @@ import { projectDisplayName } from "../utils/projects";
 import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
 import { isClientRecord } from "../utils/clientRecord";
 import { taskPriorityLabel } from "../utils/taskLabels";
+import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { TASK_EMAIL_REMINDERS, withTaskReminder } from "../utils/taskReminders";
 import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
 import { describeRecurrence, describeRecurrenceWithEnd } from "../utils/recurringTasks";
@@ -381,7 +382,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
 
     const [description, setDescription] = useState("");
     const [priority, setPriority] = useState<Priority>("medium");
-    const [deadline, setDeadline] = useState(() => initialDeadline || toLocalDateStr(new Date()));
+    const [deadline, setDeadline] = useState(() => clampDeadline(initialDeadline || toLocalDateStr(new Date()), todayStr()));
     const [deadlineTime, setDeadlineTime] = useState("16:00");
     const [customTime, setCustomTime] = useState(false);
     const [relatedLeadId, setRelatedLeadId] = useState("");
@@ -447,7 +448,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             }
         }
         if (first.deadline && parseLocalDate(first.deadline)) {
-            setDeadline(first.deadline);
+            setDeadline(clampDeadline(first.deadline, todayStr()));
             filled.add("deadline");
         }
         if (first.deadlineTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(first.deadlineTime)) {
@@ -822,7 +823,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     })();
     const changeDeadline = (date: string) => {
         if (!date) return;
-        setDeadline(date);
+        // A new task is created today: its deadline cannot lie before it.
+        setDeadline(clampDeadline(date, todayStr()));
         clearDictated("deadline");
     };
     const openDatePicker = () => {
@@ -1217,6 +1219,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         tabIndex={-1}
                         aria-label={t("Deadline", "Termín", "Határidő")}
                         value={deadline}
+                        min={todayStr()}
                         onChange={(e) => changeDeadline(e.target.value)}
                         className="absolute left-0 bottom-0 w-full h-10 opacity-0 pointer-events-none"
                     />

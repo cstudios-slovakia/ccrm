@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   BUILTIN_LEAD_COLUMNS,
+  DEFAULT_HIDDEN_LEAD_COLUMNS,
   LOCKED_LEAD_COLUMN,
   resolveLeadColumns,
   toStoredLeadColumns,
@@ -15,8 +16,20 @@ describe("leadColumns", () => {
     assert.equal(cols[0].key, LOCKED_LEAD_COLUMN);
     assert.equal(cols[0].visible, true);
     for (const c of cols) {
-      assert.equal(c.visible, true);
+      assert.equal(c.visible, !DEFAULT_HIDDEN_LEAD_COLUMNS.includes(c.key));
     }
+  });
+
+  it("offers Division but keeps it off until someone switches it on", () => {
+    assert.ok(BUILTIN_LEAD_COLUMNS.includes("division"));
+    const fresh = resolveLeadColumns(null);
+    assert.equal(fresh.find(c => c.key === "division")?.visible, false);
+    // A saved layout from before Division existed gets it appended, hidden.
+    const legacy = resolveLeadColumns([{ key: "client", visible: true }, { key: "city", visible: true }]);
+    assert.equal(legacy.find(c => c.key === "division")?.visible, false);
+    // A saved layout that turned it on keeps it on.
+    const on = resolveLeadColumns([{ key: "client", visible: true }, { key: "division", visible: true }]);
+    assert.equal(on.find(c => c.key === "division")?.visible, true);
   });
 
   it("preserves custom visibility while keeping locked client column visible", () => {

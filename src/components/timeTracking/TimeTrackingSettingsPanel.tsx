@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ExternalLink, Plus, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
+import { CustomSelect } from "../ui/CustomSelect";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import {
   HOLIDAY_COUNTRIES,
@@ -122,10 +123,17 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
         <div className="grid gap-4 ws-sm:grid-cols-2">
           <label className="grid gap-1">
             <span className={label}>{t("Monthly hours basis", "Základ mesačných hodín", "Havi óraalap")}</span>
-            <select disabled={!canEdit} value={draft.hoursBasis} onChange={(e) => set("hoursBasis", e.target.value as TimeTrackingSettings["hoursBasis"])} className={field} data-testid="tt-hours-basis">
-              <option value="workingDays">{t("Working days × hours per day", "Pracovné dni × hodiny za deň", "Munkanapok × napi órák")}</option>
-              <option value="fixed">{t("Fixed hours per month", "Pevný počet hodín za mesiac", "Fix havi óraszám")}</option>
-            </select>
+            <div data-testid="tt-hours-basis">
+              <CustomSelect
+                disabled={!canEdit}
+                value={draft.hoursBasis}
+                onChange={(v) => set("hoursBasis", v as TimeTrackingSettings["hoursBasis"])}
+                options={[
+                  { value: "workingDays", label: t("Working days × hours per day", "Pracovné dni × hodiny za deň", "Munkanapok × napi órák") },
+                  { value: "fixed", label: t("Fixed hours per month", "Pevný počet hodín za mesiac", "Fix havi óraszám") },
+                ]}
+              />
+            </div>
           </label>
           {draft.hoursBasis === "fixed" ? (
             <label className="grid gap-1">
@@ -156,16 +164,22 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="type-card-title text-slate-900">{t("Working days and public holidays", "Pracovné dni a štátne sviatky", "Munkanapok és állami ünnepek")}</h3>
           <div className="flex items-center gap-2">
-            <select value={country} onChange={(e) => setCountry(e.target.value as HolidayCountry)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui font-semibold" data-testid="tt-holiday-country">
-              {HOLIDAY_COUNTRIES.map((c) => (
-                <option key={c} value={c}>{c === "SK" ? t("Slovakia", "Slovensko", "Szlovákia") : t("Hungary", "Maďarsko", "Magyarország")}</option>
-              ))}
-            </select>
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui font-semibold">
-              {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+            <div data-testid="tt-holiday-country">
+              <CustomSelect
+                size="sm"
+                fitLabel
+                value={country}
+                onChange={(v) => setCountry(v as HolidayCountry)}
+                options={HOLIDAY_COUNTRIES.map((c) => ({ value: c, label: c === "SK" ? t("Slovakia", "Slovensko", "Szlovákia") : t("Hungary", "Maďarsko", "Magyarország") }))}
+              />
+            </div>
+            <CustomSelect
+              size="sm"
+              fitLabel
+              value={String(year)}
+              onChange={(v) => setYear(Number(v))}
+              options={[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => ({ value: String(y), label: String(y) }))}
+            />
           </div>
         </div>
         <p className="text-body text-slate-500">
@@ -228,10 +242,18 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           {canEdit && (
             <div className="mt-3 flex flex-wrap items-end gap-2">
               <input type="date" value={ovDate} onChange={(e) => setOvDate(e.target.value)} min={`${year}-01-01`} max={`${year}-12-31`} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-override-date" />
-              <select value={ovKind} onChange={(e) => setOvKind(e.target.value as HolidayOverride["kind"])} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-override-kind">
-                <option value="extraDayOff">{t("Extra day off", "Extra voľný deň", "Extra szabadnap")}</option>
-                <option value="extraWorkingDay">{t("Extra working day", "Extra pracovný deň", "Extra munkanap")}</option>
-              </select>
+              <div data-testid="tt-override-kind">
+                <CustomSelect
+                  size="sm"
+                  fitLabel
+                  value={ovKind}
+                  onChange={(v) => setOvKind(v as HolidayOverride["kind"])}
+                  options={[
+                    { value: "extraDayOff", label: t("Extra day off", "Extra voľný deň", "Extra szabadnap") },
+                    { value: "extraWorkingDay", label: t("Extra working day", "Extra pracovný deň", "Extra munkanap") },
+                  ]}
+                />
+              </div>
               <input value={ovName} onChange={(e) => setOvName(e.target.value)} placeholder={t("Name", "Názov", "Név")} className="h-9 min-w-40 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-ui" data-testid="tt-override-name" />
               <button type="button" onClick={addOverride} data-testid="tt-override-add" className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-ui font-semibold text-white cursor-pointer">
                 <Plus className="size-4" />
@@ -262,16 +284,30 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           <label className="grid gap-1">
             <span className={label}>{t("Rounding in reports and client PDFs", "Zaokrúhľovanie v reportoch a PDF pre klientov", "Kerekítés riportokban és ügyfél-PDF-ekben")}</span>
             <div className="flex gap-2">
-              <select disabled={!canEdit} value={draft.rounding.minutes} onChange={(e) => set("rounding", { ...draft.rounding, minutes: Number(e.target.value) as 0 | 5 | 15 | 30 })} className={field}>
-                <option value={0}>{t("No rounding", "Bez zaokrúhľovania", "Nincs kerekítés")}</option>
-                <option value={5}>5 min</option>
-                <option value={15}>15 min</option>
-                <option value={30}>30 min</option>
-              </select>
-              <select disabled={!canEdit || draft.rounding.minutes === 0} value={draft.rounding.mode} onChange={(e) => set("rounding", { ...draft.rounding, mode: e.target.value as "nearest" | "up" })} className={field}>
-                <option value="nearest">{t("Nearest", "Na najbližšie", "Legközelebbi")}</option>
-                <option value="up">{t("Up", "Nahor", "Felfelé")}</option>
-              </select>
+              <div className="min-w-0 flex-1">
+                <CustomSelect
+                  disabled={!canEdit}
+                  value={String(draft.rounding.minutes)}
+                  onChange={(v) => set("rounding", { ...draft.rounding, minutes: Number(v) as 0 | 5 | 15 | 30 })}
+                  options={[
+                    { value: "0", label: t("No rounding", "Bez zaokrúhľovania", "Nincs kerekítés") },
+                    { value: "5", label: "5 min" },
+                    { value: "15", label: "15 min" },
+                    { value: "30", label: "30 min" },
+                  ]}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <CustomSelect
+                  disabled={!canEdit || draft.rounding.minutes === 0}
+                  value={draft.rounding.mode}
+                  onChange={(v) => set("rounding", { ...draft.rounding, mode: v as "nearest" | "up" })}
+                  options={[
+                    { value: "nearest", label: t("Nearest", "Na najbližšie", "Legközelebbi") },
+                    { value: "up", label: t("Up", "Nahor", "Felfelé") },
+                  ]}
+                />
+              </div>
             </div>
           </label>
         </div>

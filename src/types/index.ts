@@ -338,6 +338,13 @@ export interface Task {
   conclusion?: string;
   /** Expected effort, in minutes. Compared with tracked time; null when unset. */
   estimateMinutes?: number | null;
+  /**
+   * The deadline the task was first given. Kept by the server on every save (set when the task is
+   * created, or pinned to the previous date at its first postponement); never sent by a client.
+   */
+  originalDeadline?: string | null;
+  /** How many times the deadline was pushed to a later date. Kept by the server; read-only. */
+  deadlineMoves?: number;
   /** Integration that pushed the task in over the machine API ("waai"); read-only, set by the server. */
   externalSource?: string | null;
   /** Path of the source chat in that system (WhatsApp: `/c/<id>`); read-only. */

@@ -68,6 +68,7 @@ import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoade
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
 import { baselineOf, diffRecords, skipHoldsBaseline, skipIsLostWork, type RecordBaseline } from "./utils/syncDiff";
+import { workableProjectStubs } from "./utils/workableProjects";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
 import { WhatsAppLinksContext } from "./hooks/useWhatsAppLinks";
@@ -4513,13 +4514,17 @@ ${log.payload || ''}
       }}
     />
   ) : null;
+  // Without the projects module the list arrives empty, but the project a person works on is
+  // still pickable for their time: the server names those in readScope.referenceNames.
+  const canSeeProjects = access.can("projects");
+  const workableProjects = canSeeProjects ? [] : workableProjectStubs(readScope, defaultProjectStatus(projectStatuses));
   const timeDeps: TimeDeps | null = currentUser ? {
     language: userLanguage,
     currency: systemCurrency || "EUR",
     currentUser,
     users,
     employees,
-    projects,
+    projects: canSeeProjects ? projects : workableProjects,
     projectTypes,
     leads,
     tasks,
@@ -4530,7 +4535,7 @@ ${log.payload || ''}
     onRenameTicket: (ticketId, title) =>
       updateTicketsAndSync((prev) => prev.map((tk) => (tk.id === ticketId ? { ...tk, title, subject: title } : tk))),
     isTaskDone: (task) => isDoneTaskState(task.status, taskStates),
-    canPickProject: access.can("projects"),
+    canPickProject: canSeeProjects || workableProjects.length > 0,
     onCreateProject: access.canEdit("projects")
       ? ({ name, clientId, projectTypeId }) => {
           const record = clientId ? leads.find((l) => l.id === clientId) : undefined;
@@ -4568,7 +4573,6 @@ ${log.payload || ''}
     <TaskSettingsProvider value={taskSettings}>
     <RecurringTemplatesProvider value={recurringTasks}>
     <TimeTrackingProvider enabled={timeEnabled} language={userLanguage} userId={currentUser?.id ?? null}>
-    {timeDeps && timeEnabled && <ProjectRequestDialog deps={timeDeps} />}
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -4577,6 +4581,7 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
+    {timeDeps && timeEnabled && <ProjectRequestDialog deps={timeDeps} />}
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-[230ms]">
       {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
       <AuroraBackground

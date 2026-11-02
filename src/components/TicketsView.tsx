@@ -106,6 +106,7 @@ import {
 import { useListFilter } from "../hooks/useListFilter";
 import { useTicketTimeEntries } from "../hooks/useTimeEntries";
 import { useTimeTracking } from "../hooks/useTimeTracking";
+import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { createEntry, deleteEntry, listProjectUsage, updateEntry, type UsageEntry } from "../utils/timeTrackingApi";
 
 /** Single time input in H:MM format (e.g. 1:30 for 90 minutes) with a permanent preset ":" */
@@ -3711,7 +3712,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         <input
                           type="date"
                           value={newTaskDeadline}
-                          onChange={(e) => setNewTaskDeadline(e.target.value)}
+                          min={todayStr()}
+                          onChange={(e) => setNewTaskDeadline(clampDeadline(e.target.value, todayStr()))}
                           className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-700"
                         />
                       </div>

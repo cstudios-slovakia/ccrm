@@ -166,6 +166,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurrence_json` TEXT NULL COMMENT 'Template only: recurrence schedule config and cursor',
               `recurring_source_id` VARCHAR(50) NULL COMMENT 'Occurrence only: template id',
               `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date',
+              `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed',
+              `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -2032,6 +2034,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'estimate_minutes')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `estimate_minutes` INT NULL COMMENT 'Expected minutes; the task drawer compares it with tracked time'");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'original_deadline')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed'");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'deadline_moves')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date'");
         }
         if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', 'hours_budget')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `hours_budget` DECIMAL(8,2) NULL COMMENT 'Hours the project is expected to take'");

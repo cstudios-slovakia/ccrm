@@ -9,6 +9,8 @@ import {
   projectStatusLabel,
 } from "../../utils/projects";
 import { formatDuration, projectColor, type TFn } from "../../utils/timeTracking.ts";
+import { ClientSelect } from "../ui/ClientSelect";
+import { CustomSelect } from "../ui/CustomSelect";
 
 export interface NewProjectInput {
   name: string;
@@ -72,7 +74,11 @@ export function ProjectPicker({
   useEffect(() => {
     if (!open || inline) return;
     const onDown = (e: MouseEvent) => {
-      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Element | null;
+      // The client / type dropdowns and the "new client" form render in portals: a press inside
+      // one is not a press outside the picker.
+      if (target?.closest?.("[data-dropdown-panel]")) return;
+      if (root.current && !root.current.contains(target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -211,7 +217,7 @@ export function ProjectPicker({
         ))}
         {groups.length === 0 && <div className="px-3 py-4 text-ui text-slate-500">{t("No project matches.", "Žiadny projekt nevyhovuje.", "Nincs találat.")}</div>}
       </div>
-      <div className="border-t border-slate-100 px-3 py-2">
+      <div className="max-h-64 shrink-0 overflow-y-auto border-t border-slate-100 px-3 py-2">
         <label className="flex cursor-pointer items-center gap-2 text-ui text-slate-600">
           <input type="checkbox" checked={showFinished} onChange={(e) => setShowFinished(e.target.checked)} className="size-4 accent-teal-600" />
           {t("Show finished", "Zobraziť dokončené", "Befejezettek mutatása")}
@@ -224,17 +230,24 @@ export function ProjectPicker({
         )}
         {onCreateProject && creating && (
           <div className="mt-2 grid gap-2 rounded-xl bg-slate-50 p-2.5">
-            <select value={newClient} onChange={(e) => setNewClient(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-ui">
-              <option value="">{t("No client", "Bez klienta", "Ügyfél nélkül")}</option>
-              {[...leads].sort((a, b) => a.name.localeCompare(b.name)).map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
-            <select value={newType} onChange={(e) => setNewType(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-ui">
-              {projectTypes.map((pt) => (
-                <option key={pt.id} value={pt.id}>{pt.name}</option>
-              ))}
-            </select>
+            <ClientSelect
+              leads={leads}
+              value={newClient}
+              onChange={setNewClient}
+              noneLabel={t("No client", "Bez klienta", "Ügyfél nélkül")}
+              placeholder={t("No client", "Bez klienta", "Ügyfél nélkül")}
+              searchPlaceholder={t("Search client…", "Hľadať klienta…", "Ügyfél keresése…")}
+              size="sm"
+            />
+            <CustomSelect
+              searchable
+              size="sm"
+              value={newType}
+              onChange={setNewType}
+              placeholder={t("Project type", "Typ projektu", "Projekt típusa")}
+              searchPlaceholder={t("Search project type…", "Hľadať typ projektu…", "Projekttípus keresése…")}
+              options={projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}
+            />
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Cancel", "Zrušiť", "Mégse")}</button>
               <button type="button" onClick={create} disabled={!newType} data-testid="project-create-submit" className="h-9 rounded-lg bg-primary px-3 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer">{t("Create", "Vytvoriť", "Létrehozás")}</button>

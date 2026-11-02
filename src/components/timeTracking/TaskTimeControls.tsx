@@ -8,6 +8,7 @@ import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
 import { TimeApiError, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Lead, Project, Task } from "../../types";
 import { readTimeCreate } from "./timeCreateBridge";
+import { CustomSelect } from "../ui/CustomSelect";
 
 /**
  * ▶, the tracked-time chip and an optional Description, in the task drawer's Time tracking section.
@@ -201,15 +202,14 @@ export function TaskTimeControls({
               </label>
               <label className="grid gap-1">
                 <span className="type-overline text-slate-500">{t("Project type", "Typ projektu", "Projekt típusa")}</span>
-                <select
+                <CustomSelect
+                  searchable
+                  size="sm"
                   value={newType}
-                  onChange={(e) => setNewType(e.target.value)}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-ui"
-                >
-                  {readTimeCreate().projectTypes.map((pt) => (
-                    <option key={pt.id} value={pt.id}>{pt.name}</option>
-                  ))}
-                </select>
+                  onChange={setNewType}
+                  searchPlaceholder={t("Search project type…", "Hľadať typ projektu…", "Projekttípus keresése…")}
+                  options={readTimeCreate().projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}
+                />
               </label>
               <span className="flex justify-end gap-2">
                 <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">

@@ -149,6 +149,8 @@ General system and operational tasks.
 * `start_date` DATE
 * `deadline` DATE
 * `deadline_time` VARCHAR(5) (HH:MM)
+* `original_deadline` DATE [NULLable] (the deadline the task was first given; set on creation, or pinned to the previous date at the first postponement of an older row; written only by the sync upsert, never by a client)
+* `deadline_moves` INT NOT NULL DEFAULT 0 (how many times the deadline was pushed to a later date; incremented by the sync upsert)
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)

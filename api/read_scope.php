@@ -480,6 +480,68 @@ function ccrm_visible_task_ids(\PDO $pdo, array $scope, array $taskIds): array {
 }
 
 /**
+ * The projects a caller WORKS ON, as id => name: ones they manage, ones a task they
+ * see points at, and ones they have already logged time on. The time-tracking picker
+ * offers exactly these to someone without the projects module — an Employee could
+ * otherwise never put their hours on the project they are working on (they get no
+ * project list at all, and the server refused any project not derived from a task).
+ *
+ * Names only: it grants no right to open or edit the project.
+ *
+ * @return array<string,string>
+ */
+function ccrm_workable_projects(\PDO $pdo, array $scope): array {
+    $ids = [];
+    try {
+        $userId = trim((string)($scope['sessionUserId'] ?? ''));
+        if ($userId !== '') {
+            $stmt = $pdo->prepare("SELECT `project_id` FROM `project_managers` WHERE `user_id` = ?");
+            $stmt->execute([$userId]);
+            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+                $ids[(string)$pid] = true;
+            }
+            $stmt = $pdo->prepare("SELECT DISTINCT `project_id` FROM `time_entries` WHERE `user_id` = ? AND `project_id` IS NOT NULL");
+            $stmt->execute([$userId]);
+            foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+                $ids[(string)$pid] = true;
+            }
+        }
+        [$taskCond, $taskBind] = ccrm_task_scope_sql($scope, 't');
+        // Real tasks only: a recurring-series template is not work anyone is doing.
+        $realTasks = function_exists('ccrm_sql_real_tasks') ? ccrm_sql_real_tasks('t') : "(`t`.`task_kind` IS NULL)";
+        $sql = "SELECT DISTINCT `t`.`related_project_id` FROM `tasks` `t` WHERE `t`.`related_project_id` IS NOT NULL AND `t`.`related_project_id` <> '' AND {$realTasks}"
+            . ($taskCond !== '' ? " AND {$taskCond}" : '');
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($taskBind);
+        foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+            $ids[(string)$pid] = true;
+        }
+        if (!$ids) {
+            return [];
+        }
+        $names = [];
+        foreach (array_chunk(array_keys($ids), 500) as $chunk) {
+            $in = implode(',', array_fill(0, count($chunk), '?'));
+            $stmt = $pdo->prepare("SELECT `id`, `name` FROM `projects` WHERE `id` IN ($in)");
+            $stmt->execute($chunk);
+            while ($r = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                $name = trim((string)($r['name'] ?? ''));
+                $names[(string)$r['id']] = $name !== '' ? $name : 'Unknown';
+            }
+        }
+        return $names;
+    } catch (\Throwable $e) {
+        error_log('[ccrm] workable projects lookup failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/** May the caller log time on this project without the projects module (see ccrm_workable_projects)? */
+function ccrm_works_on_project(\PDO $pdo, array $scope, string $projectId): bool {
+    return $projectId !== '' && isset(ccrm_workable_projects($pdo, $scope)[$projectId]);
+}
+
+/**
  * The employee field groups of §3.4, as the caller's right to each. Directory is
  * always writable with `employees` = edit; the rest sit behind a toggle.
  *

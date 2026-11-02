@@ -9,7 +9,8 @@ export type BuiltinLeadColumnKey =
   | "source"
   | "pm"
   | "value"
-  | "state";
+  | "state"
+  | "division";
 
 export const BUILTIN_LEAD_COLUMNS: readonly BuiltinLeadColumnKey[] = [
   "client",
@@ -20,7 +21,16 @@ export const BUILTIN_LEAD_COLUMNS: readonly BuiltinLeadColumnKey[] = [
   "pm",
   "value",
   "state",
+  "division",
 ];
+
+/**
+ * Built-ins that are offered but start switched off — they widen the table, so
+ * they appear only when someone asks for them (same shape as the projects list).
+ */
+export const DEFAULT_HIDDEN_LEAD_COLUMNS: readonly BuiltinLeadColumnKey[] = ["division"];
+
+const defaultVisible = (key: BuiltinLeadColumnKey): boolean => !DEFAULT_HIDDEN_LEAD_COLUMNS.includes(key);
 
 export const LOCKED_LEAD_COLUMN: BuiltinLeadColumnKey = "client";
 
@@ -33,6 +43,7 @@ export const BUILTIN_LEAD_COLUMN_LABELS: Record<BuiltinLeadColumnKey, [string, s
   pm: ["Project Manager", "Projektový Manažér", "Projektmenedzser"],
   value: ["Value", "Hodnota", "Érték"],
   state: ["State", "Stav", "Állapot"],
+  division: ["Division", "Divízia", "Divízió"],
 };
 
 export interface StoredLeadColumn {
@@ -63,7 +74,7 @@ export function resolveLeadColumns(
   if (!stored || stored.length === 0) {
     return BUILTIN_LEAD_COLUMNS.map(key => ({
       key,
-      visible: true,
+      visible: defaultVisible(key),
     }));
   }
 
@@ -86,7 +97,7 @@ export function resolveLeadColumns(
     if (!seen.has(key)) {
       resolved.push({
         key,
-        visible: true,
+        visible: defaultVisible(key),
       });
     }
   }

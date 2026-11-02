@@ -1252,6 +1252,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
                 'conclusion' => $row['conclusion'] ?? null,
                 'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
+                // Deadline history: kept by the server on every save (see the tasks upsert), read-only for clients.
+                'originalDeadline' => $row['original_deadline'] ?? null,
+                'deadlineMoves' => (int)($row['deadline_moves'] ?? 0),
                 // Pushed in over the machine API (server-only columns, never written back by a client save).
                 'externalSource' => $row['external_source'] ?? null,
                 'externalUrl' => $row['external_url'] ?? null,
@@ -2689,6 +2692,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
+    // Without the projects module the caller still needs the names of the projects they work
+    // on (ones they manage or log time on), so the time-tracking picker can offer them.
+    if (!ccrm_can($scope, 'projects')) {
+        foreach (ccrm_workable_projects($pdo, $scope) as $wpId => $wpName) {
+            if (!isset($visibleProjectIds[(string)$wpId])) {
+                $refProjectIds[(string)$wpId] = true;
+            }
+        }
+    }
+
     foreach ($projects as $p) {
         $leadId = (string)($p['leadId'] ?? $p['client'] ?? '');
         if ($leadId !== '' && !isset($visibleLeadIds[$leadId])) {
@@ -3229,6 +3242,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!ccrm_column_exists($pdo, 'projects', 'contact_phone')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it'");
+            }
+        }
+        if (isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
+            if (!ccrm_column_exists($pdo, 'tasks', 'original_deadline')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed'");
+            }
+            if (!ccrm_column_exists($pdo, 'tasks', 'deadline_moves')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date'");
             }
         }
         if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
@@ -4870,7 +4891,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)"); /* recurring-template: sync creates or updates normal tasks */
+            // Deadline history is kept here, not trusted from the client: the two assignments before
+            // `deadline = VALUES(deadline)` run first (MySQL evaluates SET left to right), so they still
+            // see the stored date. A later date counts as one postponement and pins the original.
+                        $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`, `original_deadline`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `original_deadline` = IF(VALUES(`deadline`) > `deadline` AND `original_deadline` IS NULL, `deadline`, `original_deadline`), `deadline_moves` = `deadline_moves` + IF(VALUES(`deadline`) > `deadline`, 1, 0), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)"); /* recurring-template: sync creates or updates normal tasks */
 
             // "Requires conclusion": which states finish a task, for the guard below.
             $conclusionTaskStates = json_decode((string)($pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn() ?: '[]'), true);
@@ -4980,6 +5004,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($t['requiresConclusion']) ? 1 : 0,
                     $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null,
                     (array_key_exists('estimateMinutes', $t) && is_numeric($t['estimateMinutes'])) ? max(0, (int)$t['estimateMinutes']) : null,
+                    $t['deadline'],
                     array_key_exists('estimateMinutes', $t) ? 1 : 0,
                 ]);
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {

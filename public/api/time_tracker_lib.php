@@ -423,7 +423,7 @@ function ccrm_ttx_check_links(\PDO $pdo, array $scope, array $links, ?string $ex
     if ($links['task_id'] === null && $links['ticket_id'] !== null && !ccrm_can($scope, 'tickets')) {
         return 'forbidden_ticket';
     }
-    if ($explicitProject !== null && $explicitProject !== ($links['derivedProject'] ?? null) && !ccrm_can($scope, 'projects')) {
+    if ($explicitProject !== null && $explicitProject !== ($links['derivedProject'] ?? null) && !ccrm_can($scope, 'projects') && !ccrm_works_on_project($pdo, $scope, $explicitProject)) {
         return 'forbidden_project';
     }
     return null;
@@ -557,7 +557,7 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         }
         $projectId = $links['project_id'];
     }
-    if ($settings['requireProjectToStop'] && $projectId === null && ccrm_can($scope, 'projects')) {
+    if ($settings['requireProjectToStop'] && $projectId === null && (ccrm_can($scope, 'projects') || ccrm_workable_projects($pdo, $scope))) {
         return ['ok' => false, 'code' => 'project_required', 'status' => 422];
     }
     if ($settings['requireTask'] && $row['task_id'] === null && $row['ticket_id'] === null) {

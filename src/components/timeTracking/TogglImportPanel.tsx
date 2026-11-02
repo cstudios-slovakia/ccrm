@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Surface } from "../layout";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
+import { CustomSelect } from "../ui/CustomSelect";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import type { Language } from "../../utils/translations";
 
@@ -230,17 +231,16 @@ function MappingList({
         {rows.map((row) => (
           <li key={row.id} className="grid items-center gap-2 ws-sm:grid-cols-2">
             <span className="truncate text-ui text-slate-800">{row.name || row.id}</span>
-            <select
+            <CustomSelect
+              searchable
               disabled={disabled}
               value={value[row.id] ?? ""}
-              onChange={(e) => onChange({ ...value, [row.id]: e.target.value })}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-2 text-ui"
-            >
-              <option value="">{emptyLabel}</option>
-              {options.map((opt) => (
-                <option key={opt.id} value={opt.id}>{opt.name || opt.email || opt.id}</option>
-              ))}
-            </select>
+              onChange={(v) => onChange({ ...value, [row.id]: v })}
+              options={[
+                { value: "", label: emptyLabel },
+                ...options.map((opt) => ({ value: opt.id, label: opt.name || opt.email || opt.id })),
+              ]}
+            />
           </li>
         ))}
       </ul>

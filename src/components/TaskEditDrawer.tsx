@@ -35,6 +35,8 @@ import { CONCLUSION_MAX, cleanConclusion, needsConclusionToFinish, canUntickConc
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
+import { DeadlinePostponedBadge, QuickDeadlineChips, formatDeadlineDate } from "./TaskDeadlineExtras";
+import { clampDeadline, deadlineChange, minDeadlineFor, taskCreatedDate } from "../utils/taskDeadline";
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
 // in favour of a "Custom" option that lets the user type any specific time.
@@ -361,6 +363,12 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         taskStates,
     );
     const draftIsDone = isDoneTaskState(draft.status, taskStates);
+    // A deadline cannot lie before the day the task was created (a series template has no deadline of its own).
+    const storedTask = isTemplate ? null : (task as Task);
+    const minDeadline = storedTask ? minDeadlineFor(storedTask) : "";
+    // The postponement counters follow the stored deadline, so several edits before one Save count once.
+    const withDeadlineHistory = (next: Task): Task => (storedTask ? { ...next, ...deadlineChange(storedTask, next.deadline) } : next);
+    const draftPostpones = Boolean(storedTask && draft.deadline && storedTask.deadline && draft.deadline > storedTask.deadline);
     // The conclusion box shows once it matters: the task asks for one and is
     // being (or has been) finished, or it already holds text.
     const showConclusion = Boolean(draft.requiresConclusion) && (draftIsDone || Boolean(draft.conclusion?.trim()));
@@ -525,12 +533,12 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             requestClose();
                             return;
                         }
-                        onSave({
+                        onSave(withDeadlineHistory({
                             ...draft,
                             requiresConclusion: sanitizedRequiresConclusion,
                             conclusion: cleanConclusion(draft.conclusion ?? ""),
                             tags: combinedTags,
-                        });
+                        }));
                         requestClose();
                     }}
                     className="flex-1 py-5 space-y-5 text-ui font-bold"
@@ -715,7 +723,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         type="date"
                                         required
                                         value={draft.deadline}
-                                        onChange={(e) => update({ deadline: e.target.value })}
+                                        min={minDeadline || undefined}
+                                        onChange={(e) => update({ deadline: clampDeadline(e.target.value, minDeadline) })}
                                         className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
                                     />
                                 </div>
@@ -729,6 +738,30 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         t={t}
                                         disabled={!canEdit}
                                     />
+                                </div>
+                            </div>
+                        )}
+
+                        {!isTemplate && !makeRepeating && (
+                            <div className="space-y-1.5 -mt-2.5" data-testid="task-deadline-extras">
+                                <QuickDeadlineChips
+                                    value={draft.deadline}
+                                    min={minDeadline}
+                                    onPick={(date) => update({ deadline: date })}
+                                    t={t}
+                                    disabled={!canEdit}
+                                />
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <DeadlinePostponedBadge task={task as Task} language={systemLanguage} t={t} />
+                                    {draftPostpones && (
+                                        <span className="text-micro font-semibold text-amber-600" data-testid="deadline-will-postpone">
+                                            {t(
+                                                "Saving counts as a postponement",
+                                                "Uložením sa to započíta ako posunutie termínu",
+                                                "A mentés halasztásnak számít",
+                                            )}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -988,6 +1021,17 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             disabled={!canEdit}
                             mailConfigured={mailConfigured}
                         />
+
+                        {storedTask && taskCreatedDate(storedTask) && (
+                            <p className="type-meta font-medium text-slate-400" data-testid="task-created-on">
+                                {t("Created on", "Vytvorené", "Létrehozva")}{" "}
+                                <span className="font-semibold text-slate-500">
+                                    {formatDeadlineDate(taskCreatedDate(storedTask), systemLanguage)}
+                                    {/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(storedTask.createdAt ?? "") && `, ${(storedTask.createdAt as string).slice(11, 16)}`}
+                                </span>
+                                {storedTask.createdBy ? <> · <span className="font-semibold text-slate-500">{storedTask.createdBy}</span></> : null}
+                            </p>
+                        )}
                     </fieldset>
 
                     <button
@@ -1004,13 +1048,13 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         // dropped without a word. Keep them first.
                         const toggleArchive = () => {
                             if (canEdit && draft.title.trim() && !finishingWithoutConclusion && JSON.stringify(draft) !== JSON.stringify(task)) {
-                                onSave({
+                                onSave(withDeadlineHistory({
                                     ...draft,
                                     requiresConclusion: (!canUntick && task.requiresConclusion)
                                         ? true
                                         : (draft.requiresConclusion ? true : undefined),
                                     tags: combinedTags,
-                                });
+                                }));
                             }
                             onToggleArchive(draft);
                             requestClose();

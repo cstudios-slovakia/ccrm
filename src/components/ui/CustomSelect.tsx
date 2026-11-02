@@ -469,6 +469,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           isOpen ? (
               <motion.div
                 ref={panelRef}
+                data-dropdown-panel=""
                 initial={{ opacity: 0, scale: 0.97, y: coords?.openUp ? 6 : -6 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
