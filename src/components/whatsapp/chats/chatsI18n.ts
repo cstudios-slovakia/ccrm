@@ -55,6 +55,9 @@ const en = {
   refresh: "Refresh chats",
   toggleSearch: "Search chats and messages",
   liveGroup: "Live group",
+  summaryLabel: "WAAI summary",
+  summaryPoints: (n: number): string => (n === 1 ? "1 point" : `${n} points`),
+  summaryAllDone: "All caught up",
 };
 
 export type ChatsMessages = typeof en;
@@ -111,6 +114,9 @@ const sk: ChatsMessages = {
   refresh: "Obnoviť chaty",
   toggleSearch: "Hľadať v chatoch a správach",
   liveGroup: "Skupina naživo",
+  summaryLabel: "Súhrn WAAI",
+  summaryPoints: (n: number): string => `${n} ${n === 1 ? "bod" : n >= 2 && n <= 4 ? "body" : "bodov"}`,
+  summaryAllDone: "Všetko vybavené",
 };
 
 const hu: ChatsMessages = {
@@ -165,6 +171,9 @@ const hu: ChatsMessages = {
   refresh: "Csevegések frissítése",
   toggleSearch: "Keresés csevegésekben és üzenetekben",
   liveGroup: "Élő csoport",
+  summaryLabel: "WAAI összegzés",
+  summaryPoints: (n: number): string => `${n} pont`,
+  summaryAllDone: "Minden elintézve",
 };
 
 export function chatsMessages(lang: string): ChatsMessages {

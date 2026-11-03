@@ -26,6 +26,8 @@ interface Waai {
   accounts: { id: string; status: string; display_name: string | null }[];
   /** The first `/unread` answers 401 once. */
   rejectNextUnread: boolean;
+  /** Replaces the single chat of `/conversations`, with the summaries and the done tasks that go with it. */
+  list: { conversations: unknown[]; summaries: Record<string, unknown>; completed_task_ids: string[] } | null;
 }
 
 const envelope = (code: string, message = 'x') => ({ error: { code, message, request_id: 'req-1' } });
@@ -44,6 +46,7 @@ async function installNative(
     apiVersion: 1,
     accounts: [{ id: 'acc1', status: 'connected', display_name: 'Peter' }],
     rejectNextUnread: false,
+    list: null,
     ...over,
   };
   let issued = 0;
@@ -111,6 +114,17 @@ async function installNative(
     if (path === '/wa/health') {
       return route.fulfill({
         json: { ok: true, worker_offline: false, disconnected: [], connecting: [] },
+      });
+    }
+    if (path === '/conversations' && method === 'GET' && waai.list) {
+      return route.fulfill({
+        json: {
+          ...waai.list,
+          ai_configured: true,
+          has_wa_account: true,
+          user_name: 'Peter',
+          user_avatar_url: null,
+        },
       });
     }
     if (path === '/conversations' && method === 'GET') {
@@ -379,6 +393,60 @@ test.describe('Native WhatsApp module', () => {
     await expect(page.locator('nav button[data-dock-id="whatsapp"] span[aria-label="4"]').first()).toBeVisible();
     // No frame, no second application.
     await expect(page.locator('iframe')).toHaveCount(0);
+  });
+
+  test('a chat row shows its summary card: every open bullet, a count, done tasks gone, all-done line', async ({ page }) => {
+    await startSession(page);
+    const chat = (id: string, title: string, at: string) => ({
+      id,
+      title,
+      is_group: false,
+      owner_email: 'peter@example.sk',
+      avatar_url: null,
+      unread_count: 0,
+      last_message_at: at,
+      last_message: { kind: 'text', body: 'Dobrý deň', sender: title, direction: 'in' },
+    });
+    const bullet = (text: string, task_id: string | null) => ({ text, task_id });
+    const stamp = (created_at: string, items: ReturnType<typeof bullet>[]) => ({
+      action_items: items,
+      narrative: '',
+      message_count: 12,
+      created_at,
+    });
+    await installNative(page, {
+      list: {
+        conversations: [
+          chat('c-five', 'Päť bodov', '2026-04-20T09:15:00.000Z'),
+          chat('c-done', 'Všetko hotové', '2026-04-19T09:15:00.000Z'),
+        ],
+        summaries: {
+          'c-five': stamp('2026-04-20T09:16:00.000Z', [
+            bullet('Poslať termín CNC rezania', 't-1'),
+            bullet('Potvrdiť zameranie lobby', 't-2'),
+            bullet('Dohodnúť platbu zálohy', 't-3'),
+            bullet('Klient chce vzorky do piatku', null),
+            bullet('Dodávka ide cez prístav', null),
+          ]),
+          'c-done': stamp('2026-04-19T09:16:00.000Z', [bullet('Zaslať protokol', 't-9')]),
+        },
+        completed_task_ids: ['t-3', 't-9'],
+      },
+    });
+    await page.goto('/#whatsapp');
+
+    const five = page.getByTestId('wa-chat-row').filter({ hasText: 'Päť bodov' });
+    await expect(five.getByTestId('wa-row-summary')).toContainText('Súhrn WAAI');
+    await expect(five.getByTestId('wa-row-summary-count')).toHaveText('4 body');
+    const items = five.getByTestId('wa-row-summary-bullet');
+    await expect(items).toHaveCount(4);
+    await expect(items.first()).toHaveText('Poslať termín CNC rezania');
+    await expect(five).not.toContainText('Dohodnúť platbu zálohy');
+
+    const done = page.getByTestId('wa-chat-row').filter({ hasText: 'Všetko hotové' });
+    await expect(done.getByTestId('wa-row-summary-done')).toHaveText('Všetko vybavené');
+    await expect(done.getByTestId('wa-row-summary-bullet')).toHaveCount(0);
+    await expect(done.getByTestId('wa-row-summary-count')).toHaveCount(0);
   });
 
   test('the tabs follow the address, clicking one moves it, and a deep link opens the chat and message', async ({ page }) => {

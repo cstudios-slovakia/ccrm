@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Search, SearchX, X } from "lucide-react";
+import { Check, Loader2, RefreshCw, Search, SearchX, Sparkles, X } from "lucide-react";
 import { EmptyState } from "../../layout";
 import type {
   ChatListItem,
@@ -13,6 +13,7 @@ import { rowStamp } from "../lib/messageDays.ts";
 import { Avatar } from "./Avatar";
 import { filterChats, previewLine } from "./chatState.ts";
 import type { ChatsMessages } from "./chatsI18n.ts";
+import { rowBullets, standingCount } from "./summaryBullets.ts";
 
 interface Props {
   client: WaaiClient;
@@ -28,18 +29,13 @@ interface Props {
   onSync: () => void;
 }
 
-/** The first narrative bullet of a chat's cached summary, unless its task is already done. */
-function summaryLine(s: ChatSummaryPreview | undefined, done: Set<string>): string | null {
-  const open = s?.action_items.find((a) => !a.task_id || !done.has(a.task_id));
-  return open?.text ?? null;
-}
-
 const Row = ({
   client,
   t,
   locale,
   chat,
   summary,
+  done,
   selected,
   onSelect,
 }: {
@@ -47,12 +43,14 @@ const Row = ({
   t: ChatsMessages;
   locale: string;
   chat: ChatListItem;
-  summary: string | null;
+  summary: ChatSummaryPreview | undefined;
+  done: ReadonlySet<string>;
   selected: boolean;
   onSelect: () => void;
 }) => {
   const labels = { today: t.today, yesterday: t.yesterday };
   const unread = chat.unread_count > 0;
+  const card = rowBullets(summary, done);
   return (
     <li>
       <button
@@ -93,7 +91,51 @@ const Row = ({
               </span>
             )}
           </span>
-          {summary && <span className="type-meta mt-1 line-clamp-2 block text-slate-400">{summary}</span>}
+          {card.kind !== "none" && (
+            // Inside a <button>: phrasing content only, hence spans with list roles.
+            <span data-testid="wa-row-summary" className="mt-2 block border-t border-slate-100 pt-2">
+              <span className="flex items-center justify-between gap-2">
+                <span className="type-meta inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 font-semibold uppercase tracking-wide text-green-700">
+                  <Sparkles className="size-3" aria-hidden />
+                  {t.summaryLabel}
+                </span>
+                {card.kind === "bullets" && (
+                  <span data-testid="wa-row-summary-count" className="type-meta tabular-nums text-slate-400">
+                    {t.summaryPoints(standingCount(card))}
+                  </span>
+                )}
+              </span>
+              {card.kind === "bullets" ? (
+                <span role="list" className="mt-1.5 block space-y-1">
+                  {card.bullets.map((b, i) => (
+                    <span
+                      key={i}
+                      role="listitem"
+                      data-testid="wa-row-summary-bullet"
+                      className="type-meta flex items-start gap-2 text-slate-600"
+                    >
+                      <span className="flex h-[1lh] shrink-0 items-center" aria-hidden>
+                        {b.taskId ? (
+                          <span className="block size-1.75 rounded-full border border-green-600/80" />
+                        ) : (
+                          <span className="mx-0.5 block size-1 rounded-full bg-green-600/55" />
+                        )}
+                      </span>
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{b.text}</span>
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span
+                  data-testid="wa-row-summary-done"
+                  className="type-meta mt-1.5 flex items-center gap-1.5 text-slate-500"
+                >
+                  <Check className="size-3.5" aria-hidden />
+                  {t.summaryAllDone}
+                </span>
+              )}
+            </span>
+          )}
         </span>
       </button>
     </li>
@@ -244,7 +286,8 @@ export const ConversationList = ({
                     t={t}
                     locale={locale}
                     chat={chat}
-                    summary={summaryLine(data.summaries[chat.id], done)}
+                    summary={data.summaries[chat.id]}
+                    done={done}
                     selected={chat.id === selectedId}
                     onSelect={() => onSelect(chat.id)}
                   />
