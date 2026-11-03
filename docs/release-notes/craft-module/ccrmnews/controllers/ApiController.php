@@ -8,7 +8,8 @@
  *
  * GET  /ccrm-news/ping     Is Craft set up? Lists missing block types and fields,
  *                          and which fields are translatable per site.
- * POST /ccrm-news/asset    multipart: file, filename, title, version
+ * POST /ccrm-news/asset    JSON: { version, filename, title, data (base64) } — or
+ *                          multipart: file, filename, title, version
  *                          → { success, assetId, url }. Re-uploading the same
  *                          filename for the same version replaces the file.
  * POST /ccrm-news/publish  JSON: { version, releaseType, sourceCommit, enabled, postDate,
@@ -183,24 +184,46 @@ class ApiController extends Controller
         $this->requirePostRequest();
         $request = Craft::$app->getRequest();
 
-        $version = (string) $request->getBodyParam('version', '');
-        $filename = AssetsHelper::prepareAssetName((string) $request->getBodyParam('filename', ''));
-        $title = trim((string) $request->getBodyParam('title', ''));
-        $upload = UploadedFile::getInstanceByName('file');
+        // JSON with the image in base64 is what the publisher sends: shared hosting
+        // firewalls (Websupport) reject any multipart request carrying a file part
+        // with HTTP 466 before it reaches Craft. Multipart still works where allowed.
+        $json = str_contains(strtolower((string) $request->getContentType()), 'json');
+        $body = $json ? json_decode((string) $request->getRawBody(), true) : null;
+        if ($json && !is_array($body)) {
+            return $this->fail('bad_json', 400);
+        }
+        $param = static fn(string $name): string => (string) ($json ? ($body[$name] ?? '') : $request->getBodyParam($name, ''));
+
+        $version = $param('version');
+        $filename = AssetsHelper::prepareAssetName($param('filename'));
+        $title = trim($param('title'));
+        $upload = $json ? null : UploadedFile::getInstanceByName('file');
+        $bytes = $json ? base64_decode($param('data'), true) : null;
 
         if (!$this->validVersion($version)) {
             return $this->fail('bad_version', 400);
         }
-        if (!$upload || $upload->getHasError()) {
+        if ($json ? ($bytes === false || $bytes === '') : (!$upload || $upload->getHasError())) {
             return $this->fail('no_file', 400);
         }
-        if ($upload->size > self::MAX_UPLOAD_BYTES) {
+        if (($json ? strlen($bytes) : $upload->size) > self::MAX_UPLOAD_BYTES) {
             return $this->fail('file_too_large', 413);
         }
         if (!preg_match('/\.(png|jpe?g|webp)$/i', $filename)) {
             return $this->fail('bad_filename', 400, ['expected' => '*.png, *.jpg or *.webp']);
         }
-        if (@getimagesize($upload->tempName) === false) {
+        if ($json) {
+            $tempPath = Craft::$app->getPath()->getTempPath() . DIRECTORY_SEPARATOR . uniqid('ccrm-news-', true) . '-' . $filename;
+            if (file_put_contents($tempPath, $bytes) === false) {
+                return $this->fail('upload_failed', 500);
+            }
+        } else {
+            $tempPath = $upload->tempName;
+        }
+        if (@getimagesize($tempPath) === false) {
+            if ($json) {
+                @unlink($tempPath);
+            }
             return $this->fail('not_an_image', 400);
         }
 
@@ -211,9 +234,11 @@ class ApiController extends Controller
 
         $assets = Craft::$app->getAssets();
         $folder = $assets->ensureFolderByFullPathAndVolume('release-notes/' . str_replace('.', '-', $version), $volume, false);
-        $tempPath = $upload->saveAsTempFile();
-        if ($tempPath === false) {
-            return $this->fail('upload_failed', 500);
+        if (!$json) {
+            $tempPath = $upload->saveAsTempFile();
+            if ($tempPath === false) {
+                return $this->fail('upload_failed', 500);
+            }
         }
 
         $asset = Asset::find()->folderId($folder->id)->filename($filename)->one();
@@ -381,8 +406,15 @@ class ApiController extends Controller
             $transaction->commit();
         } catch (\Throwable $e) {
             $transaction->rollBack();
-            Craft::error('ccrm-news publish failed: ' . $e->getMessage(), __METHOD__);
-            return $this->fail('exception', 500, ['message' => $e->getMessage()]);
+            $details = ['message' => $e->getMessage()];
+            // "Element N could not be duplicated because it doesn't validate" says nothing
+            // about which field failed; the exception carries the element with its errors.
+            if ($e instanceof \craft\errors\InvalidElementException) {
+                $details['element'] = get_class($e->element) . ' #' . ($e->element->id ?? 'new') . ' site ' . $e->element->siteId;
+                $details['errors'] = $e->element->getErrors();
+            }
+            Craft::error('ccrm-news publish failed: ' . json_encode($details), __METHOD__);
+            return $this->fail('exception', 500, $details);
         }
 
         return $this->asJson([
