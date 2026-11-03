@@ -61,7 +61,8 @@ Choosing **Demo** in the setup wizard installs a fictional company, **Lapidea** 
 sintered-stone worktop studio), with every module filled: leads, clients, projects, offers, invoices,
 orders, warehouse, finance, employees, time tracking, service tickets, e-mail, WhatsApp, AI meeting room,
 automations (with run history), SAI and social posts. The story, cast and numbers are one file:
-[`docs/DEMO-MODE.md`](docs/DEMO-MODE.md).
+[`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). The WhatsApp module shows demo chats on a demo instance without WAAI
+(an in-browser fake; nothing is sent anywhere): [`docs/WHATSAPP-DEMO-MODULE.md`](docs/WHATSAPP-DEMO-MODULE.md).
 
 **You choose two things in the wizard** (step 2, when *Demo* is selected):
 

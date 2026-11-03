@@ -37,7 +37,16 @@ const Accounts = ({ client, t, admin }: { client: WaaiClient; t: HomeCopy; admin
   const [qr, setQr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
-  const link = async () => {
+  /** A refused call (the demo has no real account to change) is shown as a note, not thrown at the click handler. */
+  const guarded = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      setNote(err instanceof WaaiApiError ? err.message : t.failed);
+    }
+  };
+
+  const link = () => guarded(async () => {
     setNote(null);
     const started = await client.post<{ account_id: string; worker_offline: boolean }>("/wa-accounts");
     if (started.worker_offline) setNote(t.settings.worker);
@@ -58,15 +67,16 @@ const Accounts = ({ client, t, admin }: { client: WaaiClient; t: HomeCopy; admin
       if (event.event === "stream-error") setNote(t.settings.worker);
     }, { signal: ctrl.signal }).catch(() => undefined);
     own.reload();
-  };
+  });
 
-  const act = async (id: string, action: string, adminAccount: boolean) => {
+  const act = (id: string, action: string, adminAccount: boolean) => guarded(async () => {
+    setNote(null);
     const root = adminAccount ? "/admin/wa-accounts" : "/wa-accounts";
     if (action === "delete") await client.del(`${root}/${id}`);
     else await client.post(`${root}/${id}/${action}`);
     own.reload();
     all.reload();
-  };
+  });
 
   const list = (rows: WaAccountRow[] | undefined, adminAccount: boolean) => (
     <ul className="flex flex-col gap-3">
@@ -126,6 +136,27 @@ const Reactions = ({ client, t }: { client: WaaiClient; t: HomeCopy }) => {
         <button type="button" className={secondaryButton} onClick={() => void client.del("/preferences/quick-reactions").then(() => prefs.reload())}>{t.settings.remove}</button>
       </div>
       {prefs.error ? <p className="type-body text-rose-600">{prefs.error}</p> : null}
+    </div>
+  );
+};
+
+const Reset = ({ client, t, lang }: { client: WaaiClient; t: HomeCopy; lang: Language }) => {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-3">
+      <h4 className="type-card-title text-slate-800">{t.settings.resetTitle}</h4>
+      <p className="type-body text-slate-500">{t.settings.resetBody}</p>
+      <HoldToConfirmButton
+        lang={lang}
+        onConfirm={() => {
+          setError(null);
+          client.post("/reset-data").catch((err: unknown) => setError(err instanceof WaaiApiError ? err.message : t.failed));
+        }}
+        tone="danger"
+      >
+        {t.settings.resetHold}
+      </HoldToConfirmButton>
+      {error ? <p className="type-body text-amber-700">{error}</p> : null}
     </div>
   );
 };
@@ -375,14 +406,7 @@ export const SettingsTab = ({
         {block(t.settings.peopleTitle, <People client={client} t={t} />)}
       </>
     ),
-    account: block(
-      t.settings.sectionAccount,
-      <div className="flex flex-col gap-3">
-        <h4 className="type-card-title text-slate-800">{t.settings.resetTitle}</h4>
-        <p className="type-body text-slate-500">{t.settings.resetBody}</p>
-        <HoldToConfirmButton lang={lang} onConfirm={() => void client.post("/reset-data")} tone="danger">{t.settings.resetHold}</HoldToConfirmButton>
-      </div>,
-    ),
+    account: block(t.settings.sectionAccount, <Reset client={client} t={t} lang={lang} />),
   };
 
   const labels: Record<SettingsSection, string> = {

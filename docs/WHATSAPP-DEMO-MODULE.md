@@ -75,7 +75,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 |---|---|---|---|---|
 | 1 | Chat-row summary card (fixes request 2) | ✅ | v1.13.45-Nectarine | 2026-11-03 |
 | 2 | Demo WAAI in the browser: data endpoint, fake backend, Chats tab | ✅ | v1.13.46-Nectarine | 2026-11-03 |
-| 3 | Demo for Digest, Tasks, Ask and Settings tabs; QA spec; docs | ⬜ | | |
+| 3 | Demo for Digest, Tasks, Ask and Settings tabs; QA spec; docs | ✅ | v1.13.47-Nectarine | 2026-11-03 |
 
 Effort: phase 1 small, phase 2 large, phase 3 medium. Each fits one session.
 
@@ -170,19 +170,39 @@ Spec: C2–C6. Depends on phase 1.
 
 Spec: C5.2 (the "phase 3" rows), C7. Depends on phase 2.
 
-- [ ] Digest, Tasks, Ask, Settings endpoints of C5.2. Open each tab in demo: nothing crashes, no
+- [x] Digest, Tasks, Ask, Settings endpoints of C5.2. Open each tab in demo: nothing crashes, no
       raw error text, no request leaves the browser for `/waai-api` or a WAAI address.
-- [ ] New QA spec `tests/e2e/whatsappDemo.spec.ts` (C7).
-- [ ] `docs/WHATSAPP-DEMO-DATA.md`: replace the sentence "without the WAAI loader a demo instance shows
+- [x] New QA spec `tests/e2e/whatsappDemo.spec.ts` (C7).
+- [x] `docs/WHATSAPP-DEMO-DATA.md`: replace the sentence "without the WAAI loader a demo instance shows
       … an empty Chats tab" with a short section "In-browser demo (no WAAI)" pointing to this file,
       saying when it is used (B1) and that nothing is sent anywhere.
-- [ ] `README.md` demo section: one line that the WhatsApp module shows demo chats on a demo instance
+- [x] `README.md` demo section: one line that the WhatsApp module shows demo chats on a demo instance
       without WAAI.
-- [ ] Tests (A1.4), version bump, changelog, commit, this file updated.
+- [x] Tests (A1.4), version bump, changelog, commit, this file updated.
 
-**Left over:** _(fill in)_
-
----
+**Left over:**
+- **Not run against a real server (still):** `waai_demo.php` was not touched in this phase; its sign-in, permission and `DEMO_MODE`
+  checks have only been exercised through the QA mock, as in phase 2.
+- **Digest ignores the window.** The four windows (Today / 3 days / 7 days / 30 days) all answer the same digest: one bullet per chat
+  that has a summary, and every open task. The demo chats are all recent, so nothing is lost, and nothing is generated (B7).
+  `has_audio` is false, so "Play" asks `/digest/audio`, which answers 501 and leaves the button in its error state with no text.
+- **Ask is a text search, not an answer.** The phrase must be in a message or voice-note transcription; if the whole phrase is not
+  found, a phrase of several words matches messages that hold all the words. No `[n]` markers in the sentence (the Ask tab lists
+  every source anyway). Up to five citations, newest first.
+- **Tasks tab:** "Send to CRM" is never offered (every demo task is already synced); `POST /tasks/:id/crm` exists and answers `ok` for
+  completeness. Deleting or reopening a done task answers `409` with a sentence in the module's language (changed from the bare code
+  `crm_linked` of phase 2).
+- **Settings:** the quick-reaction limit is the six defaults (`quick_reaction_count: 6`). Account linking, disconnect, reconnect,
+  resync, removal and the data reset answer `501`. `SettingsTab.tsx` now catches those (Accounts and the reset button used to throw the
+  rejection at the click handler); the message shows as a note. This also covers a real WAAI that refuses.
+- **Spec behaviour worth knowing:** under React StrictMode (the dev server and QA) the session effect runs twice, so `waai_demo.php`
+  is read once or twice; a production build reads it once. The sidebar badge follows an opened chat on its 10 s poll (as with WAAI), so
+  the spec waits up to 20 s for it.
+- **Command note:** `run-qa.mjs ... -- -g <text>` filters across every spec the scope selected, not only the spec you meant; pass the
+  spec path after `--` instead.
+- **Unrelated, not touched:** `navigation.spec.ts` `NAV0-A31047FC` / `INTF-C34A0844` (phase 2) was not part of this scope. In one
+  scoped run with a forced 30 s test timeout, `crawler.spec.ts › Tasks` and `pwaInstall.spec.ts › a link opened while signed out`
+  timed out on `page.goto` / the login field on a loaded machine; they do not touch the WhatsApp module.
 
 # Part B. Decisions (final)
 

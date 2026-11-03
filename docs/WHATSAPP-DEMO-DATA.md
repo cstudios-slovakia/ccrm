@@ -12,9 +12,20 @@ Since demo phase 4D there is **one file per edition**; two loaders read them.
 | `scripts/demo-assert/whatsapp.php` | Guards the contract below: the three files must stay structurally identical, users must be refs, phones must be the cast's. Run by `npm run test:demo-seed`. |
 | WAAI loader | `apps/web/scripts/seed-demo-ccrm.mjs` in the WAAI repo. **Phase W** rewrites it against the contract below (`--lang`, user refs, per-edition files). |
 
-Chats and messages never live in CCRM. The native module reads them from WAAI (`/waai-api`), so without
-the WAAI loader a demo instance shows the CRM-side surfaces (chips, task badges, timeline entries) but an
-empty Chats tab.
+Chats and messages never live in CCRM. The native module reads them from WAAI (`/waai-api`), and the WAAI
+loader below puts these files into a real WAAI.
+
+## In-browser demo (no WAAI)
+
+A demo instance without a working WAAI account does not need the loader: the module runs a fake WAAI inside
+the browser, built from the same per-edition file, and shows the chats, the Digest, Tasks, Ask and Settings
+tabs with it. It is used only when the CRM is in demo mode and the WhatsApp connection is not configured,
+not reachable, or has no account (rule B1); a demo instance that has a working WAAI with an account keeps
+showing the real one, and a non-demo instance never shows demo chats. The file is served by
+`public/api/waai_demo.php` (the edition the demo was seeded in). Nothing is sent to WhatsApp or WAAI, nothing is
+written to the CRM, and changes made in the module (messages, reactions, task ticks, preferences) live in
+memory and are gone on reload. Design, decisions and the phase checklists:
+[`docs/WHATSAPP-DEMO-MODULE.md`](WHATSAPP-DEMO-MODULE.md).
 
 ## The contract (version 2) - what the WAAI loader reads
 

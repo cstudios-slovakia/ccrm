@@ -90,6 +90,7 @@ export class DemoStore {
   readonly numbers = new Map<string, "registered" | "not_registered">();
   readonly ownerName: string;
   readonly ownerEmail: string;
+  readonly ownerPhone: string;
   readonly timeZone: string;
   quickReactions = [...DEFAULT_QUICK_REACTIONS];
   autoDetectSummaryLang = true;
@@ -103,6 +104,7 @@ export class DemoStore {
     const owner = dataset.crmUsers[dataset.account.ownerCrmUser];
     this.ownerName = owner?.name ?? "";
     this.ownerEmail = owner?.email ?? "";
+    this.ownerPhone = dataset.account.phone;
     this.timeZone = dataset.account.timezone;
     // Frozen here: every seeded instant is computed from this one `now`.
     const now = clock();
@@ -330,6 +332,14 @@ export class DemoStore {
     task.status = status;
     task.completedAt = status === "completed" ? this.stamp() : null;
     return task;
+  }
+
+  /** Tasks for the Tasks tab and the Digest: open ones first, then by due date (none last), then by number. */
+  allTasks(status: "open" | "completed" | null = null): StoredTask[] {
+    const rank = (t: StoredTask) => (t.status === "open" ? 0 : 1);
+    return this.tasks
+      .filter((t) => status === null || t.status === status)
+      .sort((a, b) => rank(a) - rank(b) || (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity) || a.n - b.n);
   }
 
   setLink(chatId: string, type: "lead" | "project", id: string, linked: boolean): void {

@@ -4,8 +4,12 @@ import {
   MAX_MESSAGE_CHARS,
   MAX_SEND_FILE_BYTES,
   type ApiErrorCode,
+  type AskCitation,
+  type AskResponse,
   type ConversationsResponse,
   type CrmEntitiesResponse,
+  type DigestResponse,
+  type DigestWindow,
   type EditMessageResponse,
   type ForwardTargetsResponse,
   type LinkPreviewResponse,
@@ -20,6 +24,7 @@ import {
   type OkResponse,
   type OpenCheckResponse,
   type OpenStartResponse,
+  type PreferencesResponse,
   type ReactionResponse,
   type ResyncResponse,
   type SendMessageResponse,
@@ -27,9 +32,11 @@ import {
   type SummaryLookupResponse,
   type SummaryStreamEvent,
   type SummaryWindowKey,
+  type TasksResponse,
   type TaskUpdateItem,
   type TaskUpdateResponse,
   type UnreadResponse,
+  type WaAccountsResponse,
   type WaHealthResponse,
 } from "../api/contract.ts";
 import { buildTaskUpdateText } from "../chats/panel/taskUpdateMessage.ts";
@@ -38,6 +45,7 @@ import {
   chatListItem,
   conversationDto,
   crmLinks,
+  homeTaskDto,
   iso,
   messageDto,
   reactionGroups,
@@ -46,7 +54,7 @@ import {
   taskDto,
   windowStart,
 } from "./demoDto.ts";
-import { DEMO_ACCOUNT_ID, DemoStore, type DemoMedia, type StoredChat } from "./demoStore.ts";
+import { DEFAULT_QUICK_REACTIONS, DEMO_ACCOUNT_ID, DemoStore, type DemoMedia, type StoredChat, type StoredMessage } from "./demoStore.ts";
 
 /**
  * The fake WAAI (docs/WHATSAPP-DEMO-MODULE.md B2, C5): the module API implemented as a `fetch` function that
@@ -101,9 +109,27 @@ const FEATURES: ModuleFeature[] = [
 ];
 
 const TEXT = {
-  en: { notInDemo: "Not available in the demo.", emptyWindow: "No messages in this period." },
-  sk: { notInDemo: "V ukážke nie je dostupné.", emptyWindow: "V tomto období nie sú žiadne správy." },
-  hu: { notInDemo: "A demóban nem érhető el.", emptyWindow: "Ebben az időszakban nincs üzenet." },
+  en: {
+    notInDemo: "Not available in the demo.",
+    emptyWindow: "No messages in this period.",
+    linkedTask: "This task is synced with the CRM and cannot be changed that way in the demo.",
+    askIntro: "In the demo, Ask searches the demo chats. These messages match:",
+    askNothing: "Nothing found in the demo chats. Try another word.",
+  },
+  sk: {
+    notInDemo: "V ukážke nie je dostupné.",
+    emptyWindow: "V tomto období nie sú žiadne správy.",
+    linkedTask: "Táto úloha je synchronizovaná s CRM a v ukážke sa takto zmeniť nedá.",
+    askIntro: "V ukážke Opýtať sa prehľadáva ukážkové konverzácie. Tieto správy sedia:",
+    askNothing: "V ukážkových konverzáciách sa nič nenašlo. Skúste iné slovo.",
+  },
+  hu: {
+    notInDemo: "A demóban nem érhető el.",
+    emptyWindow: "Ebben az időszakban nincs üzenet.",
+    linkedTask: "Ez a feladat szinkronban van a CRM-mel, a demóban így nem módosítható.",
+    askIntro: "A demóban a Kérdezz a minta beszélgetésekben keres. Ezek az üzenetek egyeznek:",
+    askNothing: "A minta beszélgetésekben nem található semmi. Próbálj másik szót.",
+  },
 } as const;
 
 const STUB_MEDIA: DemoMedia = {
@@ -191,6 +217,29 @@ export function createDemoWaai(input: DemoWaaiInput): DemoWaai {
       dto.tasks = [];
     }
     return { dto, count: w.count };
+  };
+
+  /** Messages whose body or transcription contains the phrase, newest first. With `allWords`, a phrase with no hit falls back to all its words. */
+  const findMessages = (phrase: string, allWords: boolean) => {
+    const needle = fold(phrase.trim());
+    const words = needle.split(/\s+/).filter(Boolean);
+    const scan = (terms: string[]) => {
+      const found: { chat: StoredChat; m: StoredMessage }[] = [];
+      if (terms.length === 0) return found;
+      for (const chat of store.chats.values()) {
+        for (const m of chat.messages) {
+          const haystack = fold([m.body, m.transcription].filter((x): x is string => !!x).join("\n"));
+          if (terms.every((w) => haystack.includes(w))) found.push({ chat, m });
+        }
+      }
+      return found.sort((a, b) => b.m.sentAt - a.m.sentAt);
+    };
+    const exact = scan([needle]);
+    return exact.length > 0 || !allWords || words.length < 2 ? exact : scan(words);
+  };
+  const snippetOf = (m: StoredMessage): string => {
+    const snippet = (m.body ?? m.transcription ?? "").trim();
+    return snippet.length > 160 ? `${snippet.slice(0, 157)}…` : snippet;
   };
 
   let updateSeq = 0;
@@ -356,30 +405,23 @@ export function createDemoWaai(input: DemoWaaiInput): DemoWaai {
     return json({ ok: true } satisfies OkResponse);
   });
   on("GET", "/messages/search", ({ query }) => {
-    const needle = fold((query.get("q") ?? "").trim());
-    if (needle.length < 2) return json({ hits: [], next_cursor: null } satisfies MessageSearchResponse);
-    const hits: MessageSearchHitDto[] = [];
-    for (const chat of store.chats.values()) {
-      for (const m of chat.messages) {
-        const haystack = [m.body, m.transcription].filter((s): s is string => !!s).join("\n");
-        if (!fold(haystack).includes(needle)) continue;
-        const snippet = (m.body ?? m.transcription ?? "").trim();
-        hits.push({
-          message_id: m.id,
-          conversation_id: chat.id,
-          conversation_title: chat.title,
-          avatar_url: null,
-          is_group: chat.isGroup,
-          kind: m.kind,
-          direction: m.direction,
-          sender: m.sender,
-          snippet: snippet.length > 160 ? `${snippet.slice(0, 157)}…` : snippet,
-          sent_at: iso(m.sentAt),
-        });
-      }
-    }
-    hits.sort((a, b) => b.sent_at.localeCompare(a.sent_at));
-    return json({ hits: hits.slice(0, 50), next_cursor: null } satisfies MessageSearchResponse);
+    const q = query.get("q") ?? "";
+    if (fold(q.trim()).length < 2) return json({ hits: [], next_cursor: null } satisfies MessageSearchResponse);
+    const hits: MessageSearchHitDto[] = findMessages(q, false)
+      .slice(0, 50)
+      .map(({ chat, m }) => ({
+        message_id: m.id,
+        conversation_id: chat.id,
+        conversation_title: chat.title,
+        avatar_url: null,
+        is_group: chat.isGroup,
+        kind: m.kind,
+        direction: m.direction,
+        sender: m.sender,
+        snippet: snippetOf(m),
+        sent_at: iso(m.sentAt),
+      }));
+    return json({ hits, next_cursor: null } satisfies MessageSearchResponse);
   });
 
   // ---- summary, tasks, CRM links --------------------------------------------------------------------------
@@ -424,20 +466,27 @@ export function createDemoWaai(input: DemoWaaiInput): DemoWaai {
   on("GET", "/crm/entities", ({ query }) => json({ entities: directory.search(query.get("q") ?? "") } satisfies CrmEntitiesResponse));
   on("GET", "/tasks", ({ query }) => {
     const conversation = query.get("conversation_id") ?? query.get("conversationId") ?? query.get("conversation");
-    // The Tasks tab (no conversation) is phase 3.
-    if (!conversation) return fail(501, "not_implemented", text.notInDemo);
-    return json({ tasks: store.tasksOf(conversation).map((t) => taskDto(store, t)) });
+    if (conversation) return json({ tasks: store.tasksOf(conversation).map((t) => taskDto(store, t)) });
+    // The Tasks tab: every task of the account, filtered by `status` when it sends one.
+    const status = query.get("status");
+    const body: TasksResponse = {
+      tasks: store.allTasks(status === "open" || status === "completed" ? status : null).map((t) => homeTaskDto(store, t)),
+      crm_push_enabled: true,
+    };
+    return json(body);
   });
+  // The CRM task already exists (that is what `crm_task_id` is): "send to CRM" has nothing left to do.
+  on("POST", "/tasks/([^/]+)/crm", ({ params }) => (store.task(params[0]!) ? json({ ok: true } satisfies OkResponse) : fail(404, "not_found", "task")));
   on("PATCH", "/tasks/([^/]+)", ({ params, body }) => {
     const task = store.task(params[0]!);
     if (!task) return fail(404, "not_found", "task");
     const status = asRecord(body).status;
     if (status !== "open" && status !== "completed") return fail(400, "invalid_input", "invalid_input");
     // As in WAAI: a task that is linked to a CRM task cannot be reopened once it is done.
-    if (task.status === "completed" && status === "open") return fail(409, "conflict", "crm_linked");
+    if (task.status === "completed" && status === "open") return fail(409, "conflict", text.linkedTask);
     return json(taskDto(store, store.setTaskStatus(task.id, status)!));
   });
-  on("DELETE", "/tasks/([^/]+)", ({ params }) => (store.task(params[0]!) ? fail(409, "conflict", "crm_linked") : fail(404, "not_found", "task")));
+  on("DELETE", "/tasks/([^/]+)", ({ params }) => (store.task(params[0]!) ? fail(409, "conflict", text.linkedTask) : fail(404, "not_found", "task")));
   on("POST", "/conversations/([^/]+)/task-updates", ({ params, body }) =>
     withChat(params[0]!, (chat) => {
       if (!(body instanceof FormData)) return fail(400, "bad_request", "form");
@@ -486,6 +535,91 @@ export function createDemoWaai(input: DemoWaaiInput): DemoWaai {
     store.addMessage(chat.id, { body: message });
     return json({ ok: true, conversation_id: chat.id } satisfies OpenStartResponse);
   });
+
+  // ---- Digest, Ask, Preferences, Accounts ----------------------------------------------------------------
+  on("POST", "/digest", ({ body }) => {
+    const asked = asRecord(body).window;
+    const window: DigestWindow = asked === "today" || asked === "d3" || asked === "d7" || asked === "d30" ? asked : "d7";
+    // No generation: one bullet per chat from the summary it already has, and the tasks that are still open.
+    const chats = store.list().filter((c) => c.summary.narrative.trim());
+    const narrative = chats.map((c) => `- **${c.title}**: ${c.summary.narrative.replace(/\s+/g, " ").trim()}`).join("\n");
+    const out: DigestResponse = {
+      id: `demo-digest-${window}`,
+      window,
+      cached: true,
+      chat_count: chats.length,
+      narrative,
+      tasks: store.allTasks("open").map((t) => homeTaskDto(store, t)),
+      meetings: [],
+      has_audio: false,
+      audio_url: null,
+      auto_audio: false,
+      created_at: iso(nowMs()),
+    };
+    return json(out);
+  });
+  on("GET", "/digest/audio", () => fail(501, "not_implemented", text.notInDemo));
+
+  on("POST", "/search", ({ body }) => {
+    const q = typeof asRecord(body).q === "string" ? (asRecord(body).q as string).trim() : "";
+    if (!q) return fail(400, "invalid_input", "empty");
+    const sources: AskCitation[] = findMessages(q, true)
+      .slice(0, 5)
+      .map(({ chat, m }, i) => ({
+        index: i + 1,
+        message_id: m.id,
+        conversation_id: chat.id,
+        conversation_title: chat.title,
+        is_group: chat.isGroup,
+        sender: m.sender,
+        snippet: snippetOf(m),
+        sent_at: iso(m.sentAt),
+      }));
+    return json({ answer: sources.length > 0 ? text.askIntro : text.askNothing, sources } satisfies AskResponse);
+  });
+
+  const preferences = (): PreferencesResponse => ({
+    auto_detect_summary_lang: store.autoDetectSummaryLang,
+    quick_reactions: store.quickReactions,
+    quick_reaction_count: DEFAULT_QUICK_REACTIONS.length,
+  });
+  on("GET", "/preferences", () => json(preferences()));
+  on("PUT", "/preferences", ({ body }) => {
+    const flag = asRecord(body).auto_detect_summary_lang;
+    if (typeof flag !== "boolean") return fail(400, "invalid_input", "invalid_input");
+    store.autoDetectSummaryLang = flag;
+    return json(preferences());
+  });
+  on("PUT", "/preferences/quick-reactions", ({ body }) => {
+    const emojis = asRecord(body).emojis;
+    const ok = Array.isArray(emojis) && emojis.length >= 1 && emojis.length <= DEFAULT_QUICK_REACTIONS.length && emojis.every((e) => typeof e === "string" && e.length > 0 && e.length <= 16);
+    if (!ok) return fail(400, "invalid_input", "invalid_input");
+    store.quickReactions = [...(emojis as string[])];
+    return json(preferences());
+  });
+  on("DELETE", "/preferences/quick-reactions", () => {
+    store.quickReactions = [...DEFAULT_QUICK_REACTIONS];
+    return json(preferences());
+  });
+
+  on("GET", "/wa-accounts", () =>
+    json({
+      accounts: [
+        {
+          id: DEMO_ACCOUNT_ID,
+          status: "connected",
+          display_name: store.ownerName,
+          phone_number: store.ownerPhone,
+          last_error: null,
+          owner_email: store.ownerEmail,
+          owner_user_id: null,
+        },
+      ],
+    } satisfies WaAccountsResponse),
+  );
+  // Linking, disconnecting, removing an account and wiping the data would change a real WhatsApp account (B6).
+  on("(?:POST|PUT|PATCH|DELETE)", "/wa-accounts(?:/.*)?", () => fail(501, "not_implemented", text.notInDemo));
+  on("POST", "/reset-data", () => fail(501, "not_implemented", text.notInDemo));
 
   // ---- no sensible demo answer ----------------------------------------------------------------------------
   on("POST", "/chat/text-assist", () => fail(501, "not_implemented", text.notInDemo));

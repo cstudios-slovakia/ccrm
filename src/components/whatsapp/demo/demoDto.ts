@@ -3,6 +3,7 @@ import type {
   ChatListItem,
   ChatSummaryPreview,
   ConversationResponse,
+  HomeTask,
   MessageDto,
   QuotedMessage,
   ReactionGroup,
@@ -10,6 +11,7 @@ import type {
   SummaryWindowKey,
   TaskDto,
 } from "../api/contract.ts";
+import { crmHashForRecord } from "../lib/routes.ts";
 import type { DemoDirectory } from "./demoDataset.ts";
 import type { DemoStore, StoredChat, StoredMessage, StoredTask } from "./demoStore.ts";
 
@@ -92,6 +94,11 @@ export function taskDto(store: DemoStore, t: StoredTask): TaskDto {
     crm_linked: true,
     attachments: [],
   };
+}
+
+/** A task as the Tasks tab and the Digest list it: the chat task plus the CRM address of its task row. */
+export function homeTaskDto(store: DemoStore, t: StoredTask): HomeTask {
+  return { ...taskDto(store, t), crm_url: `#${crmHashForRecord("task", t.crmTaskId, () => undefined)}` };
 }
 
 const lastOf = (chat: StoredChat): StoredMessage | undefined => chat.messages[chat.messages.length - 1];

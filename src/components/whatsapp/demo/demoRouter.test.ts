@@ -1,20 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  AskResponse,
   ChatCrmLinks,
   ConversationResponse,
   ConversationsResponse,
+  DigestResponse,
   MessageDto,
   MessageSearchResponse,
   MessagesResponse,
   MetaResponse,
   OpenCheckResponse,
   OpenStartResponse,
+  PreferencesResponse,
   ReactionResponse,
   SendMessageResponse,
   SummaryLookupResponse,
+  TasksResponse,
   TaskDto,
   UnreadResponse,
+  WaAccountsResponse,
 } from "../api/contract.ts";
 import { WaaiApiError, WaaiClient } from "../api/waaiClient.ts";
 import { rowBullets } from "../chats/summaryBullets.ts";
@@ -390,8 +395,7 @@ test("what has no demo answer is a calm error; admin routes are forbidden; nothi
   assert.equal((await rejection(client.get("/admin/members"))).code, "forbidden");
   assert.equal((await rejection(client.put("/admin/ai/provider", { provider: "x" }))).status, 403);
   assert.equal((await rejection(client.get("/something-else"))).code, "not_implemented");
-  // Phase 3 tabs are not built yet: the Tasks tab (no chat) answers not_implemented, not a crash.
-  assert.equal((await rejection(client.get("/tasks"))).code, "not_implemented");
+  assert.equal((await rejection(client.get("/digest/audio"))).code, "not_implemented");
 
   // The router only answers its own prefix and never calls the real fetch.
   const realFetch = globalThis.fetch;
@@ -435,4 +439,101 @@ test("a day-0 message in the future is pulled back to five minutes ago in the ch
   const { client } = setup(Date.parse("2026-07-15T06:00:00Z")); // 08:00 CEST; the newest message is dated 08:43
   const list = await client.get<ConversationsResponse>("/conversations");
   assert.equal(list.conversations[0]!.last_message_at, "2026-07-15T05:55:00.000Z");
+});
+
+test("Tasks tab: every task as a HomeTask, open first, filtered by status, ticking one moves it", async () => {
+  const { client } = setup();
+  const all = await client.get<TasksResponse>("/tasks");
+  assert.equal(all.tasks.length, 9);
+  assert.equal(all.crm_push_enabled, true);
+  const statuses = all.tasks.map((t) => t.status);
+  assert.deepEqual(statuses, [...statuses].sort((a, b) => (a === b ? 0 : a === "open" ? -1 : 1)), "open tasks come first");
+  const first = all.tasks[0]!;
+  assert.equal(first.origin, "waai");
+  assert.equal(first.crm_url, `#tasks?task=${first.crm_task_id}`);
+  assert.ok(first.conversation_title && first.conversation_id);
+
+  const open = await client.get<TasksResponse>("/tasks", { query: { status: "open" } });
+  const completed = await client.get<TasksResponse>("/tasks", { query: { status: "completed" } });
+  assert.equal(open.tasks.length + completed.tasks.length, 9);
+  assert.ok(open.tasks.every((t) => t.status === "open") && completed.tasks.every((t) => t.status === "completed"));
+
+  await client.patch(`/tasks/${open.tasks[0]!.id}`, { status: "completed" });
+  assert.equal((await client.get<TasksResponse>("/tasks", { query: { status: "open" } })).tasks.length, open.tasks.length - 1);
+
+  // Deleting and reopening say why in the language of the module, not with a code.
+  const done = completed.tasks[0]!;
+  assert.equal((await rejection(client.del(`/tasks/${done.id}`))).message, "This task is synced with the CRM and cannot be changed that way in the demo.");
+  assert.equal((await rejection(client.patch(`/tasks/${done.id}`, { status: "open" }))).status, 409);
+  assert.equal(((await client.post(`/tasks/${done.id}/crm`, { action: "retry" })) as { ok: boolean }).ok, true);
+  assert.equal((await rejection(client.post("/tasks/nope/crm", { action: "retry" }))).status, 404);
+});
+
+test("Digest: one bullet per summarized chat, the open tasks, no meetings and no audio", async () => {
+  const { client } = setup();
+  const digest = await client.post<DigestResponse>("/digest", { window: "d7", regenerate: false, lang: "en" });
+  assert.equal(digest.window, "d7");
+  assert.equal(digest.cached, true);
+  assert.equal(digest.chat_count, 4);
+  const bullets = digest.narrative.split("\n");
+  assert.equal(bullets.length, 4);
+  assert.ok(bullets.every((b) => b.startsWith("- **")), "a markdown list, the chat title in bold");
+  assert.ok(digest.tasks.length > 0 && digest.tasks.every((t) => t.status === "open"));
+  assert.deepEqual([digest.meetings, digest.has_audio, digest.audio_url, digest.auto_audio], [[], false, null, false]);
+  // An odd window falls back; `regenerate` is accepted and changes nothing.
+  assert.equal((await client.post<DigestResponse>("/digest", { window: "x", regenerate: true })).window, "d7");
+});
+
+test("Ask: citations for the words found, a calm sentence when nothing matches, an empty question is refused", async () => {
+  const { client } = setup();
+  const hit = await client.post<AskResponse>("/search", { q: "DOSKY", lang: "en" });
+  assert.equal(hit.answer, "In the demo, Ask searches the demo chats. These messages match:");
+  assert.ok(hit.sources.length >= 1 && hit.sources.length <= 5);
+  assert.deepEqual(hit.sources.map((s) => s.index), hit.sources.map((_, i) => i + 1));
+  assert.ok(hit.sources.every((s) => s.message_id.startsWith(s.conversation_id) && s.snippet.length > 0));
+  const times = hit.sources.map((s) => s.sent_at);
+  assert.deepEqual(times, [...times].sort().reverse(), "newest first");
+
+  // Several words: the phrase need not be contiguous.
+  const words = hit.sources[0]!.snippet.split(/\s+/).filter((w) => w.length > 3);
+  const multi = await client.post<AskResponse>("/search", { q: `${words[words.length - 1]} ${words[0]}` });
+  assert.ok(multi.sources.length >= 1);
+
+  const none = await client.post<AskResponse>("/search", { q: "zzzzqqqq" });
+  assert.deepEqual(none.sources, []);
+  assert.equal(none.answer, "Nothing found in the demo chats. Try another word.");
+  assert.equal((await rejection(client.post("/search", { q: "  " }))).status, 400);
+});
+
+test("Settings: preferences are kept in memory, quick reactions follow, the demo account is listed, changes are refused calmly", async () => {
+  const { client } = setup();
+  const prefs = await client.get<PreferencesResponse>("/preferences");
+  assert.deepEqual([prefs.auto_detect_summary_lang, prefs.quick_reactions.length, prefs.quick_reaction_count], [true, 6, 6]);
+
+  assert.equal((await client.put<PreferencesResponse>("/preferences", { auto_detect_summary_lang: false })).auto_detect_summary_lang, false);
+  assert.equal((await client.get<PreferencesResponse>("/preferences")).auto_detect_summary_lang, false);
+  assert.equal((await rejection(client.put("/preferences", { auto_detect_summary_lang: "yes" }))).status, 400);
+
+  await client.put("/preferences/quick-reactions", { emojis: ["🔥", "👍"] });
+  assert.deepEqual((await client.get<PreferencesResponse>("/preferences")).quick_reactions, ["🔥", "👍"]);
+  assert.deepEqual((await client.get<ConversationResponse>(`/conversations/${C1}`)).quick_reactions, ["🔥", "👍"], "the chat uses them");
+  assert.equal((await rejection(client.put("/preferences/quick-reactions", { emojis: [] }))).status, 400);
+  assert.equal((await rejection(client.put("/preferences/quick-reactions", { emojis: ["1", "2", "3", "4", "5", "6", "7"] }))).status, 400);
+  await client.del("/preferences/quick-reactions");
+  assert.equal((await client.get<PreferencesResponse>("/preferences")).quick_reactions.length, 6);
+
+  const { accounts } = await client.get<WaAccountsResponse>("/wa-accounts");
+  assert.equal(accounts.length, 1);
+  assert.deepEqual([accounts[0]!.id, accounts[0]!.status, accounts[0]!.display_name], ["demo-wa-account", "connected", "Andrej Kollár"]);
+  assert.ok(accounts[0]!.phone_number);
+
+  for (const call of [
+    () => client.post("/wa-accounts"),
+    () => client.post("/wa-accounts/demo-wa-account/disconnect"),
+    () => client.del("/wa-accounts/demo-wa-account"),
+    () => client.post("/reset-data"),
+  ]) {
+    const err = await rejection(call());
+    assert.deepEqual([err.status, err.code, err.message], [501, "not_implemented", "Not available in the demo."]);
+  }
 });
