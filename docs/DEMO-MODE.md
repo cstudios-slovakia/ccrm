@@ -68,7 +68,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 
 | # | Phase | Status | Version / commit | Date |
 |---|---|---|---|---|
-| 1 | Foundation: context, packs, company, test harness | ⬜ | | |
+| 1 | Foundation: context, packs, company, test harness | ✅ | source only, no version (git log: `(demo phase 1)`) | 2026-11-03 |
 | 2 | Installer: demo language + currency, HUF, no default divisions | ⬜ | | |
 | 3 | Re-seed demo data (endpoint, CLI, Settings) | ⬜ | | |
 | 4A | Content: clients, leads, tasks, timeline | ⬜ | | |
@@ -122,53 +122,108 @@ phase 5. **Do not deploy until phase 5 is done.** It is the phase that builds `d
 
 Goal: everything the content phases code against, and the tests that keep them honest.
 
-- [ ] `demo_seed/context.php`: `demo_ctx(PDO $pdo): array` — lang, currency, country,
+- [x] `demo_seed/context.php`: `demo_ctx(PDO $pdo): array` — lang, currency, country,
       VAT rates, locale formats — read from `system_settings` (`SYSTEM_LANGUAGE`,
       `SYSTEM_CURRENCY`; fallback currency from B4). Cached per request, with
       `demo_ctx_reset()` for tests.
-- [ ] Money: `demo_money(float $eur): float` and `demo_money_fmt(float $amount): string`
+- [x] Money: `demo_money(float $eur): float` and `demo_money_fmt(float $amount): string`
       per C4 (rates, rounding, formatting). Unit tests in the dry-run harness.
-- [ ] Text: `demo_text(string $s): string` resolves the placeholders of C5. Unknown
+- [x] Text: `demo_text(string $s): string` resolves the placeholders of C5. Unknown
       placeholder → exception (caught by the module runner, reported by the tests).
-- [ ] Packs: `demo_pack(PDO $pdo, string $module): array` loads
+- [x] Packs: `demo_pack(PDO $pdo, string $module): array` loads
       `demo_seed/packs/<lang>/<module>.php` (each returns a plain array). Missing pack →
       exception. See C2 for the layout.
-- [ ] `demo_seed/packs/{sk,hu,en}/company.php`: the full cast of Part D (company profile,
+- [x] `demo_seed/packs/{sk,hu,en}/company.php`: the full cast of Part D (company profile,
       users, employees, clients, leads, projects, products, suppliers) as **refs**
       (`C1`, `P3`, `owner`, …) with names, addresses, IDs. Every other pack refers to these
       refs, never repeats a name. `demo_ref(PDO, 'C1')` returns the record;
       `demo_ref_id('C1')` returns the row id (fixed id map in C3).
-- [ ] `demo_seed/company.php` (module `company`, runs first): writes
+- [x] `demo_seed/company.php` (module `company`, runs first): writes
       `COMPANY_BILLING_SETTINGS` (C7), `DIVISIONS` + `DIVISION_COLORS`, VAT rates,
       `SYSTEM_NAME`, time-tracking holiday country, and upserts the three demo users with
       the pack's display names (keep an existing password hash; set `password` only on insert).
-- [ ] `index.php`: final module order (C3), including modules that do not exist yet
+- [x] `index.php`: final module order (C3), including modules that do not exist yet
       (missing files are skipped, so wave 2 never edits this list). `demo_seed_all()`
       returns a per-module report `['module' => ['ok' => bool, 'rows' => int, 'error' => ?string]]`
       and writes the `DEMO_DATASET` setting (C8).
-- [ ] `demo_legacy_ids()` in `helpers.php`: the exact ids the pre-pack seeders wrote
+- [x] `demo_legacy_ids()` in `helpers.php`: the exact ids the pre-pack seeders wrote
       (setup.php inline block, `ccrm_seed_default_*` in schema.php, `sai-demo-1`), read off
       the current code, as `[table => [ids or LIKE patterns]]`. Used by phase 3 and 5.
-- [ ] Replace `demo_user_names()` / `demo_user_ids()`: names **and login e-mails** come from
+- [x] Replace `demo_user_names()` / `demo_user_ids()`: names **and login e-mails** come from
       the company pack (B6); ids stay `'u-' . md5(lowercase email)`. Add
       `demo_all_user_emails()` = the demo logins of all three packs + the legacy
       `alex@ / sam@ / jordan@crm.com`, for the wipe.
-- [ ] `demo_divisions()` in `lookup.php` returns the pack's divisions; delete the
+- [x] `demo_divisions()` in `lookup.php` returns the pack's divisions; delete the
       `'Cstudios'` fallback (and the `?? 'Cstudios'` in `clients.php` / `projects.php` is
       removed by the phases that port those modules).
-- [ ] Test harness (C9): `scripts/lib/demo-fake-pdo.php`, `scripts/test-demo-packs.php`,
+- [x] Test harness (C9): `scripts/lib/demo-fake-pdo.php`, `scripts/test-demo-packs.php`,
       `scripts/test-demo-seed.php`, optional `scripts/test-demo-seed-db.php`; npm scripts
       `test:demo-packs`, `test:demo-seed`, `test:demo-seed:db`. Add the first two to
       `npm run test:unit`'s chain (or to `npm test`) so every later session runs them.
-- [ ] Write the module-author contract into the header of `index.php` (C2, C3, C5) so a
+- [x] Write the module-author contract into the header of `index.php` (C2, C3, C5) so a
       content session can work from the code alone.
-- [ ] Do **not** port content modules; do **not** touch `setup.php` or `schema.php`.
+- [x] Do **not** port content modules; do **not** touch `setup.php` or `schema.php`.
 
 Done when: both test scripts pass for `company` in all four combinations
 (sk/EUR, hu/HUF, hu/EUR, en/USD), and a deliberately broken pack (an extra key in `hu`)
 makes `test:demo-packs` fail.
 
-**Left over:** —
+**Left over:**
+
+Built exactly as listed; both test scripts are green for `company` in sk/EUR, hu/HUF, hu/EUR, en/USD
+(164 checks), and a hu pack with one extra key makes `test:demo-packs` exit 1. What a later session needs to know:
+
+- **How to add assertions (deviation from A4's wording).** A4/C9 say "add `assert_demo_<module>()` to
+  `test-demo-seed.php`", but A3 gives that file to phase 1 only, so seven parallel sessions would conflict. Each content
+  phase instead creates **one new file `scripts/demo-assert/<module>.php`** that returns `minRows`, `idAllow`,
+  `leakSkip` and a `check` closure. `scripts/demo-assert/company.php` is the worked example; the format is also in the
+  header of `public/api/demo_seed/index.php`. `test-demo-seed.php` loads whatever is there.
+- **What the dry run covers.** Only modules that have a code file **and** all three packs ("ported"). A module still on
+  the old `demo_t()` style (today: clients, projects, tasks, offers, warehouse, finance, whatsapp, email, meetings,
+  workflows, sai) is listed as "not covered" until its pack exists. (I ran every one of them through the fake once by
+  hand: all pass, including `SwarmManager`'s DDL, so the fake is not the bottleneck.)
+- **The fake PDO reads the real schema** (`ccrm_schema_statements()` plus every `ADD COLUMN` in `api/*.php`) and fails a
+  write like strict MySQL: unknown table/column, NOT NULL without a value, too-long VARCHAR, bad ENUM, duplicate key.
+  An UPDATE/DELETE/INSERT it cannot interpret throws; an uninterpretable SELECT returns no rows and is printed as WARN.
+  If a column is added only by dynamic SQL, `DEMO_FAKE_LENIENT=1` downgrades the error while you trace it.
+- **Files outside A3's "Owns" that I had to create (all new, nothing existing of another phase edited):**
+  `scripts/demo-assert/` (above), `scripts/test-demo-seed-db.php` (listed in A4 but not in A3), and the **repo-root
+  mirror** `api/demo_seed/{company,context,packs}.php` + `api/demo_seed/packs/**`. `sync:backend` mirrors a file only if
+  it already has a root copy, so a new module/pack must be `cp`'d once to `api/demo_seed/` (the repo root is the docroot
+  in Docker and on the server). `test:demo-seed` now fails while a root copy is missing or different.
+  `helpers.php`, `index.php`, `lookup.php` were mirrored by `npm run sync:backend`.
+- **Interim state until phase 5 (expected, per A3 "between waves").** `setup.php` still creates alex@/sam@/jordan@crm.com
+  *and* `company` creates the edition's three, so a fresh demo install has six logins. The old modules call
+  `demo_user_names()`, which now returns the pack's display names, so their task/lead owners use the new names;
+  `demo_user_ids()` still answers `'Alex'/'Sam'/'Jordan'` (marked "until phase 5") so `warehouse.php`/`whatsapp.php` keep
+  working. **`email.php` stops attaching the demo mailbox** (it derives `strtolower($name).'@crm.com'` from
+  `demo_user_names()`); phase 4D fixes it by using `demo_users()['owner']['email']`. `api/seed_demo_data.php` (CLI) still
+  runs the old modules and works, because they call `demo_lang($pdo)` (which builds the context) before any user helper.
+- **Part D deviations.** The company IDs in D1 did not pass their own checksums, and B12 asks for IDs that "pass format
+  checks", so I used checksum-valid invented ones: sk IČO `53 418 271` (was `…276`), DIČ `2121384760` / IČ DPH
+  `SK2121384760` (was `…765`); hu adószám `27184532-2-08` / `HU27184532` (was `27184539-…`). Cégjegyzékszám `08-09-031472`
+  and EIN `84-2917365` are as in D1. `test:demo-packs` verifies IČO (mod 11), DIČ (÷ 11), adószám check digit, EIN format
+  and every IBAN (mod 97) of the packs. Bank: sk `Danubia banka` code `9980`, hu `Rába Bank` `995`, routing numbers start
+  `99` (an unassigned prefix, valid ABA checksum). Foreign records (C4, L10, S1) have `_foreign: true` in all three packs.
+- **`demo_legacy_ids()` format**: `'table' => [ids/patterns]`, `'table.column' => [...]` for tables without an `id`
+  (join tables); a value containing `%` is a LIKE pattern, anything else an exact id. Deliberately **not** in it: the
+  `fc-*` financial category tree (still reused by `finance.php`) and nothing for `sim<id>_*` tables (phase 3 drops them).
+  `swarm_simulations` is in it but is created lazily by `SwarmManager`, not by `schema.php`.
+- **Company pack shape** (so the content packs can rely on it): `brand`, `company` (profile), `billing` (texts,
+  methods, `usp[4]`), `divisions[2]`, `users` keyed `owner|pm|sales`, `employees` E1–E6 (`pin`, `salaryEur`, `user`),
+  `clients` C1–C6 + L7–L11 (`name`, `legalName`, `short`, `type`, `stage` = the `demo_lead_states()` role, `contact`,
+  address, ids, `brief`, `valueEur`, `rating`), `projects` P1–P5 (`name`, `code`, `client`, `valueEur`), `items` I1–I8,
+  `suppliers` S1–S3, `warehouses` W1–W2. Placeholders `{user:…}` also accept an employee ref; `{client:…}`/`{contact:…}`
+  accept C and L refs; a ref of the wrong kind throws (`{project:C1}`).
+- **Not built here, on purpose:** the "document totals reconcile" assertion (C9) — needs the offers/invoices/orders
+  tables, so 4B adds it in `scripts/demo-assert/offers.php`; the time-tracking holiday country is **not** a setting
+  (the server derives it from `COMPANY_BILLING_SETTINGS.country`), so `company` writes the country and
+  `demo_ctx()['holidayCountry']` carries B9's intent (null for en) for 4C; `SYSTEM_LANGUAGE`/`SYSTEM_CURRENCY` are
+  not written by `company` (phase 2/3 own them).
+- **`test:demo-seed:db` is written but was never run** (no MySQL here). It refuses a non-empty database, runs one
+  edition per invocation (`--combo=hu/EUR`), and without `CCRM_TEST_DSN` exits 0 with a note.
+- `npm test` now runs `test:demo-packs` and `test:demo-seed` (plain `php`, no extension beyond mbstring/json), so
+  `docs/TESTING.md`'s "no PHP needed" line is no longer true for `npm test`; phase 5 should say so (not in my Owns).
 
 ### Phase 2 — Installer: demo language + currency (wave 1, medium)
 
@@ -451,6 +506,25 @@ one titled "Phase W" that the planning session handed to the user.
     prefix. Changing that is a separate decision.
 13. The holiday calendar supports SK and HU only (`holidays_lib.php`), so the English (US)
     pack has no public holidays (B9).
+14. **Stray recurring-task columns in two other tables.** `ccrm_schema_statements()` in `public/api/schema.php`
+    declares `task_kind`, `recurrence_json`, `recurring_source_id`, `recurring_occurrence_date` in the CREATE TABLE of
+    `users` (~line 32) and `leads` (~line 88), not only `tasks` (~165). *Symptom:* a fresh install has four unused nullable
+    columns on `users` and `leads`; installs upgraded from an older version do not (no migration adds them there).
+    *Root cause:* the recurring-tasks change (1.13.33) pasted the block after the `metadata_json … 'Plugin support'` line,
+    which appears in three CREATE TABLEs. *Fix:* delete the four lines from the `users` and `leads` blocks (do not drop
+    columns on existing installs; they are harmless). Not fixed here (schema.php is phase 5's).
+15. **The English demo gets the Slovak holiday calendar in time tracking.** `ccrm_holiday_company_country()`
+    (`public/api/holidays_lib.php`) maps `COMPANY_BILLING_SETTINGS.country` to SK/HU and answers `'SK'` for anything else,
+    so a US company ("United States") is shown Slovak public holidays; `employee.workCountry` can only be SK/HU too.
+    B9 wants "none" for en. *Fix options for 4C:* seed the en time entries on dates that are not SK holidays and say so
+    in the pack, or teach the calendar a "no holidays" country (touches `holidays_lib.php` and `holidays.ts`).
+16. **`sync-backend` never creates a root copy of a dynamically loaded file.** A module (`demo_seed/<module>.php`, loaded
+    by `__DIR__ . '/' . $module`) or a pack (`require $path`) has no literal `require`, so `npm run sync:backend` neither
+    mirrors it nor warns; installs served from the repo root (Docker) would not find it. `test:demo-seed` now checks the
+    `api/demo_seed/` mirror; a general fix is to let `sync-backend` mirror whole directories that already have a root copy.
+17. **`email.php` attaches the mailbox through `strtolower($name) . '@crm.com'`** (demo_seed/email.php ~line 41), i.e.
+    it assumes the user's name is the local part of their e-mail. With localized logins (B6) that is false for every
+    edition; 4D must read the e-mail from `demo_users()` instead.
 
 ---
 
