@@ -78,7 +78,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 4E | Content: SAI (stored entries + built-in demo) | ✅ | source only, no version (git log: `(demo phase 4E)`) | 2026-11-03 |
 | 4F | Content: automations (+ run logs), service tickets | ✅ | source only, no version (git log: `(demo phase 4F)`) | 2026-11-03 |
 | W | WAAI demo loader: three language editions (**WAAI repo**) | ⬜ | | |
-| 5 | Cutover: remove legacy seeders, wipe, cleanup, QA, build | ⬜ | | |
+| 5 | Cutover: remove legacy seeders, wipe, cleanup, QA, build | 🟡 | v1.13.40-Nectarine (git log: `v1.13.40-Nectarine`); missing: the browser QA audit (skipped on the user's instruction) and the MySQL run (no database here) | 2026-11-03 |
 
 ## A3. Waves, parallelism and effort
 
@@ -752,35 +752,94 @@ one titled "Phase W" that the planning session handed to the user.
 
 ### Phase 5 — Cutover, cleanup, QA, build (wave 3, high)
 
-- [ ] `setup.php`: delete the inline demo block (`$demoTextByLanguage`, leads lead-1..3,
+- [x] `setup.php`: delete the inline demo block (`$demoTextByLanguage`, leads lead-1..3,
       ev-*, email-*, task-*), the `ccrm_seed_default_*` calls and the duplicate
       `ccrm_seed_default_employees` call. Demo install = settings + `demo_seed_all()`.
-- [ ] `schema.php`: remove the seed calls from `ccrm_apply_migrations()`
+- [x] `schema.php`: remove the seed calls from `ccrm_apply_migrations()`
       (`ccrm_seed_default_financial_categories`, `_employees`, `ccrm_repair_demo_employee_vacations`,
       `_warehouses_and_items`, `_orders`, `_invoices_and_projects`, `_tickets`) and delete
       the functions once nothing calls them. Check with grep that nothing else does.
-- [ ] `wipe_demo.php`: use `demo_wipe_demo_rows()` for the demo part; keep its documented
+- [x] `wipe_demo.php`: use `demo_wipe_demo_rows()` for the demo part; keep its documented
       "leave demo mode → clean slate" behaviour for the rest; add tickets, ticket messages,
       support contracts, time entries, time activity and workflow logs, which it misses today.
-- [ ] Remove `src/utils/mockEmployees.ts` and the "seed mock employees" button in
+- [x] Remove `src/utils/mockEmployees.ts` and the "seed mock employees" button in
       `EmployeesView.tsx` (the server seeds employees; point the empty state at Settings ›
       Re-seed). Delete `src/utils/mockData.ts` if still unused (it has no importers today).
-- [ ] Grep for leftovers of the old story in demo paths: `Cstudios`, `cstudios.sk`,
+- [x] Grep for leftovers of the old story in demo paths: `Cstudios`, `cstudios.sk`,
       `Novák`, `Kováčová`, `Müller`, `Slavín`, `lead-1`, `proj-vila-slavin`, `pt_luxury_stone`.
       Fix in demo code; list hits outside demo code under A5 instead of changing them.
-- [ ] Grep the repo for `alex@crm.com`, `sam@crm.com`, `jordan@crm.com` (README, docs,
+- [x] Grep the repo for `alex@crm.com`, `sam@crm.com`, `jordan@crm.com` (README, docs,
       LoginView placeholder `e.g. alex@crm.com`, tests that are not the QA/screenshot
       datasets) and update them to the new logins or a neutral placeholder.
 - [ ] Delete `whatsapp_demo.json` (the sk copy kept for the WAAI loader) once phase W is ✅.
-- [ ] Docs: README demo section (language/currency choice, logins per edition, re-seed), `docs/WHATSAPP-DEMO-DATA.md`,
+- [x] Docs: README demo section (language/currency choice, logins per edition, re-seed), `docs/WHATSAPP-DEMO-DATA.md`,
       `entities_overview.md` only if a table's meaning changed.
 - [ ] Run everything: `npm run test:demo-packs`, `npm run test:demo-seed`, `npm test`,
       `node scripts/qa/run-qa.mjs --full`. If a MySQL is available, `npm run test:demo-seed:db`
       for sk/EUR, hu/HUF, hu/EUR, en/USD and a re-seed from a legacy install.
-- [ ] Version bump, changelog (one entry covering phases 2–5), build, commit, push.
-- [ ] Manual test script for the user (C14) in the report.
+- [x] Version bump, changelog (one entry covering phases 2–5), build, commit, push.
+- [x] Manual test script for the user (C14) in the report.
 
-**Left over:** —
+**Left over:**
+
+Built as listed except two boxes: **`whatsapp_demo.json` is not deleted** (phase W is ⬜, the WAAI loader still reads it;
+`test:demo-seed` keeps checking it equals the sk file; when W is ✅ delete the file, its root mirror and that check) and
+**"Run everything" is partly done**: `test:demo-packs` (green), `test:demo-seed` (1168 checks, green), `test:demo-wipe` (68, green),
+`tsc`, `test:unit` (1238 tests, 0 failed) and `npm run build` are green, but **`node scripts/qa/run-qa.mjs --full` was not run (the
+user said to skip QA)**, so the commit says `QA: pending`, and `test:demo-seed:db` was not run (no MySQL here). Set 5 to ✅ after
+`npm run test:qa:pending` / a full run. What a later session needs to know:
+
+- **Wipe demo data is two functions now.** `demo_wipe_demo_rows($pdo, ['keepUsers' => true])` (new option, `wipe.php`) is "what is a demo row";
+  `demo_leave_demo_mode($pdo, $keepConfigs)` (new `demo_seed/leave.php`, mirrored to `api/demo_seed/`) is the endpoint's clean slate:
+  A) DELETE every transactional table, now including tickets, ticket messages/time/task links, support contracts, time entries, time activity,
+  workflow logs; B) `demo_wipe_demo_rows` with `keepUsers`; C) in one last transaction either keep logins and settings (DEMO_MODE false,
+  DEMO_DATASET removed) or replace logins and settings (random-password admin, installed language and currency kept, no divisions); D) DDL
+  (demo type tables, every simulation). DEMO_MODE flips in C, so a failure in A or B leaves a demo that can be wiped again.
+  `wipe_demo.php` is a thin wrapper. `scripts/test-demo-wipe.php` covers it (mutation-checked: dropping `time_entries` or `workflow_logs` from the
+  list, or dropping `keepUsers`, turns it red; the test keeps its own copy of the table list on purpose).
+- **Kept behaviour:** "keep configs" keeps every login, as before. That leaves the three demo logins (password `password`) on an instance that is no
+  longer a demo (A5 #53). Leaving demo mode still removes **all** SAI simulations and all tasks/leads/projects, user-made or not.
+- **Cross-phase test failures fixed** (the merged branch was red: `test:demo-seed` 20 failures, `test:demo-wipe` 3, `test:unit` 1): assertion
+  files narrowed to their own module's rows (`scripts/demo-assert/clients.php`, `tasks.php`; A5 #30/#38), the finance assertions taught the
+  salary-expense shape that `sync.php` derives (planned, issued the 1st, and one expense per salary row, A5 #33), the idempotency check of
+  `test-demo-wipe.php` ignores clock-stamped `created_at`/`updated_at` (within two minutes of now), auto-increment ids and the random device key,
+  and now says which columns differ; `test-demo-seed.php` fails if any module fails on the second run (it used to discard that report); two
+  demo queries on `tasks` got the `/* recurring-template */` annotation (`tickets.php`, `time.php`).
+- **Real defects found on the way (fixed):** `demo_legacy_ids()` lacked the six pre-4D WhatsApp number checks, so a re-seed or wipe of an older
+  install left them (A5 #49); `whatsapp.php` relied on `ON DELETE CASCADE` to remove its links before re-inserting them (A5 #50);
+  `ccrm_demo_mailbox_wipe()` knew only the three legacy logins (A5 #24, fixed at the source).
+- **Files outside A3's "Owns" that I touched** (this phase is the cutover, nobody else is on the branch): `demo_seed/{wipe,helpers,whatsapp,tickets,time}.php`,
+  `demo_mailbox.php`, `scripts/demo-assert/{clients,tasks,finance}.php`, `scripts/test-demo-{seed,wipe}.php`, `package.json` (`test:demo-wipe`, chained into
+  `npm test`), `docs/TESTING.md` (PHP is needed for `npm test`, section 5i), `LoginView.tsx`, `EmployeeDetailView.tsx`, `EmployeeFormScreen.tsx`
+  (placeholders), `EmployeeListView.tsx`, `ClientsView.tsx` (a comment), `public/widget-test.html` (now `?project=`),
+  `docs/db_integration_notes/WIZARD_INSTALL.md`. New: `src/utils/employeeSettingsDefaults.ts` (the Employees fallback settings; the server's own
+  default, in English; the old `DEFAULT_MOCK_SETTINGS` had Slovak labels and ids the server does not use).
+- **Removed from `schema.php`:** the seven seeders and their helpers (`ccrm_demo_employee_vacations/_salaries`), and three one-off `UPDATE`s of `proj-vila-slavin` /
+  `proj-kuchyna-neolith` in `ccrm_migrate_tickets()` (they only touched rows the seeder had made; the widget settings of that project are gone with them).
+  `ccrm_default_financial_categories()` stays (the `finance` module writes the tree). No schema change, so the 4-place rule did not apply.
+- **`setup.php`** now retries the `company` module once and fails the install (before `config.php` is written) if the demo logins still cannot be created.
+- **Greps (the old story).** Fixed in demo/app code: login placeholder, two `cstudios.sk` placeholders, a Cstudios comment, the widget test page. Left, by
+  design: the legacy-id catalogue (`demo_legacy_ids()`, the wipe docs and tests, which must name the old ids to remove them), `scripts/demo-assert/company.php`
+  and `scripts/test-demo-seed.php` (they assert the old names are *absent*), `src/utils/swarm/demoData.test.ts` (same), the QA dataset (`tests/e2e/`,
+  `scripts/qa/`), the screenshot dataset (`tests/demo/`, `scripts/capture-*.mjs`), unit-test fixtures. The rest is A5 #52. `Müller` is kept: Thomas Müller
+  is L10 in the new story. `README.md` had no old logins; it has a Demo mode section now.
+- Not done: the fake PDO still cannot answer ``SELECT … WHERE LOWER(`email`) = ?`` (A5 #35), so the mail → lead-timeline filing is untested offline.
+
+**Manual test script (C14) - for a real install**
+
+1. Install **Demo → Magyar → EUR**. Settings › Company › Language & currency shows Magyar and EUR. Open an invoice: 27 % VAT and `€`. Spot-check clients,
+   employees, WhatsApp, e-mail, SAI, meetings, automations for any Slovak or English name (only the German architect Thomas Müller and the Italian
+   supplier are foreign on purpose). Log in as `kollar.andras@lapidea.example` / `password`; the login picker lists the three Hungarian names and no
+   Alex/Sam/Jordan. Time tracking has ~3 weeks of entries, Tickets has 5 with a contract, Automations has run history.
+2. Install **Demo → Magyar → HUF**: the same data in forint, no decimals.
+3. Install **Demo → English → USD** (`alex.morgan@…`) and **Demo → Slovenčina → EUR** (`andrej.kollar@…`): same checks (en: 8 % tax, `$`; sk: 23 %).
+4. On an **old demo install** (before this version): update, open Settings › System › Re-seed demo data. The notice lists the missing modules (time
+   tracking, SAI, meetings, automations...). First create a lead of your own. Re-seed **hu / EUR**: time tracking, SAI (two entries, demo toggle off), the
+   meeting room and automations (with logs) are filled, you land on the login picker with the Hungarian logins, and **your lead is still there**. Also
+   check the old `alex@crm.com` login is gone.
+5. Extra for this phase: on a demo, Employees with no employees (delete them, or a re-seed with the company off) shows a link to Re-seed, not a seed
+   button. Settings › Wipe demo data (answer "keep" first on a throwaway copy): tickets, time entries and automation logs are gone too, DEMO_MODE is
+   off and the Re-seed card is hidden. On a **real** (non-demo) install that was updated: no `TCK-000001/2` tickets appear.
 
 ## A5. Findings in existing code (from the analysis, 2026-11-02)
 
@@ -982,6 +1041,41 @@ one titled "Phase W" that the planning session handed to the user.
     `demo_row_exists($pdo, 'leads', $id)` (as `tickets.php` does) or rely on the module order and run `test:demo-seed:db`.
 47. **The workflow engine's error texts are English only** (`workflows_engine.php`, e.g. "This "Convert lead to project"
     action has no project type set."). The demo run history shows them localized, which a real run will not. Not changed.
+48. **The merged branch was red although every phase had been green alone.** *Symptom:* `test:demo-seed` 20 failures (5 per combination), `test:demo-wipe` 3,
+    `test:unit` 1. *Root cause:* (a) assertion files judged every row of a shared table (`tasks`, `timeline_events`; A5 #30/#38); (b) the finance assertions
+    were written before the employees module existed and rejected the salary expenses `sync.php` itself derives ("planned" with the 1st of the month as issue
+    date, one per salary row); (c) the idempotency check of `test-demo-wipe.php` compared clock-stamped `created_at`/`updated_at`, an auto-increment id and a
+    random device key, which differ between any two runs once a run takes a second; (d) two demo queries on `tasks` lacked the recurring-template annotation.
+    *Fix (done in phase 5):* narrow (a) to the module's own ids, teach (b) the derived shape, normalise exactly the three kinds of value in (c) and print the
+    differing columns, annotate (d). No check was loosened: each narrowing was mutation-checked or keeps the universal part (a card belongs to a written lead, is not in the future).
+49. **A wipe or re-seed of an older demo left six WhatsApp number checks behind.** *Symptom:* `whatsapp_numbers` rows `421903245118…` survive `demo_wipe_demo_rows()`
+    on an install seeded before 4D. *Root cause:* 4D replaced the numbers in the JSON files; the wipe reads the numbers of the files that exist, and the legacy six
+    survived only in `demo_whatsapp_wipe_numbers()`, which the wipe does not call. *Fix (done):* `'whatsapp_numbers.phone_digits'` in `demo_legacy_ids()`.
+50. **The WhatsApp demo module was not idempotent without foreign keys.** *Symptom:* a second `demo_seed_all()` failed in `whatsapp` with a duplicate on `uq_wa_link`
+    in the dry run (and would on any wipe that runs with foreign keys off before the module's own delete). *Root cause:* it deleted the placeholder integration client
+    and relied on `ON DELETE CASCADE` to remove its `whatsapp_links`; the fake does not cascade. It went unnoticed because `test-demo-seed.php` discarded the second
+    run's report. *Fix (done):* explicit `DELETE FROM whatsapp_links WHERE client_id = ?` first; the second-run check now fails if any module fails.
+51. **`demo-fake-pdo.php` cannot execute cascades, `GET_LOCK`, `DROP TABLE` semantics or `LOWER(col) = ?`** (A5 #35 again). Anything that depends on them is untested offline: run
+    `npm run test:demo-seed:db` where a MySQL exists. Not changed.
+52. **Old-story hits outside demo code (listed, not changed, per A4 phase 5).** Generic form placeholders with a Slovak surname: `ClientsView.tsx` (2), `LeadsDatagrid.tsx`,
+    `OrderDetailView.tsx` (2), `priceOffers/NewClientModal.tsx`, `AutomationView.tsx`, `EmployeeFormModal.tsx`, `pdf/{Default,CustomAi}OfferTemplate.tsx`, `SettingsView.tsx`
+    ("Sara Nováková"); a comment in `useTaskDictation.ts` and `mailTimeline.ts`; `composer.json` ("Cstudios CRM", author "Cstudios Slovakia"); company marketing in
+    `scripts/generate-hosting-specs-pdf.mjs`, `presentation/*.html`, `scrapbook/koperniq-ticket-spec.html`; example payloads in `docs/db_integration_notes/API_CONTRACTS.md`;
+    local folder paths in `docs/prompts/waai-integration-sonnet.md` and `docs/WAAI-NATIVE-MODULE.md` (a real directory name, not demo); test fixtures (`src/utils/*.test.ts`,
+    `scripts/test-*.php`, `scripts/probe-*`, `tests/e2e/`, `tests/demo/demoData.ts`, `scripts/capture-module-screenshots.mjs`) which are independent datasets by A1. *Proposed fix:*
+    replace the placeholders with `Acme` / neutral names in one pass (they are `t(en, sk, hu)` strings, no logic), the rest as the owners see fit.
+53. **After "Wipe demo data" with *keep configuration*, the three demo logins stay and still accept `password`.** *Symptom:* an instance that has left demo mode (and may be on a public
+    host) keeps admin / project-manager accounts with a published password. *Root cause:* unchanged behaviour of the endpoint: with `keep_configs` it never touched users, and now it
+    must not delete them either, because the admin who pressed the button is usually one of them. *Proposed fix:* after the wipe, show the demo logins and ask for a new password for the
+    caller (and offer to delete the other two), or have `keep_configs` rotate the password hash of every demo login to a random value and return the caller's once, as the full reset does for its admin.
+54. **`src-php/Swarm/CrmContextExtractor.php` (~line 660) invents three company social posts on any install without social data**, in Slovak, one about "rezidencia Slavín" and Calacatta Gold.
+    *Symptom:* a real company's SAI simulation reads fabricated posts as its own marketing history. *Root cause:* a "curated fallback" written for the old demo. *Proposed fix:* return `[]`,
+    or serve this only when `DEMO_MODE` is on (and then from the pack). Not changed (real-install behaviour, not in this phase's list).
+55. **Stray recurring-task columns in `users` and `leads` (A5 #14) are still in `CREATE TABLE`.** Not fixed in phase 5: removing them is a fresh-install-only schema edit with no demo effect.
+
+*Fixed or closed in phase 5:* #1 and #45 (`ccrm_seed_default_tickets` is deleted with every seeder, nothing seeds from a migration any more), #2 (re-seed, phase 3), #3 (4C), #4 (all three generations
+are gone: `setup.php` block, `schema.php` seeders, `mockEmployees.ts`), #11 and #18 (phase 2), #23 (the full reset deletes the logins' dependent rows by hand), #24 (`ccrm_demo_mailbox_wipe()` uses
+`demo_all_user_emails()`), #25 (every module ported), #30 and #38 (see #48), #33 (`demo_wipe_derived_ids()` lists `fr-sal-demo-%`), #35 stays open (see #51).
 ---
 
 # Part B. Decisions (final unless the user changes them)

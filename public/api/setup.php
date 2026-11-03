@@ -236,12 +236,8 @@ try {
         }
     }
 
-    // Pipeline stages, lead categories and task states are persisted values, so
-    // seed them in the language chosen (see ccrm_default_lists in schema.php).
-    $defaultLists = ccrm_default_lists($systemLanguage);
-    $leadStates = $defaultLists['leadStates'];
-    $leadCategories = $defaultLists['leadCategories'];
-
+    // Pipeline stages, lead categories and task states are persisted values: they are
+    // written in the language chosen (see ccrm_default_settings_for_language in schema.php).
     $baseSettings = ccrm_default_settings_for_language($systemLanguage);
     // Written for both install types, before any seeding reads it.
     $baseSettings['SYSTEM_CURRENCY'] = $systemCurrency;
@@ -261,187 +257,9 @@ try {
         foreach ($settings as $k => $v) {
             $insSet->execute([$k, $v]);
         }
-        // Sample finance categories are demo data. The schema pass above ran
-        // before DEMO_MODE existed, so it seeded nothing.
-        ccrm_seed_default_financial_categories($pdo);
-
-        // Demo accounts (password: "password"), stored hashed.
-        $demoUsers = [
-            ['Alex', 'alex@crm.com', 'password', 'admin', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop', '#10b981'],
-            ['Sam', 'sam@crm.com', 'password', 'project_manager', null, '#6366f1'],
-            ['Jordan', 'jordan@crm.com', 'password', 'project_manager', null, '#f59e0b'],
-        ];
-        foreach ($demoUsers as $u) {
-            $insUser->execute([$userId($u[1]), $u[0], $u[1], password_hash($u[2], PASSWORD_DEFAULT), $u[3], $u[4], $u[5]]);
-        }
-
-        // Demo copy follows the installation language too — a Slovak demo that
-        // opens on English sample records looks like a broken translation.
-        $demoTextByLanguage = [
-            'en' => [
-                'ev1_title' => 'Discovery Call Logged',
-                'ev1_body' => 'Discussed interior stone cladding options for the main showroom. Client is highly interested in thin porcelain slate slabs.',
-                'ev2_title' => 'Sent Digital Catalog & Pricing',
-                'ev2_body' => 'Emailed complete porcelain slate stone catalog and basic thickness pricing guidelines.',
-                'ev3_title' => 'Showroom Meeting Bratislava',
-                'ev3_body' => 'Met at our main showroom. Selected grey marble slab variants. Sam compiled official technical logistics requirements.',
-                'ev4_title' => 'Official Price Offer Sent',
-                'ev4_body' => 'Drafted and emailed formal budget quote detailing complete slabs cutting & assembly pricing.',
-                'ev5_subject' => 'Kitchen countertop drawings + sink cutout',
-                'ev5_body' => "Hello Jordan,\n\nthank you for the showroom visit last week. I am attaching the kitchen drawings from our architect — the worktop is 2.4 m long and 60 cm deep, with a 20 cm overhang above the dishwasher.\n\nThere are three things I would like to confirm before we go ahead:\n\n1. The sink is an undermount Blanco 500x400 mm, so the cutout has to be polished on all four sides.\n2. We would like the same stone for the 60 cm backsplash, in 12 mm thickness.\n3. Is a 4 cm mitred edge possible on the front side, or does it change the price significantly?\n\nDelivery would ideally fall in the second half of June — the kitchen units are being installed on 14 June.\n\nThank you and have a nice day,\nMartina Kováčová",
-                'ev6_subject' => 'RE: Kitchen countertop drawings + sink cutout',
-                'ev6_body' => "Hello Mrs. Kováčová,\n\nthank you for the drawings, everything is clear.\n\n1. The undermount cutout including the polishing of all four edges is part of the standard fabrication price, no surcharge.\n2. The 60 cm backsplash in 12 mm is no problem — I have added it to the quote as a separate item.\n3. The 4 cm mitred edge is possible; it adds roughly 180 EUR to the total because of the extra cutting and gluing.\n\nThe revised quote is attached. If you confirm it by Friday, we can book the laser measurement for 2 June and deliver in the week of 15 June, so you would be on time for the kitchen units.\n\nBest regards,\nJordan",
-                'ev7_message' => 'Good afternoon, we are renovating the kitchen of a family house in Trnava. I would need a price for a 2.4 x 0.6 m worktop in white quartz, including the sink cutout and a matching backsplash. Please send the estimate by e-mail, I am reachable in the afternoons.',
-                'task1_title' => 'Draft SLA contract for wholesale partner',
-                'task1_body' => 'Prepare standard wholesale SLA layout including slab delivery timelines.',
-                'task2_title' => 'Onsite laser measurement for kitchen countertop',
-                'task2_body' => 'Visit the property in Trnava to take precise Proliner measurements for Calacatta Quartz.',
-                'task3_title' => 'Slab delivery coordination from Italy',
-                'task3_body' => 'Coordinate with logistics for the 12mm thickness slabs arriving from Fiorano Modenese.',
-            ],
-            'sk' => [
-                'ev1_title' => 'Zaznamenaný úvodný hovor',
-                'ev1_body' => 'Prebrali sme možnosti interiérového kamenného obkladu pre hlavný showroom. Klient má veľký záujem o tenké porcelánové bridlicové dosky.',
-                'ev2_title' => 'Odoslaný digitálny katalóg a cenník',
-                'ev2_body' => 'E-mailom sme poslali kompletný katalóg porcelánového kameňa a základný cenník podľa hrúbky.',
-                'ev3_title' => 'Stretnutie v showroome Bratislava',
-                'ev3_body' => 'Stretli sme sa v našom hlavnom showroome. Klient si vybral sivé mramorové dosky. Sam spísal technické a logistické požiadavky.',
-                'ev4_title' => 'Odoslaná oficiálna cenová ponuka',
-                'ev4_body' => 'Pripravili a e-mailom odoslali formálnu cenovú ponuku vrátane rezania a montáže dosiek.',
-                'ev5_subject' => 'Nákresy kuchynskej dosky + výrez na drez',
-                'ev5_body' => "Dobrý deň Jordan,\n\nďakujem za návštevu showroomu minulý týždeň. Posielam v prílohe nákresy kuchyne od nášho architekta — doska má 2,4 m na dĺžku a 60 cm na hĺbku, s 20 cm presahom nad umývačkou.\n\nPred objednaním by som si rada potvrdila tri veci:\n\n1. Drez je podstavný Blanco 500x400 mm, takže výrez musí byť leštený zo všetkých štyroch strán.\n2. Rovnaký kameň by sme chceli aj na 60 cm zástenu, v hrúbke 12 mm.\n3. Je možná 4 cm zrezaná hrana vpredu, alebo to výrazne mení cenu?\n\nDodanie by sme ideálne potrebovali v druhej polovici júna — kuchynskú linku montujú 14. júna.\n\nĎakujem a prajem pekný deň,\nMartina Kováčová",
-                'ev6_subject' => 'RE: Nákresy kuchynskej dosky + výrez na drez',
-                'ev6_body' => "Dobrý deň pani Kováčová,\n\nďakujem za nákresy, všetko je zrozumiteľné.\n\n1. Výrez pre podstavný drez vrátane leštenia všetkých štyroch hrán je súčasťou štandardnej ceny opracovania, bez príplatku.\n2. Zástena 60 cm v hrúbke 12 mm nie je problém — pridal som ju do ponuky ako samostatnú položku.\n3. Zrezaná hrana 4 cm je možná; kvôli rezaniu a lepeniu navyšuje cenu približne o 180 EUR.\n\nUpravenú ponuku posielam v prílohe. Ak ju potvrdíte do piatku, laserové zameranie stihneme 2. júna a dodanie v týždni od 15. júna, takže by ste boli včas pred montážou linky.\n\nS pozdravom,\nJordan",
-                'ev7_message' => 'Dobrý deň, rekonštruujeme kuchyňu v rodinnom dome v Trnave. Potrebovala by som cenu na pracovnú dosku 2,4 x 0,6 m z bieleho kremeňa vrátane výrezu na drez a zodpovedajúcej zásteny. Odhad mi prosím pošlite e-mailom, dostupná som popoludní.',
-                'task1_title' => 'Pripraviť SLA zmluvu pre veľkoobchodného partnera',
-                'task1_body' => 'Pripraviť štandardnú veľkoobchodnú SLA vrátane termínov dodania dosiek.',
-                'task2_title' => 'Laserové zameranie kuchynskej dosky u klienta',
-                'task2_body' => 'Navštíviť nehnuteľnosť v Trnave a presne zamerať Prolinerom dosku Calacatta Quartz.',
-                'task3_title' => 'Koordinácia dodávky dosiek z Talianska',
-                'task3_body' => 'Dohodnúť s logistikou dodanie 12 mm dosiek prichádzajúcich z Fiorano Modenese.',
-            ],
-            'hu' => [
-                'ev1_title' => 'Rögzített bemutatkozó hívás',
-                'ev1_body' => 'Átbeszéltük a fő bemutatóterem belső kőburkolati lehetőségeit. Az ügyfelet erősen érdeklik a vékony porcelán palalapok.',
-                'ev2_title' => 'Digitális katalógus és árlista elküldve',
-                'ev2_body' => 'E-mailben elküldtük a teljes porcelán kő katalógust és a vastagság szerinti alapárakat.',
-                'ev3_title' => 'Találkozó a pozsonyi bemutatóteremben',
-                'ev3_body' => 'A fő bemutatóteremben találkoztunk. Az ügyfél szürke márványlapokat választott. Sam összeállította a műszaki és logisztikai követelményeket.',
-                'ev4_title' => 'Hivatalos árajánlat elküldve',
-                'ev4_body' => 'Elkészítettük és e-mailben elküldtük a hivatalos árajánlatot a lapok vágásával és szerelésével együtt.',
-                'ev5_subject' => 'Konyhapult rajzok + mosogató kivágás',
-                'ev5_body' => "Jó napot Jordan,\n\nköszönöm a múlt heti bemutatótermi látogatást. Csatolom az építészünk konyharajzait — a munkalap 2,4 m hosszú és 60 cm mély, a mosogatógép fölött 20 cm túlnyúlással.\n\nA megrendelés előtt három dolgot szeretnék megerősíteni:\n\n1. A mosogató alulról beépített Blanco 500x400 mm, tehát a kivágást mind a négy oldalon políroznod kell.\n2. Ugyanezt a követ szeretnénk a 60 cm-es hátfalra is, 12 mm vastagságban.\n3. Lehetséges elöl a 4 cm-es gérvágott él, vagy az jelentősen módosítja az árat?\n\nA szállítás ideális esetben június második felében lenne — a konyhabútort június 14-én szerelik.\n\nKöszönöm és szép napot,\nMartina Kováčová",
-                'ev6_subject' => 'RE: Konyhapult rajzok + mosogató kivágás',
-                'ev6_body' => "Jó napot Kováčová asszony,\n\nköszönöm a rajzokat, minden világos.\n\n1. Az alulról beépített mosogató kivágása mind a négy él polírozásával együtt a megmunkálás alapárának része, felár nélkül.\n2. A 60 cm-es hátfal 12 mm-ben nem probléma — külön tételként hozzáadtam az ajánlathoz.\n3. A 4 cm-es gérvágott él megoldható; a többletvágás és ragasztás miatt nagyjából 180 EUR-val növeli a végösszeget.\n\nA módosított ajánlatot csatolom. Ha péntekig visszaigazolja, a lézeres felmérést június 2-ra tudjuk ütemezni, a szállítást pedig a június 15-i hétre, így időben lenne a bútorszereléshez.\n\nÜdvözlettel,\nJordan",
-                'ev7_message' => 'Jó napot, egy nagyszombati családi ház konyháját újítjuk fel. Szeretnék árat kérni egy 2,4 x 0,6 m-es fehér kvarc munkalapra, a mosogató kivágásával és a hozzá illő hátfallal együtt. A becslést kérem e-mailben küldjék, délutánonként vagyok elérhető.',
-                'task1_title' => 'SLA szerződés előkészítése a nagykereskedelmi partnernek',
-                'task1_body' => 'Készítsd elő a szokásos nagykereskedelmi SLA-t a lapok szállítási határidőivel együtt.',
-                'task2_title' => 'Helyszíni lézeres felmérés a konyhapulthoz',
-                'task2_body' => 'Látogasd meg a nagyszombati ingatlant, és mérd fel Prolinerrel a Calacatta Quartz pultot.',
-                'task3_title' => 'Lapszállítás egyeztetése Olaszországból',
-                'task3_body' => 'Egyeztess a logisztikával a Fiorano Modenese-ből érkező 12 mm-es lapokról.',
-            ],
-        ];
-        $demoText = $demoTextByLanguage[$systemLanguage];
-        $leadSources = $defaultLists['leadSources'];
-        $taskStates = $defaultLists['taskStates'];
-
-        // Seed default leads
-        $leads = [
-            ['lead-1', 'Ján Novák', 'Bratislava', 'business', $leadStates[0], $leadSources[3], 'Sam', 12500, 5, '+421 905 123 456', 'novak@example.com', '36123456', '2021234567', 'SK2021234567', 'Ing. Ján Novák', 'https://example.com', 'Mlynské Nivy 42', '821 09', 'Slovakia', '2026-05-15'],
-            ['lead-2', 'Martina Kováčová', 'Trnava', 'person', $leadStates[1], $leadSources[2], 'Jordan', 8400, 4, '+421 911 987 654', 'm.kovacova@example.com', null, null, null, null, null, 'Kukučínova 15', '917 01', 'Slovakia', '2026-05-18'],
-            ['lead-3', 'Thomas Müller', 'Košice', 'partner', $leadStates[2], $leadSources[0], 'Alex', 45000, 3, '+49 172 888 999', 't.mueller@example.de', 'DE98765432', '115/908/332', null, 'Thomas Müller', 'https://example.de', 'Hauptstrasse 102', '040 01', 'Germany', '2026-05-10'],
-        ];
-        $insLead = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        foreach ($leads as $l) {
-            $insLead->execute($l);
-        }
-
-        $leadCats = [
-            ['lead-1', $leadCategories[0]],
-            ['lead-1', $leadCategories[1]],
-            ['lead-2', $leadCategories[1]],
-            ['lead-3', $leadCategories[0]],
-        ];
-        $insLeadCat = $pdo->prepare("INSERT INTO `lead_categories` (`lead_id`, `category_name`) VALUES (?, ?)");
-        foreach ($leadCats as $lc) {
-            $insLeadCat->execute($lc);
-        }
-
-        // The lead-2 entries reproduce the two ways the CRM files events on its
-        // own, so the demo shows the real automatic cards instead of hand-typed
-        // notes:
-        //   * `ev-5` is what pipeline.php writes when a web form matches an
-        //     already active lead — a note titled "Form Inquiry (Existing
-        //     Active Lead)" whose body is the submitted fields, one per line.
-        //   * `email-*` is what mail_broker.php writes when a mailbox message
-        //     matches a lead — an `email-<uid>` id, the subject as the title
-        //     and the headers flattened above the message body.
-        $formBody = function (array $lines): string {
-            return implode("\n", $lines);
-        };
-        $mailBody = function (string $fromName, string $fromAddress, string $toName, string $toAddress, string $subject, string $body = ''): string {
-            $headers = "From: {$fromName} <{$fromAddress}>\nTo: {$toName} <{$toAddress}>\nSubject: {$subject}";
-            return $body === '' ? $headers : $headers . "\n\n" . $body;
-        };
-        $timelineEvents = [
-            ['ev-1', 'lead-1', 'phone', '2026-05-15 10:00', $demoText['ev1_title'], $demoText['ev1_body'], null, null, null, null, null, 0],
-            ['ev-2', 'lead-1', 'email', '2026-05-16 11:30', $demoText['ev2_title'], $demoText['ev2_body'], null, null, null, null, null, 1],
-            ['ev-3', 'lead-1', 'appointment', '2026-05-20 14:00', $demoText['ev3_title'], $demoText['ev3_body'], null, null, null, null, '14:00', 0],
-            ['ev-4', 'lead-1', 'offer', '2026-05-22 15:45', $demoText['ev4_title'], $demoText['ev4_body'], 12500.00, 'novak_slabs_proposal.pdf', '1.45 MB', 'offer', null, 0],
-            ['ev-5', 'lead-2', 'note', '2026-05-18 08:15', 'Form Inquiry (Existing Active Lead)',
-                $formBody([
-                    'Form submission received from source: ' . $leadSources[2],
-                    'Name: Martina Kováčová',
-                    'Email: m.kovacova@example.com',
-                    'Phone: +421 911 987 654',
-                    'City: Trnava',
-                    'Categories: ' . $leadCategories[1],
-                    'Value: 8400 EUR',
-                    'Message: ' . $demoText['ev7_message'],
-                ]),
-                null, null, null, null, null, 0],
-            ['email-10412', 'lead-2', 'email', '2026-05-19 09:12', $demoText['ev5_subject'],
-                $mailBody('Martina Kováčová', 'm.kovacova@example.com', 'Jordan', 'jordan@crm.com', $demoText['ev5_subject'], $demoText['ev5_body']),
-                null, null, null, null, null, 0],
-            ['email-10457', 'lead-2', 'email', '2026-05-20 16:40', $demoText['ev6_subject'],
-                $mailBody('Jordan', 'jordan@crm.com', 'Martina Kováčová', 'm.kovacova@example.com', $demoText['ev6_subject'], $demoText['ev6_body']),
-                null, null, null, null, null, 1],
-        ];
-        $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `extra_time`, `is_outgoing`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        foreach ($timelineEvents as $te) {
-            $insTimeline->execute($te);
-        }
-
-        // Demo tasks carry an explicit deadline_time; leaving it NULL made every
-        // seeded task render with the 23:59 end-of-day fallback.
-        $tasks = [
-            ['task-1', $demoText['task1_title'], $demoText['task1_body'], 'high', '2026-05-30', '16:00', $taskStates[1], 'Alex', 'lead-3', 1],
-            ['task-2', $demoText['task2_title'], $demoText['task2_body'], 'high', '2026-05-31', '10:00', $taskStates[0], 'Sam', 'lead-2', 1],
-            ['task-3', $demoText['task3_title'], $demoText['task3_body'], 'medium', '2026-06-02', '12:00', $taskStates[0], 'Jordan', 'lead-1', 0],
-        ];
-        $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `related_lead_id`, `is_locking`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"); /* recurring-template: initial task seed */
-        foreach ($tasks as $t) {
-            $insTask->execute($t);
-        }
-
-        $taskAssignees = [
-            ['task-1', 'Alex'],
-            ['task-1', 'Jordan'],
-            ['task-2', 'Sam'],
-            ['task-3', 'Jordan'],
-        ];
-        $insAssignee = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
-        foreach ($taskAssignees as $ta) {
-            $insAssignee->execute($ta);
-        }
-
-        // Demo employees, warehouses, items, stock, orders, projects, and invoices
-        ccrm_seed_default_employees($pdo);
-        ccrm_seed_default_warehouses_and_items($pdo, $systemLanguage);
-        ccrm_seed_default_orders($pdo, $systemLanguage);
-        ccrm_seed_default_invoices_and_projects($pdo, $systemLanguage);
-
+        // Everything else a demo install contains (the three logins of the edition, the
+        // company profile, and every module's rows) is written by demo_seed_all() below,
+        // after the commit. Nothing is seeded here.
     } else {
         // Fresh setup: a single administrator account with operator-supplied
         // credentials (falls back to a sensible default only if none provided).
@@ -474,15 +292,22 @@ try {
 
     $pdo->commit();
 
-    // The modular demo dataset (api/demo_seed/) runs after the commit, once the
-    // leads and users above exist: some modules create tables, and DDL would
-    // implicitly commit the transaction. Each module logs its own failure.
+    // The demo dataset (api/demo_seed/) is the ONLY demo seeding: settings above, rows
+    // here. It runs after the commit because some modules create tables, and DDL would
+    // implicitly commit the transaction. Each module logs its own failure and the others
+    // still run, but without the `company` module there is no login at all, so that one is
+    // retried once and then fails the install (config.php is not written yet, so the wizard
+    // can simply be run again).
     if ($installType === 'demo') {
-        // Sample staff, salaries and leave: the schema pass above ran before
-        // DEMO_MODE existed, so it seeded nothing. Pure DML, own transaction.
-        ccrm_seed_default_employees($pdo);
         require_once __DIR__ . '/demo_seed/index.php';
-        demo_seed_all($pdo);
+        $demoReport = demo_seed_all($pdo);
+        if (empty($demoReport['company']['ok'])) {
+            $demoRetry = demo_seed_all($pdo, ['only' => ['company'], 'writeDataset' => false]);
+            if (empty($demoRetry['company']['ok'])) {
+                error_log('[ccrm setup] demo company module failed: ' . (string)($demoRetry['company']['error'] ?? 'unknown'));
+                throw new \RuntimeException('The demo data could not be created (the demo logins are missing). See the server log.');
+            }
+        }
     }
 
     if (file_put_contents($configFile, $configContent) === false) {

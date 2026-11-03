@@ -15,9 +15,12 @@ return [
         $users = demo_users();
         $names = array_column($users, 'name');
         $tasks = [];
-        foreach ($db->rows('tasks') as $t) $tasks[$t['id']] = $t;
+        // This file judges the 14 tasks of the `tasks` module only. Other modules write into the same
+        // table (WhatsApp tasks, ticket tasks, meeting tasks) under their own ids and with their own
+        // rules (A5 #38), and are judged by their own assertion files.
+        foreach ($db->rows('tasks') as $t) if (strpos((string)$t['id'], 'demo-tasks-') === 0) $tasks[$t['id']] = $t;
         $assignees = [];
-        foreach ($db->rows('task_assignees') as $a) $assignees[$a['task_id']][] = $a['user_name'];
+        foreach ($db->rows('task_assignees') as $a) if (isset($tasks[$a['task_id']])) $assignees[$a['task_id']][] = $a['user_name'];
         $states = demo_task_states($db);
         $today = (new DateTimeImmutable('today'))->format('Y-m-d');
 

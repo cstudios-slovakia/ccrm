@@ -221,7 +221,7 @@ if (!function_exists('demo_seed_time')) {
      */
     function demo_time_load_links(PDO $pdo, array $company): array {
         $links = ['tasks' => [], 'tickets' => []];
-        $tasks = $pdo->query("SELECT `id`, `title`, `related_project_id` FROM `tasks` WHERE `id` LIKE 'demo-tasks-%'")->fetchAll(PDO::FETCH_ASSOC);
+        $tasks = $pdo->query("SELECT `id`, `title`, `related_project_id` FROM `tasks` WHERE `id` LIKE 'demo-tasks-%'")->fetchAll(PDO::FETCH_ASSOC); /* recurring-template: demo-tasks-* are the plain tasks the tasks module wrote */
         usort($tasks, static fn($a, $b) => demo_time_id_number($a['id']) <=> demo_time_id_number($b['id']));
         foreach ($tasks as $t) {
             if (!empty($t['related_project_id'])) {

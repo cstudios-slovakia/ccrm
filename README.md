@@ -55,6 +55,54 @@ and where the results go.
    real (empty) database, the setup wizard skips straight to **Seed with
    Demo Data** / **Start Fresh** and admin-account creation.
 
+## Demo mode
+
+Choosing **Demo** in the setup wizard installs a fictional company, **Lapidea** (a stone, quartz and
+sintered-stone worktop studio), with every module filled: leads, clients, projects, offers, invoices,
+orders, warehouse, finance, employees, time tracking, service tickets, e-mail, WhatsApp, AI meeting room,
+automations (with run history), SAI and social posts. The story, cast and numbers are one file:
+[`docs/DEMO-MODE.md`](docs/DEMO-MODE.md).
+
+**You choose two things in the wizard** (step 2, when *Demo* is selected):
+
+- **Demo data language** - Slovenčina, Magyar or English. It becomes the system language, so names,
+  addresses, company IDs, VAT rate, phone formats and every text are those of that country
+  (Lapidea s.r.o. in Slovakia, Lapidea Kft. in Hungary, Lapidea Stone Inc. in the USA).
+- **Currency** - EUR, HUF, CZK, PLN, USD or GBP, independent of the language (a Hungarian company invoicing in
+  EUR still charges 27 % VAT). Defaults: Slovak EUR, Hungarian HUF, English USD. Amounts are converted from
+  one set of EUR figures with fixed demo rates, and every document total is recomputed from its items.
+
+Both can be changed later in **Settings › Company › Language & currency** (this changes the setting, not the
+demo rows - use *Re-seed* below for that).
+
+**Logins** - the password is `password` for all of them. The login screen in demo mode lists the users, so
+nobody has to remember the addresses.
+
+| Role | Slovak edition | Hungarian edition | English edition |
+|---|---|---|---|
+| Owner (admin) | `andrej.kollar@lapidea.example` | `kollar.andras@lapidea.example` | `alex.morgan@lapidea.example` |
+| Production & projects | `simona.hudecova@lapidea.example` | `szabo.szilvia@lapidea.example` | `samantha.reed@lapidea.example` |
+| Showroom sales | `juraj.benko@lapidea.example` | `juhasz.janos@lapidea.example` | `jordan.hayes@lapidea.example` |
+
+**Re-seed** replaces the demo rows (and only those: a lead, offer or user you created by hand is kept, with a
+dangling link if it pointed at a demo row) and the three demo logins, in the language and currency you pick.
+Use it to bring an older demo up to date (a new module's data appears) or to switch edition:
+
+- in the app: **Settings › System › Re-seed demo data** (visible in demo mode only; pick language and
+  currency, hold the button; the result lists every module's row count or error, then the app returns to the
+  demo login picker);
+- from the command line: `php ccrm demo:seed --lang=hu --currency=EUR` (`--keep-company` keeps the company
+  profile, divisions and pipeline lists; `--only=time,sai` seeds some modules; `--force` runs it on an
+  instance that is not in demo mode and switches demo mode on).
+
+**Wipe demo data** (Settings › System) is the other way out: it leaves demo mode and empties the CRM for real
+use (every lead, project, task, document, ticket, time entry and automation log, not only the demo ones).
+Choosing to keep the configuration keeps the settings and every login; otherwise everything is replaced by a
+fresh install with one admin and a random password shown once.
+
+Demo data is written only by the installer, the re-seed and the CLI - never by a database migration, so an
+update never adds demo rows to a real installation.
+
 ## Production Deployment
 
 The two live instances (laminam.sk, strechyokoc.sk) are both deployed by

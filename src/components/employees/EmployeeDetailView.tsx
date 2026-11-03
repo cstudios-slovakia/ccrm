@@ -933,7 +933,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           value={editEmail}
                           onChange={(e) => setEditEmail(e.target.value)}
                           className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
-                          placeholder="peter@cstudios.sk"
+                          placeholder="name@company.com"
                         />
                       </div>
                       {rights.editPersonal && (

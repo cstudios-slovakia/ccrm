@@ -617,7 +617,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="michal.kovac@cstudios.sk"
+                    placeholder="name@company.com"
                     className="w-full pl-10 pr-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                   />
                 </div>

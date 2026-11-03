@@ -1195,7 +1195,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     });
     if (cleanMatch) return cleanMatch;
 
-    // 3. Prefix or inclusion match (e.g. "Cstudios" matches "Cstudios, s.r.o.")
+    // 3. Prefix or inclusion match (e.g. "Acme" matches "Acme, s.r.o.")
     const fuzzyMatch = allClientProfiles.find(c => {
       const cLower = c.name.toLowerCase();
       return cLower.startsWith(lookupLower) || lookupLower.startsWith(cLower) || cLower.includes(lookupLower) || lookupLower.includes(cLower);

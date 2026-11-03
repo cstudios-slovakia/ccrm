@@ -3,7 +3,6 @@ import { SectionIcon } from "../icons/SectionIcon";
 import {
   Users,
   Coins,
-  Sparkles,
   Plus,
   Settings as SettingsIcon,
   ChevronRight,
@@ -21,12 +20,7 @@ import type {
 } from "../../types";
 import type { ModuleAccess } from "../../utils/permissions";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
-import {
-  DEFAULT_MOCK_EMPLOYEES,
-  generateDefaultMockSalaries,
-  generateDefaultMockVacations,
-  DEFAULT_MOCK_SETTINGS
-} from "../../utils/mockEmployees";
+import { DEFAULT_EMPLOYEE_SETTINGS } from "../../utils/employeeSettingsDefaults";
 import { EmployeeListView } from "./EmployeeListView";
 import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
@@ -279,7 +273,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   // Safe resolved settings
   const resolvedSettings: EmployeeSettings = useMemo(() => {
-    return employeeSettings || DEFAULT_MOCK_SETTINGS;
+    return employeeSettings || DEFAULT_EMPLOYEE_SETTINGS;
   }, [employeeSettings]);
 
   // Selected Employee object (matches ID or slug)
@@ -287,28 +281,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     if (!selectedEmployeeId) return null;
     return findEmployeeByIdOrSlug(employees, selectedEmployeeId);
   }, [employees, selectedEmployeeId]);
-
-  // Handle Seed Mock Data
-  const handleSeedMockData = React.useCallback(() => {
-    setEmployees(DEFAULT_MOCK_EMPLOYEES);
-    // Anchored to today so the calendar and salary matrix open on populated months
-    const now = new Date();
-    setSalaries(generateDefaultMockSalaries(now));
-    setVacations(generateDefaultMockVacations(now));
-    if (!employeeSettings || !employeeSettings.salaryTypes?.length) {
-      setEmployeeSettings(DEFAULT_MOCK_SETTINGS);
-    }
-  }, [setEmployees, setSalaries, setVacations, setEmployeeSettings, employeeSettings]);
-
-  // Demo installs only: auto-seed on mount if the employees array is empty so the
-  // module immediately displays rich data. A real install starts empty.
-  const initialCheckRef = React.useRef(false);
-  React.useEffect(() => {
-    if (isDemoMode && rights.edit && !initialCheckRef.current && employees.length === 0) {
-      initialCheckRef.current = true;
-      handleSeedMockData();
-    }
-  }, [isDemoMode, employees.length, handleSeedMockData]);
 
   // Handle Save Employee (create or update)
   const handleSaveEmployee = (emp: Employee) => {
@@ -412,16 +384,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
           actions={
             currentView === "list" ? (
               <>
-                {isDemoMode && rights.edit && employees.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={handleSeedMockData}
-                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-ui font-semibold hover:bg-amber-500/20 transition-all"
-                  >
-                    <Sparkles className="size-4 text-amber-600" />
-                    <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
-                  </button>
-                )}
                 {rights.edit && (
                 <button
                   type="button"
@@ -460,20 +422,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               </div>
             )}
           </div>
-
-          {/* Quick Toolbar (Demo Seed if empty) */}
-          <div className="flex items-center gap-2">
-            {isDemoMode && rights.edit && employees.length === 0 && (
-              <button
-                type="button"
-                onClick={handleSeedMockData}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-ui font-bold hover:bg-amber-500/20 transition cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
-              </button>
-            )}
-          </div>
         </div>
       )}
 
@@ -491,7 +439,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onDeleteEmployee={handleDeleteEmployee}
             onOpenSettings={() => navigateToTab("settings")}
             onOpenMatrix={() => navigateToTab("matrix")}
-            onSeedMockData={isDemoMode ? handleSeedMockData : undefined}
+            reseedHref={isDemoMode ? "#settings/system/reset" : undefined}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
             rights={rights}

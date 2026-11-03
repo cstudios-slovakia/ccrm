@@ -53,7 +53,8 @@ interface EmployeeListViewProps {
   onDeleteEmployee: (employeeId: string) => void;
   onOpenSettings: () => void;
   onOpenMatrix: () => void;
-  onSeedMockData?: () => void;
+  /** Demo installs: where the demo data is re-seeded (Settings › Re-seed demo data). Shown on the empty state. */
+  reseedHref?: string;
   systemLanguage?: string;
   systemCurrency?: string;
   /** What this person may see and change; the server sends nothing beyond it. */
@@ -71,7 +72,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   onDeleteEmployee,
   onOpenSettings: _onOpenSettings,
   onOpenMatrix: _onOpenMatrix,
-  onSeedMockData,
+  reseedHref,
   systemLanguage = "sk",
   systemCurrency = "€",
   rights = FULL_EMPLOYEE_RIGHTS
@@ -370,24 +371,29 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             </h3>
             <p className="text-ui text-slate-500 leading-relaxed">
               {employees.length === 0
-                ? t(
-                    "Start by adding your first team member or quickly load sample employee profiles with salaries and vacations.",
-                    "Začnite pridaním prvého zamestnanca alebo jedným klikom načítajte pripravené vzorové profily s platmi a dovolenkami.",
-                    "Adja hozzá első alkalmazottját, vagy töltsön be minta profilokat bér- és szabadságadatokkal."
-                  )
+                ? reseedHref
+                  ? t(
+                      "Start by adding your first team member, or re-seed the demo data in Settings to get the demo team with salaries and leave back.",
+                      "Začnite pridaním prvého zamestnanca, alebo v Nastaveniach znovu naplňte demo dáta, aby sa vrátil demo tím s platmi a dovolenkami.",
+                      "Adja hozzá első munkatársát, vagy a Beállításokban töltse újra a demo adatokat, hogy visszatérjen a demo csapat bérekkel és szabadságokkal."
+                    )
+                  : t(
+                      "Start by adding your first team member.",
+                      "Začnite pridaním prvého zamestnanca.",
+                      "Adja hozzá első munkatársát."
+                    )
                 : t("Try changing your search query or filter options.", "Skúste upraviť vyhľadávací dotaz alebo filter.", "Próbálja módosítani a keresési feltételeket.")}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-            {employees.length === 0 && onSeedMockData && (
-              <button
-                type="button"
-                onClick={onSeedMockData}
+            {employees.length === 0 && reseedHref && (
+              <a
+                href={reseedHref}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-heading font-bold text-ui shadow-lg shadow-amber-500/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>{t("Load Demo Staff", "Naplniť vzorovými dátami", "Minta adatok betöltése")}</span>
-              </button>
+                <span>{t("Re-seed demo data", "Znovu naplniť demo dáta", "Demo adatok újratöltése")}</span>
+              </a>
             )}
             {rights.edit && (
             <button

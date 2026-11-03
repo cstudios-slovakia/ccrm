@@ -117,10 +117,13 @@ function demo_seed_whatsapp(PDO $pdo): int {
     $clientId = demo_id('whatsapp', 0);
     $rows = 0;
 
-    // --- Clean own rows (links and refs go with the client by FK) ------------------
+    // --- Clean own rows ------------------
     $pdo->exec("DELETE FROM `timeline_events` WHERE `id` LIKE 'demo-whatsapp-%'");
     $pdo->exec("DELETE FROM `task_assignees` WHERE `task_id` LIKE 'demo-whatsapp-%'");
     $pdo->exec("DELETE FROM `tasks` WHERE `id` LIKE 'demo-whatsapp-%'"); /* recurring-template: demo seed */
+    // The links hang on the client by ON DELETE CASCADE; delete them explicitly so a re-run does not depend on
+    // a foreign key (the dry-run fake does not run cascades, and a wipe with foreign keys off does not either).
+    $pdo->exec("DELETE FROM `whatsapp_links` WHERE `client_id` = " . $pdo->quote($clientId));
     $pdo->exec("DELETE FROM `integration_clients` WHERE `id` = " . $pdo->quote($clientId));
     demo_whatsapp_wipe_numbers($pdo);
 

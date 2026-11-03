@@ -1,7 +1,18 @@
 <?php
+/**
+ * Settings › Wipe demo data: leave demo mode for a clean slate.
+ *
+ * The work is demo_leave_demo_mode() (api/demo_seed/leave.php): every transactional row goes (including
+ * tickets, contracts, time entries, time activity and workflow logs), then the remaining demo rows go through
+ * demo_wipe_demo_rows() - the single definition of a demo row, shared with the re-seed. This file only checks
+ * who is asking and answers.
+ *
+ * keep_configs (default true): keep the settings, lists, categories and every login, only switch DEMO_MODE off.
+ * keep_configs = false: replace them all with a fresh install's, with one admin and a random password.
+ */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
-require_once __DIR__ . '/demo_seed/helpers.php';
+require_once __DIR__ . '/demo_seed/leave.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -28,164 +39,19 @@ if (!file_exists($configFile)) {
 
 require_once $configFile;
 
-$generatedAdminPassword = null;
 try {
     $pdo = get_db_connection();
-    $pdo->beginTransaction();
-
-    // NOTE: DELETE (not TRUNCATE) so the statements are transactional — TRUNCATE
-    // implicitly commits in MySQL, which would make the rollback below a no-op and
-    // could leave the database half-wiped on a mid-way failure.
-    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
-
-    // Clear transactional tables
-    $pdo->exec("DELETE FROM `order_items`;");
-    $pdo->exec("DELETE FROM `orders`;");
-    $pdo->exec("DELETE FROM `invoice_offer_items`;");
-    $pdo->exec("DELETE FROM `invoices_offers`;");
-    $pdo->exec("DELETE FROM `warehouse_movement_items`;");
-    $pdo->exec("DELETE FROM `warehouse_movements`;");
-    $pdo->exec("DELETE FROM `warehouse_batches`;");
-    $pdo->exec("DELETE FROM `warehouse_stock`;");
-    $pdo->exec("DELETE FROM `warehouse_items`;");
-    $pdo->exec("DELETE FROM `warehouses`;");
-    $pdo->exec("DELETE FROM `suppliers`;");
-    $pdo->exec("DELETE FROM `project_managers`;");
-    $pdo->exec("DELETE FROM `projects`;");
-    $pdo->exec("DELETE FROM `employee_vacations`;");
-    $pdo->exec("DELETE FROM `employee_salaries`;");
-    $pdo->exec("DELETE FROM `employees`;");
-    $pdo->exec("DELETE FROM `timeline_events`;");
-    $pdo->exec("DELETE FROM `lead_categories`;");
-    $pdo->exec("DELETE FROM `leads`;");
-    $pdo->exec("DELETE FROM `task_assignees`;");
-    $pdo->exec("DELETE FROM `tasks`;"); /* recurring-template: wipe demo deletes all tasks */
-    $pdo->exec("DELETE FROM `financial_records`;");
-
-    // Everything the modular demo seeders wrote (api/demo_seed/) carries an id
-    // with the 'demo-' prefix. Match it on every string `id` column; join
-    // tables without an `id` are matched on their `*_id` columns instead, and
-    // the mail caches on `email_uid` (the demo mailbox uses 'demo-mail-<n>').
-    // The per-type project tables of a demo project type are dropped after the
-    // commit (DROP is DDL); their rows go with the prefix delete below.
-    $demoProjectTypeIds = [];
-    if ($pdo->query("SHOW TABLES LIKE 'project_types'")->rowCount() > 0) {
-        $demoProjectTypeIds = $pdo->query("SELECT `id` FROM `project_types` WHERE `id` LIKE 'demo-%'")->fetchAll(PDO::FETCH_COLUMN);
-    }
-    // The sample staff (ccrm_seed_default_employees) predates the 'demo-' id scheme:
-    // employees emp-1..emp-4, their salaries 'sal-emp-*' and leave 'vac-demo-*'.
-    // Remove exactly those, plus the expense records sync auto-created for the
-    // salaries ('fr-sal-sal-emp-*'). Employees added by hand are left alone.
-    $tableExists = static fn(string $t): bool => $pdo->query("SHOW TABLES LIKE " . $pdo->quote($t))->rowCount() > 0;
-    if ($tableExists('financial_records')) {
-        $pdo->exec("DELETE FROM `financial_records` WHERE `id` LIKE 'fr-sal-sal-emp-%'");
-    }
-    if ($tableExists('employee_salaries')) {
-        $pdo->exec("DELETE FROM `employee_salaries` WHERE `id` LIKE 'sal-emp-%' OR `employee_id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')");
-    }
-    if ($tableExists('employee_vacations')) {
-        $pdo->exec("DELETE FROM `employee_vacations` WHERE `id` LIKE 'vac-demo-%' OR `employee_id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')");
-    }
-    if ($tableExists('employees')) {
-        $pdo->exec("DELETE FROM `employees` WHERE `id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')");
-    }
-
-    // Any remaining salary row must not keep pointing at the demo expense
-    // records deleted below.
-    $pdo->exec("UPDATE `employee_salaries` SET `financial_record_id` = NULL WHERE `financial_record_id` LIKE 'demo-%'");
-    demo_wipe_by_prefix($pdo, ['demo-']);
-    // whatsapp_numbers is keyed by phone, so the prefix wipe cannot find the demo rows.
-    require_once __DIR__ . '/demo_seed/whatsapp.php';
-    demo_whatsapp_wipe_numbers($pdo);
-
-    // Wipe customizable lists if "Keep Configs" was false
-    if (!$keepConfigs) {
-        $pdo->exec("DELETE FROM `financial_categories`;");
-        if ($pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
-            $pdo->exec("DELETE FROM `client_categories`;");
-        }
-        if ($pdo->query("SHOW TABLES LIKE 'project_types'")->rowCount() > 0) {
-            $pdo->exec("DELETE FROM `project_types`;");
-        }
-        // Preserve the language the CRM was installed in BEFORE dropping the
-        // settings, so the reset re-seeds the pipeline labels in that language
-        // (mirrors setup.php) instead of forcing English/Slovak defaults.
-        $systemLanguage = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
-        if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
-            $systemLanguage = 'sk';
-        }
-
-        $pdo->exec("DELETE FROM `users`;");
-        try {
-            $pdo->exec("DELETE FROM `user_passkeys`;");
-        } catch (\Throwable $e) { /* ignore if table does not exist */ }
-        try {
-            $pdo->exec("DELETE FROM `user_remember_tokens`;");
-        } catch (\Throwable $e) { /* ignore if table does not exist */ }
-        $pdo->exec("DELETE FROM `system_settings`;");
-
-        // Seed default Admin with a RANDOM password (never a known default like
-        // "password"). It is returned once below so the operator can log in.
-        $adminEmail = 'admin@crm.com';
-        $generatedAdminPassword = bin2hex(random_bytes(6));
-        $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $insUser->execute(['u-' . md5($adminEmail), 'Admin', $adminEmail, password_hash($generatedAdminPassword, PASSWORD_DEFAULT), 'admin', null, '#f43f5e']);
-
-        // Pipeline labels, categories and task states are persisted values, so
-        // seed them in the language chosen (shared with the setup wizard).
-        $settings = array_merge(
-            ['DEMO_MODE' => 'false'],
-            ccrm_default_settings_for_language($systemLanguage)
-        );
-
-        $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
-        foreach ($settings as $k => $v) {
-            $insSet->execute([$k, $v]);
-        }
-        // No finance categories: those are demo data, and this is leaving demo mode.
-    } else {
-        // Keep custom configurations, but toggle DEMO_MODE setting to false
-        $stmt = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('DEMO_MODE', 'false') ON DUPLICATE KEY UPDATE `value` = 'false'");
-        $stmt->execute();
-        
-        // Remove only the non-admin managers if keeping configs (optional, keep other demo PMs but prompt)
-        // Here we just toggle DEMO_MODE to false and clean transactional data
-    }
-    
-    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
-    $pdo->commit();
-
-    // DROP TABLE commits implicitly in MySQL, so these run after the commit.
-    // Per-type project tables (proj_data_/proj_timeline_/proj_gantt_<typeid>) of
-    // the demo project type; same id -> suffix rule as sync.php.
-    foreach ($demoProjectTypeIds as $typeId) {
-        $safe = preg_replace('/[^a-z0-9_]/', '', strtolower((string)$typeId));
-        if ($safe === '') continue;
-        $pdo->exec("DROP TABLE IF EXISTS `proj_data_{$safe}`, `proj_timeline_{$safe}`, `proj_gantt_{$safe}`");
-    }
-    // SAI simulations live in per-simulation `sim<id>_*` tables; leaving demo
-    // mode removes them all, together with the demo mailbox store.
-    if ($pdo->query("SHOW TABLES LIKE 'swarm_simulations'")->rowCount() > 0) {
-        $prefixes = $pdo->query("SELECT `table_prefix` FROM `swarm_simulations`")->fetchAll(PDO::FETCH_COLUMN);
-        foreach ($prefixes as $prefix) {
-            $prefix = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$prefix);
-            if ($prefix === '') continue;
-            $pdo->exec("DROP TABLE IF EXISTS `{$prefix}nodes`, `{$prefix}edges`, `{$prefix}agents`, `{$prefix}posts`");
-        }
-        $pdo->exec("DELETE FROM `swarm_simulations`");
-    }
-    require_once __DIR__ . '/demo_mailbox.php';
-    ccrm_demo_mailbox_wipe($pdo);
+    $result = demo_leave_demo_mode($pdo, $keepConfigs);
 
     $response = ["success" => true, "message" => "Demo data successfully wiped out."];
-    if ($generatedAdminPassword !== null) {
-        $response["admin_email"] = 'admin@crm.com';
-        $response["admin_password"] = $generatedAdminPassword;
+    if ($result['adminPassword'] !== null) {
+        $response["admin_email"] = $result['adminEmail'];
+        $response["admin_password"] = $result['adminPassword'];
         $response["message"] = "Demo data wiped. A new admin was created — save this password now, it will not be shown again.";
     }
     echo json_encode($response);
-} catch (\Exception $e) {
-    if (isset($pdo) && $pdo->inTransaction()) {
+} catch (\Throwable $e) {
+    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
         $pdo->rollBack();
     }
     if (function_exists('ccrm_log_exception')) {

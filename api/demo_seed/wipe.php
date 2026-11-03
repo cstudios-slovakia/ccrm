@@ -30,6 +30,9 @@
  * dropped when every project in it is a demo project (otherwise just the demo rows go), and a
  * sim<id>_ table set is only dropped when no surviving simulation uses the same prefix.
  *
+ * Options: ['keepUsers' => true] skips step 4 (every login stays; the cached mail data of the demo
+ * addresses still goes, it is demo mail).
+ *
  * Call it OUTSIDE a transaction (it opens its own, and the DDL step needs none open).
  * Returns the number of rows removed per table: ['leads' => 11, 'users' => 3, ...]
  * (a dropped table is counted with the rows it held).
@@ -286,7 +289,10 @@ if (!function_exists('demo_wipe_demo_rows')) {
         ccrm_demo_mailbox_wipe($pdo);
     }
 
-    function demo_wipe_demo_rows(PDO $pdo): array {
+    function demo_wipe_demo_rows(PDO $pdo, array $options = []): array {
+        // keepUsers: leave every login alone (api/wipe_demo.php keeps the accounts when the operator asked to
+        // keep the configuration: the admin who clicked "wipe" is usually one of the demo logins).
+        $keepUsers = !empty($options['keepUsers']);
         if ($pdo->inTransaction()) {
             throw new \LogicException('demo_wipe_demo_rows must run outside a transaction (its DDL step commits implicitly)');
         }
@@ -329,7 +335,9 @@ if (!function_exists('demo_wipe_demo_rows')) {
             // 3. everything with the demo- prefix
             demo_wipe_by_prefix($pdo, ['demo-']);
             // 4. the demo logins and what is bound to them
-            demo_wipe_users($pdo, $schema, $counts);
+            if (!$keepUsers) {
+                demo_wipe_users($pdo, $schema, $counts);
+            }
             // 5. the demo WhatsApp number answers; cached mail data of the demo logins
             $phones = demo_wipe_whatsapp_phones();
             demo_wipe_delete($pdo, $schema, $counts, 'whatsapp_numbers', 'phone_digits', $phones);

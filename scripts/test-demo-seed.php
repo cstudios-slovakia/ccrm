@@ -398,7 +398,14 @@ foreach ($combos as [$lang, $currency]) {
     }
 
     // --- a second run: idempotent, hand-made rows intact --------------------------------------
-    demo_seed_all($db, ['only' => $ported, 'writeDataset' => true]);
+    $secondReport = demo_seed_all($db, ['only' => $ported, 'writeDataset' => true]);
+    $secondFailed = [];
+    foreach ($ported as $mod) {
+        if (empty($secondReport[$mod]['ok'])) $secondFailed[] = "{$mod}: " . (string)($secondReport[$mod]['error'] ?? 'no report');
+    }
+    // A module that fails on the second run is invisible in the row counts (its transaction rolls back and the
+    // first run's rows stay), so the report itself has to be read: a re-seed runs every module again.
+    $check("{$combo}: every module also succeeds on the second run (a re-seed runs them all again)", !$secondFailed, implode("\n", $secondFailed));
     $secondRows = [];
     foreach ($db->tablesWithRows() as $tbl) $secondRows[$tbl] = count($db->rows($tbl));
     $diff = [];

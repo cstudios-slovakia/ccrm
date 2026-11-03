@@ -314,14 +314,74 @@ $check('resetCompany OFF: lists, divisions and the company profile are not rewri
     ($db->settings()['LEAD_STATES'] ?? '') === '["my own stage"]' && ($db->settings()['DIVISIONS'] ?? '') === '["Hand made division"]'
     && json_decode($db->settings()['COMPANY_BILLING_SETTINGS'] ?? '{}', true)['companyName'] === $hu['company']['name']);
 $check('...but language and currency are switched (the data is seeded in them)', ($db->settings()['SYSTEM_LANGUAGE'] ?? '') === 'en' && ($db->settings()['SYSTEM_CURRENCY'] ?? '') === 'USD' && json_decode($db->settings()['DEMO_DATASET'], true)['currency'] === 'USD');
-$check('a second re-seed in the same edition leaves the same rows (idempotent)', (function () use ($db, $ported, $allRows) {
+$idempotentDiff = [];
+$check('a second re-seed in the same edition leaves the same rows (idempotent)', (function () use ($db, $ported, $allRows, &$idempotentDiff) {
     $first = $allRows($db);
-    demo_reseed_run($db, ['language' => 'en', 'currency' => 'USD', 'resetCompany' => false, 'only' => $ported]);
+    $again = demo_reseed_run($db, ['language' => 'en', 'currency' => 'USD', 'resetCompany' => false, 'only' => $ported]);
     $second = $allRows($db);
     // DEMO_DATASET carries a timestamp and password hashes are salted: compare everything else.
-    $strip = static fn(array $rows): array => array_values(array_filter($rows, static fn($r) => strpos($r, 'system_settings|{"key":"DEMO_DATASET"') !== 0 && strpos($r, 'users|') !== 0));
-    return $strip($first) === $strip($second);
-})());
+    // created_at / updated_at that the database stamped with the clock (a value within two minutes of
+    // now) differ between two runs by definition once a run crosses a second, and sixteen modules do.
+    // They are replaced by a marker; a SEEDED timestamp (days ago, a fixed hour) is still compared exactly.
+    // Row counts still have to match, so a module that duplicates rows is still caught.
+    $clock = static function (string $row): string {
+        [$table, $json] = explode('|', $row, 2);
+        $cols = json_decode($json, true);
+        if (!is_array($cols)) return $row;
+        // An AUTO_INCREMENT surrogate id (whatsapp_links.id) is renumbered by every delete + insert.
+        if (isset($cols['id']) && is_int($cols['id'])) {
+            $cols['id'] = '<auto>';
+        }
+        // The demo browser device carries a random, never-usable key (C10), like a salted password hash.
+        if ($table === 'time_tracker_devices') {
+            foreach (['key_hash', 'key_prefix'] as $c) {
+                if (isset($cols[$c])) $cols[$c] = '<random>';
+            }
+        }
+        foreach (['created_at', 'updated_at'] as $c) {
+            if (isset($cols[$c]) && is_string($cols[$c]) && ($ts = strtotime($cols[$c])) !== false && abs($ts - time()) <= 120) {
+                $cols[$c] = '<clock>';
+            }
+        }
+        return $table . '|' . json_encode($cols);
+    };
+    $strip = static fn(array $rows): array => array_values(array_map($clock, array_filter($rows, static fn($r) => strpos($r, 'system_settings|{"key":"DEMO_DATASET"') !== 0 && strpos($r, 'users|') !== 0)));
+    $a = $strip($first);
+    $b = $strip($second);
+    // Name the columns that differ, not the whole row: a row is "table|{json}".
+    $onlyBefore = array_values(array_diff($a, $b));
+    $onlyAfter = array_values(array_diff($b, $a));
+    $describe = static function (string $row) {
+        [$table, $json] = explode('|', $row, 2);
+        return [$table, json_decode($json, true) ?: []];
+    };
+    $lines = [];
+    foreach (array_slice($onlyBefore, 0, 12) as $row) {
+        [$table, $before] = $describe($row);
+        $match = null;
+        foreach ($onlyAfter as $other) {
+            [$t2, $after] = $describe($other);
+            if ($t2 === $table && ($after['id'] ?? $after['email_uid'] ?? null) === ($before['id'] ?? $before['email_uid'] ?? null)) { $match = $after; break; }
+        }
+        if ($match === null) {
+            $lines[] = "{$table}: row " . ($before['id'] ?? $before['email_uid'] ?? '?') . ' is gone after the second re-seed';
+            continue;
+        }
+        $cols = array_keys(array_filter($before, static fn($v, $k) => ($match[$k] ?? null) !== $v, ARRAY_FILTER_USE_BOTH));
+        $lines[] = "{$table}: row " . ($before['id'] ?? $before['email_uid'] ?? '?') . ' differs in ' . implode(', ', $cols);
+    }
+    foreach (array_slice($onlyAfter, 0, 4) as $row) {
+        [$table, $after] = $describe($row);
+        $hit = false;
+        foreach ($onlyBefore as $other) {
+            [$t2, $before] = $describe($other);
+            if ($t2 === $table && ($after['id'] ?? $after['email_uid'] ?? null) === ($before['id'] ?? $before['email_uid'] ?? null)) { $hit = true; break; }
+        }
+        if (!$hit) { $lines[] = "{$table}: new row " . ($after['id'] ?? $after['email_uid'] ?? '?') . ' after the second re-seed'; }
+    }
+    $idempotentDiff = array_merge($lines, array_map(static fn($m) => 'module failed: ' . $m, array_keys($again['failed'] ?? [])));
+    return $a === $b;
+})(), implode("\n       ", $idempotentDiff));
 
 $check('forceDemoMode (the CLI --force) switches DEMO_MODE on', (function () {
     $d = new DemoFakePdo();
@@ -403,6 +463,95 @@ $check('an invalid language exits 2 before anything is touched', $code === 2);
 $check('an invalid currency exits 2', $code === 2);
 [$code] = $cli($cliDb, ['--bogus']);
 $check('an unknown option exits 2', $code === 2);
+
+// =================================================================================================
+$section('demo_leave_demo_mode: Settings > Wipe demo data (api/wipe_demo.php) - the clean slate');
+// =================================================================================================
+require_once dirname(__DIR__) . '/public/api/demo_seed/leave.php';
+// A whole demo installed (every module that has code and three packs), plus one row a user made in every
+// table the clean slate empties - cloned from a seeded row, so every NOT NULL column is satisfied.
+// The tables the clean slate must empty, written out here on purpose: the test must not read the list it checks.
+$cleanSlateTables = [
+    'order_items', 'orders', 'invoice_offer_items', 'invoices_offers',
+    'warehouse_movement_items', 'warehouse_movements', 'warehouse_batches', 'warehouse_stock', 'warehouse_items', 'warehouses', 'suppliers',
+    'project_managers', 'projects', 'employee_vacations', 'employee_salaries', 'employees',
+    'timeline_events', 'lead_categories', 'leads', 'task_assignees', 'tasks', 'financial_records',
+    'ticket_messages', 'ticket_time_entries', 'ticket_task_links', 'tickets', 'support_contracts', 'time_entries', 'time_activity', 'workflow_logs',
+];
+$leaveFixture = static function () use ($ported, $cleanSlateTables): DemoFakePdo {
+    [$d] = wipe_fixture();
+    demo_reseed_run($d, ['language' => 'hu', 'currency' => 'EUR', 'resetCompany' => true, 'only' => $ported]);
+    $d->setSetting('DEMO_MODE', 'true');
+    foreach ($cleanSlateTables as $table) {
+        $first = $d->rows($table)[0] ?? null;
+        if ($first === null) continue;
+        $mine = $first;
+        unset($mine['running_guard']);          // a generated column: MySQL computes it, a write is an error
+        foreach (['id', 'order_number', 'ticket_number', 'invoice_number', 'code'] as $c) {
+            if (isset($mine[$c]) && is_string($mine[$c])) $mine[$c] = 'hand-made-' . $table;
+        }
+        if (isset($mine['id']) && is_string($mine['id'])) {
+            $d->seedRow($table, $mine);
+        }
+    }
+    return $d;
+};
+$cleanTables = $cleanSlateTables;
+$mustHaveRows = ['leads', 'tasks', 'projects', 'employees', 'financial_records', 'warehouses', 'invoices_offers', 'orders', 'tickets', 'ticket_messages', 'support_contracts', 'time_entries', 'time_activity', 'workflow_logs'];
+
+$ld = $leaveFixture();
+$emptyBefore = array_values(array_filter($mustHaveRows, static fn($t) => count($ld->rows($t)) === 0));
+$check('the fixture is a whole demo: every table the clean slate empties has rows, among them the five the endpoint used to miss',
+    !$emptyBefore, 'empty before: ' . implode(', ', $emptyBefore));
+$handMade = array_values(array_filter($mustHaveRows, static fn($t) => count(array_filter($ld->rows($t), static fn($r) => strpos((string)($r['id'] ?? ''), 'hand-made-') === 0)) > 0));
+$check('...and a row a user made sits in most of them (tickets, time entries, workflow logs included)',
+    count($handMade) >= 10 && in_array('tickets', $handMade, true) && in_array('time_entries', $handMade, true) && in_array('workflow_logs', $handMade, true), implode(', ', $handMade));
+
+$keepLogins = $ld->rows('users');
+$keepIds = array_map(static fn($u) => $u['id'], $keepLogins);
+$res = demo_leave_demo_mode($ld, true);
+$leftover = array_values(array_filter($cleanTables, static fn($t) => count($ld->rows($t)) > 0));
+$check('keep configs: every transactional table is empty, user rows included (a clean slate), tickets / contracts / time / workflow logs too',
+    !$leftover, 'still has rows: ' . implode(', ', $leftover));
+$check('keep configs: every login stays (the admin who clicked is one of the demo logins) and so does a hand-made one',
+    array_map(static fn($u) => $u['id'], $ld->rows('users')) === $keepIds && in_array('u-hand-made', $keepIds, true) && $res['adminPassword'] === null);
+$check('keep configs: DEMO_MODE is false, DEMO_DATASET is gone, settings and lists stay',
+    ($ld->settings()['DEMO_MODE'] ?? '') === 'false' && !array_key_exists('DEMO_DATASET', $ld->settings()) && ($ld->settings()['HAND_MADE_SETTING'] ?? '') === 'keep me' && ($ld->settings()['SYSTEM_CURRENCY'] ?? '') === 'EUR');
+$demoLeft = [];
+foreach ($ld->tablesWithRows() as $t) foreach ($ld->rows($t) as $r) foreach (['id', 'lead_id', 'task_id', 'project_id', 'workflow_id', 'ticket_id'] as $c) {
+    if (isset($r[$c]) && is_string($r[$c]) && strpos($r[$c], 'demo-') === 0) $demoLeft[] = "{$t}.{$c} = {$r[$c]}";
+}
+$demoTypesLeft = array_filter($ld->rows('project_types'), static fn($r) => strpos((string)$r['id'], 'demo-') === 0);
+$check('keep configs: no demo- id is left anywhere, no demo project type, simulation or WhatsApp number; a hand-made project type and WhatsApp number stay',
+    !$demoLeft && !$demoTypesLeft && in_array('pt_hand_made', $ids($ld, 'project_types'), true) && count($ld->rows('swarm_simulations')) === 0 && $ids($ld, 'whatsapp_numbers', 'phone_digits') === ['421911000999'],
+    implode("\n", array_merge(array_slice($demoLeft, 0, 8), ['types: ' . json_encode($ids($ld, 'project_types')), 'sims: ' . count($ld->rows('swarm_simulations')), 'numbers: ' . json_encode($ids($ld, 'whatsapp_numbers', 'phone_digits'))])));
+$check('keep configs: the result reports what the demo wipe removed (demo WhatsApp numbers yes, logins none: they stay)',
+    ($res['wiped']['whatsapp_numbers'] ?? 0) >= 1 && ($res['wiped']['users'] ?? 0) === 0, json_encode($res['wiped']));
+
+// A second call on the emptied install changes nothing and does not fail; it refuses to run inside a transaction.
+$snapshot = $allRows($ld);
+$again = null;
+try { $again = demo_leave_demo_mode($ld, true); } catch (\Throwable $e) { $again = $e->getMessage(); }
+$check('idempotent: calling it again on the emptied install changes nothing', is_array($again) && $allRows($ld) === $snapshot, is_string($again) ? $again : '');
+$ld->beginTransaction();
+$check('refuses to run inside a transaction (it drops tables afterwards)', $throws(fn() => demo_leave_demo_mode($ld, true), 'outside a transaction'));
+$ld->rollBack();
+
+// The full reset: nothing of the old install is left but the language and the currency.
+$fd = $leaveFixture();
+$fd->setSetting('DIVISIONS', '["Hand made division"]');
+$res = demo_leave_demo_mode($fd, false);
+$users = $fd->rows('users');
+$check('full reset: ONE login, admin@crm.com with a random password that is returned once, and every demo login, passkey and token is gone',
+    count($users) === 1 && $users[0]['email'] === 'admin@crm.com' && $users[0]['role'] === 'admin' && is_string($res['adminPassword']) && strlen($res['adminPassword']) === 12
+    && password_verify($res['adminPassword'], $users[0]['password_hash']) && !password_verify('password', $users[0]['password_hash'])
+    && count($fd->rows('user_passkeys')) === 0 && count($fd->rows('user_remember_tokens')) === 0);
+$settings = $fd->settings();
+$check('full reset: settings are a fresh install\'s - DEMO_MODE false, no divisions, the hand-made setting and DEMO_DATASET gone, currency kept',
+    ($settings['DEMO_MODE'] ?? '') === 'false' && ($settings['DIVISIONS'] ?? '') === '[]' && !isset($settings['HAND_MADE_SETTING']) && !isset($settings['DEMO_DATASET']) && ($settings['SYSTEM_CURRENCY'] ?? '') === 'EUR',
+    json_encode(array_intersect_key($settings, array_flip(['DEMO_MODE', 'DIVISIONS', 'HAND_MADE_SETTING', 'DEMO_DATASET', 'SYSTEM_CURRENCY']))));
+$leftover = array_values(array_filter(array_merge($cleanTables, ['financial_categories', 'project_types', 'client_categories', 'swarm_simulations']), static fn($t) => count($fd->rows($t)) > 0));
+$check('full reset: transactional tables, finance categories, project types and simulations are empty', !$leftover, implode(', ', $leftover));
 
 $warn = $db->warnings();
 if ($warn) {

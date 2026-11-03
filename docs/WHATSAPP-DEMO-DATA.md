@@ -7,7 +7,7 @@ Since demo phase 4D there is **one file per edition**; two loaders read them.
 | File | Role |
 |---|---|
 | `public/api/demo_seed/whatsapp_demo.sk.json`, `.hu.json`, `.en.json` | The datasets: account, 4 chats with messages, extracted tasks, summaries, links, number checks. **Identical structure** in the three editions (same chat refs, message ids, counts, day offsets and times); only text, names and phone numbers differ. Days are offsets from today, so a demo opens on recent data whenever it is seeded. Mirrored to `api/demo_seed/` (copy new files once; `sync:backend` does not create root copies). |
-| `public/api/demo_seed/whatsapp_demo.json` | **Legacy copy of the sk file**, kept only because the WAAI loader still reads it. Phase W moves the loader to the per-edition files; phase 5 deletes this file. |
+| `public/api/demo_seed/whatsapp_demo.json` | **Legacy copy of the sk file**, kept only because the WAAI loader still reads it. Phase 5 deletes it only once phase W (the WAAI loader on the per-edition files) is done; **W was not done when phase 5 ran, so the file is still here.** `npm run test:demo-seed` fails if it drifts from the sk file. When W is done: delete the file (and its root mirror) and the drift check in `scripts/test-demo-seed.php`. |
 | `public/api/demo_seed/whatsapp.php` | **CCRM side.** A `demo_seed` module (runs after `time`, before `email`). Reads the file of the install language, writes what a real WAAI push leaves in CCRM. Idempotent, `demo-whatsapp-*` ids. The few words it writes itself (task footer, timeline titles) are in `packs/{sk,hu,en}/whatsapp.php`. |
 | `scripts/demo-assert/whatsapp.php` | Guards the contract below: the three files must stay structurally identical, users must be refs, phones must be the cast's. Run by `npm run test:demo-seed`. |
 | WAAI loader | `apps/web/scripts/seed-demo-ccrm.mjs` in the WAAI repo. **Phase W** rewrites it against the contract below (`--lang`, user refs, per-edition files). |
@@ -67,7 +67,7 @@ Rules the loader can rely on:
   the session id and refs make that one pass.
 - **`placeholder`** is one of `slabs`, `samples`, `site` (a generated PNG each); `audio` is a silent WAV of
   `seconds` with the given `transcription`.
-- `whatsapp_demo.json` (no suffix) is the sk file until phase 5.
+- `whatsapp_demo.json` (no suffix) is the sk file until phase W is done, then it is deleted. Do not read it in a new loader.
 
 ## The four chats
 
@@ -118,7 +118,7 @@ Not in the data (they are settings, not content): the SSO secret and connection,
 ## Seeding the CCRM side
 
 On a fresh install the module runs with the rest of the demo data. On an existing instance, run only this
-module (it needs the demo clients, projects and users to exist; for a full re-seed use Settings › Re-seed demo data once phase 3 exists):
+module (it needs the demo clients, projects and users to exist; for a full re-seed use **Settings › System › Re-seed demo data** or `php ccrm demo:seed`, which also switches the edition):
 
 ```bash
 php -r '
@@ -129,12 +129,14 @@ php -r '
 ```
 
 Details of the placeholder integration client: the links hang on `demo-whatsapp-0` (inactive, code
-`waai-demo`), never on the real `waai` client, so Settings → WhatsApp (WAAI) is untouched. `wipe_demo.php`
-removes everything: ids with the `demo-` prefix, the links (FK cascade) and the six number rows.
+`waai-demo`), never on the real `waai` client, so Settings → WhatsApp (WAAI) is untouched. Both ways of removing
+the demo (the re-seed, and Settings › Wipe demo data through `api/wipe_demo.php`) go through `demo_wipe_demo_rows()`, which
+removes everything: ids with the `demo-` prefix, the links, and the number rows of **every** edition's file plus the
+six numbers of the pre-4D single file (`demo_legacy_ids()`, so an older demo install is cleaned too).
 No `integration_refs` are written, so a real WAAI connected later pushes its own tasks beside these.
 
 Verified on a scratch MySQL 8 database (not the dev data): seeds in en, sk and hu, second run is idempotent,
-the prefix wipe plus `demo_whatsapp_wipe_numbers()` leaves no row behind, `php -l` clean, `sync:backend --check`
+the prefix wipe plus the number removal leaves no row behind, `php -l` clean, `sync:backend --check`
 in sync. Not run: the app against the seeded data (the QA suite mocks `/sync.php`; this is real-backend data).
 
 ## WAAI loader

@@ -29,6 +29,13 @@ return [
 
         // Shape of every record.
         $bad = [];
+        // A salary expense that belongs to an employee_salaries row is the record sync.php derives for it:
+        // status 'planned' (nothing paid yet), issue date = the 1st of the salary's month, which has already
+        // begun. Writing it any other way would make the first save of the salary change it (A5 #33).
+        $salaryLinked = [];
+        foreach ($db->rows('employee_salaries') as $sal) {
+            if (!empty($sal['financial_record_id'])) $salaryLinked[$sal['financial_record_id']] = sprintf('%04d-%02d-01', (int)$sal['year'], (int)$sal['period_number']);
+        }
         foreach ($recs as $r) {
             $t = "{$r['id']} ({$r['title']})";
             if ($r['currency'] !== $ctx['currency']) $bad[] = "{$t}: currency {$r['currency']}";
@@ -44,7 +51,8 @@ return [
                 if ($r['due_date'] !== null && $r['due_date'] < $r['issue_date']) $bad[] = "{$t}: due before issue";
                 if ($r['status'] === 'overdue' && !($r['due_date'] < $today)) $bad[] = "{$t}: overdue but due {$r['due_date']}";
                 if (in_array($r['status'], ['pending'], true) && $r['due_date'] !== null && $r['due_date'] < $today) $bad[] = "{$t}: pending past its due date {$r['due_date']}";
-                if ($r['status'] === 'planned' && $r['issue_date'] < $today) $bad[] = "{$t}: planned in the past";
+                $derivedSalary = isset($salaryLinked[$r['id']]) && $salaryLinked[$r['id']] === $r['issue_date'];
+                if ($r['status'] === 'planned' && $r['issue_date'] < $today && !$derivedSalary) $bad[] = "{$t}: planned in the past";
                 if (in_array($r['status'], ['paid', 'partially_paid'], true) && ($r['paid_date'] === null || $r['paid_date'] > $today || $r['paid_date'] < $r['issue_date'])) $bad[] = "{$t}: paid on {$r['paid_date']}";
             }
         }
@@ -63,7 +71,11 @@ return [
             && array_reduce($payroll, fn($ok, $r) => $ok && $r['recurring_end_date'] === $lastMonthEnd, true));
         $month = substr($today, 0, 7);
         $thisMonthSalary = array_filter($recs, fn($r) => !$r['is_recurring'] && $r['subtype'] === 'salary' && substr($r['issue_date'], 0, 7) === $month);
-        $check('the install month has payroll and employer-contribution records', count($thisMonthSalary) === 2, (string)count($thisMonthSalary));
+        // Without employee salary rows: one plain payroll total + the contributions (2). With them (the employees
+        // module ran): one expense per salary row of the install month + the contributions.
+        $monthSalaryRows = array_filter($db->rows('employee_salaries'), fn($sal) => !empty($sal['financial_record_id']) && sprintf('%04d-%02d', (int)$sal['year'], (int)$sal['period_number']) === $month);
+        $expectedPayroll = $monthSalaryRows ? count($monthSalaryRows) + 1 : 2;
+        $check('the install month has payroll and employer-contribution records', count($thisMonthSalary) === $expectedPayroll && count(array_filter($thisMonthSalary, fn($r) => strpos((string)$r['id'], 'demo-finance-') === 0)) === $expectedPayroll, count($thisMonthSalary) . ' records, expected ' . $expectedPayroll);
 
         // Gross = demo_money(net) x (1 + VAT) for a taxed rule, = demo_money(net) for an untaxed one.
         $rent = array_values(array_filter($rules, fn($r) => $r['category_id'] === 'fc-exp-ovh-rent'))[0] ?? null;

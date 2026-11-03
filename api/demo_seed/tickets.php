@@ -107,7 +107,7 @@ function demo_seed_tickets(PDO $pdo): int {
     );
     $insTask = $pdo->prepare(
         "INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" /* recurring-template: demo seed, plain tasks (task_kind stays NULL) */
     );
     $insAssignee = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
     $insLink = $pdo->prepare("INSERT INTO `ticket_task_links` (`ticket_id`, `task_id`, `sync_mode`) VALUES (?, ?, 'auto_resolve')");

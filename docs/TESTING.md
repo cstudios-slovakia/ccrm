@@ -10,12 +10,13 @@ Start here. Two kinds of test live in this repo, and both run from `npm`.
 | Covers | pure logic in `src/**/*.test.ts` | the real app in a real browser |
 | Needs | nothing | `npm run test:qa:setup` once per machine |
 
-`npm test` runs both.
+`npm test` runs both, **plus the demo-data dry runs** (section 5i), which need plain `php` on the
+PATH (no extension beyond mbstring/json, no database).
 
-> **You do not need Docker, PHP or MySQL to run any test.** The QA suite mocks
+> **You do not need Docker or MySQL to run any test.** The QA suite mocks
 > `/sync.php`, `/api/*` and `/upload.php` and seeds its own dataset, so it runs
 > against the Vite dev server alone. That is also why it is safe: it never
-> touches a real database.
+> touches a real database. Only the three `test:demo-*` dry runs need `php`.
 
 ---
 
@@ -451,6 +452,22 @@ The Dovecot config is the minimum (`protocols = imap`, `ssl = no`, a passwd-file
 ### 5h. AI price-offer template generator (`npm run test:pdf-template`)
 
 `api/generate_pdf_template.php` turns a sample offer PDF into a template. `scripts/test-pdf-template.php` checks, with no database and no OpenAI, the part that makes model output safe to store (enums, hex colours, heading length, the guaranteed block set) and that a client-supplied `pdfUrl` can only ever reach a `custom-template-pdf_*.pdf` inside the uploads directory. It needs PHP, so without a local install run it in the dev container: `docker cp scripts/test-pdf-template.php crm:/tmp/t.php && docker exec -e CCRM_API_DIR=/var/www/html/api crm php /tmp/t.php`. The call to OpenAI itself is only exercised live (needs a key in Settings → AI integration); the browser flow around it (error toast, no template added, rename dialog) is mocked in `tests/e2e/priceOfferInlineEditor.spec.ts`, and the `layout_json` round trip through `sync.php` is in `npm run test:rbac` (checks `T1`–`T6`).
+
+### 5i. Demo data dry runs (`npm run test:demo-packs`, `test:demo-seed`, `test:demo-wipe`)
+
+The demo dataset (`public/api/demo_seed/`, rebuilt in `docs/DEMO-MODE.md`) is tested against a **recording
+fake PDO** (`scripts/lib/demo-fake-pdo.php`, built on the real schema, strict like MySQL), so it needs no
+database. All three run in `npm test`.
+
+| Command | What it proves |
+|---|---|
+| `npm run test:demo-packs` | the sk/hu/en packs have identical shape, no cross-language leakage, valid company IDs and IBANs, every placeholder and ref resolves |
+| `npm run test:demo-seed` | every module seeds in sk/EUR, hu/HUF, hu/EUR, en/USD; ids, currencies, totals, links; per-module assertions in `scripts/demo-assert/<module>.php`; a second run leaves the same rows |
+| `npm run test:demo-wipe` | the re-seed wipe removes demo rows and nothing else; `demo_reseed_run()` / `php ccrm demo:seed`; `demo_leave_demo_mode()` (Settings › Wipe demo data) |
+| `npm run test:demo-seed:db` | **optional**, needs `CCRM_TEST_DSN` pointing at an EMPTY MySQL database: the same on a real server (`--combo=hu/EUR`, one edition per run) |
+
+The fake cannot run `ON DELETE CASCADE`, `GET_LOCK` or `DROP TABLE` the way MySQL does. A change to the
+wipe, the re-seed or a module's SQL should also be run once with `test:demo-seed:db` where a MySQL exists.
 
 ### 5g. Module screenshots (`npm run shots:modules`)
 

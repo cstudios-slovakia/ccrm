@@ -245,6 +245,9 @@ if (!function_exists('demo_d')) {
             'ticket_time_entries' => ['ttime-demo-%'],
             // demo_seed/sai.php before it moved to demo-sai-*
             'swarm_simulations' => ['sai-demo-1'],
+            // the "is this number on WhatsApp" answers of the single whatsapp_demo.json (before the
+            // per-edition files had other numbers); keyed by phone, so no prefix finds them
+            'whatsapp_numbers.phone_digits' => ['421903245118', '4934199026118', '36304821170', '498921554780', '421918402665', '421907316520'],
             // the three pre-pack logins (their e-mails: demo_all_user_emails())
             'users' => [
                 demo_user_id_for_email('alex@crm.com'),

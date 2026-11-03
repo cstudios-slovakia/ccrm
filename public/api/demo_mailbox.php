@@ -595,6 +595,15 @@ function ccrm_demo_mailbox_handle(PDO $pdo, string $action, array $settings, str
 }
 
 /**
+ * The login e-mails whose cached mail summaries belong to the demo mailbox: the three logins of every
+ * edition plus the pre-pack alex@ / sam@ / jordan@crm.com (demo_all_user_emails()).
+ */
+function ccrm_demo_mailbox_login_emails(): array {
+    require_once __DIR__ . '/demo_seed/helpers.php';
+    return demo_all_user_emails();
+}
+
+/**
  * Remove the demo mailbox: its RAG and summary caches, the demo profile on any
  * user (users survive a wipe with keep_configs, and a leftover profile would
  * point IMAP at the reserved host once DEMO_MODE is off), and the store itself.
@@ -604,12 +613,15 @@ function ccrm_demo_mailbox_wipe(PDO $pdo): void {
     if (ccrm_demo_mailbox_table_exists($pdo)) {
         $pdo->prepare("DELETE FROM `rag_emails` WHERE `user_email` = ?")->execute([CCRM_DEMO_TEAM_MAILBOX]);
         // Matched in PHP: comparing email_uid with CAST(uid AS CHAR) in SQL
-        // fails on a collation mismatch.
-        $del = $pdo->prepare("DELETE FROM `email_summaries` WHERE `folder` = ? AND `email_uid` = ? AND `user_email` IN ('alex@crm.com', 'sam@crm.com', 'jordan@crm.com')");
+        // fails on a collation mismatch. Every demo login of every edition (B6), not just the
+        // three pre-pack ones: a re-seed may have switched the language.
+        $logins = ccrm_demo_mailbox_login_emails();
+        $marks = implode(', ', array_fill(0, count($logins), '?'));
+        $del = $pdo->prepare("DELETE FROM `email_summaries` WHERE `folder` = ? AND `email_uid` = ? AND `user_email` IN ({$marks})");
         foreach ($pdo->query("SELECT `folder`, `uid` FROM `demo_mail_messages`")->fetchAll(PDO::FETCH_ASSOC) as $d) {
-            $del->execute([$d['folder'], (string)$d['uid']]);
+            $del->execute(array_merge([$d['folder'], (string)$d['uid']], $logins));
         }
-        $pdo->exec("DELETE FROM `email_summaries` WHERE `folder` = 'thread' AND `user_email` IN ('alex@crm.com', 'sam@crm.com', 'jordan@crm.com')");
+        $pdo->prepare("DELETE FROM `email_summaries` WHERE `folder` = 'thread' AND `user_email` IN ({$marks})")->execute($logins);
     }
 
     $rows = $pdo->query("SELECT `id`, `metadata_json` FROM `users` WHERE `metadata_json` LIKE '%demoMailbox%'")->fetchAll(PDO::FETCH_ASSOC);

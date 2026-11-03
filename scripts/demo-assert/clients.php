@@ -99,7 +99,10 @@ return [
             if (substr((string)$e['timestamp'], 0, 10) > $today) $bad[] = "{$e['id']}: in the future";
             if ((string)$e['title'] === '') $bad[] = "{$e['id']}: no title";
         }
-        $check('every timeline card belongs to a written record, is not in the future and has a title', !$bad && count($events) === count($pack['timeline']), implode("\n", array_slice($bad, 0, 8)));
+        // Every card of every module must belong to a written record, be in the past and have a title (above);
+        // the count is of THIS module's cards only: offers, mail and WhatsApp file their own (A5 #30).
+        $own = array_filter($events, static fn($e) => strpos((string)$e['id'], 'demo-clients-') === 0);
+        $check('every timeline card belongs to a written record, is not in the future and has a title', !$bad && count($own) === count($pack['timeline']), implode("\n", array_slice($bad, 0, 8)));
         $byLead = [];
         foreach ($events as $e) $byLead[$e['lead_id']][] = $e;
         $check('every client and lead has at least one timeline card', count($byLead) === 11);
