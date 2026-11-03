@@ -65,7 +65,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `traffic_origin` VARCHAR(50) NULL COMMENT 'Channel that first brought the visitor to the site (facebook, instagram, google, direct, ...) - reported by the web form, not chosen in the CRM',
               `traffic_origin_detail` VARCHAR(255) NULL COMMENT 'Free-text detail for traffic_origin: medium, campaign, referring host, landing page',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
-              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
+              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Head office, Branch Budapest)',
               `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Estimated Opportunity Worth',
               `adjustment` DECIMAL(14,2) NOT NULL DEFAULT 0.00 COMMENT 'Client Value Adjustment',
               `rating` INT NOT NULL DEFAULT 3 COMMENT 'Star Rating 1-5',
@@ -409,7 +409,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `lead_id` VARCHAR(50) NULL,
               `client_id` VARCHAR(50) NULL,
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
-              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
+              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Head office, Branch Budapest)',
               `rating` TINYINT NULL COMMENT 'Star Rating 1-5, 0 = not rated, NULL = never set',
               `invoice_date` DATE NULL COMMENT 'Invoice date (shown as Invoice date in the UI)',
               `completion_deadline` DATE NULL COMMENT 'Date the project has to be completed by (shown as Deadline in the UI)',
@@ -3031,21 +3031,21 @@ if (!function_exists('ccrm_schema_statements')) {
                 'leadStates' => ['new', 'contacted', 'offer sent', 'accepted', 'rejected'],
                 'leadSources' => ['showroom', 'facebook', 'instagram', 'website'],
                 'leadCategories' => ['Products', 'Services'],
-                'divisions' => ['Cstudios', 'Cstudios Budapest'],
+                'divisions' => [],
                 'taskStates' => ['New', 'In progress', 'Blocked', 'Done'],
             ],
             'sk' => [
                 'leadStates' => ['nový', 'kontaktovaný', 'ponuka odoslaná', 'prijatý', 'zamietnutý'],
                 'leadSources' => ['showroom', 'facebook', 'instagram', 'web'],
                 'leadCategories' => ['Produkty', 'Služby'],
-                'divisions' => ['Cstudios', 'Cstudios Budapest'],
+                'divisions' => [],
                 'taskStates' => ['Nový', 'Prebieha', 'Blokovaný', 'Hotovo'],
             ],
             'hu' => [
                 'leadStates' => ['új', 'kapcsolatfelvétel', 'ajánlat elküldve', 'elfogadva', 'elutasítva'],
                 'leadSources' => ['bemutatóterem', 'facebook', 'instagram', 'weboldal'],
                 'leadCategories' => ['Termékek', 'Szolgáltatások'],
-                'divisions' => ['Cstudios', 'Cstudios Budapest'],
+                'divisions' => [],
                 'taskStates' => ['Új', 'Folyamatban', 'Blokkolva', 'Kész'],
             ],
         ];
@@ -3148,7 +3148,7 @@ if (!function_exists('ccrm_schema_statements')) {
         $leadStates = $lists['leadStates'];
         $leadSources = $lists['leadSources'];
         $leadCategories = $lists['leadCategories'];
-        $divisions = $lists['divisions'] ?? ['Cstudios', 'Cstudios Budapest'];
+        $divisions = $lists['divisions'] ?? [];
         $taskStates = $lists['taskStates'];
 
         $enc = static function ($value): string {
@@ -3170,7 +3170,7 @@ if (!function_exists('ccrm_schema_statements')) {
             'LEAD_STATE_COLORS' => $enc(array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444'])),
             'LEAD_SOURCE_COLORS' => $enc(array_combine($leadSources, ['#10b981', '#3b82f6', '#ec4899', '#8b5cf6'])),
             'LEAD_CATEGORY_COLORS' => $enc(array_combine($leadCategories, ['#f59e0b', '#10b981'])),
-            'DIVISION_COLORS' => $enc(['Cstudios' => '#3b82f6', 'Cstudios Budapest' => '#8b5cf6']),
+            'DIVISION_COLORS' => $enc((object)[]),
             'LEAD_STAGE_GROUPS' => $enc(array_combine($leadStates, ['new', 'in_progress', 'in_progress', 'closed', 'closed'])),
             'LEAD_STATE_PARENTS' => $enc((object)[]),
             'TASK_STATES' => $enc($taskStates),

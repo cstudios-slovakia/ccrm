@@ -204,7 +204,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   taskAccess,
   currentUser,
   mailConfigured,
-  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisions = [],
   divisionColors = {},
   tickets,
   setTickets,

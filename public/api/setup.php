@@ -42,6 +42,18 @@ $pass        = (string)($data['pass'] ?? '');
 $installType = $data['type'] ?? 'fresh'; // 'fresh' | 'demo' | 'test_only'
 $systemLanguage = $data['systemLanguage'] ?? 'sk';
 if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) { $systemLanguage = 'sk'; }
+// Demo data language. For a demo install it IS the system language (the
+// installer UI language is then only the UI language). Fresh installs keep the
+// UI language as system language, as before.
+$demoLanguage = $data['demoLanguage'] ?? $systemLanguage;
+if (!in_array($demoLanguage, ['en', 'sk', 'hu'], true)) { $demoLanguage = $systemLanguage; }
+if ($installType === 'demo') { $systemLanguage = $demoLanguage; }
+// Currency: validated against the same list the app offers (currency.ts).
+$supportedCurrencies = ['EUR', 'HUF', 'CZK', 'PLN', 'USD', 'GBP'];
+$systemCurrency = strtoupper(trim((string)($data['currency'] ?? '')));
+if (!in_array($systemCurrency, $supportedCurrencies, true)) {
+    $systemCurrency = ['hu' => 'HUF', 'en' => 'USD'][$systemLanguage] ?? 'EUR';
+}
 
 if (empty($host) || empty($dbname) || empty($user)) {
     http_response_code(400);
@@ -231,6 +243,8 @@ try {
     $leadCategories = $defaultLists['leadCategories'];
 
     $baseSettings = ccrm_default_settings_for_language($systemLanguage);
+    // Written for both install types, before any seeding reads it.
+    $baseSettings['SYSTEM_CURRENCY'] = $systemCurrency;
 
     $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
 

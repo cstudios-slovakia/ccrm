@@ -831,14 +831,9 @@ function App() {
     "Products", "Services"
   ]);
 
-  const [divisions, setDivisions] = useState<string[]>([
-    "Cstudios", "Cstudios Budapest"
-  ]);
+  const [divisions, setDivisions] = useState<string[]>([]);
 
-  const [divisionColors, setDivisionColors] = useState<Record<string, string>>({
-    "Cstudios": "#3b82f6",
-    "Cstudios Budapest": "#8b5cf6"
-  });
+  const [divisionColors, setDivisionColors] = useState<Record<string, string>>({});
 
   // The permanent id each source / category answers to when a website form
   // names it (`source_id` / `category_id` in the /api/pipeline.php payload).

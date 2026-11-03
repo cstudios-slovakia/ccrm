@@ -1360,8 +1360,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : $defaultLists['leadStates'];
     $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : $defaultLists['leadSources'];
     $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : $defaultLists['leadCategories'];
-    $divisions = isset($settings['DIVISIONS']) ? json_decode($settings['DIVISIONS'], true) : ($defaultLists['divisions'] ?? ['Cstudios', 'Cstudios Budapest']);
-    $divisionColors = (isset($settings['DIVISION_COLORS']) ? json_decode($settings['DIVISION_COLORS'], true) : ['Cstudios' => '#3b82f6', 'Cstudios Budapest' => '#8b5cf6']) ?: (object)[];
+    $divisions = isset($settings['DIVISIONS']) ? json_decode($settings['DIVISIONS'], true) : ($defaultLists['divisions'] ?? []);
+    $divisionColors = (isset($settings['DIVISION_COLORS']) ? json_decode($settings['DIVISION_COLORS'], true) : []) ?: (object)[];
     // Every one of these is a map keyed by name on the client. A map the
     // client saved empty ({}) decodes to an empty PHP array here and would be
     // re-encoded as a JSON list ([]), landing in a Record<string,...> state as

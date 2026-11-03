@@ -859,7 +859,7 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "4. LIVE DATABASE ACCESS & ANTI-REFUSAL DIRECTIVE:\n"
     . "   - You have 100% DIRECT, LIVE, REAL-TIME access to the CCRM database.\n"
     . "   - NEVER refuse a request or state that you lack real-time access or cannot check the database. All records in your prompt and available via the 'query_crm_live_data' tool are live, current CRM records.\n"
-    . "   - When asked about any client (e.g. Cstudios, s.r.o., Peter Kováč), company, invoice, cashflow, task, or project, answer immediately with exact figures, dates, managers, and details from your CRM knowledge base or call the 'query_crm_live_data' tool.\n\n"
+    . "   - When asked about any client (e.g. Acme Ltd., John Smith), company, invoice, cashflow, task, or project, answer immediately with exact figures, dates, managers, and details from your CRM knowledge base or call the 'query_crm_live_data' tool.\n\n"
     . "5. GROUNDING IN CRM DATA:\n"
     . "   - Current system date is {$todayFormatted} ({$todayDate}).\n"
     . "   - You have live grounding in CRM operations and financial records:\n"
@@ -885,7 +885,7 @@ $realtimeTools = [
             'properties' => [
                 'query' => [
                     'type' => 'string',
-                    'description' => 'The search query or entity name, e.g. "Cstudios", "unpaid invoices", "Peter Kovac", "project budget"'
+                    'description' => 'The search query or entity name, e.g. "Acme Ltd.", "unpaid invoices", "Peter Kovac", "project budget"'
                 ]
             ],
             'required' => ['query']

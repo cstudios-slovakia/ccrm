@@ -285,7 +285,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
             instructions: isFirstInteraction
               ? `Speak now. Proactively greet ${userName} warmly by name in ${
                   systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
-                }. Introduce yourself as ${executive.name} (${translatedPosition}). State that you have live access to CCRM database records (including client accounts such as Cstudios, s.r.o., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.`
+                }. Introduce yourself as ${executive.name} (${translatedPosition}). State that you have live access to CCRM database records (including client accounts such as Acme Ltd., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.`
               : `Speak now. Proactively greet ${userName} warmly and casually/informally by name in ${
                   systemLanguage === "sk"
                     ? `Slovak (say exactly or similar to: 'Ahoj ${userName}, ako ti môžem dnes pomôcť?')`

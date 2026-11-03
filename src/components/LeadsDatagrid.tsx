@@ -1107,7 +1107,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     access = FULL_MODULE_ACCESS,
     orderAccess,
     taskAccess,
-    divisions = ["Cstudios", "Cstudios Budapest"],
+    divisions = [],
     divisionColors = {},
 }) => {
     const projectStatuses = useProjectStatuses();

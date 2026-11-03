@@ -1,15 +1,27 @@
 import type { Language } from "./translations";
 
-export type CurrencyCode = "EUR" | "USD" | "GBP" | "CZK" | "PLN";
+export type CurrencyCode = "EUR" | "HUF" | "USD" | "GBP" | "CZK" | "PLN";
 export type CurrencyPosition = "prefix" | "suffix";
 
 export const CURRENCY_OPTIONS: { code: CurrencyCode; symbol: string; label: string; position: CurrencyPosition }[] = [
   { code: "EUR", symbol: "€", label: "Euro (€)", position: "suffix" },
+  { code: "HUF", symbol: "Ft", label: "Hungarian Forint (Ft)", position: "suffix" },
   { code: "USD", symbol: "$", label: "US Dollar ($)", position: "prefix" },
   { code: "GBP", symbol: "£", label: "British Pound (£)", position: "prefix" },
   { code: "CZK", symbol: "Kč", label: "Czech Koruna (Kč)", position: "suffix" },
   { code: "PLN", symbol: "zł", label: "Polish Złoty (zł)", position: "suffix" },
 ];
+
+// Currencies that are written without decimals ("72 000 Ft"). formatMoney
+// applies this unless the caller passes its own fraction-digit options.
+const ZERO_DECIMAL_CURRENCIES = new Set<string>(["HUF"]);
+
+// Demo/installer default currency per data language (decision B4 in
+// docs/DEMO-MODE.md). Separate from currencyForRegion(), which stays EUR for
+// existing installs that never chose a currency.
+export function defaultCurrencyForLanguage(language?: Language | string): CurrencyCode {
+  return language === "hu" ? "HUF" : language === "en" ? "USD" : "EUR";
+}
 
 const CURRENCY_SYMBOLS: Record<string, string> = Object.fromEntries(
   CURRENCY_OPTIONS.map((o) => [o.code, o.symbol])
@@ -50,7 +62,12 @@ export function formatMoney(
   const symbol = resolveCurrencySymbol(currency, language);
   const position = resolveCurrencyPosition(currency, language);
   const locale = language === "sk" ? "sk-SK" : language === "hu" ? "hu-HU" : "sk-SK";
-  const numStr = value.toLocaleString(locale, toLocaleOpts);
+  const code = currency || currencyForRegion(language);
+  const opts =
+    toLocaleOpts === undefined && ZERO_DECIMAL_CURRENCIES.has(code)
+      ? { maximumFractionDigits: 0 }
+      : toLocaleOpts;
+  const numStr = value.toLocaleString(locale, opts);
   return position === "suffix" ? `${numStr} ${symbol}` : `${symbol}${numStr}`;
 }
 

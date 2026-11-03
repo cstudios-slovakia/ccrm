@@ -69,7 +69,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | # | Phase | Status | Version / commit | Date |
 |---|---|---|---|---|
 | 1 | Foundation: context, packs, company, test harness | ✅ | source only, no version (git log: `(demo phase 1)`) | 2026-11-03 |
-| 2 | Installer: demo language + currency, HUF, no default divisions | ⬜ | | |
+| 2 | Installer: demo language + currency, HUF, no default divisions | ✅ | demo phase 2 (see git log) | 2026-11-03 |
 | 3 | Re-seed demo data (endpoint, CLI, Settings) | ⬜ | | |
 | 4A | Content: clients, leads, tasks, timeline | ⬜ | | |
 | 4B | Content: projects, offers, invoices, warehouse, orders, finance | ⬜ | | |
@@ -227,27 +227,27 @@ Built exactly as listed; both test scripts are green for `company` in sk/EUR, hu
 
 ### Phase 2 — Installer: demo language + currency (wave 1, medium)
 
-- [ ] `currency.ts`: add `HUF` (`Ft`, suffix, **0 decimals** in `formatMoney`) to
+- [x] `currency.ts`: add `HUF` (`Ft`, suffix, **0 decimals** in `formatMoney`) to
       `CurrencyCode` and `CURRENCY_OPTIONS`. Unit test: `formatMoney(1234567, 'HUF', 'hu')`
       → `1 234 567 Ft`. Grep the PHP side (`mcp_ext.php`, PDF templates, anything listing
       currencies) and add HUF where a list exists.
-- [ ] Installer step 2: when **Demo** is selected show two selects —
+- [x] Installer step 2: when **Demo** is selected show two selects —
       **Demo data language** (Slovenčina / Magyar / English, default = installer UI language)
       and **Currency** (EUR, HUF, CZK, PLN, USD, GBP; default by language per B4, and it
       re-defaults when the language changes until the user touches it). When **Fresh** is
       selected show the **Currency** select only (the UI language stays the system language,
       as today). One line of help text: "You can change both later in Settings › Company ›
       Language & currency."
-- [ ] `setup.php`: accept `demoLanguage` and `currency`. For a demo install
+- [x] `setup.php`: accept `demoLanguage` and `currency`. For a demo install
       `SYSTEM_LANGUAGE = demoLanguage` (the installer UI language is then only the UI
       language). Validate currency against the list; write `SYSTEM_CURRENCY` for **both**
       install types, before any seeding.
-- [ ] Settings › Company › Language & currency shows the installed currency (verify the
+- [x] Settings › Company › Language & currency shows the installed currency (verify the
       select contains HUF and picks it up from `systemCurrency`).
-- [ ] Fix the Hungarian demo description in `InstallerWizard.tsx` ("ukrán leadekkel" means
+- [x] Fix the Hungarian demo description in `InstallerWizard.tsx` ("ukrán leadekkel" means
       "with Ukrainian leads"); rewrite all three descriptions to name what the demo
       contains (one company, every module filled).
-- [ ] **No default divisions (B13).** `ccrm_default_lists()` returns `'divisions' => []`
+- [x] **No default divisions (B13).** `ccrm_default_lists()` returns `'divisions' => []`
       for every language and `ccrm_default_settings_for_language()` writes `DIVISIONS = []`
       and `DIVISION_COLORS = {}`. Remove the Cstudios fallback in `App.tsx` (~820) and the
       `divisions = ["Cstudios", …]` default props (`ProjectDetailsView`, `LeadsDatagrid`,
@@ -256,18 +256,33 @@ Built exactly as listed; both test scripts are green for `company` in sk/EUR, hu
       replace "Cstudios" in the AI prompt examples (`realtime_session.php`,
       `ExecutiveCallModal.tsx`) with a neutral one. Do **not** touch existing installs'
       `DIVISIONS` setting (it is user data) — no migration.
-- [ ] Prove the app works with zero divisions: grep every reader of `divisions` /
+- [x] Prove the app works with zero divisions: grep every reader of `divisions` /
       `division` and check that empty lists render (no empty select that blocks saving, no
       "undefined" chip, filters and dashboard group-bys still work). QA: run the suite with a
       dataset whose `divisions` is `[]` (a variant of the QA seed, not a change to it) and
       list what breaks.
-- [ ] QA: installer step 2 shows the selects for Demo, only currency for Fresh, and the POST
+- [x] QA: installer step 2 shows the selects for Demo, only currency for Fresh, and the POST
       body carries `demoLanguage` + `currency` (the suite mocks `/api/setup.php`).
 
 Done when: the QA check passes and a mocked install request for hu/EUR sends
 `systemLanguage`, `demoLanguage: "hu"`, `currency: "EUR"`.
 
-**Left over:** —
+**Left over:**
+- Seeders that predate the packs still write `'Cstudios'` as the division of demo
+  projects/offers/leads (`schema.php` `ccrm_seed_default_invoices_and_projects` ~4504, and
+  `demo_seed/{clients,projects,offers,lookup}.php`). Those files belong to other phases
+  (4A/4B/1/5), so a demo install now has records with a division that is not in `DIVISIONS`
+  until phase 1/4A/4B port them to the pack divisions (D1). Existing installs untouched (no migration).
+- `src/components/ClientsView.tsx:1198` has a code comment naming "Cstudios" (name-matching
+  example, not a default); left alone.
+- `setup.php` falls back to HUF/USD/EUR from the language when `currency` is missing/invalid.
+  Demo divisions are not written here: phase 1's `company` module writes `DIVISIONS` for demos.
+- `setup.php` still seeds the legacy demo block with `alex@/sam@/jordan@crm.com`; phase 5 removes it.
+- Edited outside the listed "Owns" but inside B13's "every Cstudios default":
+  `public/sync.php` (two fallbacks), `src/types/index.ts` and `schema.php` column comments.
+  No PHP currency list existed (`mcp_ext.php` accepts any 3-letter code); the only list is the
+  `$supportedCurrencies` allowlist now in `setup.php`.
+- Not run: `test:demo-packs` / `test:demo-seed` (not pushed yet by phase 1).
 
 ### Phase 3 — Re-seed demo data (wave 2, high)
 
@@ -525,6 +540,21 @@ one titled "Phase W" that the planning session handed to the user.
 17. **`email.php` attaches the mailbox through `strtolower($name) . '@crm.com'`** (demo_seed/email.php ~line 41), i.e.
     it assumes the user's name is the local part of their e-mail. With localized logins (B6) that is false for every
     edition; 4D must read the e-mail from `demo_users()` instead.
+18. **Zero divisions (phase 2).** Rendering is fine (QA: dashboard, leads, projects, divisions
+    settings, no "Cstudios"). Findings: (a) Settings › Divisions refuses to delete the last
+    division ("At least one division is required!", delete button hidden when `length <= 1`),
+    so a workspace that added one can never return to none; (b) the division filter in leads
+    and projects and the division field in the edit forms still show with an empty list
+    (only "All / No division" resp. "No division"); (c) a persisted list filter value
+    (`leads.division`, `projects.division`) naming a division that no longer exists hides every
+    row until "All" is picked. All cosmetic/recoverable; not changed (outside phase 2's files).
+19. `formatMoney()` for `hu-HU` does not group 4-digit numbers (`1235 Ft`, `12 345 Ft`) — that
+    is correct Hungarian, but differs from the sk grouping of `1 235`.
+20. `npm run test:unit` has 6 failures that exist without this phase
+    (`settingsRegistry`, `dashboardWidgets`, `favorites`, `moduleWizard`, `safeHtml`, `viewSize`).
+21. The QA runner leaves its vite server on port 5273 when a run is killed, and the next run then
+    waits forever ("port 5273 is in use"); `@playwright/test` is not in `node_modules` in cloud
+    sessions (`npm install --no-save @playwright/test@1.62.1` fixes it).
 
 ---
 

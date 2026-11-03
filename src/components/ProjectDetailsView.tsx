@@ -165,7 +165,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskAccess = FULL_TASK_ACCESS,
   currentUser,
   mailConfigured,
-  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisions = [],
   divisionColors = {},
   layoutMode = "full",
   onOpenFullView,

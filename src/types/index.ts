@@ -144,7 +144,7 @@ export interface Lead {
   status: string;           // Lead state
   source: string;           // Lead source
   owner: string;            // Project manager
-  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
+  division?: string | null; // Assigned business division (e.g. Head office, Branch Budapest)
   value: number;            // Lead value
   adjustment?: number;      // Client value adjustment (independent from deals/pipeline)
   createdAt: string;
@@ -729,7 +729,7 @@ export interface Project {
   leadId?: string | null;
   clientId?: string | null;
   status: string; // a ProjectStatusDef key (utils/projects.ts)
-  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
+  division?: string | null; // Assigned business division (e.g. Head office, Branch Budapest)
   /**
    * How important this project is, 1-5 stars — the same hand-set priority a
    * lead carries (see {@link Lead.rating}), and filtered and sorted by the same

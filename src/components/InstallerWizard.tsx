@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Database, ShieldCheck, Server, Key, AlertCircle, CheckCircle2, Loader2, Sparkles, Languages } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
+import { CURRENCY_OPTIONS, defaultCurrencyForLanguage } from "../utils/currency";
 
 interface InstallerWizardProps {
   onInstallSuccess: () => void;
@@ -22,6 +23,13 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<"en" | "sk" | "hu">(systemLanguage);
+  // Demo data language defaults to the installer UI language until the user
+  // picks one; the currency follows the effective data language (decision B4)
+  // until the user picks one too.
+  const [demoLanguageChoice, setDemoLanguageChoice] = useState<"en" | "sk" | "hu" | null>(null);
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null);
+  const demoLanguage = demoLanguageChoice ?? lang;
+  const currency = currencyChoice ?? defaultCurrencyForLanguage(installType === "demo" ? demoLanguage : lang);
 
   const t = {
     en: {
@@ -43,7 +51,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       success_desc: "CCRM has been successfully configured and migrated.",
       success_btn: "Proceed to Application",
       type_demo: "Seed with Demo Data (Recommended)",
-      type_demo_desc: "Installs a fully populated CRM containing mock leads, pipelines, calendar logs, and project tasks for instant trial.",
+      type_demo_desc: "Installs one fictional company with every module filled in: clients, leads, projects, offers, invoices, warehouse, finance, employees, time tracking, e-mail, WhatsApp, meetings and automations.",
+      demo_language: "Demo data language",
+      currency: "Currency",
+      regional_help: "You can change both later in Settings › Company › Language & currency.",
+      currency_help: "You can change it later in Settings › Company › Language & currency.",
       type_fresh: "Start Fresh (Empty Database)",
       type_fresh_desc: "Prepares an empty relational database structure and generates a default master administrator account.",
       checking: "Establishing secure PDO handshake..."
@@ -67,7 +79,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       success_desc: "CCRM bol úspešne nakonfigurovaný a databáza bola migrovaná.",
       success_btn: "Prejsť do aplikácie",
       type_demo: "Nainštalovať demo dáta (odporúčané)",
-      type_demo_desc: "Nainštaluje plne naplnený CRM obsahujúci ukážkové leady, pipeline, záznamy v kalendári a úlohy na okamžité testovanie.",
+      type_demo_desc: "Nainštaluje jednu vymyslenú firmu s vyplneným každým modulom: klienti, leady, projekty, ponuky, faktúry, sklad, financie, zamestnanci, sledovanie času, e-mail, WhatsApp, porady a automatizácie.",
+      demo_language: "Jazyk demo dát",
+      currency: "Mena",
+      regional_help: "Obe môžete neskôr zmeniť v Nastavenia › Firma › Jazyk a mena.",
+      currency_help: "Môžete ju neskôr zmeniť v Nastavenia › Firma › Jazyk a mena.",
       type_fresh: "Čistá inštalácia (prázdna databáza)",
       type_fresh_desc: "Pripraví prázdnu relačnú databázovú štruktúru a vygeneruje predvolený hlavný administrátorský účet.",
       checking: "Nadväzuje sa bezpečné spojenie..."
@@ -91,7 +107,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       success_desc: "A CCRM sikeresen konfigurálva és migrálva lett.",
       success_btn: "Továbblépés az alkalmazásba",
       type_demo: "Demo adatok telepítése (Ajánlott)",
-      type_demo_desc: "Egy teljesen feltöltött CRM-et telepít ukrán leadekkel, csatornákkal, naptárakkal és feladatokkal az azonnali próba érdekében.",
+      type_demo_desc: "Egy kitalált céget telepít, amelyben minden modul fel van töltve: ügyfelek, leadek, projektek, ajánlatok, számlák, raktár, pénzügyek, munkatársak, időmérés, e-mail, WhatsApp, megbeszélések és automatizálások.",
+      demo_language: "Demóadatok nyelve",
+      currency: "Pénznem",
+      regional_help: "Mindkettőt később módosíthatja: Beállítások › Cég › Nyelv és pénznem.",
+      currency_help: "Később módosíthatja: Beállítások › Cég › Nyelv és pénznem.",
       type_fresh: "Friss indítás (Üres adatbázis)",
       type_fresh_desc: "Előkészít egy üres adatbázis-szerkezetet, és létrehoz egy alapértelmezett rendszergazdai fiókot.",
       checking: "Biztonságos kapcsolat létrehozása..."
@@ -136,6 +156,8 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
           host, port, dbname, user, pass,
           type: installType,
           systemLanguage: lang,
+          ...(installType === "demo" ? { demoLanguage } : {}),
+          currency,
           adminName, adminEmail, adminPassword
         })
       });
@@ -366,6 +388,44 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                   </div>
                 </div>
               </button>
+
+
+              {/* Regional choices: demo language + currency (demo) or currency only (fresh) */}
+              <div data-testid="installer-regional" className="p-5 rounded-[24px] border border-slate-200 bg-slate-50/50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {installType === "demo" && (
+                    <label className="space-y-1.5 text-left block">
+                      <span className="type-overline text-slate-500 block pl-0.5">{t[lang].demo_language}</span>
+                      <select
+                        data-testid="installer-demo-language"
+                        value={demoLanguage}
+                        onChange={(e) => setDemoLanguageChoice(e.target.value as "en" | "sk" | "hu")}
+                        className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                      >
+                        <option value="sk">Slovenčina</option>
+                        <option value="hu">Magyar</option>
+                        <option value="en">English</option>
+                      </select>
+                    </label>
+                  )}
+                  <label className="space-y-1.5 text-left block">
+                    <span className="type-overline text-slate-500 block pl-0.5">{t[lang].currency}</span>
+                    <select
+                      data-testid="installer-currency"
+                      value={currency}
+                      onChange={(e) => setCurrencyChoice(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                    >
+                      {CURRENCY_OPTIONS.map((c) => (
+                        <option key={c.code} value={c.code}>{c.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="text-ui text-slate-400 leading-relaxed">
+                  {installType === "demo" ? t[lang].regional_help : t[lang].currency_help}
+                </p>
+              </div>
 
               {/* Administrator account (fresh install only) */}
               {installType === "fresh" && (

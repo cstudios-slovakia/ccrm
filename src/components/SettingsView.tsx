@@ -630,7 +630,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadSources,
   leadCategories,
   setLeadCategories,
-  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisions = [],
   setDivisions,
   divisionColors = {},
   setDivisionColors,
