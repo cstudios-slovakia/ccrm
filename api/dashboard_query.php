@@ -581,6 +581,12 @@ try {
 
     echo json_encode(['success' => true, 'data' => $result]);
 } catch (\Throwable $e) {
+    // The client gets a generic message, but the real cause must not vanish: it is written
+    // to error_logs (Settings > System) and the PHP log, tagged with the action name.
+    error_log('[ccrm] dashboard_query action=' . $action . ' failed: ' . $e->getMessage());
+    if (function_exists('ccrm_log_exception')) {
+        ccrm_log_exception($e);
+    }
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Query execution failed.']);
 }
