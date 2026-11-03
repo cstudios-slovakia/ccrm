@@ -35,7 +35,10 @@ return [
             $row = $users[strtolower($p['email'])] ?? null;
             if ($row === null) { $ok = false; $detail[] = "{$role}: no row for {$p['email']}"; continue; }
             if ($row['id'] !== 'u-' . md5(strtolower($p['email']))) { $ok = false; $detail[] = "{$role}: id {$row['id']}"; }
-            if ($row['name'] !== $p['name'] || $row['role'] !== $p['role']) { $ok = false; $detail[] = "{$role}: name/role {$row['name']}/{$row['role']}"; }
+            // Stored as the registry label: a legacy `project_manager` matched no role and
+            // left that login with every module closed.
+            $wantRole = ['admin' => 'Admin', 'project_manager' => 'Project Manager'][$p['role']] ?? $p['role'];
+            if ($row['name'] !== $p['name'] || $row['role'] !== $wantRole) { $ok = false; $detail[] = "{$role}: name/role {$row['name']}/{$row['role']}"; }
             if (!password_verify('password', (string)$row['password_hash'])) { $ok = false; $detail[] = "{$role}: password is not 'password'"; }
         }
         $check('the three logins come from the pack (name, e-mail, id u-md5(email), role, password)', $ok, implode("\n", $detail));

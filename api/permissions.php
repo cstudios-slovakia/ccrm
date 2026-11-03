@@ -165,15 +165,20 @@ if (!function_exists('ccrm_permission_sections')) {
 
     /**
      * findRole(): case-insensitive lookup so a stored `admin` and a registry
-     * `Admin` still meet. Returns the role record or null.
+     * `Admin` still meet, and the legacy enum spelling `project_manager` still
+     * finds `Project Manager`. The session carries `users.role` as stored, and a
+     * writer that skips ccrm_normalize_role (the demo seeder did) otherwise left
+     * that user with no role at all: every module closed, every push refused.
+     * Returns the role record or null.
      */
     function ccrm_find_role(?array $roles, ?string $roleName): ?array {
-        $wanted = strtolower(trim((string)$roleName));
+        $fold = static fn(string $name): string => str_replace('_', ' ', strtolower(trim($name)));
+        $wanted = $fold((string)$roleName);
         if ($wanted === '' || !is_array($roles)) {
             return null;
         }
         foreach ($roles as $role) {
-            if (is_array($role) && strtolower(trim((string)($role['name'] ?? ''))) === $wanted) {
+            if (is_array($role) && $fold((string)($role['name'] ?? '')) === $wanted) {
                 return $role;
             }
         }

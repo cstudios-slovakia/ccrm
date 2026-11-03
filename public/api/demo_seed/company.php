@@ -34,6 +34,19 @@ if (!function_exists('demo_seed_company')) {
         )->execute([$key, $value]);
     }
 
+    /**
+     * The role label stored in `users.role` for a pack role key. Same mapping as
+     * ccrm_normalize_role (auth.php), written out so the seeder does not depend
+     * on auth.php having been loaded by whoever runs it.
+     */
+    function demo_company_role_label(string $packRole): string {
+        $folded = strtolower(str_replace(' ', '_', trim($packRole)));
+        if ($folded === 'admin') return 'Admin';
+        if ($folded === 'project_manager') return 'Project Manager';
+        if ($folded === 'viewer') return 'Viewer';
+        return trim($packRole);
+    }
+
     /** The COMPANY_BILLING_SETTINGS object for this edition (placeholders resolved). */
     function demo_company_billing_settings(array $ctx, array $pack): array {
         $c = $pack['company'];
@@ -138,7 +151,9 @@ if (!function_exists('demo_seed_company')) {
                 $u['name'],
                 strtolower((string)$u['email']),
                 password_hash('password', PASSWORD_DEFAULT),
-                $u['role'],
+                // The pack says `admin` / `project_manager`; the registry and the
+                // permission lookup speak in labels (Admin / Project Manager).
+                demo_company_role_label((string)$u['role']),
                 $u['color'],
             ]);
             $rows++;

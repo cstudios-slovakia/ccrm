@@ -79,6 +79,10 @@ export const diffRecords = (
   return { changed, deletedIds, next };
 };
 
+/** The finance blobs a push carries whole; each is left out while it still matches the server. */
+export const FINANCIAL_BLOB_KEYS = ["financialTrend", "financialMode", "financialSimplifiedTable"] as const;
+export type FinancialBlobKey = typeof FINANCIAL_BLOB_KEYS[number];
+
 // Collections the delta sync tracks, plus the two blobs that are not record
 // lists (settings, the role registry). A refusal tag whose collection is not
 // here is one this client does not know — it is still a refused write.
@@ -134,8 +138,19 @@ export const skipIsLostWork = (tag: string, payload: { [key: string]: unknown })
     const ids = deleted && typeof deleted === "object"
       ? (deleted as { [key: string]: unknown })[col]
       : undefined;
-    return Array.isArray(ids) && ids.length > 0;
+    return carriesWork(ids);
   }
-  const body = payload[col];
-  return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
+  return carriesWork(payload[col]);
+};
+
+/**
+ * Whether a payload section holds anything to save. `unifiedEntriesData` (and its
+ * deletions) is a map of entry id → rows, so a push that changed nothing sends
+ * `{}` or `{ id: [] }` — that is not work, and counting it as such warned every
+ * restricted user on every push.
+ */
+const carriesWork = (value: unknown): boolean => {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value != null && typeof value === "object") return Object.values(value).some(carriesWork);
+  return value != null;
 };

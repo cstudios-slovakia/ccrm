@@ -68,7 +68,7 @@ import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
-import { baselineOf, diffRecords, skipHoldsBaseline, skipIsLostWork, type RecordBaseline } from "./utils/syncDiff";
+import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, skipHoldsBaseline, skipIsLostWork, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
 import { workableProjectStubs } from "./utils/workableProjects";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
@@ -347,6 +347,12 @@ function App() {
   // save; when it still matches, leave it out so a role that may read People but
   // not edit general settings is not told the echo failed to save.
   const employeeSettingsSigRef = useRef<string | null>(null);
+  // The same for the three finance blobs, which are sent whole on every push. A
+  // role without finance edit (or read) was told after every save — the first one
+  // right after login — that these had not reached the server.
+  const financialBlobSigRef = useRef<Record<FinancialBlobKey, string | null>>({
+    financialTrend: null, financialMode: null, financialSimplifiedTable: null,
+  });
   const ticketsRef = useRef<Ticket[]>([]);
   const supportContractsRef = useRef<SupportContract[]>([]);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
@@ -1452,6 +1458,11 @@ ${log.payload || ''}
     ) {
       delete payload.employeeSettings;
     }
+    // sync.php keeps a finance blob untouched when its key is absent.
+    for (const key of FINANCIAL_BLOB_KEYS) {
+      const sig = financialBlobSigRef.current[key];
+      if (sig !== null && JSON.stringify(payload[key] ?? null) === sig) delete payload[key];
+    }
 
     // Narrow the payload to what actually changed, but only once the server has
     // said it speaks v2. Under v1 an omitted record means "deleted", so sending a
@@ -1636,6 +1647,11 @@ ${log.payload || ''}
           }
           if (payload.employeeSettings !== undefined && !skipHoldsBaseline(skipped, "employeeSettings")) {
             employeeSettingsSigRef.current = JSON.stringify(payload.employeeSettings ?? null);
+          }
+          for (const key of FINANCIAL_BLOB_KEYS) {
+            if (payload[key] !== undefined && !skipHoldsBaseline(skipped, key)) {
+              financialBlobSigRef.current[key] = JSON.stringify(payload[key] ?? null);
+            }
           }
           const skippedWork = [...skipped].filter((tag) => skipIsLostWork(tag, payload as { [key: string]: unknown }));
           const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
@@ -2930,6 +2946,7 @@ ${log.payload || ''}
       // is in memory rather than blanking the chart back to the default curve.
       if (data.financialTrend !== undefined) {
         const incoming = normalizeFinancialTrend(data.financialTrend);
+        financialBlobSigRef.current.financialTrend = JSON.stringify(incoming);
         setFinancialTrend((prev) =>
           JSON.stringify(incoming) !== JSON.stringify(prev) ? incoming : prev
         );
@@ -2938,12 +2955,14 @@ ${log.payload || ''}
         const rawMode = data.financialMode ?? data.settings?.financialMode;
         const incomingMode: FinancialOperatingMode = rawMode === "simplified" ? "simplified" : "connected";
         financialModeRef.current = incomingMode;
+        financialBlobSigRef.current.financialMode = JSON.stringify(incomingMode);
         setFinancialMode((prev) => prev !== incomingMode ? incomingMode : prev);
       }
       if (data.financialSimplifiedTable !== undefined || (data.settings && data.settings.financialSimplifiedTable !== undefined)) {
         const rawTable = data.financialSimplifiedTable ?? data.settings?.financialSimplifiedTable;
         const incomingTable: FinancialSimplifiedTable = (rawTable && typeof rawTable === "object") ? rawTable : {};
         financialSimplifiedTableRef.current = incomingTable;
+        financialBlobSigRef.current.financialSimplifiedTable = JSON.stringify(incomingTable);
         setFinancialSimplifiedTable((prev) =>
           JSON.stringify(incomingTable) !== JSON.stringify(prev) ? incomingTable : prev
         );

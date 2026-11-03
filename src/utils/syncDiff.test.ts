@@ -39,3 +39,12 @@ test("reason suffixes and unknown tags are unsaved work", () => {
   assert.equal(skipIsLostWork("users:delete", { users: [{ id: "u1" }] }), false);
   assert.equal(skipIsLostWork("leads:clients:delete", { deleted: { leads: ["l1"] } }), true);
 });
+
+test("an untouched custom-entry map is not unsaved work", () => {
+  // What a restricted role's push carries when it changed nothing (seen on the live demo).
+  assert.equal(skipIsLostWork("unifiedEntriesData", { unifiedEntriesData: {} }), false);
+  assert.equal(skipIsLostWork("unifiedEntriesData", { unifiedEntriesData: { e1: [] } }), false);
+  assert.equal(skipIsLostWork("unifiedEntriesData", { unifiedEntriesData: { e1: [{ id: "r1" }] } }), true);
+  assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: { unifiedEntriesData: { e1: ["r1"] } } }), true);
+  assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: {} }), false);
+});
