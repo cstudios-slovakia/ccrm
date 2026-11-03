@@ -1,0 +1,755 @@
+{
+  "_about": "Shared source of truth for the WhatsApp demo, edition hu (docs/WHATSAPP-DEMO-DATA.md, contract in docs/DEMO-MODE.md C15). Same chat refs, message counts and day offsets in whatsapp_demo.{sk,hu,en}.json; only text, names and phone numbers differ. Days are offsets from today (negative = past), times are local HH:MM in account.timezone. CRM users are refs (owner, pm, sales), resolved through crmUsers.",
+  "version": 2,
+  "edition": "hu",
+  "account": {
+    "sessionId": "demo-ccrm-wa",
+    "ownerCrmUser": "owner",
+    "phone": "36305550142",
+    "timezone": "Europe/Budapest"
+  },
+  "crmUsers": {
+    "owner": {
+      "name": "Kollár András",
+      "email": "kollar.andras@lapidea.example"
+    },
+    "pm": {
+      "name": "Szabó Szilvia",
+      "email": "szabo.szilvia@lapidea.example"
+    },
+    "sales": {
+      "name": "Juhász János",
+      "email": "juhasz.janos@lapidea.example"
+    }
+  },
+  "projectContactPhones": {
+    "demo-projects-1": "+36 30 555 0201",
+    "demo-projects-3": "+36 30 555 0206",
+    "demo-projects-5": "+36 30 555 0205"
+  },
+  "numbers": [
+    {
+      "phone": "36305550201",
+      "status": "registered",
+      "checkedDay": -4
+    },
+    {
+      "phone": "498955500210",
+      "status": "registered",
+      "checkedDay": -3
+    },
+    {
+      "phone": "36305550206",
+      "status": "registered",
+      "checkedDay": -1
+    },
+    {
+      "phone": "36205550202",
+      "status": "registered",
+      "checkedDay": -2
+    },
+    {
+      "phone": "36305550205",
+      "status": "registered",
+      "checkedDay": -2
+    },
+    {
+      "phone": "36205550207",
+      "status": "not_registered",
+      "checkedDay": -2
+    }
+  ],
+  "chats": [
+    {
+      "ref": "demo-wa-c1-site",
+      "title": "Fekete Márk – Hegyvidék",
+      "isGroup": false,
+      "phone": "36305550201",
+      "locale": "hu",
+      "unread": 2,
+      "members": [
+        "Fekete Márk"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-1",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-1",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -4,
+          "time": "09:12",
+          "dir": "in",
+          "sender": "Fekete Márk",
+          "kind": "text",
+          "body": "Jó napot kívánok, Fekete Márk vagyok a Hegyvidék építkezésről. Hogy állunk a homlokzat következő szakaszának lapjaival?"
+        },
+        {
+          "id": "m02",
+          "day": -4,
+          "time": "09:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Jó napot kívánok, Fekete Úr. A megrendelést a beszállítónál visszaigazoltuk, a lapok három hét múlva lesznek a műhelyben."
+        },
+        {
+          "id": "m03",
+          "day": -4,
+          "time": "09:31",
+          "dir": "in",
+          "sender": "Fekete Márk",
+          "kind": "text",
+          "body": "Rendben. Pontos szerelési ütemtervre van szükségünk, az állvány és a többi szakma miatt."
+        },
+        {
+          "id": "m04",
+          "day": -4,
+          "time": "09:34",
+          "dir": "out",
+          "kind": "text",
+          "body": "Értem, két napon belül elküldöm a módosított ütemtervet."
+        },
+        {
+          "id": "m05",
+          "day": -2,
+          "time": "14:08",
+          "dir": "out",
+          "kind": "document",
+          "fileName": "Szerelési ütemterv – Hegyvidék.pdf",
+          "mime": "application/pdf",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Fekete Márk"
+            }
+          ],
+          "body": "Szerelési ütemterv – Hegyvidék.pdf"
+        },
+        {
+          "id": "m06",
+          "day": -2,
+          "time": "14:20",
+          "dir": "in",
+          "sender": "Fekete Márk",
+          "kind": "text",
+          "body": "Köszönöm, jónak tűnik."
+        },
+        {
+          "id": "m07",
+          "day": -2,
+          "time": "14:25",
+          "dir": "out",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "slabs",
+          "body": "Így néz ki a panelek első szállítmánya a műhelyben."
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "10:05",
+          "dir": "in",
+          "sender": "Fekete Márk",
+          "kind": "text",
+          "body": "Meg tudják csinálni az előcsarnok felmérését jövő kedden délelőtt?"
+        },
+        {
+          "id": "m09",
+          "day": -1,
+          "time": "10:12",
+          "dir": "out",
+          "kind": "text",
+          "quote": "m08",
+          "body": "Egyeztetek a brigáddal, és jelentkezem."
+        },
+        {
+          "id": "m10",
+          "day": -1,
+          "time": "10:15",
+          "dir": "in",
+          "sender": "Fekete Márk",
+          "kind": "text",
+          "body": "És kérem, erősítsék meg, hogy az előcsarnok padlójával közvetlenül a felmérés után tudnak-e kezdeni."
+        },
+        {
+          "id": "m11",
+          "day": -1,
+          "time": "10:22",
+          "dir": "out",
+          "kind": "text",
+          "body": "Egyeztetek a szerelőbrigáddal, és ma vagy holnap jelzek."
+        },
+        {
+          "id": "m12",
+          "day": 0,
+          "time": "08:41",
+          "dir": "in",
+          "sender": "Fekete Márk",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Jó reggelt, itt a 3. emelet – a sarokillesztések elkészültek."
+        },
+        {
+          "id": "m13",
+          "day": 0,
+          "time": "08:43",
+          "dir": "in",
+          "sender": "Fekete Márk",
+          "kind": "text",
+          "body": "És kérem, küldjenek tájékoztató időpontot az előcsarnok padlójának CNC-vágására."
+        }
+      ],
+      "tasks": [
+        {
+          "n": 1,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "pm",
+          "due": {
+            "day": -2,
+            "time": null
+          },
+          "completed": {
+            "day": -2,
+            "time": "14:08"
+          },
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Az átdolgozott szerelési ütemterv elküldése – Fekete Márk",
+          "description": "Pontos szerelési időpontokra van szüksége az állvány és a többi szakma összehangolásához."
+        },
+        {
+          "n": 2,
+          "sourceMessage": "m11",
+          "status": "open",
+          "assignee": "owner",
+          "due": {
+            "day": 1,
+            "time": null
+          },
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Az előcsarnok felmérésének és padlójának egyeztetése a brigáddal, majd visszajelzés az ügyfélnek",
+          "description": "Jövő kedden szeretné felmérni, és utána azonnal kezdeni a padlót; a brigádnak ezt meg kell erősítenie."
+        },
+        {
+          "n": 3,
+          "sourceMessage": "m13",
+          "status": "open",
+          "assignee": "pm",
+          "due": null,
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Tájékoztató időpont küldése az előcsarnok padlójának CNC-vágásáról – Fekete Márk",
+          "description": "A csevegésben nem hangzott el dátum; az időpontot a műhelyterv alapján kell megadni."
+        }
+      ],
+      "summary": {
+        "narrative": "Fekete Márk a homlokzat következő szakaszának lapjait követi. A szerelési ütemtervet elküldtük és visszaigazolták. Nyitott: az előcsarnok felmérése és a padló CNC-vágásának időpontja.",
+        "actionItems": [
+          {
+            "task": 3,
+            "text": "A CNC-vágás időpontjának elküldése"
+          },
+          {
+            "task": 2,
+            "text": "Az előcsarnok felmérésének megerősítése"
+          }
+        ]
+      },
+      "timeline": [
+        {
+          "kind": "summary",
+          "day": -1,
+          "time": "18:00",
+          "message": "m11",
+          "title": "WhatsApp-összefoglaló: Fekete Márk – Hegyvidék",
+          "content": "A szerelési ütemtervet visszaigazolták. Az ügyfél a keddi előcsarnok-felmérésről és a padló kezdéséről kérdezett."
+        }
+      ]
+    },
+    {
+      "ref": "demo-wa-l10-architect",
+      "title": "Thomas Müller",
+      "isGroup": false,
+      "phone": "498955500210",
+      "locale": "de",
+      "unread": 0,
+      "members": [
+        "Thomas Müller"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-10",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -3,
+          "time": "11:02",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Guten Tag, hier ist Thomas Müller aus München. Wir hatten Ihnen wegen der Rahmenvereinbarung für unsere Villenprojekte geschrieben."
+        },
+        {
+          "id": "m02",
+          "day": -3,
+          "time": "11:10",
+          "dir": "out",
+          "kind": "text",
+          "body": "Guten Tag, Herr Müller, vielen Dank für Ihre Nachricht. Wir arbeiten gerade am Entwurf des Rahmenangebots."
+        },
+        {
+          "id": "m03",
+          "day": -3,
+          "time": "11:14",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Wir planen sechs Villen pro Jahr, jeweils etwa 40 m² Küchen- und Badplatten. Reicht das für eine erste Kalkulation?"
+        },
+        {
+          "id": "m04",
+          "day": -3,
+          "time": "11:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Für den ersten Entwurf ja. Ich schicke Ihnen übermorgen Fotos unserer Sinterstein-Muster."
+        },
+        {
+          "id": "m05",
+          "day": -1,
+          "time": "09:15",
+          "dir": "out",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "samples",
+          "body": "Sinterstein Nero Marquina 12 mm – die Muster, die ich erwähnt hatte."
+        },
+        {
+          "id": "m06",
+          "day": -1,
+          "time": "09:48",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "quote": "m05",
+          "body": "Danke, die Muster gefallen uns! Besonders die dunkle Variante."
+        },
+        {
+          "id": "m07",
+          "day": -1,
+          "time": "16:30",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Könnten Sie uns das Rahmenangebot bis in einer Woche um 12 Uhr schicken? Dann haben wir einen Termin mit den Bauherren."
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "16:36",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Thomas Müller"
+            }
+          ],
+          "body": "Ja, das schaffen wir. Ich beginne morgen mit der Kalkulation."
+        },
+        {
+          "id": "m09",
+          "day": -1,
+          "time": "16:40",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Perfekt, vielen Dank!"
+        }
+      ],
+      "tasks": [
+        {
+          "n": 4,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "owner",
+          "due": {
+            "day": -1,
+            "time": null
+          },
+          "completed": {
+            "day": -1,
+            "time": "09:15"
+          },
+          "leadId": "demo-clients-10",
+          "projectId": null,
+          "title": "Fotók küldése a szinterezett kő mintákról – Thomas Müller",
+          "description": "A villaprojektek konyháihoz és fürdőszobáihoz szeretné látni a Nero Marquina mintákat."
+        },
+        {
+          "n": 5,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "owner",
+          "start": {
+            "day": 0
+          },
+          "due": {
+            "day": 6,
+            "time": "12:00"
+          },
+          "leadId": "demo-clients-10",
+          "projectId": null,
+          "title": "A keretajánlat elküldése – Thomas Müller",
+          "description": "Évi hat villaprojekt; a beruházókkal való találkozóhoz van rá szüksége."
+        }
+      ],
+      "summary": {
+        "narrative": "Thomas Müller évi hat villaprojektet tervez. A sötét minta tetszett neki, a keretajánlatot egy héten belül kéri.",
+        "actionItems": [
+          {
+            "task": 5,
+            "text": "A keretajánlat elküldése"
+          }
+        ]
+      },
+      "timeline": []
+    },
+    {
+      "ref": "demo-wa-c6-hotel",
+      "title": "Lukács Beáta – Aurum Hotel",
+      "isGroup": false,
+      "phone": "36305550206",
+      "locale": "hu",
+      "unread": 2,
+      "members": [
+        "Lukács Beáta"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-6",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-3",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -5,
+          "time": "14:02",
+          "dir": "in",
+          "sender": "Lukács Beáta",
+          "kind": "text",
+          "body": "Jó napot kívánok, szeretnénk tájékozódni a wellnessfal állásáról. Az új határidő még érvényes?"
+        },
+        {
+          "id": "m02",
+          "day": -5,
+          "time": "14:10",
+          "dir": "out",
+          "kind": "text",
+          "body": "Jó napot kívánok, Lukács Asszony. Igen, a lapok jövő héten érkeznek a műhelybe, és közvetlenül utána elkezdjük a vágást."
+        },
+        {
+          "id": "m03",
+          "day": -5,
+          "time": "14:15",
+          "dir": "in",
+          "sender": "Lukács Beáta",
+          "kind": "audio",
+          "mime": "audio/wav",
+          "seconds": 8,
+          "transcription": "Ezen a héten szükségünk van a hézagszín-mintákra, a tulajdonos látni szeretné őket a spa megvilágításában.",
+          "body": "Ezen a héten szükségünk van a hézagszín-mintákra, a tulajdonos látni szeretné őket a spa megvilágításában."
+        },
+        {
+          "id": "m04",
+          "day": -5,
+          "time": "14:21",
+          "dir": "out",
+          "kind": "text",
+          "quote": "m03",
+          "body": "Értem, köszönöm. Három világosabb árnyalatot küldök futárral."
+        },
+        {
+          "id": "m05",
+          "day": -4,
+          "time": "09:40",
+          "dir": "in",
+          "sender": "Lukács Beáta",
+          "kind": "text",
+          "body": "Meg tudják erősíteni a második részlet fizetési ütemezését is?"
+        },
+        {
+          "id": "m06",
+          "day": -4,
+          "time": "09:46",
+          "dir": "out",
+          "kind": "text",
+          "body": "Természetesen, ma elküldöm e-mailben."
+        },
+        {
+          "id": "m07",
+          "day": -2,
+          "time": "10:30",
+          "dir": "in",
+          "sender": "Lukács Beáta",
+          "kind": "text",
+          "body": "A minták megérkeztek, köszönjük! A bal oldali világosabb árnyalat jónak tűnik."
+        },
+        {
+          "id": "m08",
+          "day": -2,
+          "time": "10:40",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Lukács Beáta"
+            }
+          ],
+          "body": "Kiváló. Egyeztetek a beszállítóval a határidőről, és jelentkezem."
+        },
+        {
+          "id": "m09",
+          "day": 0,
+          "time": "08:10",
+          "dir": "in",
+          "sender": "Lukács Beáta",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Nézzék meg ezt az illesztést a wellnessfalon – hajszálrepedés."
+        },
+        {
+          "id": "m10",
+          "day": 0,
+          "time": "08:12",
+          "dir": "in",
+          "sender": "Lukács Beáta",
+          "kind": "text",
+          "body": "Eljöhet valaki még ma?"
+        }
+      ],
+      "tasks": [
+        {
+          "n": 6,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "pm",
+          "due": {
+            "day": -4,
+            "time": null
+          },
+          "completed": {
+            "day": -4,
+            "time": "11:30"
+          },
+          "leadId": "demo-clients-6",
+          "projectId": "demo-projects-3",
+          "title": "Három világosabb hézagminta küldése a szállodának",
+          "description": "A tulajdonos a spa megvilágításában szeretné látni a mintákat."
+        },
+        {
+          "n": 7,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "pm",
+          "due": {
+            "day": -1,
+            "time": null
+          },
+          "leadId": "demo-clients-6",
+          "projectId": "demo-projects-3",
+          "title": "A lapok új határidejének megerősítése a beszállítóval, majd a szálloda értesítése",
+          "description": "A szálloda a megerősítésre vár; a határidő már egyszer csúszott."
+        }
+      ],
+      "summary": {
+        "narrative": "A szálloda a wellnessfalat követi: a hézagminták megérkeztek, a világosabb árnyalat tetszik. Nyitott: a lapok határidejének megerősítése és egy illesztés hajszálrepedése.",
+        "actionItems": [
+          {
+            "task": 7,
+            "text": "A lapok határidejének megerősítése a szállodának"
+          }
+        ]
+      },
+      "timeline": [
+        {
+          "kind": "summary",
+          "day": -1,
+          "time": "18:00",
+          "message": "m08",
+          "title": "WhatsApp-összefoglaló: Lukács Beáta – Aurum Hotel",
+          "content": "A hézagminták megérkeztek, a szálloda a világosabb árnyalatot részesíti előnyben. A lapok határidejének megerősítése még várat magára."
+        }
+      ]
+    },
+    {
+      "ref": "demo-wa-c2-warranty",
+      "title": "Horváth Andrea",
+      "isGroup": false,
+      "phone": "36205550202",
+      "locale": "hu",
+      "unread": 0,
+      "members": [
+        "Horváth Andrea"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-2",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-2",
+          "source": "manual"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -14,
+          "time": "17:50",
+          "dir": "in",
+          "sender": "Horváth Andrea",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Jó napot kívánok, e-mailben írtam a mosogatógép melletti csorbáról, itt a fotó."
+        },
+        {
+          "id": "m02",
+          "day": -13,
+          "time": "09:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Köszönöm, a kérést megkaptuk. Garanciális esetről van szó."
+        },
+        {
+          "id": "m03",
+          "day": -13,
+          "time": "09:22",
+          "dir": "out",
+          "kind": "text",
+          "body": "Kollégánk felhívja, és egyeztet egy látogatási időpontot."
+        },
+        {
+          "id": "m04",
+          "day": -9,
+          "time": "15:05",
+          "dir": "in",
+          "sender": "Horváth Andrea",
+          "kind": "text",
+          "body": "Még senki nem keresett 🙂"
+        },
+        {
+          "id": "m05",
+          "day": -9,
+          "time": "15:12",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Horváth Andrea"
+            }
+          ],
+          "body": "Elnézést a késésért! Megfelelne a jövő hét eleje?"
+        },
+        {
+          "id": "m06",
+          "day": -9,
+          "time": "15:20",
+          "dir": "in",
+          "sender": "Horváth Andrea",
+          "kind": "text",
+          "body": "Igen, a hétfő délelőtt megfelel."
+        },
+        {
+          "id": "m07",
+          "day": -1,
+          "time": "18:30",
+          "dir": "in",
+          "sender": "Horváth Andrea",
+          "kind": "text",
+          "body": "Csak megerősítést kérnék: a holnapi javítás még érvényes?"
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "18:35",
+          "dir": "out",
+          "kind": "text",
+          "body": "Igen, a szerelőnk holnap 9 és 10 óra között érkezik."
+        }
+      ],
+      "tasks": [
+        {
+          "n": 8,
+          "sourceMessage": "m03",
+          "status": "completed",
+          "assignee": "sales",
+          "due": {
+            "day": -9,
+            "time": null
+          },
+          "completed": {
+            "day": -9,
+            "time": "15:12"
+          },
+          "leadId": "demo-clients-2",
+          "projectId": "demo-projects-2",
+          "title": "Az ügyfél felhívása és a javítási időpont egyeztetése – Horváth Andrea",
+          "description": "Garanciális eset – kis csorba a mosogatógép melletti élen."
+        },
+        {
+          "n": 9,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "pm",
+          "due": {
+            "day": 1,
+            "time": "09:00"
+          },
+          "leadId": "demo-clients-2",
+          "projectId": "demo-projects-2",
+          "title": "Az élcsorba kijavítása – Horváth Andrea",
+          "description": "A szerelő 9 és 10 óra között érkezik; általában ragasztás és csiszolás elég."
+        }
+      ],
+      "summary": {
+        "narrative": "Horváth Andrea garanciális csorbát jelzett a mosogatógép melletti élen. A javítás időpontja holnapra megerősítve.",
+        "actionItems": [
+          {
+            "task": 9,
+            "text": "Az él javítása"
+          }
+        ]
+      },
+      "timeline": []
+    }
+  ]
+}

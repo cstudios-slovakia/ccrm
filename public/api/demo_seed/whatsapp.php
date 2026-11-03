@@ -7,7 +7,7 @@
  * Seeds what the WAAI connector leaves behind in CCRM (docs/WAAI-INTEGRATION.md §4.4–§4.6), without needing a
  * running WAAI: the chats' links to clients, leads and projects (auto and manual), the "is it on WhatsApp"
  * answers, the tasks extracted from the chats and the WhatsApp entries on the client timelines. The chats and
- * messages themselves live in WAAI, never in CCRM; they come from the same file, whatsapp_demo.json, via the
+ * messages themselves live in WAAI, never in CCRM; they come from the same files, whatsapp_demo.{sk,hu,en}.json, via the
  * WAAI loader (docs/WHATSAPP-DEMO-DATA.md).
  *
  * Each row is written the way api/integration_tasks.php and integration_whatsapp.php write it, so the app
@@ -22,24 +22,34 @@
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/lookup.php';
 
-/** The shared dataset (chats, tasks, numbers). */
-function demo_whatsapp_data(): array {
-    $raw = file_get_contents(__DIR__ . '/whatsapp_demo.json');
+/** The editions' datasets; one file per language (contract: docs/DEMO-MODE.md C15). */
+function demo_whatsapp_languages(): array {
+    return ['sk', 'hu', 'en'];
+}
+
+/** The dataset of one edition (chats, tasks, numbers, crmUsers, timezone). */
+function demo_whatsapp_data(string $lang): array {
+    $raw = file_get_contents(__DIR__ . '/whatsapp_demo.' . $lang . '.json');
     $data = $raw === false ? null : json_decode($raw, true);
-    if (!is_array($data) || !isset($data['chats'])) {
-        throw new \RuntimeException('whatsapp_demo.json is missing or invalid.');
+    if (!is_array($data) || !isset($data['chats']) || (int)($data['version'] ?? 0) !== 2) {
+        throw new \RuntimeException('whatsapp_demo.' . $lang . '.json is missing or not version 2.');
     }
     return $data;
 }
 
-/** Remove the demo "on WhatsApp" answers; they have no id column, so demo_wipe_by_prefix() cannot find them. */
+/**
+ * Remove the demo "on WhatsApp" answers of EVERY edition (a re-seed may switch language); they
+ * have no id column, so demo_wipe_by_prefix() cannot find them.
+ */
 function demo_whatsapp_wipe_numbers(PDO $pdo): void {
-    if (!demo_table_exists($pdo, 'whatsapp_numbers') || !is_file(__DIR__ . '/whatsapp_demo.json')) {
+    if (!demo_table_exists($pdo, 'whatsapp_numbers')) {
         return;
     }
     $del = $pdo->prepare("DELETE FROM `whatsapp_numbers` WHERE `phone_digits` = ?");
-    foreach (demo_whatsapp_data()['numbers'] ?? [] as $n) {
-        $del->execute([(string)$n['phone']]);
+    foreach (demo_whatsapp_languages() as $lang) {
+        foreach (demo_whatsapp_data($lang)['numbers'] ?? [] as $n) {
+            $del->execute([(string)$n['phone']]);
+        }
     }
 }
 
@@ -53,64 +63,55 @@ function demo_whatsapp_base_url(PDO $pdo): string {
 }
 
 /** The lines CCRM appends to a pushed task description (integration_tasks.php: ccrm_int_task_footer). */
-function demo_whatsapp_footer(string $lang, string $chat, string $assignee, string $chatUrl): string {
-    $labels = [
-        'en' => ['WhatsApp chat', 'WhatsApp assignee', 'Open chat'],
-        'sk' => ['WhatsApp chat', 'Zodpovedný vo WhatsAppe', 'Otvoriť chat'],
-        'hu' => ['WhatsApp-csevegés', 'WhatsApp felelős', 'Csevegés megnyitása'],
-    ][$lang];
-    $lines = [$labels[0] . ': ' . $chat, $labels[1] . ': ' . $assignee];
+function demo_whatsapp_footer(array $labels, string $chat, string $assignee, string $chatUrl): string {
+    $lines = [$labels['chatLabel'] . ': ' . $chat, $labels['assigneeLabel'] . ': ' . $assignee];
     if ($chatUrl !== '') {
-        $lines[] = $labels[2] . ': ' . $chatUrl;
+        $lines[] = $labels['openLabel'] . ': ' . $chatUrl;
     }
     return implode("\n", $lines);
 }
 
 /** Title of a connector timeline entry (WAAI crm-sync/timeline.ts: timelineTitle). */
-function demo_whatsapp_timeline_title(string $kind, string $taskTitle, string $lang): string {
-    $prefix = [
-        'task_created' => ['sk' => 'Úloha dohodnutá na WhatsAppe', 'en' => 'Task agreed on WhatsApp', 'hu' => 'WhatsAppon egyeztetett feladat'],
-        'task_done' => ['sk' => 'Úloha dokončená na WhatsAppe', 'en' => 'Task completed on WhatsApp', 'hu' => 'WhatsAppon elvégzett feladat'],
-    ][$kind][$lang];
-    return $prefix . ': ' . $taskTitle;
+function demo_whatsapp_timeline_title(array $labels, string $kind, string $taskTitle): string {
+    return $labels[$kind === 'task_done' ? 'timelineDone' : 'timelineCreated'] . ': ' . $taskTitle;
 }
 
 /** Body of a connector timeline entry (WAAI timelineContent): description, then due date, assignee and chat. */
-function demo_whatsapp_timeline_content(string $lang, string $description, ?string $dueDate, string $assignee, string $chat): string {
+function demo_whatsapp_timeline_content(array $labels, string $description, ?string $dueDate, string $assignee, string $chat): string {
     $parts = [];
     if ($dueDate !== null) {
-        $d = new \DateTimeImmutable($dueDate);
-        $parts[] = [
-            'sk' => 'Do ' . $d->format('j. n.'),
-            'en' => 'Due ' . $d->format('j/n'),
-            'hu' => 'Határidő: ' . $d->format('n. j.'),
-        ][$lang];
+        $parts[] = $labels['due'] . ' ' . (new \DateTimeImmutable($dueDate))->format($labels['dueFormat']);
     }
-    $parts[] = ['sk' => 'zodpovedný: ', 'en' => 'assignee: ', 'hu' => 'felelős: '][$lang] . $assignee;
-    $parts[] = [
-        'sk' => 'z chatu „' . $chat . '“',
-        'en' => 'from chat "' . $chat . '"',
-        'hu' => 'a(z) „' . $chat . '“ csevegésből',
-    ][$lang];
+    $parts[] = $labels['assigneeLabel'] . ': ' . $assignee;
+    $parts[] = $labels['fromChatOpen'] . $chat . $labels['fromChatClose'];
     $meta = implode(' · ', $parts);
     return $description !== '' ? $description . "\n\n" . $meta : $meta;
 }
 
-function demo_seed_whatsapp(PDO $pdo): void {
+function demo_seed_whatsapp(PDO $pdo): int {
     foreach (['whatsapp_links', 'whatsapp_numbers', 'integration_clients'] as $table) {
         if (!demo_table_exists($pdo, $table)) {
-            return; // an install older than the integration: nothing to seed
+            return 0; // an install older than the integration: nothing to seed
         }
     }
 
-    $data = demo_whatsapp_data();
     $lang = demo_lang($pdo);
-    $T = static fn(array $byLang): string => demo_t($byLang, $lang);
-    $ownerName = (string)$data['account']['ownerCrmUser'];
-    $ownerId = demo_user_ids($pdo)[$ownerName] ?? null;
+    $data = demo_whatsapp_data($lang);
+    $labels = demo_pack($pdo, 'whatsapp');
+    $users = demo_users($pdo);
+    // Users are refs (owner / pm / sales); tasks store the display names, as the app does.
+    $nameOf = static function (string $ref) use ($users): string {
+        if (!isset($users[$ref])) {
+            throw new \RuntimeException("whatsapp demo: unknown CRM user ref '{$ref}'");
+        }
+        return (string)$users[$ref]['name'];
+    };
+    $ownerName = $nameOf((string)$data['account']['ownerCrmUser']);
+    $ownerId = (string)$users[$data['account']['ownerCrmUser']]['id'];
     $states = demo_task_states($pdo);
     $baseUrl = demo_whatsapp_base_url($pdo);
     $clientId = demo_id('whatsapp', 0);
+    $rows = 0;
 
     // --- Clean own rows (links and refs go with the client by FK) ------------------
     $pdo->exec("DELETE FROM `timeline_events` WHERE `id` LIKE 'demo-whatsapp-%'");
@@ -122,8 +123,9 @@ function demo_seed_whatsapp(PDO $pdo): void {
     // --- Placeholder integration client the links hang on --------------------------
     $pdo->prepare(
         "INSERT INTO `integration_clients` (`id`, `code`, `name`, `is_active`, `scopes`, `allowed_ips`, `owner_user_ids`)
-         VALUES (?, 'waai-demo', 'WhatsApp demo data', 0, '[]', '[]', '[]')"
-    )->execute([$clientId]);
+         VALUES (?, 'waai-demo', ?, 0, '[]', '[]', '[]')"
+    )->execute([$clientId, $labels['integrationName']]);
+    $rows++;
 
     // --- A project's contact phone is how WAAI pairs a chat with it ----------------
     if (demo_table_exists($pdo, 'projects')) {
@@ -137,6 +139,7 @@ function demo_seed_whatsapp(PDO $pdo): void {
     $insNumber = $pdo->prepare("INSERT INTO `whatsapp_numbers` (`phone_digits`, `status`, `checked_at`) VALUES (?, ?, ?)");
     foreach ($data['numbers'] as $n) {
         $insNumber->execute([$n['phone'], $n['status'], demo_dt((int)$n['checkedDay'], '10:00')]);
+        $rows++;
     }
 
     $insLink = $pdo->prepare(
@@ -180,6 +183,7 @@ function demo_seed_whatsapp(PDO $pdo): void {
                 $clientId, $chat['ref'], $link['entityType'], $link['entityId'], $link['source'], $chat['title'],
                 $chat['isGroup'] ? 1 : 0, $chat['phone'], $ownerId, $chatPath, $lastAt,
             ]);
+            $rows++;
         }
 
         foreach ($chat['tasks'] as $t) {
@@ -187,11 +191,12 @@ function demo_seed_whatsapp(PDO $pdo): void {
             $createdAt = demo_dt((int)$src['day'], $src['time']);
             $taskPath = $chatPath . '?m=' . $chat['ref'] . '-' . $t['sourceMessage'];
             $done = $t['status'] === 'completed';
-            $title = $T($t['title']);
-            $description = $T($t['description']);
+            $title = (string)$t['title'];
+            $description = (string)$t['description'];
+            $assignee = $nameOf((string)$t['assignee']);
 
             // A chat that gave no date: today + 7 days, remembered as inferred (api/integration_tasks.php).
-            $meta = ['conversation' => $chat['title'], 'is_group' => (bool)$chat['isGroup'], 'assignee_label' => $t['assignee']];
+            $meta = ['conversation' => $chat['title'], 'is_group' => (bool)$chat['isGroup'], 'assignee_label' => $assignee];
             if ($t['due'] === null) {
                 $deadline = demo_d((int)$src['day'] + 7);
                 $deadlineTime = null;
@@ -210,11 +215,11 @@ function demo_seed_whatsapp(PDO $pdo): void {
             $id = demo_id('whatsapp', (int)$t['n']);
             $insTask->execute([
                 $id, $title,
-                $description . "\n\n" . demo_whatsapp_footer($lang, $chat['title'], $t['assignee'], $baseUrl !== '' ? $baseUrl . '#whatsapp' . $taskPath : ''),
+                $description . "\n\n" . demo_whatsapp_footer($labels['footer'], $chat['title'], $assignee, $baseUrl !== '' ? $baseUrl . '#whatsapp' . $taskPath : ''),
                 isset($t['start']) ? demo_d((int)$t['start']['day']) : null,
                 $deadline, $deadlineTime,
                 $done ? $states['done'] : $states['new'],
-                $t['assignee'], $ownerName,
+                $assignee, $ownerName,
                 $taskLead, $taskProject,
                 $done ? $ownerName : null,
                 $done ? substr(demo_dt((int)$t['completed']['day'], $t['completed']['time']), 0, 16) : null,
@@ -222,23 +227,26 @@ function demo_seed_whatsapp(PDO $pdo): void {
                 json_encode($meta, JSON_UNESCAPED_UNICODE),
                 $createdAt,
             ]);
-            $insAssignee->execute([$id, $t['assignee']]);
+            $insAssignee->execute([$id, $assignee]);
+            $rows++;
 
             // task_created / task_done on the client's timeline; only for a chat linked to a client or lead.
             if ($taskLead === null) {
                 continue;
             }
             $statedDue = $t['due'] === null ? null : $deadline;
-            $content = demo_whatsapp_timeline_content($lang, $description, $statedDue, $t['assignee'], $chat['title']);
+            $content = demo_whatsapp_timeline_content($labels['timeline'], $description, $statedDue, $assignee, $chat['title']);
             $insEvent->execute([
                 demo_id('whatsapp', ++$seq), $taskLead, $createdAt,
-                demo_whatsapp_timeline_title('task_created', $title, $lang), $content, $taskPath,
+                demo_whatsapp_timeline_title($labels['timeline'], 'task_created', $title), $content, $taskPath,
             ]);
+            $rows++;
             if ($done) {
                 $insEvent->execute([
                     demo_id('whatsapp', ++$seq), $taskLead, demo_dt((int)$t['completed']['day'], $t['completed']['time']),
-                    demo_whatsapp_timeline_title('task_done', $title, $lang), $content, $taskPath,
+                    demo_whatsapp_timeline_title($labels['timeline'], 'task_done', $title), $content, $taskPath,
                 ]);
+                $rows++;
             }
         }
 
@@ -249,8 +257,10 @@ function demo_seed_whatsapp(PDO $pdo): void {
             }
             $insEvent->execute([
                 demo_id('whatsapp', ++$seq), $leadId, demo_dt((int)$e['day'], $e['time']),
-                $T($e['title']), $T($e['content']), $chatPath . '?m=' . $chat['ref'] . '-' . $e['message'],
+                (string)$e['title'], (string)$e['content'], $chatPath . '?m=' . $chat['ref'] . '-' . $e['message'],
             ]);
+            $rows++;
         }
     }
+    return $rows;
 }

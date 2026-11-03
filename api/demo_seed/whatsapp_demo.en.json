@@ -1,0 +1,755 @@
+{
+  "_about": "Shared source of truth for the WhatsApp demo, edition en (docs/WHATSAPP-DEMO-DATA.md, contract in docs/DEMO-MODE.md C15). Same chat refs, message counts and day offsets in whatsapp_demo.{sk,hu,en}.json; only text, names and phone numbers differ. Days are offsets from today (negative = past), times are local HH:MM in account.timezone. CRM users are refs (owner, pm, sales), resolved through crmUsers.",
+  "version": 2,
+  "edition": "en",
+  "account": {
+    "sessionId": "demo-ccrm-wa",
+    "ownerCrmUser": "owner",
+    "phone": "17205550142",
+    "timezone": "America/Denver"
+  },
+  "crmUsers": {
+    "owner": {
+      "name": "Alex Morgan",
+      "email": "alex.morgan@lapidea.example"
+    },
+    "pm": {
+      "name": "Samantha Reed",
+      "email": "samantha.reed@lapidea.example"
+    },
+    "sales": {
+      "name": "Jordan Hayes",
+      "email": "jordan.hayes@lapidea.example"
+    }
+  },
+  "projectContactPhones": {
+    "demo-projects-1": "+1 303 555 0201",
+    "demo-projects-3": "+1 970 555 0206",
+    "demo-projects-5": "+1 719 555 0205"
+  },
+  "numbers": [
+    {
+      "phone": "13035550201",
+      "status": "registered",
+      "checkedDay": -4
+    },
+    {
+      "phone": "498955500210",
+      "status": "registered",
+      "checkedDay": -3
+    },
+    {
+      "phone": "19705550206",
+      "status": "registered",
+      "checkedDay": -1
+    },
+    {
+      "phone": "17205550202",
+      "status": "registered",
+      "checkedDay": -2
+    },
+    {
+      "phone": "17195550205",
+      "status": "registered",
+      "checkedDay": -2
+    },
+    {
+      "phone": "17205550207",
+      "status": "not_registered",
+      "checkedDay": -2
+    }
+  ],
+  "chats": [
+    {
+      "ref": "demo-wa-c1-site",
+      "title": "Mark Fisher – Highland Park",
+      "isGroup": false,
+      "phone": "13035550201",
+      "locale": "en",
+      "unread": 2,
+      "members": [
+        "Mark Fisher"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-1",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-1",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -4,
+          "time": "09:12",
+          "dir": "in",
+          "sender": "Mark Fisher",
+          "kind": "text",
+          "body": "Good morning, this is Mark Fisher from the Highland Park site. Where are we with the slabs for the next facade phase?"
+        },
+        {
+          "id": "m02",
+          "day": -4,
+          "time": "09:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Good morning, Mark. We confirmed the order with the supplier, the slabs will be in the workshop in three weeks."
+        },
+        {
+          "id": "m03",
+          "day": -4,
+          "time": "09:31",
+          "dir": "in",
+          "sender": "Mark Fisher",
+          "kind": "text",
+          "body": "Good. We need the exact installation schedule because of the scaffolding and the other trades."
+        },
+        {
+          "id": "m04",
+          "day": -4,
+          "time": "09:34",
+          "dir": "out",
+          "kind": "text",
+          "body": "Understood, I will send you the updated schedule within two days."
+        },
+        {
+          "id": "m05",
+          "day": -2,
+          "time": "14:08",
+          "dir": "out",
+          "kind": "document",
+          "fileName": "Installation schedule – Highland Park.pdf",
+          "mime": "application/pdf",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Mark Fisher"
+            }
+          ],
+          "body": "Installation schedule – Highland Park.pdf"
+        },
+        {
+          "id": "m06",
+          "day": -2,
+          "time": "14:20",
+          "dir": "in",
+          "sender": "Mark Fisher",
+          "kind": "text",
+          "body": "Thanks, that looks good."
+        },
+        {
+          "id": "m07",
+          "day": -2,
+          "time": "14:25",
+          "dir": "out",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "slabs",
+          "body": "This is what the first batch of panels looks like in the workshop."
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "10:05",
+          "dir": "in",
+          "sender": "Mark Fisher",
+          "kind": "text",
+          "body": "Can you do the lobby measuring next Tuesday morning?"
+        },
+        {
+          "id": "m09",
+          "day": -1,
+          "time": "10:12",
+          "dir": "out",
+          "kind": "text",
+          "quote": "m08",
+          "body": "I will check with the crew and get back to you."
+        },
+        {
+          "id": "m10",
+          "day": -1,
+          "time": "10:15",
+          "dir": "in",
+          "sender": "Mark Fisher",
+          "kind": "text",
+          "body": "And please confirm whether you can start the lobby floor right after the measuring."
+        },
+        {
+          "id": "m11",
+          "day": -1,
+          "time": "10:22",
+          "dir": "out",
+          "kind": "text",
+          "body": "I will check with the installation crew and let you know today or tomorrow."
+        },
+        {
+          "id": "m12",
+          "day": 0,
+          "time": "08:41",
+          "dir": "in",
+          "sender": "Mark Fisher",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Good morning, here is the third floor – the corner joints are done."
+        },
+        {
+          "id": "m13",
+          "day": 0,
+          "time": "08:43",
+          "dir": "in",
+          "sender": "Mark Fisher",
+          "kind": "text",
+          "body": "And please send us an indicative date for the CNC cutting of the lobby floor."
+        }
+      ],
+      "tasks": [
+        {
+          "n": 1,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "pm",
+          "due": {
+            "day": -2,
+            "time": null
+          },
+          "completed": {
+            "day": -2,
+            "time": "14:08"
+          },
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Send Mark Fisher the revised installation schedule",
+          "description": "He needs the exact installation dates to coordinate the scaffolding and the other trades."
+        },
+        {
+          "n": 2,
+          "sourceMessage": "m11",
+          "status": "open",
+          "assignee": "owner",
+          "due": {
+            "day": 1,
+            "time": null
+          },
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Check the lobby measuring and floor with the crew and tell Mark Fisher",
+          "description": "He wants the measuring next Tuesday and the floor started right after; the crew has to confirm."
+        },
+        {
+          "n": 3,
+          "sourceMessage": "m13",
+          "status": "open",
+          "assignee": "pm",
+          "due": null,
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Send Mark Fisher an indicative date for CNC cutting the lobby floor",
+          "description": "No date was stated in the chat; it follows from the workshop plan."
+        }
+      ],
+      "summary": {
+        "narrative": "Mark Fisher is following up on the slabs for the next facade phase. The installation schedule was sent and acknowledged. Open: the lobby measuring and the CNC date for the lobby floor.",
+        "actionItems": [
+          {
+            "task": 3,
+            "text": "Send the CNC cutting date"
+          },
+          {
+            "task": 2,
+            "text": "Confirm the lobby measuring"
+          }
+        ]
+      },
+      "timeline": [
+        {
+          "kind": "summary",
+          "day": -1,
+          "time": "18:00",
+          "message": "m11",
+          "title": "WhatsApp summary: Mark Fisher – Highland Park",
+          "content": "The installation schedule was acknowledged. The client asked about the lobby measuring on Tuesday and about starting the floor."
+        }
+      ]
+    },
+    {
+      "ref": "demo-wa-l10-architect",
+      "title": "Thomas Müller",
+      "isGroup": false,
+      "phone": "498955500210",
+      "locale": "de",
+      "unread": 0,
+      "members": [
+        "Thomas Müller"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-10",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -3,
+          "time": "11:02",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Guten Tag, hier ist Thomas Müller aus München. Wir hatten Ihnen wegen der Rahmenvereinbarung für unsere Villenprojekte geschrieben."
+        },
+        {
+          "id": "m02",
+          "day": -3,
+          "time": "11:10",
+          "dir": "out",
+          "kind": "text",
+          "body": "Guten Tag, Herr Müller, vielen Dank für Ihre Nachricht. Wir arbeiten gerade am Entwurf des Rahmenangebots."
+        },
+        {
+          "id": "m03",
+          "day": -3,
+          "time": "11:14",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Wir planen sechs Villen pro Jahr, jeweils etwa 40 m² Küchen- und Badplatten. Reicht das für eine erste Kalkulation?"
+        },
+        {
+          "id": "m04",
+          "day": -3,
+          "time": "11:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Für den ersten Entwurf ja. Ich schicke Ihnen übermorgen Fotos unserer Sinterstein-Muster."
+        },
+        {
+          "id": "m05",
+          "day": -1,
+          "time": "09:15",
+          "dir": "out",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "samples",
+          "body": "Sinterstein Nero Marquina 12 mm – die Muster, die ich erwähnt hatte."
+        },
+        {
+          "id": "m06",
+          "day": -1,
+          "time": "09:48",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "quote": "m05",
+          "body": "Danke, die Muster gefallen uns! Besonders die dunkle Variante."
+        },
+        {
+          "id": "m07",
+          "day": -1,
+          "time": "16:30",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Könnten Sie uns das Rahmenangebot bis in einer Woche um 12 Uhr schicken? Dann haben wir einen Termin mit den Bauherren."
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "16:36",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Thomas Müller"
+            }
+          ],
+          "body": "Ja, das schaffen wir. Ich beginne morgen mit der Kalkulation."
+        },
+        {
+          "id": "m09",
+          "day": -1,
+          "time": "16:40",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Perfekt, vielen Dank!"
+        }
+      ],
+      "tasks": [
+        {
+          "n": 4,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "owner",
+          "due": {
+            "day": -1,
+            "time": null
+          },
+          "completed": {
+            "day": -1,
+            "time": "09:15"
+          },
+          "leadId": "demo-clients-10",
+          "projectId": null,
+          "title": "Send Thomas Müller photos of the sintered stone samples",
+          "description": "He wants to see the Nero Marquina samples for the kitchens and bathrooms of the villa projects."
+        },
+        {
+          "n": 5,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "owner",
+          "start": {
+            "day": 0
+          },
+          "due": {
+            "day": 6,
+            "time": "12:00"
+          },
+          "leadId": "demo-clients-10",
+          "projectId": null,
+          "title": "Send Thomas Müller the framework offer",
+          "description": "Six villa projects a year; he needs it for a meeting with the developers."
+        }
+      ],
+      "summary": {
+        "narrative": "Thomas Müller is planning six villa projects a year. He liked the dark sample and wants the framework offer within a week.",
+        "actionItems": [
+          {
+            "task": 5,
+            "text": "Send the framework offer"
+          }
+        ]
+      },
+      "timeline": []
+    },
+    {
+      "ref": "demo-wa-c6-hotel",
+      "title": "Beth Lucas – Hotel Aurum",
+      "isGroup": false,
+      "phone": "19705550206",
+      "locale": "en",
+      "unread": 2,
+      "members": [
+        "Beth Lucas"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-6",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-3",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -5,
+          "time": "14:02",
+          "dir": "in",
+          "sender": "Beth Lucas",
+          "kind": "text",
+          "body": "Hello, we would like an update on the spa wall. Is the new date still valid?"
+        },
+        {
+          "id": "m02",
+          "day": -5,
+          "time": "14:10",
+          "dir": "out",
+          "kind": "text",
+          "body": "Hello Beth. Yes, the slabs reach the workshop next week and we start cutting right after."
+        },
+        {
+          "id": "m03",
+          "day": -5,
+          "time": "14:15",
+          "dir": "in",
+          "sender": "Beth Lucas",
+          "kind": "audio",
+          "mime": "audio/wav",
+          "seconds": 8,
+          "transcription": "We need the joint colour samples this week, the owner wants to see them in the spa lighting.",
+          "body": "We need the joint colour samples this week, the owner wants to see them in the spa lighting."
+        },
+        {
+          "id": "m04",
+          "day": -5,
+          "time": "14:21",
+          "dir": "out",
+          "kind": "text",
+          "quote": "m03",
+          "body": "Understood, thank you. I will send three lighter shades by courier."
+        },
+        {
+          "id": "m05",
+          "day": -4,
+          "time": "09:40",
+          "dir": "in",
+          "sender": "Beth Lucas",
+          "kind": "text",
+          "body": "Could you also confirm the payment schedule for the second instalment?"
+        },
+        {
+          "id": "m06",
+          "day": -4,
+          "time": "09:46",
+          "dir": "out",
+          "kind": "text",
+          "body": "Of course, I will send it to you by e-mail today."
+        },
+        {
+          "id": "m07",
+          "day": -2,
+          "time": "10:30",
+          "dir": "in",
+          "sender": "Beth Lucas",
+          "kind": "text",
+          "body": "The samples arrived, thank you! The lighter shade on the left looks right."
+        },
+        {
+          "id": "m08",
+          "day": -2,
+          "time": "10:40",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Beth Lucas"
+            }
+          ],
+          "body": "Great. I will confirm the date with the supplier and get back to you."
+        },
+        {
+          "id": "m09",
+          "day": 0,
+          "time": "08:10",
+          "dir": "in",
+          "sender": "Beth Lucas",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Look at this joint on the spa wall – a hairline gap."
+        },
+        {
+          "id": "m10",
+          "day": 0,
+          "time": "08:12",
+          "dir": "in",
+          "sender": "Beth Lucas",
+          "kind": "text",
+          "body": "Could someone come by today?"
+        }
+      ],
+      "tasks": [
+        {
+          "n": 6,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "pm",
+          "due": {
+            "day": -4,
+            "time": null
+          },
+          "completed": {
+            "day": -4,
+            "time": "11:30"
+          },
+          "leadId": "demo-clients-6",
+          "projectId": "demo-projects-3",
+          "title": "Send the hotel three lighter joint samples",
+          "description": "The owner wants to see the samples in the spa lighting."
+        },
+        {
+          "n": 7,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "pm",
+          "due": {
+            "day": -1,
+            "time": null
+          },
+          "leadId": "demo-clients-6",
+          "projectId": "demo-projects-3",
+          "title": "Confirm the new slab date with the supplier and tell the hotel",
+          "description": "The hotel is waiting for the confirmation; the date has already slipped once."
+        }
+      ],
+      "summary": {
+        "narrative": "The hotel is following the spa wall: the joint samples arrived and the lighter shade is liked. Open: confirming the slab date and a hairline gap in one joint.",
+        "actionItems": [
+          {
+            "task": 7,
+            "text": "Confirm the slab date with the hotel"
+          }
+        ]
+      },
+      "timeline": [
+        {
+          "kind": "summary",
+          "day": -1,
+          "time": "18:00",
+          "message": "m08",
+          "title": "WhatsApp summary: Beth Lucas – Hotel Aurum",
+          "content": "The joint samples arrived and the hotel prefers the lighter shade. The slab date confirmation is still pending."
+        }
+      ]
+    },
+    {
+      "ref": "demo-wa-c2-warranty",
+      "title": "Andrea Wilson",
+      "isGroup": false,
+      "phone": "17205550202",
+      "locale": "en",
+      "unread": 0,
+      "members": [
+        "Andrea Wilson"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-2",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-2",
+          "source": "manual"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -14,
+          "time": "17:50",
+          "dir": "in",
+          "sender": "Andrea Wilson",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Hello, I wrote you an e-mail about the chip next to the dishwasher, here is the photo."
+        },
+        {
+          "id": "m02",
+          "day": -13,
+          "time": "09:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Thank you, we have your request. It is a warranty case."
+        },
+        {
+          "id": "m03",
+          "day": -13,
+          "time": "09:22",
+          "dir": "out",
+          "kind": "text",
+          "body": "A colleague will call you to arrange the visit."
+        },
+        {
+          "id": "m04",
+          "day": -9,
+          "time": "15:05",
+          "dir": "in",
+          "sender": "Andrea Wilson",
+          "kind": "text",
+          "body": "Nobody has called me yet 🙂"
+        },
+        {
+          "id": "m05",
+          "day": -9,
+          "time": "15:12",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Andrea Wilson"
+            }
+          ],
+          "body": "Sorry for the delay! Would the start of next week work?"
+        },
+        {
+          "id": "m06",
+          "day": -9,
+          "time": "15:20",
+          "dir": "in",
+          "sender": "Andrea Wilson",
+          "kind": "text",
+          "body": "Yes, Monday morning is fine."
+        },
+        {
+          "id": "m07",
+          "day": -1,
+          "time": "18:30",
+          "dir": "in",
+          "sender": "Andrea Wilson",
+          "kind": "text",
+          "body": "Just checking that the repair visit tomorrow is still on?"
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "18:35",
+          "dir": "out",
+          "kind": "text",
+          "body": "Yes, our installer arrives tomorrow between 9:00 and 10:00."
+        }
+      ],
+      "tasks": [
+        {
+          "n": 8,
+          "sourceMessage": "m03",
+          "status": "completed",
+          "assignee": "sales",
+          "due": {
+            "day": -9,
+            "time": null
+          },
+          "completed": {
+            "day": -9,
+            "time": "15:12"
+          },
+          "leadId": "demo-clients-2",
+          "projectId": "demo-projects-2",
+          "title": "Call Andrea Wilson and arrange the edge repair visit",
+          "description": "Warranty case – a small chip on the edge next to the dishwasher."
+        },
+        {
+          "n": 9,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "pm",
+          "due": {
+            "day": 1,
+            "time": "09:00"
+          },
+          "leadId": "demo-clients-2",
+          "projectId": "demo-projects-2",
+          "title": "Repair the edge chip on Andrea Wilson's worktop",
+          "description": "The installer arrives between 9:00 and 10:00; bonding and re-polishing is usually enough."
+        }
+      ],
+      "summary": {
+        "narrative": "Andrea Wilson reported a warranty chip on the edge next to the dishwasher. The repair is confirmed for tomorrow.",
+        "actionItems": [
+          {
+            "task": 9,
+            "text": "Repair the edge"
+          }
+        ]
+      },
+      "timeline": []
+    }
+  ]
+}

@@ -1,0 +1,755 @@
+{
+  "_about": "Shared source of truth for the WhatsApp demo, edition sk (docs/WHATSAPP-DEMO-DATA.md, contract in docs/DEMO-MODE.md C15). Same chat refs, message counts and day offsets in whatsapp_demo.{sk,hu,en}.json; only text, names and phone numbers differ. Days are offsets from today (negative = past), times are local HH:MM in account.timezone. CRM users are refs (owner, pm, sales), resolved through crmUsers.",
+  "version": 2,
+  "edition": "sk",
+  "account": {
+    "sessionId": "demo-ccrm-wa",
+    "ownerCrmUser": "owner",
+    "phone": "421905555142",
+    "timezone": "Europe/Bratislava"
+  },
+  "crmUsers": {
+    "owner": {
+      "name": "Andrej Kollár",
+      "email": "andrej.kollar@lapidea.example"
+    },
+    "pm": {
+      "name": "Simona Hudecová",
+      "email": "simona.hudecova@lapidea.example"
+    },
+    "sales": {
+      "name": "Juraj Benko",
+      "email": "juraj.benko@lapidea.example"
+    }
+  },
+  "projectContactPhones": {
+    "demo-projects-1": "+421 903 555 201",
+    "demo-projects-3": "+421 905 555 206",
+    "demo-projects-5": "+421 905 555 205"
+  },
+  "numbers": [
+    {
+      "phone": "421903555201",
+      "status": "registered",
+      "checkedDay": -4
+    },
+    {
+      "phone": "498955500210",
+      "status": "registered",
+      "checkedDay": -3
+    },
+    {
+      "phone": "421905555206",
+      "status": "registered",
+      "checkedDay": -1
+    },
+    {
+      "phone": "421910555202",
+      "status": "registered",
+      "checkedDay": -2
+    },
+    {
+      "phone": "421905555205",
+      "status": "registered",
+      "checkedDay": -2
+    },
+    {
+      "phone": "421915555207",
+      "status": "not_registered",
+      "checkedDay": -2
+    }
+  ],
+  "chats": [
+    {
+      "ref": "demo-wa-c1-site",
+      "title": "Marek Šimko – Horský park",
+      "isGroup": false,
+      "phone": "421903555201",
+      "locale": "sk",
+      "unread": 2,
+      "members": [
+        "Marek Šimko"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-1",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-1",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -4,
+          "time": "09:12",
+          "dir": "in",
+          "sender": "Marek Šimko",
+          "kind": "text",
+          "body": "Dobrý deň, tu Marek Šimko zo stavby Horský park. Ako sme na tom s doskami pre ďalšiu etapu fasády?"
+        },
+        {
+          "id": "m02",
+          "day": -4,
+          "time": "09:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Dobrý deň, pán Šimko. Objednávku u dodávateľa sme potvrdili, dosky budú v dielni o tri týždne."
+        },
+        {
+          "id": "m03",
+          "day": -4,
+          "time": "09:31",
+          "dir": "in",
+          "sender": "Marek Šimko",
+          "kind": "text",
+          "body": "Dobre. Potrebujeme presný harmonogram montáže, kvôli lešeniu aj ostatným profesiám."
+        },
+        {
+          "id": "m04",
+          "day": -4,
+          "time": "09:34",
+          "dir": "out",
+          "kind": "text",
+          "body": "Rozumiem, pošlem vám upravený harmonogram do dvoch dní."
+        },
+        {
+          "id": "m05",
+          "day": -2,
+          "time": "14:08",
+          "dir": "out",
+          "kind": "document",
+          "fileName": "Harmonogram montáže – Horský park.pdf",
+          "mime": "application/pdf",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Marek Šimko"
+            }
+          ],
+          "body": "Harmonogram montáže – Horský park.pdf"
+        },
+        {
+          "id": "m06",
+          "day": -2,
+          "time": "14:20",
+          "dir": "in",
+          "sender": "Marek Šimko",
+          "kind": "text",
+          "body": "Ďakujem, vyzerá to dobre."
+        },
+        {
+          "id": "m07",
+          "day": -2,
+          "time": "14:25",
+          "dir": "out",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "slabs",
+          "body": "Takto vyzerá prvá dávka panelov v dielni."
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "10:05",
+          "dir": "in",
+          "sender": "Marek Šimko",
+          "kind": "text",
+          "body": "Zvládnete zameranie lobby budúci utorok doobeda?"
+        },
+        {
+          "id": "m09",
+          "day": -1,
+          "time": "10:12",
+          "dir": "out",
+          "kind": "text",
+          "quote": "m08",
+          "body": "Overím to s partiou a ozvem sa."
+        },
+        {
+          "id": "m10",
+          "day": -1,
+          "time": "10:15",
+          "dir": "in",
+          "sender": "Marek Šimko",
+          "kind": "text",
+          "body": "A potvrďte mi prosím, či môžete podlahu lobby začať hneď po zameraní."
+        },
+        {
+          "id": "m11",
+          "day": -1,
+          "time": "10:22",
+          "dir": "out",
+          "kind": "text",
+          "body": "Overím to s montážnou partiou a dám vám vedieť dnes alebo zajtra."
+        },
+        {
+          "id": "m12",
+          "day": 0,
+          "time": "08:41",
+          "dir": "in",
+          "sender": "Marek Šimko",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Dobré ráno, tu je 3. podlažie – rohové spoje sú hotové."
+        },
+        {
+          "id": "m13",
+          "day": 0,
+          "time": "08:43",
+          "dir": "in",
+          "sender": "Marek Šimko",
+          "kind": "text",
+          "body": "A pošlite nám prosím orientačný termín CNC rezania podlahy lobby."
+        }
+      ],
+      "tasks": [
+        {
+          "n": 1,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "pm",
+          "due": {
+            "day": -2,
+            "time": null
+          },
+          "completed": {
+            "day": -2,
+            "time": "14:08"
+          },
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Poslať upravený harmonogram montáže – Marek Šimko",
+          "description": "Potrebuje presné termíny montáže, aby zladil lešenie a ostatné profesie."
+        },
+        {
+          "n": 2,
+          "sourceMessage": "m11",
+          "status": "open",
+          "assignee": "owner",
+          "due": {
+            "day": 1,
+            "time": null
+          },
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Overiť s partiou zameranie a podlahu lobby a dať vedieť klientovi",
+          "description": "Chce zamerať budúci utorok a podlahu začať hneď potom; partia to musí potvrdiť."
+        },
+        {
+          "n": 3,
+          "sourceMessage": "m13",
+          "status": "open",
+          "assignee": "pm",
+          "due": null,
+          "leadId": "demo-clients-1",
+          "projectId": "demo-projects-1",
+          "title": "Poslať orientačný termín CNC rezania podlahy lobby – Marek Šimko",
+          "description": "V chate nepadol dátum; termín sa dopočíta z plánu dielne."
+        }
+      ],
+      "summary": {
+        "narrative": "Marek Šimko sleduje dosky pre ďalšiu etapu fasády. Harmonogram montáže bol odoslaný a potvrdený. Otvorené zostáva: zameranie lobby a termín CNC rezania podlahy.",
+        "actionItems": [
+          {
+            "task": 3,
+            "text": "Poslať termín CNC rezania"
+          },
+          {
+            "task": 2,
+            "text": "Potvrdiť zameranie lobby"
+          }
+        ]
+      },
+      "timeline": [
+        {
+          "kind": "summary",
+          "day": -1,
+          "time": "18:00",
+          "message": "m11",
+          "title": "Súhrn z WhatsAppu: Marek Šimko – Horský park",
+          "content": "Harmonogram montáže bol potvrdený. Klient sa pýtal na zameranie lobby v utorok a na začiatok podlahy."
+        }
+      ]
+    },
+    {
+      "ref": "demo-wa-l10-architect",
+      "title": "Thomas Müller",
+      "isGroup": false,
+      "phone": "498955500210",
+      "locale": "de",
+      "unread": 0,
+      "members": [
+        "Thomas Müller"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-10",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -3,
+          "time": "11:02",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Guten Tag, hier ist Thomas Müller aus München. Wir hatten Ihnen wegen der Rahmenvereinbarung für unsere Villenprojekte geschrieben."
+        },
+        {
+          "id": "m02",
+          "day": -3,
+          "time": "11:10",
+          "dir": "out",
+          "kind": "text",
+          "body": "Guten Tag, Herr Müller, vielen Dank für Ihre Nachricht. Wir arbeiten gerade am Entwurf des Rahmenangebots."
+        },
+        {
+          "id": "m03",
+          "day": -3,
+          "time": "11:14",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Wir planen sechs Villen pro Jahr, jeweils etwa 40 m² Küchen- und Badplatten. Reicht das für eine erste Kalkulation?"
+        },
+        {
+          "id": "m04",
+          "day": -3,
+          "time": "11:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Für den ersten Entwurf ja. Ich schicke Ihnen übermorgen Fotos unserer Sinterstein-Muster."
+        },
+        {
+          "id": "m05",
+          "day": -1,
+          "time": "09:15",
+          "dir": "out",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "samples",
+          "body": "Sinterstein Nero Marquina 12 mm – die Muster, die ich erwähnt hatte."
+        },
+        {
+          "id": "m06",
+          "day": -1,
+          "time": "09:48",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "quote": "m05",
+          "body": "Danke, die Muster gefallen uns! Besonders die dunkle Variante."
+        },
+        {
+          "id": "m07",
+          "day": -1,
+          "time": "16:30",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Könnten Sie uns das Rahmenangebot bis in einer Woche um 12 Uhr schicken? Dann haben wir einen Termin mit den Bauherren."
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "16:36",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Thomas Müller"
+            }
+          ],
+          "body": "Ja, das schaffen wir. Ich beginne morgen mit der Kalkulation."
+        },
+        {
+          "id": "m09",
+          "day": -1,
+          "time": "16:40",
+          "dir": "in",
+          "sender": "Thomas Müller",
+          "kind": "text",
+          "body": "Perfekt, vielen Dank!"
+        }
+      ],
+      "tasks": [
+        {
+          "n": 4,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "owner",
+          "due": {
+            "day": -1,
+            "time": null
+          },
+          "completed": {
+            "day": -1,
+            "time": "09:15"
+          },
+          "leadId": "demo-clients-10",
+          "projectId": null,
+          "title": "Poslať fotky vzoriek spekaného kameňa – Thomas Müller",
+          "description": "Chce vidieť vzorky Nero Marquina pre kuchyne a kúpeľne vilových projektov."
+        },
+        {
+          "n": 5,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "owner",
+          "start": {
+            "day": 0
+          },
+          "due": {
+            "day": 6,
+            "time": "12:00"
+          },
+          "leadId": "demo-clients-10",
+          "projectId": null,
+          "title": "Poslať rámcovú ponuku – Thomas Müller",
+          "description": "Šesť vilových projektov ročne; potrebuje ju na stretnutie s investormi."
+        }
+      ],
+      "summary": {
+        "narrative": "Thomas Müller plánuje šesť vilových projektov ročne. Páčila sa mu tmavá vzorka a rámcovú ponuku chce do týždňa.",
+        "actionItems": [
+          {
+            "task": 5,
+            "text": "Poslať rámcovú ponuku"
+          }
+        ]
+      },
+      "timeline": []
+    },
+    {
+      "ref": "demo-wa-c6-hotel",
+      "title": "Beáta Lukáčová – Hotel Aurum",
+      "isGroup": false,
+      "phone": "421905555206",
+      "locale": "sk",
+      "unread": 2,
+      "members": [
+        "Beáta Lukáčová"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-6",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-3",
+          "source": "auto"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -5,
+          "time": "14:02",
+          "dir": "in",
+          "sender": "Beáta Lukáčová",
+          "kind": "text",
+          "body": "Dobrý deň, chceli by sme aktuálny stav wellness steny. Platí nový termín?"
+        },
+        {
+          "id": "m02",
+          "day": -5,
+          "time": "14:10",
+          "dir": "out",
+          "kind": "text",
+          "body": "Dobrý deň, pani Lukáčová. Áno, dosky prídu budúci týždeň do dielne a hneď potom začíname rezať."
+        },
+        {
+          "id": "m03",
+          "day": -5,
+          "time": "14:15",
+          "dir": "in",
+          "sender": "Beáta Lukáčová",
+          "kind": "audio",
+          "mime": "audio/wav",
+          "seconds": 8,
+          "transcription": "Potrebujeme tento týždeň vzorky farieb spár, majiteľ ich chce vidieť v osvetlení spa.",
+          "body": "Potrebujeme tento týždeň vzorky farieb spár, majiteľ ich chce vidieť v osvetlení spa."
+        },
+        {
+          "id": "m04",
+          "day": -5,
+          "time": "14:21",
+          "dir": "out",
+          "kind": "text",
+          "quote": "m03",
+          "body": "Rozumiem, ďakujem. Pošlem tri svetlejšie odtiene kuriérom."
+        },
+        {
+          "id": "m05",
+          "day": -4,
+          "time": "09:40",
+          "dir": "in",
+          "sender": "Beáta Lukáčová",
+          "kind": "text",
+          "body": "Môžete nám potvrdiť aj splátkový kalendár druhej splátky?"
+        },
+        {
+          "id": "m06",
+          "day": -4,
+          "time": "09:46",
+          "dir": "out",
+          "kind": "text",
+          "body": "Samozrejme, pošlem vám ho dnes e-mailom."
+        },
+        {
+          "id": "m07",
+          "day": -2,
+          "time": "10:30",
+          "dir": "in",
+          "sender": "Beáta Lukáčová",
+          "kind": "text",
+          "body": "Vzorky dorazili, ďakujeme! Svetlejší odtieň vľavo vyzerá správne."
+        },
+        {
+          "id": "m08",
+          "day": -2,
+          "time": "10:40",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Beáta Lukáčová"
+            }
+          ],
+          "body": "Výborne. Potvrdím termín s dodávateľom a ozvem sa."
+        },
+        {
+          "id": "m09",
+          "day": 0,
+          "time": "08:10",
+          "dir": "in",
+          "sender": "Beáta Lukáčová",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Pozrite sa na tento spoj na wellness stene – vlásočnicová medzera."
+        },
+        {
+          "id": "m10",
+          "day": 0,
+          "time": "08:12",
+          "dir": "in",
+          "sender": "Beáta Lukáčová",
+          "kind": "text",
+          "body": "Môže niekto prísť ešte dnes?"
+        }
+      ],
+      "tasks": [
+        {
+          "n": 6,
+          "sourceMessage": "m04",
+          "status": "completed",
+          "assignee": "pm",
+          "due": {
+            "day": -4,
+            "time": null
+          },
+          "completed": {
+            "day": -4,
+            "time": "11:30"
+          },
+          "leadId": "demo-clients-6",
+          "projectId": "demo-projects-3",
+          "title": "Poslať hotelu tri svetlejšie vzorky spár",
+          "description": "Majiteľ chce vzorky vidieť v osvetlení spa."
+        },
+        {
+          "n": 7,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "pm",
+          "due": {
+            "day": -1,
+            "time": null
+          },
+          "leadId": "demo-clients-6",
+          "projectId": "demo-projects-3",
+          "title": "Potvrdiť nový termín dosiek s dodávateľom a dať vedieť hotelu",
+          "description": "Hotel čaká na potvrdenie; termín už bol raz posunutý."
+        }
+      ],
+      "summary": {
+        "narrative": "Hotel sleduje wellness stenu: vzorky spár dorazili a svetlejší odtieň sa páči. Otvorené zostáva potvrdenie termínu dosiek a vlásočnicová medzera v jednom spoji.",
+        "actionItems": [
+          {
+            "task": 7,
+            "text": "Potvrdiť termín dosiek hotelu"
+          }
+        ]
+      },
+      "timeline": [
+        {
+          "kind": "summary",
+          "day": -1,
+          "time": "18:00",
+          "message": "m08",
+          "title": "Súhrn z WhatsAppu: Beáta Lukáčová – Hotel Aurum",
+          "content": "Vzorky spár dorazili a hotel preferuje svetlejší odtieň. Čaká sa na potvrdenie termínu dosiek."
+        }
+      ]
+    },
+    {
+      "ref": "demo-wa-c2-warranty",
+      "title": "Andrea Horváthová",
+      "isGroup": false,
+      "phone": "421910555202",
+      "locale": "sk",
+      "unread": 0,
+      "members": [
+        "Andrea Horváthová"
+      ],
+      "links": [
+        {
+          "entityType": "lead",
+          "entityId": "demo-clients-2",
+          "source": "auto"
+        },
+        {
+          "entityType": "project",
+          "entityId": "demo-projects-2",
+          "source": "manual"
+        }
+      ],
+      "messages": [
+        {
+          "id": "m01",
+          "day": -14,
+          "time": "17:50",
+          "dir": "in",
+          "sender": "Andrea Horváthová",
+          "kind": "image",
+          "mime": "image/png",
+          "placeholder": "site",
+          "body": "Dobrý deň, písala som vám e-mailom o štrbine pri umývačke, tu je fotka."
+        },
+        {
+          "id": "m02",
+          "day": -13,
+          "time": "09:20",
+          "dir": "out",
+          "kind": "text",
+          "body": "Ďakujem, požiadavku máme. Je to záručný prípad."
+        },
+        {
+          "id": "m03",
+          "day": -13,
+          "time": "09:22",
+          "dir": "out",
+          "kind": "text",
+          "body": "Zavolá vám kolega a dohodne termín návštevy."
+        },
+        {
+          "id": "m04",
+          "day": -9,
+          "time": "15:05",
+          "dir": "in",
+          "sender": "Andrea Horváthová",
+          "kind": "text",
+          "body": "Zatiaľ sa mi nikto neozval 🙂"
+        },
+        {
+          "id": "m05",
+          "day": -9,
+          "time": "15:12",
+          "dir": "out",
+          "kind": "text",
+          "reactions": [
+            {
+              "emoji": "👍",
+              "by": "Andrea Horváthová"
+            }
+          ],
+          "body": "Ospravedlňujem sa za zdržanie! Hodilo by sa vám začiatkom budúceho týždňa?"
+        },
+        {
+          "id": "m06",
+          "day": -9,
+          "time": "15:20",
+          "dir": "in",
+          "sender": "Andrea Horváthová",
+          "kind": "text",
+          "body": "Áno, pondelok doobeda je v poriadku."
+        },
+        {
+          "id": "m07",
+          "day": -1,
+          "time": "18:30",
+          "dir": "in",
+          "sender": "Andrea Horváthová",
+          "kind": "text",
+          "body": "Len si overujem, že oprava zajtra stále platí?"
+        },
+        {
+          "id": "m08",
+          "day": -1,
+          "time": "18:35",
+          "dir": "out",
+          "kind": "text",
+          "body": "Áno, náš montér príde zajtra medzi 9:00 a 10:00."
+        }
+      ],
+      "tasks": [
+        {
+          "n": 8,
+          "sourceMessage": "m03",
+          "status": "completed",
+          "assignee": "sales",
+          "due": {
+            "day": -9,
+            "time": null
+          },
+          "completed": {
+            "day": -9,
+            "time": "15:12"
+          },
+          "leadId": "demo-clients-2",
+          "projectId": "demo-projects-2",
+          "title": "Zavolať klientke a dohodnúť termín opravy hrany – Andrea Horváthová",
+          "description": "Záručný prípad – malá štrbina na hrane pri umývačke riadu."
+        },
+        {
+          "n": 9,
+          "sourceMessage": "m08",
+          "status": "open",
+          "assignee": "pm",
+          "due": {
+            "day": 1,
+            "time": "09:00"
+          },
+          "leadId": "demo-clients-2",
+          "projectId": "demo-projects-2",
+          "title": "Opraviť štrbinu na hrane dosky – Andrea Horváthová",
+          "description": "Montér prichádza medzi 9:00 a 10:00; zvyčajne stačí lepenie a prebrúsenie."
+        }
+      ],
+      "summary": {
+        "narrative": "Andrea Horváthová hlási záručnú štrbinu na hrane dosky pri umývačke. Termín opravy je potvrdený na zajtra.",
+        "actionItems": [
+          {
+            "task": 9,
+            "text": "Opraviť hranu"
+          }
+        ]
+      },
+      "timeline": []
+    }
+  ]
+}
