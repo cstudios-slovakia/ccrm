@@ -714,6 +714,14 @@ one titled "Phase W" that the planning session handed to the user.
 29. **(4B) C9 and the harness disagree on where module assertions go** (see Left over of 4B): the doc says
     `assert_demo_<module>()` in `test-demo-seed.php`, the code loads `scripts/demo-assert/<module>.php`. The code is
     what runs; C9 should be corrected in the next doc pass.
+30. **(4B x 4A) The 4A timeline assertion fails once the offers module runs in the same dry run.**
+    `scripts/demo-assert/clients.php` ("every timeline card belongs to a written record ...") requires
+    `count($db->rows('timeline_events')) === count($pack['timeline'])`, but `offers.php` also writes one announcement
+    card per document (`demo-offers-2001+`, 16 rows, the same card the Invoicing wizard writes). *Symptom:*
+    `test:demo-seed` reports 4 FAILED (one per combination) on the branch with 4A and 4B together; each phase is
+    green alone. *Root cause:* the assertion counts all rows of the table instead of the rows of its own module.
+    *Fix (4A's file, not changed by 4B):* filter the rows by id prefix, `array_filter($db->rows('timeline_events'),
+    fn($e) => strpos($e['id'], 'demo-clients-') === 0)`, before the count and the per-lead checks.
 
 ---
 
