@@ -355,6 +355,13 @@ if (!function_exists('demo_reseed_run')) {
         // SECURITY: this endpoint deletes data - admins with the system_reset permission only.
         $sessionUser = ccrm_require_admin();
 
+        // config.php assigns $pdo/$db_connection_error at top level and get_db_connection()
+        // reads them via `global`. Required from inside this function without these
+        // declarations they would be this function's locals, the globals would stay null,
+        // and every call would throw "Database connection failed: Unknown error" while the
+        // database itself is fine (see ccrm_auth_pdo() in auth.php).
+        global $pdo, $db_connection_error;
+
         $configFile = dirname(__DIR__) . '/config.php';
         if (!file_exists($configFile)) {
             $fail(400, 'not_installed', 'CCRM is not installed yet.');

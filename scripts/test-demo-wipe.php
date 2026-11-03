@@ -569,6 +569,14 @@ $check('full reset: settings are a fresh install\'s - DEMO_MODE false, no divisi
 $leftover = array_values(array_filter(array_merge($cleanTables, ['financial_categories', 'project_types', 'client_categories', 'swarm_simulations']), static fn($t) => count($fd->rows($t)) > 0));
 $check('full reset: transactional tables, finance categories, project types and simulations are empty', !$leftover, implode(', ', $leftover));
 
+// config.php assigns $pdo at top level; required inside a function without `global` it binds
+// to that function and get_db_connection() throws "Unknown error" with a healthy database
+// (the re-seed card's `status_failed`). Not about wiping, but this is the demo suite.
+$reseedSrc = (string)file_get_contents(dirname(__DIR__) . '/api/demo_reseed.php');
+$gPos = strpos($reseedSrc, 'global $pdo, $db_connection_error;');
+$rPos = strpos($reseedSrc, 'require_once $configFile;');
+$check('demo_reseed_http() declares the config globals before it requires config.php', $gPos !== false && $rPos !== false && $gPos < $rPos);
+
 $warn = $db->warnings();
 if ($warn) {
     echo 'WARN ' . count($warn) . " statement(s) the fake could not interpret (their result is unverified here):\n";
