@@ -206,9 +206,15 @@ return [
         }
         $check('nobody has time logged on a day of approved leave', !$leaveClash, implode("\n", array_slice($leaveClash, 0, 4)));
 
-        // --- the title rule (C5) when nothing is linked yet: the entry keeps its own title ---------------------------------------------------
-        $titleBad = array_filter($entries, static fn($r) => $r['task_id'] === null && $r['ticket_id'] === null && ($r['description'] === null || $r['description'] !== $r['title_snapshot']));
-        $check('without tasks or tickets every entry is a plain one: description = title_snapshot', !$titleBad && count(array_filter($entries, static fn($r) => $r['task_id'] !== null || $r['ticket_id'] !== null)) === 0);
+        // --- the title rule (C5): a linked entry has no title of its own; a plain one keeps its own -----------------------------------
+        $titleBad = array_filter($entries, static fn($r) => ($r['task_id'] !== null || $r['ticket_id'] !== null)
+            ? ($r['description'] !== null || trim((string)$r['title_snapshot']) === '')
+            : ($r['description'] === null || $r['description'] !== $r['title_snapshot']));
+        $check('C5 title rule: a linked entry has description NULL and the item\'s title as snapshot; a plain entry keeps its own title', !$titleBad);
+        $taskProject = [];
+        foreach ($db->rows('tasks') as $t) $taskProject[$t['id']] = $t['related_project_id'] ?? null;
+        $wrongProject = array_filter($entries, static fn($r) => $r['task_id'] !== null && array_key_exists($r['task_id'], $taskProject) && $taskProject[$r['task_id']] !== $r['project_id']);
+        $check('every task-linked entry is on the task\'s own project', !$wrongProject, implode(', ', array_slice(array_column($wrongProject, 'id'), 0, 5)));
         $check('TIME_TRACKING_SETTINGS is written (weekly approval on, cost settings of the app)', (function () use ($db) {
             $s = json_decode($db->settings()['TIME_TRACKING_SETTINGS'] ?? 'null', true);
             return is_array($s) && $s['weeklyApproval'] === true && (float)$s['employerMultiplier'] === 1.352 && (int)$s['hoursPerDay'] === 8;
