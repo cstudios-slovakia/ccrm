@@ -253,6 +253,12 @@
           "description": "A csevegésben nem hangzott el dátum; az időpontot a műhelyterv alapján kell megadni."
         }
       ],
+      "digest": {
+        "today": "A harmadik emeleti sarokillesztések elkészültek (fotó elküldve). Tájékoztató időpontot kér az előcsarnok padlójának CNC-vágására.",
+        "d3": "A harmadik emeleti sarokillesztések elkészültek (fotó elküldve), és tájékoztató időpontot kér az előcsarnok padlójának CNC-vágására. Korábban elküldted a szerelési ütemtervet és az első lapszállítmány fotóját, és visszaigazolta, hogy jónak látja. Kérte az előcsarnok felmérését a jövő kedd reggelre, és tudni szeretné, hogy a padló munkája közvetlenül utána indulhat-e; ma vagy holnap választ ígértél.",
+        "d7": "A harmadik emeleti sarokillesztések elkészültek (fotó elküldve), és tájékoztató időpontot kér az előcsarnok padlójának CNC-vágására. A beszélgetés azzal indult, hogy hol tartanak a homlokzat következő szakaszának lapjai: a rendelés visszaigazolva, a lapok három hét múlva érnek a műhelybe, ezért kell neki a pontos szerelési ütemterv az állvány és a többi szakipar miatt. Elküldted az ütemtervet és az első lapszállítmány fotóját, és visszaigazolta, hogy jónak látja. Azóta kérte az előcsarnok felmérését a jövő kedd reggelre, és hogy a padló munkája közvetlenül utána indulhat-e; ma vagy holnap választ ígértél.",
+        "d30": "A harmadik emeleti sarokillesztések elkészültek (fotó elküldve), és tájékoztató időpontot kér az előcsarnok padlójának CNC-vágására. A beszélgetés azzal indult, hogy hol tartanak a homlokzat következő szakaszának lapjai: a rendelés visszaigazolva, a lapok három hét múlva érnek a műhelybe, ezért kell neki a pontos szerelési ütemterv az állvány és a többi szakipar miatt. Elküldted az ütemtervet és az első lapszállítmány fotóját, és visszaigazolta, hogy jónak látja. Azóta kérte az előcsarnok felmérését a jövő kedd reggelre, és hogy a padló munkája közvetlenül utána indulhat-e; ma vagy holnap választ ígértél. Kész a te oldaladon: az átdolgozott szerelési ütemterv. Nyitott: az előcsarnok felmérésének és padlójának egyeztetése a brigáddal, és a CNC-vágás időpontja. A homlokzat következő szakasza most az előcsarnok felmérésén múlik, ezért éppen ez a válasz ne várjon."
+      },
       "summary": {
         "narrative": "Fekete Márk a homlokzat következő szakaszának lapjait követi. A szerelési ütemtervet elküldtük és visszaigazolták. Nyitott: az előcsarnok felmérése és a padló CNC-vágásának időpontja.",
         "actionItems": [
@@ -431,6 +437,11 @@
           "description": "Évi hat villaprojekt; a beruházókkal való találkozóhoz van rá szüksége."
         }
       ],
+      "digest": {
+        "d3": "Tetszettek neki a szinterezett kő minták, leginkább a sötét, és egy héten belül, délig kéri a keretajánlatot. Beleegyeztél, a kalkulációt holnap kezded.",
+        "d7": "Évi hat villaprojektet tervez, egyenként körülbelül 40 m² konyhai és fürdőszobai lappal, és megkérdezte, elég-e ez egy első kalkulációhoz; azt mondtad, az első tervezethez igen. Tetszettek neki a szinterezett kő minták, leginkább a sötét, és egy héten belül, délig kéri a keretajánlatot, mert időpontja van az építőkkel. Beleegyeztél, a kalkulációt holnap kezded.",
+        "d30": "Évi hat villaprojektet tervez, egyenként körülbelül 40 m² konyhai és fürdőszobai lappal, és megkérdezte, elég-e ez egy első kalkulációhoz; azt mondtad, az első tervezethez igen. Tetszettek neki a szinterezett kő minták, leginkább a sötét, és egy héten belül, délig kéri a keretajánlatot, mert időpontja van az építőkkel. Beleegyeztél, a kalkulációt holnap kezded. Kész: a minták fotói. Nyitott: a keretajánlat, az egyetlen határidő ebben a csevegésben. Az ilyen ismétlődő mennyiséget hozó ügyfélnek rendes keretár-lista jár, nem egyszeri ajánlat."
+      },
       "summary": {
         "narrative": "Thomas Müller évi hat villaprojektet tervez. A sötét minta tetszett neki, a keretajánlatot egy héten belül kéri.",
         "actionItems": [
@@ -606,6 +617,12 @@
           "description": "A szálloda a megerősítésre vár; a határidő már egyszer csúszott."
         }
       ],
+      "digest": {
+        "today": "Hajszálrepedés a wellnessfal egyik illesztésében; azt kérdezi, el tud-e menni valaki még ma.",
+        "d3": "Hajszálrepedés a wellnessfal egyik illesztésében; azt kérdezi, el tud-e menni valaki még ma. Két napja megérkeztek a hézagminták, és a bal oldali világosabb árnyalat tetszik nekik. A lapok új határidejét a beszállítótól még tartozol nekik.",
+        "d7": "Hajszálrepedés a wellnessfal egyik illesztésében; azt kérdezi, el tud-e menni valaki még ma. A hézagminták megérkeztek, és a bal oldali világosabb árnyalat tetszik nekik. A beszélgetés azzal indult, hogy érvényes-e az új lapdátum: a lapok jövő héten érnek a műhelybe, és utána azonnal indul a vágás. A tulajdonos a wellness fényében akarta látni a hézagszíneket, ezért három világosabb árnyalat ment futárral, a második részlet fizetési ütemtervét pedig e-mailben ígértél. A lapok új határidejét a beszállítótól még tartozol nekik.",
+        "d30": "Hajszálrepedés a wellnessfal egyik illesztésében; azt kérdezi, el tud-e menni valaki még ma. A hézagminták megérkeztek, és a bal oldali világosabb árnyalat tetszik nekik. A beszélgetés azzal indult, hogy érvényes-e az új lapdátum: a lapok jövő héten érnek a műhelybe, és utána azonnal indul a vágás. A tulajdonos a wellness fényében akarta látni a hézagszíneket, ezért három világosabb árnyalat ment futárral, a második részlet fizetési ütemtervét pedig e-mailben ígértél. Kész: a hézagminták. Nyitott: a lapok új határideje a beszállítótól, és a hajszálrepedés, ami kész munkára vonatkozó reklamáció, és még aznap választ érdemel. A fizetési ütemtervet e-mailben ígérted, feladatként nincs nyilvántartva."
+      },
       "summary": {
         "narrative": "A szálloda a wellnessfalat követi: a hézagminták megérkeztek, a világosabb árnyalat tetszik. Nyitott: a lapok határidejének megerősítése és egy illesztés hajszálrepedése.",
         "actionItems": [
@@ -772,6 +789,11 @@
           "description": "A szerelő 9 és 10 óra között érkezik; általában ragasztás és csiszolás elég."
         }
       ],
+      "digest": {
+        "d3": "Azt kérdezte, érvényes-e a holnapi javítás; visszaigazolva, a szerelő 9:00 és 10:00 között érkezik.",
+        "d7": "Azt kérdezte, érvényes-e a holnapi javítás; visszaigazolva, a szerelő 9:00 és 10:00 között érkezik. Már csak maga a javítás nyitott.",
+        "d30": "Csorbát jelzett a munkalap szélén a mosogatógép mellett, fotóval, és garanciális esetként vettétek fel. A visszahívás tovább tartott az ígértnél, elnézést kértél, és hétfő reggelben maradtatok. Azt kérdezte, érvényes-e a holnapi javítás; visszaigazolva, a szerelő 9:00 és 10:00 között érkezik. Kész: a telefonhívás az időpont egyeztetésével. Nyitott: az élcsorba kijavítása. A visszahívás késett, ezért ezt az időpontot pontosan be kell tartani."
+      },
       "summary": {
         "narrative": "Horváth Andrea garanciális csorbát jelzett a mosogatógép melletti élen. A javítás időpontja holnapra megerősítve.",
         "actionItems": [

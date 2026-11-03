@@ -526,6 +526,18 @@ if (titles !== null) {
 }
 args.push(...passThrough);
 
+/* A `-g` / `--grep` after `--` REPLACES the scope's own title filter: it then picks matching titles from
+   every spec file, not just the ones the changed files map to (one run pulled in 51 tests that way). Name the
+   spec file after `--` too, and the title narrows only that file. */
+const userGrep = passThrough.some((a) => a === '-g' || a === '--grep' || a.startsWith('--grep=') || a.startsWith('-g='));
+const namesSpec = passThrough.some((a) => !a.startsWith('-') && /\.spec\.ts$|[\\/]/.test(a));
+if (userGrep && !namesSpec) {
+  console.warn(
+    'Note:     "-g" replaces the scope filter and matches titles in EVERY spec file. ' +
+      'Add the spec path after "--" (e.g. -- tests/e2e/whatsappDemo.spec.ts -g "Digest") to narrow it to one file.\n',
+  );
+}
+
 const child = spawn(process.execPath, args, {
   cwd: ROOT,
   stdio: 'inherit',

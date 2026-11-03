@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { QAReport } from './helpers/reportCollector';
 import { assertNoDefectsFound } from './helpers/gate';
 import { ViewCrawler } from './helpers/uiExplorer';
@@ -19,6 +19,14 @@ import {
  * nothing about the button that is supposed to take you there — a nav button
  * wired to the wrong id, or to nothing at all, would still "pass".
  */
+
+/** The header's buttons by what names them, so a control that swaps itself for another one is seen to have acted. */
+const headerSignature = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll('header button, header [data-testid]'))
+      .map((el) => [el.getAttribute('data-testid'), el.getAttribute('title'), el.getAttribute('aria-label')].join('|'))
+      .join('\n'),
+  );
 
 test.describe('Shell navigation', () => {
   let consoleCapture: ConsoleCapture;
@@ -45,10 +53,11 @@ test.describe('Shell navigation', () => {
     const navButtons = page.locator('aside nav > button:not([aria-label])');
     const items = await navButtons.evaluateAll((els) =>
       els.map((el) => ({
-        label: (el as HTMLElement).innerText.replace(/\s+/g, ' ').trim(),
-        // The item for the view already on screen is highlighted. Clicking it is
+        // The collapsed sidebar has no text in the DOM; the tooltip names the item.
+        label: (el as HTMLElement).innerText.replace(/\s+/g, ' ').trim() || el.getAttribute('title') || '',
+        // The item for the view already on screen says so (aria-current). Clicking it is
         // legitimately a no-op, so it must not be reported as dead navigation.
-        active: /\btext-white\b/.test(typeof el.className === 'string' ? el.className : ''),
+        active: el.getAttribute('aria-current') === 'page',
       })),
     );
     const labels = items.map((i) => i.label);
@@ -200,6 +209,7 @@ test.describe('Shell navigation', () => {
       if (!(await button.isVisible({ timeout: 500 }).catch(() => false))) continue;
 
       const before = await readViewState(page);
+      const headerBefore = await headerSignature(page);
       const clicked = await button.click({ timeout: 3500 }).then(
         () => true,
         () => false,
@@ -234,7 +244,9 @@ test.describe('Shell navigation', () => {
       } else if (
         after.hash === before.hash &&
         after.fingerprint === before.fingerprint &&
-        after.overlayCount === before.overlayCount
+        after.overlayCount === before.overlayCount &&
+        // A control that changes the header itself (Start timer becomes the running timer) did something visible.
+        (await headerSignature(page)) === headerBefore
       ) {
         // Popovers are not `inset-0` overlays, so check for one explicitly
         // before calling a control inert.

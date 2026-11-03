@@ -253,6 +253,12 @@
           "description": "V chate nepadol dátum; termín sa dopočíta z plánu dielne."
         }
       ],
+      "digest": {
+        "today": "Rohové spoje na treťom poschodí sú hotové (fotka odoslaná). Pýta sa na orientačný termín CNC rezania podlahy lobby.",
+        "d3": "Rohové spoje na treťom poschodí sú hotové (fotka odoslaná) a pýta sa na orientačný termín CNC rezania podlahy lobby. Predtým ste poslali harmonogram montáže a fotku prvej dávky dosiek a potvrdil, že vyzerá dobre. Žiadal aj zameranie lobby budúci utorok ráno a chce vedieť, či sa podlaha lobby dá začať hneď po ňom; sľúbili ste odpoveď dnes alebo zajtra.",
+        "d7": "Rohové spoje na treťom poschodí sú hotové (fotka odoslaná) a pýta sa na orientačný termín CNC rezania podlahy lobby. Vlákno sa začalo jeho otázkou, kde sú dosky pre ďalšiu etapu fasády: objednávka je potvrdená a dosky budú v dielni o tri týždne, preto potrebuje presný harmonogram montáže kvôli lešeniu a ostatným remeselníkom. Poslali ste harmonogram a fotku prvej dávky dosiek a potvrdil, že vyzerá dobre. Odvtedy žiadal zameranie lobby budúci utorok ráno a či sa podlaha lobby dá začať hneď po ňom; sľúbili ste odpoveď dnes alebo zajtra.",
+        "d30": "Rohové spoje na treťom poschodí sú hotové (fotka odoslaná) a pýta sa na orientačný termín CNC rezania podlahy lobby. Vlákno sa začalo jeho otázkou, kde sú dosky pre ďalšiu etapu fasády: objednávka je potvrdená a dosky budú v dielni o tri týždne, preto potrebuje presný harmonogram montáže kvôli lešeniu a ostatným remeselníkom. Poslali ste harmonogram a fotku prvej dávky dosiek a potvrdil, že vyzerá dobre. Odvtedy žiadal zameranie lobby budúci utorok ráno a či sa podlaha lobby dá začať hneď po ňom; sľúbili ste odpoveď dnes alebo zajtra. Hotové z vašej strany: upravený harmonogram montáže. Otvorené: overenie zamerania a podlahy lobby s partiou a termín CNC rezania. Ďalšia etapa fasády teraz závisí od zamerania lobby, takže práve táto odpoveď by nemala čakať."
+      },
       "summary": {
         "narrative": "Marek Šimko sleduje dosky pre ďalšiu etapu fasády. Harmonogram montáže bol odoslaný a potvrdený. Otvorené zostáva: zameranie lobby a termín CNC rezania podlahy.",
         "actionItems": [
@@ -431,6 +437,11 @@
           "description": "Šesť vilových projektov ročne; potrebuje ju na stretnutie s investormi."
         }
       ],
+      "digest": {
+        "d3": "Vzorky spekaného kameňa sa mu páčili, najmä tmavá, a rámcovú ponuku chce do týždňa, do poludnia. Súhlasili ste a kalkuláciu začnete zajtra.",
+        "d7": "Plánuje šesť vilových projektov ročne, každý približne 40 m² dosiek do kuchyne a kúpeľne, a pýtal sa, či to stačí na prvú kalkuláciu; odpovedali ste, že na prvý návrh áno. Vzorky spekaného kameňa sa mu páčili, najmä tmavá, a rámcovú ponuku chce do týždňa, do poludnia, lebo má stretnutie so stavbármi. Súhlasili ste a kalkuláciu začnete zajtra.",
+        "d30": "Plánuje šesť vilových projektov ročne, každý približne 40 m² dosiek do kuchyne a kúpeľne, a pýtal sa, či to stačí na prvú kalkuláciu; odpovedali ste, že na prvý návrh áno. Vzorky spekaného kameňa sa mu páčili, najmä tmavá, a rámcovú ponuku chce do týždňa, do poludnia, lebo má stretnutie so stavbármi. Súhlasili ste a kalkuláciu začnete zajtra. Hotové: fotky vzoriek. Otvorené: rámcová ponuka, jediný termín v tomto chate. Klient s opakovaným objemom ako tento si zaslúži poriadny rámcový cenník, nie jednorazovú ponuku."
+      },
       "summary": {
         "narrative": "Thomas Müller plánuje šesť vilových projektov ročne. Páčila sa mu tmavá vzorka a rámcovú ponuku chce do týždňa.",
         "actionItems": [
@@ -606,6 +617,12 @@
           "description": "Hotel čaká na potvrdenie; termín už bol raz posunutý."
         }
       ],
+      "digest": {
+        "today": "Vlásočnicová medzera v jednom spoji wellness steny; pýta sa, či by niekto mohol prísť ešte dnes.",
+        "d3": "Vlásočnicová medzera v jednom spoji wellness steny; pýta sa, či by niekto mohol prísť ešte dnes. Pred dvoma dňami dorazili vzorky spár a svetlejší odtieň vľavo sa im páči. Termín dosiek od dodávateľa im ešte dlžíte.",
+        "d7": "Vlásočnicová medzera v jednom spoji wellness steny; pýta sa, či by niekto mohol prísť ešte dnes. Vzorky spár dorazili a svetlejší odtieň vľavo sa im páči. Vlákno sa začalo otázkou, či platí nový termín dosiek: dosky budú v dielni budúci týždeň a rezanie sa začne hneď po tom. Majiteľ chcel vidieť farby spár vo svetle wellness, preto išli kuriérom tri svetlejšie odtiene, a harmonogram platieb druhej splátky ste sľúbili poslať e-mailom. Nový termín dosiek od dodávateľa im ešte dlžíte.",
+        "d30": "Vlásočnicová medzera v jednom spoji wellness steny; pýta sa, či by niekto mohol prísť ešte dnes. Vzorky spár dorazili a svetlejší odtieň vľavo sa im páči. Vlákno sa začalo otázkou, či platí nový termín dosiek: dosky budú v dielni budúci týždeň a rezanie sa začne hneď po tom. Majiteľ chcel vidieť farby spár vo svetle wellness, preto išli kuriérom tri svetlejšie odtiene, a harmonogram platieb druhej splátky ste sľúbili poslať e-mailom. Hotové: vzorky spár. Otvorené: nový termín dosiek od dodávateľa a vlásočnicová medzera, čo je reklamácia hotovej práce a mala by sa vybaviť ten istý deň. Harmonogram platieb bol sľúbený e-mailom a nie je vedený ako úloha."
+      },
       "summary": {
         "narrative": "Hotel sleduje wellness stenu: vzorky spár dorazili a svetlejší odtieň sa páči. Otvorené zostáva potvrdenie termínu dosiek a vlásočnicová medzera v jednom spoji.",
         "actionItems": [
@@ -772,6 +789,11 @@
           "description": "Montér prichádza medzi 9:00 a 10:00; zvyčajne stačí lepenie a prebrúsenie."
         }
       ],
+      "digest": {
+        "d3": "Pýtala sa, či zajtrajšia oprava platí; potvrdené, montér príde medzi 9:00 a 10:00.",
+        "d7": "Pýtala sa, či zajtrajšia oprava platí; potvrdené, montér príde medzi 9:00 a 10:00. Otvorená je už len samotná oprava.",
+        "d30": "Nahlásila štrbinu na hrane dosky pri umývačke, s fotkou, a vzali ste to ako záručný prípad. Spätné zavolanie trvalo dlhšie, než ste sľúbili, ospravedlnili ste sa a dohodli pondelok ráno. Pýtala sa, či zajtrajšia oprava platí; potvrdené, montér príde medzi 9:00 a 10:00. Hotové: telefonát s dohodou termínu. Otvorené: oprava štrbiny na hrane. Zavolanie meškalo, preto tento termín treba dodržať presne."
+      },
       "summary": {
         "narrative": "Andrea Horváthová hlási záručnú štrbinu na hrane dosky pri umývačke. Termín opravy je potvrdený na zajtra.",
         "actionItems": [

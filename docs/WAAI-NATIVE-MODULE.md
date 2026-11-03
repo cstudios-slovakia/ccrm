@@ -115,7 +115,7 @@ duplicated: it stays in WAAI and is shared by both UIs (§4.3).
   `onOpenRecord` for "open in CRM".
 - `public/api/waai_sso.php` mints the 60 s HS256 token. Its GET reports `configured` /
   `embed_url`. `WaaiIntegrationSettings.tsx` holds the connection.
-- CSP (`public/.htaccess`): `connect-src 'self' …`, no `media-src` (falls back to `'self'`),
+- CSP (`public/.htaccess`): `connect-src 'self' …`, `media-src 'self' blob:` (`blob:` so a voice note sent in the in-browser demo plays),
   `img-src 'self' data: blob: https:`, `frame-src 'self' https:` (decision D7, for the iframe).
 - Task description footers already written into CCRM tasks link to `#whatsapp/c/<id>`. **That
   hash format must keep working.**

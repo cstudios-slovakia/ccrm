@@ -38,7 +38,7 @@ Two requests from the user (2026-11-03):
    - Never loosen a check to make it pass. If an unrelated spec already fails, say so in the report
      and in **Left over**; do not fix it.
 5. **Finish in this order:** test → bump `VERSION` in `src/utils/version.ts` (patch +1, keep the
-   `-Nectarine` suffix) → entry at the top of `1.13-nectarine-changelog.md` (date, user-facing
+   `-Nectarine` suffix) → entry at the END of `1.13-nectarine-changelog.md` (the file appends newest last; date, user-facing
    bullets) → commit. **Do not run `npm run build` and do not commit `dist/`**
    (`.agents/rules/post-build-cleanup.md`). Commit message: `feat(whatsapp): … (v1.13.N-Nectarine)` or
    `fix(whatsapp): …`, ending with the attribution lines your harness gives you.
@@ -76,6 +76,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 1 | Chat-row summary card (fixes request 2) | ✅ | v1.13.45-Nectarine | 2026-11-03 |
 | 2 | Demo WAAI in the browser: data endpoint, fake backend, Chats tab | ✅ | v1.13.46-Nectarine | 2026-11-03 |
 | 3 | Demo for Digest, Tasks, Ask and Settings tabs; QA spec; docs | ✅ | v1.13.47-Nectarine | 2026-11-03 |
+| 4 | Follow-up: digest per window, every QA leftover of phases 1-3 | ✅ | v1.13.48-Nectarine | 2026-11-03 |
 
 Effort: phase 1 small, phase 2 large, phase 3 medium. Each fits one session.
 
@@ -140,10 +141,10 @@ Spec: C2–C6. Depends on phase 1.
 - [x] Tests (A1.4), version bump, changelog, commit, this file updated.
 
 **Left over:**
-- **Not run against a real server:** `waai_demo.php` is `php -l` clean and its dataset is covered by `npm run test:demo-seed`
+- **[Resolved in phase 4]** **Not run against a real server:** `waai_demo.php` is `php -l` clean and its dataset is covered by `npm run test:demo-seed`
   (1172 checks), but no PHP server was started, so the endpoint's sign-in, permission and `DEMO_MODE` checks were not exercised
   end to end. The browser check used the QA mock of the endpoint (a throwaway spec, deleted; phase 3 writes the real one).
-- **Digest, Tasks, Ask and Settings tabs are not faked yet** (phase 3): in demo they hit `GET /tasks` without a chat,
+- **[Resolved in phase 3]** **Digest, Tasks, Ask and Settings tabs are not faked yet**: in demo they hit `GET /tasks` without a chat,
   `/digest`, `/search`, `/preferences`, `/wa-accounts` and answer `501 not_implemented`. `GET /tasks` with a conversation works.
 - **Router input has two optional fields the spec did not list:** `media` (the files; `demoMedia.ts` imports Vite assets, which
   `node --test` cannot load, so tests pass a stub) and `language` (the UI language of the few sentences the router words itself).
@@ -153,17 +154,17 @@ Spec: C2–C6. Depends on phase 1.
   (what `ChatTasks` shows) is the right calendar day in every zone.
 - **Silent WAV:** `assets/silence.wav` is 8 s, 8 kHz, 8-bit mono, filled with `0x80` (8-bit PCM is unsigned, so zeros would be
   full-scale negative, not silence). `makeSilence.mjs` regenerates it.
-- **Files sent in the demo:** an image gets `URL.createObjectURL(file)` and shows (`img-src blob:` is allowed). A voice note or
+- **[Resolved in phase 4]** **Files sent in the demo:** an image gets `URL.createObjectURL(file)` and shows (`img-src blob:` is allowed). A voice note or
   a document gets the same blob address and will not play or download everywhere (the CSP has no `media-src`; not changed).
   Files attached to a task update are counted in the message text but not shown as separate messages.
 - **Summary windows:** `recent` is the cached chat summary. Any other window answers `cached: false`, and the panel's own follow-up
   stream returns the same narrative at once; a window with no messages says so and has `id: null`.
-- **`useWaaiSession` has no unit test** (it imports `demoMedia.ts`, a Vite asset module). The source-selection rule is the pure
+- **[Resolved in phase 4]** **`useWaaiSession` has no unit test** (it imports `demoMedia.ts`, a Vite asset module). The source-selection rule is the pure
   `wantsDemo()` next to it; the real-path and demo-path states were checked in the browser (demo with the connection not configured).
   Not checked: demo mode with a working real WAAI that has an account (it must keep the real one), and `forbidden`.
 - **`tsconfig.app.json`:** `src/components/whatsapp/demo/demoFixture.ts` (the tests' dataset loader, uses `node:fs`) is added to
   `exclude`, next to the `*.test.ts` files.
-- **Unrelated QA failure, present on a clean `HEAD`:** `navigation.spec.ts` reports `NAV0-A31047FC` (HIGH, "nav item #1" did nothing)
+- **[Resolved in phase 4]** **Unrelated QA failure, present on a clean `HEAD`:** `navigation.spec.ts` reports `NAV0-A31047FC` (HIGH, "nav item #1" did nothing)
   and `INTF-C34A0844` (LOW, header "Spustiť časovač"). Reproduced identically in a scratch worktree of `5b667723`; not touched.
 
 ### Phase 3 — Demo for Digest, Tasks, Ask and Settings; QA spec; docs
@@ -181,9 +182,9 @@ Spec: C5.2 (the "phase 3" rows), C7. Depends on phase 2.
 - [x] Tests (A1.4), version bump, changelog, commit, this file updated.
 
 **Left over:**
-- **Not run against a real server (still):** `waai_demo.php` was not touched in this phase; its sign-in, permission and `DEMO_MODE`
+- **[Resolved in phase 4]** **Not run against a real server (still):** `waai_demo.php` was not touched in this phase; its sign-in, permission and `DEMO_MODE`
   checks have only been exercised through the QA mock, as in phase 2.
-- **Digest ignores the window.** The four windows (Today / 3 days / 7 days / 30 days) all answer the same digest: one bullet per chat
+- **[Resolved in phase 4]** **Digest ignores the window.** The four windows (Today / 3 days / 7 days / 30 days) all answer the same digest: one bullet per chat
   that has a summary, and every open task. The demo chats are all recent, so nothing is lost, and nothing is generated (B7).
   `has_audio` is false, so "Play" asks `/digest/audio`, which answers 501 and leaves the button in its error state with no text.
 - **Ask is a text search, not an answer.** The phrase must be in a message or voice-note transcription; if the whole phrase is not
@@ -198,11 +199,54 @@ Spec: C5.2 (the "phase 3" rows), C7. Depends on phase 2.
 - **Spec behaviour worth knowing:** under React StrictMode (the dev server and QA) the session effect runs twice, so `waai_demo.php`
   is read once or twice; a production build reads it once. The sidebar badge follows an opened chat on its 10 s poll (as with WAAI), so
   the spec waits up to 20 s for it.
-- **Command note:** `run-qa.mjs ... -- -g <text>` filters across every spec the scope selected, not only the spec you meant; pass the
+- **[Resolved in phase 4]** **Command note:** `run-qa.mjs ... -- -g <text>` filters across every spec the scope selected, not only the spec you meant; pass the
   spec path after `--` instead.
-- **Unrelated, not touched:** `navigation.spec.ts` `NAV0-A31047FC` / `INTF-C34A0844` (phase 2) was not part of this scope. In one
+- **[Resolved in phase 4]** **Unrelated, not touched:** `navigation.spec.ts` `NAV0-A31047FC` / `INTF-C34A0844` (phase 2) was not part of this scope. In one
   scoped run with a forced 30 s test timeout, `crawler.spec.ts › Tasks` and `pwaInstall.spec.ts › a link opened while signed out`
   timed out on `page.goto` / the login field on a loaded machine; they do not touch the WhatsApp module.
+
+### Phase 4 — Follow-up: digest per window, every QA leftover of phases 1-3
+
+Asked for on 2026-11-03 after phase 3: make the Digest respect its time windows (longer text in a bigger window), solve every
+QA finding of phases 1-3 and test what was never tested.
+
+- [x] **Digest per window.** Each chat in `whatsapp_demo.{sk,hu,en}.json` has a `digest` block (today, d3, d7, d30): what
+      the chat adds to the Digest of that window, each text longer than the narrower one, a key only for windows the chat has a
+      message in. The router lists a chat in a window when it has a message inside it (windowStart()), uses the window's text (the
+      cached summary when none), and lists only the open tasks of those chats. Today holds the two chats that wrote this morning;
+      the other windows hold all four. A window with no messages is empty. scripts/demo-assert/whatsapp.php guards the rule
+      (needed windows present, none for a window without messages, strictly longer); contract in docs/WHATSAPP-DEMO-DATA.md.
+- [x] **waai_demo.php run for real** (php 8.2 + MySQL 8 in the dev Docker stack, a scratch database, PHP's built-in server): 401 signed
+      out; 404 when DEMO_MODE is not true; 200 with the edition of SYSTEM_LANGUAGE (en, hu, and sk when unset), no-store;
+      405 with Allow: GET for POST; 403 forbidden for a Viewer without the whatsapp permission; 500 server_error (no path
+      leaked) when the dataset file is missing; 204 for OPTIONS. All as designed.
+- [x] **Digest "Listen"** showed nothing when the call failed. The button now says why ("Not available in the demo." in the demo).
+- [x] **Never tested before, now in whatsappDemo.spec.ts:** a demo instance with a working WAAI and a linked account keeps the real
+      WAAI (no demo request at all); a refused user (403 on the sign-in) still sees forbidden, never the demo chats; switching the
+      four Digest windows; the Listen message.
+- [x] **Settings, summary-language switch** did not follow the click until the server answered (it looked dead on a slow WAAI and
+      failed Playwright's check). It now follows at once and takes the stored value afterwards.
+- [x] **Files sent with a task update** are shown as messages of their own after the text, like a file sent from the composer.
+- [x] **Voice notes sent in the demo play:** .htaccess / public/.htaccess CSP gets media-src 'self' blob: (was: default-src 'self').
+      A server picks it up when .htaccess is deployed.
+- [x] **Phase 2 QA findings NAV0-A31047FC / INTF-C34A0844** were stale checks, not app bugs: the sidebar marks the open module with
+      bg-slate-100 text-slate-900 (not text-white) and has no text when collapsed, so the spec saw an unnamed, "not active" first item;
+      and "Start timer" swaps itself for the running timer, which is a change in the header that the check did not look at. The
+      sidebar button now carries aria-current="page"; navigation.spec.ts reads that and the tooltip, and also counts a changed header
+      as a result.
+- [x] **pwaInstall.spec.ts, a link opened while signed out** looked for the login field by the placeholder @crm.com; the placeholder is
+      translated ("napr. meno@firma.sk"), so the test waited 4 minutes and failed. It finds the field by type now. (It was not "load".)
+- [x] **crawler.spec.ts, Tasks** passes in 40 s (the earlier timeout was the forced 30 s limit). It reported one MEDIUM finding: the
+      month label in the Tasks calendar is a "Jump to today" button, inert while the month already holds today. It is disabled then.
+- [x] **run-qa.mjs, -- -g** replaces the scope filter; it now prints a note when no spec path is given, and docs/TESTING.md says so.
+- [x] **Changelog position** in A1.5 corrected: the file appends newest last.
+
+**Left over (by design, nothing to fix):**
+- Done tasks cannot be reopened or deleted in the demo (a task synced to a CRM task, as in WAAI).
+- Ask is a text search over the demo chats, not a generated answer; the spoken digest, text assist and account changes answer "Not available
+  in the demo." (B7).
+- The digest texts are written for the dataset as it is today (day offsets): a chat whose day offsets change needs its digest revisited,
+  and test:demo-seed says so.
 
 # Part B. Decisions (final)
 

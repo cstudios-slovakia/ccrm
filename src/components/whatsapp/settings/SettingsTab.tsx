@@ -168,7 +168,15 @@ const Language = ({ client, t }: { client: WaaiClient; t: HomeCopy }) => {
       <input
         type="checkbox"
         checked={!!prefs.data?.auto_detect_summary_lang}
-        onChange={(e) => void client.put("/preferences", { auto_detect_summary_lang: e.target.checked }).then(() => prefs.reload())}
+        onChange={(e) => {
+          // The box follows the click at once; the stored value comes back afterwards, and replaces the guess if the call failed.
+          const checked = e.target.checked;
+          prefs.setData((current) => (current ? { ...current, auto_detect_summary_lang: checked } : current));
+          void client
+            .put("/preferences", { auto_detect_summary_lang: checked })
+            .catch(() => undefined)
+            .then(() => prefs.reload());
+        }}
       />
       {t.settings.autoLang}
     </label>

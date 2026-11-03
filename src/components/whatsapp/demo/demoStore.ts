@@ -60,6 +60,8 @@ export interface StoredChat {
   messages: StoredMessage[];
   links: StoredLink[];
   summary: { narrative: string; items: { taskId: string | null; text: string }[] };
+  /** What this chat adds to the Digest of each window (the dataset's `digest`). */
+  digest: Partial<Record<"today" | "d3" | "d7" | "d30", string>>;
 }
 
 export interface StoredTask {
@@ -154,6 +156,7 @@ export class DemoStore {
         unread: chat.unread,
         messages,
         links: chat.links.map((l) => ({ type: l.entityType, id: l.entityId, source: l.source })),
+        digest: { ...chat.digest },
         summary: {
           narrative: chat.summary.narrative,
           items: chat.summary.actionItems.map((i) => ({
@@ -284,6 +287,7 @@ export class DemoStore {
       unread: 0,
       messages: [],
       links: [],
+      digest: {},
       summary: { narrative: "", items: [] },
     };
     this.chats.set(chat.id, chat);

@@ -62,6 +62,8 @@ export interface DemoChat {
   links: { entityType: "lead" | "project"; entityId: string; source: "auto" | "manual" }[];
   messages: DemoMessage[];
   tasks: DemoTask[];
+  /** What this chat adds to the Digest of each window; a window with no entry falls back to the summary. */
+  digest?: Partial<Record<"today" | "d3" | "d7" | "d30", string>>;
   summary: { narrative: string; actionItems: DemoActionItem[] };
 }
 

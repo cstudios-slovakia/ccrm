@@ -290,6 +290,8 @@ const ListenButton = ({
 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "playing" | "paused" | "error">("idle");
+  // Why the last press failed, shown on the button itself (the demo, for one, has no spoken digest).
+  const [failure, setFailure] = useState<string | null>(null);
   const version = `${window}|${digest.created_at ?? ""}`;
   const [seen, setSeen] = useState(version);
   if (seen !== version) {
@@ -308,6 +310,7 @@ const ListenButton = ({
       return;
     }
     setState("loading");
+    setFailure(null);
     try {
       if (!audioRef.current) {
         const url = digest.audio_url ?? (await client.get<{ audio_url: string }>("/digest/audio", { query: { window } })).audio_url;
@@ -319,7 +322,8 @@ const ListenButton = ({
         audioRef.current = el;
       }
       await audioRef.current.play();
-    } catch {
+    } catch (err) {
+      setFailure(err instanceof WaaiApiError ? err.message : null);
       setState("error");
     }
   };
@@ -327,11 +331,12 @@ const ListenButton = ({
   return (
     <button
       type="button"
+      data-testid="wa-digest-listen"
       onClick={() => void toggle()}
       className={`type-meta inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold transition-colors hover:bg-slate-50 ${state === "error" ? "text-rose-600" : "text-slate-700"}`}
     >
       {state === "loading" ? <Loader2 className="size-3.5 animate-spin" /> : state === "playing" ? <Pause className="size-3.5" /> : <Volume2 className="size-3.5" />}
-      {state === "loading" ? t.digest.listening : state === "playing" ? t.digest.pause : t.digest.listen}
+      {state === "loading" ? t.digest.listening : state === "playing" ? t.digest.pause : state === "error" ? (failure ?? t.failed) : t.digest.listen}
     </button>
   );
 };

@@ -500,16 +500,24 @@ export function createDemoWaai(input: DemoWaaiInput): DemoWaai {
       const tasks = items.map((i) => ({ item: i, task: store.task(i.task_id) })).filter((x) => x.task && x.task.chatId === chat.id);
       if (tasks.length === 0) return fail(400, "invalid_input", "invalid_input");
       const lang = String(body.get("language") ?? "en");
-      const files = body.getAll("file").length;
+      const files = body.getAll("file").filter((f): f is File => f instanceof File);
       const message = store.addMessage(chat.id, {
         body: buildTaskUpdateText({
           language: lang === "sk" || lang === "hu" ? lang : "en",
           senderName: store.ownerName,
           items: tasks.map(({ item, task }) => ({ title: task!.title, notes: item.notes ?? null })),
-          attachmentCount: files,
+          attachmentCount: files.length,
         }),
         taskUpdateId: `demo-task-update-${(updateSeq += 1)}`,
       });
+      // The files follow the text as messages of their own, like a file sent from the composer.
+      for (const file of files) {
+        store.addMessage(chat.id, {
+          kind: kindOfFile(file.type, false),
+          body: null,
+          media: { url: objectUrl(file), mimeType: file.type || null, fileName: file instanceof File ? file.name : null },
+        });
+      }
       for (const { task } of tasks) task!.notifiedAt = message.sentAt;
       return json({ update: { id: message.taskUpdateId ?? "demo", status: "sent", error: null }, failed_attachments: 0, notified_at: iso(message.sentAt) } satisfies TaskUpdateResponse);
     }),
@@ -540,16 +548,23 @@ export function createDemoWaai(input: DemoWaaiInput): DemoWaai {
   on("POST", "/digest", ({ body }) => {
     const asked = asRecord(body).window;
     const window: DigestWindow = asked === "today" || asked === "d3" || asked === "d7" || asked === "d30" ? asked : "d7";
-    // No generation: one bullet per chat from the summary it already has, and the tasks that are still open.
-    const chats = store.list().filter((c) => c.summary.narrative.trim());
-    const narrative = chats.map((c) => `- **${c.title}**: ${c.summary.narrative.replace(/\s+/g, " ").trim()}`).join("\n");
+    // No generation. A chat is in the digest when it has a message inside the window; its bullet is the text the
+    // dataset wrote for that window (longer the wider the window), or the cached summary when it wrote none.
+    const from = windowStart(window, nowMs(), store.timeZone) ?? 0;
+    const chats = store.list().filter((c) => c.messages.some((m) => m.sentAt >= from));
+    const bullet = (c: StoredChat) => (c.digest[window] ?? c.summary.narrative).replace(/\s+/g, " ").trim();
+    const narrative = chats
+      .filter((c) => bullet(c))
+      .map((c) => `- **${c.title}**: ${bullet(c)}`)
+      .join("\n");
+    const inWindow = new Set(chats.map((c) => c.id));
     const out: DigestResponse = {
       id: `demo-digest-${window}`,
       window,
       cached: true,
       chat_count: chats.length,
       narrative,
-      tasks: store.allTasks("open").map((t) => homeTaskDto(store, t)),
+      tasks: store.allTasks("open").filter((t) => inWindow.has(t.chatId)).map((t) => homeTaskDto(store, t)),
       meetings: [],
       has_audio: false,
       audio_url: null,

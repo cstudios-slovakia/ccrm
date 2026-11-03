@@ -347,6 +347,23 @@ test("a task update is reported into the chat as an outgoing message", async () 
   assert.equal(tasks.tasks[0]!.notified_at, res.notified_at);
 });
 
+test("a task update with files: the text first, then one message per file", async () => {
+  const { client } = setup();
+  const before = (await client.get<MessagesResponse>(`/conversations/${C1}/messages`)).messages.length;
+  const form = new FormData();
+  form.set("client_request_id", "r2");
+  form.set("language", "en");
+  form.set("items", JSON.stringify([{ task_id: "demo-wa-task-1", notes: null }]));
+  form.append("file", new File(["x"], "photo.png", { type: "image/png" }));
+  form.append("file", new File(["y"], "offer.pdf", { type: "application/pdf" }));
+  await client.post(`/conversations/${C1}/task-updates`, form);
+  const added = (await client.get<MessagesResponse>(`/conversations/${C1}/messages`)).messages.slice(before);
+  assert.deepEqual(added.map((m) => m.kind), ["text", "image", "document"]);
+  assert.ok(added[0]!.task_update_id);
+  assert.deepEqual(added.slice(1).map((m) => m.direction), ["out", "out"]);
+  assert.equal(added[2]!.media?.file_name, "offer.pdf");
+});
+
 test("CRM links: set, remove, pick from the directory", async () => {
   const { client } = setup();
   const hotel = "demo-wa-c6-hotel";
@@ -469,7 +486,37 @@ test("Tasks tab: every task as a HomeTask, open first, filtered by status, ticki
   assert.equal((await rejection(client.post("/tasks/nope/crm", { action: "retry" }))).status, 404);
 });
 
-test("Digest: one bullet per summarized chat, the open tasks, no meetings and no audio", async () => {
+test("Digest windows: a wider window holds more chats, more tasks and longer text", async () => {
+  const { client } = setup();
+  const windows = ["today", "d3", "d7", "d30"] as const;
+  const by = {} as Record<(typeof windows)[number], DigestResponse>;
+  for (const window of windows) by[window] = await client.post<DigestResponse>("/digest", { window, regenerate: false, lang: "sk" });
+  // FIXED_NOW is noon: Today holds the two chats that wrote this morning, the rest of the week holds all four.
+  assert.deepEqual(windows.map((w) => by[w].chat_count), [2, 4, 4, 4]);
+  assert.deepEqual(windows.map((w) => by[w].narrative.split("\n").length), [2, 4, 4, 4]);
+  assert.deepEqual(windows.map((w) => by[w].tasks.length), [3, 5, 5, 5]);
+  const length = (w: (typeof windows)[number]) => by[w].narrative.length;
+  assert.ok(length("today") < length("d3") && length("d3") < length("d7") && length("d7") < length("d30"), "longer text in a bigger window");
+  assert.equal(new Set(windows.map((w) => by[w].id)).size, 4, "each window is its own digest");
+  // A window the dataset wrote text for uses it, not the cached chat summary.
+  assert.ok(!by.d30.narrative.includes(loadSk().chats[0]!.summary.narrative));
+});
+
+test("Digest windows: a window with no messages is empty, not the other windows' text", async () => {
+  // The data is seeded at the first clock reading; three days later nothing is newer than the dataset's last message.
+  let clock = FIXED_NOW;
+  const demo = createDemoWaai({ dataset: loadSk(), edition: "sk", directory, crmUserId: "user-7", now: () => clock, media, language: "en" });
+  const client = new WaaiClient({ base: DEMO_BASE, fetch: demo.fetch, fetchSsoToken: async () => "demo", isDemo: true });
+  clock += 3 * 24 * 3600 * 1000;
+  const today = await client.post<DigestResponse>("/digest", { window: "today", regenerate: false, lang: "sk" });
+  assert.deepEqual([today.chat_count, today.narrative, today.tasks.length], [0, "", 0]);
+  const d3 = await client.post<DigestResponse>("/digest", { window: "d3", regenerate: false, lang: "sk" });
+  assert.deepEqual([d3.chat_count, d3.narrative], [0, ""]);
+  const d7 = await client.post<DigestResponse>("/digest", { window: "d7", regenerate: false, lang: "sk" });
+  assert.deepEqual([d7.chat_count > 0, d7.narrative.split("\n").length], [true, d7.chat_count]);
+});
+
+test("Digest: one bullet per chat active in the window, the open tasks, no meetings and no audio", async () => {
   const { client } = setup();
   const digest = await client.post<DigestResponse>("/digest", { window: "d7", regenerate: false, lang: "en" });
   assert.equal(digest.window, "d7");

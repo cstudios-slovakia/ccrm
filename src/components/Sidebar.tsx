@@ -294,6 +294,7 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
         style={commonStyle}
         className={commonClass}
         title={!isDockMode || isExpanded ? item.label : undefined}
+        aria-current={isActive ? "page" : undefined}
       >
         <span className="relative shrink-0 inline-flex">
           <Icon

@@ -2633,6 +2633,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const effectiveScopeForStep: "month" | "week" =
             cfg.scope === "week" ? "week" : "month";
 
+        // "Jump to today" has nothing to do while the shown week or month already holds today.
+        const showsToday = (() => {
+            const today = new Date();
+            if (effectiveScopeForStep === "month") {
+                return cfg.anchor.getFullYear() === today.getFullYear() && cfg.anchor.getMonth() === today.getMonth();
+            }
+            const monday = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7)).getTime();
+            return monday(cfg.anchor) === monday(today);
+        })();
+
         return (
             <div className="flex items-center gap-2 flex-wrap">
                 {/* Scope switcher */}
@@ -2706,12 +2716,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                         <button
                             onClick={() => cfg.onAnchorChange(new Date())}
+                            disabled={showsToday}
                             title={t(
                                 "Jump to today",
                                 "Prejsť na dnešok",
                                 "Ugrás a mai napra",
                             )}
-                            className={`px-4 font-bold text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
+                            className={`px-4 font-bold text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors disabled:cursor-default disabled:hover:text-indigo-950 ${
                                 cfg.compact
                                     ? "text-caption min-w-32.5"
                                     : "text-body min-w-40"

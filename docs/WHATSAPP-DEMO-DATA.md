@@ -59,6 +59,7 @@ memory and are gone on reload. Design, decisions and the phase checklists:
                  "start": { "day": 0 }, "due": { "day": -2, "time": null } /* or null: no date stated */,
                  "completed": { "day": -2, "time": "14:08" }, "leadId": "demo-clients-1", "projectId": "demo-projects-1",
                  "title": "...", "description": "..." } ],
+    "digest": { "today": "...", "d3": "...", "d7": "...", "d30": "..." },  // in-browser demo only: what this chat adds to the Digest of each window; a key only for windows the chat has a message in, each text longer than the narrower one
     "summary": { "narrative": "...", "actionItems": [ { "task": 3 | null, "text": "..." } ] },  // task: a task number of THIS chat, or null = a narrative bullet
     "timeline": [ { "kind": "summary", "day": -1, "time": "18:00", "message": "m11", "title": "...", "content": "..." } ]
   } ]

@@ -23,7 +23,7 @@ function demo_wa_shape($v, string $path = ''): array {
         $leaf = substr($path, (int)strrpos(substr($path, 0, (int)strrpos($path, '/')), '/') + 1, strrpos($path, '/') - (int)strrpos(substr($path, 0, (int)strrpos($path, '/')), '/') - 1);
     }
     // text, names and phones differ per edition; everything else (ids, days, times, kinds, numbers, refs) must not
-    $text = ['body', 'title', 'description', 'narrative', 'content', 'transcription', 'fileName', 'text', 'sender', 'by', 'name', 'email', 'phone', 'members', '_about', 'ownerCrmUser_', 'edition', 'locale', 'timezone', 'by', 'projectContactPhones'];
+    $text = ['today', 'd3', 'd7', 'd30', 'body', 'title', 'description', 'narrative', 'content', 'transcription', 'fileName', 'text', 'sender', 'by', 'name', 'email', 'phone', 'members', '_about', 'ownerCrmUser_', 'edition', 'locale', 'timezone', 'by', 'projectContactPhones'];
     if (in_array($leaf, $text, true) || strpos($path, '/projectContactPhones/') !== false || strpos($path, '/members/') !== false) {
         return [$path => is_string($v) ? 'text' : gettype($v)];
     }
@@ -129,10 +129,30 @@ return [
                 if (!array_key_exists('task', $item) || !is_string($item['text'] ?? null) || trim($item['text']) === '') $bad[] = $c['ref'] . ' actionItems[' . $i . '] needs task (number or null) and text';
                 elseif ($item['task'] !== null && !in_array($item['task'], $taskNs, true)) $bad[] = $c['ref'] . ' actionItems[' . $i . '] names task ' . json_encode($item['task']) . ' which is not a task of this chat';
             }
+            // digest: what this chat adds to the Digest of each window (the in-browser demo). A window the chat
+            // has a message in must have text, a window it has none in must not, and a wider window says more.
+            $newest = max(array_column($c['messages'], 'day'));
+            $need = ['today' => $newest >= 0, 'd3' => $newest >= -2, 'd7' => $newest >= -6, 'd30' => true];
+            $forbid = ['today' => $newest < 0, 'd3' => $newest < -3, 'd7' => $newest < -7, 'd30' => $newest < -30];
+            $dig = $c['digest'] ?? null;
+            if (!is_array($dig)) $bad[] = $c['ref'] . ' has no digest';
+            else {
+                foreach (array_diff(array_keys($dig), array_keys($need)) as $k) $bad[] = $c['ref'] . ' digest key ' . $k;
+                $prev = 0;
+                foreach ($need as $w => $required) {
+                    $text = $dig[$w] ?? null;
+                    if ($text === null) { if ($required) $bad[] = $c['ref'] . ' digest.' . $w . ' is missing'; continue; }
+                    if (!is_string($text) || trim($text) === '') { $bad[] = $c['ref'] . ' digest.' . $w . ' is empty'; continue; }
+                    if ($forbid[$w]) $bad[] = $c['ref'] . ' digest.' . $w . ' has text but no message in that window';
+                    $len = mb_strlen($text);
+                    if ($len <= $prev) $bad[] = $c['ref'] . ' digest.' . $w . ' (' . $len . ') is not longer than the narrower window (' . $prev . ')';
+                    $prev = $len;
+                }
+            }
             $unread = 0; for ($i = count($c['messages']) - 1; $i >= 0 && $c['messages'][$i]['dir'] === 'in'; $i--) $unread++;
             if ($unread < (int)$c['unread']) $bad[] = $c['ref'] . ' unread ' . $c['unread'] . ' > trailing incoming ' . $unread;
         }
-        $check('quotes, task sources, days, kinds, image placeholders and unread counts are consistent', !$bad, implode("\n", array_slice($bad, 0, 6)));
+        $check('quotes, task sources, days, kinds, image placeholders, digest texts and unread counts are consistent', !$bad, implode("\n", array_slice($bad, 0, 6)));
         $nums = [];
         foreach ($d['chats'] as $c) foreach ($c['tasks'] as $t) $nums[] = $t['n'];
         $check('task numbers are 1..9 without gaps', $nums === range(1, 9), json_encode($nums));

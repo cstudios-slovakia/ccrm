@@ -184,16 +184,34 @@ test.describe('WhatsApp module in demo mode, without WAAI', () => {
     expect(leaks).toEqual([]);
   });
 
-  test('Digest: one bullet per chat and the open tasks; no error card, listening is refused calmly', async ({ page }) => {
+  test('Digest: each window has its own text, longer in a bigger one; listening says calmly that it is not in the demo', async ({ page }) => {
     const { leaks } = await openDemo(page, '#whatsapp/digest');
     await expect(tab(page, 'Súhrn')).toHaveAttribute('aria-selected', 'true');
     const digest = page.getByTestId('wa-digest');
-    await expect(digest.locator('div.space-y-2 > ul > li')).toHaveCount(4, { timeout: 15_000 });
+    const bullets = digest.locator('div.space-y-2 > ul > li');
+    await expect(bullets.first()).toBeVisible({ timeout: 15_000 });
     await expect(digest).toContainText('Marek Šimko');
     // Open tasks are listed under the summary (five of the nine are open).
     await expect(digest.getByRole('link', { name: /Marek Šimko – Horský park|Thomas Müller|Hotel Aurum|Andrea Horváthová/ }).first()).toBeVisible();
 
-    await digest.getByRole('button', { name: /Prehrať/ }).click();
+    // Every window the chats are active in is offered; a wider one holds at least as many chats and says more about each.
+    const seen: { label: string; chats: number; chars: number }[] = [];
+    for (const label of ['Dnes', '3 dni', '7 dní', '30 dní']) {
+      await digest.getByRole('button', { name: label, exact: true }).click();
+      await expect(bullets.first()).toBeVisible({ timeout: 15_000 });
+      await expect.poll(async () => (await bullets.allTextContents()).join('').length, { timeout: 10_000 }).toBeGreaterThan(0);
+      const texts = await bullets.allTextContents();
+      seen.push({ label, chats: texts.length, chars: texts.join('').length });
+    }
+    // Today holds the two chats that wrote this morning; the other windows hold all four.
+    expect(seen.map((w) => w.chats)).toEqual([2, 4, 4, 4]);
+    for (let k = 1; k < seen.length; k++) expect(seen[k]!.chars, seen[k]!.label + ' is longer than ' + seen[k - 1]!.label).toBeGreaterThan(seen[k - 1]!.chars);
+
+    // No spoken digest in the demo: the button says why instead of failing silently.
+    const listen = digest.getByTestId('wa-digest-listen');
+    await expect(listen).toHaveText(/Prehrať/);
+    await listen.click();
+    await expect(listen).toHaveText('V ukážke nie je dostupné.');
     await expect(digest).not.toContainText(/not_implemented|\[object|undefined|Error:/);
     await expect(digest.getByTestId('wa-digest-regenerate')).toBeEnabled();
     expect(leaks).toEqual([]);
@@ -260,6 +278,67 @@ test.describe('WhatsApp module in demo mode, without WAAI', () => {
     await toggle.uncheck();
     await expect(toggle).not.toBeChecked();
     expect(leaks).toEqual([]);
+  });
+
+  /** A stand-in for a working WAAI: signs in, has a linked account and one chat. */
+  async function installRealWaai(page: Page, waai: { chatTitle: string }) {
+    await page.route('**/api/waai_sso.php', async (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ json: { success: true, configured: true, module: { ui: 'native', transport: 'proxy', base: '/waai-api' }, standalone_url: null, embed_url: null, can_manage: true, user_id: 'u1' } });
+      }
+      return route.fulfill({ json: { success: true, token: 'header.payload.signature', expires_in: 60 } });
+    });
+    await page.route('**/waai-api/**', async (route) => {
+      const req = route.request();
+      const path = new URL(req.url()).pathname.replace(/^\/waai-api/, '');
+      const user = { id: 'u1', role: 'admin', name: 'peter@example.sk', crm_user_id: 'u1' };
+      if (path === '/session') return req.method() === 'POST' ? route.fulfill({ json: { access_token: 'wam_real', expires_in: 3600, api_version: 1, user } }) : route.fulfill({ status: 204 });
+      if (path === '/meta') return route.fulfill({ json: { api_version: 1, features: ['session', 'meta', 'unread', 'chats'], user, ai_configured: true, standalone_url: null, wa_accounts: [{ id: 'acc1', status: 'connected', display_name: 'Peter' }] } });
+      if (path === '/unread') return route.fulfill({ json: { chats: 0, messages: 0 } });
+      if (path === '/wa/health') return route.fulfill({ json: { ok: true, worker_offline: false, disconnected: [], connecting: [] } });
+      if (path === '/conversations') {
+        return route.fulfill({ json: { conversations: [{ id: 'real1', title: waai.chatTitle, is_group: false, owner_email: 'peter@example.sk', avatar_url: null, unread_count: 0, last_message_at: '2026-04-20T09:15:00.000Z', last_message: { kind: 'text', body: 'Real message', sender: waai.chatTitle, direction: 'in' } }], summaries: {}, completed_task_ids: [], ai_configured: true, has_wa_account: true, user_name: 'Peter', user_avatar_url: null } });
+      }
+      return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'x', request_id: 'x' } } });
+    });
+  }
+
+  test('a demo instance with a working WAAI and a linked account keeps showing the real WAAI', async ({ page }) => {
+    const demoCalls: string[] = [];
+    await startSession(page);
+    await page.route('**/sync.php**', (route) => (route.request().method() !== 'GET' ? route.fallback() : route.fulfill({ json: { ...buildSyncPayload(), demoMode: true } })));
+    await page.route('**/api/waai_demo.php', (route) => {
+      demoCalls.push(route.request().method());
+      return route.fulfill({ json: { success: true, edition: 'sk', dataset: DATASET } });
+    });
+    await installRealWaai(page, { chatTitle: 'Acme Stavba (real)' });
+    await page.goto('/#whatsapp');
+    await expect(row(page, 'Acme Stavba (real)')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('wa-chat-row')).toHaveCount(1);
+    await expect(page.getByTestId('wa-account-pill')).not.toHaveText('Ukážkové dáta');
+    await expect(page.getByText('Marek Šimko')).toHaveCount(0);
+    expect(demoCalls).toEqual([]);
+  });
+
+  test('demo mode does not bypass permissions: a refused user still sees "forbidden", never the demo chats', async ({ page }) => {
+    const demoCalls: string[] = [];
+    await startSession(page);
+    await page.route('**/sync.php**', (route) => (route.request().method() !== 'GET' ? route.fallback() : route.fulfill({ json: { ...buildSyncPayload(), demoMode: true } })));
+    await page.route('**/api/waai_demo.php', (route) => {
+      demoCalls.push(route.request().method());
+      return route.fulfill({ json: { success: true, edition: 'sk', dataset: DATASET } });
+    });
+    // The connection is configured, but the CRM refuses to issue this user a sign-in token (no whatsapp permission).
+    await page.route('**/api/waai_sso.php', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ json: { success: true, configured: true, module: { ui: 'native', transport: 'proxy', base: '/waai-api' }, standalone_url: null, embed_url: null, can_manage: false, user_id: 'u1' } })
+        : route.fulfill({ status: 403, json: { success: false, code: 'forbidden' } }),
+    );
+    await page.route('**/waai-api/**', (route) => route.fulfill({ status: 500, json: { error: { code: 'server_error', message: 'leak', request_id: 'x' } } }));
+    await page.goto('/#whatsapp');
+    await expect(page.getByTestId('wa-forbidden')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('wa-chat-row')).toHaveCount(0);
+    expect(demoCalls).toEqual([]);
   });
 
   test('a real instance is untouched: no demo mode and no connection still says "not configured", and asks for no demo data', async ({ page }) => {

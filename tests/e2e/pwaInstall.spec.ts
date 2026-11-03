@@ -241,7 +241,8 @@ test.describe('Deep links into Tasks', () => {
     await page.goto('/?qa=88#tasks?newTask=Sent%20from%20a%20shortcut', { waitUntil: 'domcontentloaded' });
 
     // The login screen (the mocked /api/login.php accepts any credentials).
-    await page.getByPlaceholder(/@crm\.com/).fill('erik@crm.com');
+    // By type, not by placeholder: the placeholder is translated ("napr. meno@firma.sk") and changes with the language.
+    await page.locator('input[type="email"]').first().fill('erik@crm.com');
     await page.locator('input[type="password"]').fill('password');
     await page.locator('form button[type="submit"]').click();
 

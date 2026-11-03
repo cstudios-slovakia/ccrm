@@ -253,6 +253,12 @@
           "description": "No date was stated in the chat; it follows from the workshop plan."
         }
       ],
+      "digest": {
+        "today": "The corner joints on the third floor are done (photo sent). He asks for an indicative date for the CNC cutting of the lobby floor.",
+        "d3": "The corner joints on the third floor are done (photo sent) and he asks for an indicative CNC date for the lobby floor. Earlier you sent the installation schedule and the first panel photo, and he confirmed it looks good. He also asked for the lobby measuring next Tuesday morning and wants to know whether the lobby floor can start right after it; you promised an answer today or tomorrow.",
+        "d7": "The corner joints on the third floor are done (photo sent) and he asks for an indicative CNC date for the lobby floor. The thread started with his question where the slabs for the next facade phase are: the order is confirmed and the slabs reach the workshop in three weeks, which is why he needs the exact installation schedule for the scaffolding and the other trades. You sent the schedule and a photo of the first batch of panels, and he confirmed it looks good. Since then he asked for the lobby measuring next Tuesday morning and whether the lobby floor can start right after it; you promised an answer today or tomorrow.",
+        "d30": "The corner joints on the third floor are done (photo sent) and he asks for an indicative CNC date for the lobby floor. The thread started with his question where the slabs for the next facade phase are: the order is confirmed and the slabs reach the workshop in three weeks, which is why he needs the exact installation schedule for the scaffolding and the other trades. You sent the schedule and a photo of the first batch of panels, and he confirmed it looks good. Since then he asked for the lobby measuring next Tuesday morning and whether the lobby floor can start right after it; you promised an answer today or tomorrow. Done on your side: the revised installation schedule. Open: the lobby measuring and floor check with the crew, and the CNC date. The next facade phase now depends on the lobby measuring, so that answer is the one that should not wait."
+      },
       "summary": {
         "narrative": "Mark Fisher is following up on the slabs for the next facade phase. The installation schedule was sent and acknowledged. Open: the lobby measuring and the CNC date for the lobby floor.",
         "actionItems": [
@@ -431,6 +437,11 @@
           "description": "Six villa projects a year; he needs it for a meeting with the developers."
         }
       ],
+      "digest": {
+        "d3": "He liked the sintered stone samples, the dark variant most, and asked for the framework offer within a week, by noon. You agreed and start the calculation tomorrow.",
+        "d7": "He is planning six villa projects a year, about 40 m² of kitchen and bathroom slabs each, and asked whether that is enough for a first calculation; you said yes for the first draft. He liked the sintered stone samples, the dark variant most, and asked for the framework offer within a week, by noon, because he has an appointment with the builders. You agreed and start the calculation tomorrow.",
+        "d30": "He is planning six villa projects a year, about 40 m² of kitchen and bathroom slabs each, and asked whether that is enough for a first calculation; you said yes for the first draft. He liked the sintered stone samples, the dark variant most, and asked for the framework offer within a week, by noon, because he has an appointment with the builders. You agreed and start the calculation tomorrow. Done: the photos of the samples. Open: the framework offer, the only deadline in this chat. A client with a recurring volume like this is worth a proper framework price list rather than a one-off quote."
+      },
       "summary": {
         "narrative": "Thomas Müller is planning six villa projects a year. He liked the dark sample and wants the framework offer within a week.",
         "actionItems": [
@@ -606,6 +617,12 @@
           "description": "The hotel is waiting for the confirmation; the date has already slipped once."
         }
       ],
+      "digest": {
+        "today": "A hairline gap in one joint of the spa wall; she asks whether someone can come by today.",
+        "d3": "A hairline gap in one joint of the spa wall; she asks whether someone can come by today. Two days ago the joint samples arrived and the lighter shade on the left looks right to them. You still owe them the new slab date from the supplier.",
+        "d7": "A hairline gap in one joint of the spa wall; she asks whether someone can come by today. The joint samples arrived and the lighter shade on the left looks right to them. The thread started with her question whether the new slab date is still valid: the slabs reach the workshop next week and cutting starts right after. The owner wanted to see the joint colours in the spa lighting, so three lighter shades went by courier, and you promised the payment schedule for the second instalment by e-mail. You still owe them the new slab date from the supplier.",
+        "d30": "A hairline gap in one joint of the spa wall; she asks whether someone can come by today. The joint samples arrived and the lighter shade on the left looks right to them. The thread started with her question whether the new slab date is still valid: the slabs reach the workshop next week and cutting starts right after. The owner wanted to see the joint colours in the spa lighting, so three lighter shades went by courier, and you promised the payment schedule for the second instalment by e-mail. Done: the joint samples. Open: the new slab date from the supplier, and the hairline gap, which is a complaint on finished work and should be answered the same day. The payment schedule was promised by e-mail and is not tracked as a task."
+      },
       "summary": {
         "narrative": "The hotel is following the spa wall: the joint samples arrived and the lighter shade is liked. Open: confirming the slab date and a hairline gap in one joint.",
         "actionItems": [
@@ -772,6 +789,11 @@
           "description": "The installer arrives between 9:00 and 10:00; bonding and re-polishing is usually enough."
         }
       ],
+      "digest": {
+        "d3": "She asked whether the repair visit tomorrow is still on; confirmed, the installer arrives between 9:00 and 10:00.",
+        "d7": "She asked whether the repair visit tomorrow is still on; confirmed, the installer arrives between 9:00 and 10:00. The only open item is the repair itself.",
+        "d30": "She reported a chip on the edge of the worktop next to the dishwasher, with a photo, and you took it as a warranty case. The callback took longer than promised, you apologised and agreed on Monday morning. She asked whether the repair visit tomorrow is still on; confirmed, the installer arrives between 9:00 and 10:00. Done: the call arranging the visit. Open: the repair of the edge chip. The callback was late, so this visit is the one to keep on time."
+      },
       "summary": {
         "narrative": "Andrea Wilson reported a warranty chip on the edge next to the dishwasher. The repair is confirmed for tomorrow.",
         "actionItems": [

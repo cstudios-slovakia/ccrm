@@ -197,6 +197,10 @@ The whole `test-results/` and `playwright-report/` trees are git-ignored.
 `qa-audit-report-latest-full.md`. So a quick scoped check can never erase your
 last complete audit.
 
+**`-g` after `--` replaces the scope.** `node scripts/qa/run-qa.mjs --files <f> -- -g "Digest"` does not narrow the
+files' own tests; it selects every test titled "Digest" in every spec (one such run started 51). Name the spec as well:
+`-- tests/e2e/whatsappDemo.spec.ts -g "Digest"`. `run-qa` prints a note when you pass `-g` without a spec path.
+
 ### Reading the result
 
 The verdict prints in your terminal the moment the run ends — `RESULT: PASSED`
