@@ -73,7 +73,8 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 3 | Re-seed demo data (endpoint, CLI, Settings) | ✅ | source only, no version (git log: `(demo phase 3)`) | 2026-11-03 |
 | 4A | Content: clients, leads, tasks, timeline | ✅ | source only, no version (git log: `(demo phase 4A)`) | 2026-11-03 |
 | 4B | Content: projects, offers, invoices, warehouse, orders, finance | ✅ | source only, no version (git log: `(demo phase 4B)`) | 2026-11-03 |
-| 4C | Content: employees + time tracking (new) | ⬜ | | |
+| 4C | Content: employees + time tracking (new) | ✅ | source only, no version (git log: `(demo phase 4C)`) | 2026-11-03 |
+||||||| parent of 92b96175 (feat(demo): employees and time tracking content in sk/hu/en packs (demo phase 4C))
 | 4D | Content: e-mail, WhatsApp, AI meeting room, social posts | ⬜ | | |
 | 4E | Content: SAI (stored entries + built-in demo) | ⬜ | | |
 | 4F | Content: automations (+ run logs), service tickets | ⬜ | | |
@@ -479,21 +480,72 @@ Built exactly as listed; `test:demo-packs` and `test:demo-seed` are green (296 c
 
 ### Phase 4C — Content: employees + time tracking (wave 2, high)
 
-- [ ] `employees.php` (new): the six employees of Part D with salaries, vacation
+- [x] `employees.php` (new): the six employees of Part D with salaries, vacation
       allowances, salaries for the install month, vacations around today. The three login
       users are linked through `employees.user_id`. Replaces `ccrm_seed_default_employees`
       (and the frontend `mockEmployees.ts` seed, removed in phase 5).
-- [ ] `time.php` (new): per C10 — ~3 weeks of `time_entries` for the three users on
+- [x] `time.php` (new): per C10 — ~3 weeks of `time_entries` for the three users on
       P1/P3/P4, tasks and tickets, mixed sources, billable and not, cost rate snapshots
       computed with the real `api/time_cost.php` functions, last week submitted/approved,
       one demo browser device and 4 unsorted `time_activity` rows for `owner`.
       **No running timer** (B10).
-- [ ] Time-tracking settings for the pack (holiday country per B9) written by the module
+- [x] Time-tracking settings for the pack (holiday country per B9) written by the module
       only if not set.
-- [ ] Dry-run assertions: no overlapping entries per user, every entry on a working day of
+- [x] Dry-run assertions: no overlapping entries per user, every entry on a working day of
       the pack's holiday calendar, `cost = round(duration_h × cost_rate, 2)`.
 
-**Left over:** —
+**Left over:**
+
+Built exactly as listed. `test:demo-packs` and `test:demo-seed` are green for `employees` and `time` in sk/EUR, hu/HUF, hu/EUR
+and en/USD (344 checks together with `company`); I also broke the module on purpose three ways (cost +0.5, negative gaps, weekends
+allowed) and each one failed the matching assertion. Not run: `test:demo-seed:db` (no MySQL here). What a later session needs to know:
+
+- **One edit outside "Owns": `scripts/lib/demo-fake-pdo.php`** (phase 1's file, 15 lines). The fake read `time_entries.running_guard`
+  (`GENERATED ALWAYS AS (IF(... IS NOT NULL ...))`) as NOT NULL with no default, because the generated expression contains
+  "IS NOT NULL", so *every* `time_entries` insert failed. It now drops the generated expression before reading the flags,
+  treats the column as nullable, and rejects an explicit value for it like MySQL (error 3105). No check was loosened (A5 #31).
+  There is no way to work around this from a module: the INSERT must not name that column.
+- **Files added outside the literal "Owns" column** (as phase 1 documented): `scripts/demo-assert/{employees,time}.php` and the repo-root
+  mirrors `api/demo_seed/{employees,time}.php` + `api/demo_seed/packs/{sk,hu,en}/{employees,time}.php` (copied once with `cp`, A5 #16).
+- **`employees` module.** Ids `demo-employees-1..6` (E1-E6), `demo-employees-sal-<n>-<YYYY-MM>`, `demo-employees-vac-<n>`. Personal data
+  comes from the company pack; the `employees` pack adds job descriptions, leave allowances, payroll extras and 26 leave records.
+  E1-E3 get `user_id` of owner/pm/sales **only if that user row exists and no hand-made employee already holds it** (the column is UNIQUE
+  with a foreign key; a hand-made row is never touched). `work_country` = the edition's holiday country (NULL for en). Salaries are
+  `demo_money_salary()`. Payroll: ONE row per employee for the install month (base + commission E3 / travel E2 / overtime E4, E5, converted
+  with `demo_money()`), `paid` once day 14 of the month has come, else `pending`; `financial_record_id` stays empty and `auto_expense` is on
+  with category `fc-exp-pay-salaries`, like the seeder this replaces. **Contract for 4B (finance):** if you write the salary expenses
+  yourself, use the id `fr-sal-` + the salary row id (`fr-sal-demo-employees-sal-<n>-<YYYY-MM>`) and the salary row's `total_salary` as the
+  amount: that is the id `sync.php` derives, so a later save upserts instead of duplicating (A5 #33). Nobody with a login (E1-E3) is on leave
+  in the last five weeks, because `time` logs hours for them there (asserted); E4 is on leave today. Vacation types `annual|sick|doctor|unpaid`
+  are the ids of `EMPLOYEE_SETTINGS`; their display names are not this module's.
+- **`time` module.** 128 entries (owner 36, pm 48, sales 44) over the last 15 working days before today, 2-4 entries and 5-8 h per login per
+  day (owner 5-7, pm 6.5-8, sales 5.5-7), 07:00-17:00 local, times stored in UTC from the edition's zone (sk Europe/Bratislava, hu
+  Europe/Budapest, en America/Denver; the schedule ends by 16:40 so the UTC date never differs). The schedule is **deterministic and the same
+  for every edition**; the pack holds only per-login pools of work items (title, note, project ref, link kind, billable). Shares by hours:
+  billable owner ~25 / pm ~70 / sales ~45 %, sources timer 50 / manual 30 / calendar 10 / extension 10 (extension: owner only, the only login
+  with a device), ~9 % without a project, projects P1/P3/P4 only. Cost snapshot = `ccrm_tc_cost_rate()` on the converted salary and
+  `ccrm_holidays_working_days()` of the entry's month (+ `ccrm_tc_entry_cost()`); the settings blob is read for `employerMultiplier` etc.
+  Row total returned by the module = 128 entries + 1 device + 4 activity + 1 settings row when it was absent.
+- **Contract for 4A / 4F (links).** The pools ask for tasks and tickets by rule, not by number: `link: task, pick: k` = the k-th (natural id
+  order, modulo how many there are) row with `id LIKE 'demo-tasks-%'` whose `related_project_id` is the project; `link: ticket` = the k-th row
+  with `id LIKE 'demo-tickets-%'` whose `project_id` is the project, or, when empty, whose `client_id` is that project's client (C1 -> P1,
+  C3 -> P4, C6 -> P3, C2 -> P2). What it needs: **tasks** on P1 (>=2), P3 (>=2), P4 (>=3); **tickets** on P1 (the cutout ticket), P3 (the spa wall gap
+  first) and P4 (the edge profile). With fewer, or with none (today: neither module is ported, so the dry run covers the plain path), the
+  entry stays a plain one with its own title. A linked entry shows the task's/ticket's title (C5), so the pool titles are fallbacks.
+  Scenario 2 of `scripts/demo-assert/time.php` seeds tasks/tickets by hand and proves the rule, including that `demo-tasks-2` sorts before
+  `demo-tasks-10`. Once 4A/4F are ported the generic link check also verifies every `task_id`/`ticket_id` I wrote.
+- **Approval (C10).** The app knows only `approved` (`time_entries.php`, `timeLock.ts`, `timeApproval.ts`); `submitted` as written in C10 is just a
+  value that the UI treats as an open, editable week (A5 #32). I wrote it for owner's previous full week as specified, `approved` for
+  pm/sales, `approved` for every older week of all three (not specified: closed history), and NULL for the current week. `TIME_TRACKING_SETTINGS` is
+  written only when absent, with `weeklyApproval: true` (default is off, which would hide the approved state) plus the cost defaults. Defaults
+  keep `lockAfterDays = 14`, so the oldest week is read-only for pm and sales (admin bypasses) - by design, not changed.
+- **Holiday calendar.** sk -> SK, hu -> HU. en: `COMPANY_BILLING_SETTINGS.country` is "United States", so the server hands it the Slovak calendar
+  (A5 #15). Entries therefore avoid the US federal holidays (incl. observed days) *and* the Slovak ones, and the cost basis uses Slovak working
+  days, i.e. exactly what "Re-price a period" would compute. `demo_time_*` helpers are local to the module. Hungarian decree days are not known
+  to the module (B2). The window is checked for every install date of two years in the assertions.
+- **Not seeded on purpose:** hours-only (`day`/`timesheet`) entries, `activity`-source entries, `ticket_time_entries` (legacy), a running timer (B10).
+- **Interim state until phase 5:** `ccrm_seed_default_employees()` (schema.php) still seeds `emp-1..4` when `employees` is empty and DEMO_MODE is on,
+  and `mockEmployees.ts` still exists; a fresh demo install can show both casts until phase 5 removes them. `test:demo-seed` does not know that.
 
 ### Phase 4D — Content: e-mail, WhatsApp, AI meeting room, social posts (wave 2, medium)
 
@@ -722,6 +774,21 @@ one titled "Phase W" that the planning session handed to the user.
     green alone. *Root cause:* the assertion counts all rows of the table instead of the rows of its own module.
     *Fix (4A's file, not changed by 4B):* filter the rows by id prefix, `array_filter($db->rows('timeline_events'),
     fn($e) => strpos($e['id'], 'demo-clients-') === 0)`, before the count and the per-lead checks.
+||||||| parent of 92b96175 (feat(demo): employees and time tracking content in sk/hu/en packs (demo phase 4C))
+31. **The fake PDO misread generated columns** (found by 4C, fixed in `scripts/lib/demo-fake-pdo.php`). *Symptom:* `demo_seed_all()` failed
+    for the time module with "Field 'running_guard' doesn't have a default value (table 'time_entries')", i.e. no `time_entries` row
+    could be inserted offline. *Root cause:* `parseColumnDef()` looked for `NOT NULL` in the whole definition, and the generated expression
+    `IF(start_at IS NOT NULL AND end_at IS NULL ...)` contains it. *Fix (applied):* strip `GENERATED ALWAYS AS (...)` before reading the
+    flags, mark the column nullable and generated, reject an explicit value. Real MySQL was never affected.
+32. **`approval_status = 'submitted'` means nothing to the app.** Only `approved` is read (`ccrm_te_lock_reason_of()` in `time_entries.php`,
+    `lockReason()` in `timeLock.ts`, `weekApprovalState()` in `timeApproval.ts`); `submit_week` writes `approved` directly (the caller approves
+    their own week), so there is no submit-then-approve workflow. C10 asks for "submitted" for owner; it seeds as an open, editable week.
+    *Fix options:* drop "submitted" from C10, or give approval a real two-step status in a time-tracking phase. Not changed here.
+33. **Salary expenses derived by sync are not removed by the demo wipe.** `sync.php` (~line 6438) upserts a `financial_records` row with id
+    `fr-sal-<salary id>` whenever the frontend saves a salary of an employee with `auto_expense = 1`. `demo_wipe_by_prefix()` matches `demo-%`
+    and `demo_legacy_ids()` has only `fr-sal-sal-emp-%`, so `fr-sal-demo-employees-sal-%` survives a re-seed and the next save of the new
+    salary rows would add a second expense next to whatever the finance module seeded. *Fix:* add `'financial_records' => ['fr-sal-sal-emp-%',
+    'fr-sal-demo-employees-sal-%']` to `demo_legacy_ids()` (phase 3 wipe / phase 5), and have 4B use that id for its salary expenses.
 
 ---
 
