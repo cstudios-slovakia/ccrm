@@ -73,7 +73,16 @@ const RESULT = {
 };
 
 /** Opens the reset section. `demo` turns demo mode on in the sync answer; `status` is what the endpoint reports. */
-async function openReset(page: Page, opts: { demo: boolean; status?: Status; post?: (body: unknown) => { status: number; body: unknown } }) {
+async function openReset(
+  page: Page,
+  opts: {
+    demo: boolean;
+    status?: Status;
+    post?: (body: unknown) => { status: number; body: unknown };
+    /** Replaces the status answer for one call: return null to fall through to `status`. */
+    statusAnswer?: () => { status: number; contentType: string; body: string } | null;
+  },
+) {
   const posts: unknown[] = [];
   await startSession(page);
   if (opts.demo) {
@@ -87,6 +96,8 @@ async function openReset(page: Page, opts: { demo: boolean; status?: Status; pos
   await page.route('**/api/demo_reseed.php**', (route) => {
     const req = route.request();
     if (req.method() === 'GET') {
+      const custom = opts.statusAnswer?.();
+      if (custom) return route.fulfill(custom);
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, ...(opts.status ?? OLD_INSTALL) }) });
     }
     const body = req.postDataJSON();
@@ -126,6 +137,34 @@ test.describe('Re-seed demo data', () => {
     await expect(notice).toContainText(/Automatizácie|Automations|Automatizálások/);
     // The confirm text says what is kept and what happens to the session.
     await expect(page.getByTestId('demo-reseed-confirm-text')).toContainText(/odhlási|signs you out|kijelentkeztet/);
+  });
+
+  test('when the status cannot be read, the card says why and Try again recovers', async ({ page }) => {
+    // A mode, not a call counter: the mount effect may run twice (StrictMode) before the test clicks anything.
+    let mode: 'json500' | 'html404' | 'ok' = 'json500';
+    await openReset(page, {
+      demo: true,
+      statusAnswer: () => {
+        if (mode === 'json500') {
+          return { status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, code: 'status_failed', message: 'PDOException: View references invalid table(s)' }) };
+        }
+        if (mode === 'html404') return { status: 404, contentType: 'text/html', body: '<html>Not Found</html>' };
+        return null;
+      },
+    });
+    const error = page.getByTestId('demo-reseed-load-error');
+    await expect(error).toBeVisible(SETTLE);
+    // The status and the server's own reason, not just "could not be read".
+    await expect(page.getByTestId('demo-reseed-load-detail')).toContainText('500 · status_failed · PDOException: View references invalid table(s)');
+    // A reply that is not JSON still reports its status.
+    mode = 'html404';
+    await error.getByRole('button').click();
+    await expect(page.getByTestId('demo-reseed-load-detail')).toContainText('HTTP 404, not JSON');
+    // Once the server answers, the card is the normal one and the error is gone.
+    mode = 'ok';
+    await error.getByRole('button').click();
+    await expect(page.getByTestId('demo-reseed-language')).toBeVisible(SETTLE);
+    await expect(page.getByTestId('demo-reseed-load-error')).toHaveCount(0);
   });
 
   test('an install on the current dataset shows no notice', async ({ page }) => {

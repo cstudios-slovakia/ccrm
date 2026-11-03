@@ -61,18 +61,29 @@ if (!function_exists('demo_reseed_run')) {
             }
         }
         $found = [];
-        $cols = $pdo->query(
-            "SELECT `TABLE_NAME` AS t, `COLUMN_NAME` AS c FROM information_schema.COLUMNS
-              WHERE `TABLE_SCHEMA` = DATABASE() AND `DATA_TYPE` IN ('varchar', 'char') AND `COLUMN_NAME` = 'id'"
-        )->fetchAll(PDO::FETCH_ASSOC);
+        // This is only a probe for the status notice: a table or view it cannot read (a view whose
+        // definer is gone, a crashed table) must not fail the whole status call, so it is skipped.
+        try {
+            $cols = $pdo->query(
+                "SELECT `TABLE_NAME` AS t, `COLUMN_NAME` AS c FROM information_schema.COLUMNS
+                  WHERE `TABLE_SCHEMA` = DATABASE() AND `DATA_TYPE` IN ('varchar', 'char') AND `COLUMN_NAME` = 'id'"
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            return [];
+        }
         foreach ($cols as $col) {
             if (count($found) === count($modules)) {
                 break;
             }
             $t = str_replace('`', '', (string)$col['t']);
-            $stmt = $pdo->prepare("SELECT `id` FROM `{$t}` WHERE `id` LIKE ? LIMIT 400");
-            $stmt->execute(['demo-%']);
-            foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
+            try {
+                $stmt = $pdo->prepare("SELECT `id` FROM `{$t}` WHERE `id` LIKE ? LIMIT 400");
+                $stmt->execute(['demo-%']);
+                $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            } catch (\Throwable $e) {
+                continue;
+            }
+            foreach ($ids as $id) {
                 foreach ($byPrefix as $prefix => $module) {
                     if (strpos((string)$id, $prefix) === 0) {
                         $found[$module] = true;
@@ -402,6 +413,12 @@ if (!function_exists('demo_reseed_run')) {
                 ccrm_log_exception($e);
             } else {
                 error_log('[ccrm demo_reseed] ' . $e->getMessage());
+            }
+            if ($method === 'GET') {
+                // Reading the status is not a re-seed, and "the re-seed failed" sent whoever hit this
+                // looking in the wrong place. The caller is an admin with `system_reset`, so the
+                // exception itself goes back: Settings shows it under the Try again link.
+                $fail(500, 'status_failed', get_class($e) . ': ' . $e->getMessage());
             }
             $fail(500, 'failed', 'The re-seed failed. Check the server log and run it again.');
         }

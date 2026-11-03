@@ -56,6 +56,7 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
 
   const [status, setStatus] = useState<DemoStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loadDetail, setLoadDetail] = useState<string | null>(null);
   const [lang, setLang] = useState("sk");
   const [currency, setCurrency] = useState("EUR");
   const [currencyTouched, setCurrencyTouched] = useState(false);
@@ -67,14 +68,19 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
   const load = useCallback(async () => {
     try {
       const res = await fetch(`${ENDPOINT}?status=1`, { credentials: "same-origin" });
-      const data = await res.json();
-      if (!res.ok || data.success === false) throw new Error(String(data.code ?? res.status));
+      // A reply that is not JSON (a 404 page, a PHP fatal) still says something: keep its status.
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.success === false) {
+        throw new Error(data ? [res.status, data.code, data.message].filter(Boolean).join(" · ") : `HTTP ${res.status}, not JSON`);
+      }
       setStatus(data as DemoStatus);
       setLang(data.language);
       setCurrency(data.currency);
       setLoadFailed(false);
-    } catch {
+      setLoadDetail(null);
+    } catch (e) {
       setLoadFailed(true);
+      setLoadDetail(e instanceof Error ? e.message : null);
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -127,6 +133,9 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
             {t("Try again", "Skúsiť znova", "Újra")}
           </button>
         </p>
+        {loadDetail && (
+          <p className="mt-2 break-words font-mono text-micro text-slate-500" data-testid="demo-reseed-load-detail">{loadDetail}</p>
+        )}
       </SectionCard>
     );
   }

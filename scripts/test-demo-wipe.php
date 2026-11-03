@@ -433,6 +433,22 @@ $sp = demo_reseed_status($probe);
 $check('an install without DEMO_DATASET is probed for demo- rows: clients, tasks and email are present, the rest is missing',
     $sp['dataset'] === null && !array_intersect(['clients', 'tasks', 'email'], $sp['missing']) && !array_diff(['company', 'employees', 'time', 'tickets', 'meetings', 'workflows', 'sai', 'projects'], $sp['missing']), json_encode($sp['missing']));
 
+// A table the probe cannot read (a view with a dead definer, a crashed table) must not fail the whole
+// status call - that was Settings > Re-seed demo data saying "the demo status could not be read".
+$broken = new class extends DemoFakePdo {
+    public function prepare(string $query, array $options = []): PDOStatement|false {
+        if (strpos($query, 'FROM `tasks`') !== false) {
+            throw new \PDOException('SQLSTATE[HY000]: View references invalid table(s) or column(s) or function(s)');
+        }
+        return parent::prepare($query, $options);
+    }
+};
+$broken->seedRow('leads', ['id' => 'demo-clients-1', 'name' => 'x', 'owner' => 'o', 'created_at' => '2026-01-01 00:00:00']);
+$brokenOk = true;
+try { $sb = demo_reseed_status($broken); } catch (\Throwable $e) { $brokenOk = false; $sb = ['missing' => [], 'dataset' => 0]; }
+$check('status survives a table the probe cannot read: it is skipped, the others still count',
+    $brokenOk && $sb['dataset'] === null && !in_array('clients', $sb['missing'], true) && in_array('tasks', $sb['missing'], true), json_encode($sb['missing']));
+
 // =================================================================================================
 $section('php ccrm demo:seed (demo_reseed_cli)');
 // =================================================================================================
