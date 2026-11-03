@@ -673,12 +673,12 @@ What a later session needs to know:
   a demo user cannot read would hide the row from them.
 - **The module also deletes the pre-pack id `sai-demo-1`** (and its `sim` tables) on every run so a re-seed does not leave a second simulation;
   phase 3's wipe lists it through `demo_legacy_ids()` as well.
-- **Draft run in demo mode** plays the built-in canned scenario under the draft's own title (A5 #21), so pressing Run on `demo-sai-2` shows the
+- **Draft run in demo mode** plays the built-in canned scenario under the draft's own title (A5 #42), so pressing Run on `demo-sai-2` shows the
   warranty scenario, not outdoor kitchens. Opening the completed `demo-sai-1` is a normal resume, but its Q&A drawer then uses the live LLM path
   (`activeIsDemo` is false for stored rows), which needs an API key.
 - **Not done (not mine):** `CreateRehearsalView.tsx` still has the "Q4 Enterprise Pricing" title placeholder and a "+20 % … WhatsApp … 99.9 % SLA"
-  example question (A5 #22); the walkthrough's generic step taglines still say "buying committees, auditors, legacy competitors" (SaaS flavour,
-  harmless); `scripts/qa/run-qa.mjs` RULES has no entry for `src/components/sai/**` (A5 #23).
+  example question (A5 #43); the walkthrough's generic step taglines still say "buying committees, auditors, legacy competitors" (SaaS flavour,
+  harmless); `scripts/qa/run-qa.mjs` RULES has no entry for `src/components/sai/**` (A5 #44).
 
 
 ### Phase 4F — Content: automations + service tickets (wave 2, medium)
@@ -907,22 +907,22 @@ one titled "Phase W" that the planning session handed to the user.
     *Fix (4A's files):* filter by id prefix (`demo-tasks-`, `demo-clients-`) before counting and checking. The two `finance:` failures
     ("planned in the past" salary rows, "install month has payroll") are 4B/4C's finance/employees rows, not 4D.
 
-18. **Every `demo-` id was the built-in SAI demo.** `SaiModule.tsx` (three places) matched `id.startsWith('demo-')`. *Symptom:* a stored
+39. **Every `demo-` id was the built-in SAI demo.** `SaiModule.tsx` (three places) matched `id.startsWith('demo-')`. *Symptom:* a stored
     simulation whose id starts with `demo-` (the B7 convention) opened the canned scenario instead of its own data, and could not be
     resumed. *Root cause:* the prefix was used as a shorthand for "the client-side demo". *Fix (done in 4E):* `isBuiltInDemoSimulationId()`
     accepts only the checkpoint id and `demo-sim-*`; covered by `tests/e2e/saiStoredDemo.spec.ts` and `demoData.test.ts`.
-19. **`SaiModule` is given the user's language as its "system language".** `App.tsx` ~4257 `systemLanguage={userLanguage}`. *Symptom:* a Slovak
+40. **`SaiModule` is given the user's language as its "system language".** `App.tsx` ~4257 `systemLanguage={userLanguage}`. *Symptom:* a Slovak
     demo install used by someone whose UI is English shows an English built-in demo next to Slovak stored simulations. *Fix:* pass
     `systemLanguage` (or a separate `dataLanguage`), keeping `userLanguage` for the UI strings. Not fixed (App.tsx).
-20. **Ownerless simulations with unknown source slugs skip the permission check.** `$swarmCanAccess` (`api/swarm.php`) `continue`s past a slug that
+41. **Ownerless simulations with unknown source slugs skip the permission check.** `$swarmCanAccess` (`api/swarm.php`) `continue`s past a slug that
     is not in `$ccrmSourceModules`, so the old seeder's `leads/clients/finance/emails` made the demo visible to everyone by accident.
     Harmless for the demo; real rows use real slugs. Noted only.
-21. **Running a draft in demo mode ignores the draft.** `handleStartSimulation` (`SaiModule.tsx`, the `!isLive` branch) sets the run title and
+42. **Running a draft in demo mode ignores the draft.** `handleStartSimulation` (`SaiModule.tsx`, the `!isLive` branch) sets the run title and
     hypothesis from the draft but fills graph, agents, posts and report from the built-in demo. *Proposed fix:* label it "demo output" or fill
     the run from the stored/draft config when there is one. Not fixed.
-22. **`CreateRehearsalView.tsx` still advertises the retired SaaS demo** (title placeholder "Q4 Enterprise Pricing Restructuring" and the example
+43. **`CreateRehearsalView.tsx` still advertises the retired SaaS demo** (title placeholder "Q4 Enterprise Pricing Restructuring" and the example
     question about a 20 % price rise with WhatsApp support and a 99.9 % SLA, three languages). *Fix:* replace with a Lapidea example. Not fixed (not in 4E's Owns).
-23. **The QA runner has no rule for the SAI module.** `node scripts/qa/run-qa.mjs --files src/components/sai/SaiModule.tsx` answers "nothing to
+44. **The QA runner has no rule for the SAI module.** `node scripts/qa/run-qa.mjs --files src/components/sai/SaiModule.tsx` answers "nothing to
     test", so an SAI change is never audited unless the spec is named. *Fix:* add `src/components/sai/` → `saiStoredDemo.spec.ts` to `RULES` in
     `scripts/qa/run-qa.mjs`. Not fixed (scripts/qa).
 
