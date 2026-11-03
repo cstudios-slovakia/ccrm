@@ -103,7 +103,7 @@ v prílohe je zoznam kuchynských dosiek na tento týždeň: deväť zákaziek, 
             'seen' => true,
             're' => 3,
             'subject' => 'RE: Týždenný zoznam zákaziek – 44. týždeň',
-            'body' => 'Dobrý deň, {contact:C3},
+            'body' => 'Dobrý deň,
 
 zoznam sme prijali. Obe zákazky v spekanom kameni vieme dodať do štyroch pracovných dní, ostatné podľa rámcovej zmluvy do šiestich. Zameranie pri KL-4403 ešte potvrdí náš montážny tím.
 
@@ -158,7 +158,7 @@ Stihli by ste ponuku do konca týždňa?
             'seen' => true,
             're' => 6,
             'subject' => 'RE: Výrez pre drez – ako ďalej?',
-            'body' => 'Dobrý deň, {contact:L9},
+            'body' => 'Dobrý deň,
 
 ďakujem za fotku. Podhľadový drez je pri kremeni bežný, výrez opracujeme na CNC a hranu vystužíme zospodu. V prílohe je ponuka na dosku 2,4 × 0,6 m so zadným obkladom. Hrana 4 cm so šikmým spojom je za príplatok {m:180}.
 
@@ -207,7 +207,7 @@ ponuka vyzerá dobre. Dá sa hrana 4 cm urobiť aj okolo drezu, alebo len na pre
             'seen' => true,
             're' => 8,
             'subject' => 'RE: Výrez pre drez – ako ďalej?',
-            'body' => 'Dobrý deň, {contact:L9},
+            'body' => 'Dobrý deň,
 
 hrubá hrana ide aj okolo výrezu, je to na to ideálne riešenie. Zameranie navrhujem {wd:2} {d:2} popoludní. Vyhovuje?
 
@@ -250,7 +250,7 @@ ako každú jeseň ponúkame zvyškové dosky zo skladu so zľavou 15 %. Zoznam 
             'to' => 'C6',
             'seen' => true,
             'subject' => 'Hotel Aurum – meškanie dosiek a nový termín',
-            'body' => 'Dobrý deň, {contact:C6},
+            'body' => 'Dobrý deň,
 
 ospravedlňujeme sa za meškanie. Dosky pre obklad wellness steny nám dodávateľ pustil z výroby o desať dní neskôr. Nový termín dodania do dielne je {d:4}, montáž na recepcii a v lobby začne {d:9}.
 
@@ -307,7 +307,7 @@ posielam pozvánku na obhliadku vzorky spáry priamo v spa. Prosím potvrďte ú
             'to' => 'C6',
             'seen' => true,
             'subject' => 'Pripomienka: záloha faktúra po splatnosti',
-            'body' => 'Dobrý deň, {contact:C6},
+            'body' => 'Dobrý deň,
 
 upozorňujeme, že zálohová faktúra za projekt {project:P3} bola splatná {d:-12}. Pravdepodobne ide o prehliadnutie. Prosíme o úhradu v najbližších dňoch, aby sme mohli držať termín dodávky dosiek.
 
@@ -342,7 +342,7 @@ ospravedlňujeme sa, faktúra sa stratila medzi dvoma oddeleniami. Účtovníčk
             'to' => 'C1',
             'seen' => true,
             'subject' => '{project:P1} – druhá splátka',
-            'body' => 'Vážený pán {contact:C1},
+            'body' => 'Dobrý deň,
 
 v prílohe posielame faktúru za druhú splátku projektu {project:P1}. Zodpovedá dokončenému zameraniu a prvej fáze rezania. Splatnosť je 14 dní.
 
@@ -421,7 +421,7 @@ pri umývačke riadu som si všimla malú štrbinu na hrane dosky. Je to záruč
             'seen' => true,
             're' => 19,
             'subject' => 'RE: Malá štrbina na hrane dosky',
-            'body' => 'Dobrý deň, {contact:C2},
+            'body' => 'Dobrý deň,
 
 ďakujem za fotku. Áno, je to záručný prípad, hranu opravíme bezplatne. Požiadavku sme založili v servise a ozve sa vám kolega s termínom návštevy.
 

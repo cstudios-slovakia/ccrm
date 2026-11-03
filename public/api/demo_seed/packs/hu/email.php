@@ -309,7 +309,7 @@ Mellékelem a meghívót a hézagminta helyszíni megtekintésére a spában. K�
             'subject' => 'Emlékeztető: lejárt előlegszámla',
             'body' => 'Tisztelt {contact:C6}!
 
-Felhívjuk szíves figyelmét, hogy a(z) {project:P3} projekt előlegszámlájának fizetési határideje {d:-12} volt. Valószínűleg figyelmetlenségről van szó. Kérjük, a következő napokban egyenlítse ki, hogy tarthassuk a lapszállítás határidejét.
+Felhívjuk szíves figyelmét, hogy az előlegszámla fizetési határideje {d:-12} volt (projekt: {project:P3}). Valószínűleg figyelmetlenségről van szó. Kérjük, a következő napokban egyenlítse ki, hogy tarthassuk a lapszállítás határidejét.
 
 Ha már fizetett, kérjük, tekintse tárgytalannak ezt a levelet.
 
@@ -344,7 +344,7 @@ Elnézést kérünk, a számla elveszett két osztály között. A könyvelő le
             'subject' => '{project:P1} – második részlet',
             'body' => 'Tisztelt {contact:C1}!
 
-Mellékelve küldjük a(z) {project:P1} projekt második részletének számláját. A felmérés befejezésének és a vágás első fázisának felel meg. A fizetési határidő 14 nap.
+Mellékelve küldjük a második részlet számláját (projekt: {project:P1}). A felmérés befejezésének és a vágás első fázisának felel meg. A fizetési határidő 14 nap.
 
 Üdvözlettel
 {user:owner}
