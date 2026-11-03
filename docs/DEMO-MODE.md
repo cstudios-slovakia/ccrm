@@ -76,7 +76,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 4C | Content: employees + time tracking (new) | ✅ | source only, no version (git log: `(demo phase 4C)`) | 2026-11-03 |
 | 4D | Content: e-mail, WhatsApp, AI meeting room, social posts | ✅ | source only, no version (git log: `(demo phase 4D)`) | 2026-11-03 |
 | 4E | Content: SAI (stored entries + built-in demo) | ✅ | source only, no version (git log: `(demo phase 4E)`) | 2026-11-03 |
-| 4F | Content: automations (+ run logs), service tickets | ⬜ | | |
+| 4F | Content: automations (+ run logs), service tickets | ✅ | source only, no version (git log: `(demo phase 4F)`) | 2026-11-03 |
 | W | WAAI demo loader: three language editions (**WAAI repo**) | ⬜ | | |
 | 5 | Cutover: remove legacy seeders, wipe, cleanup, QA, build | ⬜ | | |
 
@@ -683,16 +683,58 @@ What a later session needs to know:
 
 ### Phase 4F — Content: automations + service tickets (wave 2, medium)
 
-- [ ] `workflows.php`: keep the seven workflow definitions, move every string into packs,
+- [x] `workflows.php`: keep the seven workflow definitions, move every string into packs,
       re-word them for the story; 5 active, 2 inactive. Add `workflow_logs` history (C13):
       ~20 runs over the last 14 days, mostly success, two failures with a readable error.
-- [ ] `tickets.php` (new): support contract for C6, five service tickets (Part D) with
+- [x] `tickets.php` (new): support contract for C6, five service tickets (Part D) with
       messages, task links and legacy ticket time where the schema needs it. Replaces
       `ccrm_seed_default_tickets` (which today has **no** `DEMO_MODE` check — A5 #1).
-- [ ] Dry-run: every workflow node that names a state/source/project type refers to a value
+- [x] Dry-run: every workflow node that names a state/source/project type refers to a value
       that exists in the seeded settings.
 
-**Left over:** —
+**Left over:**
+
+Built as listed; `test:demo-packs` and `test:demo-seed` are green for sk/EUR, hu/HUF, hu/EUR, en/USD (314 checks with
+`company`, `workflows` and `tickets` covered), and a deliberately broken workflow (a bogus state, a flipped active flag)
+makes the new assertions fail. What a later session needs to know:
+
+- **Workflows (`workflows.php`, `packs/*/workflows.php`).** The graph (node ids, positions, edges, filters, priorities,
+  deadlines) stays in code; every string is in the pack, keyed `wf1..wf7` → `nodes` → node key → field. Local tokens in pack
+  strings are resolved by `demo_wf_text()`, **not** `demo_text()`: `%source%` (the web lead source of this instance), `%offer%`,
+  `%won%` (lead states), `%cur%` (currency code), `%threshold%` (formatted AI-triage limit). The engine's own
+  `{{$trigger.x}}` is untouched. The AI-triage threshold is `thresholdEur` in the pack; the condition's JS uses
+  `demo_money(thresholdEur)`, the node name the formatted amount. States/sources come from the settings with the
+  installer's default list as the fallback (`demo_lead_states()`/`demo_lead_sources()`); the convert node points at
+  `demo_ref_id('PT')` (`demo-projects-0`), falling back to the first project type if the demo one is missing.
+- **Which two are inactive: `demo-workflows-4` (AI triage) and `-5` (won deal → onboarding)**, the two that need an AI key.
+  Before this change three were off (welcome mail too); the welcome mail (`-1`) is now **active**, as C13 asks for 5 of 7.
+  Consequence on a demo install with no SMTP: creating a lead from the web source logs one failed run of workflow 1 (the
+  e-mail step). It never blocks the lead. To avoid it, set `'active' => 0` on workflow 1 in `workflows.php` and turn another
+  workflow on (the test wants exactly 5 active) or change the assertion in `scripts/demo-assert/workflows.php`.
+- **Run history (C13).** 20 `workflow_logs` rows (`demo-workflows-101..120`) over days −14..−1, written by replaying each
+  workflow graph breadth-first with the payloads the real engine would pass (trigger payload from the cast, task/mail/lead/
+  project outputs). Two failures: workflow 1 (`welcome-mail`, an address typed without the `@`) and workflow 7
+  (`create-project`, "no project type set"); their messages are **localized** in the pack, whereas the real engine
+  writes English errors. The log rows are not demo-wipe-by-prefix keys: they carry `workflow_id = demo-workflows-N`, and the
+  module deletes them by that. `scripts/seed_demo_workflows.php` (CLI) still works against `demo_workflows_definitions()`
+  / `_write()` and seeds the workflows without logs.
+- **Tickets (`tickets.php`, `packs/*/tickets.php`).** Ids: tickets `demo-tickets-1..5` (T1–T5 in pack order), contract `-10`,
+  messages `-100+`, ticket time `-300+`, linked tasks `-500+`. **Phase 4C can link time entries to tickets with
+  `demo-tickets-1..5`** (`ticket_time_entries` here is the legacy per-ticket log; the new `time_entries` are 4C's). Two tasks
+  (`demo-tickets-500/501`, for T1 and T4) are written into `tasks` by this module and linked through `ticket_task_links`,
+  so it does not depend on 4A's tasks; `tasks.related_lead_id` is a FOREIGN KEY, so it is set only if the lead row exists.
+  The module also `UPDATE`s `project_types.has_tickets = 1` for the demo type if that row exists (shows the Tickets tab).
+- **It deletes the legacy demo tickets** (`tck-demo-*`, `tmsg-demo-*`, `ttime-demo-*`, `sc-demo-1`; ids from
+  `demo_legacy_ids()`), because they hold `TCK-000001/2` and `ticket_number` is UNIQUE: without that the module would fail on
+  every install that was seeded before. It touches nothing else.
+- **SLA fields** are computed from the priority (normal: reply 8 h, resolve 5 days; high: 4 h / 2 days) from the ticket's
+  creation time; all dated before now, none breached. **Roles:** `assignee`, message/time `user` are login roles; the
+  reporter is the client's contact from the cast. Ticket statuses use the default `TICKET_STATUSES` ids.
+- **Not done on purpose:** no `schema.php` edit (hotfix advice below and in A5 #45). Mirror copies of the 8 new/changed
+  files were `cp`'d to `api/demo_seed/` (A5 #16); `test:demo-seed` checks them.
+- **Hotfix before phase 5 ships? Yes, advisable** (see A5 #1): `ccrm_seed_default_tickets()` is one `DEMO_MODE` guard away
+  from being harmless, and until phase 5 every non-demo install with an empty `tickets` table gets two fake tickets on the
+  next schema-fingerprint change. It is a 3-line change in `schema.php` (phase 5's file), so do it as its own small commit.
 
 ### Phase W — WAAI demo loader, three editions (WAAI repo, after 4D, medium)
 
@@ -925,7 +967,21 @@ one titled "Phase W" that the planning session handed to the user.
 44. **The QA runner has no rule for the SAI module.** `node scripts/qa/run-qa.mjs --files src/components/sai/SaiModule.tsx` answers "nothing to
     test", so an SAI change is never audited unless the spec is named. *Fix:* add `src/components/sai/` → `saiStoredDemo.spec.ts` to `RULES` in
     `scripts/qa/run-qa.mjs`. Not fixed (scripts/qa).
-
+45. **Real installs get fake demo tickets and a fake contract (A5 #1, confirmed and sharper).** `ccrm_seed_default_tickets()`
+    (`public/api/schema.php` ~4799) starts with `if ($ticketCount > 0) return;` and has no `DEMO_MODE` read; it is called from
+    `ccrm_apply_migrations()` (~1954). *Symptom:* a production install that has no tickets yet gets `TCK-000001/2`, the contract
+    `sc-demo-1` and time entries for "Ján Novák" the next time the schema fingerprint changes (every deploy that edits
+    `schema.php`), and the numbering of the customer's own first tickets then starts at `TCK-000003`. It also flips
+    `project_types.has_tickets` of `pt_luxury_stone` and rewrites a project named `proj-vila-slavin` if one exists.
+    *Root cause:* the function was written for the demo install and never given the guard the other seeders have.
+    *Fix (hotfix, 3 lines, then deleted in phase 5):* at the top, read `SELECT value FROM system_settings WHERE key='DEMO_MODE'`
+    and `return` unless it is `'true'`. The new `tickets.php` module removes these rows (`tck-demo-*`) on a demo re-seed.
+46. **A task can be seeded only after its lead exists.** `tasks.related_lead_id` is a FOREIGN KEY to `leads`, so a module that
+    inserts a task linked to a client the `clients` module did not write fails as a whole (and is rolled back). The fake PDO
+    does not enforce foreign keys, so the dry run cannot catch it. *Fix for authors:* link a lead only if
+    `demo_row_exists($pdo, 'leads', $id)` (as `tickets.php` does) or rely on the module order and run `test:demo-seed:db`.
+47. **The workflow engine's error texts are English only** (`workflows_engine.php`, e.g. "This "Convert lead to project"
+    action has no project type set."). The demo run history shows them localized, which a real run will not. Not changed.
 ---
 
 # Part B. Decisions (final unless the user changes them)
