@@ -16,6 +16,7 @@ import type { ModuleConfig } from "./api/crmConnection.ts";
 import { REQUIRED_WAAI_API } from "./api/waaiClient.ts";
 import { useUnread } from "./hooks/useUnread.ts";
 import { useWaaiSession } from "./hooks/useWaaiSession.ts";
+import type { DemoDirectory } from "./demo/demoDataset.ts";
 import { waMessages, type WaMessages } from "./i18n.ts";
 import { ChatsTab } from "./chats/ChatsTab";
 import { HomeBody } from "./home/HomeBody";
@@ -34,12 +35,17 @@ interface Props {
   params: URLSearchParams;
   language: string;
   config: ModuleConfig;
+  /** The CRM is in demo mode: with no working WAAI account the module shows demo chats (docs/WHATSAPP-DEMO-MODULE.md B1). */
+  isDemoMode: boolean;
+  demoDirectory: DemoDirectory;
+  currentUserId: string;
   onUnread: (chats: number) => void;
   onOpenRecord: (kind: "lead" | "project" | "task", id: string) => void;
 }
 
 /** One pill for the state of the user's WhatsApp accounts. */
-function accountPill(accounts: MetaResponse["wa_accounts"], t: WaMessages): { label: string; tone: string } {
+function accountPill(accounts: MetaResponse["wa_accounts"], t: WaMessages, demo: boolean): { label: string; tone: string } {
+  if (demo) return { label: t.account.demo, tone: "bg-sky-50 text-sky-700 border-sky-200" };
   if (accounts.length === 0) return { label: t.account.none, tone: "bg-amber-50 text-amber-700 border-amber-200" };
   if (accounts.length > 1) {
     const allUp = accounts.every((a) => a.status === "connected");
@@ -57,13 +63,19 @@ function accountPill(accounts: MetaResponse["wa_accounts"], t: WaMessages): { la
   }
 }
 
-export const NativeModule = ({ active, route, params, language, config, onUnread, onOpenRecord }: Props) => {
+export const NativeModule = ({ active, route, params, language, config, isDemoMode, demoDirectory, currentUserId, onUnread, onOpenRecord }: Props) => {
   const t = useMemo(() => waMessages(language), [language]);
-  const { state, retry } = useWaaiSession(config.configured ? config.base : null);
+  const demo = useMemo(
+    () => (isDemoMode ? { directory: demoDirectory, userId: currentUserId || config.userId, language } : null),
+    [isDemoMode, demoDirectory, currentUserId, config.userId, language],
+  );
+  const { state, retry } = useWaaiSession(config.configured ? config.base : null, demo);
   const client = state.kind === "ready" ? state.client : null;
+  const inDemo = state.kind === "ready" && state.demo;
   useUnread(client, onUnread);
 
-  const openStandalone = config.standaloneUrl ? (
+  // The standalone WAAI is not what the demo shows.
+  const openStandalone = config.standaloneUrl && !inDemo ? (
     <a className={secondaryButton} href={config.standaloneUrl} target="_blank" rel="noopener noreferrer">
       <ExternalLink className="size-4" />
       {t.openStandalone}
@@ -77,7 +89,7 @@ export const NativeModule = ({ active, route, params, language, config, onUnread
   );
 
   let body: React.ReactNode;
-  if (!config.configured || state.kind === "crm_not_configured") {
+  if ((!config.configured && !isDemoMode) || state.kind === "crm_not_configured") {
     body = (
       <StateCard
         testId="wa-not-configured"
@@ -139,7 +151,7 @@ export const NativeModule = ({ active, route, params, language, config, onUnread
       />
     );
   } else {
-    const pill = accountPill(state.meta.wa_accounts, t);
+    const pill = accountPill(state.meta.wa_accounts, t, state.demo);
     const tab = tabFromRoute(route);
     const items: TabItem<WaTab>[] = WA_TABS.map((key) => ({ key, label: t.tabs[key] }));
     body = (
@@ -147,7 +159,7 @@ export const NativeModule = ({ active, route, params, language, config, onUnread
         <PageHeader
           icon={<MessageCircle className="text-green-600" />}
           title={t.title}
-          subtitle={t.subtitle}
+          subtitle={state.demo ? t.demoSubtitle : t.subtitle}
           badge={
             <span
               data-testid="wa-account-pill"

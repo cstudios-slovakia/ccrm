@@ -263,6 +263,18 @@
           {
             "task": 2,
             "text": "Az előcsarnok felmérésének megerősítése"
+          },
+          {
+            "task": 1,
+            "text": "A módosított szerelési ütemterv elküldése"
+          },
+          {
+            "task": null,
+            "text": "A 3. emeleten a sarokillesztések elkészültek"
+          },
+          {
+            "task": null,
+            "text": "Az ügyfél a felmérés után azonnal kezdené a padlót"
           }
         ]
       },
@@ -425,6 +437,14 @@
           {
             "task": 5,
             "text": "A keretajánlat elküldése"
+          },
+          {
+            "task": 4,
+            "text": "A mintafotók elküldése"
+          },
+          {
+            "task": null,
+            "text": "Évi hat villa, villánként kb. 40 m² lap"
           }
         ]
       },
@@ -592,6 +612,18 @@
           {
             "task": 7,
             "text": "A lapok határidejének megerősítése a szállodának"
+          },
+          {
+            "task": 6,
+            "text": "Három világosabb hézagminta elküldése"
+          },
+          {
+            "task": null,
+            "text": "A szálloda a bal oldali világosabb árnyalatot kedveli"
+          },
+          {
+            "task": null,
+            "text": "Hajszálrepedés a fal egyik illesztésében"
           }
         ]
       },
@@ -746,6 +778,10 @@
           {
             "task": 9,
             "text": "Az él javítása"
+          },
+          {
+            "task": 8,
+            "text": "A javítási időpont egyeztetése az ügyféllel"
           }
         ]
       },

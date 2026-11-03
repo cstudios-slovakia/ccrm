@@ -48,7 +48,7 @@ empty Chats tab.
                  "start": { "day": 0 }, "due": { "day": -2, "time": null } /* or null: no date stated */,
                  "completed": { "day": -2, "time": "14:08" }, "leadId": "demo-clients-1", "projectId": "demo-projects-1",
                  "title": "...", "description": "..." } ],
-    "summary": { "narrative": "...", "actionItems": [ { "task": 3, "text": "..." } ] },
+    "summary": { "narrative": "...", "actionItems": [ { "task": 3 | null, "text": "..." } ] },  // task: a task number of THIS chat, or null = a narrative bullet
     "timeline": [ { "kind": "summary", "day": -1, "time": "18:00", "message": "m11", "title": "...", "content": "..." } ]
   } ]
 }
@@ -153,7 +153,7 @@ Read `whatsapp_demo.<lang>.json` (phase W: `--lang=sk|hu|en`; default the CCRM i
   (header + zeros, `seconds` long) for the audio, a small PNG per `placeholder` (written with `zlib`, no
   dependency) for the images.
 - **Tasks**: same `n`, status, assignee label, `startAt`/`dueAt` (null where `due` is null), `sourceMessageId`.
-- **Summaries**: one `Summary` per chat (window `recent`, `actionItems` linking the `task` numbers).
+- **Summaries**: one `Summary` per chat (window `recent`, `actionItems` linking the `task` numbers; `task: null` is a narrative bullet with no task behind it).
 - **CRM links**: `ConversationCrmLink` rows with the same `source`; `crm_entities` fill from the real
   directory read.
 - **Account/user**: `WaAccount.sessionId = account.sessionId`, owned by the WAAI user mapped to the e-mail of `crmUsers[account.ownerCrmUser]`.

@@ -123,6 +123,12 @@ return [
                 if ($m['kind'] === 'audio' && (empty($m['transcription']) || empty($m['seconds']))) $bad[] = $c['ref'] . ' audio without transcription';
             }
             foreach ($c['tasks'] as $t) if (!in_array($t['sourceMessage'], $ids, true)) $bad[] = $c['ref'] . ' task ' . $t['n'] . ' source ' . $t['sourceMessage'];
+            // summary.actionItems[].task is a task number of THIS chat, or null for a narrative bullet.
+            $taskNs = array_column($c['tasks'], 'n');
+            foreach (($c['summary']['actionItems'] ?? []) as $i => $item) {
+                if (!array_key_exists('task', $item) || !is_string($item['text'] ?? null) || trim($item['text']) === '') $bad[] = $c['ref'] . ' actionItems[' . $i . '] needs task (number or null) and text';
+                elseif ($item['task'] !== null && !in_array($item['task'], $taskNs, true)) $bad[] = $c['ref'] . ' actionItems[' . $i . '] names task ' . json_encode($item['task']) . ' which is not a task of this chat';
+            }
             $unread = 0; for ($i = count($c['messages']) - 1; $i >= 0 && $c['messages'][$i]['dir'] === 'in'; $i--) $unread++;
             if ($unread < (int)$c['unread']) $bad[] = $c['ref'] . ' unread ' . $c['unread'] . ' > trailing incoming ' . $unread;
         }

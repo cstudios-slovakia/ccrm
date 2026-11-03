@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-label="Slabs">
+  <rect width="640" height="420" fill="#e2e8f0"/>
+  <rect y="300" width="640" height="120" fill="#cbd5e1"/>
+  <g stroke="#475569" stroke-width="3">
+    <rect x="90" y="70" width="40" height="260" fill="#94a3b8" transform="skewX(-8)"/>
+    <rect x="150" y="70" width="40" height="260" fill="#a8b5c6" transform="skewX(-8)"/>
+    <rect x="210" y="70" width="40" height="260" fill="#8fa0b6" transform="skewX(-8)"/>
+    <rect x="270" y="70" width="40" height="260" fill="#a0aec0" transform="skewX(-8)"/>
+    <rect x="330" y="70" width="40" height="260" fill="#94a3b8" transform="skewX(-8)"/>
+    <rect x="390" y="70" width="40" height="260" fill="#aab6c7" transform="skewX(-8)"/>
+  </g>
+  <rect x="40" y="326" width="560" height="14" rx="4" fill="#64748b"/>
+</svg>

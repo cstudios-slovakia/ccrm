@@ -52,6 +52,11 @@ export interface WaaiClientOptions {
   fetch?: typeof fetch;
   /** Milliseconds; replaceable for tests. */
   now?: () => number;
+  /**
+   * The client talks to the in-browser demo (`../demo`), not to WAAI. Only the composer (attachments cannot go
+   * through XHR) and the module shell read it; demo behaviour itself belongs in the demo router.
+   */
+  isDemo?: boolean;
 }
 
 export interface RequestOptions {
@@ -68,6 +73,7 @@ const isAbort = (err: unknown) => err instanceof DOMException && err.name === "A
 
 export class WaaiClient {
   readonly base: string;
+  readonly isDemo: boolean;
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
   private session: SessionResponse | null = null;
@@ -78,6 +84,7 @@ export class WaaiClient {
   constructor(opts: WaaiClientOptions) {
     this.opts = opts;
     this.base = opts.base.replace(/\/+$/, "");
+    this.isDemo = opts.isDemo === true;
     this.fetchImpl = opts.fetch ?? ((...args) => globalThis.fetch(...args));
     this.now = opts.now ?? (() => Date.now());
   }

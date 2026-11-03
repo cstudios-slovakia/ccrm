@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Loader2, RotateCw } from "lucide-react";
 import { fetchModuleConfig, type ModuleConfig } from "./api/crmConnection.ts";
+import type { DemoDirectory } from "./demo/demoDataset.ts";
 import { waMessages } from "./i18n.ts";
 import { NativeModule } from "./NativeModule";
 import { primaryButton, StateCard } from "./StateCard";
@@ -17,6 +18,10 @@ interface Props {
   params: URLSearchParams;
   language: "en" | "sk" | "hu";
   currentUserId: string;
+  /** The CRM is in demo mode: without a working WAAI account the module shows demo chats. */
+  isDemoMode: boolean;
+  /** The CRM's leads, clients and projects, for the demo chats' links. */
+  demoDirectory: DemoDirectory;
   onUnread: (chats: number) => void;
   onOpenRecord: (kind: "lead" | "project" | "task", id: string) => void;
 }
@@ -47,6 +52,9 @@ export const WhatsAppModule = (props: Props) => {
         params={props.params}
         language={language}
         config={config}
+        isDemoMode={props.isDemoMode}
+        demoDirectory={props.demoDirectory}
+        currentUserId={props.currentUserId}
         onUnread={onUnread}
         onOpenRecord={props.onOpenRecord}
       />

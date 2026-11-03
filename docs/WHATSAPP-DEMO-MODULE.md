@@ -74,7 +74,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | # | Phase | Status | Version / commit | Date |
 |---|---|---|---|---|
 | 1 | Chat-row summary card (fixes request 2) | ✅ | v1.13.45-Nectarine | 2026-11-03 |
-| 2 | Demo WAAI in the browser: data endpoint, fake backend, Chats tab | ⬜ | | |
+| 2 | Demo WAAI in the browser: data endpoint, fake backend, Chats tab | ✅ | v1.13.46-Nectarine | 2026-11-03 |
 | 3 | Demo for Digest, Tasks, Ask and Settings tabs; QA spec; docs | ⬜ | | |
 
 Effort: phase 1 small, phase 2 large, phase 3 medium. Each fits one session.
@@ -115,31 +115,56 @@ demo chats will show from phase 2 on.
 
 Spec: C2–C6. Depends on phase 1.
 
-- [ ] Dataset: enlarge the four chat summaries in `public/api/demo_seed/whatsapp_demo.{sk,hu,en}.json`
+- [x] Dataset: enlarge the four chat summaries in `public/api/demo_seed/whatsapp_demo.{sk,hu,en}.json`
       as C4 says (allow `task: null` bullets). Copy the new sk file over
       `public/api/demo_seed/whatsapp_demo.json` byte for byte (the drift check requires it).
       Update `scripts/demo-assert/whatsapp.php` so it accepts `task: null` and checks that a numeric
       `task` names a task of the same chat. Update the contract block in `docs/WHATSAPP-DEMO-DATA.md`
       (`actionItems: [ { "task": 3 | null, "text": "..." } ]`). `npm run sync:backend`.
-- [ ] Endpoint `public/api/waai_demo.php` (C3) + its root mirror `api/waai_demo.php`.
-- [ ] `src/components/whatsapp/demo/` (C5): `demoDataset.ts` (types + loader), `demoTime.ts`
+- [x] Endpoint `public/api/waai_demo.php` (C3) + its root mirror `api/waai_demo.php`.
+- [x] `src/components/whatsapp/demo/` (C5): `demoDataset.ts` (types + loader), `demoTime.ts`
       (C5.3), `demoStore.ts` (in-memory state built from the dataset), `demoRouter.ts` (the fake WAAI:
       `createDemoWaai()`), `demoMedia.ts` + the asset files (C5.5). Unit tests for time, store and router
       (`*.test.ts` next to them).
-- [ ] `WaaiClient`: add the `isDemo` flag (C5.6). `Composer.tsx`: in demo, send attachments through
+- [x] `WaaiClient`: add the `isDemo` flag (C5.6). `Composer.tsx`: in demo, send attachments through
       `client.post` with the `FormData` instead of `uploadWithProgress` (XHR cannot be intercepted).
-- [ ] `useWaaiSession` → source selection of C2 (B1, B2). Wire `isDemoMode` and the directory (C5.4)
+- [x] `useWaaiSession` → source selection of C2 (B1, B2). Wire `isDemoMode` and the directory (C5.4)
       from `App.tsx` through `WhatsAppModule` to `NativeModule`.
-- [ ] `NativeModule.tsx`: in demo show the demo pill and subtitle, hide "Open standalone" (C6).
-- [ ] Every Chats-tab endpoint of C5.2 answers (list, open chat, messages, send text, reaction,
+- [x] `NativeModule.tsx`: in demo show the demo pill and subtitle, hide "Open standalone" (C6).
+- [x] Every Chats-tab endpoint of C5.2 answers (list, open chat, messages, send text, reaction,
       mark read, search, summary panel, chat tasks, CRM links + picker, open by phone, health, resync).
-- [ ] Manual check with `npm run dev` against a demo instance, or with the QA mock of phase 3 if you
+- [x] Manual check with `npm run dev` against a demo instance, or with the QA mock of phase 3 if you
       have no demo instance: 4 chats, unread badges, the summary cards of phase 1, open each chat,
       play nothing that needs CSP changes (C5.5), send a message, react, deep link
       `#whatsapp/c/demo-wa-c1-site?m=demo-wa-c1-site-m11` scrolls to that message.
-- [ ] Tests (A1.4), version bump, changelog, commit, this file updated.
+- [x] Tests (A1.4), version bump, changelog, commit, this file updated.
 
-**Left over:** _(fill in)_
+**Left over:**
+- **Not run against a real server:** `waai_demo.php` is `php -l` clean and its dataset is covered by `npm run test:demo-seed`
+  (1172 checks), but no PHP server was started, so the endpoint's sign-in, permission and `DEMO_MODE` checks were not exercised
+  end to end. The browser check used the QA mock of the endpoint (a throwaway spec, deleted; phase 3 writes the real one).
+- **Digest, Tasks, Ask and Settings tabs are not faked yet** (phase 3): in demo they hit `GET /tasks` without a chat,
+  `/digest`, `/search`, `/preferences`, `/wa-accounts` and answer `501 not_implemented`. `GET /tasks` with a conversation works.
+- **Router input has two optional fields the spec did not list:** `media` (the files; `demoMedia.ts` imports Vite assets, which
+  `node --test` cannot load, so tests pass a stub) and `language` (the UI language of the few sentences the router words itself).
+- **Done tasks cannot be reopened or deleted** in the demo (`crm_linked: true`, answered `409 conflict`), exactly as WAAI treats a
+  task that is linked to a CRM task. Ticking one open task done works and retires its bullet on the chat row.
+- **Dates without a time** (task `due` with `time: null`, task `start`) are noon in the account's zone, so `due_at.slice(0, 10)`
+  (what `ChatTasks` shows) is the right calendar day in every zone.
+- **Silent WAV:** `assets/silence.wav` is 8 s, 8 kHz, 8-bit mono, filled with `0x80` (8-bit PCM is unsigned, so zeros would be
+  full-scale negative, not silence). `makeSilence.mjs` regenerates it.
+- **Files sent in the demo:** an image gets `URL.createObjectURL(file)` and shows (`img-src blob:` is allowed). A voice note or
+  a document gets the same blob address and will not play or download everywhere (the CSP has no `media-src`; not changed).
+  Files attached to a task update are counted in the message text but not shown as separate messages.
+- **Summary windows:** `recent` is the cached chat summary. Any other window answers `cached: false`, and the panel's own follow-up
+  stream returns the same narrative at once; a window with no messages says so and has `id: null`.
+- **`useWaaiSession` has no unit test** (it imports `demoMedia.ts`, a Vite asset module). The source-selection rule is the pure
+  `wantsDemo()` next to it; the real-path and demo-path states were checked in the browser (demo with the connection not configured).
+  Not checked: demo mode with a working real WAAI that has an account (it must keep the real one), and `forbidden`.
+- **`tsconfig.app.json`:** `src/components/whatsapp/demo/demoFixture.ts` (the tests' dataset loader, uses `node:fs`) is added to
+  `exclude`, next to the `*.test.ts` files.
+- **Unrelated QA failure, present on a clean `HEAD`:** `navigation.spec.ts` reports `NAV0-A31047FC` (HIGH, "nav item #1" did nothing)
+  and `INTF-C34A0844` (LOW, header "Spustiť časovač"). Reproduced identically in a scratch worktree of `5b667723`; not touched.
 
 ### Phase 3 — Demo for Digest, Tasks, Ask and Settings; QA spec; docs
 

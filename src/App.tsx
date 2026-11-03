@@ -6,6 +6,7 @@ import { TaskDashboardView } from "./components/TaskDashboardView";
 import { TimeTrackingProvider } from "./hooks/useTimeTracking";
 import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
 import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
+import { buildDemoDirectory } from "./components/whatsapp/demo/demoDirectory";
 import { crmHashForRecord } from "./components/whatsapp/lib/routes";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
 import type { TimeDeps } from "./components/timeTracking/shared";
@@ -788,6 +789,8 @@ function App() {
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
+  // What the WhatsApp module's demo chats link to (docs/WHATSAPP-DEMO-MODULE.md C5.4); only read in demo mode.
+  const whatsappDemoDirectory = useMemo(() => buildDemoDirectory(leads, projects), [leads, projects]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [recurringTasks, setRecurringTasks] = useState<RecurringTaskTemplate[]>([]);
   const lastKnownTasksRef = useRef<Task[] | null>(null);
@@ -4517,6 +4520,8 @@ ${log.payload || ''}
       params={whatsappRoute.params}
       language={userLanguage}
       currentUserId={String(currentUser.id)}
+      isDemoMode={isDemoMode}
+      demoDirectory={whatsappDemoDirectory}
       onUnread={setWhatsappUnread}
       onOpenRecord={(kind, id) => {
         window.location.hash = crmHashForRecord(kind, id, (leadId) => leads.find((l) => l.id === leadId));

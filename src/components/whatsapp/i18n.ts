@@ -9,6 +9,7 @@ export type WaLang = "en" | "sk" | "hu";
 const en = {
   title: "WhatsApp",
   subtitle: "Chats, summaries and tasks from your WhatsApp",
+  demoSubtitle: "Sample chats. Nothing is sent to WhatsApp.",
   tabs: { chats: "Chats", digest: "Digest", tasks: "Tasks", ask: "Ask", settings: "Settings" },
   account: {
     none: "No WhatsApp account linked",
@@ -17,6 +18,7 @@ const en = {
     waitingForQr: "Waiting for QR scan",
     disconnected: "Disconnected",
     several: (n: number) => `${n} accounts`,
+    demo: "Demo data",
   },
   openStandalone: "Open in a new tab",
   tryAgain: "Try again",
@@ -63,6 +65,7 @@ export type WaMessages = typeof en;
 const sk: WaMessages = {
   title: "WhatsApp",
   subtitle: "Chaty, súhrny a úlohy z vášho WhatsAppu",
+  demoSubtitle: "Ukážkové konverzácie. Nič sa neodosiela do WhatsAppu.",
   tabs: { chats: "Chaty", digest: "Súhrn", tasks: "Úlohy", ask: "Opýtať sa", settings: "Nastavenia" },
   account: {
     none: "Nie je prepojený žiadny účet WhatsApp",
@@ -71,6 +74,7 @@ const sk: WaMessages = {
     waitingForQr: "Čaká na naskenovanie QR",
     disconnected: "Odpojený",
     several: (n) => (n < 5 ? `${n} účty` : `${n} účtov`),
+    demo: "Ukážkové dáta",
   },
   openStandalone: "Otvoriť v novej karte",
   tryAgain: "Skúsiť znova",
@@ -114,6 +118,7 @@ const sk: WaMessages = {
 const hu: WaMessages = {
   title: "WhatsApp",
   subtitle: "Csevegések, összegzések és feladatok a WhatsAppból",
+  demoSubtitle: "Minta beszélgetések. Semmi nem megy ki a WhatsAppra.",
   tabs: { chats: "Csevegések", digest: "Összegzés", tasks: "Feladatok", ask: "Kérdezz", settings: "Beállítások" },
   account: {
     none: "Nincs összekapcsolt WhatsApp-fiók",
@@ -122,6 +127,7 @@ const hu: WaMessages = {
     waitingForQr: "QR-kód beolvasására vár",
     disconnected: "Leválasztva",
     several: (n) => `${n} fiók`,
+    demo: "Demó adatok",
   },
   openStandalone: "Megnyitás új lapon",
   tryAgain: "Újra",

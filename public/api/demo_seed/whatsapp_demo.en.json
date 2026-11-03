@@ -263,6 +263,18 @@
           {
             "task": 2,
             "text": "Confirm the lobby measuring"
+          },
+          {
+            "task": 1,
+            "text": "Send the updated installation schedule"
+          },
+          {
+            "task": null,
+            "text": "Corner joints on the 3rd floor are done"
+          },
+          {
+            "task": null,
+            "text": "Client wants to start the lobby floor right after the measuring"
           }
         ]
       },
@@ -425,6 +437,14 @@
           {
             "task": 5,
             "text": "Send the framework offer"
+          },
+          {
+            "task": 4,
+            "text": "Send the sample photos"
+          },
+          {
+            "task": null,
+            "text": "Six villas a year, about 40 m² of slabs each"
           }
         ]
       },
@@ -592,6 +612,18 @@
           {
             "task": 7,
             "text": "Confirm the slab date with the hotel"
+          },
+          {
+            "task": 6,
+            "text": "Send three lighter joint samples"
+          },
+          {
+            "task": null,
+            "text": "The hotel prefers the lighter shade on the left"
+          },
+          {
+            "task": null,
+            "text": "Hairline gap in one joint of the spa wall"
           }
         ]
       },
@@ -746,6 +778,10 @@
           {
             "task": 9,
             "text": "Repair the edge"
+          },
+          {
+            "task": 8,
+            "text": "Arrange the repair visit with the client"
           }
         ]
       },

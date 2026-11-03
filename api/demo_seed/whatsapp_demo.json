@@ -263,6 +263,18 @@
           {
             "task": 2,
             "text": "Potvrdiť zameranie lobby"
+          },
+          {
+            "task": 1,
+            "text": "Poslať upravený harmonogram montáže"
+          },
+          {
+            "task": null,
+            "text": "Rohové spoje na 3. podlaží sú hotové"
+          },
+          {
+            "task": null,
+            "text": "Klient chce podlahu lobby začať hneď po zameraní"
           }
         ]
       },
@@ -425,6 +437,14 @@
           {
             "task": 5,
             "text": "Poslať rámcovú ponuku"
+          },
+          {
+            "task": 4,
+            "text": "Poslať fotky vzoriek"
+          },
+          {
+            "task": null,
+            "text": "Šesť víl ročne, každá približne 40 m² dosiek"
           }
         ]
       },
@@ -592,6 +612,18 @@
           {
             "task": 7,
             "text": "Potvrdiť termín dosiek hotelu"
+          },
+          {
+            "task": 6,
+            "text": "Poslať tri svetlejšie vzorky spár"
+          },
+          {
+            "task": null,
+            "text": "Hotel uprednostňuje svetlejší odtieň vľavo"
+          },
+          {
+            "task": null,
+            "text": "Vlásočnicová medzera v jednom spoji steny"
           }
         ]
       },
@@ -746,6 +778,10 @@
           {
             "task": 9,
             "text": "Opraviť hranu"
+          },
+          {
+            "task": 8,
+            "text": "Dohodnúť termín opravy s klientkou"
           }
         ]
       },

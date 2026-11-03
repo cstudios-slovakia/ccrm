@@ -137,6 +137,14 @@ export const Composer: React.FC<ComposerProps> = ({
     }, 0);
   };
 
+  /** A multipart send. XHR (for the progress bar) cannot be intercepted, so the in-browser demo goes through the client. */
+  const sendFile = async (formData: FormData, onProgress?: (fraction: number) => void): Promise<SendMessageResponse> => {
+    const path = `/conversations/${encodeURIComponent(conversationId)}/send`;
+    if (client.isDemo) return client.post<SendMessageResponse>(path, formData);
+    const session = await client.open();
+    return uploadWithProgress<SendMessageResponse>({ url: `${client.base}${path}`, token: session.access_token, body: formData, onProgress });
+  };
+
   const handleSend = async () => {
     const trimmed = text.trim();
     if (!trimmed && !attachment) return;
@@ -198,19 +206,12 @@ export const Composer: React.FC<ComposerProps> = ({
     try {
       if (sentAttachment) {
         // Multipart upload with progress
-        const session = await client.open();
         const formData = new FormData();
         formData.append("file", sentAttachment);
         if (trimmed) formData.append("text", trimmed);
         if (quoted) formData.append("quoted_message_id", quoted.id);
 
-        const url = `${client.base}/conversations/${encodeURIComponent(conversationId)}/send`;
-        const res = await uploadWithProgress<SendMessageResponse>({
-          url,
-          token: session.access_token,
-          body: formData,
-          onProgress: (fraction) => setUploadProgress(fraction),
-        });
+        const res = await sendFile(formData, (fraction) => setUploadProgress(fraction));
 
         onOptimisticSettle?.(localId, res.message);
       } else {
@@ -259,18 +260,12 @@ export const Composer: React.FC<ComposerProps> = ({
     onClearQuote?.();
 
     try {
-      const session = await client.open();
       const formData = new FormData();
       formData.append("file", voiceFile);
       formData.append("as_voice", "1");
       if (quoted) formData.append("quoted_message_id", quoted.id);
 
-      const url = `${client.base}/conversations/${encodeURIComponent(conversationId)}/send`;
-      const res = await uploadWithProgress<SendMessageResponse>({
-        url,
-        token: session.access_token,
-        body: formData,
-      });
+      const res = await sendFile(formData);
 
       onOptimisticSettle?.(localId, res.message);
     } catch (err) {
