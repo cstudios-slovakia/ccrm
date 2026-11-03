@@ -81,6 +81,12 @@ Planned in phases in ONE file, [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md): analysi
 the demo company's story, per-phase checklists and which phases run in parallel. When asked to
 "make demo phase N", follow its Part A.
 
+## WhatsApp demo module
+
+Planned in phases in ONE file, [`docs/WHATSAPP-DEMO-MODULE.md`](docs/WHATSAPP-DEMO-MODULE.md): demo
+chats in the browser without WAAI, plus the chat-row summary card. When asked to "make wa-demo phase N",
+follow its Part A.
+
 ## Things that will bite you
 
 - `npm run build` rewrites `dist/`, which is committed. Use `npx tsc --noEmit`

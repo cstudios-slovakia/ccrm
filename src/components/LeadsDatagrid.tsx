@@ -11465,7 +11465,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             <td
                                                                                 className={`hidden ws-lg:table-cell px-0 ws-lg:px-6 text-center pt-2.5 ws-lg:pt-3 sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 ${cellPy}`}
                                                                                 style={{
-                                                                                    backgroundColor: "#fff",
+                                                                                    backgroundColor: "rgb(var(--card))",
                                                                                     backgroundImage: `linear-gradient(${
                                                                                         isInlineEditing
                                                                                             ? `${leadColor}15`
