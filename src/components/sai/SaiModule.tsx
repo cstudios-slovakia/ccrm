@@ -40,14 +40,7 @@ import {
   deleteServerSimulation,
   saveRoundCheckpoint
 } from '../../utils/swarm/checkpointClient';
-import { 
-  DEMO_SIMULATION_CHECKPOINT,
-  DEMO_GRAPH,
-  DEMO_AGENTS,
-  DEMO_POSTS,
-  DEMO_METRICS_HISTORY,
-  DEMO_STRATEGIC_REPORT
-} from '../../utils/swarm/demoData';
+import { getDemoData, isBuiltInDemoSimulationId } from '../../utils/swarm/demoData';
 import { CreateRehearsalView, type DraftData } from './CreateRehearsalView';
 import { LiveWarRoom } from './LiveWarRoom';
 import { StrategicReportView } from './StrategicReportView';
@@ -72,6 +65,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
+  // The built-in interactive demo, in the system language (demoData.{sk,hu,en}.ts).
+  const demoBundle = useMemo(() => getDemoData(systemLanguage), [systemLanguage]);
+  const DEMO_SIMULATION_CHECKPOINT = demoBundle.checkpoint;
+  const DEMO_GRAPH = demoBundle.graph;
+  const DEMO_AGENTS = demoBundle.agents;
+  const DEMO_POSTS = demoBundle.posts;
+  const DEMO_METRICS_HISTORY = demoBundle.metricsHistory;
+  const DEMO_STRATEGIC_REPORT = demoBundle.report;
   // Navigation & View State
   const [demoModeActive, setDemoModeActive] = useState<boolean>(isDemoMode);
   const [activeIsDemo, setActiveIsDemo] = useState<boolean>(isDemoMode);
@@ -222,7 +223,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         setActiveView('create');
       } else if (subView === 'war-room' || subView === 'running' || subView === 'live') {
         if (id && id !== activeSimulationId) {
-          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId || id.startsWith('demo-')) {
+          if (isBuiltInDemoSimulationId(id)) {
             handleLoadDemoSimulation(false);
             setActiveView('running');
           } else {
@@ -240,7 +241,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         }
       } else if (subView === 'report' || subView === 'briefing' || subView === 'results') {
         if (id && id !== activeSimulationId) {
-          if (id === DEMO_SIMULATION_CHECKPOINT.simulationId || id.startsWith('demo-')) {
+          if (isBuiltInDemoSimulationId(id)) {
             handleLoadDemoSimulation(false);
             setActiveView('report');
           } else {
@@ -284,9 +285,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
     setActiveSimulationId(DEMO_SIMULATION_CHECKPOINT.simulationId);
     setActiveTitle(DEMO_SIMULATION_CHECKPOINT.title);
     setActiveHypothesis(DEMO_SIMULATION_CHECKPOINT.hypothesis);
-    setActiveSeed(
-      "Enterprise tier restructuring: +25% price increase, 99.9% uptime SLA, direct WhatsApp developer support, and 6-month grandfathering grace period."
-    );
+    setActiveSeed(demoBundle.seedDocument);
     setCurrentRound(DEMO_SIMULATION_CHECKPOINT.currentRound);
     setTotalRounds(DEMO_SIMULATION_CHECKPOINT.totalRounds);
     setGraph(DEMO_GRAPH);
@@ -676,7 +675,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
     if (!sim || !sim.id) return;
 
     // If demo simulation or demo ID, load demo state
-    if (sim.id === DEMO_SIMULATION_CHECKPOINT.simulationId || (typeof sim.id === 'string' && sim.id.startsWith('demo-'))) {
+    if (isBuiltInDemoSimulationId(sim.id)) {
       handleLoadDemoSimulation(shouldUpdateHash);
       return;
     }
@@ -1019,18 +1018,14 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-title-sm font-bold text-white">
-                        {t('Interactive Demo: Q4 Enterprise Pricing Restructuring', 'Interaktívne demo: Reštrukturalizácia cien balíka Enterprise v Q4', 'Interaktív demó: Q4 Enterprise átszervezés és árazás')}
+                        {demoBundle.cardTitle}
                       </h3>
                       <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
                         {t('Zero Token Costs', 'Nulové náklady na tokeny', 'Nulla token költség')}
                       </span>
                     </div>
                     <p className="text-ui text-slate-300 mt-1 max-w-xl">
-                      {t(
-                        'Explore the pre-configured simulation (+25% price increase, 99.9% SLA guarantee, direct WhatsApp support). Try the War Room, Strategic Briefing, and Q&A hub.',
-                        'Pozrite si predpripravenú simuláciu (+25% zvýšenie cien, 99.9% SLA garancia, priama podpora cez WhatsApp). Vyskúšajte War Room, Strategický briefing a interrogačný hub.',
-                        'Tekintse meg az előre konfigurált szimulációt (+25% áremelés, 99.9% SLA garancia, közvetlen WhatsApp támogatás). Próbálja ki a War Roomot, a Stratégiai eligazítást és a kérdezőközpontot.'
-                      )}
+                      {demoBundle.cardDescription}
                     </p>
                   </div>
                 </div>

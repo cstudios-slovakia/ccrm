@@ -80,7 +80,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       try {
         if (isDemoMode) {
           await new Promise(r => setTimeout(r, 600));
-          const response = getDemoAnalystAnswer(userText);
+          const response = getDemoAnalystAnswer(userText, systemLanguage);
           setAnalystMessages([...newHistory, { sender: 'assistant', text: response }]);
         } else {
           const response = await askChiefAnalyst({
@@ -105,7 +105,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       try {
         if (isDemoMode) {
           await new Promise(r => setTimeout(r, 600));
-          const response = getDemoAgentAnswer(selectedAgent.displayName, userText);
+          const response = getDemoAgentAnswer(selectedAgent.displayName, systemLanguage, selectedAgent.username);
           setAgentMessages([...newHistory, { sender: 'assistant', text: response }]);
         } else {
           const agentPosts = posts.filter(p => p.agentId === selectedAgent.id);

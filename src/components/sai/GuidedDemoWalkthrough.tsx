@@ -17,13 +17,7 @@ import {
   Layers,
   Brain
 } from 'lucide-react';
-import { 
-  DEMO_GRAPH, 
-  DEMO_AGENTS, 
-  DEMO_POSTS, 
-  DEMO_METRICS_HISTORY, 
-  DEMO_STRATEGIC_REPORT 
-} from '../../utils/swarm/demoData';
+import { getDemoData } from '../../utils/swarm/demoData';
 import { SwarmGraphCanvas } from './SwarmGraphCanvas';
 import { StrategicReportView } from './StrategicReportView';
 import { Markdown } from '../../utils/markdown';
@@ -54,6 +48,14 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
+
+  // The built-in demo, in the system language (demoData.{sk,hu,en}.ts).
+  const demo = useMemo(() => getDemoData(systemLanguage), [systemLanguage]);
+  const DEMO_GRAPH = demo.graph;
+  const DEMO_AGENTS = demo.agents;
+  const DEMO_POSTS = demo.posts;
+  const DEMO_METRICS_HISTORY = demo.metricsHistory;
+  const DEMO_STRATEGIC_REPORT = demo.report;
 
   const demoSteps: DemoStepMeta[] = useMemo(() => [
     {
@@ -160,11 +162,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
   // Step 1: Simulated typing effect for scenario
   useEffect(() => {
     if (currentStep === 1) {
-      const fullText = systemLanguage === 'hu'
-        ? "Enterprise csomag átszervezése: +25% áremelés, garantált 99.9% SLA rendelkezésre állás, dedikált WhatsApp mérnöki csatorna, EU hosting és 6 hónapos türelmi idő a korábbi árakon a meglévő ügyfeleknek."
-        : systemLanguage === 'sk'
-        ? "Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, garantované 99.9% SLA dostupnosti, dedikovaný WhatsApp komunikačný kanál s inžiniermi, hosting v EÚ a 6-mesačná ochranná lehota na pôvodných cenách pre súčasných zákazníkov."
-        : "Enterprise tier restructuring: +25% price increase, 99.9% uptime SLA, dedicated WhatsApp engineer channel, EU hosting, and a 6-month grandfathering grace period on original rates.";
+      const fullText = demo.proposalText;
       let idx = 0;
       setTypedProposal('');
       const interval = setInterval(() => {
@@ -406,7 +404,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                       {t("Strategic proposal title", "Názov strategického návrhu", "A stratégiai javaslat neve")}
                     </label>
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 font-semibold text-slate-800">
-                      {t("Enterprise tier restructuring (25% price-change simulation)", "Reštrukturalizácia balíka Enterprise (simulácia 25% úpravy cien)", "Enterprise csomag átszervezése (25%-os árváltozás szimulációja)")}
+                      {demo.scenarioLabel}
                     </div>
                   </div>
 
@@ -620,7 +618,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                   </div>
 
                   <div className="flex-1 min-h-0 mt-3 rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-50 flex flex-col">
-                    <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" className="w-full h-full min-h-0" />
+                    <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId={demo.activeNodeId} className="w-full h-full min-h-0" />
                   </div>
                 </div>
 
@@ -699,7 +697,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
 
                 {/* Graph Canvas */}
                 <div className="ws-lg:col-span-6 bg-white rounded-3xl border border-slate-200 shadow-sm p-3 flex flex-col h-125 min-h-0 overflow-hidden">
-                  <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId="node_procurement" className="w-full h-full min-h-0" />
+                  <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId={demo.activeNodeId} className="w-full h-full min-h-0" />
                 </div>
               </div>
             </div>
@@ -770,11 +768,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 report={DEMO_STRATEGIC_REPORT}
                 agents={DEMO_AGENTS}
                 posts={DEMO_POSTS}
-                hypothesis={t(
-                  "Enterprise tier restructuring: +25% price increase, 99.9% SLA and dedicated WhatsApp support.",
-                  "Reštrukturalizácia balíka Enterprise: +25% zvýšenie cien, 99.9% SLA a dedikovaná podpora cez WhatsApp.",
-                  "Enterprise csomag átszervezése: +25% áremelés, 99.9% SLA és dedikált WhatsApp támogatás."
-                )}
+                hypothesis={demo.scenarioLabel}
                 isDemoMode={true}
                 onOpenAgentDirectory={() => handleSelectStep(4)}
               />
