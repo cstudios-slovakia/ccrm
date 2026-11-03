@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
+import { getDemoSocialPosts } from "../demo/packs/socialPosts";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { StatGrid, EntityHeader, PageHeader, Tabs } from "./layout";
 import { useListFilter } from "../hooks/useListFilter";
@@ -77,99 +78,6 @@ const PLATFORM_CONFIG: Record<string, { name: string; color: string; bg: string;
   discord: { name: "Discord", color: "#5865f2", bg: "bg-indigo-500", border: "border-indigo-400", text: "text-white", icon: "Gamepad2" }
 };
 
-const SAMPLE_POSTS: SocialPost[] = [
-  {
-    id: "post_1",
-    platform: "twitter",
-    accountName: "CCRM Official",
-    accountHandle: "@ccrm_app",
-    content: "🚀 We just launched our brand new CCRM Social Media Engine v1.7! Manage all 15+ social networks natively right inside your CRM. #buildinpublic #crm #tech",
-    status: "published",
-    publishedAt: "2026-07-28T18:30:00Z",
-    platformPostUrl: "https://x.com/ccrm_app/status/1001",
-    stats: { likes: 142, comments: 28, shares: 19, impressions: 4250, clicks: 310, engagementRate: 4.8 }
-  },
-  {
-    id: "post_2",
-    platform: "linkedin",
-    accountName: "CCRM Enterprise",
-    accountHandle: "ccrm-technologies",
-    content: "Automating workflow triggers across email, tasks, and social media scheduling boosts team output by 340%. Read our full engineering breakdown of the Social integration.",
-    status: "published",
-    publishedAt: "2026-07-28T14:15:00Z",
-    platformPostUrl: "https://linkedin.com/posts/ccrm-tech-1002",
-    stats: { likes: 89, comments: 14, shares: 11, impressions: 2840, clicks: 195, engagementRate: 3.9 }
-  },
-  {
-    id: "post_3",
-    platform: "instagram",
-    accountName: "CCRM Design Studio",
-    accountHandle: "@ccrm_studio",
-    content: "Behind the scenes: Crafting ultra-fluid glassmorphic user interfaces for high-converting sales pipelines. ✨ Gradient magic in action!",
-    mediaUrls: ["https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60"],
-    mediaType: "image",
-    status: "published",
-    publishedAt: "2026-07-28T11:00:00Z",
-    platformPostUrl: "https://instagram.com/p/ccrm1003",
-    stats: { likes: 312, comments: 45, shares: 38, impressions: 5890, clicks: 420, engagementRate: 6.7 }
-  },
-  {
-    id: "post_4",
-    platform: "tiktok",
-    accountName: "CCRM Tech Tips",
-    accountHandle: "@ccrm_tiktok",
-    content: "3 CRM automation hacks that save sales reps 10 hours every week ⚡ #sales #crm #automation #ai",
-    mediaUrls: ["https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=800&auto=format&fit=crop&q=60"],
-    mediaType: "video",
-    status: "published",
-    publishedAt: "2026-07-27T19:40:00Z",
-    platformPostUrl: "https://tiktok.com/@ccrm_tiktok/video/1004",
-    stats: { likes: 1240, comments: 180, shares: 215, impressions: 18500, clicks: 940, engagementRate: 8.8 }
-  },
-  {
-    id: "post_5",
-    platform: "youtube",
-    accountName: "CCRM Channel",
-    accountHandle: "@ccrm_youtube",
-    content: "Full Walkthrough: Building Custom AI Dashboards & Workflows in 10 Minutes 🎥 Watch the full tutorial now on YouTube!",
-    mediaUrls: ["https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=800&auto=format&fit=crop&q=60"],
-    mediaType: "image",
-    status: "published",
-    publishedAt: "2026-07-27T15:00:00Z",
-    platformPostUrl: "https://youtube.com/watch?v=ccrm1005",
-    stats: { likes: 490, comments: 62, shares: 41, impressions: 8400, clicks: 1120, engagementRate: 5.2 }
-  },
-  {
-    id: "post_6",
-    platform: "twitter",
-    accountName: "CCRM Official",
-    accountHandle: "@ccrm_app",
-    content: "Scheduled release: Introducing native AI Lead Enrichment & Auto-Scoring for incoming web forms! 🧠✨ Stay tuned.",
-    status: "scheduled",
-    scheduledFor: "2026-07-29T10:00:00Z",
-    stats: { likes: 0, comments: 0, shares: 0, impressions: 0, clicks: 0, engagementRate: 0 }
-  },
-  {
-    id: "post_7",
-    platform: "facebook",
-    accountName: "CCRM Official Page",
-    accountHandle: "ccrm.official",
-    content: "Join our upcoming live Q&A session with product lead Erik as we explore social media automation workflows!",
-    status: "scheduled",
-    scheduledFor: "2026-07-30T14:00:00Z",
-    stats: { likes: 0, comments: 0, shares: 0, impressions: 0, clicks: 0, engagementRate: 0 }
-  },
-  {
-    id: "post_8",
-    platform: "threads",
-    accountName: "CCRM Official",
-    accountHandle: "@ccrm_app",
-    content: "Draft idea: Quick survey asking users which AI LLM model (GPT-4o, Claude 3.5, Gemini 1.5) they prefer for proposal generation.",
-    status: "draft",
-    stats: { likes: 0, comments: 0, shares: 0, impressions: 0, clicks: 0, engagementRate: 0 }
-  }
-];
-
 export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
   systemLanguage,
   integrationsConfig,
@@ -215,10 +123,11 @@ export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
   // Active posts depending on lightswitch & demo mode
   const posts = useMemo(() => {
     if (isDemoMode && showDemoData) {
-      return SAMPLE_POSTS;
+      // The demo posts live in src/demo/packs/<language>/socialPosts.ts, chosen by the system language.
+      return getDemoSocialPosts(systemLanguage) as SocialPost[];
     }
     return realPosts;
-  }, [isDemoMode, showDemoData, realPosts]);
+  }, [isDemoMode, showDemoData, realPosts, systemLanguage]);
 
 const normalizePlatformKey = (raw: string): string => {
   const p = (raw || "").toLowerCase();
