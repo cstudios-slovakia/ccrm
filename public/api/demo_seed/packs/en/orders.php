@@ -1,0 +1,137 @@
+<?php
+/**
+ * Orders pack, English (US) edition: five e-shop orders for care products (D6) - one cancelled, one awaiting payment.
+ * Data only (contract: demo_seed/index.php). Same keys, list lengths and numbers as the other two editions.
+ * An order lists items by ref and quantity; the module takes the unit price from the cast (priceEur, converted with
+ * demo_money()), computes line totals, VAT (the edition's country) and the order totals from the converted lines, and
+ * adds a shipping line (and a cash-on-delivery fee) from shipEur / codEur. 'payment' and 'shipping' index
+ * billing.paymentMethods / billing.shippingMethods of packs/en/company.php. A registered customer is a 'client'
+ * ref; otherwise a 'guest' record with this edition's person.
+ */
+return [
+    'numbering' => 'ORD',
+    'codEur' => 1.5,
+    'texts' => ['shipping' => 'Shipping: %method%', 'cod' => 'Cash on delivery fee', 'unitService' => 'service'],
+    'orders' => [
+        [
+            'day' => -42,
+            'status' => 'delivered',
+            'user' => 'sales',
+            'client' => 'C2',
+            'payment' => 1,
+            'shipping' => 0,
+            'shipEur' => 3.9,
+            'paidDay' => -42,
+            'deliveryDay' => -39,
+            'pickup' => 'ZB-7421',
+            'tracking' => '1029384756',
+            'deliveryNote' => 'Please ring the bell; delivery before 4 pm.',
+            'note' => 'Care set for the new kitchen worktop.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 2.0],
+                ['item' => 'I6', 'qty' => 1.0],
+            ],
+        ],
+        [
+            'day' => -29,
+            'status' => 'delivered',
+            'user' => 'sales',
+            'guest' => [
+                'name' => 'Chris Walker',
+                'email' => 'chris.walker@mail.example',
+                'phone' => '+1 303 555 0301',
+                'street' => '455 S Pearl St',
+                'city' => 'Denver, CO',
+                'zip' => '80209',
+            ],
+            'payment' => 0,
+            'shipping' => 1,
+            'shipEur' => 4.9,
+            'paidDay' => -28,
+            'deliveryDay' => -26,
+            'pickup' => '',
+            'tracking' => '2938475610',
+            'deliveryNote' => '',
+            'note' => '',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 1.0],
+            ],
+        ],
+        [
+            'day' => -21,
+            'status' => 'cancelled',
+            'user' => 'pm',
+            'guest' => [
+                'name' => 'Brian Hall',
+                'email' => 'brian.hall@mail.example',
+                'phone' => '+1 303 555 0303',
+                'street' => '9400 Huron St',
+                'city' => 'Thornton, CO',
+                'zip' => '80260',
+            ],
+            'payment' => 2,
+            'shipping' => 2,
+            'shipEur' => 3.9,
+            'paidDay' => null,
+            'deliveryDay' => null,
+            'pickup' => '',
+            'tracking' => '',
+            'deliveryNote' => '',
+            'note' => 'Cancelled before shipping.',
+            'customerNote' => 'The customer changed their mind.',
+            'lines' => [
+                ['item' => 'I6', 'qty' => 2.0],
+            ],
+        ],
+        [
+            'day' => -14,
+            'status' => 'shipped',
+            'user' => 'sales',
+            'client' => 'C3',
+            'payment' => 0,
+            'shipping' => 1,
+            'shipEur' => 12.9,
+            'paidDay' => -13,
+            'deliveryDay' => -11,
+            'pickup' => '',
+            'tracking' => '3847561029',
+            'deliveryNote' => 'Hand over at the studio showroom reception.',
+            'note' => 'Stock of care kits for the showroom and the studio\'s customers.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 12.0, 'discount' => 10],
+                ['item' => 'I6', 'qty' => 6.0],
+                ['item' => 'I5', 'qty' => 8.0],
+            ],
+        ],
+        [
+            'day' => -3,
+            'status' => 'awaiting_payment',
+            'user' => 'sales',
+            'guest' => [
+                'name' => 'Emily Stone',
+                'email' => 'emily.stone@mail.example',
+                'phone' => '+1 720 555 0302',
+                'street' => '2100 Pine St',
+                'city' => 'Boulder, CO',
+                'zip' => '80302',
+            ],
+            'payment' => 0,
+            'shipping' => 0,
+            'shipEur' => 3.9,
+            'paidDay' => null,
+            'deliveryDay' => null,
+            'pickup' => '',
+            'tracking' => '',
+            'deliveryNote' => '',
+            'note' => 'Waiting for the bank transfer.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 2.0],
+                ['item' => 'I6', 'qty' => 1.0],
+            ],
+        ],
+    ],
+];

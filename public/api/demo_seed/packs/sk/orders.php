@@ -1,0 +1,137 @@
+<?php
+/**
+ * Orders pack, Slovak edition: five e-shop orders for care products (D6) - one cancelled, one awaiting payment.
+ * Data only (contract: demo_seed/index.php). Same keys, list lengths and numbers as the other two editions.
+ * An order lists items by ref and quantity; the module takes the unit price from the cast (priceEur, converted with
+ * demo_money()), computes line totals, VAT (the edition's country) and the order totals from the converted lines, and
+ * adds a shipping line (and a cash-on-delivery fee) from shipEur / codEur. 'payment' and 'shipping' index
+ * billing.paymentMethods / billing.shippingMethods of packs/sk/company.php. A registered customer is a 'client'
+ * ref; otherwise a 'guest' record with this edition's person.
+ */
+return [
+    'numbering' => 'OBJ',
+    'codEur' => 1.5,
+    'texts' => ['shipping' => 'Doprava: %method%', 'cod' => 'Príplatok za dobierku', 'unitService' => 'služba'],
+    'orders' => [
+        [
+            'day' => -42,
+            'status' => 'delivered',
+            'user' => 'sales',
+            'client' => 'C2',
+            'payment' => 1,
+            'shipping' => 0,
+            'shipEur' => 3.9,
+            'paidDay' => -42,
+            'deliveryDay' => -39,
+            'pickup' => 'ZB-7421',
+            'tracking' => '1029384756',
+            'deliveryNote' => 'Prosím zazvoniť, doručenie do 16:00.',
+            'note' => 'Sada na starostlivosť o novú kuchynskú dosku.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 2.0],
+                ['item' => 'I6', 'qty' => 1.0],
+            ],
+        ],
+        [
+            'day' => -29,
+            'status' => 'delivered',
+            'user' => 'sales',
+            'guest' => [
+                'name' => 'Zuzana Hrušková',
+                'email' => 'zuzana.hruskova@mail.example',
+                'phone' => '+421 917 555 301',
+                'street' => 'Hviezdoslavova 8',
+                'city' => 'Senec',
+                'zip' => '903 01',
+            ],
+            'payment' => 0,
+            'shipping' => 1,
+            'shipEur' => 4.9,
+            'paidDay' => -28,
+            'deliveryDay' => -26,
+            'pickup' => '',
+            'tracking' => '2938475610',
+            'deliveryNote' => '',
+            'note' => '',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 1.0],
+            ],
+        ],
+        [
+            'day' => -21,
+            'status' => 'cancelled',
+            'user' => 'pm',
+            'guest' => [
+                'name' => 'Mária Slobodová',
+                'email' => 'maria.slobodova@mail.example',
+                'phone' => '+421 903 555 303',
+                'street' => 'Kollárova 12',
+                'city' => 'Nitra',
+                'zip' => '949 01',
+            ],
+            'payment' => 2,
+            'shipping' => 2,
+            'shipEur' => 3.9,
+            'paidDay' => null,
+            'deliveryDay' => null,
+            'pickup' => '',
+            'tracking' => '',
+            'deliveryNote' => '',
+            'note' => 'Zrušené pred odoslaním.',
+            'customerNote' => 'Zákazník si objednávku rozmyslel.',
+            'lines' => [
+                ['item' => 'I6', 'qty' => 2.0],
+            ],
+        ],
+        [
+            'day' => -14,
+            'status' => 'shipped',
+            'user' => 'sales',
+            'client' => 'C3',
+            'payment' => 0,
+            'shipping' => 1,
+            'shipEur' => 12.9,
+            'paidDay' => -13,
+            'deliveryDay' => -11,
+            'pickup' => '',
+            'tracking' => '3847561029',
+            'deliveryNote' => 'Odovzdať na recepcii showroomu štúdia.',
+            'note' => 'Zásoba ošetrovacích sád do showroomu a pre zákazníkov štúdia.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 12.0, 'discount' => 10],
+                ['item' => 'I6', 'qty' => 6.0],
+                ['item' => 'I5', 'qty' => 8.0],
+            ],
+        ],
+        [
+            'day' => -3,
+            'status' => 'awaiting_payment',
+            'user' => 'sales',
+            'guest' => [
+                'name' => 'Ján Mikuláš',
+                'email' => 'jan.mikulas@mail.example',
+                'phone' => '+421 944 555 302',
+                'street' => 'Trnavská cesta 21',
+                'city' => 'Pezinok',
+                'zip' => '902 01',
+            ],
+            'payment' => 0,
+            'shipping' => 0,
+            'shipEur' => 3.9,
+            'paidDay' => null,
+            'deliveryDay' => null,
+            'pickup' => '',
+            'tracking' => '',
+            'deliveryNote' => '',
+            'note' => 'Čaká na platbu prevodom.',
+            'customerNote' => '',
+            'lines' => [
+                ['item' => 'I7', 'qty' => 2.0],
+                ['item' => 'I6', 'qty' => 1.0],
+            ],
+        ],
+    ],
+];
