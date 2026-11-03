@@ -72,7 +72,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 2 | Installer: demo language + currency, HUF, no default divisions | ✅ | demo phase 2 (see git log) | 2026-11-03 |
 | 3 | Re-seed demo data (endpoint, CLI, Settings) | ✅ | source only, no version (git log: `(demo phase 3)`) | 2026-11-03 |
 | 4A | Content: clients, leads, tasks, timeline | ✅ | source only, no version (git log: `(demo phase 4A)`) | 2026-11-03 |
-| 4B | Content: projects, offers, invoices, warehouse, orders, finance | ⬜ | | |
+| 4B | Content: projects, offers, invoices, warehouse, orders, finance | ✅ | source only, no version (git log: `(demo phase 4B)`) | 2026-11-03 |
 | 4C | Content: employees + time tracking (new) | ⬜ | | |
 | 4D | Content: e-mail, WhatsApp, AI meeting room, social posts | ⬜ | | |
 | 4E | Content: SAI (stored entries + built-in demo) | ⬜ | | |
@@ -428,22 +428,54 @@ Built exactly as listed; `test:demo-packs` and `test:demo-seed` are green (296 c
 
 ### Phase 4B — Content: projects, offers, invoices, warehouse, orders, finance (wave 2, high)
 
-- [ ] `projects.php`: the demo project type (attributes, timeline types, Gantt) and
+- [x] `projects.php`: the demo project type (attributes, timeline types, Gantt) and
       projects P1–P5 with money attributes in the chosen currency.
-- [ ] `offers.php`: offers and invoices per Part D; line items converted with
+- [x] `offers.php`: offers and invoices per Part D; line items converted with
       `demo_money()`, **totals computed from the converted items** (C4), VAT from the pack
       country, `currency` column = chosen currency.
-- [ ] `warehouse.php`: 2 warehouses, suppliers S1–S3, items I1–I8, stock, batches,
+- [x] `warehouse.php`: 2 warehouses, suppliers S1–S3, items I1–I8, stock, batches,
       movements. Replaces what `ccrm_seed_default_warehouses_and_items` seeds today.
-- [ ] `orders.php` (new): 5 e-shop orders for care products (Part D), replacing
+- [x] `orders.php` (new): 5 e-shop orders for care products (Part D), replacing
       `ccrm_seed_default_orders`.
-- [ ] `finance.php`: financial categories (reuse the existing 3-language tree) and 12 months
+- [x] `finance.php`: financial categories (reuse the existing 3-language tree) and 12 months
       of income/expense records consistent with invoices, purchases, rent, marketing and
       salaries, so the dashboard charts have a shape.
-- [ ] Dry-run assertions: every invoice/offer/order total equals the sum of its items (±0.01,
+- [x] Dry-run assertions: every invoice/offer/order total equals the sum of its items (±0.01,
       ±1 for HUF); no amount in a currency other than the chosen one.
 
-**Left over:** —
+**Left over (4B):**
+
+- **Assertions live in `scripts/demo-assert/<module>.php`, not in `test-demo-seed.php`.** C9 says
+  `assert_demo_<module>()` in `scripts/test-demo-seed.php`, but the harness phase 1 built loads one file per
+  module from `scripts/demo-assert/` (header of `demo_seed/index.php` §5), and `test-demo-seed.php` is phase 1's
+  file. The five new files are `projects`, `offers`, `warehouse`, `orders`, `finance` there.
+- **Project value = the accepted offer's total, which includes VAT, so it differs per edition** (P1: 24 600 sk,
+  25 400 hu, 21 600 en, EUR before conversion) and from the story figure in `company.valueEur`/the client's value that 4A
+  writes. Authored so that sk/EUR lands on the story numbers (offer net 20 000 -> 24 600). `valueEur` in the
+  company pack is therefore not used by 4B; 4A may keep showing it as the client's deal value.
+- **`demo_offers_project_value()`** (in `offers.php`) lets `projects.php` (which runs before offers) read the
+  accepted offer's total from the same converted items. `projects.php` therefore `require_once`s `offers.php`;
+  the runner does the same later, which is harmless.
+- **Finance reads other modules' rows back with plain single-table SELECTs** (offers, orders, warehouse
+  movements, suppliers, projects, employees, employee_salaries) because the fake PDO cannot interpret JOINs. Rows
+  of a module that did not run are simply absent: no document records, no planned instalments.
+- **Payroll** for the install month is one expense per `employee_salaries` row whose employee has
+  `auto_expense = 1` (ids `demo-%` only; each salary is linked to its record so the client's salary sync does not
+  create a second one), else a plain total of the cast's salaries (`salaryEur`, `demo_money_salary()`). 4C must
+  write `employee_salaries` with `financial_record_id` NULL and ids starting `demo-` if it wants the first path;
+  both paths are asserted. Contributions are 30 % in every edition (numbers must match across packs).
+  The past months of payroll are two **recurring rules ending last month**, so the charts have a shape without a
+  pile of rows. The recurring-rules view will label these two as "paused" (the UI treats any rule whose end date
+  has passed that way); resuming one would double count that month.
+- **E-shop orders do not create stock movements.** Care-kit quantities in `orders` are not deducted from the
+  warehouse (the stock invariant is "stock = sum of the demo movements"); the I7 receipts are large enough.
+- **The care contract income rule (C6, 350 EUR net a month)** is authored in the finance pack; if 4F's
+  `support_contracts` row carries an amount it should match.
+- `projects.billable_rate` (45 EUR/h converted) and `hours_budget` are set on P1-P5; 4C may use them.
+- Vendor bills of the foreign supplier S1 carry no VAT (`tax_rate` 0); domestic suppliers carry the country rate.
+- New mirror files were copied to `api/demo_seed/` by hand (A5 #16); `npm run sync:backend` was not run, so no file
+  of another phase was touched.
+- Not run here: `npm run test:demo-seed:db` (no MySQL), the QA suite (no UI touched).
 
 ### Phase 4C — Content: employees + time tracking (wave 2, high)
 
@@ -670,6 +702,18 @@ one titled "Phase W" that the planning session handed to the user.
     (or a lead the user deleted afterwards) fails with a constraint error in MySQL (`ON DELETE SET NULL` only covers
     deletes). The new `tasks.php` checks `demo_row_exists()` for the lead and the project before linking; any other module
     that writes `tasks` (4C time links, 4D meeting tasks, 4F ticket tasks) should do the same.
+27. **(4B) The old finance seeder linked ANY employee's salary rows, demo or not.** `demo_seed/finance.php` selected
+    every `employee_salaries` row of an `auto_expense` employee with no `financial_record_id`, regardless of id.
+    *Symptom:* in a demo install where someone had added a real employee with auto-expense, a re-seed would
+    attach demo finance records to that person's salary rows. *Root cause:* no `demo-` filter on the query.
+    *Fix:* done in the 4B rewrite (ids `demo-%` only).
+28. **(4B) Document and order totals could not be checked at all before.** The old modules computed totals inline
+    with a hardcoded 20 % VAT and `'EUR'` and the dry run had no per-module assertions. The 4B assertion files fail
+    if VAT is not the country rate, a total is converted instead of summed, a price is not `demo_money()` of its EUR
+    source, or finance disagrees with the documents, receipts and orders it stands for (mutation-tested).
+29. **(4B) C9 and the harness disagree on where module assertions go** (see Left over of 4B): the doc says
+    `assert_demo_<module>()` in `test-demo-seed.php`, the code loads `scripts/demo-assert/<module>.php`. The code is
+    what runs; C9 should be corrected in the next doc pass.
 
 ---
 
