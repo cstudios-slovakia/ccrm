@@ -74,8 +74,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 4A | Content: clients, leads, tasks, timeline | ✅ | source only, no version (git log: `(demo phase 4A)`) | 2026-11-03 |
 | 4B | Content: projects, offers, invoices, warehouse, orders, finance | ✅ | source only, no version (git log: `(demo phase 4B)`) | 2026-11-03 |
 | 4C | Content: employees + time tracking (new) | ✅ | source only, no version (git log: `(demo phase 4C)`) | 2026-11-03 |
-||||||| parent of 92b96175 (feat(demo): employees and time tracking content in sk/hu/en packs (demo phase 4C))
-| 4D | Content: e-mail, WhatsApp, AI meeting room, social posts | ⬜ | | |
+| 4D | Content: e-mail, WhatsApp, AI meeting room, social posts | ✅ | source only, no version (git log: `(demo phase 4D)`) | 2026-11-03 |
 | 4E | Content: SAI (stored entries + built-in demo) | ⬜ | | |
 | 4F | Content: automations (+ run logs), service tickets | ⬜ | | |
 | W | WAAI demo loader: three language editions (**WAAI repo**) | ⬜ | | |
@@ -549,9 +548,9 @@ allowed) and each one failed the matching assertion. Not run: `test:demo-seed:db
 
 ### Phase 4D — Content: e-mail, WhatsApp, AI meeting room, social posts (wave 2, medium)
 
-- [ ] `email.php`: the demo mailbox content per pack (same thread structure as today,
+- [x] `email.php`: the demo mailbox content per pack (same thread structure as today,
       rewritten for the story), sender names/addresses from the cast.
-- [ ] WhatsApp: split `whatsapp_demo.json` into `whatsapp_demo.{sk,hu,en}.json` with the
+- [x] WhatsApp: split `whatsapp_demo.json` into `whatsapp_demo.{sk,hu,en}.json` with the
       same structure, chats re-cast to Part D (chat messages in the pack language, except
       the German architect chat, which stays in German/English as today). `whatsapp.php`
       picks the file by language. Users are referenced by ref (`"ownerCrmUser": "owner"`),
@@ -559,13 +558,74 @@ allowed) and each one failed the matching assertion. Not run: `test:demo-seed:db
       e-mails (C15). Keep `whatsapp_demo.json` as a copy of the sk file until phase W
       is done (the WAAI loader still reads it). Update `docs/WHATSAPP-DEMO-DATA.md` with the
       new file names and the contract phase W codes against (C15).
-- [ ] `meetings.php`: three meetings (C11) with transcript, AI summary JSON, minutes,
+- [x] `meetings.php`: three meetings (C11) with transcript, AI summary JSON, minutes,
       tasks, attached client/users; one archived.
-- [ ] Social: move `SAMPLE_POSTS` out of `SocialMediaView.tsx` into
+- [x] Social: move `SAMPLE_POSTS` out of `SocialMediaView.tsx` into
       `src/demo/packs/{sk,hu,en}/socialPosts.ts` (posts about the company's projects and
       products), chosen by the system language.
 
-**Left over:** —
+**Left over:**
+
+Built exactly as listed. `npm run test:demo-packs` and `npm run test:demo-seed` are green (322 checks) for sk/EUR, hu/HUF, hu/EUR
+and en/USD, `npm run test:unit` is green (1236 pass, incl. 8 new social-post tests), `npx tsc --noEmit -p tsconfig.app.json` is clean,
+`php -l` is clean on every PHP file touched. What a later session needs to know:
+
+- **QA audit is not green in the cloud sandbox, and it is not caused by this phase.** `node scripts/qa/run-qa.mjs --files
+  src/components/SocialMediaView.tsx src/demo/packs/socialPosts.ts` reports 16 defects (10 high, 3 medium, 3 low) in the shell
+  navigation spec; I stashed the `SocialMediaView.tsx` change and re-ran: the **same 16 finding ids**. The three `CONSOLE_ERROR`s
+  are `Error fetching release notes: TypeError: Failed to fetch` (`updateNotes.ts` reaching the news CMS, blocked in the sandbox).
+  I did **not** root-cause the ten `VIEW_RENDERED_EMPTY` views (invoices, nav items 5/6/12/14/15/16/18/23/24) or the three
+  `INTERACTION_FAILED` header controls; phase 5's full run should be done where the network is open. The Social view itself
+  has no QA check in demo mode (the QA dataset is not a demo install), so the demo-posts path is covered by the unit tests
+  and the type check only; nobody has looked at it in a browser.
+- **What each module is now.** `email.php`: 24 mails in 3 weeks (S1 price list + call, C3 weekly lists, the L9 sink-cutout
+  thread with the `{m:180}` option and an 8 400 offer total, C6 delay apology / joint-sample invite (.ics) / overdue-deposit
+  reminder, C1 second-instalment mail and facade photos, C2 warranty chip, S2 remnant-slab newsletter, a trade newsletter, a
+  courier notice, two unread: the C6 hairline gap and the C3 week-45 list). `meetings.php`: the three meetings of C11, each with
+  transcript, minutes, AI summary JSON and tasks (4 + 3 + 1, one task done in the weekly meeting). `whatsapp.php`: reads
+  `whatsapp_demo.<lang>.json`; chats `demo-wa-c1-site`, `demo-wa-l10-architect`, `demo-wa-c6-hotel`, `demo-wa-c2-warranty`
+  (13 / 9 / 10 / 8 messages, 9 tasks). Social: `src/demo/packs/{sk,hu,en}/socialPosts.ts` (7 posts) + `socialPosts.ts` (builder,
+  dates relative to now) + `socialPostsTypes.ts`; `SocialMediaView.tsx` only lost `SAMPLE_POSTS` and calls `getDemoSocialPosts()`.
+- **Pack shapes** (so 4A/4B can link to them): email `{quoteHead, parties{news,courier}, messages[]}`; meetings `{meetings[]}`
+  with `lead`/`clients`/`supplier` refs, `users`/`assignee` roles; whatsapp `{integrationName, footer{...}, timeline{...}}` (the
+  chats themselves are JSON, see C15). Files outside A3's "Owns" that I created (all new): the **repo-root mirrors**
+  `api/demo_seed/{email,meetings,whatsapp}.php`, `api/demo_seed/packs/*/{email,meetings,whatsapp}.php`,
+  `api/demo_seed/whatsapp_demo*.json`; the assertion files `scripts/demo-assert/{email,meetings,whatsapp}.php` (phase 1's
+  per-module convention); `src/demo/packs/socialPosts.test.ts`. I also edited `docs/WHATSAPP-DEMO-DATA.md` (asked for).
+- **Module-local placeholders instead of touching `context.php`:** `demo_text()` has no `{contact:S1}` (suppliers are not
+  client/lead refs), so `email.php` and `meetings.php` fill `[[name:REF]]` / `[[contact:REF]]` themselves
+  (`demo_email_fill()`, `demo_meetings_fill()`). If phase 1's file ever gains supplier support, both can go.
+  Also: `demo_text()` refuses `{d:+4}` (no plus; write `{d:4}`) and the pack linter reserves the key `assignee` for refs, so the
+  WhatsApp footer labels are `assigneeLabel`.
+- **Amounts and numbers that must match other phases.** The mails and meetings quote only: the L9 offer (total `{m:8400}`,
+  mitred edge `{m:180}`, both from Part D), S1 slab prices `{m:99}/{m:114}/{m:74}` (I1–I3 cost + ~4 %), `{m:8000}` in a
+  newsletter, and **dates** that other modules must agree with: P3 deposit invoice **due `{d:-12}`** (D6), P1 second instalment
+  **due `{d:5}`** (issued 9 days ago, 14-day terms), new P3 slab delivery `{d:4}` and install start `{d:9}`, L9 measuring
+  `{d:2}`, open day `{d:10}`, supplier call `{d:-20}`, hotel meeting `{d:-6}`, weekly meeting `{d:-2}`. Invoices are named by
+  description, **never by number or total**, because 4B owns them: if 4B picks other due dates, edit `packs/*/email.php`
+  messages 14–17 and the meeting 1 text (one place each).
+- **WhatsApp C15 deviations / decisions.** (1) Message text is edition-language JSON; the German architect chat is German in all
+  three editions (names of the colleagues in it differ by edition, so the three files are not byte-identical there).
+  (2) `timeline[].message` and `members` are as before. (3) Image `placeholder` values are limited to `slabs | samples | site`
+  (the three the WAAI loader already knows). (4) Tasks reference users as `assignee: "owner|pm|sales"`; `whatsapp.php` stores
+  the display name in `tasks.owner/created_by` and `task_assignees` as the app does. (5) The old Dvořák group chat and the
+  Weber/Kovács chats are gone (the story has four chats: C1, L10, C6, C2); the six old number-check rows are still removed by
+  `demo_whatsapp_wipe_numbers()` (hardcoded legacy list) so `wipe_demo.php` and phase 3 keep working. (6) `whatsapp_demo.json`
+  is byte-identical to the sk file; `test:demo-seed` fails if they drift, so phase 5 should delete both the file and that check.
+  (7) `scripts/demo-assert/whatsapp.php` is what guards the contract (the JSON is not a pack): structure/refs/ids/days/times
+  identical across editions, user refs, `crmUsers` = company pack, chat phones = cast phones, quotes/sources consistent.
+- **Dry-run coverage gaps.** The fake PDO cannot interpret `SELECT … WHERE LOWER(email) = ?` (used inside
+  `ccrm_demo_mailbox_insert()`), so the lead-timeline/RAG filing of the mails is not exercised, and the WhatsApp links, task
+  `related_*` ids and timeline entries are only written (and asserted) once the clients/projects modules have written their
+  rows: `demo-assert/whatsapp.php` checks `whatsapp_links` as soon as `demo-clients-1` exists, so re-run `test:demo-seed`
+  after 4A/4B land. `email.php` also writes `timeline_events` under `email-…` ids (not `demo-`), allowed through `idAllow`.
+- **Social posts have no pictures.** The old sample posts pointed at stock photos of an unrelated SaaS; new ones are text-only
+  (`mediaType` set, no `mediaUrls`) because no real stone photos are available to reference. Add real URLs to the three packs
+  (same ids) when there are some. Prices are not mentioned in posts (client-side code has no demo currency).
+- **Hungarian copy:** formal Ön throughout, family-name-first names come from the placeholders. Grammar that depends on the
+  inflection of a name or a date (a suffix after `{d:..}` or `{contact:..}`) was rephrased instead (`… napján`, `… ({contact:L9})`);
+  Slovak greetings drop the name (`Dobrý deň,`) for the same reason. A native read-through is still worthwhile.
+
 
 ### Phase 4E — Content: SAI (wave 2, medium)
 
@@ -712,6 +772,7 @@ one titled "Phase W" that the planning session handed to the user.
 17. **`email.php` attaches the mailbox through `strtolower($name) . '@crm.com'`** (demo_seed/email.php ~line 41), i.e.
     it assumes the user's name is the local part of their e-mail. With localized logins (B6) that is false for every
     edition; 4D must read the e-mail from `demo_users()` instead.
+    **Fixed in phase 4D** (`email.php` now reads the logins from `demo_users()`).
 18. **Zero divisions (phase 2).** Rendering is fine (QA: dashboard, leads, projects, divisions
     settings, no "Cstudios"). Findings: (a) Settings › Divisions refuses to delete the last
     division ("At least one division is required!", delete button hidden when `length <= 1`),
@@ -774,7 +835,6 @@ one titled "Phase W" that the planning session handed to the user.
     green alone. *Root cause:* the assertion counts all rows of the table instead of the rows of its own module.
     *Fix (4A's file, not changed by 4B):* filter the rows by id prefix, `array_filter($db->rows('timeline_events'),
     fn($e) => strpos($e['id'], 'demo-clients-') === 0)`, before the count and the per-lead checks.
-||||||| parent of 92b96175 (feat(demo): employees and time tracking content in sk/hu/en packs (demo phase 4C))
 31. **The fake PDO misread generated columns** (found by 4C, fixed in `scripts/lib/demo-fake-pdo.php`). *Symptom:* `demo_seed_all()` failed
     for the time module with "Field 'running_guard' doesn't have a default value (table 'time_entries')", i.e. no `time_entries` row
     could be inserted offline. *Root cause:* `parseColumnDef()` looked for `NOT NULL` in the whole definition, and the generated expression
@@ -789,6 +849,19 @@ one titled "Phase W" that the planning session handed to the user.
     and `demo_legacy_ids()` has only `fr-sal-sal-emp-%`, so `fr-sal-demo-employees-sal-%` survives a re-seed and the next save of the new
     salary rows would add a second expense next to whatever the finance module seeded. *Fix:* add `'financial_records' => ['fr-sal-sal-emp-%',
     'fr-sal-demo-employees-sal-%']` to `demo_legacy_ids()` (phase 3 wipe / phase 5), and have 4B use that id for its salary expenses.
+34. **`ccrm_demo_mailbox_insert()` files mails on timelines under non-`demo-` ids** (`email-<folder>-<scope>-<uid>` from
+    `ccrm_mail_event_id()`), so `demo_wipe_by_prefix()` cannot remove them. `email.php` deletes them itself on a re-run, but
+    `demo_wipe_demo_rows()` (phase 3) must do the same (derive the ids from `demo_mail_messages` before dropping it) or leave
+    orphan `email-*` events on the demo clients that survive. They go away only if the lead row is deleted (cascade).
+35. **The dry-run fake cannot interpret `LOWER(`email`) = ?` selects** (used by `demo_mailbox.php` and the old `users` lookups), so
+    the mail → lead-timeline filing is untested offline. Either teach `scripts/lib/demo-fake-pdo.php` the `LOWER(col) = ?` form
+    (phase 1's file) or cover it in `test:demo-seed:db`.
+36. **`{contact:…}` / `{name}` placeholders do not accept supplier refs (S1–S3)**, which forced two module-local `[[contact:S1]]`
+    helpers (see 4D Left over). *Fix:* let `demo_text()` accept supplier refs for `{contact}` and `{client}` (phase 1's `context.php`).
+37. **QA audit in the cloud sandbox reports 16 defects on a clean tree** (same ids with and without 4D's change): 3 are
+    `Error fetching release notes: Failed to fetch` (`src/utils/updateNotes.ts:59`, news CMS unreachable from the sandbox — arguably
+    the audit should treat an unreachable CMS as an environment condition, not a console defect); the other 13 (ten
+    `VIEW_RENDERED_EMPTY`, three `INTERACTION_FAILED`) were not investigated. Needs a run with network access before phase 5.
 
 ---
 
