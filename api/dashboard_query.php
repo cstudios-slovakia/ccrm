@@ -5,6 +5,8 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+// The tasks_summary / tasks_by_owner / recent_tasks presets call ccrm_sql_real_tasks().
+require_once __DIR__ . '/recurring_tasks.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');

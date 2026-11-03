@@ -13,6 +13,10 @@
 require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/employee_name.php';
 require_once __DIR__ . '/auth.php';
+// Defines ccrm_sql_real_tasks(), which the task scope below (and every endpoint that
+// includes this file) calls. Only sync.php used to load it, so any other endpoint died
+// with "Call to undefined function ccrm_sql_real_tasks()".
+require_once __DIR__ . '/recurring_tasks.php';
 
 /**
  * Resolve read scope for the given session user.
