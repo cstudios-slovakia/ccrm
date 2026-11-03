@@ -420,6 +420,13 @@ if (!class_exists('DemoFakeException')) {
             $type = strtolower($t[1]);
             $arg = $t[2] ?? null;
             $flags = preg_replace("/COMMENT\s+'(?:[^'\\\\]|\\\\.|'')*'/i", '', substr($rest, strlen($t[0])));
+            // A generated column ("GENERATED ALWAYS AS (IF(a IS NOT NULL ...)) STORED") is computed by MySQL: it
+            // is nullable, has no default to supply, and cannot be written. Drop the expression before the flags
+            // are read - its "IS NOT NULL" would otherwise look like a NOT NULL constraint (time_entries.running_guard).
+            $generated = (bool)preg_match('/\bGENERATED\s+ALWAYS\s+AS\b/i', $flags);
+            if ($generated) {
+                $flags = preg_replace('/\bGENERATED\s+ALWAYS\s+AS\s*\(.*\)\s*(?:STORED|VIRTUAL)?/is', '', $flags);
+            }
             $spec = [
                 'type' => $type,
                 'len' => in_array($type, ['varchar', 'char'], true) && $arg !== null ? (int)$arg : null,
@@ -430,6 +437,7 @@ if (!class_exists('DemoFakeException')) {
                 'default' => null,
                 'pk' => stripos($flags, 'PRIMARY KEY') !== false,
                 'unique' => (bool)preg_match('/\bUNIQUE\b/i', $flags),
+                'generated' => $generated,
             ];
             if ($type === 'enum' && $arg !== null) {
                 preg_match_all("/'((?:[^'\\\\]|\\\\.|'')*)'/", $arg, $e);
@@ -1019,6 +1027,13 @@ if (!class_exists('DemoFakeException')) {
             $cat = $this->catalogue[$table];
             $row = [];
             foreach ($cat['cols'] as $name => $spec) {
+                if (!empty($spec['generated'])) {
+                    if (array_key_exists($name, $given)) {
+                        throw new DemoFakeException("The value specified for generated column '{$name}' in table '{$table}' is not allowed", 'HY000', 3105);
+                    }
+                    $row[$name] = null;   // MySQL computes it; the fake does not evaluate the expression
+                    continue;
+                }
                 if (array_key_exists($name, $given)) {
                     $v = $given[$name];
                     if ($v === null && $spec['auto']) {
