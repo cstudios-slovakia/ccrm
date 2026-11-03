@@ -71,7 +71,7 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 1 | Foundation: context, packs, company, test harness | ✅ | source only, no version (git log: `(demo phase 1)`) | 2026-11-03 |
 | 2 | Installer: demo language + currency, HUF, no default divisions | ✅ | demo phase 2 (see git log) | 2026-11-03 |
 | 3 | Re-seed demo data (endpoint, CLI, Settings) | ✅ | source only, no version (git log: `(demo phase 3)`) | 2026-11-03 |
-| 4A | Content: clients, leads, tasks, timeline | ⬜ | | |
+| 4A | Content: clients, leads, tasks, timeline | ✅ | source only, no version (git log: `(demo phase 4A)`) | 2026-11-03 |
 | 4B | Content: projects, offers, invoices, warehouse, orders, finance | ⬜ | | |
 | 4C | Content: employees + time tracking (new) | ⬜ | | |
 | 4D | Content: e-mail, WhatsApp, AI meeting room, social posts | ⬜ | | |
@@ -371,16 +371,60 @@ What a later session needs to know:
 
 ### Phase 4A — Content: clients, leads, tasks, timeline (wave 2, medium)
 
-- [ ] Port `clients.php` to packs: clients C1–C6, leads L7–L11 (Part D), client categories,
+- [x] Port `clients.php` to packs: clients C1–C6, leads L7–L11 (Part D), client categories,
       lead categories, referrals, timeline events (calls, meetings, notes, the form inquiry
       and the two-mail thread that used to be the setup.php `lead-2` story, now on L9).
-- [ ] Port `tasks.php` to packs: ~14 tasks across states, owners, deadlines around today,
+- [x] Port `tasks.php` to packs: ~14 tasks across states, owners, deadlines around today,
       linked to clients/leads/projects by ref, with assignees; include the three tasks the
       setup.php block had (rewritten for the story).
-- [ ] All ids `demo-clients-*`, `demo-tasks-*`; nothing hardcoded in PHP, every string from
+- [x] All ids `demo-clients-*`, `demo-tasks-*`; nothing hardcoded in PHP, every string from
       the pack.
 
-**Left over:** —
+**Left over:**
+
+Built exactly as listed; `test:demo-packs` and `test:demo-seed` are green (296 checks) for `company`, `clients` and
+`tasks` in sk/EUR, hu/HUF, hu/EUR and en/USD. What a later session needs to know:
+
+- **Files.** Code: `demo_seed/clients.php`, `demo_seed/tasks.php` (both rewritten, code only, now return the rows
+  inserted). Packs: `packs/{sk,hu,en}/clients.php` and `tasks.php`. Assertions: `scripts/demo-assert/clients.php` and
+  `tasks.php` (same deviation as phase 1 — A3 owns neither, but A4's "assert_demo_<module>() in test-demo-seed.php"
+  would make seven sessions edit one file). The new files were `cp`'d to the repo-root mirror `api/demo_seed/` once
+  (A5 #16); `npm run sync:backend` keeps them in step afterwards.
+- **Row ids.** `demo-clients-1…11` = C1–C6, L7–L11 (`demo_ref_id()`); `demo-clients-101…104` = the four client
+  categories (private, commercial, trade, hospitality ⊂ commercial); `demo-clients-1001…` = timeline cards (49, in
+  pack order). Tasks: `demo-tasks-1…14` — **the position in the pack is the id**, other modules link by number:
+  1 slab order P1 · 2 framework terms L10 (the old `task-1` SLA draft) · 3 overdue P3 deposit chase · 4 supplier price
+  review · 5 P3 slab delivery late (**blocked**; the old `task-3`, Italy) · 6 plan lobby-floor installation P1 ·
+  7 cutting plan P5 · 8 credit note C3 edge profile (**done**, = ticket 5 of D7) · **9 warranty visit C2 chip (ticket
+  1 of D7 — link it from `tickets.php`)** · 10 laser measuring L9 (the old `task-2`) · 11 follow up L9's revised
+  quote · 12 call L8 · 13 call back L7's web form · 14 C2 final photos + review (**done**). Owners: 1–4 `owner`,
+  5–9 `pm`, 10–14 `sales`; four tasks have a second assignee. 4C can link time entries to any of these by number,
+  4F tickets 1 and 5 to tasks 9 and 8.
+- **Pack shapes** are documented in the headers of `clients.php` / `tasks.php`. Roles that vary by instance are
+  addressed by role, not name: lead source (`showroom|facebook|instagram|website` → index into `LEAD_SOURCES`),
+  pipeline state (`won|new|contacted|offer|lost` → `demo_lead_states()`), task state (`new|progress|blocked|done`
+  → `demo_task_states()`), division (index into the edition's two), lead category (index into `LEAD_CATEGORIES`).
+  `referral`, `createdBy` and `legalForm` are not in the lint's ref-key list, so `scripts/demo-assert/*.php` validates
+  them (referrals point at written rows, `createdBy` is a login).
+- **L9 / setup.php story.** The old `lead-2` form note + the `email-10412` / `email-10457` pair is now on L9 as three
+  cards with the same structure (an author-less web-form note, an incoming mail, our reply with the mail_broker header
+  block `From:/To:/Subject:` built from the cast's real e-mails). The thread is dated 4–2 days ago (not May) and its
+  dates are `{d:…}`; the 4 cm mitred edge is `{m:180}` — it converts, the assertion checks it. `setup.php` is untouched
+  (phase 5 removes the block); until then a fresh demo install still has `lead-1…3`, `ev-*`, `email-*`, `task-1…3`.
+- **Interim breakage in other (un-ported) modules — expected until 4B/4D/4E port them.** `offers.php`, `projects.php`,
+  `finance.php`, `warehouse.php` still link by the OLD numbering (`demo_id('clients', 1…8)` and `lead-1…3`: e.g. offer 7
+  "draft" now sits on L8 and offer 8 "rejected" on L7; they were clients 8/7 before); `meetings.php`, `sai.php` still
+  point at `lead-1…3`. Nothing fails (those ids exist: L7/L8 are written, `lead-*` come from `setup.php`), the stories
+  just do not match the new cast. The un-ported modules are not covered by the dry run, so no test notices.
+- **Not done on purpose.** No offer/invoice cards on the timelines (the offers module files them with amounts). No
+  `whatsapp`-type cards (4D). No `region` / `district` / `sk_nace` / `organization_size` / `establishment_date` on the
+  clients (the old module wrote them for three of them; the cast has no such fields and they are not used by any module
+  — add them to the company pack if a later phase wants them). `client_id` and `follow_ups` are not written.
+- **Assumptions.** Divisions are assigned by index (0 = HQ, 1 = second site) with one pack-wide pattern since indexes
+  must be identical in all editions; C4, C5 and L10 get division 1. C6 is referred by L10 (an architect recommending a
+  hotel), C2 by C3, L8 by C2. US texts use imperial units (ft, in, sq ft) while the other editions use m / cm. Hungarian
+  texts avoid suffixes after placeholders (names and money are not declined: `… – {client:L9}`, `felárat jelent`).
+
 
 ### Phase 4B — Content: projects, offers, invoices, warehouse, orders, finance (wave 2, high)
 
@@ -616,6 +660,16 @@ one titled "Phase W" that the planning session handed to the user.
     `alex@ / sam@ / jordan@crm.com` and nobody else, so with localized logins (B6) a wipe left the mail summaries of the new
     editions behind. `demo_wipe_demo_rows()` now deletes `email_summaries` and `rag_emails` of every address in
     `demo_all_user_emails()` plus `team@crm.com`; phase 5's `wipe_demo.php` gets that by calling it.
+25. **Un-ported demo modules link by the old client numbering.** `offers.php`, `projects.php`, `finance.php`,
+    `warehouse.php` use `demo_id('clients', 1…8)` and `lead-1…3`; `meetings.php` and `sai.php` use `lead-1…3`. *Symptom:* since
+    phase 4A, offer 7 (draft) is attached to L8 and offer 8 (rejected) to L7 (swapped roles), the Horváth/Vila Slavín
+    projects point at clients with different names, and Slavín/Novák texts sit on unrelated rows. *Root cause:* 4A changed
+    what `demo-clients-1…11` mean (C1–C6, L7–L11) while the old modules keep their own meaning of the numbers. *Fix:* each
+    owning phase (4B, 4D, 4E, 4F) replaces the ids by `demo_ref_id('C6')` etc. when it ports its module; nothing to do in 4A.
+26. **`tasks.related_lead_id` has a real foreign key, the other `related_*_id` do not.** A task seeded before its lead
+    (or a lead the user deleted afterwards) fails with a constraint error in MySQL (`ON DELETE SET NULL` only covers
+    deletes). The new `tasks.php` checks `demo_row_exists()` for the lead and the project before linking; any other module
+    that writes `tasks` (4C time links, 4D meeting tasks, 4F ticket tasks) should do the same.
 
 ---
 
