@@ -6,7 +6,9 @@
  *  - COMPANY_BILLING_SETTINGS (C7): profile, bank, VAT rates and default VAT for the
  *    pack's country, shipping/payment methods, the offer default texts and USP cards;
  *  - DIVISIONS + DIVISION_COLORS (the edition's two divisions, B13) and SYSTEM_NAME;
- *  - the three demo logins, with the pack's display names and e-mails (B6).
+ *  - the three demo logins, with the pack's display names and e-mails (B6), each with
+ *    the sidebar sorted into labelled groups (`sidebarGroups` in the pack, merged into
+ *    users.metadata_json.preferences; other stored preferences are kept).
  *
  * The company profile and divisions are written on install and on a re-seed with
  * `resetCompany = true` (demo_option('resetCompany', true)); the logins are always
@@ -18,7 +20,8 @@
  * anything else falls back to SK). demo_ctx()['holidayCountry'] says what B9 intends
  * for the edition (null for the English one) - the time module reads that.
  *
- * Returns the number of rows written (settings + users).
+ * Returns the number of rows written (settings + users); the preferences merge is an
+ * UPDATE of those user rows and does not count.
  */
 require_once __DIR__ . '/helpers.php';
 
@@ -71,6 +74,38 @@ if (!function_exists('demo_seed_company')) {
         ];
     }
 
+    /**
+     * Put the pack's sidebar groups into one login's preferences blob. Only `sidebarGroups`
+     * is written, so theme, favourites and the like survive a re-seed.
+     *
+     * A stored preferences blob is what tells the app a user has been seen
+     * (hasStoredPrefs), which would also switch off the first-run module wizard for the
+     * admin. Keep it for an admin who had no blob, exactly as a bare account would get it.
+     */
+    function demo_company_seed_sidebar(PDO $pdo, string $userId, bool $isAdmin, array $groups): void {
+        $get = $pdo->prepare("SELECT `metadata_json` FROM `users` WHERE `id` = ?");
+        $get->execute([$userId]);
+        $raw = $get->fetchColumn();
+        if ($raw === false) {
+            return; // user not provisioned
+        }
+        $meta = json_decode((string)$raw, true);
+        if (!is_array($meta)) {
+            $meta = [];
+        }
+        $hadPrefs = isset($meta['preferences']) && is_array($meta['preferences']);
+        $prefs = $hadPrefs ? $meta['preferences'] : [];
+        $prefs['sidebarGroups'] = array_values($groups);
+        if (!$hadPrefs && $isAdmin) {
+            $prefs['moduleWizardPending'] = true;
+        }
+        $meta['preferences'] = $prefs;
+        $pdo->prepare("UPDATE `users` SET `metadata_json` = ? WHERE `id` = ?")->execute([
+            json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            $userId,
+        ]);
+    }
+
     function demo_seed_company(PDO $pdo): int {
         $ctx = demo_ctx($pdo);
         $pack = demo_pack($pdo, 'company');
@@ -107,6 +142,12 @@ if (!function_exists('demo_seed_company')) {
                 $u['color'],
             ]);
             $rows++;
+            demo_company_seed_sidebar(
+                $pdo,
+                $u['id'],
+                strtolower((string)$u['role']) === 'admin',
+                $pack['sidebarGroups']
+            );
         }
         return $rows;
     }

@@ -10,6 +10,20 @@
 return [
     'brand' => 'Lapidea',
 
+    /*
+     * Sidebar of the three logins: the modules sorted into labelled groups (a user preference,
+     * see src/utils/sidebarLayout.ts). Items are sidebar item ids; custom dashboards are not
+     * listed and land in the first group.
+     */
+    'sidebarGroups' => [
+        ['id' => 'group_overview', 'title' => 'Áttekintés', 'items' => ['dashboard', 'overview', 'tasks', 'time-tracking']],
+        ['id' => 'group_sales', 'title' => 'Értékesítés', 'items' => ['leads', 'clients', 'invoices', 'orders']],
+        ['id' => 'group_operations', 'title' => 'Működés', 'items' => ['projects', 'tickets', 'warehouse', 'financial']],
+        ['id' => 'group_communication', 'title' => 'Kommunikáció', 'items' => ['whatsapp', 'email', 'meetings', 'social_media']],
+        ['id' => 'group_ai', 'title' => 'AI és automatizálás', 'items' => ['rag_ai', 'sai', 'automation']],
+        ['id' => 'group_workspace', 'title' => 'Munkaterület', 'items' => ['employees', 'files', 'updates']],
+    ],
+
     'company' => [
         'name' => 'Lapidea Kft.',
         'subtitle' => 'Kő, kvarc és szinterezett kő méretre',

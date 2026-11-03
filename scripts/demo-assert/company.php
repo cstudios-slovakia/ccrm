@@ -41,6 +41,23 @@ return [
         $check('the three logins come from the pack (name, e-mail, id u-md5(email), role, password)', $ok, implode("\n", $detail));
         $check('no pre-pack login is created (alex@/sam@/jordan@crm.com)', !isset($users['alex@crm.com']) && !isset($users['sam@crm.com']) && !isset($users['jordan@crm.com']));
 
+        // Sidebar: each login gets the pack's labelled groups, every module exactly once; the
+        // owner (admin) also keeps the first-run module wizard.
+        $ok = true;
+        $detail = [];
+        $expected = $pack['sidebarGroups'];
+        $items = [];
+        foreach ($expected as $g) foreach ($g['items'] as $i) $items[] = $i;
+        if (count($items) !== count(array_unique($items))) { $ok = false; $detail[] = 'a module sits in two groups'; }
+        foreach ($pack['users'] as $role => $p) {
+            $row = $users[strtolower($p['email'])] ?? null;
+            $prefs = json_decode((string)($row['metadata_json'] ?? ''), true)['preferences'] ?? null;
+            if (!is_array($prefs) || ($prefs['sidebarGroups'] ?? null) !== $expected) { $ok = false; $detail[] = "{$role}: sidebarGroups missing or different"; continue; }
+            $wizard = $prefs['moduleWizardPending'] ?? false;
+            if ($wizard !== (strtolower((string)$p['role']) === 'admin')) { $ok = false; $detail[] = "{$role}: moduleWizardPending is " . json_encode($wizard); }
+        }
+        $check('every login has the pack\'s six titled sidebar groups, each module once; only the admin keeps the wizard', $ok && count($expected) === 6, implode("\n", $detail));
+
         // COMPANY_BILLING_SETTINGS (C7)
         $billing = json_decode($settings['COMPANY_BILLING_SETTINGS'] ?? 'null', true);
         $check('COMPANY_BILLING_SETTINGS is the pack\'s company profile', is_array($billing) && $billing['companyName'] === $pack['company']['name'] && $billing['iban'] === $pack['company']['iban'] && $billing['vatId'] === $pack['company']['vatId']);
