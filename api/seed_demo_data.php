@@ -1,17 +1,16 @@
 <?php
 /**
- * Standalone demo seeder for the finance data.
+ * Retired standalone demo seeder - now a thin call of the shared re-seed.
  *
- * The data itself lives in api/demo_seed/finance.php — the same function the
- * demo installer calls — so this script and a fresh demo install cannot drift.
- * Finance records link to clients, projects, offers and warehouse receipts, so
- * those modules run first (each is idempotent and only touches its own
- * 'demo-%' rows).
+ * It used to seed only the finance data. Demo data is now written (and replaced) by one
+ * function, demo_reseed_run() in api/demo_reseed.php - the same one the installer's
+ * demo seed, Settings > Reset data > Re-seed demo data and `php ccrm demo:seed` use - so
+ * this script cannot drift from them. It is kept so existing runbooks do not break.
  *
- * Usage (from the repo root):  php api/seed_demo_data.php [--force]
- *
- * Refuses to run unless the instance is in demo mode (DEMO_MODE = true);
- * --force overrides that.
+ * Usage (from the repo root):  php api/seed_demo_data.php [--lang=hu] [--currency=EUR] [--force]
+ * Same options as `php ccrm demo:seed`; with none it re-seeds in the installed language and
+ * currency. Refuses to run unless the instance is in demo mode (DEMO_MODE = true);
+ * --force overrides that. NOTE: like demo:seed it REPLACES the demo rows and the demo logins.
  */
 
 // CLI only. The repo root is the docroot on git-clone deploys, so without this
@@ -34,30 +33,15 @@ if (file_exists(dirname(__DIR__) . '/config.php')) {
     require_once '/var/www/html/config.php';
 }
 
-require_once __DIR__ . '/demo_seed/index.php';
+define('CCRM_DEMO_RESEED_LIB', true);
+require_once __DIR__ . '/demo_reseed.php';
 
 $pdo = get_db_connection();
 ccrm_apply_schema($pdo);
 
-$demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'")->fetchColumn();
-if ($demoMode !== 'true' && !in_array('--force', array_slice($argv, 1), true)) {
-    fwrite(STDERR, "This instance is not in demo mode; refusing to seed demo data. Pass --force to override.\n");
-    exit(1);
-}
-
+fwrite(STDERR, "Note: api/seed_demo_data.php is retired; this is `php ccrm demo:seed`.\n");
 try {
-    // The first version of this script wrote 'demo-fin-*' rows linked to leads that never existed.
-    $pdo->exec("DELETE FROM `financial_records` WHERE `id` LIKE 'demo-fin-%'");
-
-    foreach (['clients', 'projects', 'offers', 'warehouse', 'finance'] as $module) {
-        require_once __DIR__ . '/demo_seed/' . $module . '.php';
-        $fn = 'demo_seed_' . $module;
-        demo_seed_run_module($pdo, $module, $fn);
-        echo "  seeded {$module}\n";
-    }
-
-    $count = (int)$pdo->query("SELECT COUNT(*) FROM `financial_records` WHERE `id` LIKE 'demo-finance-%'")->fetchColumn();
-    echo "SUCCESS: Seeded {$count} financial records.\n";
+    exit(demo_reseed_cli($pdo, array_slice($argv, 1)));
 } catch (\Throwable $e) {
     echo "ERROR: " . $e->getMessage() . "\n";
     exit(1);

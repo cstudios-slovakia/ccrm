@@ -24,6 +24,9 @@ switch ($command) {
     case 'adjustment-clients':
         ccrm_adjustment_clients_cli(in_array('--apply', $args, true), in_array('--undo', $args, true));
         break;
+    case 'demo:seed':
+        ccrm_demo_seed_cli(array_slice($args, 2));
+        break;
     case 'license':
     case 'licence':
         ccrm_license_cli(isset($args[2]) ? $args[2] : 'status', isset($args[3]) ? $args[3] : null);
@@ -42,6 +45,9 @@ function ccrm_help() {
     echo "  php ccrm backfill-clients [--dry-run] - Links leads to their client record by id and lists the ones it could not\n";
     echo "  php ccrm adjustment-clients [--apply] [--undo] - Gives clients that exist only through an adjustment a real client row; without --apply it only reports
 ";
+    echo "  php ccrm demo:seed [--lang=sk|hu|en] [--currency=EUR|HUF|CZK|PLN|USD|GBP] [--keep-company] [--only=module,...] [--force]\n";
+    echo "                             - Replaces the demo data (demo rows and demo logins only) in that language and currency;\n";
+    echo "                               refused unless the instance is in demo mode, --force overrides and switches demo mode on\n";
     echo "  php ccrm license status    - Shows this installation's licence and whether it allows updates\n";
     echo "  php ccrm license set <key> - Activates a licence key (or imports an offline licence token)\n";
     echo "  php ccrm license check     - Forces an immediate re-check with the licence server\n";
@@ -85,6 +91,40 @@ function ccrm_cli_pdo() {
     } catch (\Throwable $e) {
         echo "Error: could not connect to the database: " . $e->getMessage() . "\n";
         return null;
+    }
+}
+
+/**
+ * `php ccrm demo:seed`: wipe the demo rows of every edition and seed the demo again in the
+ * chosen language and currency. The work is demo_reseed_run() in api/demo_reseed.php, the same
+ * function the Settings button calls.
+ */
+function ccrm_demo_seed_cli(array $args) {
+    $pdo = ccrm_cli_pdo();
+    if ($pdo === null) {
+        echo "Error: CCRM is not installed here (no config.php), or the database is unreachable.\n";
+        exit(1);
+    }
+    $loaded = false;
+    foreach (['/api', '/dist/api', '/public/api'] as $dir) {
+        if (file_exists(__DIR__ . $dir . '/demo_reseed.php') && file_exists(__DIR__ . $dir . '/schema.php')) {
+            require_once __DIR__ . $dir . '/schema.php';
+            define('CCRM_DEMO_RESEED_LIB', true);
+            require_once __DIR__ . $dir . '/demo_reseed.php';
+            $loaded = true;
+            break;
+        }
+    }
+    if (!$loaded) {
+        echo "Error: api/demo_reseed.php was not found in this checkout.\n";
+        exit(1);
+    }
+    ccrm_apply_schema($pdo);
+    try {
+        exit(demo_reseed_cli($pdo, $args));
+    } catch (\Throwable $e) {
+        echo "ERROR: " . $e->getMessage() . "\n";
+        exit(1);
     }
 }
 

@@ -86,6 +86,7 @@ import { CategoryPage } from "./settings/CategoryPage";
 import { SidebarLayout } from "./settings/SidebarLayout";
 import { SectionCard, ModuleLinkCard } from "./settings/SectionCard";
 import { SaveStatus } from "./settings/SectionCard";
+import { DemoReseedSettings } from "./settings/DemoReseedSettings";
 import { useAutosave } from "./settings/useAutosave";
 import { ScrollFade } from "./settings/ScrollFade";
 import { AiUsagePanel } from "./settings/AiUsagePanel";
@@ -5060,6 +5061,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         return (
                   <div className="space-y-6">
         
+                    {/* Re-seed demo data (api/demo_reseed.php): language + currency, replaces demo rows only. */}
+                    {isDemoMode && getPermission("system_reset") === "edit" && (
+                      <DemoReseedSettings language={userLanguage} canEdit />
+                    )}
+
                     {/* Wipe Demo Data section (Only visible when isDemoMode is active) */}
                     {isDemoMode && getPermission("system_reset") === "edit" && (
                       <SectionCard
