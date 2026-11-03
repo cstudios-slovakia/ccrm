@@ -8,7 +8,7 @@ return [
     ],
     // insert() files a message on the lead timeline under ccrm_mail_event_id() ids, as an IMAP import does.
     'idAllow' => [
-        'timeline_events' => '/^email-/',
+        'timeline_events' => '/^(demo-|email-)/',
     ],
     'check' => function (DemoFakePdo $db, array $ctx, callable $check): void {
         $rows = $db->rows('demo_mail_messages');

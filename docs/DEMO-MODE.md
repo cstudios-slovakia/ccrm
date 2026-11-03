@@ -863,6 +863,14 @@ one titled "Phase W" that the planning session handed to the user.
     the audit should treat an unreachable CMS as an environment condition, not a console defect); the other 13 (ten
     `VIEW_RENDERED_EMPTY`, three `INTERACTION_FAILED`) were not investigated. Needs a run with network access before phase 5.
 
+38. **(4D x 4A/4B/4C) On the merged branch `test:demo-seed` has 20 failures (5 per combination), none in 4D's own assertions.**
+    `scripts/demo-assert/tasks.php` ("14 tasks with the ids demo-tasks-1..14", "done tasks are completed by their owner ... times")
+    and `clients.php` ("every timeline card belongs to a written record ...") read **every** row of `tasks` / `timeline_events`,
+    so they also judge the 9 `demo-whatsapp-*` tasks (assignee-owned, `completed_by` = the account owner, `deadline_time` NULL when the
+    chat gave no time - the way `integration_tasks.php` writes them) and the mail/offer/WhatsApp timeline cards. Same root cause as #30.
+    *Fix (4A's files):* filter by id prefix (`demo-tasks-`, `demo-clients-`) before counting and checking. The two `finance:` failures
+    ("planned in the past" salary rows, "install month has payroll") are 4B/4C's finance/employees rows, not 4D.
+
 ---
 
 # Part B. Decisions (final unless the user changes them)
