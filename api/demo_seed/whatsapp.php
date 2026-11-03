@@ -51,6 +51,10 @@ function demo_whatsapp_wipe_numbers(PDO $pdo): void {
             $del->execute([(string)$n['phone']]);
         }
     }
+    // The six numbers of the pre-4D single-file dataset (an older demo install still has them).
+    foreach (['421903245118', '4934199026118', '36304821170', '498921554780', '421918402665', '421907316520'] as $legacy) {
+        $del->execute([$legacy]);
+    }
 }
 
 /** The CCRM address chats link back from; empty when the install does not know its own URL. */

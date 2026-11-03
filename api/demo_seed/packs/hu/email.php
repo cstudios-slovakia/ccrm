@@ -209,7 +209,7 @@ Az ajánlat jónak tűnik. A 4 cm-es élet meg lehet csinálni a mosogató kör�
             'subject' => 'RE: Mosogató kivágás – hogyan tovább?',
             'body' => 'Tisztelt {contact:L9}!
 
-A vastag él a kivágás körül is megoldható, erre éppen ez az ideális megoldás. A felmérést {d:2} ({wd:2}) délutánra javaslom. Megfelel?
+A vastag él a kivágás körül is megoldható, erre éppen ez az ideális megoldás. A felmérést {d:2} délutánjára javaslom. Megfelel?
 
 Üdvözlettel
 {user:sales}',
@@ -254,7 +254,7 @@ Mint minden ősszel, most is 15 % kedvezménnyel kínáljuk a raktári maradékl
 
 Elnézést kérünk a késésért. A wellnessfal burkolatához szükséges lapokat a beszállító tíz nappal később engedte ki a gyártásból. Az új határidő a lapok műhelybe érkezésére: {d:4}. A recepció és az előcsarnok szerelését ekkor kezdjük: {d:9}.
 
-Szívesen találkozunk, hogy átnézzük a hézagminták színét és a részletfizetési ütemezést. Jelezze, ha Önnek megfelel ez a nap: {wd:4}.
+Szívesen találkozunk, hogy átnézzük a hézagminták színét és a részletfizetési ütemezést. Jelezze, ha Önnek megfelel egy találkozó ezen a héten.
 
 Üdvözlettel
 {user:pm}

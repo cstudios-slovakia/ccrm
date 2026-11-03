@@ -209,7 +209,7 @@ the quote looks good. Can the 4 cm edge also go around the sink, or only on the 
             'subject' => 'RE: Sink cutout – how do we proceed?',
             'body' => 'Hello {contact:L9},
 
-the thick edge can go around the cutout too, it is actually the ideal way to do it. I suggest measuring on {wd:2}, {d:2}, in the afternoon. Does that work?
+the thick edge can go around the cutout too, it is actually the ideal way to do it. I suggest measuring on {d:2}, in the afternoon. Does that work?
 
 Best regards
 {user:sales}',
@@ -254,7 +254,7 @@ like every autumn we are offering remnant slabs from stock at 15 % off. The list
 
 we apologise for the delay. The supplier released the slabs for the spa wall cladding from production ten days late. The new delivery date to our workshop is {d:4}, and installation at the reception and the lobby starts on {d:9}.
 
-We would be glad to meet and go through the joint colour samples and the payment schedule. Let us know if {wd:4} works for you.
+We would be glad to meet and go through the joint colour samples and the payment schedule. Let us know if a meeting this week works for you.
 
 Kind regards
 {user:pm}

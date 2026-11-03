@@ -33,7 +33,7 @@ return [
                 ],
                 [
                     'pm',
-                    'The slabs for the spa wall left the plant ten days late. They reach our workshop on {d:2}, cutting takes four days and we can start installing at the hotel on {d:9}. I wrote to the manager and she accepted, but the opening date is fixed.',
+                    'The slabs for the spa wall left the plant ten days late. They reach our workshop on {d:4}, cutting takes four days and we can start installing at the hotel on {d:9}. I wrote to the manager and she accepted, but the opening date is fixed.',
                 ],
                 ['owner', 'So there is no slack left. Can we cut the lobby floor in parallel so the crew does not stand idle?'],
                 [
@@ -78,7 +78,7 @@ return [
 **Duration:** 45 min
 
 #### 1. {project:P3}
-- The spa wall slabs are ten days late; they reach the workshop on {d:2}, installation at the hotel from {d:9}.
+- The spa wall slabs are ten days late; they reach the workshop on {d:4}, installation at the hotel from {d:9}.
 - Cut the lobby floor in parallel (Lumina porcelain is in stock), second operator on the waterjet for three days.
 
 #### 2. Deposit of {client:C6}
@@ -97,7 +97,7 @@ return [
 - {client:L10}: the framework offer is finished today.
 - Open day {d:10}: flyer budget approved.',
             'summary' => [
-                'summary' => 'The team went through the ten-day slab delay on {project:P3}: the slabs reach the workshop on {d:2}, the lobby floor is cut in parallel and installation at the hotel starts on {d:9}. The hotel deposit is overdue and the reminder has gone out. The supplier raises prices by four percent; the partner price list stays. The offers for {client:L9} and {client:L10} are close to done and the open day is on {d:10}.',
+                'summary' => 'The team went through the ten-day slab delay on {project:P3}: the slabs reach the workshop on {d:4}, the lobby floor is cut in parallel and installation at the hotel starts on {d:9}. The hotel deposit is overdue and the reminder has gone out. The supplier raises prices by four percent; the partner price list stays. The offers for {client:L9} and {client:L10} are close to done and the open day is on {d:10}.',
                 'sentiment' => 'neutral',
                 'topics' => ['Supplier delay', 'Receivables', 'Slab prices', 'Offers', 'Open day'],
                 'actionItems' => [

@@ -33,7 +33,7 @@ return [
                 ],
                 [
                     'pm',
-                    'A wellnessfal lapjai tíz nappal később hagyták el a gyárat. a műhelybe {d:2} napján érkeznek meg, a vágás négy nap, a szerelést a szállodában {d:9} napján kezdhetjük. Megírtam az igazgatónőnek, elfogadta az új időpontot, de a megnyitás fix.',
+                    'A wellnessfal lapjai tíz nappal később hagyták el a gyárat. a műhelybe {d:4} napján érkeznek meg, a vágás négy nap, a szerelést a szállodában {d:9} napján kezdhetjük. Megírtam az igazgatónőnek, elfogadta az új időpontot, de a megnyitás fix.',
                 ],
                 ['owner', 'Vagyis tartalék nincs. Lehet párhuzamosan vágni az előcsarnok padlóját, hogy a brigád ne álljon?'],
                 [
@@ -81,7 +81,7 @@ return [
 **Időtartam:** 45 perc
 
 #### 1. {project:P3}
-- A wellnessfal lapjai tíz napot késnek; a műhelybe {d:2} napján érkeznek, a szerelés a szállodában {d:9} napjától kezdődik.
+- A wellnessfal lapjai tíz napot késnek; a műhelybe {d:4} napján érkeznek, a szerelés a szállodában {d:9} napjától kezdődik.
 - Az előcsarnok padlóját párhuzamosan vágjuk (a Lumina porcelán raktáron van), a második operátor három napig a vízsugárnál.
 
 #### 2. {client:C6} előlege
@@ -100,7 +100,7 @@ return [
 - {client:L10}: a keretajánlat ma készül el.
 - Nyílt nap {d:10}: a szórólap költségvetése jóváhagyva.',
             'summary' => [
-                'summary' => 'A csapat átbeszélte a lapok tíznapos késését ({project:P3}): a lapok {d:2} napján érkeznek a műhelybe, az előcsarnok padlóját párhuzamosan vágják, a szerelés a szállodában {d:9} napján kezdődik. A szálloda előlege lejárt, az emlékeztető elment. A beszállító négy százalékkal emel; a partnerek árlistája nem változik. Az ajánlatok ({client:L9}, {client:L10}) a végéhez közelednek, a nyílt nap időpontja: {d:10}.',
+                'summary' => 'A csapat átbeszélte a lapok tíznapos késését ({project:P3}): a lapok {d:4} napján érkeznek a műhelybe, az előcsarnok padlóját párhuzamosan vágják, a szerelés a szállodában {d:9} napján kezdődik. A szálloda előlege lejárt, az emlékeztető elment. A beszállító négy százalékkal emel; a partnerek árlistája nem változik. Az ajánlatok ({client:L9}, {client:L10}) a végéhez közelednek, a nyílt nap időpontja: {d:10}.',
                 'sentiment' => 'neutral',
                 'topics' => ['Beszállítói késés', 'Követelések', 'Lapárlista', 'Ajánlatok', 'Nyílt nap'],
                 'actionItems' => [

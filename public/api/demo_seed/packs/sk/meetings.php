@@ -33,7 +33,7 @@ return [
                 ],
                 [
                     'pm',
-                    'Dosky na wellness stenu vyšli z fabriky o desať dní neskôr. Do dielne prídu {d:2}, rezanie trvá štyri dni a montáž v hoteli môžeme začať {d:9}. Riaditeľke som napísala, termín prijala, ale otvorenie je pevné.',
+                    'Dosky na wellness stenu vyšli z fabriky o desať dní neskôr. Do dielne prídu {d:4}, rezanie trvá štyri dni a montáž v hoteli môžeme začať {d:9}. Riaditeľke som napísala, termín prijala, ale otvorenie je pevné.',
                 ],
                 ['owner', 'Takže rezerva nie je žiadna. Dá sa podlaha lobby rezať paralelne, aby partia nestála?'],
                 ['pm', 'Áno, porcelán Lumina na lobby už máme na sklade. Na vodný lúč dám na tri dni druhého operátora.'],
@@ -72,7 +72,7 @@ return [
 **Trvanie:** 45 min
 
 #### 1. {project:P3}
-- Dosky na wellness stenu meškajú o desať dní; do dielne prídu {d:2}, montáž v hoteli od {d:9}.
+- Dosky na wellness stenu meškajú o desať dní; do dielne prídu {d:4}, montáž v hoteli od {d:9}.
 - Podlahu lobby rezať paralelne (porcelán Lumina je na sklade), druhý operátor na vodnom lúči tri dni.
 
 #### 2. Záloha: {client:C6}
@@ -91,7 +91,7 @@ return [
 - {client:L10}: rámcová ponuka sa dokončí dnes.
 - Deň otvorených dverí {d:10}: rozpočet na leták schválený.',
             'summary' => [
-                'summary' => 'Tím prebral desaťdňové meškanie dosiek pre {project:P3}: dosky prídu do dielne {d:2}, podlaha lobby sa reže paralelne a montáž v hoteli sa začne {d:9}. Záloha hotela je po splatnosti a pripomienka už odišla. Dodávateľ zdražuje o štyri percenty; cenník pre partnerov sa nemení. Ponuky ({client:L9}, {client:L10}) idú do finále a na {d:10} je naplánovaný deň otvorených dverí.',
+                'summary' => 'Tím prebral desaťdňové meškanie dosiek pre {project:P3}: dosky prídu do dielne {d:4}, podlaha lobby sa reže paralelne a montáž v hoteli sa začne {d:9}. Záloha hotela je po splatnosti a pripomienka už odišla. Dodávateľ zdražuje o štyri percenty; cenník pre partnerov sa nemení. Ponuky ({client:L9}, {client:L10}) idú do finále a na {d:10} je naplánovaný deň otvorených dverí.',
                 'sentiment' => 'neutral',
                 'topics' => ['Meškanie dodávateľa', 'Pohľadávky', 'Cenník dosiek', 'Ponuky', 'Deň otvorených dverí'],
                 'actionItems' => [

@@ -209,7 +209,7 @@ ponuka vyzerá dobre. Dá sa hrana 4 cm urobiť aj okolo drezu, alebo len na pre
             'subject' => 'RE: Výrez pre drez – ako ďalej?',
             'body' => 'Dobrý deň,
 
-hrubá hrana ide aj okolo výrezu, je to na to ideálne riešenie. Zameranie navrhujem {wd:2} {d:2} popoludní. Vyhovuje?
+hrubá hrana ide aj okolo výrezu, je to na to ideálne riešenie. Zameranie navrhujem na {d:2} popoludní. Vyhovuje?
 
 S pozdravom
 {user:sales}',
@@ -254,7 +254,7 @@ ako každú jeseň ponúkame zvyškové dosky zo skladu so zľavou 15 %. Zoznam 
 
 ospravedlňujeme sa za meškanie. Dosky pre obklad wellness steny nám dodávateľ pustil z výroby o desať dní neskôr. Nový termín dodania do dielne je {d:4}, montáž na recepcii a v lobby začne {d:9}.
 
-Vieme sa stretnúť a prejsť vzorky spár a splátkový kalendár. Ozvite sa, ak vám vyhovuje {wd:4}.
+Vieme sa stretnúť a prejsť vzorky spár a splátkový kalendár. Ozvite sa, ak vám vyhovuje stretnutie v tomto týždni.
 
 S pozdravom
 {user:pm}
