@@ -32,8 +32,41 @@ require_once $configFile;
 try {
     $pdo = get_db_connection();
 } catch (\Exception $e) {
+    error_log('[ccrm pipeline] database connection failed: ' . $e->getMessage());
     http_response_code(500);
     echo json_encode(['status' => 'error', 'message' => 'Database connection failed.']);
+    exit;
+}
+
+// Reject a lead-intake request: write ONE line to the PHP error log, then answer
+// with the usual JSON error and stop. Without this a refused submission (wrong
+// key, bad JSON, missing name, rate limit) left no trace on the server, so a lost
+// lead could not be explained afterwards. Search the error log for
+// "[ccrm pipeline] rejected". The line carries the status, a reason code, the
+// caller's address, origin/user-agent and the NAMES of the payload fields —
+// never the API key and never a submitted value (those are personal data).
+function ccrm_pipeline_reject(int $status, string $reason, string $message, array $context = [], array $headers = []): void
+{
+    $clip = static function ($v, int $max = 120): string {
+        return substr(preg_replace('/[^\x20-\x7E]/', '?', (string)$v), 0, $max);
+    };
+    $parts = [
+        'status=' . $status,
+        'reason=' . $reason,
+        'ip=' . $clip($_SERVER['REMOTE_ADDR'] ?? '', 45),
+        'origin=' . $clip($_SERVER['HTTP_ORIGIN'] ?? ($_SERVER['HTTP_REFERER'] ?? '-')),
+        'ua=' . $clip($_SERVER['HTTP_USER_AGENT'] ?? '-'),
+    ];
+    foreach ($context as $k => $v) {
+        $parts[] = $k . '=' . $clip(is_array($v) ? implode(',', $v) : $v, 300);
+    }
+    error_log('[ccrm pipeline] rejected ' . implode(' ', $parts));
+
+    http_response_code($status);
+    foreach ($headers as $h) {
+        header($h);
+    }
+    echo json_encode(['status' => 'error', 'message' => $message]);
     exit;
 }
 
@@ -294,9 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $actualKey = getStoredKey($apiKeyFile);
 
     if ($actualKey === '') {
-        http_response_code(503);
-        echo json_encode(['status' => 'error', 'message' => 'Lead intake is not configured yet. An administrator must generate the API key first.']);
-        exit;
+        ccrm_pipeline_reject(503, 'no_api_key_configured', 'Lead intake is not configured yet. An administrator must generate the API key first.');
     }
 
     // Throttle per client address (VULN-15): wrong keys, and accepted submissions.
@@ -305,44 +336,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pipelineIp = (string)($_SERVER['REMOTE_ADDR'] ?? '');
     $pipelineKeyOk = !empty($providedKey) && hash_equals((string)$actualKey, (string)$providedKey);
     if (!$pipelineKeyOk && ccrm_rate_limit_exceeded($pdo, 'pipeline_badkey', $pipelineIp, 20, 900)) {
-        http_response_code(429);
-        header('Retry-After: 900');
-        echo json_encode(['status' => 'error', 'message' => 'Too many failed attempts. Try again later.']);
-        exit;
+        ccrm_pipeline_reject(429, 'rate_limited_bad_key', 'Too many failed attempts. Try again later.', [], ['Retry-After: 900']);
     }
 
     if (!$pipelineKeyOk) {
-        http_response_code(401);
-        echo json_encode(['status' => 'error', 'message' => 'Unauthorized: Invalid or missing X-API-KEY header']);
-        exit;
+        ccrm_pipeline_reject(401, $providedKey === '' ? 'api_key_missing' : 'api_key_wrong', 'Unauthorized: Invalid or missing X-API-KEY header', [
+            'key_len' => strlen($providedKey),
+        ]);
     }
 
     if (ccrm_rate_limit_exceeded($pdo, 'pipeline_lead', $pipelineIp, 30, 60)) {
-        http_response_code(429);
-        header('Retry-After: 60');
-        echo json_encode(['status' => 'error', 'message' => 'Too many requests. Slow down and retry shortly.']);
-        exit;
+        ccrm_pipeline_reject(429, 'rate_limited', 'Too many requests. Slow down and retry shortly.', [], ['Retry-After: 60']);
     }
 
     // Read payload (a lead form is a few KB; the cap stops oversized blobs being
     // stored in the lead's metadata)
     $input = file_get_contents('php://input', false, null, 0, 65537);
+    $ctype = (string)($_SERVER['CONTENT_TYPE'] ?? '-');
     if (!$input) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Empty request body']);
-        exit;
+        ccrm_pipeline_reject(400, 'empty_body', 'Empty request body', ['content_type' => $ctype]);
     }
     if (strlen($input) > 65536) {
-        http_response_code(413);
-        echo json_encode(['status' => 'error', 'message' => 'Request body too large (64 KB maximum).']);
-        exit;
+        ccrm_pipeline_reject(413, 'body_too_large', 'Request body too large (64 KB maximum).', ['content_type' => $ctype]);
     }
 
     $payload = json_decode($input, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Malformed JSON payload']);
-        exit;
+        ccrm_pipeline_reject(400, 'malformed_json', 'Malformed JSON payload', [
+            'json_error' => json_last_error_msg(),
+            'content_type' => $ctype,
+            'body_len' => strlen($input),
+        ]);
     }
 
     // Required fields: company_name or contact_name
@@ -359,9 +383,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($contactName) && empty($companyName)) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Missing required field: contact_name or company_name is required']);
-        exit;
+        ccrm_pipeline_reject(400, 'missing_name', 'Missing required field: contact_name or company_name is required', [
+            'payload_fields' => is_array($payload) ? array_keys($payload) : ['(not an object)'],
+        ]);
     }
 
     // Idempotency: if the caller supplies a key (Idempotency-Key header or
