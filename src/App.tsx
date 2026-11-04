@@ -4917,7 +4917,7 @@ ${log.payload || ''}
         )}
 
         {/* Global Executive Copilot Sidebar (contracts workspace side-by-side on desktop) */}
-        {currentUser && !isEmbeddedTasks && isCopilotOpen && (
+        {currentUser && !isEmbeddedTasks && access.can("rag_ai") && isCopilotOpen && (
           <CopilotSidebar
             isOpen={isCopilotOpen}
             onClose={() => setIsCopilotOpen(false)}
@@ -4929,7 +4929,7 @@ ${log.payload || ''}
       </div>
 
       {/* Global Floating Copilot Orb (Draggable to any of the 4 corners) */}
-      {currentUser && !isEmbeddedTasks && (
+      {currentUser && !isEmbeddedTasks && access.can("rag_ai") && (
         <FloatingCopilotOrb
           isOpen={isCopilotOpen}
           onOpen={() => setIsCopilotOpen(true)}
