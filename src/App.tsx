@@ -47,6 +47,16 @@ import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardW
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
 import { getTranslation, formatTranslation } from "./utils/translations";
+import {
+  DEFAULT_LANGUAGE,
+  isLang,
+  personalLanguage,
+  readCachedSystemLanguage,
+  readRememberedLanguage,
+  resolveLanguage,
+  writeCachedSystemLanguage,
+  writeRememberedLanguage,
+} from "./utils/languagePrefs";
 import { orderLeadStates } from "./utils/leadStates";
 import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
 import { employeeRightsFrom } from "./utils/employeeRights";
@@ -662,13 +672,17 @@ function App() {
   useEffect(() => {
     updatePwaManifest(systemName);
   }, [systemName]);
-  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
-    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
-  });
+  // The company language. Starts from the last value the server reported (so a
+  // reload does not flash the default) and is replaced by the server's answer,
+  // which reaches even the login screen (see sync.php's 401 body).
+  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(
+    () => readCachedSystemLanguage() ?? DEFAULT_LANGUAGE
+  );
+  // The language on screen. Only the first paint reads the mirror; the effect
+  // below owns it from then on (see utils/languagePrefs.ts for the rules).
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
-    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
+    return isLang(stored) ? stored : readCachedSystemLanguage() ?? DEFAULT_LANGUAGE;
   });
   const currentScreenContext = useCurrentScreenContext(activeTab, userLanguage);
   // Appearance (light/dark/system/auto) and the light palette are independent:
@@ -1075,24 +1089,27 @@ ${log.payload || ''}
   // Per-user language lives in metadata_json.language — the same durable, server-synced
   // place we keep their default landing page and nav layout — NOT sessionStorage, which
   // is per-tab, wiped on browser close, and doesn't follow the user across devices.
-  // Returns null when the user hasn't chosen one, so we fall back to the system language.
-  const getUserLanguage = (user: UserProfile | null): "en" | "sk" | "hu" | null => {
-    if (!user?.metadata_json) return null;
-    try {
-      const meta = typeof user.metadata_json === "string"
-        ? JSON.parse(user.metadata_json || "{}")
-        : (user.metadata_json || {});
-      const lang = meta?.language;
-      return (lang === "en" || lang === "sk" || lang === "hu") ? lang : null;
-    } catch (e) {
-      return null;
-    }
-  };
+  // personalLanguage() returns null when the user hasn't chosen one, so we fall
+  // back to the system language.
+  //
+  // Logged in:  personal language -> company language.
+  // Logged out: the language this browser's last user chose personally -> company
+  //             language. A user without a personal choice clears that memory, so
+  //             an uncustomised browser's login screen follows the company language.
+  useEffect(() => {
+    const personal = personalLanguage(currentUser);
+    if (currentUser) writeRememberedLanguage(personal);
+    setUserLanguage(resolveLanguage({
+      loggedIn: !!currentUser,
+      personal,
+      remembered: readRememberedLanguage(),
+      system: systemLanguage,
+    }));
+  }, [currentUser, systemLanguage]);
 
   useEffect(() => {
-    const stored = typeof window !== 'undefined' ? (localStorage.getItem("crm_language") as "en" | "sk" | "hu") : null;
-    setUserLanguage(getUserLanguage(currentUser) || (stored === "en" || stored === "sk" || stored === "hu" ? stored : systemLanguage));
-  }, [currentUser, systemLanguage]);
+    writeCachedSystemLanguage(systemLanguage);
+  }, [systemLanguage]);
 
   // Mirror the active language into localStorage. Components that render OUTSIDE
   // the App tree — the ErrorBoundary that wraps it — have no other way to know
@@ -3140,6 +3157,14 @@ ${log.payload || ''}
         // hanging on the loader forever.
         setIsInstalled(true);
         setCurrentUser(null);
+        // The 401 body carries the company language, so a browser nobody has
+        // customised shows the login screen in it (sync.php, publicSettings).
+        try {
+          const lang = (await res.json())?.publicSettings?.systemLanguage;
+          if (isLang(lang)) setSystemLanguage(lang);
+        } catch {
+          // not our JSON (proxy error page, etc.): keep the language we have
+        }
         return;
       }
       if (!res.ok) throw new Error(`sync.php answered ${res.status}`);

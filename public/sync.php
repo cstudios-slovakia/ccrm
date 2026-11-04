@@ -962,7 +962,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             exit;
         } else {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Authentication required.']);
+            // The company language is not sensitive and the login screen needs
+            // it: a browser that has never been used has nothing else to go on.
+            // Keep this list to values that are safe to show anyone.
+            $publicLang = $settings['SYSTEM_LANGUAGE'] ?? 'sk';
+            echo json_encode([
+                'success' => false,
+                'message' => 'Authentication required.',
+                'publicSettings' => [
+                    'systemLanguage' => in_array($publicLang, ['sk', 'hu', 'en'], true) ? $publicLang : 'sk',
+                ],
+            ]);
             exit;
         }
     }
