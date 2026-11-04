@@ -135,9 +135,41 @@ if ($vectorDb === 'mariadb') {
         ]);
         
     } catch (\Exception $e) {
+        // Say WHY it failed, in words an admin can act on. Only a fixed phrase per
+        // failure class is returned (never the driver's raw text, which can echo the
+        // host, user or server internals); the raw error goes to the server log.
+        $errno = ($e instanceof \PDOException && isset($e->errorInfo[1])) ? (int)$e->errorInfo[1] : (int)$e->getCode();
+        $raw = strtolower($e->getMessage());
+        $where = $host . ':' . $port;
+        if (strpos($raw, 'could not find driver') !== false) {
+            $reason = "The PHP pdo_mysql extension is not installed on the CRM server.";
+        } elseif ($errno === 1045) {
+            $reason = "Access denied: wrong username or password, or this user may not connect from the CRM server's address.";
+        } elseif ($errno === 1044) {
+            $reason = "This user has no permission to open the database '" . htmlspecialchars($name) . "'.";
+        } elseif ($errno === 1049) {
+            $reason = "Unknown database '" . htmlspecialchars($name) . "': the server was reached, but that database does not exist.";
+        } elseif (strpos($raw, 'refused') !== false) {
+            $reason = "Connection refused by " . htmlspecialchars($where) . ": the host is reachable, but nothing listens on that port (check the port mapping).";
+        } elseif (strpos($raw, 'timed out') !== false || strpos($raw, 'timeout') !== false || $errno === 2006) {
+            $reason = "Connection to " . htmlspecialchars($where) . " timed out: the port is probably blocked by a firewall or not published.";
+        } elseif (strpos($raw, 'no route') !== false || strpos($raw, 'unreachable') !== false) {
+            $reason = "No network route from the CRM server to " . htmlspecialchars($where) . ".";
+        } elseif (strpos($raw, 'getaddrinfo') !== false || strpos($raw, 'name or service not known') !== false) {
+            $reason = "The host name could not be resolved by the CRM server.";
+        } elseif ($errno === 2002 || $errno === 2003) {
+            $reason = "Cannot reach " . htmlspecialchars($where) . " from the CRM server.";
+        } elseif ($errno === 1129 || $errno === 1130) {
+            $reason = "The server rejects connections from the CRM server's address (host not allowed).";
+        } elseif ($errno === 2026) {
+            $reason = "The TLS/SSL handshake with the database failed.";
+        } else {
+            $reason = "Unexpected connection error.";
+        }
+        error_log('validate_vector mariadb: ' . $where . ' errno=' . $errno . ' ' . $e->getMessage());
         echo json_encode([
             'success' => false,
-            'message' => "MariaDB connection error."
+            'message' => "MariaDB connection error" . ($errno ? " (code " . $errno . ")" : "") . ": " . $reason
         ]);
     }
     exit;
