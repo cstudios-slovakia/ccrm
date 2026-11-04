@@ -240,6 +240,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_filed_mail_attachme
 // The header is now ignored entirely.
 $sessionUser = ccrm_current_user();
 $userEmail = $sessionUser['email'] ?? '';
+$userId = (string)($sessionUser['id'] ?? '');
+$isAdminUser = strtolower((string)($sessionUser['role'] ?? '')) === 'admin';
 
 if (empty($userEmail)) {
     http_response_code(401);
@@ -251,15 +253,80 @@ if (empty($userEmail)) {
 $stmt = $pdo->prepare("SELECT `metadata_json` FROM `users` WHERE `email` = ?");
 $stmt->execute([$userEmail]);
 $metadataStr = $stmt->fetchColumn();
+$metadata = $metadataStr ? json_decode($metadataStr, true) : [];
+$personalEmailSettings = ccrm_decrypt_email_settings(is_array($metadata) ? ($metadata['emailSettings'] ?? null) : null);
+$hasPersonalMailbox = !empty($personalEmailSettings) && (
+    !empty($personalEmailSettings['imapHost']) ||
+    (($personalEmailSettings['provider'] ?? '') === 'exchange' && !empty($personalEmailSettings['exchangeUrl']))
+);
 
-if (!$metadataStr) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'error' => 'User not found or configured.']);
+// Load company email connectors (`gmail`, `smtp`, `exchange`) assigned to this user via `userIds[]`
+$assignedCompanyMailboxes = [];
+try {
+    $cStmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `name`");
+    foreach ($cStmt ? $cStmt->fetchAll(PDO::FETCH_ASSOC) : [] as $cRow) {
+        $rawC = json_decode((string)($cRow['settings_json'] ?? '{}'), true);
+        $cSettings = ccrm_decrypt_email_settings(is_array($rawC) ? $rawC : []);
+        $cType = strtolower(trim((string)($cSettings['connectorType'] ?? (($cSettings['provider'] ?? '') === 'exchange' ? 'exchange' : 'smtp'))));
+        if (in_array($cType, ['whatsapp', 'claude', 'antigravity', 'chatgpt'], true)) {
+            continue;
+        }
+        $uIds = is_array($cSettings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $cSettings['userIds']))) : [];
+        if (!empty($cRow['owner_user_id']) && !in_array((string)$cRow['owner_user_id'], $uIds, true)) {
+            array_unshift($uIds, (string)$cRow['owner_user_id']);
+        }
+        $allowed = in_array($userId, $uIds, true) || ($isAdminUser && empty($uIds));
+        if ($allowed) {
+            $cRow['decrypted_settings'] = $cSettings;
+            $cRow['connector_type'] = $cType;
+            $assignedCompanyMailboxes[$cRow['id']] = $cRow;
+        }
+    }
+} catch (\Throwable $e) {
+    // company_mailboxes table may not exist yet before first migration
+}
+
+if ($action === 'accounts') {
+    $accounts = [];
+    if ($hasPersonalMailbox) {
+        $accounts[] = [
+            'id' => 'personal',
+            'name' => (string)($sessionUser['name'] ?? $userEmail),
+            'address' => (string)($personalEmailSettings['imapUsername'] ?? $userEmail),
+            'connectorType' => ($personalEmailSettings['provider'] ?? '') === 'exchange' ? 'exchange' : 'smtp',
+            'isPersonal' => true,
+        ];
+    }
+    foreach ($assignedCompanyMailboxes as $cid => $cRow) {
+        $accounts[] = [
+            'id' => $cid,
+            'name' => (string)$cRow['name'],
+            'address' => (string)$cRow['address'],
+            'connectorType' => (string)$cRow['connector_type'],
+            'isPersonal' => false,
+        ];
+    }
+    echo json_encode(['success' => true, 'accounts' => $accounts]);
     exit;
 }
 
-$metadata = json_decode($metadataStr, true);
-$emailSettings = ccrm_decrypt_email_settings($metadata['emailSettings'] ?? null);
+$requestedMailboxId = trim((string)($_GET['mailbox_id'] ?? ''));
+$emailSettings = null;
+if ($requestedMailboxId !== '' && $requestedMailboxId !== 'personal') {
+    if (!isset($assignedCompanyMailboxes[$requestedMailboxId])) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'You do not have access to this mailbox connector.']);
+        exit;
+    }
+    $emailSettings = $assignedCompanyMailboxes[$requestedMailboxId]['decrypted_settings'];
+    $userEmail = (string)$assignedCompanyMailboxes[$requestedMailboxId]['address'];
+} elseif ($hasPersonalMailbox) {
+    $emailSettings = $personalEmailSettings;
+} elseif (!empty($assignedCompanyMailboxes)) {
+    $firstAssigned = reset($assignedCompanyMailboxes);
+    $emailSettings = $firstAssigned['decrypted_settings'];
+    $userEmail = (string)$firstAssigned['address'];
+}
 
 if (!$emailSettings) {
     http_response_code(400);

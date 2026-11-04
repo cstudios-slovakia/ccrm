@@ -66,6 +66,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import { ModuleSetupRequired } from "./components/ui/ModuleSetupRequired";
 import { isPersonalMailboxConfigured, isVectorDbConfigured } from "./utils/moduleRequirements";
+import { listMyConnectors } from "./utils/companyMailboxes";
 import { hasOpenAiKey, openAiSettings } from "./utils/aiConfig";
 import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
@@ -3338,11 +3339,35 @@ ${log.payload || ''}
     return () => clearInterval(interval);
   }, [currentUser]);
 
+  // Track whether the current user is authorized to see at least one shared communication connector
+  const [hasAuthorizedConnector, setHasAuthorizedConnector] = useState(false);
+  useEffect(() => {
+    if (!currentUser) {
+      setHasAuthorizedConnector(false);
+      return;
+    }
+    const refreshConnectors = () => {
+      listMyConnectors()
+        .then((res) => {
+          setHasAuthorizedConnector(Array.isArray(res.mailboxes) && res.mailboxes.length > 0);
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    };
+    refreshConnectors();
+    window.addEventListener("ccrm:connectors-updated", refreshConnectors);
+    return () => window.removeEventListener("ccrm:connectors-updated", refreshConnectors);
+  }, [currentUser]);
+
+  const canOpenRouteWithComm = (route: string) =>
+    (route.split("/")[0].toLowerCase() === "email" && hasAuthorizedConnector) || access.canOpenRoute(route);
+
   // Modules that stay in the navigation before their setup is done and open to
   // ModuleSetupRequired instead of the real view until it is.
   const isModuleSetupPending = (route: string) =>
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
-    (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
+    (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]) && !hasAuthorizedConnector);
 
   // What the RAG AI view and the Executive Copilot (same chat_rag.php backend) show
   // while the vector database is not connected. One source, so they never drift.
@@ -3448,7 +3473,7 @@ ${log.payload || ''}
     // here. Unknown routes fall through to the tasks board below, and
     // permissionKeyForRoute maps them to "tasks" so that case is covered too.
     const routeKey = permissionKeyForRoute(activeRoute);
-    if (routeKey !== null && !access.canOpenRoute(activeRoute)) {
+    if (routeKey !== null && !canOpenRouteWithComm(activeRoute)) {
       return (
         <AccessDeniedView
           systemLanguage={userLanguage}
@@ -4757,12 +4782,12 @@ ${log.payload || ''}
             <Sidebar 
               activeTab={activeTab} 
               setActiveTab={(tab) => { 
-                if (!access.canOpenRoute(tab)) return;
+                if (!canOpenRouteWithComm(tab)) return;
                 window.location.hash = tab; 
               }} 
               systemName={systemName}
               showSettings={access.hasSettingsAccess}
-              canOpenRoute={access.canOpenRoute}
+              canOpenRoute={canOpenRouteWithComm}
               onLogout={() => {
                 commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
                   .finally(() => {

@@ -5,6 +5,7 @@ import {
   backlogSummary,
   draftFromMailbox,
   emptyMailboxDraft,
+  inferConnectorType,
   mailboxPayload,
   type CompanyMailbox,
 } from "./companyMailboxes.ts";
@@ -64,4 +65,30 @@ test("filing progress reads from the folders: nothing yet, in progress, caught u
   assert.deepEqual(backlogSummary([]), { filed: 0, started: false, caughtUp: false });
   assert.deepEqual(backlogSummary([folder({}), folder({ folder: "Sent", backfillDone: true, filedCount: 3 })]), { filed: 5, started: true, caughtUp: false });
   assert.deepEqual(backlogSummary([folder({ backfillDone: true }), folder({ folder: "Sent", backfillDone: true })]), { filed: 4, started: true, caughtUp: true });
+});
+
+test("gmail preset fills imap.gmail.com and smtp.gmail.com automatically and syncs multi-user userIds", () => {
+  const draft = emptyMailboxDraft("gmail");
+  draft.name = "Gmail Sales";
+  draft.address = "Sales@Gmail.com";
+  draft.userIds = ["u-erik", "u-peti", "u-erik"];
+  draft.settings.imapPassword = "app-password-16";
+  const payload = mailboxPayload(draft);
+  assert.equal(payload.connectorType, "gmail");
+  assert.equal(payload.settings.imapHost, "imap.gmail.com");
+  assert.equal(payload.settings.smtpHost, "smtp.gmail.com");
+  assert.equal(payload.settings.imapUsername, "sales@gmail.com");
+  assert.equal(payload.settings.smtpUsername, "sales@gmail.com");
+  assert.deepEqual(payload.userIds, ["u-erik", "u-peti"]);
+  assert.equal(payload.ownerUserId, "u-erik");
+});
+
+test("inferConnectorType identifies all 7 external connector types accurately", () => {
+  assert.equal(inferConnectorType({ imapHost: "imap.gmail.com" }), "gmail");
+  assert.equal(inferConnectorType({ provider: "exchange" }), "exchange");
+  assert.equal(inferConnectorType({ connectorType: "whatsapp" }), "whatsapp");
+  assert.equal(inferConnectorType({}, "claude:team-max"), "claude");
+  assert.equal(inferConnectorType({}, "antigravity:workspace"), "antigravity");
+  assert.equal(inferConnectorType({}, "chatgpt:plus"), "chatgpt");
+  assert.equal(inferConnectorType({ imapHost: "imap.websupport.sk" }), "smtp");
 });

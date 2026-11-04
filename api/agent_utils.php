@@ -1484,6 +1484,16 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
     $userPrompt = "Run an autonomous executive check and generate your domain assessment, alert triggers, or recommendations now based on current CRM data.";
 
     if (empty($openAiKey)) {
+        require_once __DIR__ . '/marveen/marveen_lib.php';
+        $callerId = (string)($scope['sessionUserId'] ?? 'default_user');
+        $marveenConnector = ccrm_marveen_pick_connector_for_user($pdo, $callerId);
+        if ($marveenConnector) {
+            $mRes = ccrm_marveen_run_agent($pdo, $marveenConnector, $callerId, $userPrompt, $systemPrompt);
+            if (!empty($mRes['ok']) && !empty($mRes['text'])) {
+                $reply = restore_text((string)$mRes['text'], $to_real);
+                return "[Autonomous Run " . date('Y-m-d H:i') . " · " . strtoupper((string)($mRes['provider'] ?? 'Marveen')) . "]\n\n" . $reply;
+            }
+        }
         return "[SYSTEM] OpenAI API Key is not configured. Autonomous run skipped.";
     }
 

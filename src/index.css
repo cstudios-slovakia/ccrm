@@ -1887,11 +1887,11 @@ dialog[open]::backdrop {
   transform: translateY(0) scale(0.985);
 }
 @keyframes settings-panel-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .settings-panel-in {
-  animation: settings-panel-in 0.2s ease-out both;
+  animation: settings-panel-in 0.2s ease-out;
 }
 @keyframes settings-results-in {
   from { opacity: 0; transform: translateY(-4px); }

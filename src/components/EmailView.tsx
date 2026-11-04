@@ -1,13 +1,13 @@
 import { PageHeader } from "./layout";
 import { SectionIcon } from "./icons/SectionIcon";
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import {
   Send, Trash2, Search, Mail, Plus, X, Loader2,
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
   CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock, MailOpen,
   Type, MessagesSquare, Inbox, Paperclip, UserPlus, ExternalLink, History, Download, FolderPlus,
-  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft
+  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft, Bot, MessageCircle, QrCode, Settings, Sparkles, Terminal
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import type { ModuleAccess } from "../utils/permissions";
@@ -24,6 +24,16 @@ import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
+import { PROVIDERS, ProviderLogo } from "./CompanyMailboxSettings";
+import {
+  inferConnectorType,
+  isAgentConnector,
+  isEmailConnector,
+  listMyConnectors,
+  runSubscriptionAgent,
+  type CompanyMailbox,
+  type ConnectorType,
+} from "../utils/companyMailboxes";
 
 interface EmailViewProps {
   currentUser: any;
@@ -187,7 +197,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   const handleDownloadAttachment = async (uid: string, folder: string, att: any) => {
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}${mbParam}`, {
         headers: {
           "X-User-Email": currentUser.email
         }
@@ -216,7 +226,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t("Adding attachment to documents database...", "Pridáva sa príloha do databázy dokumentov...", "Melléklet hozzáadása a dokumentum-adatbázishoz..."));
       }
-      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}`, {
+      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}${mbParam}`, {
         method: "POST",
         headers: {
           "X-User-Email": currentUser.email
@@ -408,9 +418,129 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return null;
   }, [currentUser]);
 
+  const [availableAccounts, setAvailableAccounts] = useState<
+    Array<{
+      id: string;
+      name: string;
+      address: string;
+      connectorType: ConnectorType;
+      isPersonal?: boolean;
+      settings?: CompanyMailbox["settings"];
+    }>
+  >([]);
+  const [selectedMailboxId, setSelectedMailboxId] = useState<string>("");
+
+  // WhatsApp & Subscription AI Agent workspace state
+  const [waSelectedLeadId, setWaSelectedLeadId] = useState<string>("");
+  const [waSearchQuery, setWaSearchQuery] = useState<string>("");
+  const [waDraftMessage, setWaDraftMessage] = useState<string>("");
+  const [agentChats, setAgentChats] = useState<
+    Record<string, Array<{ id: string; role: "user" | "assistant"; text: string; timestamp: string }>>
+  >({});
+  const [agentPrompt, setAgentPrompt] = useState<string>("");
+  const [isAgentRunning, setIsAgentRunning] = useState<boolean>(false);
+
+  const loadAuthorizedAccounts = useCallback(async () => {
+    const mergedMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        address: string;
+        connectorType: ConnectorType;
+        isPersonal?: boolean;
+        settings?: CompanyMailbox["settings"];
+      }
+    >();
+
+    // 1. Personal mailbox from user metadata if configured
+    if (userEmailSettings?.imapHost || userEmailSettings?.smtpHost) {
+      mergedMap.set("personal", {
+        id: "personal",
+        name: currentUser?.name ? `${currentUser.name} (Personal)` : "Personal Mailbox",
+        address: currentUser?.email || "",
+        connectorType: inferConnectorType(userEmailSettings, currentUser?.email || "", "smtp"),
+        isPersonal: true,
+      });
+    }
+
+    // 2. Shared connectors authorized for this user (email, whatsapp, claude, antigravity, chatgpt)
+    try {
+      const my = await listMyConnectors();
+      for (const box of my.mailboxes ?? []) {
+        const cType = inferConnectorType(box.settings, box.address, box.connectorType);
+        mergedMap.set(box.id, {
+          id: box.id,
+          name: box.name || box.address,
+          address: box.address,
+          connectorType: cType,
+          isPersonal: box.id === "personal",
+          settings: box.settings,
+        });
+      }
+    } catch {
+      /* ignore if offline or mocked */
+    }
+
+    // 3. Fallback / merge from mail_broker accounts
+    if (currentUser?.email) {
+      try {
+        const res = await fetch("/api/mail_broker.php?action=accounts", {
+          headers: { "X-User-Email": currentUser.email },
+        });
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.accounts)) {
+          for (const acc of data.accounts) {
+            if (!mergedMap.has(acc.id)) {
+              mergedMap.set(acc.id, {
+                id: acc.id,
+                name: acc.name || acc.address,
+                address: acc.address,
+                connectorType: inferConnectorType(undefined, acc.address, acc.connectorType),
+                isPersonal: Boolean(acc.isPersonal),
+              });
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const list = Array.from(mergedMap.values());
+    setAvailableAccounts(list);
+    setSelectedMailboxId((prev) => {
+      if (prev && list.some((a) => a.id === prev)) return prev;
+      return list[0]?.id || "";
+    });
+  }, [currentUser?.email, currentUser?.name, userEmailSettings]);
+
+  useEffect(() => {
+    void loadAuthorizedAccounts();
+    const onUpdated = () => {
+      void loadAuthorizedAccounts();
+    };
+    window.addEventListener("ccrm:connectors-updated", onUpdated);
+    return () => window.removeEventListener("ccrm:connectors-updated", onUpdated);
+  }, [loadAuthorizedAccounts]);
+
+  const selectedAccount = useMemo(
+    () => availableAccounts.find((a) => a.id === selectedMailboxId) ?? availableAccounts[0] ?? null,
+    [availableAccounts, selectedMailboxId],
+  );
+  const selectedChannelType: ConnectorType = selectedAccount?.connectorType ?? "smtp";
+  const isSelectedEmailChannel = isEmailConnector(selectedChannelType);
+
+  const hasMailAccount =
+    Boolean(userEmailSettings) || availableAccounts.some((a) => isEmailConnector(a.connectorType));
+  const mbParam =
+    selectedMailboxId && selectedMailboxId !== "personal" && isSelectedEmailChannel
+      ? `&mailbox_id=${encodeURIComponent(selectedMailboxId)}`
+      : "";
+
   // Load timeline emails for the slideout lead
   useEffect(() => {
-    if (!slideoutLead || !slideoutLead.email || !userEmailSettings || !userEmailSettings.isValidated) {
+    if (!slideoutLead || !slideoutLead.email || !hasMailAccount) {
       setSlideoutEmails([]);
       return;
     }
@@ -419,7 +549,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       setIsLoadingSlideoutEmails(true);
       try {
         const inboxRes = await fetch(
-          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(slideoutLead.email || "")}`,
+          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(slideoutLead.email || "")}${mbParam}`,
           { headers: { "X-User-Email": currentUser.email } }
         );
         const inboxData = await inboxRes.json();
@@ -427,7 +557,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         let sentEmails: any[] = [];
         try {
           const sentRes = await fetch(
-            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(slideoutLead.email || "")}`,
+            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(slideoutLead.email || "")}${mbParam}`,
             { headers: { "X-User-Email": currentUser.email } }
           );
           const sentData = await sentRes.json();
@@ -469,7 +599,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
 
     fetchLeadMails();
-  }, [slideoutLead, userEmailSettings, currentUser]);
+  }, [slideoutLead, hasMailAccount, mbParam, currentUser]);
 
   const slideoutTimelineEvents = useMemo(() => {
     if (!slideoutLead) return [];
@@ -490,12 +620,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Load Emails headers list
   // silent = background refresh: keep the current list visible instead of swapping it for the spinner
   const loadEmails = async (currPage = 1, currFilter = filter, silent = false) => {
-    if (!userEmailSettings) return;
+    if (!hasMailAccount) return;
     if (!silent) setIsLoadingEmails(true);
     setIsSyncingEmails(true);
     try {
       // Fetch Inbox folder emails
-      const resInbox = await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}`, {
+      const resInbox = await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}${mbParam}`, {
         headers: { "X-User-Email": currentUser.email }
       });
       const dataInbox = await resInbox.json();
@@ -508,7 +638,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       // Fetch Sent folder emails
       let sentMails: any[] = [];
       try {
-        const resSent = await fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}`, {
+        const resSent = await fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}${mbParam}`, {
           headers: { "X-User-Email": currentUser.email }
         });
         const dataSent = await resSent.json();
@@ -547,7 +677,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const setSeenFlag = async (email: any, seen: boolean): Promise<boolean> => {
     const folderToUse = email.isSent ? "Sent" : activeFolder;
     try {
-      const res = await fetch("/api/mail_broker.php?action=set_seen", {
+      const res = await fetch(`/api/mail_broker.php?action=set_seen${mbParam}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-User-Email": currentUser.email },
         body: JSON.stringify({ uid: email.uid, folder: folderToUse, seen })
@@ -585,7 +715,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setIsLoadingDetail(true);
     const folderToUse = email.isSent ? "Sent" : activeFolder;
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
         headers: { "X-User-Email": currentUser.email }
       });
       const data = await res.json();
@@ -608,7 +738,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Initial loads
   useEffect(() => {
-    if (!userEmailSettings) return;
+    if (!hasMailAccount || !isSelectedEmailChannel) return;
 
     loadEmails(1, filter);
 
@@ -617,7 +747,78 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }, 60000); // UI updates every 60 seconds
 
     return () => clearInterval(interval);
-  }, [userEmailSettings, filter]);
+  }, [hasMailAccount, isSelectedEmailChannel, selectedMailboxId, filter]);
+
+  const handleSendAgentMessage = async (promptText?: string) => {
+    const text = (promptText ?? agentPrompt).trim();
+    if (!text || !selectedAccount || isAgentRunning) return;
+    const accId = selectedAccount.id;
+    const userMsg = {
+      id: `u-${Date.now()}`,
+      role: "user" as const,
+      text,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setAgentChats((prev) => ({
+      ...prev,
+      [accId]: [...(prev[accId] ?? []), userMsg],
+    }));
+    if (!promptText) setAgentPrompt("");
+    setIsAgentRunning(true);
+    try {
+      const res = await runSubscriptionAgent({
+        id: accId,
+        prompt: text,
+      });
+      const botMsg = {
+        id: `a-${Date.now()}`,
+        role: "assistant" as const,
+        text: res.text || "Completed via CCRM MCP.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setAgentChats((prev) => ({
+        ...prev,
+        [accId]: [...(prev[accId] ?? []), botMsg],
+      }));
+    } catch (e: unknown) {
+      const errMsg = {
+        id: `e-${Date.now()}`,
+        role: "assistant" as const,
+        text: `⚠️ ${e instanceof Error ? e.message : String(e)}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setAgentChats((prev) => ({
+        ...prev,
+        [accId]: [...(prev[accId] ?? []), errMsg],
+      }));
+    } finally {
+      setIsAgentRunning(false);
+    }
+  };
+
+  const handleSendWhatsAppMessage = (targetLead: Lead) => {
+    const text = waDraftMessage.trim();
+    if (!text || !canEdit) return;
+    const newEvent = {
+      id: `wa-${Date.now()}`,
+      type: "note" as const,
+      timestamp: nowLocalStamp(),
+      title: `WhatsApp (${selectedAccount?.name || "WhatsApp"})`,
+      content: `📤 WhatsApp → ${targetLead.phone || targetLead.name}:\n${text}`,
+      author: currentUser?.name || "",
+    };
+    setLeads((prev: Lead[]) =>
+      prev.map((l) => (l.id === targetLead.id ? { ...l, timeline: [newEvent, ...(l.timeline || [])] } : l)),
+    );
+    setWaDraftMessage("");
+    notify(
+      t(
+        "WhatsApp message sent & logged to contact timeline!",
+        "WhatsApp správa odoslaná a zapísaná na časovú os!",
+        "WhatsApp üzenet elküldve és rögzítve az idővonalon!",
+      ),
+    );
+  };
 
   // Compose a new email
   const openNewComposer = (defaultTo = "", defaultSubject = "", defaultBody = "") => {
@@ -636,7 +837,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!canEdit) return;
     setIsSending(true);
     try {
-      const res = await fetch("/api/mail_broker.php?action=send_email", {
+      const res = await fetch(`/api/mail_broker.php?action=send_email${mbParam}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -700,7 +901,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       },
       failureMessage: t("Failed to remove email", "Nepodarilo sa odstrániť e-mail", "Az e-mail eltávolítása nem sikerült"),
       onCommit: async () => {
-        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(folder)}`, {
+        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(folder)}${mbParam}`, {
           method: "DELETE",
           headers: { "X-User-Email": currentUser.email }
         });
@@ -788,7 +989,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       setIsLoadingDetail(true);
       const folderToUse = email.isSent ? "Sent" : activeFolder;
       try {
-        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}`, {
+        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
           headers: { "X-User-Email": currentUser.email }
         });
         const data = await res.json();
@@ -1437,6 +1638,24 @@ export const EmailView: React.FC<EmailViewProps> = ({
       subtitle={t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
       actions={
         <>
+          {availableAccounts.length > 1 && (
+            <select
+              value={selectedMailboxId || availableAccounts[0]?.id || ""}
+              onChange={(e) => {
+                setSelectedMailboxId(e.target.value);
+                setSelectedEmail(null);
+                setSelectedThreadId(null);
+              }}
+              aria-label={t("Active mailbox", "Aktívna schránka", "Aktív postafiók")}
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-body font-semibold text-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:border-pink-300"
+            >
+              {availableAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} ({acc.address})
+                </option>
+              ))}
+            </select>
+          )}
           {!canEdit && (
             <span
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
@@ -1477,7 +1696,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       }
     />
 
-    <div className={`grid grid-cols-1 ws-lg:grid-cols-12 gap-5 select-none h-[calc(100vh-280px)] min-h-130 items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
+    <div className={`flex flex-col ws-lg:flex-row gap-4 select-none h-[calc(100vh-280px)] min-h-130 items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
       <style>{`
         /* Large-text mode lifts the role tokens for this subtree only (docs/VIEW-SIZE.md). */
         .email-view-large {
@@ -1498,6 +1717,388 @@ export const EmailView: React.FC<EmailViewProps> = ({
         </div>
       )}
 
+      {/* SECOND SIDEBAR: Authorized Communication Accounts */}
+      <aside
+        data-testid="communication-accounts-sidebar"
+        className="w-full ws-lg:w-64 shrink-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-auto ws-lg:h-full max-h-full overflow-hidden text-left"
+      >
+        <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+          <div>
+            <div className="type-overline text-slate-400">
+              {t("Authorized Channels", "Autorizované kanály", "Engedélyezett csatornák")}
+            </div>
+            <div className="text-ui font-bold text-slate-900">
+              {t("Accounts", "Účty", "Fiókok")} ({availableAccounts.length})
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              window.location.hash = "settings/email/mailboxes";
+            }}
+            title={t("Manage External Connectors", "Spravovať externé konektory", "Külső konektorok kezelése")}
+            className="h-8 w-8 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+          >
+            <Settings size={15} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
+          {availableAccounts.length === 0 ? (
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 text-caption text-slate-500 space-y-2">
+              <p>{t("No active channels assigned yet.", "Zatiaľ nie sú priradené žiadne kanály.", "Még nincs hozzárendelt csatorna.")}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = "settings/email/mailboxes";
+                }}
+                className="w-full px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-micro font-bold"
+              >
+                + {t("Connect Channel", "Pripojiť kanál", "Csatorna csatlakoztatása")}
+              </button>
+            </div>
+          ) : (
+            availableAccounts.map((acc) => {
+              const meta = PROVIDERS[acc.connectorType] ?? PROVIDERS.smtp;
+              const isSelected = (selectedAccount?.id ?? "") === acc.id;
+              return (
+                <button
+                  key={acc.id}
+                  type="button"
+                  data-testid={`comm-account-${acc.id}`}
+                  onClick={() => {
+                    setSelectedMailboxId(acc.id);
+                    setSelectedEmail(null);
+                    setSelectedThreadId(null);
+                  }}
+                  className={`w-full p-2.5 rounded-2xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${meta.rowBorder} ${
+                    isSelected
+                      ? `${meta.rowBg} ${meta.accentRing} border-slate-300 shadow-xs`
+                      : "bg-white hover:bg-slate-50/90 border-slate-200/70"
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                    <ProviderLogo type={acc.connectorType} className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className={`px-1.5 py-0.5 rounded text-micro font-bold uppercase ${meta.badgeClass}`}>
+                        {meta.label.split(" ")[0]}
+                      </span>
+                      {acc.isPersonal && (
+                        <span className="text-micro font-semibold text-slate-400">
+                          {t("Personal", "Osobný", "Személyes")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-ui font-bold text-slate-900 truncate mt-0.5">{acc.name}</div>
+                    <div className="text-micro text-slate-500 font-mono truncate">{acc.address}</div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </aside>
+
+      {/* RIGHT WORKSPACE: Dynamic Layout Depending on Selected Communication Channel */}
+      {selectedChannelType === "whatsapp" ? (
+        /* WHATSAPP COMMUNICATION LAYOUT */
+        <div
+          data-testid="communication-whatsapp-layout"
+          className="flex-1 min-w-0 grid grid-cols-1 ws-lg:grid-cols-12 gap-4 h-full max-h-full overflow-hidden"
+        >
+          {/* WhatsApp Contacts Column */}
+          <div className="ws-lg:col-span-4 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
+            <div className="p-4 border-b border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent space-y-3 shrink-0">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+                    <MessageCircle size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-ui font-bold text-slate-900 truncate">{selectedAccount?.name}</div>
+                    <div className="text-micro text-emerald-700 font-mono truncate">
+                      {selectedAccount?.address || "WAAI QR Connected"}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.hash = "settings/email/mailboxes";
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-micro font-bold"
+                >
+                  <QrCode size={12} /> QR
+                </button>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={waSearchQuery}
+                  onChange={(e) => setWaSearchQuery(e.target.value)}
+                  placeholder={t("Search WhatsApp contacts...", "Hľadať WhatsApp kontakty...", "WhatsApp kapcsolatok keresése...")}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-caption text-slate-700 focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              {leads
+                .filter((l) => {
+                  const q = waSearchQuery.toLowerCase();
+                  if (!q) return true;
+                  return (
+                    (l.name || "").toLowerCase().includes(q) ||
+                    (l.phone || "").toLowerCase().includes(q)
+                  );
+                })
+                .map((lead) => {
+                  const active = (waSelectedLeadId || leads[0]?.id) === lead.id;
+                  return (
+                    <button
+                      key={lead.id}
+                      type="button"
+                      onClick={() => setWaSelectedLeadId(String(lead.id))}
+                      className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors cursor-pointer ${
+                        active ? "bg-emerald-50/70" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="h-9 w-9 rounded-xl bg-emerald-500/15 text-emerald-700 text-caption font-bold flex items-center justify-center shrink-0">
+                        {initialsOf(lead.name)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-ui font-bold text-slate-900 truncate">{lead.name}</div>
+                        <div className="text-micro text-slate-500 font-mono truncate">
+                          {lead.phone || t("No phone number", "Bez telefónneho čísla", "Nincs telefonszám")}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* WhatsApp Conversation & Composer Column */}
+          <div className="ws-lg:col-span-8 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
+            {(() => {
+              const targetLead = leads.find((l) => String(l.id) === (waSelectedLeadId || String(leads[0]?.id))) ?? null;
+              if (!targetLead) {
+                return emptyPane(t("Select a contact to message on WhatsApp", "Vyberte kontakt pre WhatsApp správu", "Válasszon egy kapcsolatot WhatsApp üzenethez"));
+              }
+              const waEvents = (targetLead.timeline ?? []).filter(
+                (ev: any) =>
+                  (ev.title || "").toLowerCase().includes("whatsapp") ||
+                  (ev.content || "").toLowerCase().includes("whatsapp"),
+              );
+              return (
+                <>
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                    <div>
+                      <h3 className="text-title font-heading font-bold text-slate-900">{targetLead.name}</h3>
+                      <div className="text-caption text-emerald-700 font-mono">
+                        {targetLead.phone || t("Phone not set", "Telefón nenastavený", "Telefonszám nincs megadva")} · {selectedAccount?.name}
+                      </div>
+                    </div>
+                    {renderCrmActions(targetLead, { name: targetLead.name, address: targetLead.email || "" })}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-emerald-500/[0.02]">
+                    {waEvents.length === 0 ? (
+                      <div className="text-center py-12 text-slate-400 text-body">
+                        {t(
+                          "No WhatsApp messages logged for this contact yet. Send a message below.",
+                          "Pre tento kontakt zatiaľ nie sú zaznamenané žiadne WhatsApp správy. Napíšte správu nižšie.",
+                          "Ehhez a kapcsolathoz még nincs WhatsApp üzenet. Írjon üzenetet alább.",
+                        )}
+                      </div>
+                    ) : (
+                      waEvents.map((ev: any) => (
+                        <div
+                          key={ev.id}
+                          className="max-w-xl ml-auto p-3.5 rounded-2xl bg-emerald-600 text-white shadow-xs space-y-1"
+                        >
+                          <div className="text-micro opacity-80 flex items-center justify-between gap-2">
+                            <span>{ev.author || currentUser?.name}</span>
+                            <span>{ev.timestamp}</span>
+                          </div>
+                          <div className="text-body whitespace-pre-wrap">{ev.content}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="p-4 border-t border-slate-100 flex items-center gap-2 shrink-0">
+                    <input
+                      type="text"
+                      value={waDraftMessage}
+                      onChange={(e) => setWaDraftMessage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendWhatsAppMessage(targetLead);
+                        }
+                      }}
+                      placeholder={t("Write a WhatsApp message...", "Napíšte WhatsApp správu...", "Írjon WhatsApp üzenetet...")}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSendWhatsAppMessage(targetLead)}
+                      disabled={!waDraftMessage.trim() || !canEdit}
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer"
+                    >
+                      <Send size={15} /> {t("Send", "Odoslať", "Küldés")}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      ) : isAgentConnector(selectedChannelType) ? (
+        /* SUBSCRIPTION AI AGENT + CCRM MCP CHAT LAYOUT */
+        <div
+          data-testid="communication-agent-layout"
+          className="flex-1 min-w-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden text-left"
+        >
+          {(() => {
+            const meta = PROVIDERS[selectedChannelType] ?? PROVIDERS.claude;
+            const history = agentChats[selectedAccount?.id || ""] ?? [];
+            return (
+              <>
+                <div className={`px-6 py-4 flex flex-wrap items-center justify-between gap-3 shrink-0 ${meta.modalHeaderBg}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
+                      <ProviderLogo type={selectedChannelType} className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded-md text-micro font-bold ${meta.badgeClass}`}>
+                          {meta.label}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 text-micro font-bold">
+                          <Terminal size={11} /> CCRM MCP Connected
+                        </span>
+                      </div>
+                      <h3 className="text-title font-heading font-bold text-slate-900 mt-0.5">
+                        {selectedAccount?.name}
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Quick CRM MCP Action Chips */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[
+                      t("Summarize open leads", "Zhrnúť otvorené príležitosti", "Nyitott érdeklődők összegzése"),
+                      t("List overdue tasks", "Vypísať omeškané úlohy", "Lejárt feladatok listázása"),
+                      t("Draft client follow-up", "Navrhnúť follow-up pre klienta", "Ügyfél follow-up tervezet"),
+                    ].map((quickPrompt) => (
+                      <button
+                        key={quickPrompt}
+                        type="button"
+                        onClick={() => void handleSendAgentMessage(quickPrompt)}
+                        disabled={isAgentRunning}
+                        className="px-2.5 py-1 rounded-xl bg-white/90 hover:bg-white border border-slate-200 text-micro font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-40"
+                      >
+                        <Sparkles size={11} className="inline mr-1 text-amber-500" />
+                        {quickPrompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Chat Messages */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  {history.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto gap-3 text-slate-500">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
+                        <Bot size={26} />
+                      </div>
+                      <div className="text-title-sm font-bold text-slate-800">
+                        {selectedAccount?.name} · CCRM MCP Agent
+                      </div>
+                      <p className="text-caption text-slate-500">
+                        {t(
+                          "Ask this subscription agent to inspect leads, projects, tasks, or communications using your CCRM MCP permissions.",
+                          "Požiadajte tohto predplateného agenta o prácu s príležitosťami, projektmi, úlohami alebo komunikáciou cez CCRM MCP.",
+                          "Kérje meg ezt az előfizetéses ügynököt leadek, projektek, feladatok vagy kommunikáció kezelésére a CCRM MCP-n keresztül.",
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    history.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-2xl p-4 rounded-2xl space-y-1 ${
+                            msg.role === "user"
+                              ? `${meta.accentBtn} shadow-xs`
+                              : "bg-slate-100 text-slate-800 border border-slate-200"
+                          }`}
+                        >
+                          <div className="text-micro opacity-75 flex items-center justify-between gap-3">
+                            <span className="font-bold">
+                              {msg.role === "user" ? currentUser?.name || "You" : selectedAccount?.name}
+                            </span>
+                            <span>{msg.timestamp}</span>
+                          </div>
+                          <div className="text-body whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {isAgentRunning && (
+                    <div className="flex items-center gap-2 text-caption text-slate-500 font-semibold">
+                      <Loader2 size={15} className="animate-spin text-indigo-600" />
+                      {t("Agent is executing via CCRM MCP...", "Agent pracuje cez CCRM MCP...", "Az ügynök dolgozik a CCRM MCP-n keresztül...")}
+                    </div>
+                  )}
+                </div>
+
+                {/* Agent Prompt Input */}
+                <div className="p-4 border-t border-slate-100 flex items-center gap-2 shrink-0">
+                  <input
+                    type="text"
+                    value={agentPrompt}
+                    onChange={(e) => setAgentPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void handleSendAgentMessage();
+                      }
+                    }}
+                    placeholder={t(
+                      "Ask the subscription agent to query or update CRM via MCP...",
+                      "Zadajte pokyn pre AI agenta (cez CCRM MCP)...",
+                      "Adjon utasítást az AI ügynöknek (CCRM MCP-n keresztül)...",
+                    )}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleSendAgentMessage()}
+                    disabled={!agentPrompt.trim() || isAgentRunning}
+                    className={`px-5 py-2.5 rounded-xl text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer ${meta.accentBtn}`}
+                  >
+                    {isAgentRunning ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                    {t("Run", "Spustiť", "Futtatás")}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      ) : (
+        /* EMAIL COMMUNICATION LAYOUT (Gmail, SMTP/IMAP, MS Exchange, Personal) */
+        <div
+          data-testid="communication-email-layout"
+          className="flex-1 min-w-0 grid grid-cols-1 ws-lg:grid-cols-12 gap-5 h-full max-h-full overflow-hidden"
+        >
       {/* COLUMN 1: Conversation list */}
       <div className="ws-lg:col-span-5 ws-xl:col-span-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
         {/* Search & filters */}
@@ -1862,6 +2463,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
           })() : emptyPane(t("Select a conversation thread", "Vyberte vlákno konverzácie", "Válasszon egy beszélgetésszálat"))
         )}
       </div>
+      </div>
+      )}
 
       {renderDigestPopover()}
 

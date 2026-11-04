@@ -24,10 +24,13 @@ FROM php:8.2-apache
 # `releases/latest/download/...` URL ran whatever script was current at build time as
 # root, with no version or checksum, so a swapped release asset would have executed
 # arbitrary commands inside every image build.
-COPY --from=mlocati/php-extension-installer:2.7.26 /usr/bin/install-php-extensions /usr/local/bin/
+COPY --from=mlocati/php-extension-installer:2.12.0 /usr/bin/install-php-extensions /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/install-php-extensions && \
-    install-php-extensions imap pdo_mysql zip
+    install-php-extensions imap pdo_mysql zip && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3 nodejs npm ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Enable apache rewrite and headers modules, and let the checked-in .htaccess
 # files actually take effect. Without AllowOverride the container ignores both

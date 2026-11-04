@@ -310,6 +310,11 @@ function ccrm_company_mailbox_settings(array $row): array {
 function ccrm_mail_filing_sources(PDO $pdo): array {
     $sources = [];
     foreach ($pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `name`")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $settings = ccrm_company_mailbox_settings($r);
+        $connectorType = (string)($settings['connectorType'] ?? '');
+        if (in_array($connectorType, ['whatsapp', 'claude', 'antigravity', 'chatgpt'], true)) {
+            continue;
+        }
         $owner = null;
         if (!empty($r['owner_user_id'])) {
             $o = $pdo->prepare("SELECT `name`, `email` FROM `users` WHERE `id` = ?");
@@ -318,7 +323,7 @@ function ccrm_mail_filing_sources(PDO $pdo): array {
         }
         $sources[] = [
             'key' => 'c:' . $r['id'], 'kind' => 'company', 'id' => $r['id'], 'label' => $r['name'] !== '' ? $r['name'] : $r['address'],
-            'address' => strtolower(trim((string)$r['address'])), 'settings' => ccrm_company_mailbox_settings($r),
+            'address' => strtolower(trim((string)$r['address'])), 'settings' => $settings,
             // A company mailbox is nobody's personal mail: everyone reads its filed mail from the stored body.
             'owner_email' => null, 'owner_name' => $owner['name'] ?? null,
             'cutoff' => !empty($r['backfill_since']) ? (int)strtotime($r['backfill_since'] . ' 00:00:00') : null,
