@@ -293,7 +293,8 @@ export interface MailboxList {
 }
 
 export const listMailboxes = () => call<MailboxList>("list");
-export const listMyConnectors = () => call<{ connectors: CompanyMailbox[] }>("my");
+export const listMyConnectors = () =>
+  call<{ connectors?: CompanyMailbox[]; mailboxes?: CompanyMailbox[] }>("my");
 export const saveMailbox = (draft: MailboxDraft) => call<{ mailbox: CompanyMailbox }>("save", mailboxPayload(draft));
 export const testMailbox = (draft: MailboxDraft) =>
   call<{ success: boolean; detail?: string }> ("test", mailboxPayload(draft));

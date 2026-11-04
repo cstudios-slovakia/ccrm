@@ -288,7 +288,7 @@ try {
             unset($pub['settings']['imapPassword'], $pub['settings']['smtpPassword'], $pub['settings']['subscriptionToken'], $pub['settings']['graphClientSecret']);
             $connectors[] = $pub;
         }
-        echo json_encode(['success' => true, 'connectors' => $connectors]);
+        echo json_encode(['success' => true, 'connectors' => $connectors, 'mailboxes' => $connectors]);
         exit;
     }
 

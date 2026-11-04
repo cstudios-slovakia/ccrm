@@ -467,7 +467,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     // 2. Shared connectors authorized for this user (email, whatsapp, claude, antigravity, chatgpt)
     try {
       const my = await listMyConnectors();
-      for (const box of my.mailboxes ?? []) {
+      for (const box of my.mailboxes ?? my.connectors ?? []) {
         const cType = inferConnectorType(box.settings, box.address, box.connectorType);
         mergedMap.set(box.id, {
           id: box.id,

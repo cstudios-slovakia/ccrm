@@ -3340,7 +3340,7 @@ ${log.payload || ''}
   }, [currentUser]);
 
   // Track whether the current user is authorized to see at least one shared communication connector
-  const [hasAuthorizedConnector, setHasAuthorizedConnector] = useState(false);
+  const [hasAuthorizedConnector, setHasAuthorizedConnector] = useState<boolean | null>(null);
   useEffect(() => {
     if (!currentUser) {
       setHasAuthorizedConnector(false);
@@ -3349,10 +3349,11 @@ ${log.payload || ''}
     const refreshConnectors = () => {
       listMyConnectors()
         .then((res) => {
-          setHasAuthorizedConnector(Array.isArray(res.mailboxes) && res.mailboxes.length > 0);
+          const list = res.mailboxes ?? res.connectors ?? [];
+          setHasAuthorizedConnector(Array.isArray(list) && list.length > 0);
         })
         .catch(() => {
-          /* ignore */
+          setHasAuthorizedConnector(false);
         });
     };
     refreshConnectors();
@@ -3361,13 +3362,13 @@ ${log.payload || ''}
   }, [currentUser]);
 
   const canOpenRouteWithComm = (route: string) =>
-    (route.split("/")[0].toLowerCase() === "email" && hasAuthorizedConnector) || access.canOpenRoute(route);
+    (route.split("/")[0].toLowerCase() === "email" && Boolean(hasAuthorizedConnector)) || access.canOpenRoute(route);
 
   // Modules that stay in the navigation before their setup is done and open to
   // ModuleSetupRequired instead of the real view until it is.
   const isModuleSetupPending = (route: string) =>
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
-    (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]) && !hasAuthorizedConnector);
+    (route === "email" && hasAuthorizedConnector === false && !isPersonalMailboxConfigured(currentUser || users[0]));
 
   // What the RAG AI view and the Executive Copilot (same chat_rag.php backend) show
   // while the vector database is not connected. One source, so they never drift.
@@ -4228,8 +4229,14 @@ ${log.payload || ''}
                   "A postafiók kapcsolata (IMAP / SMTP szerver, felhasználónév és jelszó), a kapcsolatteszttel ellenőrizve"
                 ),
               ]}
-              settingsLocation={t("Personal settings → Email", "Osobné nastavenia → E-mail", "Személyes beállítások → E-mail")}
-              onOpenSettings={() => { window.location.hash = "personal-settings/email"; }}
+              settingsLocation={
+                access.hasSettingsAccess
+                  ? t("Settings → Email → Connectors & mailboxes", "Nastavenia → E-mail → Konektory a schránky", "Beállítások → E-mail → Konektorok és postafiókok")
+                  : t("Personal settings → Email", "Osobné nastavenia → E-mail", "Személyes beállítások → E-mail")
+              }
+              onOpenSettings={() => {
+                window.location.hash = access.hasSettingsAccess ? "settings/email/mailboxes" : "personal-settings/email";
+              }}
             />
           );
         }
