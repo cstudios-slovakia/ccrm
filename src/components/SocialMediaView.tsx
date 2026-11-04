@@ -14,6 +14,7 @@ import { getDemoSocialPosts } from "../demo/packs/socialPosts";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { StatGrid, EntityHeader, PageHeader, Tabs } from "./layout";
 import { useListFilter } from "../hooks/useListFilter";
+import { useBrandName } from "../utils/brand";
 
 interface SocialMediaViewProps {
   systemLanguage: Language;
@@ -85,6 +86,7 @@ export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
   access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const brand = useBrandName();
   // Read-only roles can browse the feed, calendar and analytics; replying is the
   // only thing this view writes (through Zernio), so it is the only thing gated.
   const canEdit = access.edit;
@@ -853,7 +855,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                   className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
                 >
                   <Share2 className="h-4 w-4" />
-                  {t("Copy CCRM Link", "Kopírovať odkaz", "Link másolása")}
+                  {t(`Copy ${brand} Link`, "Kopírovať odkaz", "Link másolása")}
                 </button>
               </>
             }

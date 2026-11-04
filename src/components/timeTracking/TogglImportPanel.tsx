@@ -4,6 +4,7 @@ import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import type { Language } from "../../utils/translations";
+import { useBrandName } from "../../utils/brand";
 
 interface Named {
   id: string;
@@ -58,6 +59,7 @@ const postImport = async (payload: Record<string, unknown>): Promise<any> => {
  * Idempotent: the server skips rows whose Toggl id is already stored.
  */
 export function TogglImportPanel({ language, t, canEdit }: { language: Language; t: (en: string, sk: string, hu: string) => string; canEdit: boolean }) {
+  const brand = useBrandName();
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = `${today.slice(0, 7)}-01`;
   const [from, setFrom] = useState(monthStart);
@@ -135,9 +137,9 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       <h3 className="type-card-title text-slate-900">{t("Map projects and import from Toggl", "Mapovať projekty a importovať z Toggl", "Projektek hozzárendelése és importálás Togglból")}</h3>
       <p className="text-body text-slate-500">
         {t(
-          "One-way import into CCRM. Toggl hours on the employee summary stay where they are. Clockify is not imported. The same Toggl entry is never imported twice.",
-          "Jednosmerný import do CCRM. Hodiny z Toggl v súhrne zamestnanca zostávajú. Clockify sa neimportuje. Ten istý záznam z Toggl sa nikdy neimportuje dvakrát.",
-          "Egyirányú import a CCRM-be. A Toggl-órák a munkatárs összesítőjében megmaradnak. A Clockify nem importálható. Ugyanaz a Toggl-bejegyzés nem kerül be kétszer.",
+          `One-way import into ${brand}. Toggl hours on the employee summary stay where they are. Clockify is not imported. The same Toggl entry is never imported twice.`,
+          `Jednosmerný import do ${brand}. Hodiny z Toggl v súhrne zamestnanca zostávajú. Clockify sa neimportuje. Ten istý záznam z Toggl sa nikdy neimportuje dvakrát.`,
+          `Egyirányú import a ${brand}-be. A Toggl-órák a munkatárs összesítőjében megmaradnak. A Clockify nem importálható. Ugyanaz a Toggl-bejegyzés nem kerül be kétszer.`,
         )}
       </p>
       {error && <p className="text-ui text-rose-700">{error}</p>}

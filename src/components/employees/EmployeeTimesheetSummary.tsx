@@ -20,6 +20,7 @@ import type { Employee } from "../../types";
 import { formatNumber } from "../../utils/currency";
 import { timesheetSourceSwitch, type TimesheetSource } from "../../utils/timesheetSource.ts";
 import { EmployeeCcrmTimesheet } from "./EmployeeCcrmTimesheet";
+import { useBrandName } from "../../utils/brand";
 
 /**
  * Format fractional hours into "X h Y m" format without decimals.
@@ -129,6 +130,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
   t,
   onLinkTogglUser,
 }) => {
+  const brand = useBrandName();
   const [viewMode, setViewMode] = useState<ViewMode>("matrix");
   const [source, setSource] = useState<TimesheetSource>("toggl");
   const sourceSwitch = timesheetSourceSwitch(source);
@@ -313,7 +315,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
         >
           {key === "toggl"
             ? t("Toggl", "Toggl", "Toggl")
-            : t("CCRM time tracking", "Evidencia času CCRM", "CCRM időkövetés")}
+            : t(`${brand} time tracking`, `Evidencia času ${brand}`, `${brand} időkövetés`)}
         </button>
       ))}
     </div>

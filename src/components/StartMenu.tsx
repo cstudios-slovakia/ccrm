@@ -23,6 +23,7 @@ import { cn } from "../utils/cn";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
+import { useBrandName } from "../utils/brand";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -89,6 +90,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onSaveDefaultPage,
   disabledModules = []
 }) => {
+  const brand = useBrandName();
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -1080,7 +1082,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   value={effectiveDefaultPage}
                   onChange={(e) => handleSetDefaultPage(e.target.value)}
                   className="bg-transparent text-ui font-bold text-amber-950 focus:outline-none cursor-pointer pr-1"
-                  title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
+                  title={t(`Screen that opens when launching ${brand}`, `Obrazovka, ktorá sa otvorí pri spustení ${brand}`, `A ${brand} indításakor megnyíló képernyő`)}
                 >
                   {allItems
                     .filter((m) => canOpenRoute(m.id))
@@ -1638,7 +1640,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               value={effectiveDefaultPage}
               onChange={(e) => handleSetDefaultPage(e.target.value)}
               className="bg-transparent text-ui font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-27.5 sm:max-w-45 truncate"
-              title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
+              title={t(`Screen that opens when launching ${brand}`, `Obrazovka, ktorá sa otvorí pri spustení ${brand}`, `A ${brand} indításakor megnyíló képernyő`)}
             >
               {allItems
                 .filter((m) => canOpenRoute(m.id))

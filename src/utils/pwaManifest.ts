@@ -1,3 +1,5 @@
+import { resolveBrandName } from "./brand";
+
 /**
  * Dynamic PWA Web App Manifest & Mobile App Title Manager
  * 
@@ -6,7 +8,7 @@
  */
 
 export function updatePwaManifest(systemName: string): void {
-    const name = (systemName || "").trim() || "CCRM";
+    const name = resolveBrandName(systemName);
 
     // 1. Cache to localStorage so index.html pre-mount script can use it immediately on boot
     try {

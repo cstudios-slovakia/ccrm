@@ -10,6 +10,7 @@ import {
   writeInstallDismissedAt,
 } from "../utils/pwaInstall";
 import { shouldOfferInstall } from "../utils/pwaInstallLogic";
+import { useBrandName } from "../utils/brand";
 
 interface PwaInstallBannerProps {
   language: Language;
@@ -24,6 +25,7 @@ interface PwaInstallBannerProps {
  */
 export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, userKey }) => {
   const t = (en: string, sk: string, hu: string) => (language === "sk" ? sk : language === "hu" ? hu : en);
+  const brand = useBrandName();
   const { canInstall, isInstalled } = usePwaInstall();
   const [dismissedAt, setDismissedAt] = useState<number | null>(() => readInstallDismissedAt(userKey));
   const [busy, setBusy] = useState(false);
@@ -83,7 +85,7 @@ export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, us
       <div className="overflow-hidden">
         <div
           role="region"
-          aria-label={t("Install CCRM app", "Inštalácia aplikácie CCRM", "CCRM alkalmazás telepítése")}
+          aria-label={t(`Install ${brand} app`, `Inštalácia aplikácie ${brand}`, `${brand} alkalmazás telepítése`)}
           data-testid="pwa-install-banner"
           className={`mb-4 bg-white border border-indigo-200 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 shadow-sm transition-transform motion-reduce:transition-none ${
             open ? "translate-y-0 duration-300 ease-out" : "-translate-y-2 duration-150 ease-in"
@@ -95,7 +97,7 @@ export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, us
             </div>
             <div className="min-w-0">
               <p className="text-ui font-bold text-slate-800">
-                {t("Install CCRM as an app", "Nainštalujte CCRM ako aplikáciu", "Telepítse a CCRM-et alkalmazásként")}
+                {t(`Install ${brand} as an app`, `Nainštalujte ${brand} ako aplikáciu`, `Telepítse a ${brand}-et alkalmazásként`)}
               </p>
               <p className="text-caption text-slate-500 font-medium">
                 {t(

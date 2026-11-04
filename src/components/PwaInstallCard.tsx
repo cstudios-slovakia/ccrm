@@ -19,6 +19,7 @@ import { installCardState } from "../utils/pwaInstallLogic";
 import { isAppBadgeSupported } from "../utils/appBadge";
 import { buildBookmarklet } from "../utils/launchIntent";
 import { openTasksMiniWindow } from "../utils/popOut";
+import { useBrandName } from "../utils/brand";
 
 interface PwaInstallCardProps {
   systemLanguage: Language;
@@ -37,6 +38,7 @@ const secondaryButton =
  * nothing: Install exists only while the browser is actually offering it.
  */
 export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, userKey }) => {
+  const brand = useBrandName();
   const t = (en: string, sk: string, hu: string) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
   const { canInstall, isInstalled, isStandalone, platform, isSecureContext, promptInstall } = usePwaInstall();
   const [busy, setBusy] = useState(false);
@@ -68,9 +70,9 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, 
       if (result === "blocked") {
         (window as any).showToast?.(
           t(
-            "Your browser blocked the pop-up window. Allow pop-ups for CCRM and try again.",
-            "Prehliadač zablokoval vyskakovacie okno. Povoľte pre CCRM vyskakovacie okná a skúste znova.",
-            "A böngésző letiltotta a felugró ablakot. Engedélyezze a felugró ablakokat a CCRM-hez, és próbálja újra.",
+            `Your browser blocked the pop-up window. Allow pop-ups for ${brand} and try again.`,
+            `Prehliadač zablokoval vyskakovacie okno. Povoľte pre ${brand} vyskakovacie okná a skúste znova.`,
+            `A böngésző letiltotta a felugró ablakot. Engedélyezze a felugró ablakokat a ${brand}-hez, és próbálja újra.`,
           ),
           "warning",
         );
@@ -130,7 +132,7 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, 
       <div className="flex items-center justify-between">
         <label className="type-overline text-slate-600 flex items-center gap-1.5">
           <MonitorSmartphone className="h-3.5 w-3.5 text-indigo-500" />
-          {t("Install CCRM app", "Inštalácia aplikácie CCRM", "CCRM alkalmazás telepítése")}
+          {t(`Install ${brand} app`, `Inštalácia aplikácie ${brand}`, `${brand} alkalmazás telepítése`)}
         </label>
         <span
           className={`px-2.5 py-0.5 rounded-lg type-overline transition-colors duration-200 ${
@@ -156,9 +158,9 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, 
                   {isStandalone
                     ? t("You are using the installed app.", "Používate nainštalovanú aplikáciu.", "A telepített alkalmazást használja.")
                     : t(
-                        "CCRM is installed on this device — open it from your apps, taskbar or dock.",
-                        "CCRM je nainštalované v tomto zariadení — otvorte ho zo zoznamu aplikácií, panela úloh alebo docku.",
-                        "A CCRM telepítve van ezen az eszközön — nyissa meg az alkalmazások, a tálca vagy a dokk közül.",
+                        `${brand} is installed on this device — open it from your apps, taskbar or dock.`,
+                        `${brand} je nainštalované v tomto zariadení — otvorte ho zo zoznamu aplikácií, panela úloh alebo docku.`,
+                        `A ${brand} telepítve van ezen az eszközön — nyissa meg az alkalmazások, a tálca vagy a dokk közül.`,
                       )}
                 </span>
               </p>
@@ -166,9 +168,9 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, 
             {state === "can-install" && (
               <p>
                 {t(
-                  "Install CCRM as an app: its own window, a taskbar or dock icon, shortcuts and a task badge. No store, no admin rights.",
-                  "Nainštalujte CCRM ako aplikáciu: vlastné okno, ikona v paneli úloh alebo docku, skratky a odznak s úlohami. Bez obchodu a bez práv správcu.",
-                  "Telepítse a CCRM-et alkalmazásként: saját ablak, tálca- vagy dokkikon, gyorsparancsok és feladatjelvény. Áruház és rendszergazdai jog nélkül.",
+                  `Install ${brand} as an app: its own window, a taskbar or dock icon, shortcuts and a task badge. No store, no admin rights.`,
+                  `Nainštalujte ${brand} ako aplikáciu: vlastné okno, ikona v paneli úloh alebo docku, skratky a odznak s úlohami. Bez obchodu a bez práv správcu.`,
+                  `Telepítse a ${brand}-et alkalmazásként: saját ablak, tálca- vagy dokkikon, gyorsparancsok és feladatjelvény. Áruház és rendszergazdai jog nélkül.`,
                 )}
               </p>
             )}
@@ -196,18 +198,18 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, 
             {state === "insecure" && (
               <p>
                 {t(
-                  "Installing needs a secure (HTTPS) connection. Open CCRM through its https:// address to install it.",
-                  "Inštalácia vyžaduje zabezpečené pripojenie (HTTPS). Otvorte CCRM cez adresu https:// a nainštalujte ho.",
-                  "A telepítéshez biztonságos (HTTPS) kapcsolat kell. Nyissa meg a CCRM-et a https:// címen, és telepítse.",
+                  `Installing needs a secure (HTTPS) connection. Open ${brand} through its https:// address to install it.`,
+                  `Inštalácia vyžaduje zabezpečené pripojenie (HTTPS). Otvorte ${brand} cez adresu https:// a nainštalujte ho.`,
+                  `A telepítéshez biztonságos (HTTPS) kapcsolat kell. Nyissa meg a ${brand}-et a https:// címen, és telepítse.`,
                 )}
               </p>
             )}
             {state === "unsupported" && (
               <p>
                 {t(
-                  "This browser cannot install web apps. Open CCRM in Google Chrome or Microsoft Edge to install it as an app.",
-                  "Tento prehliadač nevie inštalovať webové aplikácie. Otvorte CCRM v Google Chrome alebo Microsoft Edge a nainštalujte ho ako aplikáciu.",
-                  "Ez a böngésző nem tud webalkalmazást telepíteni. Nyissa meg a CCRM-et Google Chrome-ban vagy Microsoft Edge-ben, és telepítse alkalmazásként.",
+                  `This browser cannot install web apps. Open ${brand} in Google Chrome or Microsoft Edge to install it as an app.`,
+                  `Tento prehliadač nevie inštalovať webové aplikácie. Otvorte ${brand} v Google Chrome alebo Microsoft Edge a nainštalujte ho ako aplikáciu.`,
+                  `Ez a böngésző nem tud webalkalmazást telepíteni. Nyissa meg a ${brand}-et Google Chrome-ban vagy Microsoft Edge-ben, és telepítse alkalmazásként.`,
                 )}
               </p>
             )}
@@ -260,16 +262,16 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, 
             </p>
             <p className="text-caption text-slate-600">
               {t(
-                "With the app installed on Windows or ChromeOS, use the browser's Share command (menu ⋮ → Cast, save and share → Share…) and pick CCRM: the page title and link become a task. Selected text can be shared the same way wherever the browser or the system offers “Share”.",
-                "S nainštalovanou aplikáciou vo Windows alebo ChromeOS použite príkaz Zdieľať v prehliadači (menu ⋮ → Odoslať, uložiť a zdieľať → Zdieľať…) a vyberte CCRM: z názvu a odkazu stránky sa stane úloha. Označený text sa dá zdieľať rovnako všade, kde prehliadač alebo systém ponúka „Zdieľať“.",
-                "Windows vagy ChromeOS rendszeren telepített alkalmazással használja a böngésző Megosztás parancsát (menü ⋮ → Átküldés, mentés és megosztás → Megosztás…), és válassza a CCRM-et: az oldal címe és hivatkozása feladattá válik. A kijelölt szöveg ugyanígy osztható meg mindenhol, ahol a böngésző vagy a rendszer felkínálja a „Megosztás” lehetőséget.",
+                `With the app installed on Windows or ChromeOS, use the browser's Share command (menu ⋮ → Cast, save and share → Share…) and pick ${brand}: the page title and link become a task. Selected text can be shared the same way wherever the browser or the system offers “Share”.`,
+                `S nainštalovanou aplikáciou vo Windows alebo ChromeOS použite príkaz Zdieľať v prehliadači (menu ⋮ → Odoslať, uložiť a zdieľať → Zdieľať…) a vyberte ${brand}: z názvu a odkazu stránky sa stane úloha. Označený text sa dá zdieľať rovnako všade, kde prehliadač alebo systém ponúka „Zdieľať“.`,
+                `Windows vagy ChromeOS rendszeren telepített alkalmazással használja a böngésző Megosztás parancsát (menü ⋮ → Átküldés, mentés és megosztás → Megosztás…), és válassza a ${brand}-et: az oldal címe és hivatkozása feladattá válik. A kijelölt szöveg ugyanígy osztható meg mindenhol, ahol a böngésző vagy a rendszer felkínálja a „Megosztás” lehetőséget.`,
               )}
             </p>
             <p className="text-caption text-slate-600">
               {t(
-                "On macOS and Linux, Chrome cannot share into installed apps. Drag this button to your bookmarks bar, then click it on any page: the selected text (or the page title) and its link open as a new CCRM task.",
-                "V macOS a Linuxe Chrome nevie zdieľať do nainštalovaných aplikácií. Presuňte toto tlačidlo na panel záložiek a kliknite naň na ľubovoľnej stránke: označený text (alebo názov stránky) a jej odkaz sa otvoria ako nová úloha v CCRM.",
-                "macOS és Linux rendszeren a Chrome nem tud telepített alkalmazásba megosztani. Húzza ezt a gombot a könyvjelzősávra, majd kattintson rá bármely oldalon: a kijelölt szöveg (vagy az oldal címe) és a hivatkozása új CCRM-feladatként nyílik meg.",
+                `On macOS and Linux, Chrome cannot share into installed apps. Drag this button to your bookmarks bar, then click it on any page: the selected text (or the page title) and its link open as a new ${brand} task.`,
+                `V macOS a Linuxe Chrome nevie zdieľať do nainštalovaných aplikácií. Presuňte toto tlačidlo na panel záložiek a kliknite naň na ľubovoľnej stránke: označený text (alebo názov stránky) a jej odkaz sa otvoria ako nová úloha v ${brand}.`,
+                `macOS és Linux rendszeren a Chrome nem tud telepített alkalmazásba megosztani. Húzza ezt a gombot a könyvjelzősávra, majd kattintson rá bármely oldalon: a kijelölt szöveg (vagy az oldal címe) és a hivatkozása új ${brand}-feladatként nyílik meg.`,
               )}
             </p>
             <a
@@ -281,7 +283,7 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, 
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dashed border-indigo-300 bg-indigo-50 text-ui font-bold text-indigo-700 cursor-grab transition-all duration-150 ease-out hover:-translate-y-px hover:bg-indigo-100 active:cursor-grabbing active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
             >
               <Bookmark className="h-3.5 w-3.5" />
-              {t("Send to CCRM", "Poslať do CCRM", "Küldés a CCRM-nek")}
+              {t(`Send to ${brand}`, `Poslať do ${brand}`, `Küldés a ${brand}-nek`)}
             </a>
           </div>
         </div>

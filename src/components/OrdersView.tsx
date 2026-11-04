@@ -58,6 +58,7 @@ import { invoiceMovementId } from "../utils/invoiceFinanceBridge";
 import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
 import { useListFilter } from "../hooks/useListFilter";
+import { getBrandName } from "../utils/brand";
 
 export interface OrdersViewProps {
   orders: Order[];
@@ -439,7 +440,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           `A(z) ${newInvoiceNumber} számla kiállítva a(z) ${order.orderNumber} rendelésből ${formatMoney(order.totalGrossAmount, order.currency, userLanguage)} összegben.`
         ),
         amount: order.totalGrossAmount,
-        author: currentUser?.name || "CCRM"
+        author: currentUser?.name || getBrandName()
       };
 
       if (onAddTimelineEvent) {

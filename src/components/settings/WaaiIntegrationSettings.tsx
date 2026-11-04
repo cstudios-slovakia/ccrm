@@ -4,6 +4,7 @@ import type { Language } from "../../utils/translations";
 import { WAAI_SCOPES, normalizeEmbedOrigin, parseIpList, waaiEnvSnippet, waaiSsoEnvSnippet } from "../../utils/waaiIntegration";
 import { SectionCard, SettingsGroup } from "./SectionCard";
 import { useConfirmDialog } from "../ui/ConfirmDialog";
+import { useBrandName, withBrand } from "../../utils/brand";
 
 type T = (en: string, sk: string, hu: string) => string;
 
@@ -52,7 +53,7 @@ const SCOPE_LABEL: Record<string, [string, string, string]> = {
   "tasks:pull": ["Read and complete tasks", "Čítať a dokončovať úlohy", "Feladatok olvasása és befejezése"],
   "whatsapp:links": ["Pair chats with clients and projects", "Párovať chaty s klientmi a projektmi", "Csevegések párosítása ügyfelekkel és projektekkel"],
   "timeline:push": ["Add entries to the client timeline", "Pridávať záznamy do histórie klienta", "Bejegyzések hozzáadása az ügyfél idővonalához"],
-  "ai:key": ["Use the OpenAI key from CCRM when WAAI has none of its own", "Použiť kľúč OpenAI z CCRM, ak WAAI nemá vlastný", "A CCRM OpenAI-kulcsának használata, ha a WAAI-nak nincs sajátja"],
+  "ai:key": ["Use the OpenAI key from {brand} when WAAI has none of its own", "Použiť kľúč OpenAI z {brand}, ak WAAI nemá vlastný", "A {brand} OpenAI-kulcsának használata, ha a WAAI-nak nincs sajátja"],
 };
 
 const inputCls =
@@ -139,6 +140,7 @@ const CopyButton: React.FC<{ text: string; t: T }> = ({ text, t }) => {
  * ai-worker uses, and the access tokens it signs in with. Administrators only (the endpoint is too).
  */
 export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ activeLang }) => {
+  const brand = useBrandName();
   const t: T = (en, sk, hu) => (activeLang === "sk" ? sk : activeLang === "hu" ? hu : en);
   const [confirm, confirmNode] = useConfirmDialog();
 
@@ -293,9 +295,9 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
       const ok = await confirm({
         title: t("Create a new sign-in secret?", "Vytvoriť nový prihlasovací kľúč?", "Új belépési kulcsot hoz létre?"),
         message: t(
-          "The old one stops working in CCRM at once. People already inside WhatsApp stay signed in; the next sign-in needs the new secret in WAAI. Put it in WAAI first as `new,old` if you want no gap.",
+          "The old one stops working in " + brand + " at once. People already inside WhatsApp stay signed in; the next sign-in needs the new secret in WAAI. Put it in WAAI first as `new,old` if you want no gap.",
           "Starý okamžite prestane fungovať v CRM. Kto je už vo WhatsAppe, zostane prihlásený; ďalšie prihlásenie potrebuje nový kľúč vo WAAI. Ak nechcete medzeru, vložte ho do WAAI najprv ako `nový,starý`.",
-          "A régi azonnal megszűnik működni a CCRM-ben. Aki már a WhatsAppban van, bejelentkezve marad; a következő belépéshez az új kulcs kell a WAAI-ban. Ha nem akar kiesést, előbb `új,régi` alakban tegye a WAAI-ba."
+          "A régi azonnal megszűnik működni a " + brand + "-ben. Aki már a WhatsAppban van, bejelentkezve marad; a következő belépéshez az új kulcs kell a WAAI-ban. Ha nem akar kiesést, előbb `új,régi` alakban tegye a WAAI-ba."
         ),
         confirmLabel: t("Create new secret", "Vytvoriť nový kľúč", "Új kulcs létrehozása"),
         cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
@@ -357,9 +359,9 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
       <SectionCard
         title={t("Connection", "Pripojenie", "Kapcsolat")}
         description={t(
-          "WAAI is the WhatsApp assistant. It calls CCRM to read the user list and to create and update tasks. CCRM never calls WAAI and never stores its password.",
+          `WAAI is the WhatsApp assistant. It calls ${brand} to read the user list and to create and update tasks. ${brand} never calls WAAI and never stores its password.`,
           "WAAI je WhatsApp asistent. Volá CRM, aby si prečítal zoznam používateľov a vytváral a upravoval úlohy. CRM nikdy nevolá WAAI a neukladá jeho heslo.",
-          "A WAAI a WhatsApp asszisztens. A CCRM-et hívja a felhasználólista olvasásához, valamint feladatok létrehozásához és módosításához. A CCRM sosem hívja a WAAI-t, és nem tárolja a jelszavát."
+          `A WAAI a WhatsApp asszisztens. A ${brand}-et hívja a felhasználólista olvasásához, valamint feladatok létrehozásához és módosításához. A ${brand} sosem hívja a WAAI-t, és nem tárolja a jelszavát.`
         )}
         action={
           <button type="button" className={primaryBtn} disabled={saving} onClick={save}>
@@ -432,7 +434,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         >
           <div className="grid grid-cols-1 gap-2 ws-lg:grid-cols-2">
             {WAAI_SCOPES.map((s) => (
-              <Toggle key={s} checked={scopes.includes(s)} onChange={(on) => setScopes(toggleIn(scopes, s, on))} label={t(...SCOPE_LABEL[s])} hint={s} />
+              <Toggle key={s} checked={scopes.includes(s)} onChange={(on) => setScopes(toggleIn(scopes, s, on))} label={t(...(SCOPE_LABEL[s].map(withBrand) as [string, string, string]))} hint={s} />
             ))}
           </div>
           {fieldErrors.scopes && <span className="type-meta text-rose-600">{fieldErrors.scopes}</span>}
@@ -455,18 +457,18 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
               checked={direct}
               onChange={setDirect}
               label={t("Direct connection only", "Iba priame pripojenie", "Csak közvetlen kapcsolat")}
-              hint={t("Refuse requests that came through a proxy. Use when WAAI and CCRM share a private network.", "Odmietnuť požiadavky, ktoré prešli cez proxy. Použite, keď WAAI a CRM zdieľajú súkromnú sieť.", "Elutasítja a proxyn át érkező kéréseket. Akkor használja, ha a WAAI és a CCRM közös privát hálózaton van.")}
+              hint={t(`Refuse requests that came through a proxy. Use when WAAI and ${brand} share a private network.`, "Odmietnuť požiadavky, ktoré prešli cez proxy. Použite, keď WAAI a CRM zdieľajú súkromnú sieť.", `Elutasítja a proxyn át érkező kéréseket. Akkor használja, ha a WAAI és a ${brand} közös privát hálózaton van.`)}
             />
             <Field
               label={t("Days to deadline when the chat names none", "Dní do termínu, ak chat žiadny neuvádza", "Határidő napokban, ha a csevegés nem nevez meg")}
-              hint={t("Tasks from WhatsApp need a deadline in CCRM: today plus this many days.", "Úlohy z WhatsAppu potrebujú v CRM termín: dnes plus tento počet dní.", "A WhatsApp-feladatoknak a CCRM-ben határidő kell: a mai nap plusz ennyi nap.")}
+              hint={t(`Tasks from WhatsApp need a deadline in ${brand}: today plus this many days.`, "Úlohy z WhatsAppu potrebujú v CRM termín: dnes plus tento počet dní.", `A WhatsApp-feladatoknak a ${brand}-ben határidő kell: a mai nap plusz ennyi nap.`)}
               error={fieldErrors.default_deadline_days}
             >
               <input className={`${inputCls} max-w-32`} value={days} onChange={(e) => setDays(e.target.value)} inputMode="numeric" />
             </Field>
             <Field
               label={t("Tasks WAAI may read back", "Úlohy, ktoré môže WAAI čítať", "A WAAI által visszaolvasható feladatok")}
-              hint={t("Only used when WAAI pulls CRM tasks (off at first).", "Použije sa, len keď WAAI preberá úlohy z CRM (spočiatku vypnuté).", "Csak akkor számít, ha a WAAI CCRM-feladatokat húz le (kezdetben ki van kapcsolva).")}
+              hint={t("Only used when WAAI pulls CRM tasks (off at first).", "Použije sa, len keď WAAI preberá úlohy z CRM (spočiatku vypnuté).", `Csak akkor számít, ha a WAAI ${brand}-feladatokat húz le (kezdetben ki van kapcsolva).`)}
             >
               <select className={inputCls} value={feedScope} onChange={(e) => setFeedScope(e.target.value as "owners" | "all")}>
                 <option value="owners">{t("Only the owners' tasks", "Iba úlohy vlastníkov", "Csak a tulajdonosok feladatai")}</option>
@@ -560,8 +562,8 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         {hasClient && (
           <p className="type-meta text-slate-500">
             {lastUsed
-              ? t(`WAAI last called CCRM on ${fmtDate(lastUsed, activeLang)}.`, `WAAI naposledy volal CRM ${fmtDate(lastUsed, activeLang)}.`, `A WAAI utoljára ${fmtDate(lastUsed, activeLang)} hívta a CCRM-et.`)
-              : t("WAAI has not called CCRM yet.", "WAAI zatiaľ nevolal CRM.", "A WAAI még nem hívta a CCRM-et.")}
+              ? t(`WAAI last called ${brand} on ${fmtDate(lastUsed, activeLang)}.`, `WAAI naposledy volal CRM ${fmtDate(lastUsed, activeLang)}.`, `A WAAI utoljára ${fmtDate(lastUsed, activeLang)} hívta a CCRM-et.`)
+              : t(`WAAI has not called ${brand} yet.`, "WAAI zatiaľ nevolal CRM.", `A WAAI még nem hívta a ${brand}-et.`)}
           </p>
         )}
       </SectionCard>
@@ -569,9 +571,9 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
       <SectionCard
         title={t("Sign-in to the WhatsApp module", "Prihlásenie do modulu WhatsApp", "Belépés a WhatsApp modulba")}
         description={t(
-          "The WhatsApp module shows WAAI inside CCRM and signs each user in as the WAAI user they are linked to. CCRM signs a 60-second token with this secret; WAAI checks it with the same secret. It is separate from the access token above and is shown once.",
+          `The WhatsApp module shows WAAI inside ${brand} and signs each user in as the WAAI user they are linked to. ${brand} signs a 60-second token with this secret; WAAI checks it with the same secret. It is separate from the access token above and is shown once.`,
           "Modul WhatsApp zobrazí WAAI priamo v CRM a prihlási každého používateľa ako používateľa WAAI, s ktorým je prepojený. CRM podpíše 60-sekundový token týmto kľúčom a WAAI ho overí rovnakým kľúčom. Je oddelený od prístupového tokenu vyššie a zobrazí sa raz.",
-          "A WhatsApp modul a WAAI-t a CCRM-ben jeleníti meg, és mindenkit azon WAAI-felhasználóként léptet be, akihez kötve van. A CCRM ezzel a kulccsal ír alá egy 60 másodperces tokent, a WAAI ugyanezzel a kulccsal ellenőrzi. Független a fenti hozzáférési tokentől, és egyszer látható."
+          `A WhatsApp modul a WAAI-t a ${brand}-ben jeleníti meg, és mindenkit azon WAAI-felhasználóként léptet be, akihez kötve van. A ${brand} ezzel a kulccsal ír alá egy 60 másodperces tokent, a WAAI ugyanezzel a kulccsal ellenőrzi. Független a fenti hozzáférési tokentől, és egyszer látható.`
         )}
         action={
           <button type="button" className={primaryBtn} disabled={rotating || !hasClient} onClick={rotateSecret}>

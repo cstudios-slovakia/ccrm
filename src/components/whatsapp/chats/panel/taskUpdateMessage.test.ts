@@ -27,7 +27,7 @@ test("buildTaskUpdateText single item formatting in English", () => {
   assert.ok(text.includes('"Send offer PDF" was marked as done by Peter.'));
   assert.ok(text.includes("> Notes: Offer was sent via email. (📎 1)"));
   assert.ok(text.includes("📎 1 attachment below"));
-  assert.ok(text.includes("_Automatic update · CCRM_"));
+  assert.ok(text.includes("_Automatic update · Koperniq_"));
 });
 
 test("buildTaskUpdateText batch items formatting in Slovak", () => {
@@ -46,7 +46,7 @@ test("buildTaskUpdateText batch items formatting in Slovak", () => {
   assert.ok(text.includes("• *Kúpiť materiál*"));
   assert.ok(text.includes("• *Dokončiť faktúru*"));
   assert.ok(text.includes("> Poznámka: Čaká sa na schválenie."));
-  assert.ok(text.includes("_Automatická aktualizácia · CCRM_"));
+  assert.ok(text.includes("_Automatická aktualizácia · Koperniq_"));
 });
 
 test("buildTaskUpdateText in Hungarian", () => {
@@ -60,5 +60,5 @@ test("buildTaskUpdateText in Hungarian", () => {
 
   assert.ok(text.includes("✅ *Feladat kész*"));
   assert.ok(text.includes("„Ajánlat küldése” feladat kész · István"));
-  assert.ok(text.includes("_Automatikus frissítés · CCRM_"));
+  assert.ok(text.includes("_Automatikus frissítés · Koperniq_"));
 });

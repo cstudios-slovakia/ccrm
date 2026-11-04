@@ -74,6 +74,7 @@ import { Chart as BundledChart } from "../utils/chartRuntime";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useListFilter } from "../hooks/useListFilter";
+import { DEFAULT_BRAND_NAME } from "../utils/brand";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -455,7 +456,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   leadCategories,
   integrationsConfig,
   taskStates,
-  systemName = "CCRM",
+  systemName = DEFAULT_BRAND_NAME,
   currencyCode,
   financialRecords = [],
   setFinancialRecords,

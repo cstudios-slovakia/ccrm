@@ -29,6 +29,7 @@ import {
   getCurrentLoginTheme,
   formatLocalizedClock
 } from "../utils/loginTheme";
+import { useBrandName } from "../utils/brand";
 
 interface LoginViewProps {
   users: UserProfile[];
@@ -47,6 +48,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   isDemoMode,
   isModal
 }) => {
+  const brand = useBrandName();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -547,7 +549,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                             onClick={() => onLoginSuccess(resetSignedInUser, "reset")}
                             className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl type-overline transition-all flex items-center justify-center gap-1.5"
                           >
-                            <LogIn className="h-3.5 w-3.5" /> {tr("Continue to CCRM", "Pokračovať do CCRM", "Tovább a CCRM-be")}
+                            <LogIn className="h-3.5 w-3.5" /> {tr(`Continue to ${brand}`, `Pokračovať do ${brand}`, `Tovább a ${brand}-be`)}
                           </button>
                         ) : (
                           <button
@@ -663,7 +665,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     )
                   ) : (
                     <span className="block text-micro font-semibold text-slate-600 leading-normal">
-                      {tr("To restore access, please contact your CCRM database administrator.", "Pre obnovenie prístupu kontaktujte prosím správcu databázy CCRM.", "A hozzáférés visszaállításához forduljon a CCRM adatbázis-adminisztrátorához.")}
+                      {tr(`To restore access, please contact your ${brand} database administrator.`, `Pre obnovenie prístupu kontaktujte prosím správcu databázy ${brand}.`, `A hozzáférés visszaállításához forduljon a ${brand} adatbázis-adminisztrátorához.`)}
                     </span>
                   )}
                 </div>

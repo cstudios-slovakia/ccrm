@@ -3,6 +3,7 @@ import { Surface } from "../layout";
 import { listEntries } from "../../utils/timeTrackingApi.ts";
 import { formatDuration } from "../../utils/timeTracking.ts";
 import type { Employee } from "../../types";
+import { useBrandName } from "../../utils/brand";
 
 interface Props {
   employee: Employee;
@@ -13,6 +14,7 @@ interface Props {
 
 /** Native time entries for one employee-month. Shown only when the source switch says CCRM. */
 export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
+  const brand = useBrandName();
   const [seconds, setSeconds] = useState<number | null>(null);
   const [days, setDays] = useState<Array<{ date: string; seconds: number }>>([]);
   const [error, setError] = useState(false);
@@ -58,9 +60,9 @@ export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
       <Surface>
         <p className="text-body text-slate-500">
           {t(
-            "This employee has no CCRM login, so there is no native time to show. Toggl stays available on the switch.",
-            "Tento zamestnanec nemá prihlásenie do CCRM, preto nie je čo zobraziť z evidencie času. Toggl zostáva na prepínači.",
-            "Ennek a munkatársnak nincs CCRM-belépése, ezért nincs natív idő. A Toggl a kapcsolón elérhető marad.",
+            `This employee has no ${brand} login, so there is no native time to show. Toggl stays available on the switch.`,
+            `Tento zamestnanec nemá prihlásenie do ${brand}, preto nie je čo zobraziť z evidencie času. Toggl zostáva na prepínači.`,
+            `Ennek a munkatársnak nincs ${brand}-belépése, ezért nincs natív idő. A Toggl a kapcsolón elérhető marad.`,
           )}
         </p>
       </Surface>
@@ -69,7 +71,7 @@ export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
 
   return (
     <Surface className="space-y-3" data-testid="ccrm-timesheet">
-      <h3 className="type-card-title text-slate-900">{t("CCRM time tracking", "Evidencia času CCRM", "CCRM időkövetés")}</h3>
+      <h3 className="type-card-title text-slate-900">{t(`${brand} time tracking`, `Evidencia času ${brand}`, `${brand} időkövetés`)}</h3>
       {error ? (
         <p className="text-body text-rose-700">{t("Could not load time entries.", "Záznamy času sa nepodarilo načítať.", "Az időbejegyzéseket nem sikerült betölteni.")}</p>
       ) : seconds === null ? (

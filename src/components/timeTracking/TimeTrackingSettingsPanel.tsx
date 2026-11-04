@@ -19,6 +19,7 @@ import { ExtensionSettings } from "./ExtensionSettings";
 import { TogglImportPanel } from "./TogglImportPanel";
 import { formatMoney } from "../../utils/currency";
 import type { Language } from "../../utils/translations";
+import { useBrandName } from "../../utils/brand";
 
 const OFFICIAL_SOURCE: Record<HolidayCountry, { label: string; href: string }> = {
   SK: { label: "slov-lex.sk", href: "https://www.slov-lex.sk/" },
@@ -29,6 +30,7 @@ const num = (v: string, fallback: number) => (Number.isFinite(parseFloat(v)) ? p
 
 /** Settings → Time tracking: cost basis, working days and holidays, rules, extension, re-pricing. */
 export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string }) {
+  const brand = useBrandName();
   const tt = useTimeTracking();
   const { t, settings, ready, enabled } = tt;
   const [draft, setDraft] = useState<TimeTrackingSettings>(settings);
@@ -337,9 +339,9 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       <Surface className="space-y-2">
         <h3 className="type-card-title text-slate-900">{t("External time tracker", "Externý nástroj na evidenciu času", "Külső időkövető")}</h3>
         <p className="text-body text-slate-500">{t(
-          "Toggl connections stay where they are: Employees → Settings. The employee summary keeps its Toggl hours and can switch to CCRM time tracking for that view only.",
-          "Pripojenia na Toggl zostávajú tam, kde sú: Zamestnanci → Nastavenia. Súhrn zamestnanca si ponecháva hodiny z Toggl a v tom zobrazení sa dá prepnúť na evidenciu času CCRM.",
-          "A Toggl-kapcsolatok ott maradnak, ahol vannak: Munkatársak → Beállítások. A munkatárs összesítője megtartja a Toggl-órákat, és azon a nézeten átváltható CCRM időkövetésre.",
+          `Toggl connections stay where they are: Employees → Settings. The employee summary keeps its Toggl hours and can switch to ${brand} time tracking for that view only.`,
+          `Pripojenia na Toggl zostávajú tam, kde sú: Zamestnanci → Nastavenia. Súhrn zamestnanca si ponecháva hodiny z Toggl a v tom zobrazení sa dá prepnúť na evidenciu času ${brand}.`,
+          `A Toggl-kapcsolatok ott maradnak, ahol vannak: Munkatársak → Beállítások. A munkatárs összesítője megtartja a Toggl-órákat, és azon a nézeten átváltható ${brand} időkövetésre.`,
         )}</p>
       </Surface>
       {/* END-PHASE6-SETTINGS */}

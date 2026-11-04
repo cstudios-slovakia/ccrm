@@ -80,7 +80,7 @@ test.describe('Password reset and sign-in limits', () => {
     // The token leaves the address bar, so a refresh does not reopen the form.
     await expect.poll(() => new URL(page.url()).search).toBe('');
 
-    await page.getByRole('button', { name: /Continue to CCRM|Pokračovať do CCRM|Tovább a CCRM-be/ }).click();
+    await page.getByRole('button', { name: /Continue to Koperniq|Pokračovať do Koperniq|Tovább a Koperniq-be/ }).click();
     await expect(page.locator('main').first()).toBeVisible({ timeout: 15_000 });
   });
 

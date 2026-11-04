@@ -88,6 +88,7 @@ import { SectionCard, ModuleLinkCard } from "./settings/SectionCard";
 import { SaveStatus } from "./settings/SectionCard";
 import { DemoReseedSettings } from "./settings/DemoReseedSettings";
 import { useAutosave } from "./settings/useAutosave";
+import { DEFAULT_BRAND_NAME, normalizeBrandOverride } from "../utils/brand";
 import { ScrollFade } from "./settings/ScrollFade";
 import { AiUsagePanel } from "./settings/AiUsagePanel";
 import { WaaiIntegrationSettings } from "./settings/WaaiIntegrationSettings";
@@ -933,7 +934,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTasks?.((prev) => prev.map((tk) => (tk.status === oldName ? { ...tk, status: next } : tk)));
   };
 
+  // `systemName` here is the stored override ("" = default name), not the displayed name.
   const [tempName, setTempName] = React.useState(systemName);
+  // The stored value arrived or changed (first sync, another user, this save): show it.
+  React.useEffect(() => setTempName(systemName), [systemName]);
   const [newState, setNewState] = React.useState("");
   const [newSource, setNewSource] = React.useState("");
   const [newTaskState, setNewTaskState] = React.useState("");
@@ -3031,9 +3035,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   });
   const nameStatus = useAutosave({
     value: tempName,
-    dirty: tempName.trim() !== "" && tempName !== systemName,
+    // An empty field is a real edit: it means "use the default name".
+    dirty: normalizeBrandOverride(tempName) !== systemName,
     enabled: canEditCompany,
-    save: (name) => setSystemName(name),
+    save: (name) => setSystemName(normalizeBrandOverride(name)),
   });
   // Both write independently; the chip shows the one that is busy.
   const companyStatus = billingStatus === "saving" || nameStatus === "saving" ? "saving" : billingStatus === "saved" || nameStatus === "saved" ? "saved" : "idle";
@@ -3042,7 +3047,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // was edited, including the moment after it has been written ("Saved").
   const companyChip = React.useRef<"profile" | "billing" | "bank" | "defaults" | null>(null);
   const fieldDirty = (k: keyof CompanyBillingSettings) => normField(billingForm[k]) !== normField(savedBilling[k]);
-  const nameDirty = tempName.trim() !== "" && tempName !== systemName;
+  const nameDirty = normalizeBrandOverride(tempName) !== systemName;
   if (nameDirty || (["companyLogoUrl", "companyName", "companySubtitle", "email", "phone", "phoneSecondary", "website"] as const).some(fieldDirty)) companyChip.current = "profile";
   else if ((["companyId", "taxId", "vatId", "street", "city", "postalCode", "country"] as const).some(fieldDirty)) companyChip.current = "billing";
   else if ((["iban", "swift"] as const).some(fieldDirty)) companyChip.current = "bank";
@@ -6925,12 +6930,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <input
                             id="settings-system-name"
                             type="text"
-                            required
                             disabled={getPermission("general_config") === "view"}
                             value={tempName}
                             onChange={(e) => setTempName(e.target.value)}
                             className="w-full min-h-12 ws-lg:min-h-0 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                            placeholder={t("e.g. CCRM", "napr. CCRM", "pl. CCRM")}
+                            placeholder={DEFAULT_BRAND_NAME}
                           />
                           <p className="text-micro text-slate-500">
                             {getTranslation(userLanguage, "settings.general.system_name_desc")}

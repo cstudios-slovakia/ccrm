@@ -475,7 +475,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
   // Preferences
-  const [sidebarPinned, setSidebarPinned] = useUserPref("sidebarPinned");
+  const [sidebarPinned] = useUserPref("sidebarPinned");
+  const [sidebarPinnedCollapsed, setSidebarPinnedCollapsed] = useUserPref("sidebarPinnedCollapsed");
   const [sidebarCompactness] = useUserPref("sidebarCompactness");
   const [sidebarUnpinnedStyle] = useUserPref("sidebarUnpinnedStyle");
   const [storedSidebarGroups] = useUserPref("sidebarGroups");
@@ -663,6 +664,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Dimensions & Density Tokens
   const compactness = sidebarCompactness || "comfortable";
   const isPinned = sidebarPinned === true;
+  const isPinnedRail = isPinned && sidebarPinnedCollapsed === true;
   const isDockMode = !isPinned && sidebarUnpinnedStyle === "dock";
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
   const [addModuleGroupId, setAddModuleGroupId] = useState<string | null>(null);
@@ -679,8 +681,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [addModuleGroupId]);
 
-  // When pinned or editing navigation, sidebar stays expanded
-  const isExpanded = isPinned || !isCollapsed || (isStartMenuOpen && startMenuEditMode);
+  // When pinned (and not narrowed to a rail) or editing navigation, sidebar stays expanded
+  const isExpanded = (isPinned && !isPinnedRail) || (!isPinned && !isCollapsed) || (isStartMenuOpen && startMenuEditMode);
 
   // The dock label follows the magnified icon on the animation frame, without
   // re-rendering the sidebar on every mouse move and without fading in again
@@ -1083,7 +1085,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div
         className={cn(
           "h-screen shrink-0 select-none hidden lg:block transition-all duration-300",
-          isPinned ? widthClasses.expanded : widthClasses.collapsed
+          isPinned && !isPinnedRail ? widthClasses.expanded : widthClasses.collapsed
         )}
       />
 
@@ -1672,8 +1674,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (isPinned) setSidebarPinned(false);
-                setIsCollapsed(!isCollapsed);
+                // Pinned: only narrow/widen the column, the pin mode stays as the user set it.
+                if (isPinned) setSidebarPinnedCollapsed(!isPinnedRail);
+                else setIsCollapsed(!isCollapsed);
               }}
               className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer group"
               aria-label={t("Toggle Navigation Sidebar", "Prepnúť navigačný panel", "Navigációs oldalsáv váltása")}

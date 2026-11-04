@@ -7,7 +7,7 @@ header('Content-Type: application/manifest+json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Cache-Control: public, max-age=60');
 
-$systemName = 'CCRM';
+$systemName = 'Koperniq';
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (file_exists($configFile)) {

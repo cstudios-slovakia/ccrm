@@ -1,4 +1,5 @@
 import type { SummaryLanguage } from "../../api/contract.ts";
+import { withBrand } from "../../../../utils/brand.ts";
 
 export type TaskUpdateLanguage = SummaryLanguage;
 
@@ -37,7 +38,7 @@ const STRINGS: Record<TaskUpdateLanguage, Strings> = {
     batchIntro: (s) => `These tasks were marked as done by ${s}:`,
     notes: "Notes",
     attachments: (n) => `📎 ${n} attachment${n === 1 ? "" : "s"} below`,
-    footer: "_Automatic update · CCRM_",
+    footer: "_Automatic update · {brand}_",
   },
   sk: {
     singleHeader: "✅ *Úloha hotová*",
@@ -46,7 +47,7 @@ const STRINGS: Record<TaskUpdateLanguage, Strings> = {
     batchIntro: (s) => `Tieto úlohy sú hotové · ${s}:`,
     notes: "Poznámka",
     attachments: (n) => `📎 Prílohy nižšie: ${n}`,
-    footer: "_Automatická aktualizácia · CCRM_",
+    footer: "_Automatická aktualizácia · {brand}_",
   },
   hu: {
     singleHeader: "✅ *Feladat kész*",
@@ -55,7 +56,7 @@ const STRINGS: Record<TaskUpdateLanguage, Strings> = {
     batchIntro: (s) => `Ezek a feladatok készek · ${s}:`,
     notes: "Megjegyzés",
     attachments: (n) => `📎 Mellékletek lent: ${n}`,
-    footer: "_Automatikus frissítés · CCRM_",
+    footer: "_Automatikus frissítés · {brand}_",
   },
 };
 
@@ -105,6 +106,6 @@ export function buildTaskUpdateText({
     parts.push(t.attachments(attachmentCount));
   }
 
-  parts.push(t.footer);
+  parts.push(withBrand(t.footer));
   return parts.join("\n\n");
 }

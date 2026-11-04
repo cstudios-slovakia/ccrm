@@ -954,7 +954,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'dataVersion' => $dataVersion,
                 'users' => $users,
                 'settings' => [
-                    'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
+                    // '' = no custom name: the client shows its default (Koperniq).
+                    'systemName' => $settings['SYSTEM_NAME'] ?? '',
                     'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
                     'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
                 ]
@@ -2881,7 +2882,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'financialMode' => ccrm_can($scope, 'financial') ? ($settings['FINANCIAL_MODE'] ?? 'connected') : 'connected',
         'financialSimplifiedTable' => ccrm_can($scope, 'financial') ? (json_decode($settings['FINANCIAL_SIMPLIFIED_TABLE'] ?? '{}', true) ?: (object)[]) : (object)[],
         'settings' => [
-            'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
+            // '' = no custom name: the client shows its default (Koperniq).
+            'systemName' => $settings['SYSTEM_NAME'] ?? '',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
             'systemCurrency' => $settings['SYSTEM_CURRENCY'] ?? '',
             'leadStates' => $leadStates,
@@ -3371,7 +3373,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // used to fall back to `[]` / a default, so any save that merely
                 // lacked a list (a script, an old tab, an API client) emptied the
                 // pipeline stages, sources and categories for everyone.
-                'SYSTEM_NAME' => isset($s['systemName']) && is_string($s['systemName']) && $s['systemName'] !== '' ? $s['systemName'] : null,
+                // '' is a real value: "no custom name, use the default". Only an omitted key means unchanged.
+                'SYSTEM_NAME' => isset($s['systemName']) && is_string($s['systemName']) ? trim($s['systemName']) : null,
                 'SYSTEM_LANGUAGE' => isset($s['systemLanguage']) && is_string($s['systemLanguage']) && $s['systemLanguage'] !== '' ? $s['systemLanguage'] : null,
                 'SYSTEM_CURRENCY' => isset($s['systemCurrency']) && is_string($s['systemCurrency']) ? $s['systemCurrency'] : null,
                 // The stage list also never saves empty: a lead has to sit in some

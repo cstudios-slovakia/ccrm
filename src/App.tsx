@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, lazy, Suspense, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
@@ -123,6 +123,7 @@ import {
 } from "./utils/financialTrend";
 import { flushPendingSaves } from "./utils/pendingSaves";
 import { updatePwaManifest } from "./utils/pwaManifest";
+import { DEFAULT_BRAND_NAME, normalizeBrandOverride, resolveBrandName, setBrandName } from "./utils/brand";
 import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
 import { clearErrorLogsWithUndo } from "./utils/errorLogs";
 
@@ -142,6 +143,8 @@ const SYNC_REQUEST_TIMEOUT_MS = 30_000;
 // page has loaded and signed in, so a reload during a freeze does not drop the
 // edit. Only bodies written before this page opened are replayed.
 const PENDING_PUSH_STORAGE_KEY = "ccrm_pending_push_v1";
+/** The company's own brand name only ("" = default). Not `crm_system_name`, which holds the resolved name for index.html's boot title. */
+const SYSTEM_NAME_OVERRIDE_KEY = "crm_system_name_override";
 const pageOpenedAt = Date.now();
 
 // Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
@@ -214,7 +217,8 @@ const PublicProjectTicketsView = safeLazy(() => import("./components/PublicProje
 const computeSettingsSig = (s: any): string => {
   if (!s || typeof s !== "object") return "null";
   return JSON.stringify([
-    s.systemName ?? "",
+    // Trimmed, so server and client agree on what "no custom name" looks like ("").
+    normalizeBrandOverride(s.systemName),
     s.systemLanguage ?? "",
     s.systemCurrency ?? "",
     s.leadStates ?? [],
@@ -663,10 +667,29 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undoToast]);
-  const [systemName, setSystemName] = useState(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_system_name") : null;
-    return stored || "CCRM";
+  // Only the company's OWN choice (Settings → System Brand Name) is stored; "" means
+  // "use the default". `systemName` below is what to display: the override, or Koperniq.
+  const [systemNameOverride, setSystemNameOverride] = useState(() => {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(SYSTEM_NAME_OVERRIDE_KEY);
+      // First load after the update: the name older versions cached, so an install
+      // that kept "CCRM" does not flash Koperniq until the server answers.
+      if (stored === null) {
+        const old = localStorage.getItem("crm_system_name");
+        if (old && old !== DEFAULT_BRAND_NAME) stored = old;
+      }
+    } catch (_) {}
+    const override = normalizeBrandOverride(stored);
+    // Before the first render, so nothing paints under the wrong name.
+    setBrandName(override);
+    return override;
   });
+  const systemName = resolveBrandName(systemNameOverride);
+  useLayoutEffect(() => {
+    setBrandName(systemNameOverride);
+    try { localStorage.setItem(SYSTEM_NAME_OVERRIDE_KEY, systemNameOverride); } catch (_) {}
+  }, [systemNameOverride]);
 
   // Synchronize PWA manifest & mobile app title with systemName
   useEffect(() => {
@@ -937,7 +960,7 @@ function App() {
     smtpAuth: true,
     smtpUser: "",
     smtpPassword: "",
-    senderName: "CCRM",
+    senderName: DEFAULT_BRAND_NAME,
     senderEmail: "",
     exchUrl: "https://outlook.office365.com/EWS/Exchange.asmx",
     exchDomain: "",
@@ -1062,7 +1085,7 @@ function App() {
   };
 
   const handleCopyLogDetails = (log: any) => {
-    const text = `### CCRM Exception Report
+    const text = `### ${systemName} Exception Report
 - **Timestamp**: ${log.created_at}
 - **Request**: ${log.request_method} ${log.request_uri}
 - **Error Message**: ${log.message}
@@ -1430,7 +1453,7 @@ ${log.payload || ''}
       financialMode: financialModeRef.current,
       financialSimplifiedTable: financialSimplifiedTableRef.current,
       settings: {
-        systemName,
+        systemName: systemNameOverride,
         systemLanguage,
         systemCurrency,
         leadStates,
@@ -2625,7 +2648,7 @@ ${log.payload || ''}
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
-      systemName, systemLanguage, systemCurrency,
+      systemName: systemNameOverride, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
       projectStatuses,
@@ -2663,7 +2686,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2750,7 +2773,8 @@ ${log.payload || ''}
         if (Array.isArray(data.users)) setUsers(data.users);
         const s = data.settings;
         if (s) {
-          if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+          // An empty name is a real answer ("use the default"), so it is adopted too.
+          if (s.systemName !== undefined) setSystemNameOverride(normalizeBrandOverride(s.systemName));
           if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
           if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         }
@@ -2986,7 +3010,7 @@ ${log.payload || ''}
       }
       if (data.settings) {
         const s = data.settings;
-        if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
+        if (s.systemName !== undefined) setSystemNameOverride(normalizeBrandOverride(s.systemName));
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         if (s.companyBillingSettings) setCompanyBillingSettings(sameOr(s.companyBillingSettings));
@@ -3320,6 +3344,26 @@ ${log.payload || ''}
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
     (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
 
+  // What the RAG AI view and the Executive Copilot (same chat_rag.php backend) show
+  // while the vector database is not connected. One source, so they never drift.
+  const ragAiSetupCard = {
+    description: t(
+      "The assistant answers from a vector index of your CRM data, so it stays inactive until a vector database is connected.",
+      "Asistent odpovedá z vektorového indexu dát CRM, preto zostane neaktívny, kým nebude pripojená vektorová databáza.",
+      "Az asszisztens a CRM-adatok vektorindexéből válaszol, ezért inaktív marad, amíg nincs csatlakoztatott vektoradatbázis."
+    ),
+    missing: [
+      ...(hasOpenAiKey(integrationsConfig) ? [] : [t("OpenAI API key", "OpenAI API kľúč", "OpenAI API kulcs")]),
+      t(
+        "Vector database connection (MariaDB, Qdrant or Pinecone), verified with “Test Vector DB Connection”",
+        "Pripojenie vektorovej databázy (MariaDB, Qdrant alebo Pinecone) overené tlačidlom „Otestovať pripojenie k vektorovej DB“",
+        "Vektoradatbázis-kapcsolat (MariaDB, Qdrant vagy Pinecone), a „Vektoradatbázis-kapcsolat tesztelése” gombbal ellenőrizve"
+      ),
+    ],
+    settingsLocation: t("Settings → AI integration", "Nastavenia → AI integrácia", "Beállítások → AI integráció"),
+    onOpenSettings: getPermission("ai_config") === "edit" ? openAiSettings : undefined,
+  };
+
   // Embedded Tasks Mode: the compact "My tasks" window (Pop out button, Picture-in-Picture
   // or popup), loaded as `#tasks?embed=tasks`.
   const isEmbeddedTasks = useMemo(() => {
@@ -3432,8 +3476,8 @@ ${log.payload || ''}
         <SettingsView
           settingsRoute="settings/access/users" 
           employees={employeeRights.view ? employees : undefined}
-          systemName={systemName} 
-          setSystemName={setSystemName} 
+          systemName={systemNameOverride} 
+          setSystemName={setSystemNameOverride} 
           leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
@@ -3702,8 +3746,8 @@ ${log.payload || ''}
       return (
         <SettingsView 
           employees={employeeRights.view ? employees : undefined}
-          systemName={systemName} 
-          setSystemName={setSystemName} 
+          systemName={systemNameOverride} 
+          setSystemName={setSystemNameOverride} 
           leadStates={orderedLeadStates}
           setLeadStates={setLeadStates}
           leadSources={leadSources}
@@ -4273,21 +4317,7 @@ ${log.payload || ''}
               language={userLanguage}
               icon={Brain}
               moduleName={t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens")}
-              description={t(
-                "The assistant answers from a vector index of your CRM data, so it stays inactive until a vector database is connected.",
-                "Asistent odpovedá z vektorového indexu dát CRM, preto zostane neaktívny, kým nebude pripojená vektorová databáza.",
-                "Az asszisztens a CRM-adatok vektorindexéből válaszol, ezért inaktív marad, amíg nincs csatlakoztatott vektoradatbázis."
-              )}
-              missing={[
-                ...(hasOpenAiKey(integrationsConfig) ? [] : [t("OpenAI API key", "OpenAI API kľúč", "OpenAI API kulcs")]),
-                t(
-                  "Vector database connection (MariaDB, Qdrant or Pinecone), verified with “Test Vector DB Connection”",
-                  "Pripojenie vektorovej databázy (MariaDB, Qdrant alebo Pinecone) overené tlačidlom „Otestovať pripojenie k vektorovej DB“",
-                  "Vektoradatbázis-kapcsolat (MariaDB, Qdrant vagy Pinecone), a „Vektoradatbázis-kapcsolat tesztelése” gombbal ellenőrizve"
-                ),
-              ]}
-              settingsLocation={t("Settings → AI integration", "Nastavenia → AI integrácia", "Beállítások → AI integráció")}
-              onOpenSettings={getPermission("ai_config") === "edit" ? openAiSettings : undefined}
+              {...ragAiSetupCard}
             />
           );
         }
@@ -4478,7 +4508,7 @@ ${log.payload || ''}
           </div>
           
           <h2 className="text-title font-heading font-bold text-slate-900 dark:text-white drop-shadow-sm">
-            {systemName || "CCRM"}
+            {systemName}
           </h2>
           
           <div className="flex items-center gap-2 mt-3.5 px-4 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
@@ -4657,7 +4687,7 @@ ${log.payload || ''}
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
                 <span className="font-heading font-extrabold text-body text-slate-900 tracking-tight flex items-center gap-1.5">
-                  <span>CCRM</span>
+                  <span>{systemName}</span>
                   <span className="text-micro font-bold uppercase px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
                     Tasks
                   </span>
@@ -4685,7 +4715,7 @@ ${log.payload || ''}
                   target="_blank"
                   rel="noreferrer"
                   className="px-2 py-0.5 rounded-lg text-micro font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors flex items-center gap-1 border border-slate-200"
-                  title={t("Open full CCRM", "Otvoriť plné CCRM", "Teljes CCRM megnyitása")}
+                  title={t(`Open full ${systemName}`, `Otvoriť plné ${systemName}`, `Teljes ${systemName} megnyitása`)}
                 >
                   <ArrowUpRight className="w-3 h-3" />
                   <span>{t("Open App", "Otvoriť aplikáciu", "Alkalmazás")}</span>
@@ -4924,6 +4954,7 @@ ${log.payload || ''}
             systemLanguage={userLanguage}
             screenContext={currentScreenContext}
             currentUser={currentUser}
+            setupRequired={isModuleSetupPending("rag_ai") ? ragAiSetupCard : undefined}
           />
         )}
       </div>

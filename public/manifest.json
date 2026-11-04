@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "CCRM",
-  "short_name": "CCRM",
+  "name": "Koperniq",
+  "short_name": "Koperniq",
   "description": "Client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment.",
   "start_url": "/",
   "scope": "/",

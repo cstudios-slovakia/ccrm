@@ -1,3 +1,4 @@
+import { getBrandName } from "./brand.ts";
 /**
  * What the "AI Assistant (MCP)" settings tab hands to the user to paste into an AI app.
  *
@@ -83,7 +84,7 @@ export interface AgentPromptUser {
 export const buildAgentPrompt = (user: AgentPromptUser): string => {
   const role = user.role?.trim();
   const who = `${user.name} (${user.email}${role ? `, Role: ${role}` : ""})`;
-  return `You have access to CCRM via the \`ccrm\` MCP server tools.
+  return `You have access to ${getBrandName()} via the \`ccrm\` MCP server tools.
 You are operating on behalf of ${who}. You can only use the tools and see the data that this role is allowed to; a tool that is not listed or that answers "Forbidden" is outside it.
 
 ### Available Capabilities:

@@ -1391,13 +1391,16 @@ if (!function_exists('ccrm_schema_statements')) {
         return (int)$stmt->fetchColumn() > 0;
     }
 
-    function ccrm_sql_real_tasks(string $alias = ''): string {
-        $alias = trim($alias);
-        if ($alias !== '') {
-            $a = trim($alias, '`.');
-            return "(`{$a}`.`task_kind` IS NULL)";
+    // Also defined (guarded) in recurring_tasks.php, which read_scope.php loads before this file.
+    if (!function_exists('ccrm_sql_real_tasks')) {
+        function ccrm_sql_real_tasks(string $alias = ''): string {
+            $alias = trim($alias);
+            if ($alias !== '') {
+                $a = trim($alias, '`.');
+                return "(`{$a}`.`task_kind` IS NULL)";
+            }
+            return "(`task_kind` IS NULL)";
         }
-        return "(`task_kind` IS NULL)";
     }
 
     function ccrm_index_exists(PDO $pdo, string $table, string $index): bool {
@@ -3148,7 +3151,7 @@ if (!function_exists('ccrm_schema_statements')) {
         };
 
         return [
-            'SYSTEM_NAME' => 'CCRM',
+            'SYSTEM_NAME' => '', // no custom name: the client shows Koperniq
             'SYSTEM_LANGUAGE' => $language,
             'LEAD_STATES' => $enc($leadStates),
             'LEAD_SOURCES' => $enc($leadSources),

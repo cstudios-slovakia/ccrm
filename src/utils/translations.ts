@@ -1,4 +1,5 @@
 import { settingsNavEn, settingsNavSk, settingsNavHu } from "./translations.settingsNav.ts";
+import { withBrand } from "./brand.ts";
 
 export type Language = "en" | "sk" | "hu";
 
@@ -19,7 +20,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "sidebar.tickets": "Support Tickets",
     "sidebar.settings": "Settings",
     "sidebar.logout": "Log Out",
-    "sidebar.version": "CCRM Version",
+    "sidebar.version": "{brand} Version",
     "sidebar.collapse": "Collapse Menu",
     "sidebar.command_center": "Command Center",
 
@@ -124,12 +125,12 @@ export const translations: Record<Language, Record<string, string>> = {
     "license.status.expired": "Licence expired",
     "license.status.expiring": "Licence expires soon",
     "license.status.active": "Licence active",
-    "license.banner.expiring_one": "Your CCRM licence expires tomorrow.",
-    "license.banner.expiring": "Your CCRM licence expires in {days} days, on {date}.",
-    "license.banner.expiring_today": "Your CCRM licence expires today.",
-    "license.banner.expired": "Your CCRM licence expired on {date}.",
-    "license.banner.revoked": "Your CCRM licence has been revoked.",
-    "license.banner.suspended": "Your CCRM licence is suspended.",
+    "license.banner.expiring_one": "Your {brand} licence expires tomorrow.",
+    "license.banner.expiring": "Your {brand} licence expires in {days} days, on {date}.",
+    "license.banner.expiring_today": "Your {brand} licence expires today.",
+    "license.banner.expired": "Your {brand} licence expired on {date}.",
+    "license.banner.revoked": "Your {brand} licence has been revoked.",
+    "license.banner.suspended": "Your {brand} licence is suspended.",
     "license.banner.invalid": "The licence on this installation could not be verified.",
     "license.banner.none": "This installation has no licence key.",
     "license.banner.enter_key": "Enter licence key",
@@ -237,7 +238,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.danger.title": "System Danger Zone",
     "settings.danger.desc": "Resetting the mockup database erases all custom leads, documents, logged history logs, pipeline status changes, and user roles. This action re-seeds fresh mockup structures and clears all local storage modifications.",
     "settings.danger.btn": "Reset Mockup Database",
-    "settings.general.system_name_desc": "This brand label updates all sidebar logo headers and page titles dynamically.",
+    "settings.general.system_name_desc": "Shown in the sidebar, page titles, the login screen and the installed app. Leave empty to use the default name, Koperniq.",
     "settings.general.system_lang_desc": "Choose system-wide default localization profile. Updates take effect immediately.",
     "settings.general.currency": "Currency",
     "settings.general.currency_auto": "Auto (follow region)",
@@ -867,7 +868,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "sidebar.tickets": "Podpora a tikety",
     "sidebar.settings": "Nastavenia",
     "sidebar.logout": "Odhlásiť sa",
-    "sidebar.version": "CCRM Verzia",
+    "sidebar.version": "{brand} Verzia",
     "sidebar.collapse": "Zbaliť menu",
     "sidebar.command_center": "Riadiace centrum",
 
@@ -972,12 +973,12 @@ export const translations: Record<Language, Record<string, string>> = {
     "license.status.expired": "Platnosť licencie vypršala",
     "license.status.expiring": "Platnosť licencie čoskoro vyprší",
     "license.status.active": "Licencia je platná",
-    "license.banner.expiring_one": "Platnosť vašej licencie CCRM vyprší zajtra.",
-    "license.banner.expiring": "Platnosť vašej licencie CCRM vyprší o {days} dní, dňa {date}.",
-    "license.banner.expiring_today": "Platnosť vašej licencie CCRM vyprší dnes.",
-    "license.banner.expired": "Platnosť vašej licencie CCRM vypršala {date}.",
-    "license.banner.revoked": "Vaša licencia CCRM bola zrušená.",
-    "license.banner.suspended": "Vaša licencia CCRM je pozastavená.",
+    "license.banner.expiring_one": "Platnosť vašej licencie {brand} vyprší zajtra.",
+    "license.banner.expiring": "Platnosť vašej licencie {brand} vyprší o {days} dní, dňa {date}.",
+    "license.banner.expiring_today": "Platnosť vašej licencie {brand} vyprší dnes.",
+    "license.banner.expired": "Platnosť vašej licencie {brand} vypršala {date}.",
+    "license.banner.revoked": "Vaša licencia {brand} bola zrušená.",
+    "license.banner.suspended": "Vaša licencia {brand} je pozastavená.",
     "license.banner.invalid": "Licenciu na tejto inštalácii sa nepodarilo overiť.",
     "license.banner.none": "Táto inštalácia nemá zadaný licenčný kľúč.",
     "license.banner.enter_key": "Zadať licenčný kľúč",
@@ -1082,7 +1083,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.send_test": "Odoslať testovaciu obálku",
 
     "settings.danger.btn": "Reset Databázy Mockupov",
-    "settings.general.system_name_desc": "Tento názov značky dynamicky aktualizuje všetky hlavičky loga bočného panela a názvy stránok.",
+    "settings.general.system_name_desc": "Zobrazuje sa v bočnom paneli, v názvoch stránok, na prihlasovacej obrazovke a v nainštalovanej aplikácii. Nechajte prázdne pre predvolený názov, Koperniq.",
     "settings.general.system_lang_desc": "Vyberte predvolený jazykový profil pre celý systém. Zmeny sa prejavia okamžite.",
     "settings.general.currency": "Mena",
     "settings.general.currency_auto": "Automaticky (podľa regiónu)",
@@ -1714,7 +1715,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "sidebar.tickets": "Támogatási jegyek",
     "sidebar.settings": "Beállítások",
     "sidebar.logout": "Kijelentkezés",
-    "sidebar.version": "CCRM Verzió",
+    "sidebar.version": "{brand} Verzió",
     "sidebar.collapse": "Menü összecsukása",
     "sidebar.command_center": "Vezérlőközpont",
 
@@ -1819,12 +1820,12 @@ export const translations: Record<Language, Record<string, string>> = {
     "license.status.expired": "A licenc lejárt",
     "license.status.expiring": "A licenc hamarosan lejár",
     "license.status.active": "A licenc érvényes",
-    "license.banner.expiring_one": "A CCRM licence holnap lejár.",
-    "license.banner.expiring": "A CCRM licence {days} nap múlva, {date} napon lejár.",
-    "license.banner.expiring_today": "A CCRM licence ma lejár.",
-    "license.banner.expired": "A CCRM licence {date} napon lejárt.",
-    "license.banner.revoked": "A CCRM licencét visszavonták.",
-    "license.banner.suspended": "A CCRM licence fel van függesztve.",
+    "license.banner.expiring_one": "A {brand} licence holnap lejár.",
+    "license.banner.expiring": "A {brand} licence {days} nap múlva, {date} napon lejár.",
+    "license.banner.expiring_today": "A {brand} licence ma lejár.",
+    "license.banner.expired": "A {brand} licence {date} napon lejárt.",
+    "license.banner.revoked": "A {brand} licencét visszavonták.",
+    "license.banner.suspended": "A {brand} licence fel van függesztve.",
     "license.banner.invalid": "A telepítésen lévő licencet nem sikerült ellenőrizni.",
     "license.banner.none": "Ehhez a telepítéshez nincs licenckulcs megadva.",
     "license.banner.enter_key": "Licenckulcs megadása",
@@ -1929,7 +1930,7 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.email.send_test": "Tesztlevél küldése",
 
     "settings.danger.btn": "Mockup Adatbázis Visszaállítása",
-    "settings.general.system_name_desc": "Ez a márkanév dinamikusan frissíti a menüsor fejlécét és az oldal címét.",
+    "settings.general.system_name_desc": "Megjelenik az oldalsávban, az oldalcímekben, a bejelentkezési képernyőn és a telepített alkalmazásban. Hagyja üresen az alapértelmezett névhez: Koperniq.",
     "settings.general.system_lang_desc": "Válassza ki a rendszer alapértelmezett nyelvi profilját. A változások azonnal életbe lépnek.",
     "settings.general.currency": "Pénznem",
     "settings.general.currency_auto": "Automatikus (régió szerint)",
@@ -2547,8 +2548,10 @@ export const translations: Record<Language, Record<string, string>> = {
   }
 };
 
+// "{brand}" in a table entry is the product name (Koperniq, or the company's own
+// Settings → System Brand Name). It is filled here, never written into the table.
 export const getTranslation = (lang: Language, key: string): string => {
-  return translations[lang]?.[key] || translations["en"]?.[key] || key;
+  return withBrand(translations[lang]?.[key] || translations["en"]?.[key] || key);
 };
 
 /**

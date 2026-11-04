@@ -33,7 +33,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
 
   const t = {
     en: {
-      title: "CCRM Installation Wizard",
+      title: "Koperniq Installation Wizard",
       requires: "Requires a MySQL or MariaDB database",
       step1: "Credentials",
       step2: "Seeding",
@@ -48,7 +48,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       btnInstall: "Run Setup & Migrate",
       error_title: "Connection Failed",
       success_title: "Setup Complete!",
-      success_desc: "CCRM has been successfully configured and migrated.",
+      success_desc: "Koperniq has been successfully configured and migrated.",
       success_btn: "Proceed to Application",
       type_demo: "Seed with Demo Data (Recommended)",
       type_demo_desc: "Installs one fictional company with every module filled in: clients, leads, projects, offers, invoices, warehouse, finance, employees, time tracking, e-mail, WhatsApp, meetings and automations.",
@@ -61,7 +61,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       checking: "Establishing secure PDO handshake..."
     },
     sk: {
-      title: "Inštalačný sprievodca CCRM",
+      title: "Inštalačný sprievodca Koperniq",
       requires: "Vyžaduje databázu MySQL alebo MariaDB",
       step1: "Údaje",
       step2: "Dáta",
@@ -76,7 +76,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       btnInstall: "Spustiť inštaláciu",
       error_title: "Pripojenie zlyhalo",
       success_title: "Inštalácia úspešná!",
-      success_desc: "CCRM bol úspešne nakonfigurovaný a databáza bola migrovaná.",
+      success_desc: "Koperniq bol úspešne nakonfigurovaný a databáza bola migrovaná.",
       success_btn: "Prejsť do aplikácie",
       type_demo: "Nainštalovať demo dáta (odporúčané)",
       type_demo_desc: "Nainštaluje jednu vymyslenú firmu s vyplneným každým modulom: klienti, leady, projekty, ponuky, faktúry, sklad, financie, zamestnanci, sledovanie času, e-mail, WhatsApp, porady a automatizácie.",
@@ -89,7 +89,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       checking: "Nadväzuje sa bezpečné spojenie..."
     },
     hu: {
-      title: "CCRM Telepítési Varázsló",
+      title: "Koperniq Telepítési Varázsló",
       requires: "MySQL vagy MariaDB adatbázis szükséges",
       step1: "Adatok",
       step2: "Magvetés",
@@ -104,7 +104,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       btnInstall: "Telepítés futtatása",
       error_title: "A kapcsolódás sikertelen",
       success_title: "A telepítés befejeződött!",
-      success_desc: "A CCRM sikeresen konfigurálva és migrálva lett.",
+      success_desc: "A Koperniq sikeresen konfigurálva és migrálva lett.",
       success_btn: "Továbblépés az alkalmazásba",
       type_demo: "Demo adatok telepítése (Ajánlott)",
       type_demo_desc: "Egy kitalált céget telepít, amelyben minden modul fel van töltve: ügyfelek, leadek, projektek, ajánlatok, számlák, raktár, pénzügyek, munkatársak, időmérés, e-mail, WhatsApp, megbeszélések és automatizálások.",

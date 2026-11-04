@@ -46,6 +46,7 @@ import {
   type OfferStatusDef,
 } from "../utils/offerStatuses";
 import { useListFilter } from "../hooks/useListFilter";
+import { getBrandName } from "../utils/brand";
 
 interface PriceOffersViewProps {
   /**
@@ -428,7 +429,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           `Kiállított árajánlat ${money(doc.totalPrice)} értékben. Tárgy: ${doc.subject || "—"}`
         ),
         amount: doc.totalPrice,
-        author: currentUser?.name || "CCRM"
+        author: currentUser?.name || getBrandName()
       };
 
       if (onAddTimelineEvent) {

@@ -29,6 +29,7 @@ import {
   mcpKeyHeader,
   mcpServerUrl,
 } from "../utils/mcpConnect";
+import { useBrandName } from "../utils/brand";
 
 type T = (en: string, sk: string, hu: string) => string;
 
@@ -250,6 +251,7 @@ export interface McpAssistantSettingsProps {
 }
 
 export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ currentUser, activeLang }) => {
+  const brand = useBrandName();
   const t: T = (en, sk, hu) => (activeLang === "sk" ? sk : activeLang === "hu" ? hu : en);
   const lang = asLang(activeLang);
 
@@ -677,9 +679,9 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
                 </li>
                 <li>
                   {t(
-                    "Save, then test it: ask the assistant “List my open tasks in CCRM”.",
-                    "Uložte a vyskúšajte: opýtajte sa asistenta „Zobraz moje otvorené úlohy v CCRM“.",
-                    "Mentse, majd próbálja ki: kérdezze meg az asszisztenst: „Listázd a nyitott feladataimat a CCRM-ben”."
+                    `Save, then test it: ask the assistant “List my open tasks in ${brand}”.`,
+                    `Uložte a vyskúšajte: opýtajte sa asistenta „Zobraz moje otvorené úlohy v ${brand}“.`,
+                    `Mentse, majd próbálja ki: kérdezze meg az asszisztenst: „Listázd a nyitott feladataimat a ${brand}-ben”.`
                   )}
                 </li>
               </ol>
@@ -783,17 +785,17 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
             <>
               <p className="text-ui text-slate-600 font-medium">
                 {t(
-                  "Only needed for apps that cannot reach a remote URL. It runs a small Node program on your computer and needs the mcp-server folder from the CCRM repository.",
-                  "Potrebné iba pre aplikácie, ktoré sa nevedia pripojiť na vzdialenú adresu. Spúšťa malý program v Node na vašom počítači a vyžaduje priečinok mcp-server z repozitára CCRM.",
-                  "Csak olyan alkalmazásokhoz kell, amelyek nem érnek el távoli URL-t. Egy kis Node programot futtat a számítógépén, és a CCRM tárolóból az mcp-server mappára van szüksége."
+                  `Only needed for apps that cannot reach a remote URL. It runs a small Node program on your computer and needs the mcp-server folder from the ${brand} repository.`,
+                  `Potrebné iba pre aplikácie, ktoré sa nevedia pripojiť na vzdialenú adresu. Spúšťa malý program v Node na vašom počítači a vyžaduje priečinok mcp-server z repozitára ${brand}.`,
+                  `Csak olyan alkalmazásokhoz kell, amelyek nem érnek el távoli URL-t. Egy kis Node programot futtat a számítógépén, és a ${brand} tárolóból az mcp-server mappára van szüksége.`
                 )}
               </p>
               <p className="text-caption text-slate-500 font-medium">
                 {t("Replace", "Nahraďte", "Cserélje le a")} {code("/path/to/ccrm-app")}{" "}
                 {t(
-                  "with the folder where the CCRM repository is on your computer.",
-                  "priečinkom, v ktorom je repozitár CCRM na vašom počítači.",
-                  "részt arra a mappára, ahol a CCRM tároló a számítógépén van."
+                  `with the folder where the ${brand} repository is on your computer.`,
+                  `priečinkom, v ktorom je repozitár ${brand} na vašom počítači.`,
+                  `részt arra a mappára, ahol a ${brand} tároló a számítógépén van.`
                 )}
               </p>
               <CopyField
@@ -814,9 +816,9 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
           <StepHeader
             n={3}
             title={t(
-              "Optional: tell the assistant how to work with CCRM",
-              "Voliteľné: poraďte asistentovi, ako pracovať s CCRM",
-              "Opcionális: tájékoztassa az asszisztenst, hogyan dolgozzon a CCRM-mel"
+              `Optional: tell the assistant how to work with ${brand}`,
+              `Voliteľné: poraďte asistentovi, ako pracovať s ${brand}`,
+              `Opcionális: tájékoztassa az asszisztenst, hogyan dolgozzon a ${brand}-mel`
             )}
           >
             {t(
@@ -889,7 +891,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
               {t("My app sends Authorization but still gets 401", "Moja aplikácia posiela Authorization, ale stále dostáva 401", "Az alkalmazásom Authorization fejlécet küld, mégis 401-et kap")}
             </dt>
             <dd className="text-slate-600 font-medium">
-              {t("Some servers drop that header before CCRM sees it. Use the", "Niektoré servery túto hlavičku zahodia skôr, než ju CCRM uvidí. Použite hlavičku", "Egyes szerverek eldobják ezt a fejlécet, mielőtt a CCRM látná. Használja az")}{" "}
+              {t(`Some servers drop that header before ${brand} sees it. Use the`, `Niektoré servery túto hlavičku zahodia skôr, než ju ${brand} uvidí. Použite hlavičku`, `Egyes szerverek eldobják ezt a fejlécet, mielőtt a ${brand} látná. Használja az`)}{" "}
               {code("X-API-Key")}{" "}
               {t("header instead.", "namiesto nej.", "fejlécet helyette.")}
             </dd>

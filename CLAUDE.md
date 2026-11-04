@@ -91,6 +91,11 @@ follow its Part A.
 
 - `npm run build` rewrites `dist/`, which is committed. Use `npx tsc --noEmit`
   to type-check without touching it.
+- **`npm run dev` does not type-check.** Vite only strips types, so a missing variable or
+  import (`ReferenceError: brand is not defined`) stays silent until that component renders,
+  often only in one flow such as switching users. After any edit that touches many files
+  (a rename, a rebrand, a mechanical find-and-replace) run `npm run typecheck` before
+  telling the user it works; it reports an unused import and an undefined name alike.
 - The root `tsconfig.json` checks nothing on its own — `npm run build` (`tsc -b`)
   is what actually type-checks `src/`.
 - Clients and leads are **one table**: a client is a `leads` row with a `client-*`

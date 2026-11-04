@@ -23,6 +23,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
+import { getBrandName } from "../utils/brand";
 
 const SYSTEM_COLORS = [
   { name: "Purple", hex: "#7e22ce" },
@@ -1530,7 +1531,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         data = { type: "create_task", title: "", description: "", priority: "medium", deadline_days: 2, deadline_time: "09:00" };
       } else if (subType === "send_email") {
         name = t("Send Email", "Odoslať e-mail", "E-mail küldése");
-        data = { type: "send_email", to: "{{$trigger.email}}", subject: "Welcome to CCRM", body: "Hello {{$trigger.name}}, ..." };
+        data = { type: "send_email", to: "{{$trigger.email}}", subject: `Welcome to ${getBrandName()}`, body: "Hello {{$trigger.name}}, ..." };
       } else if (subType === "update_project_status") {
         name = t("Change Project Status", "Zmeniť stav projektu", "Projekt állapotának módosítása");
         // Defaults to the project paired with the lead the workflow is about —

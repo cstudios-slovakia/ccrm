@@ -99,6 +99,7 @@ import { StatGrid, PageHeader, Tabs } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { useListFilter } from "../hooks/useListFilter";
+import { useBrandName } from "../utils/brand";
 
 interface WarehouseViewProps {
   systemLanguage: Language;
@@ -149,6 +150,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onAddTimelineEvent: onAddTimelineEventRaw,
   access = FULL_MODULE_ACCESS
 }) => {
+  const brand = useBrandName();
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -6881,7 +6883,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <div className="flex items-start justify-between pb-6 border-b border-slate-200">
               <div>
                 <span className="type-overline text-slate-400 font-mono">
-                  CCRM WAREHOUSE NODE
+                  {brand.toUpperCase()} WAREHOUSE NODE
                 </span>
                 <h2 className="type-metric text-slate-900 mt-0.5">
                   {selectedMovementForPrint.type === "inward"
@@ -6909,7 +6911,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   {warehouses.find(w => w.id === selectedMovementForPrint.warehouseId)?.name || selectedMovementForPrint.warehouseId}
                 </div>
                 <div className="text-slate-500 mt-0.5">
-                  {warehouses.find(w => w.id === selectedMovementForPrint.warehouseId)?.address || "CCRM Sklad"}
+                  {warehouses.find(w => w.id === selectedMovementForPrint.warehouseId)?.address || `${brand} Sklad`}
                 </div>
               </div>
 

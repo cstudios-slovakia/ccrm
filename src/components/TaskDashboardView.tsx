@@ -93,6 +93,7 @@ import { TaskDescriptionMark } from "./TaskDescriptionMark";
 import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { useListFilter } from "../hooks/useListFilter";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
+import { useBrandName } from "../utils/brand";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
@@ -556,6 +557,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     leadStageGroups,
     leadStateParents,
 }) => {
+    const brand = useBrandName();
     const isDoneState = (status: string) => {
         return (
             status.toLowerCase() === "done" ||
@@ -1184,9 +1186,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (result === "blocked") {
             (window as any).showToast?.(
                 t(
-                    "Your browser blocked the pop-up window. Allow pop-ups for CCRM and try again.",
-                    "Prehliadač zablokoval vyskakovacie okno. Povoľte pre CCRM vyskakovacie okná a skúste znova.",
-                    "A böngésző letiltotta a felugró ablakot. Engedélyezze a felugró ablakokat a CCRM-hez, és próbálja újra.",
+                    `Your browser blocked the pop-up window. Allow pop-ups for ${brand} and try again.`,
+                    `Prehliadač zablokoval vyskakovacie okno. Povoľte pre ${brand} vyskakovacie okná a skúste znova.`,
+                    `A böngésző letiltotta a felugró ablakot. Engedélyezze a felugró ablakokat a ${brand}-hez, és próbálja újra.`,
                 ),
                 "warning",
             );

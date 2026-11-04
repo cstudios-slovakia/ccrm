@@ -185,6 +185,8 @@ export interface UserPrefs {
   ragDefaultAgent: any | null;
   /** Sidebar persistent pinned state on the left. If true, stays expanded and renders a right inner shadow. */
   sidebarPinned: boolean;
+  /** While pinned, the arrow button narrows the column to icons only. Never changes the pin mode itself. */
+  sidebarPinnedCollapsed: boolean;
   /** Sidebar compactness density: "compact" | "comfortable" | "spacious". */
   sidebarCompactness: "compact" | "comfortable" | "spacious";
   /** Unpinned behavior: "overlay" (slide-out on hover) | "dock" (macOS cursor-distance magnification). */
@@ -283,6 +285,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   aiKeyBannerDismissed: false,
   ragDefaultAgent: null,
   sidebarPinned: false,
+  sidebarPinnedCollapsed: false,
   sidebarCompactness: "comfortable",
   sidebarUnpinnedStyle: "overlay",
   sidebarGroups: null,

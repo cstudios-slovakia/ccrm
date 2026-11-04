@@ -12,6 +12,7 @@
     "check:backend": "node scripts/sync-backend.mjs --check",
     "deploy": "node scripts/deploy.mjs",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "preview": "vite preview",
     "test": "npm run test:unit && npm run test:demo-packs && npm run test:demo-seed && npm run test:demo-wipe && npm run test:qa",
     "test:unit": "node --test --experimental-strip-types \"src/**/*.test.ts\"",

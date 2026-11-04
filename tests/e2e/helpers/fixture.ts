@@ -948,7 +948,7 @@ const ROLES = [
 ];
 
 const SETTINGS = {
-  systemName: 'CCRM',
+  systemName: '',
   systemLanguage: 'sk',
   systemCurrency: 'EUR',
   leadStates: LEAD_STATES,
