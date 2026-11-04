@@ -691,6 +691,11 @@ if (!function_exists('ccrm_marveen_ensure_worker_dir')) {
             }
             $geminiSettings = [
                 'selectedAuthType' => 'oauth-personal',
+                'security' => [
+                    'auth' => [
+                        'selectedType' => 'oauth-personal',
+                    ],
+                ],
                 'mcpServers' => [
                     'ccrm' => [
                         'httpUrl' => $mcpUrl,
@@ -780,7 +785,7 @@ if (!function_exists('ccrm_marveen_ensure_user_mcp_key')) {
         $keyId = 'mcpk-marveen-' . substr(bin2hex(random_bytes(6)), 0, 10);
 
         $ins = $pdo->prepare(
-            "INSERT INTO mcp_keys (id, user_id, label, key_hash, key_prefix) VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO mcp_keys (id, user_id, name, key_hash, key_prefix) VALUES (?, ?, ?, ?, ?)"
         );
         $ins->execute([$keyId, $userId, 'Marveen Agent Connector', $keyHash, $keyPrefix]);
 
@@ -913,10 +918,24 @@ if (!function_exists('ccrm_marveen_run_agent')) {
         $fullPrompt = $systemPrompt !== '' ? ($systemPrompt . "\n\n" . $prompt) : $prompt;
 
         if ($bin !== null && ccrm_marveen_can_proc_open() && $token !== '') {
-            $cmd = [$bin, '-p', $fullPrompt, '--mcp-config', $ctx['mcpPath'], '--dangerously-skip-permissions'];
-            if ($model !== '') {
-                $cmd[] = '--model';
-                $cmd[] = $model;
+            if ($provider === 'antigravity') {
+                $cmd = [$bin, '-p', $fullPrompt, '--yolo', '--skip-trust'];
+                if ($model !== '') {
+                    $cmd[] = '-m';
+                    $cmd[] = $model;
+                }
+            } elseif ($provider === 'chatgpt') {
+                $cmd = [$bin, 'exec', $fullPrompt];
+                if ($model !== '') {
+                    $cmd[] = '-m';
+                    $cmd[] = $model;
+                }
+            } else {
+                $cmd = [$bin, '-p', $fullPrompt, '--mcp-config', $ctx['mcpPath'], '--dangerously-skip-permissions'];
+                if ($model !== '') {
+                    $cmd[] = '--model';
+                    $cmd[] = $model;
+                }
             }
             $env = [
                 'PATH' => dirname($bin) . ':/usr/local/bin:/usr/bin:/bin',
@@ -924,9 +943,13 @@ if (!function_exists('ccrm_marveen_run_agent')) {
                 'CLAUDE_CONFIG_DIR' => $ctx['configDir'],
                 'CLAUDE_CODE_OAUTH_TOKEN' => $token,
                 'OPENAI_API_KEY' => $token,
-                'GEMINI_API_KEY' => $token,
+                'GEMINI_CLI_TRUST_WORKSPACE' => 'true',
+                'GEMINI_CLI_CUSTOM_HEADERS' => 'User-Agent: antigravity/1.0.0',
                 'DISABLE_AUTOUPDATER' => '1',
             ];
+            if (!str_starts_with($token, 'gemini-oauth:')) {
+                $env['GEMINI_API_KEY'] = $token;
+            }
             $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
             $proc = @proc_open($cmd, $descriptors, $pipes, $ctx['workerHome'], $env);
             if (is_resource($proc)) {
@@ -945,10 +968,12 @@ if (!function_exists('ccrm_marveen_run_agent')) {
                         'provider' => $provider,
                     ];
                 }
-                return [
-                    'ok' => false,
-                    'error' => 'Agent CLI exited with ' . $exit . ': ' . trim($stderr ?: $stdout),
-                ];
+                if ($provider !== 'antigravity' || !str_starts_with($token, 'gemini-oauth:')) {
+                    return [
+                        'ok' => false,
+                        'error' => 'Agent CLI exited with ' . $exit . ': ' . trim($stderr ?: $stdout),
+                    ];
+                }
             }
         }
 

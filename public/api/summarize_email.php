@@ -17,6 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // SECURITY: Authenticated users only
 $sessionUser = ccrm_require_auth();
 ccrm_gate($sessionUser, 'email');
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 $userEmail = $sessionUser['email'] ?? '';
 
 if (empty($userEmail)) {

@@ -43,6 +43,9 @@ $method = $_SERVER['REQUEST_METHOD'];
 $sessionUser = in_array($action, ['my', 'agent_run'], true)
     ? ccrm_require_auth()
     : ccrm_require_admin();
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 try {
     $pdo = get_db_connection();
@@ -531,10 +534,16 @@ try {
             throw new \InvalidArgumentException('The cut-off date must be YYYY-MM-DD.');
         }
 
-        $dup = $pdo->prepare("SELECT `id` FROM `company_mailboxes` WHERE `address` = ? AND `id` <> ?");
+        $dup = $pdo->prepare("SELECT * FROM `company_mailboxes` WHERE `address` = ? AND `id` <> ?");
         $dup->execute([$address, $id]);
-        if ($dup->fetchColumn()) {
-            throw new \InvalidArgumentException('A company mailbox with this address already exists.');
+        $existingDup = $dup->fetch(PDO::FETCH_ASSOC);
+        if ($existingDup) {
+            if ($id === '' && !in_array($connectorType, CCRM_EMAIL_CONNECTOR_TYPES, true)) {
+                $id = (string)$existingDup['id'];
+                $stored = $existingDup;
+            } else {
+                throw new \InvalidArgumentException('A company mailbox with this address already exists.');
+            }
         }
 
         $blob = json_encode(ccrm_encrypt_config_secrets($settings, ccrm_email_secret_keys()), JSON_UNESCAPED_UNICODE);
@@ -554,21 +563,25 @@ try {
 
         // Provision MCP keys and isolated Marveen worker config for AI subscription connectors
         if (in_array($connectorType, CCRM_AGENT_CONNECTOR_TYPES, true)) {
-            $targetUsers = !empty($validUserIds) ? $validUserIds : [(string)($sessionUser['id'] ?? '')];
-            $firstMcpKey = '';
-            foreach ($targetUsers as $uid) {
-                if ($uid !== '') {
-                    $k = ccrm_marveen_ensure_user_mcp_key($pdo, $uid);
-                    if ($firstMcpKey === '') $firstMcpKey = $k;
+            try {
+                $targetUsers = !empty($validUserIds) ? $validUserIds : [(string)($sessionUser['id'] ?? '')];
+                $firstMcpKey = '';
+                foreach ($targetUsers as $uid) {
+                    if ($uid !== '') {
+                        $k = ccrm_marveen_ensure_user_mcp_key($pdo, $uid);
+                        if ($firstMcpKey === '') $firstMcpKey = $k;
+                    }
                 }
+                ccrm_marveen_ensure_worker_dir(
+                    $id,
+                    $connectorType,
+                    (string)($settings['subscriptionToken'] ?? ''),
+                    ccrm_marveen_internal_mcp_url(),
+                    $firstMcpKey ?: 'provisioned'
+                );
+            } catch (\Throwable $e) {
+                error_log('CCRM: Marveen worker provisioning warning for ' . $id . ': ' . $e->getMessage());
             }
-            ccrm_marveen_ensure_worker_dir(
-                $id,
-                $connectorType,
-                (string)($settings['subscriptionToken'] ?? ''),
-                ccrm_marveen_internal_mcp_url(),
-                $firstMcpKey ?: 'provisioned'
-            );
         }
 
         if ($connectorType === 'whatsapp') {
