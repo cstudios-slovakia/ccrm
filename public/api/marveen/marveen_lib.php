@@ -689,11 +689,13 @@ if (!function_exists('ccrm_marveen_ensure_worker_dir')) {
                     @chmod($geminiDir . '/oauth_creds.json', 0600);
                 }
             }
+            $hasApiKey = is_file($workerHome . '/.gemini_api_key') || str_starts_with($subscriptionToken, 'AIza');
+            $authType = $hasApiKey ? 'gemini-api-key' : 'oauth-personal';
             $geminiSettings = [
-                'selectedAuthType' => 'oauth-personal',
+                'selectedAuthType' => $authType,
                 'security' => [
                     'auth' => [
-                        'selectedType' => 'oauth-personal',
+                        'selectedType' => $authType,
                     ],
                 ],
                 'mcpServers' => [
@@ -1069,10 +1071,16 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
         string $systemPrompt = '',
         string $preferredModel = ''
     ): array {
-        $model = trim($preferredModel);
-        if ($model === '' || !str_starts_with($model, 'gemini-')) {
-            $model = 'gemini-2.5-flash';
-        }
+        $trimmedPreferred = trim($preferredModel);
+        $candidateModels = array_values(array_unique(array_filter([
+            ($trimmedPreferred !== '' && str_starts_with($trimmedPreferred, 'gemini-')) ? $trimmedPreferred : '',
+            'gemini-3.5-flash-lite',
+            'gemini-3.1-flash-lite',
+            'gemini-2.5-flash',
+            'gemini-2.5-flash-lite',
+        ])));
+        $modelIdx = 0;
+        $model = $candidateModels[0] ?? 'gemini-3.5-flash-lite';
 
         $mcpCall = static function (string $method, array $params = []) use ($mcpUrl, $mcpBearerKey): ?array {
             $ch = curl_init($mcpUrl);
@@ -1158,7 +1166,7 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
             ],
         ];
 
-        $maxTurns = 5;
+        $maxTurns = 8;
         for ($turn = 0; $turn < $maxTurns; $turn++) {
             $payload = [
                 'contents' => $contents,
@@ -1168,30 +1176,41 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     'parts' => [['text' => $systemPrompt]],
                 ];
             }
-            if (!empty($funcDecls)) {
+            // On the final turn, omit tool declarations so the model synthesizes a final text response
+            // from the tool outputs already collected rather than requesting more tool calls.
+            if (!empty($funcDecls) && $turn < $maxTurns - 1) {
                 $payload['tools'] = [
                     ['functionDeclarations' => $funcDecls],
                 ];
             }
 
-            $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 45,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ]);
-            $rawResp = curl_exec($ch);
-            $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
+            $resp = null;
+            $httpCode = 0;
+            while ($modelIdx < count($candidateModels)) {
+                $model = $candidateModels[$modelIdx];
+                $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 45,
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                    CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
+                $rawResp = curl_exec($ch);
+                $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
 
-            $resp = is_string($rawResp) ? json_decode($rawResp, true) : null;
-            if ($httpCode === 404 && $model !== 'gemini-2.5-flash') {
-                $model = 'gemini-2.5-flash';
-                $turn--;
-                continue;
+                $resp = is_string($rawResp) ? json_decode($rawResp, true) : null;
+                if (is_array($resp) && !empty($resp['candidates'][0]['content']['parts'])) {
+                    break;
+                }
+                // Retry automatically with the next fallback model on 404/429/5xx or high-demand spike
+                if (in_array($httpCode, [404, 429, 500, 502, 503, 504], true) && ($modelIdx + 1) < count($candidateModels)) {
+                    $modelIdx++;
+                    continue;
+                }
+                break;
             }
             if (!is_array($resp) || empty($resp['candidates'][0]['content']['parts'])) {
                 $errMsg = (string)($resp['error']['message'] ?? ('Gemini API HTTP ' . $httpCode));
@@ -1305,16 +1324,15 @@ if (!function_exists('ccrm_marveen_run_agent')) {
 
         // Google Antigravity (`antigravity` / Gemini): resolve the user's Google AI Studio / Gemini key
         // from their OAuth session (or direct key) and run the Gemini + CCRM MCP agent loop directly.
+        // Never fall through to `@google/gemini-cli` oauth-personal mode, which Google blocks with IneligibleTierError.
         if ($provider === 'antigravity' && $token !== '') {
             $geminiKey = ccrm_marveen_resolve_gemini_api_key($connectorId, $token);
             if ($geminiKey !== null) {
                 $geminiRes = ccrm_marveen_run_gemini_mcp_agent($geminiKey, $mcpUrl, $mcpKey, $prompt, $systemPrompt, $model);
-                if (!empty($geminiRes['ok'])) {
-                    return array_merge($geminiRes, [
-                        'connectorId' => $connectorId,
-                        'provider' => $provider,
-                    ]);
-                }
+                return array_merge($geminiRes, [
+                    'connectorId' => $connectorId,
+                    'provider' => $provider,
+                ]);
             }
         }
 
