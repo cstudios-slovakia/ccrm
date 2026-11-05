@@ -876,6 +876,399 @@ if (!function_exists('ccrm_marveen_live_probe')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_resolve_gemini_api_key')) {
+    /**
+     * Resolves a working Gemini API key (`AIzaSy...`) for a Google Antigravity connector.
+     *
+     * `@google/gemini-cli` ("Sign in with Google") uses OAuth client 681255809395, which
+     * Google recently restricted on `cloudcode-pa.googleapis.com` for individual accounts
+     * (`IneligibleTierError: Please migrate to the Antigravity suite`). However, the same
+     * OAuth token holds `cloud-platform` scope and can read the user's Google AI Studio
+     * project (`gen-lang-client-*`) API keys via `apikeys.googleapis.com`, which work
+     * natively with both `@google/gemini-cli` (`GEMINI_API_KEY`) and the direct
+     * `generativelanguage.googleapis.com` MCP tool-calling loop.
+     */
+    function ccrm_marveen_resolve_gemini_api_key(string $connectorId, string $subscriptionToken): ?string {
+        $subscriptionToken = trim($subscriptionToken);
+        if ($subscriptionToken === '') {
+            return null;
+        }
+        if (str_starts_with($subscriptionToken, 'AIza')) {
+            return $subscriptionToken;
+        }
+        if (!str_starts_with($subscriptionToken, 'gemini-oauth:')) {
+            return null;
+        }
+
+        $safeId = preg_replace('/[^a-zA-Z0-9_-]/', '_', $connectorId ?: 'default');
+        $cacheFile = ccrm_marveen_storage_root() . '/connectors/' . $safeId . '/.gemini_api_key';
+        if (is_file($cacheFile) && (time() - (int)@filemtime($cacheFile)) < 86400) {
+            $cached = trim((string)@file_get_contents($cacheFile));
+            if (str_starts_with($cached, 'AIza')) {
+                return $cached;
+            }
+        }
+
+        $decoded = base64_decode(substr($subscriptionToken, strlen('gemini-oauth:')), true);
+        $creds = is_string($decoded) ? json_decode($decoded, true) : null;
+        if (!is_array($creds)) {
+            return null;
+        }
+        if (!empty($creds['api_key']) && is_string($creds['api_key']) && str_starts_with($creds['api_key'], 'AIza')) {
+            return $creds['api_key'];
+        }
+
+        $accessToken = (string)($creds['access_token'] ?? '');
+        $expiryMs = (int)($creds['expiry_date'] ?? 0);
+        if ((!empty($creds['refresh_token'])) && ($accessToken === '' || ($expiryMs > 0 && $expiryMs < (time() + 120) * 1000))) {
+            $g = ccrm_marveen_google_oauth_constants();
+            $ch = curl_init('https://oauth2.googleapis.com/token');
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_POSTFIELDS => http_build_query([
+                    'client_id' => $g['client_id'],
+                    'client_secret' => $g['client_secret'],
+                    'refresh_token' => (string)$creds['refresh_token'],
+                    'grant_type' => 'refresh_token',
+                ]),
+            ]);
+            $respRaw = curl_exec($ch);
+            curl_close($ch);
+            $resp = is_string($respRaw) ? json_decode($respRaw, true) : null;
+            if (is_array($resp) && !empty($resp['access_token'])) {
+                $accessToken = (string)$resp['access_token'];
+            }
+        }
+        if ($accessToken === '') {
+            return null;
+        }
+
+        // List active GCP projects on this account, prioritizing `gen-lang-client-*` (Google AI Studio)
+        $ch = curl_init('https://cloudresourcemanager.googleapis.com/v1/projects');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $accessToken],
+        ]);
+        $projRaw = curl_exec($ch);
+        curl_close($ch);
+        $projData = is_string($projRaw) ? json_decode($projRaw, true) : null;
+        $projects = is_array($projData['projects'] ?? null) ? $projData['projects'] : [];
+        if (empty($projects)) {
+            return null;
+        }
+
+        $genLangProjects = [];
+        $otherProjects = [];
+        foreach ($projects as $p) {
+            if (($p['lifecycleState'] ?? '') !== 'ACTIVE' || empty($p['projectId'])) {
+                continue;
+            }
+            $pid = (string)$p['projectId'];
+            if (str_starts_with($pid, 'gen-lang-client-')) {
+                $genLangProjects[] = $pid;
+            } else {
+                $otherProjects[] = $pid;
+            }
+        }
+        $orderedProjects = array_merge($genLangProjects, array_slice($otherProjects, 0, 5));
+
+        // Find a quota project with `apikeys.googleapis.com` enabled
+        $quotaProject = $orderedProjects[0] ?? '';
+        foreach ($otherProjects as $candidatePid) {
+            $ch = curl_init("https://apikeys.googleapis.com/v2/projects/{$candidatePid}/locations/global/keys?pageSize=1");
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 6,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $accessToken,
+                    'x-goog-user-project: ' . $candidatePid,
+                ],
+            ]);
+            $kr = json_decode((string)curl_exec($ch), true);
+            curl_close($ch);
+            if (is_array($kr) && !isset($kr['error'])) {
+                $quotaProject = $candidatePid;
+                break;
+            }
+        }
+
+        foreach ($orderedProjects as $pid) {
+            $headers = ['Authorization: Bearer ' . $accessToken];
+            if ($quotaProject !== '') {
+                $headers[] = 'x-goog-user-project: ' . $quotaProject;
+            }
+            $ch = curl_init("https://apikeys.googleapis.com/v2/projects/{$pid}/locations/global/keys");
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 8,
+                CURLOPT_HTTPHEADER => $headers,
+            ]);
+            $kr = json_decode((string)curl_exec($ch), true);
+            curl_close($ch);
+            if (!is_array($kr) || empty($kr['keys']) || !is_array($kr['keys'])) {
+                continue;
+            }
+            foreach ($kr['keys'] as $k) {
+                $keyName = (string)($k['name'] ?? '');
+                if ($keyName === '') {
+                    continue;
+                }
+                $ch2 = curl_init("https://apikeys.googleapis.com/v2/{$keyName}/keyString");
+                curl_setopt_array($ch2, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 6,
+                    CURLOPT_HTTPHEADER => $headers,
+                ]);
+                $ks = json_decode((string)curl_exec($ch2), true);
+                curl_close($ch2);
+                $candidateKey = (string)($ks['keyString'] ?? '');
+                if (!str_starts_with($candidateKey, 'AIza')) {
+                    continue;
+                }
+                // Verify the key works against generativelanguage.googleapis.com
+                $ch3 = curl_init('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . rawurlencode($candidateKey));
+                curl_setopt_array($ch3, [
+                    CURLOPT_POST => true,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 8,
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                    CURLOPT_POSTFIELDS => json_encode(['contents' => [['parts' => [['text' => 'OK']]]]]),
+                ]);
+                $testResp = json_decode((string)curl_exec($ch3), true);
+                curl_close($ch3);
+                if (is_array($testResp) && !empty($testResp['candidates'])) {
+                    if (!is_dir(dirname($cacheFile))) {
+                        @mkdir(dirname($cacheFile), 0700, true);
+                    }
+                    @file_put_contents($cacheFile, $candidateKey . "\n");
+                    @chmod($cacheFile, 0600);
+                    return $candidateKey;
+                }
+            }
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
+    /**
+     * Executes a fast, multi-turn Gemini + CCRM MCP tool-calling loop in PHP.
+     * Connects to CCRM's internal `/api/mcp.php` using the assigned user's Bearer key,
+     * exposes the user's permitted CRM tools as Gemini `functionDeclarations`, executes
+     * any tool calls requested by the model, and returns the final assistant response.
+     */
+    function ccrm_marveen_run_gemini_mcp_agent(
+        string $apiKey,
+        string $mcpUrl,
+        string $mcpBearerKey,
+        string $prompt,
+        string $systemPrompt = '',
+        string $preferredModel = ''
+    ): array {
+        $model = trim($preferredModel);
+        if ($model === '' || !str_starts_with($model, 'gemini-')) {
+            $model = 'gemini-2.5-flash';
+        }
+
+        $mcpCall = static function (string $method, array $params = []) use ($mcpUrl, $mcpBearerKey): ?array {
+            $ch = curl_init($mcpUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $mcpBearerKey,
+                    'X-CCRM-MCP-KEY: ' . $mcpBearerKey,
+                ],
+                CURLOPT_POSTFIELDS => json_encode([
+                    'jsonrpc' => '2.0',
+                    'id' => uniqid('mcp_', true),
+                    'method' => $method,
+                    'params' => (object)$params,
+                ]),
+            ]);
+            $raw = curl_exec($ch);
+            curl_close($ch);
+            return is_string($raw) ? json_decode($raw, true) : null;
+        };
+
+        $sanitizeSchema = static function ($schema) use (&$sanitizeSchema) {
+            if (!is_array($schema)) {
+                return ['type' => 'OBJECT'];
+            }
+            $out = [];
+            $type = strtoupper((string)($schema['type'] ?? 'OBJECT'));
+            if (in_array($type, ['OBJECT', 'STRING', 'NUMBER', 'INTEGER', 'BOOLEAN', 'ARRAY'], true)) {
+                $out['type'] = $type;
+            } else {
+                $out['type'] = 'STRING';
+            }
+            if (!empty($schema['description']) && is_string($schema['description'])) {
+                $out['description'] = $schema['description'];
+            }
+            if (!empty($schema['enum']) && is_array($schema['enum'])) {
+                $out['enum'] = array_values(array_map('strval', $schema['enum']));
+            }
+            if ($out['type'] === 'OBJECT' && !empty($schema['properties']) && is_array($schema['properties'])) {
+                $props = [];
+                foreach ($schema['properties'] as $k => $v) {
+                    $props[$k] = $sanitizeSchema($v);
+                }
+                $out['properties'] = (object)$props;
+                if (!empty($schema['required']) && is_array($schema['required'])) {
+                    $req = array_values(array_filter($schema['required'], static fn($r) => is_string($r) && isset($props[$r])));
+                    if (!empty($req)) {
+                        $out['required'] = $req;
+                    }
+                }
+            } elseif ($out['type'] === 'ARRAY') {
+                $out['items'] = isset($schema['items']) && is_array($schema['items'])
+                    ? $sanitizeSchema($schema['items'])
+                    : ['type' => 'STRING'];
+            }
+            return $out;
+        };
+
+        $toolsResp = $mcpCall('tools/list');
+        $mcpTools = is_array($toolsResp['result']['tools'] ?? null) ? $toolsResp['result']['tools'] : [];
+        $funcDecls = [];
+        foreach ($mcpTools as $t) {
+            if (empty($t['name'])) {
+                continue;
+            }
+            $decl = [
+                'name' => (string)$t['name'],
+                'description' => mb_substr((string)($t['description'] ?? ''), 0, 500, 'UTF-8'),
+            ];
+            if (!empty($t['inputSchema']) && is_array($t['inputSchema']) && !empty($t['inputSchema']['properties'])) {
+                $decl['parameters'] = $sanitizeSchema($t['inputSchema']);
+            }
+            $funcDecls[] = $decl;
+        }
+
+        $contents = [
+            [
+                'role' => 'user',
+                'parts' => [['text' => $prompt]],
+            ],
+        ];
+
+        $maxTurns = 5;
+        for ($turn = 0; $turn < $maxTurns; $turn++) {
+            $payload = [
+                'contents' => $contents,
+            ];
+            if ($systemPrompt !== '') {
+                $payload['systemInstruction'] = [
+                    'parts' => [['text' => $systemPrompt]],
+                ];
+            }
+            if (!empty($funcDecls)) {
+                $payload['tools'] = [
+                    ['functionDeclarations' => $funcDecls],
+                ];
+            }
+
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 45,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+            $rawResp = curl_exec($ch);
+            $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            $resp = is_string($rawResp) ? json_decode($rawResp, true) : null;
+            if ($httpCode === 404 && $model !== 'gemini-2.5-flash') {
+                $model = 'gemini-2.5-flash';
+                $turn--;
+                continue;
+            }
+            if (!is_array($resp) || empty($resp['candidates'][0]['content']['parts'])) {
+                $errMsg = (string)($resp['error']['message'] ?? ('Gemini API HTTP ' . $httpCode));
+                return ['ok' => false, 'error' => $errMsg];
+            }
+
+            $parts = $resp['candidates'][0]['content']['parts'];
+            foreach ($parts as &$pItem) {
+                if (isset($pItem['functionCall']) && is_array($pItem['functionCall'])) {
+                    $pItem['functionCall']['args'] = (object)(is_array($pItem['functionCall']['args'] ?? null) ? $pItem['functionCall']['args'] : []);
+                }
+            }
+            unset($pItem);
+            $contents[] = [
+                'role' => 'model',
+                'parts' => $parts,
+            ];
+
+            $funcCalls = [];
+            $textParts = [];
+            foreach ($parts as $part) {
+                if (!empty($part['functionCall']['name'])) {
+                    $funcCalls[] = $part['functionCall'];
+                }
+                if (isset($part['text']) && is_string($part['text'])) {
+                    $textParts[] = $part['text'];
+                }
+            }
+
+            if (empty($funcCalls)) {
+                return [
+                    'ok' => true,
+                    'text' => trim(implode("\n", $textParts)),
+                    'mode' => 'gemini_mcp',
+                ];
+            }
+
+            $responseParts = [];
+            foreach ($funcCalls as $fc) {
+                $fnName = (string)$fc['name'];
+                $fnArgs = is_array($fc['args'] ?? null) ? $fc['args'] : [];
+                $toolRes = $mcpCall('tools/call', [
+                    'name' => $fnName,
+                    'arguments' => (object)$fnArgs,
+                ]);
+                $toolText = '';
+                if (is_array($toolRes['result']['content'] ?? null)) {
+                    foreach ($toolRes['result']['content'] as $cItem) {
+                        if (isset($cItem['text'])) {
+                            $toolText .= $cItem['text'] . "\n";
+                        }
+                    }
+                } elseif (isset($toolRes['error']['message'])) {
+                    $toolText = 'Error: ' . $toolRes['error']['message'];
+                } else {
+                    $toolText = json_encode($toolRes);
+                }
+                $responseParts[] = [
+                    'functionResponse' => [
+                        'name' => $fnName,
+                        'response' => [
+                            'result' => mb_substr(trim($toolText), 0, 16000, 'UTF-8'),
+                        ],
+                    ],
+                ];
+            }
+
+            $contents[] = [
+                'role' => 'user',
+                'parts' => $responseParts,
+            ];
+        }
+
+        return ['ok' => false, 'error' => 'Agent exceeded maximum tool-calling turns.'];
+    }
+}
+
 if (!function_exists('ccrm_marveen_run_agent')) {
     function ccrm_marveen_run_agent(
         PDO $pdo,
@@ -910,6 +1303,21 @@ if (!function_exists('ccrm_marveen_run_agent')) {
             ]);
         }
 
+        // Google Antigravity (`antigravity` / Gemini): resolve the user's Google AI Studio / Gemini key
+        // from their OAuth session (or direct key) and run the Gemini + CCRM MCP agent loop directly.
+        if ($provider === 'antigravity' && $token !== '') {
+            $geminiKey = ccrm_marveen_resolve_gemini_api_key($connectorId, $token);
+            if ($geminiKey !== null) {
+                $geminiRes = ccrm_marveen_run_gemini_mcp_agent($geminiKey, $mcpUrl, $mcpKey, $prompt, $systemPrompt, $model);
+                if (!empty($geminiRes['ok'])) {
+                    return array_merge($geminiRes, [
+                        'connectorId' => $connectorId,
+                        'provider' => $provider,
+                    ]);
+                }
+            }
+        }
+
         // Tier 1: Local Embedded CLI Runner with isolated .mcp.json
         $ctx = ccrm_marveen_ensure_worker_dir($connectorId, $provider, $token, $mcpUrl, $mcpKey);
         $spec = ccrm_marveen_cli_package_for($provider);
@@ -918,8 +1326,11 @@ if (!function_exists('ccrm_marveen_run_agent')) {
         $fullPrompt = $systemPrompt !== '' ? ($systemPrompt . "\n\n" . $prompt) : $prompt;
 
         if ($bin !== null && ccrm_marveen_can_proc_open() && $token !== '') {
+            $resolvedGeminiKey = ($provider === 'antigravity')
+                ? (ccrm_marveen_resolve_gemini_api_key($connectorId, $token) ?? (!str_starts_with($token, 'gemini-oauth:') ? $token : ''))
+                : '';
             if ($provider === 'antigravity') {
-                $cmd = [$bin, '-p', $fullPrompt, '--yolo', '--skip-trust'];
+                $cmd = [$bin, '-p', $fullPrompt, '--yolo'];
                 if ($model !== '') {
                     $cmd[] = '-m';
                     $cmd[] = $model;
@@ -944,11 +1355,10 @@ if (!function_exists('ccrm_marveen_run_agent')) {
                 'CLAUDE_CODE_OAUTH_TOKEN' => $token,
                 'OPENAI_API_KEY' => $token,
                 'GEMINI_CLI_TRUST_WORKSPACE' => 'true',
-                'GEMINI_CLI_CUSTOM_HEADERS' => 'User-Agent: antigravity/1.0.0',
                 'DISABLE_AUTOUPDATER' => '1',
             ];
-            if (!str_starts_with($token, 'gemini-oauth:')) {
-                $env['GEMINI_API_KEY'] = $token;
+            if ($resolvedGeminiKey !== '') {
+                $env['GEMINI_API_KEY'] = $resolvedGeminiKey;
             }
             $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
             $proc = @proc_open($cmd, $descriptors, $pipes, $ctx['workerHome'], $env);
@@ -968,12 +1378,10 @@ if (!function_exists('ccrm_marveen_run_agent')) {
                         'provider' => $provider,
                     ];
                 }
-                if ($provider !== 'antigravity' || !str_starts_with($token, 'gemini-oauth:')) {
-                    return [
-                        'ok' => false,
-                        'error' => 'Agent CLI exited with ' . $exit . ': ' . trim($stderr ?: $stdout),
-                    ];
-                }
+                return [
+                    'ok' => false,
+                    'error' => 'Agent CLI exited with ' . $exit . ': ' . trim($stderr ?: $stdout),
+                ];
             }
         }
 

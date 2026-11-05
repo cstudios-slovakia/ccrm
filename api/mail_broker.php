@@ -326,6 +326,7 @@ if ($action === 'accounts') {
 
 $requestedMailboxId = trim((string)($_GET['mailbox_id'] ?? ''));
 $emailSettings = null;
+$activeMailboxKey = 'u:' . strtolower(trim($userEmail));
 if ($requestedMailboxId !== '' && $requestedMailboxId !== 'personal') {
     if (!isset($assignedCompanyMailboxes[$requestedMailboxId])) {
         http_response_code(403);
@@ -334,12 +335,15 @@ if ($requestedMailboxId !== '' && $requestedMailboxId !== 'personal') {
     }
     $emailSettings = $assignedCompanyMailboxes[$requestedMailboxId]['decrypted_settings'];
     $userEmail = (string)$assignedCompanyMailboxes[$requestedMailboxId]['address'];
+    $activeMailboxKey = 'c:' . $requestedMailboxId;
 } elseif ($hasPersonalMailbox) {
     $emailSettings = $personalEmailSettings;
+    $activeMailboxKey = 'u:' . strtolower(trim($userEmail));
 } elseif (!empty($assignedCompanyMailboxes)) {
     $firstAssigned = reset($assignedCompanyMailboxes);
     $emailSettings = $firstAssigned['decrypted_settings'];
     $userEmail = (string)$firstAssigned['address'];
+    $activeMailboxKey = 'c:' . (string)$firstAssigned['id'];
 }
 
 if (!$emailSettings) {
@@ -366,21 +370,36 @@ try {
             break;
 
         case 'get_emails':
-            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $requestedFolder = isset($_GET['folder']) ? trim((string)$_GET['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+            $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+            $searchEmail = isset($_GET['email']) ? $_GET['email'] : null;
+
+            // Fast DB-cached envelope read (`cached_only=1`) so opening a mailbox
+            // displays already-received emails immediately without waiting for IMAP.
+            if (!empty($_GET['cached_only'])) {
+                $cachedResult = ccrm_read_cached_envelopes($pdo, $activeMailboxKey, $uiFolder, $emailSettings, $userEmail, $page, 25, $filter, $searchEmail);
+                echo json_encode(array_merge(['success' => true, 'cached' => true, 'folder' => $uiFolder], $cachedResult));
+                break;
+            }
+
             // Callers ask for the literal "Sent". Not every server calls it that,
             // and asking for a folder that does not exist reads as an empty one —
             // no error, and no outgoing mail on any timeline.
-            $folder = ccrm_canonical_folder($emailSettings, $folder);
-            $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-            $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-            $searchEmail = isset($_GET['email']) ? $_GET['email'] : null;
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
             $result = fetch_imap_emails($emailSettings, $folder, $page, 25, $filter, $searchEmail);
+            if (!empty($result['emails']) && is_array($result['emails'])) {
+                ccrm_upsert_cached_envelopes($pdo, $activeMailboxKey, $uiFolder, $result['emails']);
+            }
             echo json_encode(array_merge(['success' => true, 'folder' => $folder], $result));
             break;
 
         case 'get_email_detail':
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
+            $requestedFolder = isset($_GET['folder']) ? trim((string)$_GET['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
             if (empty($uid)) {
                 throw new Exception('Missing email UID.');
             }
@@ -419,11 +438,14 @@ try {
                 throw new Exception('Invalid payload.');
             }
             $uid = isset($payload['uid']) ? trim((string)$payload['uid']) : '';
-            $folder = ccrm_canonical_folder($emailSettings, isset($payload['folder']) ? $payload['folder'] : 'INBOX');
+            $requestedFolder = isset($payload['folder']) ? trim((string)$payload['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
             if ($uid === '' || !array_key_exists('seen', $payload)) {
                 throw new Exception('Missing parameters.');
             }
             $seen = set_imap_email_seen($emailSettings, $folder, $uid, !empty($payload['seen']));
+            ccrm_update_cached_envelope_seen($pdo, $activeMailboxKey, $uiFolder, (int)$uid, (bool)$seen);
             echo json_encode(['success' => true, 'uid' => $uid, 'folder' => $folder, 'seen' => $seen]);
             break;
 
@@ -432,8 +454,11 @@ try {
                 throw new Exception('Invalid method.');
             }
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
+            $requestedFolder = isset($_GET['folder']) ? trim((string)$_GET['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
             delete_imap_email($emailSettings, $folder, $uid);
+            ccrm_delete_cached_envelope($pdo, $activeMailboxKey, $uiFolder, (int)$uid);
             echo json_encode(['success' => true]);
             break;
 
@@ -490,6 +515,224 @@ function safe_utf8($str) {
 }
 
 exit;
+
+function ccrm_ensure_mail_envelopes_table(PDO $pdo): void {
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+    try {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS `mail_envelopes` (
+              `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user email>',
+              `folder` VARCHAR(120) NOT NULL COMMENT 'Canonical UI folder key (INBOX, Sent, or custom folder)',
+              `uid` BIGINT NOT NULL,
+              `event_id` VARCHAR(64) NOT NULL,
+              `subject` VARCHAR(500) NOT NULL DEFAULT '',
+              `from_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `from_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `email_date` DATETIME NULL,
+              `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0,
+              `seen` TINYINT(1) NOT NULL DEFAULT 0,
+              `size` INT NOT NULL DEFAULT 0,
+              `message_id` VARCHAR(255) NOT NULL DEFAULT '',
+              `in_reply_to` VARCHAR(255) NOT NULL DEFAULT '',
+              `references_hdr` TEXT NULL,
+              `preview` VARCHAR(500) NOT NULL DEFAULT '',
+              `attachment_count` INT NOT NULL DEFAULT 0,
+              `timeline_hidden` TINYINT(1) NOT NULL DEFAULT 0,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
+              INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    } catch (\Throwable $e) {}
+}
+
+function ccrm_upsert_cached_envelopes(PDO $pdo, string $mailboxKey, string $uiFolder, array $emails): void {
+    if (empty($emails)) {
+        return;
+    }
+    ccrm_ensure_mail_envelopes_table($pdo);
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO `mail_envelopes` (
+                `mailbox_key`, `folder`, `uid`, `event_id`, `subject`,
+                `from_name`, `from_address`, `to_name`, `to_address`,
+                `email_date`, `is_outgoing`, `seen`, `size`,
+                `message_id`, `in_reply_to`, `references_hdr`,
+                `preview`, `attachment_count`, `timeline_hidden`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `event_id` = VALUES(`event_id`),
+                `subject` = VALUES(`subject`),
+                `from_name` = VALUES(`from_name`),
+                `from_address` = VALUES(`from_address`),
+                `to_name` = VALUES(`to_name`),
+                `to_address` = VALUES(`to_address`),
+                `email_date` = VALUES(`email_date`),
+                `is_outgoing` = VALUES(`is_outgoing`),
+                `seen` = VALUES(`seen`),
+                `size` = VALUES(`size`),
+                `message_id` = VALUES(`message_id`),
+                `in_reply_to` = VALUES(`in_reply_to`),
+                `references_hdr` = VALUES(`references_hdr`),
+                `preview` = IF(VALUES(`preview`) <> '', VALUES(`preview`), `preview`),
+                `attachment_count` = IF(VALUES(`preview`) <> '' OR VALUES(`attachment_count`) > 0, VALUES(`attachment_count`), `attachment_count`),
+                `timeline_hidden` = VALUES(`timeline_hidden`)"
+        );
+        foreach ($emails as $m) {
+            if (!is_array($m) || !isset($m['uid'])) {
+                continue;
+            }
+            $dateStr = trim((string)($m['date'] ?? ''));
+            $emailDate = ($dateStr !== '' && strtotime($dateStr) !== false) ? date('Y-m-d H:i:s', strtotime($dateStr)) : null;
+            $stmt->execute([
+                $mailboxKey,
+                $uiFolder,
+                (int)$m['uid'],
+                mb_substr((string)($m['event_id'] ?? ''), 0, 64, 'UTF-8'),
+                mb_substr((string)($m['subject'] ?? '(No Subject)'), 0, 500, 'UTF-8'),
+                mb_substr((string)($m['from']['name'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['from']['address'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['to']['name'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['to']['address'] ?? ''), 0, 255, 'UTF-8'),
+                $emailDate,
+                !empty($m['is_outgoing']) ? 1 : 0,
+                !empty($m['seen']) ? 1 : 0,
+                (int)($m['size'] ?? 0),
+                mb_substr((string)($m['message_id'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['in_reply_to'] ?? ''), 0, 255, 'UTF-8'),
+                (string)($m['references'] ?? ''),
+                mb_substr((string)($m['preview'] ?? ''), 0, 500, 'UTF-8'),
+                (int)($m['attachment_count'] ?? 0),
+                !empty($m['timeline_hidden']) ? 1 : 0,
+            ]);
+        }
+    } catch (\Throwable $e) {
+        error_log('[ccrm mail_envelopes] upsert failed: ' . $e->getMessage());
+    }
+}
+
+function ccrm_update_cached_envelope_seen(PDO $pdo, string $mailboxKey, string $uiFolder, int $uid, bool $seen): void {
+    ccrm_ensure_mail_envelopes_table($pdo);
+    try {
+        $stmt = $pdo->prepare("UPDATE `mail_envelopes` SET `seen` = ? WHERE `mailbox_key` = ? AND `folder` = ? AND `uid` = ?");
+        $stmt->execute([$seen ? 1 : 0, $mailboxKey, $uiFolder, $uid]);
+    } catch (\Throwable $e) {}
+}
+
+function ccrm_delete_cached_envelope(PDO $pdo, string $mailboxKey, string $uiFolder, int $uid): void {
+    ccrm_ensure_mail_envelopes_table($pdo);
+    try {
+        $stmt = $pdo->prepare("DELETE FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `folder` = ? AND `uid` = ?");
+        $stmt->execute([$mailboxKey, $uiFolder, $uid]);
+    } catch (\Throwable $e) {}
+}
+
+function ccrm_read_cached_envelopes(
+    PDO $pdo,
+    string $mailboxKey,
+    string $uiFolder,
+    array $settings,
+    string $userEmail,
+    int $page,
+    int $limit,
+    string $filter,
+    ?string $searchEmail = null
+): array {
+    ccrm_ensure_mail_envelopes_table($pdo);
+    $where = ["e.`mailbox_key` = ?", "e.`folder` = ?"];
+    $params = [$mailboxKey, $uiFolder];
+
+    if (!empty($settings['backfillSince'])) {
+        $ts = strtotime(trim((string)$settings['backfillSince']) . ' 00:00:00');
+        if ($ts !== false && $ts > 0) {
+            $where[] = "(e.`email_date` IS NULL OR e.`email_date` >= ?)";
+            $params[] = date('Y-m-d 00:00:00', $ts);
+        }
+    }
+
+    if ($searchEmail !== null && trim($searchEmail) !== '') {
+        $needle = '%' . strtolower(trim($searchEmail)) . '%';
+        $where[] = "(LOWER(e.`from_address`) LIKE ? OR LOWER(e.`to_address`) LIKE ?)";
+        $params[] = $needle;
+        $params[] = $needle;
+    }
+
+    $baseWhereSql = implode(' AND ', $where);
+    $unseenStmt = $pdo->prepare("SELECT COUNT(*) FROM `mail_envelopes` e WHERE {$baseWhereSql} AND e.`seen` = 0");
+    $unseenStmt->execute($params);
+    $unseen = (int)$unseenStmt->fetchColumn();
+
+    if ($filter === 'unread') {
+        $where[] = "e.`seen` = 0";
+    }
+    $whereSql = implode(' AND ', $where);
+
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `mail_envelopes` e WHERE {$whereSql}");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+
+    $offset = max(0, ($page - 1) * $limit);
+    $sql = "SELECT e.*, s.`summary`
+            FROM `mail_envelopes` e
+            LEFT JOIN `email_summaries` s
+              ON s.`user_email` COLLATE utf8mb4_unicode_ci = ? COLLATE utf8mb4_unicode_ci
+             AND s.`folder` COLLATE utf8mb4_unicode_ci = e.`folder` COLLATE utf8mb4_unicode_ci
+             AND s.`email_uid` COLLATE utf8mb4_unicode_ci = CAST(e.`uid` AS CHAR) COLLATE utf8mb4_unicode_ci
+            WHERE {$whereSql}
+            ORDER BY e.`uid` DESC
+            LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_merge([$userEmail], $params));
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $emails = [];
+    foreach ($rows as $r) {
+        $item = [
+            'uid' => (int)$r['uid'],
+            'event_id' => (string)$r['event_id'],
+            'subject' => (string)$r['subject'],
+            'from' => [
+                'name' => (string)$r['from_name'],
+                'address' => (string)$r['from_address'],
+            ],
+            'to' => [
+                'name' => (string)$r['to_name'],
+                'address' => (string)$r['to_address'],
+            ],
+            'date' => (string)($r['email_date'] ?? ''),
+            'is_outgoing' => !empty($r['is_outgoing']),
+            'seen' => !empty($r['seen']),
+            'size' => (int)$r['size'],
+            'message_id' => (string)$r['message_id'],
+            'in_reply_to' => (string)$r['in_reply_to'],
+            'references' => (string)($r['references_hdr'] ?? ''),
+            'summary' => (string)($r['summary'] ?? ''),
+            'preview' => (string)$r['preview'],
+            'attachment_count' => (int)$r['attachment_count'],
+        ];
+        if (!empty($r['timeline_hidden'])) {
+            $item['timeline_hidden'] = true;
+        }
+        $emails[] = $item;
+    }
+
+    return [
+        'emails' => $emails,
+        'pagination' => [
+            'total' => $total,
+            'unseen' => $unseen,
+            'page' => $page,
+            'limit' => $limit,
+            'pages' => $limit > 0 ? (int)ceil($total / $limit) : 1,
+        ],
+    ];
+}
 
 function get_imap_credentials($settings) {
     $user = !empty($settings['imapUsername']) ? $settings['imapUsername'] : (isset($settings['username']) ? $settings['username'] : '');

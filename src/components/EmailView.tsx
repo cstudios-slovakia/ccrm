@@ -621,7 +621,42 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // silent = background refresh: keep the current list visible instead of swapping it for the spinner
   const loadEmails = async (currPage = 1, currFilter = filter, silent = false) => {
     if (!hasMailAccount) return;
-    if (!silent) setIsLoadingEmails(true);
+    let showedCached = false;
+    if (!silent) {
+      try {
+        const [cachedInboxRes, cachedSentRes] = await Promise.all([
+          fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}&cached_only=1${mbParam}`, {
+            headers: { "X-User-Email": currentUser.email }
+          }),
+          fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}&cached_only=1${mbParam}`, {
+            headers: { "X-User-Email": currentUser.email }
+          })
+        ]);
+        const [cachedInbox, cachedSent] = await Promise.all([
+          cachedInboxRes.json().catch(() => ({})),
+          cachedSentRes.json().catch(() => ({}))
+        ]);
+        const cInboxMails = cachedInbox?.success && Array.isArray(cachedInbox.emails)
+          ? cachedInbox.emails.map((m: any) => ({ ...m, isSent: false }))
+          : [];
+        const cSentMails = cachedSent?.success && Array.isArray(cachedSent.emails)
+          ? cachedSent.emails.map((m: any) => ({ ...m, isSent: true }))
+          : [];
+        const cachedCombined = [...cInboxMails, ...cSentMails].sort((a: any, b: any) => {
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        });
+        if (cachedCombined.length > 0) {
+          setEmails(hiddenEmailKeysRef.current.size ? cachedCombined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : cachedCombined);
+          setIsLoadingEmails(false);
+          showedCached = true;
+        }
+      } catch {
+        // Ignore cache probe error and fall back to live IMAP fetch
+      }
+      if (!showedCached) {
+        setIsLoadingEmails(true);
+      }
+    }
     setIsSyncingEmails(true);
     try {
       // Fetch Inbox folder emails
@@ -654,10 +689,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
 
-      setEmails(hiddenEmailKeysRef.current.size ? combined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : combined);
+      if (combined.length > 0 || !showedCached) {
+        setEmails(hiddenEmailKeysRef.current.size ? combined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : combined);
+      }
       setLastSyncAt(new Date());
     } catch (err) {
-      notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
+      if (!showedCached) {
+        notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
+      }
     } finally {
       setIsLoadingEmails(false);
       setIsSyncingEmails(false);

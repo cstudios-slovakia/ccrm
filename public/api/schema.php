@@ -1378,6 +1378,32 @@ if (!function_exists('ccrm_schema_statements')) {
               `audio_seconds` DECIMAL(10,2) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               INDEX `idx_ai_usage_created` (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Cached email envelopes per mailbox and folder for instant mailbox rendering.
+            "CREATE TABLE IF NOT EXISTS `mail_envelopes` (
+              `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user email>',
+              `folder` VARCHAR(120) NOT NULL COMMENT 'Canonical UI folder key (INBOX, Sent, or custom folder)',
+              `uid` BIGINT NOT NULL,
+              `event_id` VARCHAR(64) NOT NULL,
+              `subject` VARCHAR(500) NOT NULL DEFAULT '',
+              `from_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `from_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `email_date` DATETIME NULL,
+              `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0,
+              `seen` TINYINT(1) NOT NULL DEFAULT 0,
+              `size` INT NOT NULL DEFAULT 0,
+              `message_id` VARCHAR(255) NOT NULL DEFAULT '',
+              `in_reply_to` VARCHAR(255) NOT NULL DEFAULT '',
+              `references_hdr` TEXT NULL,
+              `preview` VARCHAR(500) NOT NULL DEFAULT '',
+              `attachment_count` INT NOT NULL DEFAULT 0,
+              `timeline_hidden` TINYINT(1) NOT NULL DEFAULT 0,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
+              INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -2650,6 +2676,32 @@ if (!function_exists('ccrm_schema_statements')) {
                   `body` MEDIUMTEXT NULL,
                   `attachments_json` TEXT NULL COMMENT 'JSON array of {name,size,part,key?}; key names the file kept under uploads/private/mail/ (api/mail_attachments.php)',
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+            );
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS `mail_envelopes` (
+                  `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user email>',
+                  `folder` VARCHAR(120) NOT NULL COMMENT 'Canonical UI folder key (INBOX, Sent, or custom folder)',
+                  `uid` BIGINT NOT NULL,
+                  `event_id` VARCHAR(64) NOT NULL,
+                  `subject` VARCHAR(500) NOT NULL DEFAULT '',
+                  `from_name` VARCHAR(255) NOT NULL DEFAULT '',
+                  `from_address` VARCHAR(255) NOT NULL DEFAULT '',
+                  `to_name` VARCHAR(255) NOT NULL DEFAULT '',
+                  `to_address` VARCHAR(255) NOT NULL DEFAULT '',
+                  `email_date` DATETIME NULL,
+                  `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0,
+                  `seen` TINYINT(1) NOT NULL DEFAULT 0,
+                  `size` INT NOT NULL DEFAULT 0,
+                  `message_id` VARCHAR(255) NOT NULL DEFAULT '',
+                  `in_reply_to` VARCHAR(255) NOT NULL DEFAULT '',
+                  `references_hdr` TEXT NULL,
+                  `preview` VARCHAR(500) NOT NULL DEFAULT '',
+                  `attachment_count` INT NOT NULL DEFAULT 0,
+                  `timeline_hidden` TINYINT(1) NOT NULL DEFAULT 0,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
+                  INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
             if (ccrm_table_exists($pdo, 'timeline_events')) {

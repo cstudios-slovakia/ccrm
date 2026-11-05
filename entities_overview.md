@@ -257,6 +257,18 @@ The readable plain-text body of a filed message, apart from `timeline_events` be
 * `body` MEDIUMTEXT, `attachments_json` TEXT (JSON list `[{ name, size, part, key? }]`; `key` is the random storage name of the file kept under `uploads/private/mail/` (behind a deny-all guard, streamed by `mail_broker.php?action=get_filed_mail_attachment` after the e-mail permission check). An entry without `key` was not kept: too big, a blocked type, an embedded image. The client never receives `key`)
 * `created_at` TIMESTAMP
 
+### `mail_envelopes`
+Cached email headers and previews per mailbox and folder, allowing `#email` to display already-received correspondences immediately from the database while live IMAP checks run in the background.
+* `mailbox_key` VARCHAR(100) + `folder` VARCHAR(120) + `uid` BIGINT [PK] (`c:<company mailbox id>` or `u:<user email>`)
+* `event_id` VARCHAR(64)
+* `subject` VARCHAR(500), `from_name` VARCHAR(255), `from_address` VARCHAR(255), `to_name` VARCHAR(255), `to_address` VARCHAR(255)
+* `email_date` DATETIME [NULLable]
+* `is_outgoing` TINYINT(1), `seen` TINYINT(1), `size` INT
+* `message_id` VARCHAR(255), `in_reply_to` VARCHAR(255), `references_hdr` TEXT [NULLable]
+* `preview` VARCHAR(500), `attachment_count` INT, `timeline_hidden` TINYINT(1)
+* `updated_at` TIMESTAMP
+* Index: `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
+
 ## 6. Projects & Lifecycles
 
 ### `project_types`
