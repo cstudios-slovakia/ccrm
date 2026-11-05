@@ -1031,7 +1031,7 @@ if (!function_exists('ccrm_marveen_resolve_gemini_api_key')) {
                     continue;
                 }
                 // Verify the key works against generativelanguage.googleapis.com
-                $ch3 = curl_init('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . rawurlencode($candidateKey));
+                $ch3 = curl_init('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' . rawurlencode($candidateKey));
                 curl_setopt_array($ch3, [
                     CURLOPT_POST => true,
                     CURLOPT_RETURNTRANSFER => true,
@@ -1074,13 +1074,14 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
         $trimmedPreferred = trim($preferredModel);
         $candidateModels = array_values(array_unique(array_filter([
             ($trimmedPreferred !== '' && str_starts_with($trimmedPreferred, 'gemini-')) ? $trimmedPreferred : '',
+            'gemini-3.8-flash',
             'gemini-3.5-flash-lite',
             'gemini-3.1-flash-lite',
             'gemini-2.5-flash',
             'gemini-2.5-flash-lite',
         ])));
         $modelIdx = 0;
-        $model = $candidateModels[0] ?? 'gemini-3.5-flash-lite';
+        $model = $candidateModels[0] ?? 'gemini-3.8-flash';
 
         $mcpCall = static function (string $method, array $params = []) use ($mcpUrl, $mcpBearerKey): ?array {
             $ch = curl_init($mcpUrl);
