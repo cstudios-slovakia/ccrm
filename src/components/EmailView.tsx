@@ -38,7 +38,6 @@ import {
   listMyConnectors,
   pollWhatsAppDirectQr,
   resyncWhatsAppChats,
-  runAgentHeartbeat,
   runAgentTaskNow,
   runSubscriptionAgent,
   saveAgentArtifact,
@@ -2820,6 +2819,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
             const subagents = st?.subagents ?? [];
             const autonomousTasks = st?.tasks ?? [];
             const activeSubagentObj = subagents.find((s) => s.id === activeChatSubagentId) ?? null;
+            const siblingWaAccount =
+              availableAccounts.find((a) => a.connectorType === "whatsapp") ?? null;
 
             const isArtSelected = Boolean(selectedArtifactKey);
             const selectedSubObj =
@@ -2863,6 +2864,20 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 text-micro font-bold">
                               <Terminal size={11} /> CCRM MCP
                             </span>
+                            {siblingWaAccount && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedMailboxId(siblingWaAccount.id)}
+                                title={t(
+                                  `Linked to ${siblingWaAccount.name} (${siblingWaAccount.address}) — agent can read & reply on WhatsApp`,
+                                  `Prepojené s ${siblingWaAccount.name} (${siblingWaAccount.address}) — agent môže čítať a odpovedať cez WhatsApp`,
+                                  `Összekapcsolva: ${siblingWaAccount.name} (${siblingWaAccount.address}) — az ügynök olvashat és válaszolhat WhatsAppon`,
+                                )}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-800 border border-emerald-300/70 text-micro font-bold transition-colors cursor-pointer"
+                              >
+                                <MessageCircle size={11} /> {siblingWaAccount.name}
+                              </button>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate">
@@ -2892,6 +2907,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       {/* Quick Autonomous & CRM MCP Action Chips */}
                       <div className="flex flex-wrap items-center gap-1.5">
                         {[
+                          ...(siblingWaAccount
+                            ? [
+                                t(
+                                  "Summarize latest WhatsApp chats",
+                                  "Zhrnúť posledné WhatsApp správy",
+                                  "Legutóbbi WhatsApp üzenetek összegzése",
+                                ),
+                              ]
+                            : []),
                           t("Summarize open leads", "Zhrnúť otvorené príležitosti", "Nyitott érdeklődők összegzése"),
                           t("List overdue tasks", "Vypísať omeškané úlohy", "Lejárt feladatok listázása"),
                         ].map((quickPrompt) => (
@@ -2971,7 +2995,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 <span>{msg.timestamp}</span>
                               </div>
 
-                              {/* Autonomous Step Badges (clickable to open the corresponding artifact in the 50% editor) */}
+                              {/* Autonomous Step Badges (clickable to open the corresponding artifact or WhatsApp chat) */}
                               {msg.steps && msg.steps.length > 0 && (
                                 <div className="flex flex-wrap gap-1 pt-0.5">
                                   {msg.steps.map((stItem) => (
@@ -2985,6 +3009,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                           } else {
                                             handleSelectArtifact("memory:main");
                                           }
+                                        } else if (
+                                          stItem.kind === "whatsapp" &&
+                                          siblingWaAccount &&
+                                          stItem.detail &&
+                                          stItem.detail.includes("@")
+                                        ) {
+                                          setWaSelectedLeadId(stItem.detail);
+                                          setSelectedMailboxId(siblingWaAccount.id);
                                         }
                                       }}
                                       title={stItem.detail || stItem.tool}
@@ -2995,7 +3027,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                             ? "bg-amber-50 text-amber-800 border-amber-200"
                                             : stItem.kind === "schedule"
                                               ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                              : "bg-white text-slate-700 border-slate-200"
+                                              : stItem.kind === "whatsapp"
+                                                ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                                                : "bg-white text-slate-700 border-slate-200"
                                       }`}
                                     >
                                       {stItem.kind === "memory"
@@ -3004,7 +3038,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                           ? "🤖"
                                           : stItem.kind === "schedule"
                                             ? "⏰"
-                                            : "⚡"}{" "}
+                                            : stItem.kind === "whatsapp"
+                                              ? stItem.tool === "whatsapp_send_message"
+                                                ? "📤"
+                                                : "💬"
+                                              : "⚡"}{" "}
                                       {stItem.label}
                                     </button>
                                   ))}

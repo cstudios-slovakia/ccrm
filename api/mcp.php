@@ -176,6 +176,10 @@ function mcp_tool_permissions(): array {
         'record_salary_payout' => ['edit' => ['employees'], 'view' => ['employees.salaries']],
         'list_vacations' => $v('employees', 'employees.vacations'),
         'record_vacation' => ['edit' => ['employees'], 'view' => ['employees.vacations']],
+        'whatsapp_list_chats' => [],
+        'whatsapp_read_messages' => [],
+        'whatsapp_send_message' => [],
+        'whatsapp_sync_chat' => [],
     ];
     // Part B tools (mcp_ext.php).
     $map += mcp_ext_fin_permissions();
@@ -1331,6 +1335,58 @@ function mcp_core_tool_definitions(): array {
                     'note' => ['type' => 'string', 'description' => 'Note or reason']
                 ],
                 'required' => ['employee_id', 'start_date', 'end_date']
+            ]
+        ],
+
+        // DOMAIN 12: WhatsApp (WAAI) Live Messaging
+        [
+            'name' => 'whatsapp_list_chats',
+            'description' => 'List WhatsApp chats and groups from the connected WhatsApp (WAAI) channel. Supports filtering by search query or chat type (all, groups, contacts).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Optional search string to filter chats by contact name, group name, phone number, participant name, or message preview.'],
+                    'type' => ['type' => 'string', 'enum' => ['all', 'groups', 'contacts'], 'description' => 'Filter by chat type: all (default), groups, or contacts.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Maximum number of chats to return (default 30, max 100).'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ]
+            ]
+        ],
+        [
+            'name' => 'whatsapp_read_messages',
+            'description' => 'Read the message history of a WhatsApp contact or group chat by chat name (e.g. "Managment Cstudios", "Roland Vanyek"), phone number, or WhatsApp JID.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Target WhatsApp chat name, group name, participant name, phone number, or JID.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Number of most recent messages to return (default 30, max 100).'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ],
+                'required' => ['chat']
+            ]
+        ],
+        [
+            'name' => 'whatsapp_send_message',
+            'description' => 'Send a WhatsApp message (or reply) to a contact or group chat via the connected WhatsApp (WAAI) channel.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Target WhatsApp chat name, group name, phone number, or JID.'],
+                    'message' => ['type' => 'string', 'description' => 'The exact text message to send on WhatsApp.'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ],
+                'required' => ['chat', 'message']
+            ]
+        ],
+        [
+            'name' => 'whatsapp_sync_chat',
+            'description' => 'Trigger a live on-demand WhatsApp sync (fetchMessageHistory) for a specific chat/group or the entire WhatsApp (WAAI) connector.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Optional chat name, phone number, or JID to sync on-demand.'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ]
             ]
         ]
     ];
@@ -2762,6 +2818,15 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         case 'record_vacation':
             return mcp_do_record_vacation($pdo, $user, $args);
+
+        case 'whatsapp_list_chats':
+        case 'whatsapp_read_messages':
+        case 'whatsapp_send_message':
+        case 'whatsapp_sync_chat':
+            require_once __DIR__ . '/marveen/marveen_lib.php';
+            $waExec = ccrm_marveen_execute_whatsapp_tool($pdo, null, $tool, $args, (string)($user['id'] ?? ''));
+            $decoded = json_decode((string)($waExec['toolText'] ?? '{}'), true);
+            return is_array($decoded) ? $decoded : ['result' => $waExec['toolText'] ?? ''];
 
         default:
             $extResult = mcp_ext_fin_execute($pdo, $user, $tool, $args);

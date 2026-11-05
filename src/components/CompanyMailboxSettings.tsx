@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
-  Inbox,
   KeyRound,
   Loader2,
   Mail,
@@ -56,7 +55,7 @@ import { SectionCard } from "./settings/SectionCard";
 interface Props {
   userLanguage?: "sk" | "hu" | "en";
   systemLanguage?: "sk" | "hu" | "en";
-  users: { id: string; name: string; email?: string; role?: string }[];
+  users: { id?: string; name: string; email?: string; role?: string }[];
   showToast?: (message: string, type?: "success" | "error") => void;
 }
 
@@ -628,7 +627,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
   const userMap = useMemo(() => {
     const m = new Map<string, { id: string; name: string; email?: string; role?: string }>();
-    for (const u of users) m.set(u.id, u);
+    for (const u of users) {
+      const uid = u.id || u.name;
+      m.set(uid, { ...u, id: uid });
+    }
     return m;
   }, [users]);
 
@@ -1595,7 +1597,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     <button
                       type="button"
                       onClick={() => {
-                        const allIds = users.map((u) => u.id);
+                        const allIds = users.map((u) => u.id || u.name).filter(Boolean);
                         setEditing((d) =>
                           d
                             ? {
@@ -1634,13 +1636,14 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {users.map((u) => {
-                    const selected = editing.userIds.includes(u.id);
+                    const uid = u.id || u.name;
+                    const selected = editing.userIds.includes(uid);
                     return (
                       <button
-                        key={u.id}
+                        key={uid}
                         type="button"
-                        data-testid={`assign-user-${u.id}`}
-                        onClick={() => toggleUserId(u.id)}
+                        data-testid={`assign-user-${uid}`}
+                        onClick={() => toggleUserId(uid)}
                         className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-caption font-semibold border transition-all ${
                           selected
                             ? `${activeMeta.accentBtn} border-transparent shadow-2xs`

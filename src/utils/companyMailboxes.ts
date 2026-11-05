@@ -337,7 +337,7 @@ export const installAgentCli = (connectorType: ConnectorType) =>
 
 export interface AgentStepTrace {
   id: string;
-  kind: "memory" | "subagent" | "schedule" | "mcp";
+  kind: "memory" | "subagent" | "schedule" | "whatsapp" | "mcp";
   tool: string;
   label: string;
   detail?: string;

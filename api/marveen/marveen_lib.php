@@ -1762,6 +1762,93 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                     'required' => ['name'],
                 ],
             ],
+            [
+                'name' => 'whatsapp_list_chats',
+                'description' => 'List WhatsApp chats and groups from the connected WhatsApp (WAAI) channel alongside this agent. Supports filtering by search query or chat type (all, groups, contacts).',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'query' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional search string to filter chats by contact name, group name, phone number, participant name, or message preview.',
+                        ],
+                        'type' => [
+                            'type' => 'STRING',
+                            'description' => 'Filter by chat type: "all" (default), "groups", or "contacts".',
+                            'enum' => ['all', 'groups', 'contacts'],
+                        ],
+                        'limit' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Maximum number of chats to return (default 30, max 100).',
+                        ],
+                        'connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional WhatsApp connector ID if multiple WhatsApp channels are connected.',
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'whatsapp_read_messages',
+                'description' => 'Read the message history of a WhatsApp contact or group chat by chat name (e.g. "Managment Cstudios", "Roland Vanyek"), phone number, or WhatsApp JID.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'chat' => [
+                            'type' => 'STRING',
+                            'description' => 'Target WhatsApp chat name, group name, participant name, phone number, or JID (e.g. "Managment Cstudios" or "120363401475617315@g.us").',
+                        ],
+                        'limit' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Number of most recent messages to return (default 30, max 100).',
+                        ],
+                        'connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional WhatsApp connector ID if multiple WhatsApp channels are connected.',
+                        ],
+                    ],
+                    'required' => ['chat'],
+                ],
+            ],
+            [
+                'name' => 'whatsapp_send_message',
+                'description' => 'Send a WhatsApp message (or reply) to a contact or group chat via the connected WhatsApp (WAAI) channel.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'chat' => [
+                            'type' => 'STRING',
+                            'description' => 'Target WhatsApp chat name, group name, phone number, or JID (e.g. "Managment Cstudios", "+421918362403", or "120363401475617315@g.us").',
+                        ],
+                        'message' => [
+                            'type' => 'STRING',
+                            'description' => 'The exact text message to send on WhatsApp.',
+                        ],
+                        'connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional WhatsApp connector ID if multiple WhatsApp channels are connected.',
+                        ],
+                    ],
+                    'required' => ['chat', 'message'],
+                ],
+            ],
+            [
+                'name' => 'whatsapp_sync_chat',
+                'description' => 'Trigger a live on-demand WhatsApp sync (fetchMessageHistory) for a specific chat/group or the entire WhatsApp (WAAI) connector.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'chat' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional chat name, phone number, or JID to sync on-demand.',
+                        ],
+                        'connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional WhatsApp connector ID.',
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         if (!$isSubagent) {
@@ -1885,6 +1972,420 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_list_sibling_whatsapp_connectors')) {
+    /**
+     * Finds all active WhatsApp (WAAI) connectors in `company_mailboxes`, prioritizing
+     * those that share the agent connector's owner or assigned CRM users.
+     */
+    function ccrm_marveen_list_sibling_whatsapp_connectors(
+        PDO $pdo,
+        ?array $agentConnector = null,
+        ?string $userId = null
+    ): array {
+        require_once dirname(__DIR__) . '/auth.php';
+        $stmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `id` ASC");
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+
+        $agentUsers = [];
+        if ($userId !== null && $userId !== '') {
+            $agentUsers[] = (string)$userId;
+        }
+        if (is_array($agentConnector)) {
+            if (!empty($agentConnector['owner_user_id'])) {
+                $agentUsers[] = (string)$agentConnector['owner_user_id'];
+            }
+            $aSettings = is_array($agentConnector['settings'] ?? null)
+                ? $agentConnector['settings']
+                : (json_decode((string)($agentConnector['settings_json'] ?? '{}'), true) ?: []);
+            if (is_array($aSettings['userIds'] ?? null)) {
+                foreach ($aSettings['userIds'] as $uid) {
+                    $agentUsers[] = (string)$uid;
+                }
+            }
+        }
+        $agentUsers = array_values(array_unique(array_filter($agentUsers)));
+
+        $preferred = [];
+        $others = [];
+        foreach ($rows as $row) {
+            $raw = json_decode((string)($row['settings_json'] ?? '{}'), true);
+            $settings = is_array($raw)
+                ? ccrm_decrypt_config_secrets($raw, ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'])
+                : [];
+            if (($settings['connectorType'] ?? '') !== 'whatsapp') {
+                continue;
+            }
+            $row['settings'] = $settings;
+            $waUsers = is_array($settings['userIds'] ?? null) ? array_map('strval', $settings['userIds']) : [];
+            if (!empty($row['owner_user_id'])) {
+                $waUsers[] = (string)$row['owner_user_id'];
+            }
+            $overlaps = empty($agentUsers) || empty($waUsers) || !empty(array_intersect($agentUsers, $waUsers));
+            if ($overlaps) {
+                $preferred[] = $row;
+            } else {
+                $others[] = $row;
+            }
+        }
+
+        return array_merge($preferred, $others);
+    }
+}
+
+if (!function_exists('ccrm_marveen_resolve_whatsapp_chat')) {
+    /**
+     * Resolves a target WhatsApp chat or group by JID, phone number, exact/fuzzy name,
+     * participant preview, or message sender name.
+     */
+    function ccrm_marveen_resolve_whatsapp_chat(array $waState, string $target): ?array {
+        $chats = is_array($waState['chats'] ?? null) ? $waState['chats'] : [];
+        $messagesMap = is_array($waState['messages'] ?? null) ? $waState['messages'] : [];
+        $q = trim($target);
+        if ($q === '') {
+            return $chats[0] ?? null;
+        }
+        $qLower = mb_strtolower($q, 'UTF-8');
+        $qDigits = preg_replace('/\D/', '', $q);
+
+        // 1. Exact JID or exact case-insensitive name match
+        foreach ($chats as $c) {
+            $cid = (string)($c['id'] ?? '');
+            $cname = (string)($c['name'] ?? '');
+            if (strtolower($cid) === strtolower($q) || mb_strtolower($cname, 'UTF-8') === $qLower) {
+                return $c;
+            }
+        }
+
+        // 2. Exact phone digits match
+        if (strlen($qDigits) >= 6) {
+            foreach ($chats as $c) {
+                $cPhone = preg_replace('/\D/', '', (string)($c['phone'] ?? ''));
+                $cIdDigits = preg_replace('/\D/', '', explode('@', (string)($c['id'] ?? ''))[0]);
+                if (($cPhone !== '' && $cPhone === $qDigits) || ($cIdDigits !== '' && $cIdDigits === $qDigits)) {
+                    return $c;
+                }
+            }
+        }
+
+        // 3. Substring match on chat name or participantsPreview (prefer chats with messages)
+        $matches = [];
+        foreach ($chats as $c) {
+            $cname = mb_strtolower((string)($c['name'] ?? ''), 'UTF-8');
+            $cpart = mb_strtolower((string)($c['participantsPreview'] ?? ''), 'UTF-8');
+            if (
+                ($cname !== '' && mb_strpos($cname, $qLower) !== false) ||
+                ($cpart !== '' && mb_strpos($cpart, $qLower) !== false)
+            ) {
+                $matches[] = $c;
+            }
+        }
+        if (!empty($matches)) {
+            usort($matches, static function (array $a, array $b) use ($messagesMap): int {
+                $countA = count($messagesMap[$a['id'] ?? ''] ?? []);
+                $countB = count($messagesMap[$b['id'] ?? ''] ?? []);
+                if ($countA !== $countB) {
+                    return $countB <=> $countA;
+                }
+                return strcmp((string)($b['lastMessageAt'] ?? ''), (string)($a['lastMessageAt'] ?? ''));
+            });
+            return $matches[0];
+        }
+
+        // 4. Match by message senderName inside threads (e.g. "what did Roland write" -> finds chat where Roland posted)
+        foreach ($chats as $c) {
+            $cid = (string)($c['id'] ?? '');
+            $thread = is_array($messagesMap[$cid] ?? null) ? $messagesMap[$cid] : [];
+            foreach ($thread as $m) {
+                $sender = mb_strtolower((string)($m['senderName'] ?? ''), 'UTF-8');
+                if ($sender !== '' && mb_strpos($sender, $qLower) !== false) {
+                    return $c;
+                }
+            }
+        }
+
+        // 5. Direct phone number synthesis if >= 7 digits
+        if (strlen($qDigits) >= 7) {
+            return [
+                'id' => $qDigits . '@s.whatsapp.net',
+                'name' => '+' . $qDigits,
+                'phone' => '+' . $qDigits,
+                'isGroup' => false,
+            ];
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('ccrm_marveen_execute_whatsapp_tool')) {
+    /**
+     * Executes one of the 4 WhatsApp (WAAI) agent/MCP tools (`whatsapp_list_chats`,
+     * `whatsapp_read_messages`, `whatsapp_send_message`, `whatsapp_sync_chat`).
+     */
+    function ccrm_marveen_execute_whatsapp_tool(
+        PDO $pdo,
+        ?array $agentConnector,
+        string $fnName,
+        array $fnArgs,
+        ?string $userId = null
+    ): array {
+        $waConnectors = ccrm_marveen_list_sibling_whatsapp_connectors($pdo, $agentConnector, $userId);
+        if (empty($waConnectors)) {
+            return [
+                'toolText' => json_encode([
+                    'ok' => false,
+                    'error' => 'No active WhatsApp (WAAI) connector is authorized in CCRM. Add or enable a WhatsApp connector in Authorized Channels.',
+                ], JSON_UNESCAPED_UNICODE),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'whatsapp',
+                    'tool' => $fnName,
+                    'label' => 'WhatsApp: No connector configured',
+                ],
+            ];
+        }
+
+        $requestedId = trim((string)($fnArgs['connector_id'] ?? ''));
+        $waConnector = $waConnectors[0];
+        if ($requestedId !== '') {
+            foreach ($waConnectors as $cand) {
+                if (($cand['id'] ?? '') === $requestedId || stripos((string)($cand['name'] ?? ''), $requestedId) !== false) {
+                    $waConnector = $cand;
+                    break;
+                }
+            }
+        }
+
+        $waState = ccrm_waai_get_chats($waConnector);
+        $chats = is_array($waState['chats'] ?? null) ? $waState['chats'] : [];
+        $messagesMap = is_array($waState['messages'] ?? null) ? $waState['messages'] : [];
+
+        if ($fnName === 'whatsapp_list_chats') {
+            $query = mb_strtolower(trim((string)($fnArgs['query'] ?? '')), 'UTF-8');
+            $typeFilter = strtolower(trim((string)($fnArgs['type'] ?? 'all')));
+            $limit = min(100, max(1, (int)($fnArgs['limit'] ?? 30)));
+
+            $filtered = [];
+            foreach ($chats as $c) {
+                $isGroup = !empty($c['isGroup']);
+                if ($typeFilter === 'groups' && !$isGroup) continue;
+                if ($typeFilter === 'contacts' && $isGroup) continue;
+
+                $cid = (string)($c['id'] ?? '');
+                $thread = is_array($messagesMap[$cid] ?? null) ? $messagesMap[$cid] : [];
+                $lastMsg = !empty($thread) ? $thread[count($thread) - 1] : null;
+
+                if ($query !== '') {
+                    $haystack = mb_strtolower(
+                        ($c['name'] ?? '') . ' ' .
+                        ($c['phone'] ?? '') . ' ' .
+                        ($c['participantsPreview'] ?? '') . ' ' .
+                        ($c['lastMessageText'] ?? '') . ' ' .
+                        ($lastMsg['senderName'] ?? ''),
+                        'UTF-8'
+                    );
+                    if (mb_strpos($haystack, $query) === false) {
+                        continue;
+                    }
+                }
+
+                $filtered[] = [
+                    'chatId' => $cid,
+                    'name' => (string)($c['name'] ?? $cid),
+                    'phone' => (string)($c['phone'] ?? ''),
+                    'isGroup' => $isGroup,
+                    'participantsPreview' => $c['participantsPreview'] ?? null,
+                    'messageCount' => count($thread),
+                    'lastMessageSender' => $lastMsg ? (($lastMsg['fromMe'] ?? false) ? 'Me' : ($lastMsg['senderName'] ?? null)) : null,
+                    'lastMessageText' => (string)($c['lastMessageText'] ?? ($lastMsg['text'] ?? '')),
+                    'lastMessageAt' => $c['lastMessageAt'] ?? ($lastMsg['timestamp'] ?? null),
+                ];
+                if (count($filtered) >= $limit) {
+                    break;
+                }
+            }
+
+            return [
+                'toolText' => json_encode([
+                    'ok' => true,
+                    'connector' => [
+                        'id' => $waConnector['id'],
+                        'name' => $waConnector['name'],
+                        'phone' => $waState['phone'] ?? ($waConnector['address'] ?? ''),
+                        'status' => $waState['status'] ?? 'connected',
+                        'totalChats' => count($chats),
+                    ],
+                    'chats' => $filtered,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'whatsapp',
+                    'tool' => 'whatsapp_list_chats',
+                    'label' => 'Listed WhatsApp chats (' . count($filtered) . ')',
+                    'detail' => $query !== '' ? "Query: {$query}" : ($waConnector['name'] ?? 'WhatsApp'),
+                ],
+            ];
+        }
+
+        if ($fnName === 'whatsapp_read_messages') {
+            $chatTarget = trim((string)($fnArgs['chat'] ?? ($fnArgs['chat_id'] ?? ($fnArgs['query'] ?? ''))));
+            $limit = min(100, max(1, (int)($fnArgs['limit'] ?? 30)));
+            $resolved = ccrm_marveen_resolve_whatsapp_chat($waState, $chatTarget);
+
+            if ($resolved === null) {
+                $sampleNames = array_map(static fn($c) => $c['name'] ?? $c['id'], array_slice($chats, 0, 12));
+                return [
+                    'toolText' => json_encode([
+                        'ok' => false,
+                        'error' => "Could not find a WhatsApp chat matching \"{$chatTarget}\".",
+                        'availableRecentChats' => $sampleNames,
+                    ], JSON_UNESCAPED_UNICODE),
+                    'step' => [
+                        'id' => uniqid('st_', false),
+                        'kind' => 'whatsapp',
+                        'tool' => 'whatsapp_read_messages',
+                        'label' => "WhatsApp chat not found: {$chatTarget}",
+                    ],
+                ];
+            }
+
+            $cid = (string)$resolved['id'];
+            $thread = is_array($messagesMap[$cid] ?? null) ? $messagesMap[$cid] : [];
+            $sliced = array_slice($thread, -$limit);
+
+            return [
+                'toolText' => json_encode([
+                    'ok' => true,
+                    'chat' => [
+                        'chatId' => $cid,
+                        'name' => $resolved['name'] ?? $cid,
+                        'phone' => $resolved['phone'] ?? '',
+                        'isGroup' => !empty($resolved['isGroup']),
+                        'participantsPreview' => $resolved['participantsPreview'] ?? null,
+                        'totalMessagesInStore' => count($thread),
+                    ],
+                    'messages' => array_values($sliced),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'whatsapp',
+                    'tool' => 'whatsapp_read_messages',
+                    'label' => "Read WhatsApp: {$resolved['name']} (" . count($sliced) . ' msgs)',
+                    'detail' => $cid,
+                ],
+            ];
+        }
+
+        if ($fnName === 'whatsapp_send_message') {
+            $chatTarget = trim((string)($fnArgs['chat'] ?? ($fnArgs['chat_id'] ?? ($fnArgs['to'] ?? ''))));
+            $messageText = trim((string)($fnArgs['message'] ?? ($fnArgs['text'] ?? '')));
+            if ($chatTarget === '' || $messageText === '') {
+                return [
+                    'toolText' => json_encode([
+                        'ok' => false,
+                        'error' => 'Both `chat` and `message` parameters are required to send a WhatsApp message.',
+                    ], JSON_UNESCAPED_UNICODE),
+                    'step' => [
+                        'id' => uniqid('st_', false),
+                        'kind' => 'whatsapp',
+                        'tool' => 'whatsapp_send_message',
+                        'label' => 'WhatsApp send failed: missing arguments',
+                    ],
+                ];
+            }
+
+            $resolved = ccrm_marveen_resolve_whatsapp_chat($waState, $chatTarget);
+            if ($resolved === null) {
+                return [
+                    'toolText' => json_encode([
+                        'ok' => false,
+                        'error' => "Could not resolve WhatsApp recipient \"{$chatTarget}\". Use `whatsapp_list_chats` first to find the exact chat name or JID.",
+                    ], JSON_UNESCAPED_UNICODE),
+                    'step' => [
+                        'id' => uniqid('st_', false),
+                        'kind' => 'whatsapp',
+                        'tool' => 'whatsapp_send_message',
+                        'label' => "WhatsApp recipient not found: {$chatTarget}",
+                    ],
+                ];
+            }
+
+            $cid = (string)$resolved['id'];
+            $authorName = (string)($agentConnector['name'] ?? 'AI Agent');
+            $sendRes = ccrm_waai_send_message($waConnector, $cid, $messageText, $authorName);
+            $sentOk = !empty($sendRes['ok']);
+
+            return [
+                'toolText' => json_encode([
+                    'ok' => $sentOk,
+                    'error' => $sendRes['error'] ?? null,
+                    'sentTo' => [
+                        'chatId' => $cid,
+                        'name' => $resolved['name'] ?? $cid,
+                        'phone' => $resolved['phone'] ?? '',
+                        'isGroup' => !empty($resolved['isGroup']),
+                    ],
+                    'message' => $messageText,
+                    'timestamp' => date('Y-m-d H:i'),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'whatsapp',
+                    'tool' => 'whatsapp_send_message',
+                    'label' => $sentOk
+                        ? "Sent WhatsApp → {$resolved['name']}"
+                        : "Failed WhatsApp → {$resolved['name']}",
+                    'detail' => mb_substr($messageText, 0, 120, 'UTF-8'),
+                ],
+            ];
+        }
+
+        if ($fnName === 'whatsapp_sync_chat') {
+            $chatTarget = trim((string)($fnArgs['chat'] ?? ($fnArgs['chat_id'] ?? '')));
+            $cid = '';
+            $labelName = $waConnector['name'] ?? 'WhatsApp';
+            if ($chatTarget !== '') {
+                $resolved = ccrm_marveen_resolve_whatsapp_chat($waState, $chatTarget);
+                if ($resolved !== null) {
+                    $cid = (string)$resolved['id'];
+                    $labelName = (string)($resolved['name'] ?? $cid);
+                }
+            }
+            $synced = ccrm_waai_resync_chats($waConnector, $cid);
+            $syncedChats = is_array($synced['chats'] ?? null) ? $synced['chats'] : [];
+            $syncedMsgs = ($cid !== '' && is_array($synced['messages'][$cid] ?? null))
+                ? array_slice($synced['messages'][$cid], -20)
+                : [];
+            return [
+                'toolText' => json_encode([
+                    'ok' => true,
+                    'status' => $synced['status'] ?? 'connected',
+                    'totalChats' => count($syncedChats),
+                    'chatId' => $cid ?: null,
+                    'recentMessages' => $syncedMsgs,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'whatsapp',
+                    'tool' => 'whatsapp_sync_chat',
+                    'label' => "Synced WhatsApp: {$labelName}",
+                    'detail' => $cid ?: 'Full connector resync',
+                ],
+            ];
+        }
+
+        return [
+            'toolText' => json_encode(['ok' => false, 'error' => "Unknown WhatsApp tool: {$fnName}"]),
+            'step' => [
+                'id' => uniqid('st_', false),
+                'kind' => 'whatsapp',
+                'tool' => $fnName,
+                'label' => "WhatsApp: {$fnName}",
+            ],
+        ];
+    }
+}
+
 if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
     function ccrm_marveen_build_agent_system_prompt(
         PDO $pdo,
@@ -1896,6 +2397,7 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
         $mem = ccrm_marveen_get_memory($pdo, $connector, $subagentId);
         $subs = ccrm_marveen_list_subagents($pdo, $connector);
         $tasks = ccrm_marveen_list_tasks($pdo, $connector);
+        $waConnectors = ccrm_marveen_list_sibling_whatsapp_connectors($pdo, $connector);
 
         $parts = [];
         if ($subagentId !== null && $subagentId !== '') {
@@ -1914,10 +2416,10 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                 $parts[] = "## Subagent Instructions\n" . $subPrompt;
             }
             $parts[] = "## Your Subagent `memory.md`\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
-            $parts[] = "You can update your own memory using `memory_write` or `memory_append` (pass `subagent_id: \"{$subagentId}\"`), and execute any CCRM MCP tools needed to complete your assigned task.";
+            $parts[] = "You can update your own memory using `memory_write` or `memory_append` (pass `subagent_id: \"{$subagentId}\"`), read/reply to WhatsApp messages via `whatsapp_list_chats`, `whatsapp_read_messages`, and `whatsapp_send_message`, and execute any CCRM MCP tools needed to complete your assigned task.";
         } else {
-            $parts[] = "You are \"{$name}\", an autonomous AI agent connected directly to CCRM's MCP server.";
-            $parts[] = "You operate autonomously: when the user instructs you in chat, execute all necessary MCP tools, update your persistent `memory.md` (`memory_write` / `memory_append`) when asked to remember rules or notes, create/delegate to subagents (`create_subagent`, `delegate_to_subagent`) when specialized workflows are helpful, and schedule recurring jobs (`schedule_autonomous_task`) when asked to perform ongoing autonomous monitoring.";
+            $parts[] = "You are \"{$name}\", an autonomous AI agent connected directly to CCRM's MCP server and sibling communication channels.";
+            $parts[] = "You operate autonomously: when the user instructs you in chat, execute all necessary MCP and WhatsApp tools, update your persistent `memory.md` (`memory_write` / `memory_append`) when asked to remember rules or notes, create/delegate to subagents (`create_subagent`, `delegate_to_subagent`) when specialized workflows are helpful, and schedule recurring jobs (`schedule_autonomous_task`) when asked to perform ongoing autonomous monitoring (such as watching WhatsApp chats and replying automatically).";
             $parts[] = "## Your Persistent `memory.md` (Also visible and editable by the user under the chat)\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
             if (!empty($subs)) {
                 $subLines = [];
@@ -1935,6 +2437,30 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                 $parts[] = "## Scheduled Autonomous Tasks\n" . implode("\n", $taskLines);
             }
         }
+
+        if (!empty($waConnectors)) {
+            $waSection = [
+                "## Connected Sibling WhatsApp (WAAI) Channel(s)",
+                "You have direct live access to the following WhatsApp account(s) authorized next to you in the Communication sidebar. Use `whatsapp_list_chats`, `whatsapp_read_messages`, `whatsapp_send_message`, and `whatsapp_sync_chat` to inspect conversations and send replies:",
+            ];
+            foreach ($waConnectors as $wRow) {
+                $wState = ccrm_waai_get_chats($wRow);
+                $wChats = is_array($wState['chats'] ?? null) ? $wState['chats'] : [];
+                $wPhone = (string)($wState['phone'] ?? ($wRow['address'] ?? ''));
+                $wStatus = (string)($wState['status'] ?? 'connected');
+                $waSection[] = "- **{$wRow['name']}** (ID: `{$wRow['id']}`, Phone: `{$wPhone}`, Status: `{$wStatus}`, Total synced chats/groups: " . count($wChats) . ")";
+                $recentPreview = array_slice($wChats, 0, 8);
+                foreach ($recentPreview as $rc) {
+                    $rcKind = !empty($rc['isGroup']) ? 'Group' : 'Contact';
+                    $rcName = (string)($rc['name'] ?? $rc['id']);
+                    $rcLast = trim((string)($rc['lastMessageText'] ?? ''));
+                    $rcAt = (string)($rc['lastMessageAt'] ?? '');
+                    $waSection[] = "  - [{$rcKind}] **{$rcName}** (`{$rc['id']}`)" . ($rcAt !== '' ? " — {$rcAt}" : '') . ($rcLast !== '' ? ": \"" . mb_substr($rcLast, 0, 80, 'UTF-8') . "\"" : '');
+                }
+            }
+            $parts[] = implode("\n", $waSection);
+        }
+
         if ($customSystemPrompt !== '') {
             $parts[] = $customSystemPrompt;
         }
@@ -1946,7 +2472,7 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
     /**
      * Executes a fast, multi-turn Gemini + CCRM MCP autonomous tool-calling loop in PHP.
      * Supports reading/writing persistent `memory.md`, creating & delegating to subagents,
-     * scheduling autonomous tasks, and calling all 84 CCRM MCP tools.
+     * scheduling autonomous tasks, reading/replying to WhatsApp (WAAI) messages, and calling all CCRM MCP tools.
      */
     function ccrm_marveen_run_gemini_mcp_agent(
         string $apiKey,
@@ -2039,14 +2565,22 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
         };
 
         $funcDecls = ccrm_marveen_meta_tool_declarations($isSubagent);
+        $seenDeclNames = [];
+        foreach ($funcDecls as $fd) {
+            if (!empty($fd['name'])) {
+                $seenDeclNames[(string)$fd['name']] = true;
+            }
+        }
         $toolsResp = $mcpCall('tools/list');
         $mcpTools = is_array($toolsResp['result']['tools'] ?? null) ? $toolsResp['result']['tools'] : [];
         foreach ($mcpTools as $t) {
-            if (empty($t['name'])) {
+            $tName = (string)($t['name'] ?? '');
+            if ($tName === '' || isset($seenDeclNames[$tName])) {
                 continue;
             }
+            $seenDeclNames[$tName] = true;
             $decl = [
-                'name' => (string)$t['name'],
+                'name' => $tName,
                 'description' => mb_substr((string)($t['description'] ?? ''), 0, 500, 'UTF-8'),
             ];
             if (!empty($t['inputSchema']) && is_array($t['inputSchema']) && !empty($t['inputSchema']['properties'])) {
@@ -2117,6 +2651,18 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                 break;
             }
             if (!is_array($resp) || empty($resp['candidates'][0]['content']['parts'])) {
+                // When Gemini returns HTTP 200 with a valid candidate whose `content.parts` is empty
+                // (e.g. finishReason === "STOP" right after tool execution), treat the turn as completed cleanly
+                // instead of emitting a false "Gemini API HTTP 200" error.
+                if ($httpCode === 200 && is_array($resp) && empty($resp['error']) && (!empty($resp['candidates']) || !empty($steps))) {
+                    return [
+                        'ok' => true,
+                        'text' => '[IDLE]',
+                        'mode' => 'gemini_mcp',
+                        'model' => $model,
+                        'steps' => $steps,
+                    ];
+                }
                 $errMsg = (string)($resp['error']['message'] ?? ('Gemini API HTTP ' . $httpCode));
                 return ['ok' => false, 'error' => $errMsg, 'steps' => $steps];
             }
@@ -2139,15 +2685,16 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                 if (!empty($part['functionCall']['name'])) {
                     $funcCalls[] = $part['functionCall'];
                 }
-                if (isset($part['text']) && is_string($part['text'])) {
+                if (isset($part['text']) && is_string($part['text']) && empty($part['thought'])) {
                     $textParts[] = $part['text'];
                 }
             }
 
             if (empty($funcCalls)) {
+                $finalText = trim(implode("\n", $textParts));
                 return [
                     'ok' => true,
-                    'text' => trim(implode("\n", $textParts)),
+                    'text' => $finalText !== '' ? $finalText : '[IDLE]',
                     'mode' => 'gemini_mcp',
                     'model' => $model,
                     'steps' => $steps,
@@ -2160,7 +2707,18 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                 $fnArgs = is_array($fc['args'] ?? null) ? $fc['args'] : (is_object($fc['args'] ?? null) ? (array)$fc['args'] : []);
                 $toolText = '';
 
-                if ($pdo !== null && $connector !== null && in_array($fnName, [
+                if ($pdo !== null && in_array($fnName, [
+                    'whatsapp_list_chats',
+                    'whatsapp_read_messages',
+                    'whatsapp_send_message',
+                    'whatsapp_sync_chat',
+                ], true)) {
+                    $waExec = ccrm_marveen_execute_whatsapp_tool($pdo, $connector, $fnName, $fnArgs);
+                    $toolText = (string)($waExec['toolText'] ?? '');
+                    if (!empty($waExec['step'])) {
+                        $steps[] = $waExec['step'];
+                    }
+                } elseif ($pdo !== null && $connector !== null && in_array($fnName, [
                     'memory_read',
                     'memory_write',
                     'memory_append',
