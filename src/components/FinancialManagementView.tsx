@@ -104,7 +104,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
-import { detachFromRule, dueChargeMovements } from "../utils/recurringRuleDeletion";
+import { detachFromRule, dueChargeMovements, storedChargeKeys } from "../utils/recurringRuleDeletion";
 import { useListFilter } from "../hooks/useListFilter";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
@@ -4280,7 +4280,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       rule,
       todayLocal(),
       new Date().toISOString(),
-      new Set(financialRecords.map((r) => r.id))
+      storedChargeKeys(financialRecords)
     ).map(detachFromRule);
     const keptIds = new Set(kept.map((r) => r.id));
     // Movements standing in for one of the rule's charges outlive it as plain ones.
