@@ -226,7 +226,7 @@ function mcp_rec_scheduled(array $rule, string $startIso, string $endIso): array
     $dates = [];
     $max = 1000;
     // recurringInterval + intervalAnchor: every N weeks/months/years, counted
-    // from the first charge on/after the start date (else the issue date).
+    // from the week/month/year of the start date (else the issue date).
     $interval = (int)round((float)($config['interval'] ?? 1));
     $interval = $interval > 1 ? min($interval, 999) : 1;
     $anchor = mcp_iso_ok($rule['recurringStartDate'] ?? null) ? $rule['recurringStartDate']
@@ -239,7 +239,10 @@ function mcp_rec_scheduled(array $rule, string $startIso, string $endIso): array
         $utc = new \DateTimeZone('UTC');
         $cursor = new \DateTimeImmutable(($interval > 1 ? $anchor : $from) . ' 00:00:00', $utc);
         $dow = (int)$cursor->format('w');
-        $cursor = $cursor->modify('+' . (($weekday - $dow + 7) % 7) . ' days');
+        $shift = $interval > 1
+            ? (($weekday + 6) % 7) - (($dow + 6) % 7)   // the weekday in the anchor's Mon–Sun week
+            : ($weekday - $dow + 7) % 7;
+        $cursor = $cursor->modify(($shift >= 0 ? '+' : '') . $shift . ' days');
         if ($interval > 1) {
             $behind = (int)round(((new \DateTimeImmutable($from . ' 00:00:00', $utc))->getTimestamp() - $cursor->getTimestamp()) / 86400);
             $jump = (int)ceil($behind / $step) * $step;
@@ -259,7 +262,7 @@ function mcp_rec_scheduled(array $rule, string $startIso, string $endIso): array
     if ($frequency === 'yearly') {
         $month0 = min(max(((int)($config['month'] ?? 1)) - 1, 0), 11);
         $yearly = fn(int $y): string => mcp_iso_ymd($y, $month0, mcp_clamp_day($y, $month0, $config['dayOfMonth'] ?? 1));
-        $firstYear = $yearly($ay) < $anchor ? $ay + 1 : $ay;
+        $firstYear = $ay;
         for ($year = $fy; $year <= $ty; $year++) {
             if ($interval > 1 && $mod($year - $firstYear, $interval) !== 0) continue;
             $occ = $yearly($year);
@@ -268,7 +271,7 @@ function mcp_rec_scheduled(array $rule, string $startIso, string $endIso): array
         return $dates;
     }
 
-    $firstMonthIndex = $ay * 12 + $am + (mcp_monthly_occurrence($config, $ay, $am) < $anchor ? 1 : 0);
+    $firstMonthIndex = $ay * 12 + $am;
     $year = $fy; $month = $fm;
     while (($year < $ty || ($year === $ty && $month <= $tm)) && count($dates) < $max) {
         $inCycle = $interval === 1 || $mod($year * 12 + $month - $firstMonthIndex, $interval) === 0;

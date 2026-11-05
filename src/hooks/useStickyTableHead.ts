@@ -124,6 +124,12 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       mirror.hidden = height === 0;
       if (!height) return;
       const track = mirror.firstElementChild as HTMLElement;
+      // Measure the copy where it lies in the flow, not where it is stuck. Read
+      // while the page is scrolled past the head (every infinite-scroll page
+      // re-places it), a stuck copy's box is the sticky offset away from its
+      // slot; `drift` below took that offset for a gap and pushed the table down
+      // by it, leaving a blank band above the rows once scrolled back up.
+      mirror.style.position = "static";
       const wrapBox = wrap.getBoundingClientRect();
       const tableBox = table.getBoundingClientRect();
       mirror.style.width = `${wrap.clientWidth}px`;
@@ -138,6 +144,7 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       // A flex or grid gap between the two would still push the wrapper down.
       const drift = head.getBoundingClientRect().top - box.top;
       if (Math.abs(drift) > 0.5) mirror.style.marginBottom = `${-(lead + height) - drift}px`;
+      mirror.style.position = "";
 
       track.style.width = `${wrap.scrollWidth}px`;
       // Exactly as wide as its columns: a set width would be spread over them.

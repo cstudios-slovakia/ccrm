@@ -1654,11 +1654,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const renderRecurringValueIcon = (rec: FinancialRecord) => (
     <span
       className="p-1 rounded-md bg-purple-50  text-purple-600  border border-purple-200 "
-      title={t(
-        `Recurring movement (${rec.recurringFrequency || "monthly"})`,
-        `Pravidelný pohyb (${rec.recurringFrequency || "mesačne"})`,
-        `Rendszeres tétel (${rec.recurringFrequency || "havi"})`
-      )}
+      title={`${t("Recurring movement", "Pravidelný pohyb", "Rendszeres tétel")}: ${getRecurrenceDescription(rec)}`}
     >
       <RefreshCw className="h-3 w-3" />
     </span>
@@ -2194,6 +2190,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           : r
       )
     );
+  };
+
+  // The cadence badge: the same words as the form's frequency buttons, and
+  // "Custom" for an every-N rule, whose details the description spells out.
+  const getRecurrenceBadgeLabel = (rec: FinancialRecord) => {
+    if (recurringInterval(rec.recurringConfig) > 1) return t("Custom", "Vlastné", "Egyéni");
+    const freq = rec.recurringFrequency || "monthly";
+    if (freq === "weekly") return t("Weekly", "Týždenne", "Heti");
+    if (freq === "yearly") return t("Yearly", "Ročne", "Éves");
+    return t("Monthly", "Mesačne", "Havi");
   };
 
   // Helper to compute human-readable recurrence description
@@ -8319,7 +8325,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-1.5">
                               <span className="px-2 py-0.5 rounded-md type-overline bg-purple-50  text-purple-700  border border-purple-200 ">
-                                {rec.recurringFrequency || "monthly"}
+                                {getRecurrenceBadgeLabel(rec)}
                               </span>
                               <span className="text-ui font-semibold text-slate-700 ">
                                 {cadenceText}

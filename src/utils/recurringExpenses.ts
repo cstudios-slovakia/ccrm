@@ -361,6 +361,12 @@ const lookaheadDays = (rule: Pick<RecurringRule, "recurringConfig">): number =>
  * The day an every-N rule counts its cycles from: its start date, else the
  * day it was recorded, else a fixed epoch so the answer never depends on the
  * window being asked about.
+ *
+ * The cycle is counted from the week / month / year this day falls in, not
+ * from the first charge on or after it: the rule's own row on the start date
+ * is its first payment (`recurringOwnRowCharge`), so a fortnightly rule
+ * started on a Thursday and set to Wednesdays charges again 13 days later,
+ * not 6.
  */
 const intervalAnchor = (rule: RecurringRule): string =>
   isIsoDate(rule.recurringStartDate)
@@ -390,12 +396,16 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
   if (frequency === "weekly") {
     const weekday = (config.dayOfWeek ?? 1) % 7;
     const step = 7 * interval;
-    // Every-N: the first matching weekday on/after the anchor, then whole
-    // cycles forward (or back) to the first charge inside the window.
-    const cursor = fromIso(interval > 1 ? anchor : from);
-    cursor.setUTCDate(cursor.getUTCDate() + ((weekday - cursor.getUTCDay() + 7) % 7));
+    let cursor: Date;
     if (interval > 1) {
+      // Every-N: the chosen weekday in the anchor's Monday-to-Sunday week,
+      // then whole cycles forward (or back) to the first charge in the window.
+      cursor = fromIso(anchor);
+      cursor.setUTCDate(cursor.getUTCDate() - ((cursor.getUTCDay() + 6) % 7) + ((weekday + 6) % 7));
       cursor.setUTCDate(cursor.getUTCDate() + Math.ceil(isoDaysBetween(toIso(cursor), from) / step) * step);
+    } else {
+      cursor = fromIso(from);
+      cursor.setUTCDate(cursor.getUTCDate() + ((weekday - cursor.getUTCDay() + 7) % 7));
     }
     while (toIso(cursor) <= to && dates.length < MAX_OCCURRENCES) {
       dates.push(toIso(cursor));
@@ -411,8 +421,7 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
     const month = Math.min(Math.max((config.month ?? 1) - 1, 0), 11);
     const yearlyOccurrence = (year: number) =>
       toIso(new Date(Date.UTC(year, month, clampDay(year, month, config.dayOfMonth ?? 1))));
-    const anchorYear = Number(anchor.slice(0, 4));
-    const firstYear = yearlyOccurrence(anchorYear) < anchor ? anchorYear + 1 : anchorYear;
+    const firstYear = Number(anchor.slice(0, 4));
     for (let year = fromDate.getUTCFullYear(); year <= toDate.getUTCFullYear(); year++) {
       if (interval > 1 && mod(year - firstYear, interval) !== 0) continue;
       const occurrence = yearlyOccurrence(year);
@@ -423,8 +432,7 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
 
   const anchorYear = Number(anchor.slice(0, 4));
   const anchorMonth = Number(anchor.slice(5, 7)) - 1;
-  const firstMonthIndex =
-    anchorYear * 12 + anchorMonth + (monthlyOccurrence(config, anchorYear, anchorMonth) < anchor ? 1 : 0);
+  const firstMonthIndex = anchorYear * 12 + anchorMonth;
 
   let year = fromDate.getUTCFullYear();
   let month = fromDate.getUTCMonth();

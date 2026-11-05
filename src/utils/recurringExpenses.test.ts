@@ -379,19 +379,43 @@ test("every-N weekly rules skip the weeks in between, counted from the start dat
   assert.deepEqual(recurringOccurrences(fortnightly, "2026-01-12", "2026-01-31"), ["2026-01-19"]);
 });
 
-test("every-N monthly rules charge every Nth month from the first charge", () => {
-  // Starts on the 20th, charges on the 15th → first charge is February.
+test("every-N weekly cycles count from the start date's week, so the own row is cycle one", () => {
+  // Started Thursday 2026-11-05, charges Wednesdays every 2 weeks. The rule's
+  // own row pays on 5 Nov; that week's Wednesday (4 Nov) is before the start,
+  // so the next charge is 18 Nov — not 11 Nov, six days after the first.
+  const fortnightly = rule({
+    recurringFrequency: "weekly",
+    recurringConfig: { dayOfWeek: 3, interval: 2 },
+    recurringStartDate: "2026-11-05"
+  });
+  assert.deepEqual(recurringOccurrences(fortnightly, "2026-11-01", "2026-12-31"), [
+    "2026-11-18",
+    "2026-12-02",
+    "2026-12-16",
+    "2026-12-30"
+  ]);
+  // Sunday is the last day of the start date's week, so it still charges then.
+  const sundays = rule({
+    recurringFrequency: "weekly",
+    recurringConfig: { dayOfWeek: 0, interval: 3 },
+    recurringStartDate: "2026-11-05"
+  });
+  assert.deepEqual(recurringOccurrences(sundays, "2026-11-01", "2026-12-15"), ["2026-11-08", "2026-11-29"]);
+});
+
+test("every-N monthly rules charge every Nth month from the start date's month", () => {
+  // Starts on the 20th, charges on the 15th: January is cycle one (its 15th is
+  // before the start, the rule's own row pays it), so April is the next charge.
   const quarterly = rule({
     recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 15, interval: 3 },
     recurringStartDate: "2026-01-20"
   });
   assert.deepEqual(recurringOccurrences(quarterly, "2026-01-01", "2026-12-31"), [
-    "2026-02-15",
-    "2026-05-15",
-    "2026-08-15",
-    "2026-11-15"
+    "2026-04-15",
+    "2026-07-15",
+    "2026-10-15"
   ]);
-  assert.deepEqual(recurringOccurrences(quarterly, "2026-06-01", "2026-09-30"), ["2026-08-15"]);
+  assert.deepEqual(recurringOccurrences(quarterly, "2026-06-01", "2026-09-30"), ["2026-07-15"]);
 });
 
 test("every-N yearly rules charge every Nth year", () => {
@@ -400,13 +424,14 @@ test("every-N yearly rules charge every Nth year", () => {
     recurringConfig: { month: 3, dayOfMonth: 10, interval: 2 },
     recurringStartDate: "2026-04-01"
   });
+  // 2026 is cycle one (10 March is before the start), so 2028 is the next charge.
   assert.deepEqual(recurringOccurrences(biennial, "2026-01-01", "2032-12-31"), [
-    "2027-03-10",
-    "2029-03-10",
-    "2031-03-10"
+    "2028-03-10",
+    "2030-03-10",
+    "2032-03-10"
   ]);
   // The next charge is found even when it is more than a year away.
-  assert.equal(nextRecurringChargeAfter(biennial, "2027-03-10"), "2029-03-10");
+  assert.equal(nextRecurringChargeAfter(biennial, "2028-03-10"), "2030-03-10");
 });
 
 test("an interval of 1, 0 or junk behaves like a plain rule", () => {
