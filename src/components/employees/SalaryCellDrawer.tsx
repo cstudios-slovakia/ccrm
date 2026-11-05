@@ -5,7 +5,10 @@ import {
   Plus,
   Trash2,
   Check,
-  Calendar
+  Calendar,
+  Lock,
+  Pencil,
+  RotateCcw
 } from "lucide-react";
 import type {
   Employee,
@@ -15,6 +18,14 @@ import type {
   SalaryTypeConfig
 } from "../../types";
 import { formatNumber } from "../../utils/currency";
+import {
+  employeeDeductions,
+  employerLevies,
+  hasPayslip,
+  parsePayslipAmount,
+  salaryDue,
+  salaryStatus
+} from "../../utils/payslip";
 
 export interface SalaryCellDrawerProps {
   employee: Employee;
@@ -113,6 +124,10 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
         ];
   }, [settings.salaryTypes]);
 
+  // Employees get the payslip layout (Hrubá mzda = Základná + Iné, Cena práce, Na výplatu, one
+  // Vyplatené); contractors and ledger lines keep the per-row Mzda / Vyplatené table.
+  const showPayslip = hasPayslip(employee);
+
   // Items State (Each item has categoryId, name, amount, paidAmount)
   const [items, setItems] = useState<SalaryCategoryItem[]>(() => {
     if (existingRecord?.items && existingRecord.items.length > 0) {
@@ -125,20 +140,40 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
       }));
     }
 
-    // Initialize from employee's default salary and categories
-    return configuredCategories.map((cat, idx) => {
-      const isBase = idx === 0 || cat.id === "base";
-      const initialAmount = isBase && employee.salaryAmount ? employee.salaryAmount : cat.defaultAmount || 0;
-      return {
-        categoryId: cat.id,
-        categoryName: cat.name,
-        amount: initialAmount,
-        salary: initialAmount,
-        paidAmount: 0,
-        paid: 0
-      };
-    });
+    // Initialize from employee's default salary and categories. On a payslip only rows with a
+    // default amount are worth starting with; the rest are offered as name suggestions under Iné.
+    return configuredCategories
+      .map((cat, idx) => {
+        const isBase = idx === 0 || cat.id === "base";
+        const initialAmount = isBase && employee.salaryAmount ? employee.salaryAmount : cat.defaultAmount || 0;
+        return {
+          isBase,
+          item: {
+            categoryId: cat.id,
+            categoryName: cat.name,
+            amount: initialAmount,
+            salary: initialAmount,
+            paidAmount: 0,
+            paid: 0
+          }
+        };
+      })
+      .filter(({ isBase, item }) => !showPayslip || isBase || (item.amount ?? 0) > 0)
+      .map(({ item }) => item);
   });
+
+  // Základná mzda is the `base` item, or the first row of records made before categories had ids
+  const baseIdx = Math.max(0, items.findIndex((it) => it.categoryId === "base"));
+  const baseAmount = Number(items[baseIdx]?.amount) || 0;
+  const otherTotal = items.reduce((acc, it, idx) => (idx === baseIdx ? acc : acc + (Number(it.amount) || 0)), 0);
+  const otherNameSuggestions = configuredCategories.filter((cat, idx) => !(idx === 0 || cat.id === "base")).map((cat) => cat.name);
+
+  // Základná mzda is the contract amount and stays locked unless unlocked for this month (partial
+  // month, unpaid leave…). A daily or hourly rate is not a month's base, so it starts unlocked.
+  const contractBase = Number(employee.salaryAmount) || 0;
+  const isRateBased = employee.salaryType === "daily" || employee.salaryType === "hourly";
+  const [baseUnlocked, setBaseUnlocked] = useState<boolean>(isRateBased);
+  const baseDiffersFromContract = !isRateBased && contractBase > 0 && baseAmount !== contractBase;
 
   // Payout attributes
   const [dueDate, setDueDate] = useState<string>(() => {
@@ -155,16 +190,38 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<string>(existingRecord?.paymentMethod || "bank_transfer");
   const [note, setNote] = useState<string>(existingRecord?.note || "");
 
-  // Calculated totals
+  // Payslip figures (employees only): typed in by hand every month, kept as text so an emptied
+  // field stays "not filled in" instead of turning into 0.
+  const [laborCostText, setLaborCostText] = useState<string>(
+    existingRecord?.laborCost != null ? String(existingRecord.laborCost) : ""
+  );
+  const [netPayText, setNetPayText] = useState<string>(
+    existingRecord?.netPay != null ? String(existingRecord.netPay) : ""
+  );
+  // On a payslip Vyplatené is one amount for the whole month, measured against Cena práce
+  const [paidText, setPaidText] = useState<string>(
+    existingRecord?.totalPaid ? String(existingRecord.totalPaid) : ""
+  );
+  const laborCost = parsePayslipAmount(laborCostText);
+  const netPay = parsePayslipAmount(netPayText);
+  const formatMoney = (n: number) =>
+    `${formatNumber(n, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${systemCurrency}`;
+
+  // Calculated totals: totalSalary is the gross (Hrubá mzda on a payslip)
   const totalSalary = useMemo(() => {
     return items.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
   }, [items]);
 
   const totalPaid = useMemo(() => {
+    if (showPayslip) return parsePayslipAmount(paidText) ?? 0;
     return items.reduce((acc, it) => acc + (Number(it.paidAmount) || 0), 0);
-  }, [items]);
+  }, [items, paidText, showPayslip]);
 
-  const balanceDue = Math.max(0, totalSalary - totalPaid);
+  const levies = employerLevies(laborCost, totalSalary);
+  const deductions = employeeDeductions(totalSalary, netPay);
+  const due = showPayslip ? salaryDue({ totalSalary, laborCost }) : totalSalary;
+  const status = salaryStatus(due, totalPaid);
+  const balanceDue = Math.max(0, due - totalPaid);
 
   const handleItemChange = (idx: number, field: "amount" | "paidAmount", val: number) => {
     const updated = [...items];
@@ -173,12 +230,16 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
   };
 
   const handleMarkAllPaid = () => {
-    const updated = items.map((it) => ({
-      ...it,
-      paidAmount: it.amount ?? 0,
-      paid: it.amount ?? 0
-    }));
-    setItems(updated);
+    if (showPayslip) {
+      setPaidText(String(due));
+    } else {
+      const updated = items.map((it) => ({
+        ...it,
+        paidAmount: it.amount ?? 0,
+        paid: it.amount ?? 0
+      }));
+      setItems(updated);
+    }
     setPaymentDate(new Date().toISOString().split("T")[0]);
   };
 
@@ -187,7 +248,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
       ...items,
       {
         categoryId: `custom_${Date.now()}`,
-        categoryName: t("Extra Allowance", "Príplatok / Iné", "Külön juttatás"),
+        categoryName: showPayslip ? "" : t("Extra Allowance", "Príplatok / Iné", "Külön juttatás"),
         amount: 0,
         salary: 0,
         paidAmount: 0,
@@ -201,12 +262,16 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
   };
 
   const handleSave = () => {
-    let status: "pending" | "partially_paid" | "paid" = "pending";
-    if (totalPaid >= totalSalary && totalSalary > 0) {
-      status = "paid";
-    } else if (totalPaid > 0) {
-      status = "partially_paid";
-    }
+    // On a payslip the paid amount lives on the record, not on the rows; an unnamed Iné row is "Iné"
+    const savedItems = showPayslip
+      ? items.map((it) => ({
+          ...it,
+          categoryName: it.categoryName.trim() || t("Other", "Iné", "Egyéb"),
+          salary: it.amount ?? 0,
+          paidAmount: 0,
+          paid: 0
+        }))
+      : items;
 
     const record: EmployeeSalary = {
       id: existingRecord?.id || `sal_${employee.id}_${activePeriodKey}_${activeYear}`,
@@ -215,9 +280,11 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
       periodKey: activePeriodKey,
       year: activeYear,
       periodNumber: activeMonthNum,
-      items,
+      items: savedItems,
       totalSalary,
       totalPaid,
+      laborCost: showPayslip ? laborCost : existingRecord?.laborCost ?? null,
+      netPay: showPayslip ? netPay : existingRecord?.netPay ?? null,
       status,
       dueDate,
       paymentDate: totalPaid > 0 ? paymentDate : undefined,
@@ -266,11 +333,17 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                 {employee.name} — {currentMonthName} {activeYear}
               </h2>
               <p className="text-ui text-slate-500">
-                {t(
-                  "Two-column salary breakdown: Salary (Due) and Paid amount",
-                  "Dvojstĺpcový rozpis: Mzda (Predpis) a Vyplatená suma",
-                  "Kétoszlopos bontás: Bér (Előírás) és Kifizetett összeg"
-                )}
+                {showPayslip
+                  ? t(
+                      "Payslip for the month: gross salary, labour cost and what has been paid",
+                      "Výplatná páska za mesiac: hrubá mzda, cena práce a čo je vyplatené",
+                      "Havi bérjegyzék: bruttó bér, bérköltség és a kifizetett összeg"
+                    )
+                  : t(
+                      "Two-column salary breakdown: Salary (Due) and Paid amount",
+                      "Dvojstĺpcový rozpis: Mzda (Predpis) a Vyplatená suma",
+                      "Kétoszlopos bontás: Bér (Előírás) és Kifizetett összeg"
+                    )}
               </p>
             </div>
           </div>
@@ -323,17 +396,17 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
             <div className="flex items-center gap-2">
               <div
                 className={`w-3 h-3 rounded-full ${
-                  totalPaid >= totalSalary && totalSalary > 0
+                  status === "paid"
                     ? "bg-emerald-500"
-                    : totalPaid > 0
+                    : status === "partially_paid"
                     ? "bg-amber-500"
                     : "bg-slate-400"
                 }`}
               />
               <span className="text-ui font-semibold text-slate-800">
-                {totalPaid >= totalSalary && totalSalary > 0
+                {status === "paid"
                   ? t("Status: Fully Paid", "Stav: Vyplatené", "Állapot: Kifizetve")
-                  : totalPaid > 0
+                  : status === "partially_paid"
                   ? t("Status: Partially Paid", "Stav: Čiastočne vyplatené", "Állapot: Részben kifizetve")
                   : t("Status: Planned / Unpaid", "Stav: Nevyplatené (Plánované)", "Állapot: Kifizetetlen (Tervezett)")}
               </span>
@@ -349,7 +422,256 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
             </button>
           </div>
 
-          {/* TWO-COLUMN SALARY CATEGORY TABLE */}
+          {showPayslip ? (
+            /* PAYSLIP: Hrubá mzda (Základná + Iné), Cena práce, Na výplatu and one Vyplatené */
+            <div className="space-y-3" data-testid="salary-payslip">
+              <h4 className="text-ui font-bold text-[#b58b4c]">
+                {t("Payslip", "Výplatná páska", "Bérjegyzék")}
+              </h4>
+
+              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                <table className="w-full text-ui">
+                  <tbody className="divide-y divide-slate-100">
+                    {/* Hrubá mzda = Základná + Iné */}
+                    <tr className="bg-slate-50/70">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">{t("Gross salary", "Hrubá mzda", "Bruttó bér")}</td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 w-48" data-testid="salary-gross">
+                        {formatMoney(totalSalary)}
+                      </td>
+                      <td className="w-10"></td>
+                    </tr>
+
+                    <tr>
+                      <td className="py-2 pl-8 pr-3 text-slate-700">
+                        <div className="font-medium">{t("Base salary", "Základná mzda", "Alapbér")}</div>
+                        {baseDiffersFromContract && (
+                          <div className="text-micro text-slate-500 flex items-center gap-1.5">
+                            <span>{t("Contract", "Podľa zmluvy", "Szerződés szerint")}: {formatMoney(contractBase)}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleItemChange(baseIdx, "amount", contractBase)}
+                              className="inline-flex items-center gap-0.5 text-[#b58b4c] hover:text-[#9e7638] font-semibold transition cursor-pointer"
+                              data-testid="salary-base-reset"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              {t("Reset", "Obnoviť", "Visszaállítás")}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        {baseUnlocked ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={baseAmount === 0 ? "" : baseAmount}
+                              placeholder="0.00"
+                              onChange={(e) => handleItemChange(baseIdx, "amount", parseFloat(e.target.value) || 0)}
+                              data-testid="salary-base-input"
+                              className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                            />
+                            <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 font-mono text-slate-700" data-testid="salary-base-amount">
+                            <Lock className="w-3 h-3 text-slate-400" />
+                            {formatMoney(baseAmount)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-center">
+                        {!baseUnlocked && (
+                          <button
+                            type="button"
+                            onClick={() => setBaseUnlocked(true)}
+                            className="text-slate-400 hover:text-[#b58b4c] hover:bg-[#c29b62]/10 rounded-lg transition p-1 cursor-pointer"
+                            title={t("Change for this month", "Upraviť pre tento mesiac", "Módosítás erre a hónapra")}
+                            aria-label={t("Change for this month", "Upraviť pre tento mesiac", "Módosítás erre a hónapra")}
+                            data-testid="salary-base-unlock"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Iné: subtotal of the manually added rows below it */}
+                    <tr>
+                      <td className="py-2 pl-8 pr-3 font-medium text-slate-700">{t("Other", "Iné", "Egyéb")}</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-700" data-testid="salary-other-total">
+                        {formatMoney(otherTotal)}
+                      </td>
+                      <td></td>
+                    </tr>
+                    {items.map((item, idx) =>
+                      idx === baseIdx ? null : (
+                        <tr key={item.categoryId || idx} className="hover:bg-slate-50/50 transition-colors" data-testid="salary-other-row">
+                          <td className="py-1.5 pl-12 pr-3">
+                            <input
+                              type="text"
+                              value={item.categoryName}
+                              list="salary-other-names"
+                              autoFocus={item.categoryName === "" && item.amount === 0}
+                              placeholder={t("Item name", "Názov položky", "Tétel neve")}
+                              onChange={(e) => {
+                                const updated = [...items];
+                                updated[idx] = { ...updated[idx], categoryName: e.target.value };
+                                setItems(updated);
+                              }}
+                              className="w-full px-2 py-1 bg-transparent border-0 focus:ring-1 focus:ring-[#c29b62] rounded text-slate-800"
+                            />
+                          </td>
+                          <td className="py-1.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={item.amount === 0 ? "" : item.amount}
+                                placeholder="0.00"
+                                onChange={(e) => handleItemChange(idx, "amount", parseFloat(e.target.value) || 0)}
+                                className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                              />
+                              <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                            </div>
+                          </td>
+                          <td className="py-1.5 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="text-slate-300 hover:text-red-500 transition p-1 cursor-pointer"
+                              title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    )}
+                    <tr>
+                      <td colSpan={3} className="py-1.5 pl-12 pr-3">
+                        <button
+                          type="button"
+                          onClick={handleAddCustomCategory}
+                          className="flex items-center gap-1 text-ui text-[#c29b62] hover:text-[#9e7638] font-bold transition cursor-pointer"
+                          data-testid="salary-add-other"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          {t("Add item", "Pridať položku", "Tétel hozzáadása")}
+                        </button>
+                        <datalist id="salary-other-names">
+                          {otherNameSuggestions.map((name) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </td>
+                    </tr>
+
+                    {/* Cena práce and Na výplatu are typed in from the payslip */}
+                    <tr className="bg-slate-50/70">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">{t("Labour cost", "Cena práce", "Bérköltség")}</td>
+                      <td className="py-2 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
+                            value={laborCostText}
+                            placeholder="0.00"
+                            onChange={(e) => setLaborCostText(e.target.value)}
+                            data-testid="salary-labor-cost"
+                            className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                          />
+                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                        </div>
+                      </td>
+                      <td></td>
+                    </tr>
+                    <tr className="bg-slate-50/70">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">{t("Net pay", "Na výplatu", "Nettó kifizetés")}</td>
+                      <td className="py-2 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
+                            value={netPayText}
+                            placeholder="0.00"
+                            onChange={(e) => setNetPayText(e.target.value)}
+                            data-testid="salary-net-pay"
+                            className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                          />
+                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                        </div>
+                      </td>
+                      <td></td>
+                    </tr>
+                    <tr className="text-micro text-slate-500">
+                      <td className="py-1.5 pl-8 pr-3">
+                        {t("Employer levies", "Odvody zamestnávateľa", "Munkáltatói járulékok")}
+                        <span className="opacity-70"> ({t("labour cost − gross", "cena práce − hrubá mzda", "bérköltség − bruttó bér")})</span>
+                      </td>
+                      <td
+                        className={`py-1.5 px-3 text-right font-mono ${levies != null && levies < 0 ? "text-rose-600" : ""}`}
+                        data-testid="salary-employer-levies"
+                      >
+                        {levies == null ? "—" : formatMoney(levies)}
+                      </td>
+                      <td></td>
+                    </tr>
+                    <tr className="text-micro text-slate-500">
+                      <td className="py-1.5 pl-8 pr-3">
+                        {t("Employee levies and tax", "Odvody a daň zamestnanca", "Munkavállalói járulékok és adó")}
+                        <span className="opacity-70"> ({t("gross − net pay", "hrubá mzda − na výplatu", "bruttó bér − nettó kifizetés")})</span>
+                      </td>
+                      <td
+                        className={`py-1.5 px-3 text-right font-mono ${deductions != null && deductions < 0 ? "text-rose-600" : ""}`}
+                        data-testid="salary-employee-deductions"
+                      >
+                        {deductions == null ? "—" : formatMoney(deductions)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    {/* Vyplatené: one amount against Cena práce (or the gross until Cena práce is known) */}
+                    <tr className="bg-emerald-50/60 border-t border-emerald-200">
+                      <td className="py-2.5 px-3">
+                        <div className="font-bold text-emerald-700">{t("Paid", "Vyplatené", "Kifizetve")}</div>
+                        <div className="text-micro text-slate-500">
+                          {laborCost != null
+                            ? t("of labour cost", "z ceny práce", "a bérköltségből")
+                            : t("of gross salary, until labour cost is filled in", "z hrubej mzdy, kým nie je vyplnená cena práce", "a bruttó bérből, amíg nincs bérköltség")}{" "}
+                          {formatMoney(due)}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
+                            value={paidText}
+                            placeholder="0.00"
+                            onChange={(e) => setPaidText(e.target.value)}
+                            data-testid="salary-paid"
+                            className="w-28 px-2 py-1 text-right font-mono font-bold text-emerald-700 border border-emerald-200 bg-white rounded-lg focus:ring-1 focus:ring-emerald-500"
+                          />
+                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                        </div>
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          ) : (
+          /* TWO-COLUMN SALARY CATEGORY TABLE (contractors and ledger lines) */
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-ui font-bold text-[#b58b4c]">
@@ -454,6 +776,8 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
               </table>
             </div>
           </div>
+
+          )}
 
           {/* DATES & PAYMENT DETAILS */}
           <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">

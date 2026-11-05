@@ -1026,6 +1026,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `items_json` TEXT NOT NULL COMMENT 'Array of { categoryId, categoryName, salary, paid }',
               `total_salary` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
               `total_paid` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only',
+              `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only',
               `status` ENUM('pending', 'partially_paid', 'paid') NOT NULL DEFAULT 'pending',
               `due_date` DATE NULL,
               `payment_date` DATE NULL,
@@ -1924,6 +1926,13 @@ if (!function_exists('ccrm_schema_statements')) {
                 $pdo->exec("ALTER TABLE `employees` ADD COLUMN `user_id` VARCHAR(50) NULL AFTER `name`, ADD UNIQUE INDEX `uq_employees_user_id` (`user_id`), ADD CONSTRAINT `fk_employees_user_id` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL");
             }
         }
+        // Payroll records: the payslip's labour cost and net pay, typed in each month
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'labor_cost')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only' AFTER `total_paid`");
+        }
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
+        }
         ccrm_migrate_employee_identity($pdo);
         ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
@@ -2794,6 +2803,8 @@ if (!function_exists('ccrm_schema_statements')) {
                   `items_json` TEXT NOT NULL COMMENT 'Array of { categoryId, categoryName, salary, paid }',
                   `total_salary` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                   `total_paid` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+                  `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only',
+                  `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only',
                   `status` ENUM('pending', 'partially_paid', 'paid') NOT NULL DEFAULT 'pending',
                   `due_date` DATE NULL,
                   `payment_date` DATE NULL,

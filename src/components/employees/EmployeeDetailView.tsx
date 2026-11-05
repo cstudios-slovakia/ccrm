@@ -42,6 +42,7 @@ import { VacationRequestModal } from "./VacationRequestModal";
 import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
+import { employerLevies, hasPayslip, salaryDue, salaryStatus } from "../../utils/payslip";
 import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
@@ -287,6 +288,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         return (b.periodNumber || 0) - (a.periodNumber || 0);
       });
   }, [salaries, employee.id]);
+  // Payslip columns (Cena práce, Na výplatu, Odvody) exist for employees only, not contractors
+  const showPayslip = hasPayslip(employee);
 
   // Employee Vacations history
   const employeeVacations = useMemo(() => {
@@ -1838,14 +1841,21 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
                   </div>
                 ) : (
-                  <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-ui">
+                  <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-sm">
+                    <table className="w-full text-left text-ui whitespace-nowrap">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
                           <th className="py-2.5 px-3">{t("Period", "Obdobie", "Időszak")}</th>
                           <th className="py-2.5 px-3">{t("Due Date", "Splatnosť", "Esedékesség")}</th>
                           <th className="py-2.5 px-3 text-right">{t("Salary", "Mzda", "Bér")}</th>
                           <th className="py-2.5 px-3 text-right">{t("Paid", "Vyplatené", "Kifizetve")}</th>
+                          {showPayslip && (
+                            <>
+                              <th className="py-2.5 px-3 text-right">{t("Labour cost", "Cena práce", "Bérköltség")}</th>
+                              <th className="py-2.5 px-3 text-right">{t("Net pay", "Na výplatu", "Nettó kifizetés")}</th>
+                              <th className="py-2.5 px-3 text-right">{t("Employer levies", "Odvody zamestnávateľa", "Munkáltatói járulékok")}</th>
+                            </>
+                          )}
                           <th className="py-2.5 px-3 text-center">{t("Status", "Stav", "Állapot")}</th>
                           <th className="py-2.5 px-3">{t("Payment Date", "Dátum úhrady", "Fizetés dátuma")}</th>
                           <th className="py-2.5 px-3 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
@@ -1853,8 +1863,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {employeeSalaries.map((sal) => {
-                          const isFullyPaid = sal.totalPaid >= sal.totalSalary && sal.totalSalary > 0;
-                          const isPartial = sal.totalPaid > 0 && !isFullyPaid;
+                          // Paid against Cena práce once the payslip is in, otherwise the gross
+                          const payStatus = salaryStatus(salaryDue(sal), sal.totalPaid || 0);
+                          const isFullyPaid = payStatus === "paid";
+                          const isPartial = payStatus === "partially_paid";
 
                           return (
                             <tr
@@ -1877,6 +1889,18 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               <td className="py-2.5 px-3 text-right font-mono font-semibold text-emerald-600">
                                 {formatNumber(sal.totalPaid, systemLanguage, { minimumFractionDigits: 2 })} {systemCurrency}
                               </td>
+                              {showPayslip && (() => {
+                                const levies = employerLevies(sal.laborCost, sal.totalSalary);
+                                const cell = (n: number | null | undefined) =>
+                                  n == null ? "—" : `${formatNumber(n, systemLanguage, { minimumFractionDigits: 2 })} ${systemCurrency}`;
+                                return (
+                                  <>
+                                    <td className="py-2.5 px-3 text-right font-mono text-slate-700">{cell(sal.laborCost)}</td>
+                                    <td className="py-2.5 px-3 text-right font-mono text-slate-700">{cell(sal.netPay)}</td>
+                                    <td className="py-2.5 px-3 text-right font-mono text-slate-700">{cell(levies)}</td>
+                                  </>
+                                );
+                              })()}
                               <td className="py-2.5 px-3 text-center">
                                 <span
                                   className={`px-2 py-0.5 rounded-full text-micro font-bold ${

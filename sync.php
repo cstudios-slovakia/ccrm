@@ -2292,6 +2292,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'items' => !empty($row['items_json']) ? json_decode($row['items_json'], true) : [],
                     'totalSalary' => (float)($row['total_salary'] ?? 0),
                     'totalPaid' => (float)($row['total_paid'] ?? 0),
+                    'laborCost' => isset($row['labor_cost']) ? (float)$row['labor_cost'] : null,
+                    'netPay' => isset($row['net_pay']) ? (float)$row['net_pay'] : null,
                     'status' => $row['status'] ?? 'pending',
                     'dueDate' => $row['due_date'],
                     'paymentDate' => $row['payment_date'],
@@ -3295,6 +3297,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!ccrm_index_exists($pdo, 'tasks', 'uq_recurring_occurrence')) {
                 try { $pdo->exec("ALTER TABLE `tasks` ADD UNIQUE KEY `uq_recurring_occurrence` (`recurring_source_id`, `recurring_occurrence_date`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if (isset($payload['employeeSalaries']) && is_array($payload['employeeSalaries']) && !$ccrm_skip_writes('employees', 'employeeSalaries')) {
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'labor_cost')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `labor_cost` DECIMAL(12, 2) NULL COMMENT 'Cena práce from the payslip, typed by hand; employees only' AFTER `total_paid`");
+            }
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
             }
         }
 
@@ -6372,9 +6383,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (
                 `id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`,
-                `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`,
+                `items_json`, `total_salary`, `total_paid`, `labor_cost`, `net_pay`, `status`, `due_date`, `payment_date`,
                 `payment_method`, `financial_record_id`, `note`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `employee_id` = VALUES(`employee_id`),
                 `period_type` = VALUES(`period_type`),
@@ -6384,6 +6395,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `items_json` = VALUES(`items_json`),
                 `total_salary` = VALUES(`total_salary`),
                 `total_paid` = VALUES(`total_paid`),
+                `labor_cost` = VALUES(`labor_cost`),
+                `net_pay` = VALUES(`net_pay`),
                 `status` = VALUES(`status`),
                 `due_date` = VALUES(`due_date`),
                 `payment_date` = VALUES(`payment_date`),
@@ -6416,10 +6429,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $totalSalary = (float)($sal['totalSalary'] ?? 0);
                 $totalPaid = (float)($sal['totalPaid'] ?? 0);
+                $salLaborCost = isset($sal['laborCost']) && is_numeric($sal['laborCost']) ? (float)$sal['laborCost'] : null;
+                // What the month costs the company: Cena práce once the payslip is in, otherwise the
+                // gross. Vyplatené is measured against it, and it is the amount the expense books.
+                $salDue = $salLaborCost !== null ? $salLaborCost : $totalSalary;
 
                 // Determine salary record status
                 $salStatus = $sal['status'] ?? 'pending';
-                if ($totalPaid >= $totalSalary && $totalSalary > 0) {
+                if ($totalPaid >= $salDue && $salDue > 0) {
                     $salStatus = 'paid';
                 } elseif ($totalPaid > 0) {
                     $salStatus = 'partially_paid';
@@ -6442,11 +6459,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Auto-Expense linkage
                 $empAutoExp = isset($empInfo['auto_expense']) ? ((int)$empInfo['auto_expense'] === 1) : $defaultAutoExpense;
-                if ($empAutoExp && ($totalSalary > 0 || $totalPaid > 0)) {
+                if ($empAutoExp && ($salDue > 0 || $totalPaid > 0)) {
                     $targetCatId = !empty($empInfo['expense_category_id']) ? $empInfo['expense_category_id'] : $defaultExpenseCatId;
                     $empDisplayName = $empInfo['name'] ?? ('Employee ' . $empId);
                     $frTitle = "Salary: {$empDisplayName} ({$sal['periodKey']})";
-                    $frStatus = ($totalPaid >= $totalSalary && $totalSalary > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
+                    $frStatus = ($totalPaid >= $salDue && $salDue > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
                     $paidDate = ($totalPaid > 0) ? (!empty($sal['paymentDate']) ? $sal['paymentDate'] : date('Y-m-d')) : null;
                     $issueDate = sprintf('%04d-%02d-01', (int)($sal['year'] ?? date('Y')), (int)($sal['periodNumber'] ?? date('n')));
 
@@ -6459,7 +6476,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $frTitle,
                         "Monthly payroll salary payout for {$empDisplayName}",
                         $targetCatId,
-                        $totalSalary,
+                        $salDue,
                         $totalPaid,
                         $frStatus,
                         $issueDate,
@@ -6480,6 +6497,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     json_encode($sal['items'] ?? [], JSON_UNESCAPED_UNICODE),
                     $totalSalary,
                     $totalPaid,
+                    $salLaborCost,
+                    isset($sal['netPay']) && is_numeric($sal['netPay']) ? (float)$sal['netPay'] : null,
                     $salStatus,
                     $dueDate,
                     !empty($sal['paymentDate']) ? $sal['paymentDate'] : null,

@@ -1366,6 +1366,13 @@ export interface EmployeeSalary {
   items: SalaryCategoryItem[];
   totalSalary: number;
   totalPaid: number;
+  /**
+   * Cena práce from the month's payslip: what the person cost the company in total. Typed by
+   * hand each month, never computed; employees only (contractors and ledger lines leave it null).
+   */
+  laborCost?: number | null;
+  /** Na výplatu from the payslip: the net amount the employee receives. Typed by hand; employees only. */
+  netPay?: number | null;
   status: 'pending' | 'partially_paid' | 'paid';
   dueDate?: string | null;
   paymentDate?: string | null;

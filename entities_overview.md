@@ -650,8 +650,10 @@ Periodic payroll statements (monthly or weekly) tracking multi-category salary b
 * `year` INT
 * `period_number` INT (Month 1-12 or Week 1-53)
 * `items_json` TEXT (JSON array of category line items `[{ categoryId, categoryName, salary, paid }]`)
-* `total_salary` DECIMAL(12, 2) (Total gross/net compensation calculated for the period)
-* `total_paid` DECIMAL(12, 2) (Total amount paid out so far)
+* `total_salary` DECIMAL(12, 2) (Total gross compensation for the period; on an employee's record this is Hrubá mzda = Základná mzda (the `base` item) + Iné (every other item))
+* `total_paid` DECIMAL(12, 2) (Total amount paid out so far. Status and the auto-expense measure it against `labor_cost` when filled in, otherwise against `total_salary`; on an employee's record it is one amount for the month, the item rows carry no paid value)
+* `labor_cost` DECIMAL(12, 2) [NULLable] (Cena práce from the month's payslip, typed in by hand; employees only, NULL for contractors and ledger lines. When set, it is the auto-expense's planned amount instead of `total_salary`)
+* `net_pay` DECIMAL(12, 2) [NULLable] (Na výplatu from the payslip, typed in by hand; employees only. Not stored, computed in the UI: Odvody zamestnávateľa = `labor_cost − total_salary`, Odvody a daň zamestnanca = `total_salary − net_pay`)
 * `status` ENUM('pending', 'partially_paid', 'paid') (Mapped to `financial_records.status`: pending = planned, paid = paid, partially_paid = partially_paid)
 * `due_date` DATE [NULLable] (Calculated salary due date based on period and salaryDueDay)
 * `payment_date` DATE [NULLable] (Date of actual payment settlement)

@@ -420,7 +420,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                           <tr className="border-y border-slate-100 bg-slate-50 type-overline text-slate-500">
                             <th className="px-4 ws-sm:px-6 py-2">{tr("myEmployment.pay.period")}</th>
                             <th className="px-3 py-2 text-right">{tr("myEmployment.pay.total")}</th>
-                            <th className="px-3 py-2 text-right">{tr("myEmployment.pay.paid")}</th>
+                            <th className="px-3 py-2 text-right">{tr("myEmployment.pay.net")}</th>
                             <th className="px-3 py-2">{tr("myEmployment.pay.due")}</th>
                             <th className="px-4 ws-sm:px-6 py-2">{tr("myEmployment.pay.status")}</th>
                           </tr>
@@ -430,7 +430,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                             <tr key={row.id} className="border-b border-slate-100 type-body text-slate-800">
                               <td className="px-4 ws-sm:px-6 py-2.5 font-semibold">{row.periodKey}</td>
                               <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(row.totalSalary, systemCurrency, lang)}</td>
-                              <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(row.totalPaid, systemCurrency, lang)}</td>
+                              <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(row.netPay ?? row.totalPaid, systemCurrency, lang)}</td>
                               <td className="px-3 py-2.5">{fmtDate(row.dueDate)}</td>
                               <td className="px-4 ws-sm:px-6 py-2.5">
                                 <span className={`inline-flex rounded-full border px-2 py-0.5 type-overline ${statusBadge(row.status)}`}>

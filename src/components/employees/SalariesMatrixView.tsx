@@ -15,6 +15,7 @@ import type {
 } from "../../types";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 import { formatNumber } from "../../utils/currency";
+import { salaryDue } from "../../utils/payslip";
 
 interface SalariesMatrixViewProps {
   employees: Employee[];
@@ -115,7 +116,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
       for (const emp of visibleEmployees) {
         const sal = salaryMap.get(`${emp.id}_${periodKey}`);
         if (sal) {
-          mSalary += sal.totalSalary || 0;
+          mSalary += salaryDue(sal);
           mPaid += sal.totalPaid || 0;
         }
       }
@@ -229,7 +230,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
         <div className="flex items-center flex-wrap gap-2.5">
           <div className="px-3.5 py-1.5 rounded-xl bg-slate-100/70 border border-slate-200/60 text-right">
             <span className="type-overline text-slate-400 block">
-              {t("Total Planned Salaries", "Plánované mzdy", "Tervezett bérek")} ({selectedYear})
+              {t("Total Payroll Cost", "Mzdové náklady", "Bérköltségek")} ({selectedYear})
             </span>
             <span className="text-body font-bold font-mono text-slate-800">
               {formatNumber(grandTotal.totalSalary, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
@@ -341,14 +342,16 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                         const sal = salaryMap.get(`${emp.id}_${pKey}`);
 
                         if (sal) {
-                          empYearSalary += sal.totalSalary || 0;
+                          empYearSalary += salaryDue(sal);
                           empYearPaid += sal.totalPaid || 0;
                         }
 
-                        const hasSalary = !!sal && sal.totalSalary > 0;
-                        const isFullyPaid = hasSalary && (sal?.totalPaid || 0) >= (sal?.totalSalary || 0);
+                        // What the month costs: Cena práce once the payslip is in, otherwise the gross
+                        const due = salaryDue(sal);
+                        const hasSalary = !!sal && due > 0;
+                        const isFullyPaid = hasSalary && (sal?.totalPaid || 0) >= due;
                         const isPartial = hasSalary && (sal?.totalPaid || 0) > 0 && !isFullyPaid;
-                        const remaining = Math.max(0, (sal?.totalSalary || 0) - (sal?.totalPaid || 0));
+                        const remaining = Math.max(0, due - (sal?.totalPaid || 0));
 
                         return (
                           <td
@@ -368,7 +371,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                                 }`}
                               >
                                 <span className="block font-mono font-bold leading-tight text-ui">
-                                  {formatNumber(Math.round(sal!.totalSalary), systemLanguage)} {systemCurrency}
+                                  {formatNumber(Math.round(due), systemLanguage)} {systemCurrency}
                                 </span>
                                 <div className="flex items-center justify-center gap-1 mt-0.5 text-micro">
                                   {displayMetric === "paid" ? (
