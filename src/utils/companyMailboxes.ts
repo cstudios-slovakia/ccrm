@@ -335,14 +335,129 @@ export const installAgentCli = (connectorType: ConnectorType) =>
     environment?: ConnectorEnvironment;
   }>("agent_install_cli", { connectorType });
 
+export interface AgentStepTrace {
+  id: string;
+  kind: "memory" | "subagent" | "schedule" | "mcp";
+  tool: string;
+  label: string;
+  detail?: string;
+  subSteps?: AgentStepTrace[];
+}
+
+export interface AgentSubagent {
+  id: string;
+  name: string;
+  role: string;
+  systemPrompt: string;
+  memoryMd: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AgentAutonomousTask {
+  id: string;
+  title: string;
+  prompt: string;
+  intervalMinutes: number;
+  subagentId?: string | null;
+  enabled: boolean;
+  lastRunAt?: string | null;
+  lastStatus?: string | null;
+  updatedAt?: string;
+}
+
+export interface AgentChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  author?: string;
+  subagentId?: string | null;
+  autonomous?: boolean;
+  taskTitle?: string;
+  text: string;
+  steps?: AgentStepTrace[];
+  timestamp: string;
+  createdAt?: string;
+}
+
+export interface AgentConnectorState {
+  connectorId: string;
+  mcpConnected: boolean;
+  mcpEndpoint?: string;
+  memoryMd: string;
+  memoryUpdatedAt?: string;
+  subagentMemoryMd?: string;
+  subagents: AgentSubagent[];
+  tasks: AgentAutonomousTask[];
+  chatHistory: AgentChatMessage[];
+}
+
 export const runSubscriptionAgent = (params: {
   id: string;
   prompt: string;
   systemPrompt?: string;
+  subagentId?: string;
 }) =>
-  call<{
-    ok: boolean;
-    text: string;
-    mode: string;
-    provider: string;
-  }>("agent_run", params);
+  call<
+    AgentConnectorState & {
+      ok: boolean;
+      text: string;
+      mode: string;
+      provider: string;
+      steps?: AgentStepTrace[];
+    }
+  >("agent_run", params);
+
+export const getAgentConnectorState = (id: string, subagentId?: string) =>
+  call<AgentConnectorState>("agent_state", { id, subagentId });
+
+export const saveAgentMemory = (params: { id: string; memoryMd: string; subagentId?: string }) =>
+  call<AgentConnectorState>("agent_memory_save", params);
+
+export const saveAgentSubagent = (params: {
+  id: string;
+  subagentId?: string;
+  name: string;
+  role: string;
+  systemPrompt: string;
+  memoryMd?: string;
+}) =>
+  call<AgentConnectorState>("agent_subagent_save", {
+    id: params.id,
+    name: params.name,
+    role: params.role,
+    systemPrompt: params.systemPrompt,
+    memoryMd: params.memoryMd,
+  });
+
+export const deleteAgentSubagent = (id: string, subagentId: string) =>
+  call<AgentConnectorState>("agent_subagent_delete", { id, subagentId });
+
+export const saveAgentTask = (params: {
+  id: string;
+  taskId?: string;
+  title: string;
+  prompt: string;
+  intervalMinutes: number;
+  subagentId?: string;
+  enabled?: boolean;
+}) =>
+  call<AgentConnectorState>("agent_task_save", {
+    id: params.id,
+    title: params.title,
+    prompt: params.prompt,
+    intervalMinutes: params.intervalMinutes,
+    subagentId: params.subagentId,
+    enabled: params.enabled ?? true,
+  });
+
+export const deleteAgentTask = (id: string, taskId: string) =>
+  call<AgentConnectorState>("agent_task_delete", { id, taskId });
+
+export const runAgentTaskNow = (id: string, taskId?: string) =>
+  call<AgentConnectorState>("agent_task_run", { id, taskId });
+
+export const runAgentHeartbeat = (id: string) =>
+  call<AgentConnectorState>("agent_heartbeat", { id });
+
+export const clearAgentChatHistory = (id: string) =>
+  call<AgentConnectorState>("agent_chat_clear", { id });

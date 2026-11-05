@@ -745,12 +745,453 @@ if (!function_exists('ccrm_marveen_ensure_worker_dir')) {
         @file_put_contents($configDir . '/.claude.json', json_encode($claudeJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
         @chmod($configDir . '/.claude.json', 0600);
 
+        // 5. Ensure persistent memory.md exists right away on attach and mirror to CLAUDE.md / GEMINI.md / AGENTS.md
+        $memFile = $workerHome . '/memory.md';
+        if (!is_file($memFile) || trim((string)@file_get_contents($memFile)) === '') {
+            $defaultMem = ccrm_marveen_default_memory_md($connectorId, $provider);
+            ccrm_marveen_sync_memory_files($workerHome, $defaultMem);
+        } else {
+            ccrm_marveen_sync_memory_files($workerHome, (string)@file_get_contents($memFile));
+        }
+
         return [
             'workerHome' => $workerHome,
             'configDir' => $configDir,
             'scratchDir' => $scratchDir,
             'tokenFile' => $tokenFile,
             'mcpPath' => $mcpPath,
+            'memoryPath' => $memFile,
+        ];
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Persistent Agent Memory (`memory.md`), Subagents, Tasks & Chat History
+// -----------------------------------------------------------------------------
+
+if (!function_exists('ccrm_marveen_connector_dir')) {
+    function ccrm_marveen_connector_dir(string $connectorId): string {
+        $safeId = preg_replace('/[^a-zA-Z0-9_-]/', '_', $connectorId ?: 'default');
+        $dir = ccrm_marveen_storage_root() . '/connectors/' . $safeId;
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0700, true);
+        }
+        return $dir;
+    }
+}
+
+if (!function_exists('ccrm_marveen_default_memory_md')) {
+    function ccrm_marveen_default_memory_md(string $connectorName, string $provider = 'antigravity'): string {
+        $label = $connectorName !== '' ? $connectorName : strtoupper($provider);
+        return "# Agent Memory — {$label}\n\n"
+            . "## Core Mission & Operating Rules\n"
+            . "- You are an autonomous CCRM agent connected directly to CCRM's internal MCP server (`/api/mcp.php`).\n"
+            . "- Use your MCP tools to inspect and update leads, clients, projects, tasks, offers, invoices, and communications.\n"
+            . "- Keep this `memory.md` updated whenever the user gives you long-term rules, preferences, or standing goals.\n"
+            . "- You can create specialized subagents (`create_subagent`) and delegate work to them (`delegate_to_subagent`).\n\n"
+            . "## Standing Autonomous Instructions\n"
+            . "- Follow instructions from the user in chat and record ongoing rules or workflows here.\n\n"
+            . "## Learned CRM Context & Notes\n"
+            . "- (Updated automatically by the agent as it works)\n";
+    }
+}
+
+if (!function_exists('ccrm_marveen_sync_memory_files')) {
+    function ccrm_marveen_sync_memory_files(string $workerHome, string $memoryMd): void {
+        if (!is_dir($workerHome)) {
+            @mkdir($workerHome, 0700, true);
+        }
+        $normalized = rtrim($memoryMd) . "\n";
+        foreach (['memory.md', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md'] as $fname) {
+            $p = $workerHome . '/' . $fname;
+            @file_put_contents($p, $normalized);
+            @chmod($p, 0600);
+        }
+    }
+}
+
+if (!function_exists('ccrm_marveen_update_connector_settings_mirror')) {
+    function ccrm_marveen_update_connector_settings_mirror(PDO $pdo, string $connectorId, callable $mutator): void {
+        if ($connectorId === '' || str_starts_with($connectorId, 'draft-')) {
+            return;
+        }
+        require_once dirname(__DIR__) . '/auth.php';
+        $stmt = $pdo->prepare("SELECT `settings_json` FROM `company_mailboxes` WHERE `id` = ?");
+        $stmt->execute([$connectorId]);
+        $rawJson = $stmt->fetchColumn();
+        if (!is_string($rawJson) || $rawJson === '') {
+            return;
+        }
+        $secretKeys = ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'];
+        $decoded = json_decode($rawJson, true);
+        $settings = is_array($decoded) ? ccrm_decrypt_config_secrets($decoded, $secretKeys) : [];
+        $updated = $mutator($settings);
+        if (!is_array($updated)) {
+            return;
+        }
+        $blob = json_encode(ccrm_encrypt_config_secrets($updated, $secretKeys), JSON_UNESCAPED_UNICODE);
+        $pdo->prepare("UPDATE `company_mailboxes` SET `settings_json` = ? WHERE `id` = ?")->execute([$blob, $connectorId]);
+    }
+}
+
+if (!function_exists('ccrm_marveen_get_memory')) {
+    function ccrm_marveen_get_memory(PDO $pdo, array $connector, ?string $subagentId = null): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $name = (string)($connector['name'] ?? $connectorId);
+        $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
+        $provider = (string)($settings['connectorType'] ?? 'antigravity');
+        $dir = ccrm_marveen_connector_dir($connectorId);
+
+        if ($subagentId !== null && $subagentId !== '') {
+            $safeSub = preg_replace('/[^a-zA-Z0-9_-]/', '-', strtolower($subagentId));
+            $subMemFile = $dir . '/subagents/' . $safeSub . '/memory.md';
+            if (is_file($subMemFile)) {
+                return [
+                    'memoryMd' => (string)@file_get_contents($subMemFile),
+                    'updatedAt' => gmdate('c', (int)@filemtime($subMemFile)),
+                ];
+            }
+            $subs = ccrm_marveen_list_subagents($pdo, $connector);
+            foreach ($subs as $s) {
+                if (($s['id'] ?? '') === $safeSub && !empty($s['memoryMd'])) {
+                    return [
+                        'memoryMd' => (string)$s['memoryMd'],
+                        'updatedAt' => (string)($s['updatedAt'] ?? gmdate('c')),
+                    ];
+                }
+            }
+            return [
+                'memoryMd' => "# Subagent Memory — {$safeSub}\n\n## Notes\n",
+                'updatedAt' => gmdate('c'),
+            ];
+        }
+
+        $memFile = $dir . '/memory.md';
+        if (is_file($memFile)) {
+            $content = (string)@file_get_contents($memFile);
+            if (trim($content) !== '') {
+                if ($name !== '' && $name !== $connectorId && str_starts_with($content, "# Agent Memory — {$connectorId}")) {
+                    $content = preg_replace('/^# Agent Memory — ' . preg_quote($connectorId, '/') . '/m', "# Agent Memory — {$name}", $content, 1) ?? $content;
+                    ccrm_marveen_sync_memory_files($dir, $content);
+                }
+                return [
+                    'memoryMd' => $content,
+                    'updatedAt' => gmdate('c', (int)@filemtime($memFile)),
+                ];
+            }
+        }
+
+        if (!empty($settings['memoryMd']) && is_string($settings['memoryMd'])) {
+            ccrm_marveen_sync_memory_files($dir, $settings['memoryMd']);
+            return [
+                'memoryMd' => $settings['memoryMd'],
+                'updatedAt' => (string)($settings['memoryUpdatedAt'] ?? gmdate('c')),
+            ];
+        }
+
+        $defaultMem = ccrm_marveen_default_memory_md($name, $provider);
+        ccrm_marveen_sync_memory_files($dir, $defaultMem);
+        return [
+            'memoryMd' => $defaultMem,
+            'updatedAt' => gmdate('c'),
+        ];
+    }
+}
+
+if (!function_exists('ccrm_marveen_save_memory')) {
+    function ccrm_marveen_save_memory(PDO $pdo, string $connectorId, string $content, ?string $subagentId = null): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $nowIso = gmdate('c');
+
+        if ($subagentId !== null && $subagentId !== '') {
+            $safeSub = preg_replace('/[^a-zA-Z0-9_-]/', '-', strtolower($subagentId));
+            $subDir = $dir . '/subagents/' . $safeSub;
+            if (!is_dir($subDir)) {
+                @mkdir($subDir, 0700, true);
+            }
+            $normalized = rtrim($content) . "\n";
+            @file_put_contents($subDir . '/memory.md', $normalized);
+            @chmod($subDir . '/memory.md', 0600);
+
+            $subsFile = $dir . '/subagents.json';
+            $subs = is_file($subsFile) ? (json_decode((string)@file_get_contents($subsFile), true) ?: []) : [];
+            foreach ($subs as &$s) {
+                if (($s['id'] ?? '') === $safeSub) {
+                    $s['memoryMd'] = $normalized;
+                    $s['updatedAt'] = $nowIso;
+                }
+            }
+            unset($s);
+            @file_put_contents($subsFile, json_encode(array_values($subs), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+            ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($subs): array {
+                $s['subagents'] = array_values($subs);
+                return $s;
+            });
+            return ['memoryMd' => $normalized, 'updatedAt' => $nowIso, 'subagentId' => $safeSub];
+        }
+
+        $normalized = rtrim($content) . "\n";
+        ccrm_marveen_sync_memory_files($dir, $normalized);
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($normalized, $nowIso): array {
+            $s['memoryMd'] = $normalized;
+            $s['memoryUpdatedAt'] = $nowIso;
+            return $s;
+        });
+
+        return ['memoryMd' => $normalized, 'updatedAt' => $nowIso];
+    }
+}
+
+if (!function_exists('ccrm_marveen_list_subagents')) {
+    function ccrm_marveen_list_subagents(PDO $pdo, array $connector): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $subsFile = $dir . '/subagents.json';
+        $subs = [];
+        if (is_file($subsFile)) {
+            $decoded = json_decode((string)@file_get_contents($subsFile), true);
+            if (is_array($decoded)) {
+                $subs = $decoded;
+            }
+        } elseif (!empty($settings['subagents']) && is_array($settings['subagents'])) {
+            $subs = $settings['subagents'];
+            @file_put_contents($subsFile, json_encode(array_values($subs), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        }
+        foreach ($subs as &$s) {
+            $sid = (string)($s['id'] ?? '');
+            $subMemFile = $dir . '/subagents/' . $sid . '/memory.md';
+            if ($sid !== '' && is_file($subMemFile)) {
+                $s['memoryMd'] = (string)@file_get_contents($subMemFile);
+            } elseif (empty($s['memoryMd'])) {
+                $s['memoryMd'] = "# Subagent Memory — " . ($s['name'] ?? $sid) . "\n\n## Notes\n";
+            }
+        }
+        unset($s);
+        return array_values($subs);
+    }
+}
+
+if (!function_exists('ccrm_marveen_save_subagent')) {
+    function ccrm_marveen_save_subagent(PDO $pdo, string $connectorId, array $input): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $subsFile = $dir . '/subagents.json';
+        $subs = is_file($subsFile) ? (json_decode((string)@file_get_contents($subsFile), true) ?: []) : [];
+
+        $name = trim((string)($input['name'] ?? 'Subagent'));
+        $rawId = trim((string)($input['id'] ?? $name));
+        $id = preg_replace('/[^a-z0-9_-]/', '-', strtolower($rawId)) ?: ('sub-' . substr(bin2hex(random_bytes(3)), 0, 6));
+        $id = trim($id, '-');
+        if ($id === '') {
+            $id = 'sub-' . substr(bin2hex(random_bytes(3)), 0, 6);
+        }
+
+        $role = trim((string)($input['role'] ?? 'Specialized CCRM Subagent'));
+        $systemPrompt = trim((string)($input['systemPrompt'] ?? ($input['system_prompt'] ?? '')));
+        $nowIso = gmdate('c');
+
+        $existingIdx = null;
+        foreach ($subs as $idx => $s) {
+            if (($s['id'] ?? '') === $id) {
+                $existingIdx = $idx;
+                break;
+            }
+        }
+
+        $defaultSubMem = "# Subagent Memory — {$name}\n\n## Role\n{$role}\n\n## Operating Notes\n- Keep findings and specialized context for {$name} here.\n";
+        $memoryMd = isset($input['memoryMd']) || isset($input['memory_md'])
+            ? (string)($input['memoryMd'] ?? $input['memory_md'])
+            : ($existingIdx !== null ? (string)($subs[$existingIdx]['memoryMd'] ?? $defaultSubMem) : $defaultSubMem);
+
+        $record = [
+            'id' => $id,
+            'name' => $name,
+            'role' => $role,
+            'systemPrompt' => $systemPrompt !== '' ? $systemPrompt : "You are {$name} ({$role}), a specialized CCRM subagent.",
+            'memoryMd' => rtrim($memoryMd) . "\n",
+            'createdAt' => $existingIdx !== null ? (string)($subs[$existingIdx]['createdAt'] ?? $nowIso) : $nowIso,
+            'updatedAt' => $nowIso,
+        ];
+
+        if ($existingIdx !== null) {
+            $subs[$existingIdx] = $record;
+        } else {
+            $subs[] = $record;
+        }
+
+        $subDir = $dir . '/subagents/' . $id;
+        if (!is_dir($subDir)) {
+            @mkdir($subDir, 0700, true);
+        }
+        @file_put_contents($subDir . '/memory.md', $record['memoryMd']);
+        @chmod($subDir . '/memory.md', 0600);
+
+        @file_put_contents($subsFile, json_encode(array_values($subs), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($subs): array {
+            $s['subagents'] = array_values($subs);
+            return $s;
+        });
+
+        return $record;
+    }
+}
+
+if (!function_exists('ccrm_marveen_delete_subagent')) {
+    function ccrm_marveen_delete_subagent(PDO $pdo, string $connectorId, string $subagentId): bool {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $subsFile = $dir . '/subagents.json';
+        $subs = is_file($subsFile) ? (json_decode((string)@file_get_contents($subsFile), true) ?: []) : [];
+        $safeId = preg_replace('/[^a-z0-9_-]/', '-', strtolower(trim($subagentId)));
+        $filtered = array_values(array_filter($subs, static fn($s) => ($s['id'] ?? '') !== $safeId));
+        @file_put_contents($subsFile, json_encode($filtered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($filtered): array {
+            $s['subagents'] = $filtered;
+            return $s;
+        });
+        return count($filtered) !== count($subs);
+    }
+}
+
+if (!function_exists('ccrm_marveen_list_tasks')) {
+    function ccrm_marveen_list_tasks(PDO $pdo, array $connector): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $tasksFile = $dir . '/tasks.json';
+        if (is_file($tasksFile)) {
+            $decoded = json_decode((string)@file_get_contents($tasksFile), true);
+            if (is_array($decoded)) {
+                return array_values($decoded);
+            }
+        }
+        if (!empty($settings['autonomousTasks']) && is_array($settings['autonomousTasks'])) {
+            @file_put_contents($tasksFile, json_encode(array_values($settings['autonomousTasks']), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+            return array_values($settings['autonomousTasks']);
+        }
+        return [];
+    }
+}
+
+if (!function_exists('ccrm_marveen_save_task')) {
+    function ccrm_marveen_save_task(PDO $pdo, string $connectorId, array $input): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $tasksFile = $dir . '/tasks.json';
+        $tasks = is_file($tasksFile) ? (json_decode((string)@file_get_contents($tasksFile), true) ?: []) : [];
+
+        $title = trim((string)($input['title'] ?? 'Autonomous Task'));
+        $rawId = trim((string)($input['id'] ?? $title));
+        $id = preg_replace('/[^a-z0-9_-]/', '-', strtolower($rawId)) ?: ('task-' . substr(bin2hex(random_bytes(3)), 0, 6));
+        $id = trim($id, '-') ?: ('task-' . substr(bin2hex(random_bytes(3)), 0, 6));
+
+        $prompt = trim((string)($input['prompt'] ?? $title));
+        $interval = max(1, (int)($input['intervalMinutes'] ?? ($input['interval_minutes'] ?? 60)));
+        $subagentId = trim((string)($input['subagentId'] ?? ($input['subagent_id'] ?? '')));
+        $enabled = array_key_exists('enabled', $input) ? (bool)$input['enabled'] : true;
+        $nowIso = gmdate('c');
+
+        $existingIdx = null;
+        foreach ($tasks as $idx => $t) {
+            if (($t['id'] ?? '') === $id) {
+                $existingIdx = $idx;
+                break;
+            }
+        }
+
+        $record = [
+            'id' => $id,
+            'title' => $title,
+            'prompt' => $prompt,
+            'intervalMinutes' => $interval,
+            'subagentId' => $subagentId !== '' ? $subagentId : null,
+            'enabled' => $enabled,
+            'lastRunAt' => $existingIdx !== null ? ($tasks[$existingIdx]['lastRunAt'] ?? null) : ($input['lastRunAt'] ?? null),
+            'lastStatus' => $existingIdx !== null ? ($tasks[$existingIdx]['lastStatus'] ?? null) : ($input['lastStatus'] ?? null),
+            'updatedAt' => $nowIso,
+        ];
+
+        if ($existingIdx !== null) {
+            $tasks[$existingIdx] = $record;
+        } else {
+            $tasks[] = $record;
+        }
+
+        @file_put_contents($tasksFile, json_encode(array_values($tasks), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($tasks): array {
+            $s['autonomousTasks'] = array_values($tasks);
+            return $s;
+        });
+
+        return $record;
+    }
+}
+
+if (!function_exists('ccrm_marveen_delete_task')) {
+    function ccrm_marveen_delete_task(PDO $pdo, string $connectorId, string $taskId): bool {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $tasksFile = $dir . '/tasks.json';
+        $tasks = is_file($tasksFile) ? (json_decode((string)@file_get_contents($tasksFile), true) ?: []) : [];
+        $safeId = preg_replace('/[^a-z0-9_-]/', '-', strtolower(trim($taskId)));
+        $filtered = array_values(array_filter($tasks, static fn($t) => ($t['id'] ?? '') !== $safeId && ($t['id'] ?? '') !== $taskId));
+        @file_put_contents($tasksFile, json_encode($filtered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($filtered): array {
+            $s['autonomousTasks'] = $filtered;
+            return $s;
+        });
+        return count($filtered) !== count($tasks);
+    }
+}
+
+if (!function_exists('ccrm_marveen_get_chat_history')) {
+    function ccrm_marveen_get_chat_history(string $connectorId): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $chatFile = $dir . '/chat_history.json';
+        if (!is_file($chatFile)) {
+            return [];
+        }
+        $decoded = json_decode((string)@file_get_contents($chatFile), true);
+        return is_array($decoded) ? array_values($decoded) : [];
+    }
+}
+
+if (!function_exists('ccrm_marveen_append_chat_message')) {
+    function ccrm_marveen_append_chat_message(string $connectorId, array $msg): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $chatFile = $dir . '/chat_history.json';
+        $history = ccrm_marveen_get_chat_history($connectorId);
+        $history[] = $msg;
+        if (count($history) > 100) {
+            $history = array_slice($history, -100);
+        }
+        @file_put_contents($chatFile, json_encode(array_values($history), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        @chmod($chatFile, 0600);
+        return $history;
+    }
+}
+
+if (!function_exists('ccrm_marveen_clear_chat_history')) {
+    function ccrm_marveen_clear_chat_history(string $connectorId): void {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $chatFile = $dir . '/chat_history.json';
+        @file_put_contents($chatFile, "[]\n");
+    }
+}
+
+if (!function_exists('ccrm_marveen_get_connector_state')) {
+    function ccrm_marveen_get_connector_state(PDO $pdo, array $connector): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $mem = ccrm_marveen_get_memory($pdo, $connector);
+        $subagents = ccrm_marveen_list_subagents($pdo, $connector);
+        $tasks = ccrm_marveen_list_tasks($pdo, $connector);
+        $chatHistory = ccrm_marveen_get_chat_history($connectorId);
+        return [
+            'connectorId' => $connectorId,
+            'mcpConnected' => true,
+            'mcpEndpoint' => ccrm_marveen_internal_mcp_url(),
+            'memoryMd' => $mem['memoryMd'],
+            'memoryUpdatedAt' => $mem['updatedAt'],
+            'subagents' => $subagents,
+            'tasks' => $tasks,
+            'chatHistory' => $chatHistory,
         ];
     }
 }
@@ -1056,12 +1497,243 @@ if (!function_exists('ccrm_marveen_resolve_gemini_api_key')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
+    function ccrm_marveen_meta_tool_declarations(bool $isSubagent = false): array {
+        $decls = [
+            [
+                'name' => 'memory_read',
+                'description' => 'Read the current persistent memory.md (or a subagent\'s memory.md if subagent_id is passed).',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'subagent_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional subagent ID to read that subagent\'s memory.md instead of the main memory.md.',
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'memory_write',
+                'description' => 'Overwrite/save the persistent memory.md with updated Markdown content. Use this to store user instructions, rules, learned facts, and progress.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'content' => [
+                            'type' => 'STRING',
+                            'description' => 'Full Markdown content to write into memory.md.',
+                        ],
+                        'subagent_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional subagent ID to write to that subagent\'s memory.md.',
+                        ],
+                    ],
+                    'required' => ['content'],
+                ],
+            ],
+            [
+                'name' => 'memory_append',
+                'description' => 'Append a new note, rule, or learned fact to persistent memory.md without overwriting existing sections.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'entry' => [
+                            'type' => 'STRING',
+                            'description' => 'Markdown bullet or paragraph to append to memory.md.',
+                        ],
+                        'subagent_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional subagent ID to append to that subagent\'s memory.md.',
+                        ],
+                    ],
+                    'required' => ['entry'],
+                ],
+            ],
+        ];
+
+        if (!$isSubagent) {
+            $decls[] = [
+                'name' => 'create_subagent',
+                'description' => 'Create or update a specialized subagent with its own role, system prompt, and dedicated memory.md. Subagents have full access to all CCRM MCP tools.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'id' => [
+                            'type' => 'STRING',
+                            'description' => 'Slug ID for the subagent (e.g. "lead-qualifier", "followup-writer").',
+                        ],
+                        'name' => [
+                            'type' => 'STRING',
+                            'description' => 'Human-readable name of the subagent.',
+                        ],
+                        'role' => [
+                            'type' => 'STRING',
+                            'description' => 'Short description of the subagent\'s specialty.',
+                        ],
+                        'system_prompt' => [
+                            'type' => 'STRING',
+                            'description' => 'Detailed instructions for how this subagent should operate.',
+                        ],
+                        'memory_md' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional initial Markdown content for the subagent\'s memory.md.',
+                        ],
+                    ],
+                    'required' => ['name', 'role', 'system_prompt'],
+                ],
+            ];
+            $decls[] = [
+                'name' => 'list_subagents',
+                'description' => 'List all specialized subagents available on this connector.',
+            ];
+            $decls[] = [
+                'name' => 'delete_subagent',
+                'description' => 'Delete a subagent by its ID.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'id' => [
+                            'type' => 'STRING',
+                            'description' => 'ID of the subagent to remove.',
+                        ],
+                    ],
+                    'required' => ['id'],
+                ],
+            ];
+            $decls[] = [
+                'name' => 'delegate_to_subagent',
+                'description' => 'Delegate a task to a specialized subagent by ID. The subagent runs autonomously with its own memory.md and CCRM MCP tools and returns its result.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'id' => [
+                            'type' => 'STRING',
+                            'description' => 'ID of the subagent to invoke (if it does not exist yet, call create_subagent first).',
+                        ],
+                        'task' => [
+                            'type' => 'STRING',
+                            'description' => 'Clear task instructions for the subagent to execute.',
+                        ],
+                    ],
+                    'required' => ['id', 'task'],
+                ],
+            ];
+            $decls[] = [
+                'name' => 'schedule_autonomous_task',
+                'description' => 'Schedule or update a recurring autonomous task that runs automatically in the background (e.g. every N minutes).',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional slug ID for the task.',
+                        ],
+                        'title' => [
+                            'type' => 'STRING',
+                            'description' => 'Short title describing the autonomous routine.',
+                        ],
+                        'prompt' => [
+                            'type' => 'STRING',
+                            'description' => 'The instruction prompt the agent (or subagent) will execute on each autonomous run.',
+                        ],
+                        'interval_minutes' => [
+                            'type' => 'INTEGER',
+                            'description' => 'How often to run in minutes (minimum 1, default 60).',
+                        ],
+                        'subagent_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional subagent ID that should execute this task.',
+                        ],
+                    ],
+                    'required' => ['title', 'prompt'],
+                ],
+            ];
+            $decls[] = [
+                'name' => 'list_autonomous_tasks',
+                'description' => 'List all scheduled autonomous tasks configured on this connector.',
+            ];
+            $decls[] = [
+                'name' => 'cancel_autonomous_task',
+                'description' => 'Cancel and delete a scheduled autonomous task by ID.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'id' => [
+                            'type' => 'STRING',
+                            'description' => 'ID of the autonomous task to cancel.',
+                        ],
+                    ],
+                    'required' => ['id'],
+                ],
+            ];
+        }
+
+        return $decls;
+    }
+}
+
+if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
+    function ccrm_marveen_build_agent_system_prompt(
+        PDO $pdo,
+        array $connector,
+        string $customSystemPrompt = '',
+        ?string $subagentId = null
+    ): string {
+        $name = (string)($connector['name'] ?? 'CCRM Agent');
+        $mem = ccrm_marveen_get_memory($pdo, $connector, $subagentId);
+        $subs = ccrm_marveen_list_subagents($pdo, $connector);
+        $tasks = ccrm_marveen_list_tasks($pdo, $connector);
+
+        $parts = [];
+        if ($subagentId !== null && $subagentId !== '') {
+            $subRecord = null;
+            foreach ($subs as $s) {
+                if (($s['id'] ?? '') === $subagentId) {
+                    $subRecord = $s;
+                    break;
+                }
+            }
+            $subName = (string)($subRecord['name'] ?? $subagentId);
+            $subRole = (string)($subRecord['role'] ?? 'Subagent');
+            $subPrompt = (string)($subRecord['systemPrompt'] ?? '');
+            $parts[] = "You are Subagent \"{$subName}\" ({$subRole}) working for parent CCRM agent \"{$name}\".";
+            if ($subPrompt !== '') {
+                $parts[] = "## Subagent Instructions\n" . $subPrompt;
+            }
+            $parts[] = "## Your Subagent `memory.md`\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
+            $parts[] = "You can update your own memory using `memory_write` or `memory_append` (pass `subagent_id: \"{$subagentId}\"`), and execute any CCRM MCP tools needed to complete your assigned task.";
+        } else {
+            $parts[] = "You are \"{$name}\", an autonomous AI agent connected directly to CCRM's MCP server.";
+            $parts[] = "You operate autonomously: when the user instructs you in chat, execute all necessary MCP tools, update your persistent `memory.md` (`memory_write` / `memory_append`) when asked to remember rules or notes, create/delegate to subagents (`create_subagent`, `delegate_to_subagent`) when specialized workflows are helpful, and schedule recurring jobs (`schedule_autonomous_task`) when asked to perform ongoing autonomous monitoring.";
+            $parts[] = "## Your Persistent `memory.md` (Also visible and editable by the user under the chat)\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
+            if (!empty($subs)) {
+                $subLines = [];
+                foreach ($subs as $s) {
+                    $subLines[] = "- `{$s['id']}` (**{$s['name']}** — {$s['role']})";
+                }
+                $parts[] = "## Existing Subagents\n" . implode("\n", $subLines);
+            }
+            if (!empty($tasks)) {
+                $taskLines = [];
+                foreach ($tasks as $t) {
+                    $status = !empty($t['enabled']) ? 'active' : 'paused';
+                    $taskLines[] = "- `{$t['id']}`: **{$t['title']}** (every {$t['intervalMinutes']}m, {$status})";
+                }
+                $parts[] = "## Scheduled Autonomous Tasks\n" . implode("\n", $taskLines);
+            }
+        }
+        if ($customSystemPrompt !== '') {
+            $parts[] = $customSystemPrompt;
+        }
+        return implode("\n\n", $parts);
+    }
+}
+
 if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
     /**
-     * Executes a fast, multi-turn Gemini + CCRM MCP tool-calling loop in PHP.
-     * Connects to CCRM's internal `/api/mcp.php` using the assigned user's Bearer key,
-     * exposes the user's permitted CRM tools as Gemini `functionDeclarations`, executes
-     * any tool calls requested by the model, and returns the final assistant response.
+     * Executes a fast, multi-turn Gemini + CCRM MCP autonomous tool-calling loop in PHP.
+     * Supports reading/writing persistent `memory.md`, creating & delegating to subagents,
+     * scheduling autonomous tasks, and calling all 84 CCRM MCP tools.
      */
     function ccrm_marveen_run_gemini_mcp_agent(
         string $apiKey,
@@ -1069,7 +1741,11 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
         string $mcpBearerKey,
         string $prompt,
         string $systemPrompt = '',
-        string $preferredModel = ''
+        string $preferredModel = '',
+        ?PDO $pdo = null,
+        ?array $connector = null,
+        ?string $subagentId = null,
+        int $depth = 0
     ): array {
         $trimmedPreferred = trim($preferredModel);
         $candidateModels = array_values(array_unique(array_filter([
@@ -1082,6 +1758,8 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
         ])));
         $modelIdx = 0;
         $model = $candidateModels[0] ?? 'gemini-3.8-flash';
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $isSubagent = ($subagentId !== null && $subagentId !== '') || $depth > 0;
 
         $mcpCall = static function (string $method, array $params = []) use ($mcpUrl, $mcpBearerKey): ?array {
             $ch = curl_init($mcpUrl);
@@ -1143,9 +1821,9 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
             return $out;
         };
 
+        $funcDecls = ccrm_marveen_meta_tool_declarations($isSubagent);
         $toolsResp = $mcpCall('tools/list');
         $mcpTools = is_array($toolsResp['result']['tools'] ?? null) ? $toolsResp['result']['tools'] : [];
-        $funcDecls = [];
         foreach ($mcpTools as $t) {
             if (empty($t['name'])) {
                 continue;
@@ -1160,6 +1838,10 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
             $funcDecls[] = $decl;
         }
 
+        $effectiveSystemPrompt = ($pdo !== null && $connector !== null)
+            ? ccrm_marveen_build_agent_system_prompt($pdo, $connector, $systemPrompt, $subagentId)
+            : $systemPrompt;
+
         $contents = [
             [
                 'role' => 'user',
@@ -1167,14 +1849,15 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
             ],
         ];
 
-        $maxTurns = 8;
+        $steps = [];
+        $maxTurns = $isSubagent ? 8 : 15;
         for ($turn = 0; $turn < $maxTurns; $turn++) {
             $payload = [
                 'contents' => $contents,
             ];
-            if ($systemPrompt !== '') {
+            if ($effectiveSystemPrompt !== '') {
                 $payload['systemInstruction'] = [
-                    'parts' => [['text' => $systemPrompt]],
+                    'parts' => [['text' => $effectiveSystemPrompt]],
                 ];
             }
             // On the final turn, omit tool declarations so the model synthesizes a final text response
@@ -1194,7 +1877,7 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
                     CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_TIMEOUT => 45,
+                    CURLOPT_TIMEOUT => 20,
                     CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
                     CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ]);
@@ -1206,8 +1889,8 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                 if (is_array($resp) && !empty($resp['candidates'][0]['content']['parts'])) {
                     break;
                 }
-                // Retry automatically with the next fallback model on 404/429/5xx or high-demand spike
-                if (in_array($httpCode, [404, 429, 500, 502, 503, 504], true) && ($modelIdx + 1) < count($candidateModels)) {
+                // Retry automatically with the next fallback model on timeout (0), 404/429/5xx or high-demand spike
+                if (in_array($httpCode, [0, 404, 429, 500, 502, 503, 504], true) && ($modelIdx + 1) < count($candidateModels)) {
                     $modelIdx++;
                     continue;
                 }
@@ -1215,7 +1898,7 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
             }
             if (!is_array($resp) || empty($resp['candidates'][0]['content']['parts'])) {
                 $errMsg = (string)($resp['error']['message'] ?? ('Gemini API HTTP ' . $httpCode));
-                return ['ok' => false, 'error' => $errMsg];
+                return ['ok' => false, 'error' => $errMsg, 'steps' => $steps];
             }
 
             $parts = $resp['candidates'][0]['content']['parts'];
@@ -1246,29 +1929,193 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     'ok' => true,
                     'text' => trim(implode("\n", $textParts)),
                     'mode' => 'gemini_mcp',
+                    'model' => $model,
+                    'steps' => $steps,
                 ];
             }
 
             $responseParts = [];
             foreach ($funcCalls as $fc) {
                 $fnName = (string)$fc['name'];
-                $fnArgs = is_array($fc['args'] ?? null) ? $fc['args'] : [];
-                $toolRes = $mcpCall('tools/call', [
-                    'name' => $fnName,
-                    'arguments' => (object)$fnArgs,
-                ]);
+                $fnArgs = is_array($fc['args'] ?? null) ? $fc['args'] : (is_object($fc['args'] ?? null) ? (array)$fc['args'] : []);
                 $toolText = '';
-                if (is_array($toolRes['result']['content'] ?? null)) {
-                    foreach ($toolRes['result']['content'] as $cItem) {
-                        if (isset($cItem['text'])) {
-                            $toolText .= $cItem['text'] . "\n";
+
+                if ($pdo !== null && $connector !== null && in_array($fnName, [
+                    'memory_read',
+                    'memory_write',
+                    'memory_append',
+                    'create_subagent',
+                    'list_subagents',
+                    'delete_subagent',
+                    'delegate_to_subagent',
+                    'schedule_autonomous_task',
+                    'list_autonomous_tasks',
+                    'cancel_autonomous_task',
+                ], true)) {
+                    $targetSubId = !empty($fnArgs['subagent_id']) ? (string)$fnArgs['subagent_id'] : $subagentId;
+                    if ($fnName === 'memory_read') {
+                        $m = ccrm_marveen_get_memory($pdo, $connector, $targetSubId);
+                        $toolText = $m['memoryMd'];
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'memory',
+                            'tool' => 'memory_read',
+                            'label' => $targetSubId ? "Read subagent ({$targetSubId}) memory.md" : 'Read memory.md',
+                        ];
+                    } elseif ($fnName === 'memory_write') {
+                        $newContent = (string)($fnArgs['content'] ?? '');
+                        $saved = ccrm_marveen_save_memory($pdo, $connectorId, $newContent, $targetSubId);
+                        $effectiveSystemPrompt = ccrm_marveen_build_agent_system_prompt($pdo, $connector, $systemPrompt, $subagentId);
+                        $toolText = "Successfully updated memory.md (" . strlen($saved['memoryMd']) . " bytes).";
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'memory',
+                            'tool' => 'memory_write',
+                            'label' => $targetSubId ? "Updated subagent ({$targetSubId}) memory.md" : 'Updated memory.md',
+                        ];
+                    } elseif ($fnName === 'memory_append') {
+                        $entry = trim((string)($fnArgs['entry'] ?? ($fnArgs['content'] ?? '')));
+                        $cur = ccrm_marveen_get_memory($pdo, $connector, $targetSubId)['memoryMd'];
+                        $line = str_starts_with($entry, '-') || str_starts_with($entry, '#') ? $entry : ('- ' . $entry);
+                        $merged = rtrim($cur) . "\n" . $line . "\n";
+                        $saved = ccrm_marveen_save_memory($pdo, $connectorId, $merged, $targetSubId);
+                        $effectiveSystemPrompt = ccrm_marveen_build_agent_system_prompt($pdo, $connector, $systemPrompt, $subagentId);
+                        $toolText = "Appended to memory.md:\n" . $line;
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'memory',
+                            'tool' => 'memory_append',
+                            'label' => $targetSubId ? "Appended to {$targetSubId} memory.md" : 'Appended to memory.md',
+                            'detail' => $line,
+                        ];
+                    } elseif ($fnName === 'create_subagent') {
+                        $sub = ccrm_marveen_save_subagent($pdo, $connectorId, $fnArgs);
+                        $effectiveSystemPrompt = ccrm_marveen_build_agent_system_prompt($pdo, $connector, $systemPrompt, $subagentId);
+                        $toolText = json_encode(['ok' => true, 'subagent' => $sub], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'subagent',
+                            'tool' => 'create_subagent',
+                            'label' => "Created subagent: {$sub['name']} ({$sub['id']})",
+                            'detail' => $sub['role'],
+                        ];
+                    } elseif ($fnName === 'list_subagents') {
+                        $subs = ccrm_marveen_list_subagents($pdo, $connector);
+                        $toolText = json_encode(['subagents' => $subs], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'subagent',
+                            'tool' => 'list_subagents',
+                            'label' => 'Listed subagents (' . count($subs) . ')',
+                        ];
+                    } elseif ($fnName === 'delete_subagent') {
+                        $delId = (string)($fnArgs['id'] ?? '');
+                        $deleted = ccrm_marveen_delete_subagent($pdo, $connectorId, $delId);
+                        $toolText = json_encode(['ok' => $deleted, 'deletedId' => $delId]);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'subagent',
+                            'tool' => 'delete_subagent',
+                            'label' => "Removed subagent: {$delId}",
+                        ];
+                    } elseif ($fnName === 'delegate_to_subagent') {
+                        $delSubId = preg_replace('/[^a-z0-9_-]/', '-', strtolower(trim((string)($fnArgs['id'] ?? ''))));
+                        $delTask = trim((string)($fnArgs['task'] ?? ''));
+                        $subs = ccrm_marveen_list_subagents($pdo, $connector);
+                        $foundSub = null;
+                        foreach ($subs as $s) {
+                            if (($s['id'] ?? '') === $delSubId || strtolower((string)($s['name'] ?? '')) === strtolower((string)($fnArgs['id'] ?? ''))) {
+                                $foundSub = $s;
+                                $delSubId = (string)$s['id'];
+                                break;
+                            }
                         }
+                        if ($foundSub === null) {
+                            // Auto-provision the subagent on the fly if delegated before explicit create_subagent
+                            $foundSub = ccrm_marveen_save_subagent($pdo, $connectorId, [
+                                'id' => $delSubId ?: 'subagent',
+                                'name' => (string)($fnArgs['id'] ?? 'Subagent'),
+                                'role' => 'Autonomous Subagent',
+                                'systemPrompt' => "You are a specialized CCRM subagent handling: {$delTask}",
+                            ]);
+                            $delSubId = (string)$foundSub['id'];
+                        }
+                        $subRes = ccrm_marveen_run_gemini_mcp_agent(
+                            $apiKey,
+                            $mcpUrl,
+                            $mcpBearerKey,
+                            $delTask,
+                            '',
+                            $preferredModel,
+                            $pdo,
+                            $connector,
+                            $delSubId,
+                            $depth + 1
+                        );
+                        $toolText = !empty($subRes['ok'])
+                            ? ("[Subagent {$foundSub['name']} ({$delSubId}) Report]:\n" . ($subRes['text'] ?? ''))
+                            : ("Subagent {$delSubId} error: " . ($subRes['error'] ?? 'failed'));
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'subagent',
+                            'tool' => 'delegate_to_subagent',
+                            'label' => "Delegated to {$foundSub['name']} ({$delSubId})",
+                            'detail' => $delTask,
+                            'subSteps' => $subRes['steps'] ?? [],
+                        ];
+                    } elseif ($fnName === 'schedule_autonomous_task') {
+                        $savedTask = ccrm_marveen_save_task($pdo, $connectorId, $fnArgs);
+                        $toolText = json_encode(['ok' => true, 'task' => $savedTask], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'schedule_autonomous_task',
+                            'label' => "Scheduled autonomous task: {$savedTask['title']} (every {$savedTask['intervalMinutes']}m)",
+                        ];
+                    } elseif ($fnName === 'list_autonomous_tasks') {
+                        $tasks = ccrm_marveen_list_tasks($pdo, $connector);
+                        $toolText = json_encode(['tasks' => $tasks], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'list_autonomous_tasks',
+                            'label' => 'Listed autonomous tasks (' . count($tasks) . ')',
+                        ];
+                    } elseif ($fnName === 'cancel_autonomous_task') {
+                        $cancelId = (string)($fnArgs['id'] ?? '');
+                        $removed = ccrm_marveen_delete_task($pdo, $connectorId, $cancelId);
+                        $toolText = json_encode(['ok' => $removed, 'id' => $cancelId]);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'cancel_autonomous_task',
+                            'label' => "Cancelled autonomous task: {$cancelId}",
+                        ];
                     }
-                } elseif (isset($toolRes['error']['message'])) {
-                    $toolText = 'Error: ' . $toolRes['error']['message'];
                 } else {
-                    $toolText = json_encode($toolRes);
+                    $toolRes = $mcpCall('tools/call', [
+                        'name' => $fnName,
+                        'arguments' => (object)$fnArgs,
+                    ]);
+                    if (is_array($toolRes['result']['content'] ?? null)) {
+                        foreach ($toolRes['result']['content'] as $cItem) {
+                            if (isset($cItem['text'])) {
+                                $toolText .= $cItem['text'] . "\n";
+                            }
+                        }
+                    } elseif (isset($toolRes['error']['message'])) {
+                        $toolText = 'Error: ' . $toolRes['error']['message'];
+                    } else {
+                        $toolText = json_encode($toolRes);
+                    }
+                    $steps[] = [
+                        'id' => uniqid('st_', false),
+                        'kind' => 'mcp',
+                        'tool' => $fnName,
+                        'label' => "MCP: {$fnName}",
+                    ];
                 }
+
                 $responseParts[] = [
                     'functionResponse' => [
                         'name' => $fnName,
@@ -1285,7 +2132,7 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
             ];
         }
 
-        return ['ok' => false, 'error' => 'Agent exceeded maximum tool-calling turns.'];
+        return ['ok' => false, 'error' => 'Agent exceeded maximum tool-calling turns.', 'steps' => $steps];
     }
 }
 
@@ -1295,7 +2142,8 @@ if (!function_exists('ccrm_marveen_run_agent')) {
         array $connector,
         string $userId,
         string $prompt,
-        string $systemPrompt = ''
+        string $systemPrompt = '',
+        ?string $subagentId = null
     ): array {
         $connectorId = (string)($connector['id'] ?? 'default');
         $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
@@ -1306,6 +2154,7 @@ if (!function_exists('ccrm_marveen_run_agent')) {
 
         $mcpKey = ccrm_marveen_ensure_user_mcp_key($pdo, $userId);
         $mcpUrl = ccrm_marveen_internal_mcp_url();
+        $ctx = ccrm_marveen_ensure_worker_dir($connectorId, $provider, $token, $mcpUrl, $mcpKey);
 
         // Tier 2: Remote Marveen Bridge
         $remoteUrl = $agentEndpoint ?: trim((string)(getenv('MARVEEN_URL') ?: ''));
@@ -1318,18 +2167,28 @@ if (!function_exists('ccrm_marveen_run_agent')) {
                 'mcpBearerKey' => $mcpKey,
                 'userId' => $userId,
                 'prompt' => $prompt,
-                'systemPrompt' => $systemPrompt,
+                'systemPrompt' => ccrm_marveen_build_agent_system_prompt($pdo, $connector, $systemPrompt, $subagentId),
                 'model' => $model,
             ]);
         }
 
         // Google Antigravity (`antigravity` / Gemini): resolve the user's Google AI Studio / Gemini key
-        // from their OAuth session (or direct key) and run the Gemini + CCRM MCP agent loop directly.
-        // Never fall through to `@google/gemini-cli` oauth-personal mode, which Google blocks with IneligibleTierError.
+        // from their OAuth session (or direct key) and run the Gemini + CCRM MCP autonomous loop directly.
         if ($provider === 'antigravity' && $token !== '') {
             $geminiKey = ccrm_marveen_resolve_gemini_api_key($connectorId, $token);
             if ($geminiKey !== null) {
-                $geminiRes = ccrm_marveen_run_gemini_mcp_agent($geminiKey, $mcpUrl, $mcpKey, $prompt, $systemPrompt, $model);
+                $geminiRes = ccrm_marveen_run_gemini_mcp_agent(
+                    $geminiKey,
+                    $mcpUrl,
+                    $mcpKey,
+                    $prompt,
+                    $systemPrompt,
+                    $model,
+                    $pdo,
+                    $connector,
+                    $subagentId,
+                    0
+                );
                 return array_merge($geminiRes, [
                     'connectorId' => $connectorId,
                     'provider' => $provider,
@@ -1337,12 +2196,12 @@ if (!function_exists('ccrm_marveen_run_agent')) {
             }
         }
 
-        // Tier 1: Local Embedded CLI Runner with isolated .mcp.json
-        $ctx = ccrm_marveen_ensure_worker_dir($connectorId, $provider, $token, $mcpUrl, $mcpKey);
+        // Tier 1: Local Embedded CLI Runner with isolated .mcp.json and memory.md (mirrored to CLAUDE.md / GEMINI.md / AGENTS.md)
         $spec = ccrm_marveen_cli_package_for($provider);
         $bin = $spec ? ccrm_marveen_find_bin($spec['bin']) : null;
 
-        $fullPrompt = $systemPrompt !== '' ? ($systemPrompt . "\n\n" . $prompt) : $prompt;
+        $builtSystem = ccrm_marveen_build_agent_system_prompt($pdo, $connector, $systemPrompt, $subagentId);
+        $fullPrompt = $builtSystem . "\n\n## User Instruction\n" . $prompt;
 
         if ($bin !== null && ccrm_marveen_can_proc_open() && $token !== '') {
             $resolvedGeminiKey = ($provider === 'antigravity')
@@ -1388,6 +2247,13 @@ if (!function_exists('ccrm_marveen_run_agent')) {
                 fclose($pipes[1]);
                 fclose($pipes[2]);
                 $exit = proc_close($proc);
+                // Sync back any changes the CLI agent made to memory.md / CLAUDE.md / AGENTS.md
+                if (is_file($ctx['workerHome'] . '/memory.md')) {
+                    $diskMem = (string)@file_get_contents($ctx['workerHome'] . '/memory.md');
+                    if (trim($diskMem) !== '') {
+                        ccrm_marveen_save_memory($pdo, $connectorId, $diskMem, $subagentId);
+                    }
+                }
                 if ($exit === 0 && trim($stdout) !== '') {
                     return [
                         'ok' => true,
@@ -1395,11 +2261,13 @@ if (!function_exists('ccrm_marveen_run_agent')) {
                         'mode' => 'local_cli',
                         'connectorId' => $connectorId,
                         'provider' => $provider,
+                        'steps' => [],
                     ];
                 }
                 return [
                     'ok' => false,
                     'error' => 'Agent CLI exited with ' . $exit . ': ' . trim($stderr ?: $stdout),
+                    'steps' => [],
                 ];
             }
         }
@@ -1415,7 +2283,110 @@ if (!function_exists('ccrm_marveen_run_agent')) {
             'mode' => 'mcp_provisioned',
             'connectorId' => $connectorId,
             'provider' => $provider,
+            'steps' => [],
         ];
+    }
+}
+
+if (!function_exists('ccrm_marveen_run_autonomous_ticks')) {
+    /**
+     * Checks active AI connectors for due autonomous tasks (or runs a specific task when $forceTaskId is set),
+     * executes them with full CCRM MCP + subagent + memory.md access, and appends the result to chat history.
+     */
+    function ccrm_marveen_run_autonomous_ticks(PDO $pdo, ?string $onlyConnectorId = null, ?string $forceTaskId = null): array {
+        require_once dirname(__DIR__) . '/auth.php';
+        $sql = "SELECT * FROM `company_mailboxes` WHERE `is_active` = 1";
+        $params = [];
+        if ($onlyConnectorId !== null && $onlyConnectorId !== '') {
+            $sql .= " AND `id` = ?";
+            $params[] = $onlyConnectorId;
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $secretKeys = ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'];
+        $executed = [];
+        $now = time();
+
+        foreach ($rows as $row) {
+            $cid = (string)$row['id'];
+            $raw = json_decode((string)($row['settings_json'] ?? '{}'), true);
+            $settings = is_array($raw) ? ccrm_decrypt_config_secrets($raw, $secretKeys) : [];
+            $cType = (string)($settings['connectorType'] ?? '');
+            if (!in_array($cType, ['claude', 'antigravity', 'chatgpt'], true)) {
+                continue;
+            }
+            $row['settings'] = $settings;
+            $tasks = ccrm_marveen_list_tasks($pdo, $row);
+            if (empty($tasks)) {
+                continue;
+            }
+            $userIds = is_array($settings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $settings['userIds']))) : [];
+            $runAsUser = $userIds[0] ?? (string)($row['owner_user_id'] ?? '');
+            if ($runAsUser === '') {
+                $uStmt = $pdo->query("SELECT `id` FROM `users` ORDER BY `role` = 'admin' DESC, `id` ASC LIMIT 1");
+                $runAsUser = (string)($uStmt ? $uStmt->fetchColumn() : '');
+            }
+            if ($runAsUser === '') {
+                continue;
+            }
+
+            foreach ($tasks as $task) {
+                $tid = (string)($task['id'] ?? '');
+                if ($forceTaskId !== null && $forceTaskId !== '') {
+                    if ($tid !== $forceTaskId) {
+                        continue;
+                    }
+                } else {
+                    if (empty($task['enabled'])) {
+                        continue;
+                    }
+                    $intervalSec = max(60, ((int)($task['intervalMinutes'] ?? 60)) * 60);
+                    $lastRunTs = !empty($task['lastRunAt']) ? strtotime((string)$task['lastRunAt']) : 0;
+                    if ($lastRunTs > 0 && ($now - $lastRunTs) < $intervalSec) {
+                        continue;
+                    }
+                }
+
+                $subId = !empty($task['subagentId']) ? (string)$task['subagentId'] : null;
+                $res = ccrm_marveen_run_agent(
+                    $pdo,
+                    $row,
+                    $runAsUser,
+                    "[Autonomous Task: " . ($task['title'] ?? $tid) . "]\n" . (string)($task['prompt'] ?? ''),
+                    '',
+                    $subId
+                );
+
+                $task['lastRunAt'] = gmdate('c');
+                $task['lastStatus'] = !empty($res['ok']) ? 'ok' : ('error: ' . ($res['error'] ?? 'failed'));
+                ccrm_marveen_save_task($pdo, $cid, $task);
+
+                $botMsg = [
+                    'id' => 'auto-' . uniqid('', false),
+                    'role' => 'assistant',
+                    'autonomous' => true,
+                    'taskTitle' => (string)($task['title'] ?? $tid),
+                    'subagentId' => $subId,
+                    'text' => !empty($res['ok'])
+                        ? (string)($res['text'] ?? 'Autonomous task completed.')
+                        : ('⚠️ Autonomous task error: ' . (string)($res['error'] ?? 'failed')),
+                    'steps' => $res['steps'] ?? [],
+                    'timestamp' => date('H:i'),
+                    'createdAt' => gmdate('c'),
+                ];
+                ccrm_marveen_append_chat_message($cid, $botMsg);
+                $executed[] = [
+                    'connectorId' => $cid,
+                    'taskId' => $tid,
+                    'ok' => !empty($res['ok']),
+                    'message' => $botMsg,
+                ];
+            }
+        }
+
+        return ['ok' => true, 'executed' => $executed];
     }
 }
 

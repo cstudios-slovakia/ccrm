@@ -160,6 +160,17 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// 2e. Autonomous AI Agent Connectors heartbeat (Marveen + CCRM MCP)
+$agentTicks = null;
+try {
+    require_once __DIR__ . '/marveen/marveen_lib.php';
+    if (function_exists('ccrm_marveen_run_autonomous_ticks')) {
+        $agentTicks = ccrm_marveen_run_autonomous_ticks($pdo);
+    }
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
@@ -170,6 +181,7 @@ try {
         'ticketPoll' => $ticketPollResult,
         'holidayRefresh' => $holidayRefresh,
         'activityPurge' => $activityPurge,
+        'agentTicks' => $agentTicks,
         'mailFiling' => $mailFiling === null ? null : [
             'ran' => $mailFiling['ran'] ?? false,
             'seen' => $mailFiling['seen'] ?? 0,

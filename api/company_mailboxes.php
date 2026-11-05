@@ -38,9 +38,21 @@ require_once $configFile;
 $action = (string)($_GET['action'] ?? '');
 $method = $_SERVER['REQUEST_METHOD'];
 
-// `my` and `agent_run` are accessible to any signed-in CRM user (enforced per-connector via `userIds[]`);
+// `my` and `agent_*` workspace actions are accessible to any signed-in CRM user (enforced per-connector via `userIds[]`);
 // all other management actions require an administrator.
-$sessionUser = in_array($action, ['my', 'agent_run'], true)
+$sessionUser = in_array($action, [
+    'my',
+    'agent_run',
+    'agent_state',
+    'agent_memory_save',
+    'agent_subagent_save',
+    'agent_subagent_delete',
+    'agent_task_save',
+    'agent_task_delete',
+    'agent_task_run',
+    'agent_heartbeat',
+    'agent_chat_clear',
+], true)
     ? ccrm_require_auth()
     : ccrm_require_admin();
 if (session_status() === PHP_SESSION_ACTIVE) {
@@ -357,12 +369,23 @@ try {
         $code = trim((string)($input['code'] ?? ''));
         $endpoint = trim((string)($input['agentEndpoint'] ?? ''));
         $res = ccrm_marveen_login_submit_code($id ?: ('draft-' . $provider), $provider, $code, $endpoint);
-        if (!empty($res['ok']) && !empty($res['token']) && $stored) {
-            $oldSettings = ccrm_company_mailbox_settings($stored);
-            $oldSettings['subscriptionToken'] = (string)$res['token'];
-            $blob = json_encode(ccrm_encrypt_config_secrets($oldSettings, ccrm_email_secret_keys()), JSON_UNESCAPED_UNICODE);
-            $pdo->prepare("UPDATE `company_mailboxes` SET `settings_json` = ?, `last_success_at` = NOW(), `last_error` = NULL WHERE `id` = ?")
-                ->execute([$blob, $id]);
+        if (!empty($res['ok']) && !empty($res['token'])) {
+            $callerUid = (string)($sessionUser['id'] ?? '');
+            $mcpKey = $callerUid !== '' ? ccrm_marveen_ensure_user_mcp_key($pdo, $callerUid) : 'provisioned';
+            ccrm_marveen_ensure_worker_dir(
+                $id ?: ('draft-' . $provider),
+                $provider,
+                (string)$res['token'],
+                ccrm_marveen_internal_mcp_url(),
+                $mcpKey
+            );
+            if ($stored) {
+                $oldSettings = ccrm_company_mailbox_settings($stored);
+                $oldSettings['subscriptionToken'] = (string)$res['token'];
+                $blob = json_encode(ccrm_encrypt_config_secrets($oldSettings, ccrm_email_secret_keys()), JSON_UNESCAPED_UNICODE);
+                $pdo->prepare("UPDATE `company_mailboxes` SET `settings_json` = ?, `last_success_at` = NOW(), `last_error` = NULL WHERE `id` = ?")
+                    ->execute([$blob, $id]);
+            }
         }
         // Never leak the raw token back in plaintext if already persisted; return masked indicator + token for unsaved drafts
         $out = [
@@ -376,7 +399,23 @@ try {
         exit;
     }
 
-    if ($action === 'agent_run') {
+    if (in_array($action, [
+        'agent_state',
+        'agent_memory_save',
+        'agent_subagent_save',
+        'agent_subagent_delete',
+        'agent_task_save',
+        'agent_task_delete',
+        'agent_task_run',
+        'agent_heartbeat',
+        'agent_chat_clear',
+        'agent_run',
+    ], true)) {
+        if ($action === 'agent_heartbeat' && $id === '') {
+            $hb = ccrm_marveen_run_autonomous_ticks($pdo, null, null);
+            echo json_encode(array_merge(['success' => true], $hb));
+            exit;
+        }
         if (!$stored) throw new \InvalidArgumentException('Connector not found.');
         $settings = ccrm_company_mailbox_settings($stored);
         $userIds = ccrm_normalize_user_ids($settings['userIds'] ?? null, $stored['owner_user_id'] ?? null);
@@ -387,14 +426,127 @@ try {
             echo json_encode(['success' => false, 'error' => 'You are not assigned to this AI connector.']);
             exit;
         }
+        $stored['settings'] = $settings;
+        $provider = (string)($settings['connectorType'] ?? 'antigravity');
+
+        // Ensure MCP key + worker dir + memory.md are provisioned immediately
+        $mcpKey = $callerId !== '' ? ccrm_marveen_ensure_user_mcp_key($pdo, $callerId) : 'provisioned';
+        ccrm_marveen_ensure_worker_dir(
+            $id,
+            $provider,
+            (string)($settings['subscriptionToken'] ?? ''),
+            ccrm_marveen_internal_mcp_url(),
+            $mcpKey
+        );
+
+        if ($action === 'agent_state') {
+            $subId = trim((string)($input['subagentId'] ?? ($_GET['subagentId'] ?? '')));
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            if ($subId !== '') {
+                $subMem = ccrm_marveen_get_memory($pdo, $stored, $subId);
+                $state['subagentMemoryMd'] = $subMem['memoryMd'];
+            }
+            echo json_encode(array_merge(['success' => true], $state));
+            exit;
+        }
+
+        if ($action === 'agent_memory_save') {
+            $memContent = (string)($input['memoryMd'] ?? '');
+            $subId = trim((string)($input['subagentId'] ?? ''));
+            $saved = ccrm_marveen_save_memory($pdo, $id, $memContent, $subId !== '' ? $subId : null);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true, 'saved' => $saved], $state));
+            exit;
+        }
+
+        if ($action === 'agent_subagent_save') {
+            $sub = ccrm_marveen_save_subagent($pdo, $id, $input);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true, 'subagent' => $sub], $state));
+            exit;
+        }
+
+        if ($action === 'agent_subagent_delete') {
+            $subId = trim((string)($input['subagentId'] ?? ''));
+            ccrm_marveen_delete_subagent($pdo, $id, $subId);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true], $state));
+            exit;
+        }
+
+        if ($action === 'agent_task_save') {
+            $task = ccrm_marveen_save_task($pdo, $id, $input);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true, 'task' => $task], $state));
+            exit;
+        }
+
+        if ($action === 'agent_task_delete') {
+            $taskId = trim((string)($input['taskId'] ?? ''));
+            ccrm_marveen_delete_task($pdo, $id, $taskId);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true], $state));
+            exit;
+        }
+
+        if ($action === 'agent_task_run' || $action === 'agent_heartbeat') {
+            $forceTaskId = $action === 'agent_task_run' ? trim((string)($input['taskId'] ?? '')) : null;
+            $hb = ccrm_marveen_run_autonomous_ticks($pdo, $id, $forceTaskId !== '' ? $forceTaskId : null);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true, 'executed' => $hb['executed'] ?? []], $state));
+            exit;
+        }
+
+        if ($action === 'agent_chat_clear') {
+            ccrm_marveen_clear_chat_history($id);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true], $state));
+            exit;
+        }
+
+        // $action === 'agent_run'
         $prompt = trim((string)($input['prompt'] ?? ''));
         if ($prompt === '') throw new \InvalidArgumentException('Prompt is required.');
-        $stored['settings'] = $settings;
-        $runRes = ccrm_marveen_run_agent($pdo, $stored, $callerId, $prompt, trim((string)($input['systemPrompt'] ?? '')));
+        $subId = trim((string)($input['subagentId'] ?? ''));
+
+        $userMsg = [
+            'id' => 'u-' . uniqid('', false),
+            'role' => 'user',
+            'author' => (string)($sessionUser['name'] ?? 'User'),
+            'subagentId' => $subId !== '' ? $subId : null,
+            'text' => $prompt,
+            'timestamp' => date('H:i'),
+            'createdAt' => gmdate('c'),
+        ];
+        ccrm_marveen_append_chat_message($id, $userMsg);
+
+        $runRes = ccrm_marveen_run_agent(
+            $pdo,
+            $stored,
+            $callerId,
+            $prompt,
+            trim((string)($input['systemPrompt'] ?? '')),
+            $subId !== '' ? $subId : null
+        );
         if (!empty($runRes['ok'])) {
             $pdo->prepare("UPDATE `company_mailboxes` SET `last_run_at` = NOW(), `last_success_at` = NOW(), `last_error` = NULL WHERE `id` = ?")->execute([$id]);
         }
-        echo json_encode(array_merge(['success' => !empty($runRes['ok'])], $runRes));
+
+        $botMsg = [
+            'id' => 'a-' . uniqid('', false),
+            'role' => 'assistant',
+            'subagentId' => $subId !== '' ? $subId : null,
+            'text' => !empty($runRes['ok'])
+                ? (string)($runRes['text'] ?? 'Completed via CCRM MCP.')
+                : ('⚠️ ' . (string)($runRes['error'] ?? 'Agent execution failed.')),
+            'steps' => $runRes['steps'] ?? [],
+            'timestamp' => date('H:i'),
+            'createdAt' => gmdate('c'),
+        ];
+        ccrm_marveen_append_chat_message($id, $botMsg);
+        $state = ccrm_marveen_get_connector_state($pdo, $stored);
+
+        echo json_encode(array_merge(['success' => !empty($runRes['ok'])], $runRes, $state));
         exit;
     }
 
