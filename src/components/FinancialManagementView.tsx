@@ -60,6 +60,7 @@ import {
   recurringChargeAmount,
   recurringEarliestRepriceDate,
   recurringCharges,
+  recurringInterval,
   recurringOccurrences,
   recurringPlannedAmountAt,
   recurringTotalInRange,
@@ -69,6 +70,7 @@ import {
   unskipRecurringDate,
   type RecurringRule
 } from "../utils/recurringExpenses";
+import { recurrenceUnitOptions, repeatEveryLabel } from "../utils/recurrenceLabels";
 import {
   UNCATEGORIZED_ROW_ID,
   aggregateOverviewTable,
@@ -1208,6 +1210,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [formIsRecurring, setFormIsRecurring] = useState(false);
   const [formRecurringFreq, setFormRecurringFreq] = useState<FinancialRecurringFrequency>("monthly");
   const [formWeeklyDay, setFormWeeklyDay] = useState<number>(1); // Monday
+  // Every N weeks / months / years. "Custom" is its own choice in the picker so
+  // that the plain Weekly / Monthly / Yearly options always mean exactly that.
+  const [formRecurringInterval, setFormRecurringInterval] = useState<number>(1);
+  const [formRecurringCustom, setFormRecurringCustom] = useState(false);
   const [formMonthlyType, setFormMonthlyType] = useState<"day_of_month" | "nth_weekday">("day_of_month");
   const [formDayOfMonth, setFormDayOfMonth] = useState<number>(1);
   const [formWeekOfMonth, setFormWeekOfMonth] = useState<number>(1); // 1 = 1st
@@ -2138,6 +2144,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormTaxRate(defaultVatRate);
     setFormIsRecurring(true);
     setFormRecurringFreq("monthly");
+    setFormRecurringInterval(1);
+    setFormRecurringCustom(false);
     setFormMonthlyType("day_of_month");
     setFormDayOfMonth(1);
     setFormWeekOfMonth(1);
@@ -2192,6 +2200,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const getRecurrenceDescription = (rec: FinancialRecord) => {
     const cfg = rec.recurringConfig || {};
     const freq = rec.recurringFrequency || "monthly";
+    const n = recurringInterval(cfg);
+    // Slovak counts 2–4 and 5+ differently: "Každé 3 mesiace", "Každých 6 mesiacov".
+    const sk = (few: string, many: string) => (n < 5 ? `Každé ${n} ${few}` : `Každých ${n} ${many}`);
 
     if (freq === "weekly") {
       const days = [
@@ -2204,7 +2215,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         t("Saturday", "Sobota", "Szombat")
       ];
       const dayName = days[cfg.dayOfWeek ?? 1];
-      return t(`Every week on ${dayName}`, `Každý týždeň v: ${dayName}`, `Minden héten: ${dayName}`);
+      return n > 1
+        ? t(`Every ${n} weeks on ${dayName}`, `${sk("týždne", "týždňov")} v: ${dayName}`, `Minden ${n}. héten: ${dayName}`)
+        : t(`Every week on ${dayName}`, `Každý týždeň v: ${dayName}`, `Minden héten: ${dayName}`);
     }
 
     if (freq === "yearly") {
@@ -2212,7 +2225,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
       ];
       const mName = months[(cfg.month ?? 1) - 1] || "Jan";
-      return t(`Every year in ${mName}`, `Každý rok v mesiaci ${mName}`, `Minden évben: ${mName}`);
+      return n > 1
+        ? t(`Every ${n} years in ${mName}`, `${sk("roky", "rokov")} v mesiaci ${mName}`, `Minden ${n}. évben: ${mName}`)
+        : t(`Every year in ${mName}`, `Každý rok v mesiaci ${mName}`, `Minden évben: ${mName}`);
     }
 
     if (cfg.monthlyType === "nth_weekday") {
@@ -2234,11 +2249,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       ];
       const ord = ordinals[(cfg.weekOfMonth ?? 1) - 1] || `${cfg.weekOfMonth}.`;
       const dName = days[cfg.dayOfWeek ?? 1];
-      return t(`Monthly on the ${ord} ${dName}`, `Mesačne v: ${ord} ${dName}`, `Havonta: ${ord} ${dName}`);
+      return n > 1
+        ? t(`Every ${n} months on the ${ord} ${dName}`, `${sk("mesiace", "mesiacov")} v: ${ord} ${dName}`, `Minden ${n}. hónapban: ${ord} ${dName}`)
+        : t(`Monthly on the ${ord} ${dName}`, `Mesačne v: ${ord} ${dName}`, `Havonta: ${ord} ${dName}`);
     }
 
     const day = cfg.dayOfMonth ?? 1;
-    return t(`Monthly on day ${day}`, `Mesačne ${day}. dňa`, `Havonta ${day}. napon`);
+    return n > 1
+      ? t(`Every ${n} months on day ${day}`, `${sk("mesiace", "mesiacov")}, ${day}. dňa`, `Minden ${n}. hónapban, ${day}. napon`)
+      : t(`Monthly on day ${day}`, `Mesačne ${day}. dňa`, `Havonta ${day}. napon`);
   };
 
   // The rule's next charge, read off the same calendar the projections use, so
@@ -2246,8 +2265,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // the rule has run past its end date — there is no next charge to show.
   const getNextRecurringDueDate = (rec: FinancialRecord): { dateStr: string; daysLeft: number } | null => {
     const today = todayLocal();
-    // Two years ahead covers the longest cadence (yearly) from any starting day.
-    const next = recurringOccurrences(rec, today, shiftIsoDate(today, 731))[0];
+    // Two years ahead covers the longest plain cadence (yearly) from any
+    // starting day; an every-N rule needs N times that.
+    const next = recurringOccurrences(rec, today, shiftIsoDate(today, 731 * recurringInterval(rec.recurringConfig)))[0];
     if (!next) return null;
     return { dateStr: next, daysLeft: Math.max(0, isoDaysBetween(today, next)) };
   };
@@ -3720,6 +3740,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormTaxRate(defaultVatRate);
     setFormIsRecurring(false);
     setFormRecurringFreq("monthly");
+    setFormRecurringInterval(1);
+    setFormRecurringCustom(false);
     setFormWeeklyDay(1);
     setFormMonthlyType("day_of_month");
     setFormDayOfMonth(1);
@@ -3758,6 +3780,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormRecurringFreq(rec.recurringFrequency || "monthly");
 
     const cfg = rec.recurringConfig || {};
+    const interval = recurringInterval(cfg);
+    setFormRecurringInterval(interval);
+    setFormRecurringCustom(interval > 1);
     setFormWeeklyDay(cfg.dayOfWeek ?? 1);
     setFormMonthlyType(cfg.monthlyType ?? "day_of_month");
     setFormDayOfMonth(cfg.dayOfMonth ?? 1);
@@ -3932,7 +3957,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       monthlyType: formMonthlyType,
       dayOfMonth: formDayOfMonth,
       weekOfMonth: formWeekOfMonth,
-      month: formYearlyMonth
+      month: formYearlyMonth,
+      // Left out at 1 so a plain rule is stored exactly as before.
+      ...(formRecurringCustom && formRecurringInterval > 1 ? { interval: formRecurringInterval } : {})
     },
     recurringStartDate: formRecurringStartDate,
     recurringEndDate: formRecurringEndDate || null,
@@ -4625,32 +4652,73 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
         {formIsRecurring && (
           <div className="space-y-3 pt-2 border-t border-indigo-100  animate-in fade-in">
-            {/* Frequency selector: Weekly / Monthly / Yearly */}
+            {/* Frequency selector: Weekly / Monthly / Yearly / Custom (every N …) */}
             <div>
               <label className="text-caption font-bold text-slate-600  block mb-1">
                 {t("Recurrence Frequency", "Periodicita opakovania", "Gyakoriság")}
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {([
                   { id: "weekly", label: t("Weekly", "Týždenne", "Heti") },
                   { id: "monthly", label: t("Monthly", "Mesačne", "Havi") },
-                  { id: "yearly", label: t("Yearly", "Ročne", "Éves") }
-                ].map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setFormRecurringFreq(f.id as any)}
-                    className={`py-1.5 rounded-lg text-ui font-bold transition-all cursor-pointer ${
-                      formRecurringFreq === f.id
-                        ? "bg-indigo-600 text-white shadow-sm"
-                        : "bg-white  text-slate-700  border border-slate-200 "
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
+                  { id: "yearly", label: t("Yearly", "Ročne", "Éves") },
+                  { id: "custom", label: t("Custom", "Vlastné", "Egyéni") }
+                ] as const).map((f) => {
+                  const active = f.id === "custom" ? formRecurringCustom : !formRecurringCustom && formRecurringFreq === f.id;
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        if (f.id === "custom") {
+                          setFormRecurringCustom(true);
+                          // A custom cadence of 1 would just be one of the presets.
+                          if (formRecurringInterval < 2) setFormRecurringInterval(2);
+                        } else {
+                          setFormRecurringCustom(false);
+                          setFormRecurringInterval(1);
+                          setFormRecurringFreq(f.id);
+                        }
+                      }}
+                      className={`py-1.5 rounded-lg text-ui font-bold transition-all cursor-pointer ${
+                        active
+                          ? "bg-indigo-600 text-white shadow-sm"
+                          : "bg-white  text-slate-700  border border-slate-200 "
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
+            {/* CUSTOM: every N weeks / months / years */}
+            {formRecurringCustom && (
+              <div className="animate-in fade-in">
+                <label className="text-caption font-bold text-slate-600  block mb-1">
+                  {repeatEveryLabel(formRecurringInterval, t)}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="999"
+                    aria-label={t("Interval", "Interval", "Intervallum")}
+                    value={formRecurringInterval}
+                    onChange={(e) => setFormRecurringInterval(Math.min(999, Math.max(1, parseInt(e.target.value) || 1)))}
+                    className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-ui font-bold"
+                  />
+                  <CustomSelect
+                    value={formRecurringFreq}
+                    onChange={(val) => setFormRecurringFreq(val as FinancialRecurringFrequency)}
+                    options={recurrenceUnitOptions(["weekly", "monthly", "yearly"], formRecurringInterval, t)}
+                    size="sm"
+                    className="w-full text-ui font-semibold rounded-xl"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* WEEKLY: Select Day of Week */}
             {formRecurringFreq === "weekly" && (
@@ -8338,9 +8406,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           <td className="py-3.5 px-4 text-right">
                             <div className={`font-bold text-body ${rec.type === "income" ? "text-emerald-600" : "text-rose-600"}`}>
                               {rec.type === "income" ? "+" : "-"}{money(amount)}
-                              {rec.recurringFrequency && rec.recurringFrequency !== "monthly" && (
+                              {rec.recurringFrequency && (rec.recurringFrequency !== "monthly" || recurringInterval(rec.recurringConfig) > 1) && (
                                 <span className="text-micro font-bold text-slate-400 ml-1">
-                                  / {rec.recurringFrequency === "weekly" ? t("wk", "týž", "hét") : t("yr", "rok", "év")}
+                                  / {recurringInterval(rec.recurringConfig) > 1 ? `${recurringInterval(rec.recurringConfig)} ` : ""}
+                                  {rec.recurringFrequency === "weekly"
+                                    ? t("wk", "týž", "hét")
+                                    : rec.recurringFrequency === "yearly"
+                                      ? t("yr", "rok", "év")
+                                      : t("mo", "mes", "hó")}
                                 </span>
                               )}
                             </div>

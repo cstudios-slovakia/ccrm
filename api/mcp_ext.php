@@ -225,35 +225,55 @@ function mcp_rec_scheduled(array $rule, string $startIso, string $endIso): array
     $frequency = $rule['recurringFrequency'] ?: 'monthly';
     $dates = [];
     $max = 1000;
+    // recurringInterval + intervalAnchor: every N weeks/months/years, counted
+    // from the first charge on/after the start date (else the issue date).
+    $interval = (int)round((float)($config['interval'] ?? 1));
+    $interval = $interval > 1 ? min($interval, 999) : 1;
+    $anchor = mcp_iso_ok($rule['recurringStartDate'] ?? null) ? $rule['recurringStartDate']
+        : (mcp_iso_ok($rule['issueDate'] ?? null) ? $rule['issueDate'] : '1970-01-01');
+    $mod = fn(int $n, int $m): int => (($n % $m) + $m) % $m;
 
     if ($frequency === 'weekly') {
         $weekday = ((int)($config['dayOfWeek'] ?? 1)) % 7;
-        $cursor = new \DateTimeImmutable($from . ' 00:00:00', new \DateTimeZone('UTC'));
+        $step = 7 * $interval;
+        $utc = new \DateTimeZone('UTC');
+        $cursor = new \DateTimeImmutable(($interval > 1 ? $anchor : $from) . ' 00:00:00', $utc);
         $dow = (int)$cursor->format('w');
         $cursor = $cursor->modify('+' . (($weekday - $dow + 7) % 7) . ' days');
+        if ($interval > 1) {
+            $behind = (int)round(((new \DateTimeImmutable($from . ' 00:00:00', $utc))->getTimestamp() - $cursor->getTimestamp()) / 86400);
+            $jump = (int)ceil($behind / $step) * $step;
+            $cursor = $cursor->modify(($jump >= 0 ? '+' : '') . $jump . ' days');
+        }
         while ($cursor->format('Y-m-d') <= $to && count($dates) < $max) {
             $dates[] = $cursor->format('Y-m-d');
-            $cursor = $cursor->modify('+7 days');
+            $cursor = $cursor->modify('+' . $step . ' days');
         }
         return $dates;
     }
 
     $fy = (int)substr($from, 0, 4); $fm = (int)substr($from, 5, 2) - 1;
     $ty = (int)substr($to, 0, 4);   $tm = (int)substr($to, 5, 2) - 1;
+    $ay = (int)substr($anchor, 0, 4); $am = (int)substr($anchor, 5, 2) - 1;
 
     if ($frequency === 'yearly') {
         $month0 = min(max(((int)($config['month'] ?? 1)) - 1, 0), 11);
+        $yearly = fn(int $y): string => mcp_iso_ymd($y, $month0, mcp_clamp_day($y, $month0, $config['dayOfMonth'] ?? 1));
+        $firstYear = $yearly($ay) < $anchor ? $ay + 1 : $ay;
         for ($year = $fy; $year <= $ty; $year++) {
-            $occ = mcp_iso_ymd($year, $month0, mcp_clamp_day($year, $month0, $config['dayOfMonth'] ?? 1));
+            if ($interval > 1 && $mod($year - $firstYear, $interval) !== 0) continue;
+            $occ = $yearly($year);
             if ($occ >= $from && $occ <= $to) $dates[] = $occ;
         }
         return $dates;
     }
 
+    $firstMonthIndex = $ay * 12 + $am + (mcp_monthly_occurrence($config, $ay, $am) < $anchor ? 1 : 0);
     $year = $fy; $month = $fm;
     while (($year < $ty || ($year === $ty && $month <= $tm)) && count($dates) < $max) {
+        $inCycle = $interval === 1 || $mod($year * 12 + $month - $firstMonthIndex, $interval) === 0;
         $occ = mcp_monthly_occurrence($config, $year, $month);
-        if ($occ >= $from && $occ <= $to) $dates[] = $occ;
+        if ($inCycle && $occ >= $from && $occ <= $to) $dates[] = $occ;
         $month++;
         if ($month > 11) { $month = 0; $year++; }
     }
@@ -986,7 +1006,7 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 $end = mcp_rec_end_date($r);
                 $paused = $end !== null && $end <= $today;
                 if ($paused && empty($args['include_paused'])) continue;
-                $next = mcp_rec_occurrences($r, mcp_iso_shift($today, 1), mcp_iso_shift($today, 400))[0] ?? null;
+                $next = mcp_rec_occurrences($r, mcp_iso_shift($today, 1), mcp_iso_shift($today, 400 * max(1, (int)($r['recurringConfig']['interval'] ?? 1))))[0] ?? null;
                 $out[] = [
                     'id' => $r['id'], 'type' => $r['type'], 'title' => $r['title'], 'category_id' => $r['categoryId'],
                     'frequency' => $r['recurringFrequency'], 'schedule' => $r['recurringConfig'],

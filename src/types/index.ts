@@ -975,6 +975,11 @@ export interface FinancialRecurrenceConfig {
   dayOfMonth?: number; // 1-31 (for monthly day_of_month)
   weekOfMonth?: number; // 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last (for monthly nth_weekday)
   month?: number; // 1-12 (for yearly)
+  /**
+   * Every N weeks / months / years (1 when absent). Counted from the rule's
+   * first charge on or after `recurringStartDate` — see `recurringInterval`.
+   */
+  interval?: number;
 }
 
 /**

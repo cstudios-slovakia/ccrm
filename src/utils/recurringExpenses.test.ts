@@ -361,3 +361,58 @@ test("skipping and un-skipping a day keeps the list sorted, unique, and null onc
   assert.equal(unskipRecurringDate({ recurringSkippedDates: ["2026-03-01"] }, "2026-03-01"), null);
   assert.equal(unskipRecurringDate({ recurringSkippedDates: null }, "2026-03-01"), null);
 });
+
+test("every-N weekly rules skip the weeks in between, counted from the start date", () => {
+  // 2026-01-05 is a Monday; every 2nd Monday from there.
+  const fortnightly = rule({
+    recurringFrequency: "weekly",
+    recurringConfig: { dayOfWeek: 1, interval: 2 },
+    recurringStartDate: "2026-01-05"
+  });
+  assert.deepEqual(recurringOccurrences(fortnightly, "2026-01-01", "2026-02-28"), [
+    "2026-01-05",
+    "2026-01-19",
+    "2026-02-02",
+    "2026-02-16"
+  ]);
+  // A window that opens mid-cycle still lands on the same fortnights.
+  assert.deepEqual(recurringOccurrences(fortnightly, "2026-01-12", "2026-01-31"), ["2026-01-19"]);
+});
+
+test("every-N monthly rules charge every Nth month from the first charge", () => {
+  // Starts on the 20th, charges on the 15th → first charge is February.
+  const quarterly = rule({
+    recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 15, interval: 3 },
+    recurringStartDate: "2026-01-20"
+  });
+  assert.deepEqual(recurringOccurrences(quarterly, "2026-01-01", "2026-12-31"), [
+    "2026-02-15",
+    "2026-05-15",
+    "2026-08-15",
+    "2026-11-15"
+  ]);
+  assert.deepEqual(recurringOccurrences(quarterly, "2026-06-01", "2026-09-30"), ["2026-08-15"]);
+});
+
+test("every-N yearly rules charge every Nth year", () => {
+  const biennial = rule({
+    recurringFrequency: "yearly",
+    recurringConfig: { month: 3, dayOfMonth: 10, interval: 2 },
+    recurringStartDate: "2026-04-01"
+  });
+  assert.deepEqual(recurringOccurrences(biennial, "2026-01-01", "2032-12-31"), [
+    "2027-03-10",
+    "2029-03-10",
+    "2031-03-10"
+  ]);
+  // The next charge is found even when it is more than a year away.
+  assert.equal(nextRecurringChargeAfter(biennial, "2027-03-10"), "2029-03-10");
+});
+
+test("an interval of 1, 0 or junk behaves like a plain rule", () => {
+  const plain = recurringOccurrences(rule(), "2026-01-01", "2026-04-30");
+  for (const interval of [1, 0, -3, Number.NaN]) {
+    const r = rule({ recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 1, interval } });
+    assert.deepEqual(recurringOccurrences(r, "2026-01-01", "2026-04-30"), plain);
+  }
+});

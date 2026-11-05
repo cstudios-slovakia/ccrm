@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Calendar, AlertCircle } from "lucide-react";
 import type {
   TaskRecurrence,
@@ -10,6 +10,9 @@ import {
   getNextDueDates,
   getNextAfterCompletion,
 } from "../utils/recurringTasks";
+import { formatDateLocalized } from "../utils/localTime";
+import { recurrenceUnitOptions, repeatEveryLabel } from "../utils/recurrenceLabels";
+import type { Language } from "../utils/translations";
 
 export type Translate = (en: string, sk: string, hu: string) => string;
 
@@ -17,6 +20,8 @@ interface TaskRecurrenceFieldsProps {
   recurrence: TaskRecurrence;
   onChange: (next: TaskRecurrence) => void;
   t: Translate;
+  /** Formats the preview dates the way the rest of the app shows dates. */
+  language: Language;
 }
 
 export const createDefaultRecurrence = (initialDate?: string): TaskRecurrence => {
@@ -40,12 +45,23 @@ export const createDefaultRecurrence = (initialDate?: string): TaskRecurrence =>
   };
 };
 
+const defaultLeadDays = (freq: TaskRecurrenceFrequency): number =>
+  freq === "daily" ? 0 : freq === "weekly" ? 1 : freq === "yearly" ? 14 : 3;
+
 export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
   recurrence,
   onChange,
   t,
+  language,
 }) => {
   const today = new Date().toISOString().slice(0, 10);
+  const fmt = (iso: string) => formatDateLocalized(iso, language);
+
+  // "Custom" (every N days / weeks / …) is a choice of its own, so Daily,
+  // Weekly, Monthly and Yearly always mean exactly every day / week / ….
+  // A series saved with an interval above 1 opens in Custom.
+  const [customChosen, setCustomChosen] = useState(false);
+  const isCustom = customChosen || (recurrence.interval || 1) > 1;
 
   const update = (patch: Partial<TaskRecurrence>) => {
     onChange({ ...recurrence, ...patch });
@@ -59,15 +75,27 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
   };
 
   const handleFrequencyChange = (freq: TaskRecurrenceFrequency) => {
-    let defaultLead = 3;
-    if (freq === "daily") defaultLead = 0;
-    else if (freq === "weekly") defaultLead = 1;
-    else if (freq === "yearly") defaultLead = 14;
-
     onChange({
       ...recurrence,
       frequency: freq,
-      leadDays: defaultLead,
+      leadDays: defaultLeadDays(freq),
+    });
+  };
+
+  const handleCadenceChange = (value: string) => {
+    if (value === "custom") {
+      setCustomChosen(true);
+      // A custom cadence of 1 would just be one of the presets.
+      if ((recurrence.interval || 1) < 2) update({ interval: 2 });
+      return;
+    }
+    setCustomChosen(false);
+    const freq = value as TaskRecurrenceFrequency;
+    onChange({
+      ...recurrence,
+      frequency: freq,
+      interval: 1,
+      leadDays: freq === recurrence.frequency ? recurrence.leadDays : defaultLeadDays(freq),
     });
   };
 
@@ -127,39 +155,52 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
         </div>
       </div>
 
-      {/* 2. Frequency & Interval */}
+      {/* 2. Cadence: a preset, or Custom → every N days / weeks / months / years */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="text-caption font-bold text-slate-700 block mb-1">
             {t("Frequency", "Periodicita", "Gyakoriság")}
           </label>
           <CustomSelect
-            value={recurrence.frequency}
-            onChange={(val) => handleFrequencyChange(val as TaskRecurrenceFrequency)}
+            value={isCustom ? "custom" : recurrence.frequency}
+            onChange={handleCadenceChange}
             options={[
               { value: "daily", label: t("Daily", "Denne", "Naponta") },
               { value: "weekly", label: t("Weekly", "Týždenne", "Hetente") },
               { value: "monthly", label: t("Monthly", "Mesačne", "Havonta") },
               { value: "yearly", label: t("Yearly", "Ročne", "Évente") },
+              { value: "custom", label: t("Custom", "Vlastné", "Egyéni") },
             ]}
             size="sm"
             className="w-full text-ui font-semibold rounded-xl"
           />
         </div>
 
-        <div>
-          <label className="text-caption font-bold text-slate-700 block mb-1">
-            {t("Interval (Every N)", "Interval (Každých N)", "Intervallum (Minden N.)")}
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="999"
-            value={recurrence.interval || 1}
-            onChange={(e) => update({ interval: Math.max(1, parseInt(e.target.value) || 1) })}
-            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-          />
-        </div>
+        {isCustom && (
+          <div className="animate-in fade-in">
+            <label className="text-caption font-bold text-slate-700 block mb-1">
+              {repeatEveryLabel(recurrence.interval || 1, t)}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                min="1"
+                max="999"
+                aria-label={t("Interval", "Interval", "Intervallum")}
+                value={recurrence.interval || 1}
+                onChange={(e) => update({ interval: Math.min(999, Math.max(1, parseInt(e.target.value) || 1)) })}
+                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+              <CustomSelect
+                value={recurrence.frequency}
+                onChange={(val) => handleFrequencyChange(val as TaskRecurrenceFrequency)}
+                options={recurrenceUnitOptions(["daily", "weekly", "monthly", "yearly"], recurrence.interval || 1, t)}
+                size="sm"
+                className="w-full text-ui font-semibold rounded-xl"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 3. Schedule-specific Day Settings */}
@@ -432,12 +473,12 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                 <p className="text-caption font-semibold text-slate-700">
                   {t("First task", "Prvá úloha", "Első feladat")}:{" "}
                   <span className="text-indigo-600 font-bold">
-                    {t("due", "termín", "határidő")} {upcomingPreview.dates[0].deadline}
+                    {t("due", "termín", "határidő")} {fmt(upcomingPreview.dates[0].deadline)}
                   </span>
                   {recurrence.leadDays > 0 && (
                     <span className="text-slate-500">
                       {" "}
-                      ({t("appears", "zobrazí sa", "megjelenik")} {upcomingPreview.dates[0].startDate})
+                      ({t("appears", "zobrazí sa", "megjelenik")} {fmt(upcomingPreview.dates[0].startDate)})
                     </span>
                   )}
                 </p>
@@ -447,8 +488,8 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                       {t("Next 5 due dates", "Ďalších 5 termínov", "Következő 5 határidő")}:
                     </span>
                     {upcomingPreview.dates.map((d, i) => (
-                      <span key={i} className="inline-block px-1.5 py-0.5 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-caption">
-                        {d.deadline}
+                      <span key={i} className="inline-block px-1.5 py-0.5 bg-white border border-slate-200 rounded-md text-slate-700 tabular-nums text-caption">
+                        {fmt(d.deadline)}
                       </span>
                     ))}
                   </div>

@@ -700,6 +700,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     recurrence={templateRecurrence}
                                     onChange={setTemplateRecurrence}
                                     t={t}
+                                    language={systemLanguage}
                                 />
                                 <div className="space-y-1">
                                     <label className="type-overline text-slate-500">

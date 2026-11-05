@@ -395,26 +395,28 @@ export function describeRecurrence(
 
   // 1. Cadence
   if (lang === "sk") {
+    // 2–4 and 5+ inflect differently: "Každé 3 mesiace", "Každých 6 mesiacov".
+    const every = (few: string, many: string) => (interval < 5 ? `Každé ${interval} ${few}` : `Každých ${interval} ${many}`);
     if (freq === "daily") {
-      parts.push(interval === 1 ? "Každý deň" : `Každých ${interval} dní`);
+      parts.push(interval === 1 ? "Každý deň" : every("dni", "dní"));
     } else if (freq === "weekly") {
       const weekdays = ["nedeľu", "pondelok", "utorok", "stredu", "štvrtok", "piatok", "sobotu"];
       const dow = ((Number(rec.config?.dayOfWeek) || 1) % 7 + 7) % 7;
       const dayName = weekdays[dow];
-      parts.push(interval === 1 ? `Každý týždeň v ${dayName}` : `Každé ${interval} týždne v ${dayName}`);
+      parts.push(interval === 1 ? `Každý týždeň v ${dayName}` : `${every("týždne", "týždňov")} v ${dayName}`);
     } else if (freq === "monthly") {
       if (rec.config?.monthlyType === "nth_weekday") {
         const dow = ((Number(rec.config?.dayOfWeek) || 1) % 7 + 7) % 7;
         const wom = Number(rec.config?.weekOfMonth) || 1;
         const weekdays = ["nedeľu", "pondelok", "utorok", "stredu", "štvrtok", "piatok", "sobotu"];
         const orderStr = wom === -1 || wom > 4 ? "poslednú" : `${wom}.`;
-        parts.push(interval === 1 ? `Každý mesiac (${orderStr} ${weekdays[dow]})` : `Každé ${interval} mesiace (${orderStr} ${weekdays[dow]})`);
+        parts.push(interval === 1 ? `Každý mesiac (${orderStr} ${weekdays[dow]})` : `${every("mesiace", "mesiacov")} (${orderStr} ${weekdays[dow]})`);
       } else {
         const dom = Number(rec.config?.dayOfMonth) || 15;
-        parts.push(interval === 1 ? `Každý mesiac ${dom}. dňa` : `Každé ${interval} mesiace ${dom}. dňa`);
+        parts.push(interval === 1 ? `Každý mesiac ${dom}. dňa` : `${every("mesiace", "mesiacov")} ${dom}. dňa`);
       }
     } else if (freq === "yearly") {
-      parts.push(interval === 1 ? "Každý rok" : `Každé ${interval} roky`);
+      parts.push(interval === 1 ? "Každý rok" : every("roky", "rokov"));
     }
   } else if (lang === "hu") {
     if (freq === "daily") {

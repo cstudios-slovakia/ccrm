@@ -581,7 +581,7 @@ Core financial movement records representing current and planned/future incomes,
 * `payment_method` VARCHAR(50) (e.g. bank_transfer, card, cash, credit)
 * `is_recurring` TINYINT(1) (1 = Recurring rule active, 0 = Single transaction)
 * `recurring_frequency` ENUM('weekly', 'monthly', 'yearly')
-* `recurring_config_json` TEXT (Recurrence rule configuration: `dayOfWeek`, `dayOfMonth`, `weekOfMonth`, `month`)
+* `recurring_config_json` TEXT (Recurrence rule configuration: `dayOfWeek`, `dayOfMonth`, `weekOfMonth`, `month`, optional `interval` — every N weeks/months/years, counted from `recurring_start_date`)
 * `recurring_start_date` DATE
 * `recurring_end_date` DATE
 * `project_id` VARCHAR(50) [NULLable, links to `projects.id`; NULL means Global company-wide record]

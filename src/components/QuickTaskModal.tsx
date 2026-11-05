@@ -1468,7 +1468,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                             switchTestId="task-repeat-toggle"
                         >
                             <div className="pl-11">
-                                <TaskRecurrenceFields recurrence={recurrence} onChange={setRecurrence} t={t} />
+                                <TaskRecurrenceFields recurrence={recurrence} onChange={setRecurrence} t={t} language={systemLanguage} />
                             </div>
                         </OptionRow>
                         <OptionDivider />

@@ -158,16 +158,16 @@ const cleanHistory = (
  * Has the rule charged at all by `dateIso`?
  *
  * A rule without a start date has always been running, so it has. Otherwise it
- * is enough to look at the year after its start: whatever the cadence, the
- * first charge falls within it, and a rule created last week whose first charge
- * is next month has nothing to pin an old amount to.
+ * is enough to look at one cycle after its start (a year, N years for an
+ * every-N rule): the first charge falls within it, and a rule created last
+ * week whose first charge is next month has nothing to pin an old amount to.
  */
 function hasChargedBy(rule: RecurringRule, dateIso: string): boolean {
   const start = rule.recurringStartDate;
   if (!isIsoDate(start)) return true;
   if (start > dateIso) return false;
 
-  const firstYear = shiftIsoDate(start, 400);
+  const firstYear = shiftIsoDate(start, lookaheadDays(rule));
   return recurringOccurrences(rule, start, firstYear < dateIso ? firstYear : dateIso).length > 0;
 }
 
@@ -220,14 +220,14 @@ export function recurringEarliestRepriceDate(rule: RecurringRule): string | null
 
 /**
  * The rule's first charge strictly after `dateIso`, or `null` when none falls
- * within the next year (a rule that has ended, or one with a broken config).
+ * within the next cycle (a rule that has ended, or one with a broken config).
  * This is the default day a price change takes effect from: "from the next
  * charge" is what everybody means by raising the rent.
  */
 export function nextRecurringChargeAfter(rule: RecurringRule, dateIso: string): string | null {
   if (!isIsoDate(dateIso)) return null;
   const from = shiftIsoDate(dateIso, 1);
-  return recurringOccurrences(rule, from, shiftIsoDate(from, 400))[0] ?? null;
+  return recurringOccurrences(rule, from, shiftIsoDate(from, lookaheadDays(rule)))[0] ?? null;
 }
 
 /**
@@ -240,7 +240,7 @@ export function nextRecurringChargeAfter(rule: RecurringRule, dateIso: string): 
  */
 export function lastRecurringOccurrenceOnOrBefore(rule: RecurringRule, dateIso: string): string {
   if (!isIsoDate(dateIso)) return dateIso;
-  const occurrences = recurringOccurrences(rule, shiftIsoDate(dateIso, -400), dateIso);
+  const occurrences = recurringOccurrences(rule, shiftIsoDate(dateIso, -lookaheadDays(rule)), dateIso);
   return occurrences.length > 0 ? occurrences[occurrences.length - 1] : dateIso;
 }
 
@@ -341,6 +341,34 @@ export function unskipRecurringDate(
   return rest.length > 0 ? rest : null;
 }
 
+/** Every how many weeks / months / years the rule charges: 1–999, 1 when unset. */
+export function recurringInterval(config: FinancialRecurrenceConfig | null | undefined): number {
+  const n = Math.round(Number(config?.interval));
+  return Number.isFinite(n) && n > 1 ? Math.min(n, 999) : 1;
+}
+
+/** Non-negative remainder, so a month before the anchor still lands in its cycle. */
+const mod = (n: number, m: number): number => ((n % m) + m) % m;
+
+/**
+ * How far to look for a rule's next / previous charge: a year covers any
+ * plain cadence, and an every-N rule needs N times that.
+ */
+const lookaheadDays = (rule: Pick<RecurringRule, "recurringConfig">): number =>
+  400 * recurringInterval(rule.recurringConfig);
+
+/**
+ * The day an every-N rule counts its cycles from: its start date, else the
+ * day it was recorded, else a fixed epoch so the answer never depends on the
+ * window being asked about.
+ */
+const intervalAnchor = (rule: RecurringRule): string =>
+  isIsoDate(rule.recurringStartDate)
+    ? rule.recurringStartDate
+    : isIsoDate(rule.issueDate)
+      ? rule.issueDate
+      : "1970-01-01";
+
 /** The schedule itself, before any skipped day is taken out. */
 function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: string): string[] {
   if (!isIsoDate(startIso) || !isIsoDate(endIso)) return [];
@@ -355,15 +383,23 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
 
   const config: FinancialRecurrenceConfig = rule.recurringConfig || {};
   const frequency: FinancialRecurringFrequency = rule.recurringFrequency || "monthly";
+  const interval = recurringInterval(config);
+  const anchor = intervalAnchor(rule);
   const dates: string[] = [];
 
   if (frequency === "weekly") {
     const weekday = (config.dayOfWeek ?? 1) % 7;
-    const cursor = fromIso(from);
+    const step = 7 * interval;
+    // Every-N: the first matching weekday on/after the anchor, then whole
+    // cycles forward (or back) to the first charge inside the window.
+    const cursor = fromIso(interval > 1 ? anchor : from);
     cursor.setUTCDate(cursor.getUTCDate() + ((weekday - cursor.getUTCDay() + 7) % 7));
+    if (interval > 1) {
+      cursor.setUTCDate(cursor.getUTCDate() + Math.ceil(isoDaysBetween(toIso(cursor), from) / step) * step);
+    }
     while (toIso(cursor) <= to && dates.length < MAX_OCCURRENCES) {
       dates.push(toIso(cursor));
-      cursor.setUTCDate(cursor.getUTCDate() + 7);
+      cursor.setUTCDate(cursor.getUTCDate() + step);
     }
     return dates;
   }
@@ -373,21 +409,31 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
 
   if (frequency === "yearly") {
     const month = Math.min(Math.max((config.month ?? 1) - 1, 0), 11);
+    const yearlyOccurrence = (year: number) =>
+      toIso(new Date(Date.UTC(year, month, clampDay(year, month, config.dayOfMonth ?? 1))));
+    const anchorYear = Number(anchor.slice(0, 4));
+    const firstYear = yearlyOccurrence(anchorYear) < anchor ? anchorYear + 1 : anchorYear;
     for (let year = fromDate.getUTCFullYear(); year <= toDate.getUTCFullYear(); year++) {
-      const day = clampDay(year, month, config.dayOfMonth ?? 1);
-      const occurrence = toIso(new Date(Date.UTC(year, month, day)));
+      if (interval > 1 && mod(year - firstYear, interval) !== 0) continue;
+      const occurrence = yearlyOccurrence(year);
       if (occurrence >= from && occurrence <= to) dates.push(occurrence);
     }
     return dates;
   }
+
+  const anchorYear = Number(anchor.slice(0, 4));
+  const anchorMonth = Number(anchor.slice(5, 7)) - 1;
+  const firstMonthIndex =
+    anchorYear * 12 + anchorMonth + (monthlyOccurrence(config, anchorYear, anchorMonth) < anchor ? 1 : 0);
 
   let year = fromDate.getUTCFullYear();
   let month = fromDate.getUTCMonth();
   const lastYear = toDate.getUTCFullYear();
   const lastMonth = toDate.getUTCMonth();
   while ((year < lastYear || (year === lastYear && month <= lastMonth)) && dates.length < MAX_OCCURRENCES) {
+    const inCycle = interval === 1 || mod(year * 12 + month - firstMonthIndex, interval) === 0;
     const occurrence = monthlyOccurrence(config, year, month);
-    if (occurrence >= from && occurrence <= to) dates.push(occurrence);
+    if (inCycle && occurrence >= from && occurrence <= to) dates.push(occurrence);
     month += 1;
     if (month > 11) {
       month = 0;

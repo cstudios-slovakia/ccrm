@@ -133,3 +133,11 @@ describe('Recurring Tasks: Pure TS Engine against shared fixture', () => {
     });
   });
 });
+
+describe("Slovak cadence", () => it("inflects 2–4 and 5+ differently", () => {
+  const base = { mode: "schedule", weekendRule: "keep", leadDays: 0, startsOn: "2026-01-01", endsOn: null, paused: false } as const;
+  assert.ok(describeRecurrence({ ...base, frequency: "daily", interval: 3 } as any, "sk").startsWith("Každé 3 dni"));
+  assert.ok(describeRecurrence({ ...base, frequency: "daily", interval: 6 } as any, "sk").startsWith("Každých 6 dní"));
+  assert.ok(describeRecurrence({ ...base, frequency: "weekly", interval: 5, config: { dayOfWeek: 1 } } as any, "sk").startsWith("Každých 5 týždňov v pondelok"));
+  assert.ok(describeRecurrence({ ...base, frequency: "yearly", interval: 2 } as any, "sk").startsWith("Každé 2 roky"));
+}));
