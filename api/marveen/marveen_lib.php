@@ -2867,3 +2867,156 @@ if (!function_exists('ccrm_marveen_graph_mail_check')) {
         return ['ok' => false, 'error' => 'M365 Graph mailbox check returned HTTP ' . $mailCode];
     }
 }
+
+// -----------------------------------------------------------------------------
+// Direct WAAI WhatsApp Multi-Device QR Pairing Worker (Baileys)
+// -----------------------------------------------------------------------------
+
+if (!function_exists('ccrm_waai_storage_root')) {
+    function ccrm_waai_storage_root(): string {
+        $root = dirname(__DIR__, 2) . '/uploads/.waai';
+        if (!is_dir($root)) {
+            @mkdir($root, 0775, true);
+        }
+        return $root;
+    }
+
+    function ccrm_waai_sanitize_account_id(string $raw): string {
+        $clean = preg_replace('/[^a-zA-Z0-9_-]/', '-', trim($raw)) ?: '';
+        return $clean !== '' ? $clean : ('wa-' . substr(bin2hex(random_bytes(4)), 0, 8));
+    }
+
+    function ccrm_waai_ensure_deps(): array {
+        $optMods = '/opt/ccrm-waai/node_modules/@whiskeysockets/baileys';
+        if (is_dir($optMods)) {
+            return ['ok' => true, 'path' => '/opt/ccrm-waai/node_modules'];
+        }
+        $root = ccrm_waai_storage_root();
+        $localMods = $root . '/node_modules/@whiskeysockets/baileys';
+        if (is_dir($localMods)) {
+            return ['ok' => true, 'path' => $root . '/node_modules'];
+        }
+        $pkgJson = $root . '/package.json';
+        if (!is_file($pkgJson)) {
+            @file_put_contents($pkgJson, json_encode([
+                'name' => 'ccrm-waai-worker',
+                'private' => true,
+            ], JSON_PRETTY_PRINT));
+        }
+        $cmd = 'cd ' . escapeshellarg($root) . ' && npm install @whiskeysockets/baileys qrcode pino --no-audit --no-fund 2>&1';
+        $out = [];
+        $code = 0;
+        @exec($cmd, $out, $code);
+        if (is_dir($localMods)) {
+            return ['ok' => true, 'path' => $root . '/node_modules'];
+        }
+        return [
+            'ok' => false,
+            'error' => 'Failed to initialize WAAI Baileys QR worker dependencies: ' . implode("\n", array_slice($out, -5)),
+        ];
+    }
+
+    function ccrm_waai_qr_start(string $rawAccountId, bool $reset = true): array {
+        $deps = ccrm_waai_ensure_deps();
+        if (empty($deps['ok'])) {
+            return [
+                'ok' => false,
+                'status' => 'error',
+                'error' => $deps['error'] ?? 'WAAI QR dependencies missing.',
+            ];
+        }
+        $accountId = ccrm_waai_sanitize_account_id($rawAccountId);
+        $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
+        if (!is_dir($accountDir)) {
+            @mkdir($accountDir, 0775, true);
+        }
+
+        // Remove stale status file before starting fresh worker
+        $statusFile = $accountDir . '/status.json';
+        if ($reset && is_file($statusFile)) {
+            @unlink($statusFile);
+        }
+
+        $workerScript = __DIR__ . '/waai_qr_worker.cjs';
+        $logFile = $accountDir . '/worker.log';
+        $resetArg = $reset ? 'reset' : 'resume';
+        $cmd = sprintf(
+            'nohup node %s %s %s %s > %s 2>&1 &',
+            escapeshellarg($workerScript),
+            escapeshellarg($accountDir),
+            escapeshellarg($accountId),
+            escapeshellarg($resetArg),
+            escapeshellarg($logFile)
+        );
+        @exec($cmd);
+
+        // Wait up to 5.5 seconds for the first real WhatsApp QR code frame from wss://web.whatsapp.com/ws/chat
+        $deadline = microtime(true) + 5.5;
+        $lastState = null;
+        while (microtime(true) < $deadline) {
+            if (is_file($statusFile)) {
+                $raw = @file_get_contents($statusFile);
+                $decoded = is_string($raw) ? json_decode($raw, true) : null;
+                if (is_array($decoded)) {
+                    $lastState = $decoded;
+                    $st = (string)($decoded['status'] ?? '');
+                    if (!empty($decoded['qr']) || $st === 'connected' || $st === 'error') {
+                        break;
+                    }
+                }
+            }
+            usleep(220_000);
+        }
+
+        if (is_array($lastState)) {
+            return array_merge(['ok' => ($lastState['status'] ?? '') !== 'error'], $lastState);
+        }
+
+        return [
+            'ok' => true,
+            'accountId' => $accountId,
+            'status' => 'starting',
+            'qr' => null,
+            'error' => null,
+        ];
+    }
+
+    function ccrm_waai_qr_poll(string $rawAccountId): array {
+        $accountId = ccrm_waai_sanitize_account_id($rawAccountId);
+        $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
+        $statusFile = $accountDir . '/status.json';
+        if (!is_file($statusFile)) {
+            return [
+                'ok' => true,
+                'accountId' => $accountId,
+                'status' => 'idle',
+                'qr' => null,
+            ];
+        }
+        $raw = @file_get_contents($statusFile);
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($decoded)) {
+            return [
+                'ok' => true,
+                'accountId' => $accountId,
+                'status' => 'starting',
+                'qr' => null,
+            ];
+        }
+        return array_merge(['ok' => ($decoded['status'] ?? '') !== 'error'], $decoded);
+    }
+
+    function ccrm_waai_qr_stop(string $rawAccountId): array {
+        $accountId = ccrm_waai_sanitize_account_id($rawAccountId);
+        $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
+        $pidFile = $accountDir . '/worker.pid';
+        if (is_file($pidFile)) {
+            $pid = (int)trim((string)@file_get_contents($pidFile));
+            if ($pid > 0) {
+                @exec('kill -TERM ' . $pid . ' 2>/dev/null');
+            }
+            @unlink($pidFile);
+        }
+        return ['ok' => true, 'accountId' => $accountId];
+    }
+}

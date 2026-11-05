@@ -498,3 +498,23 @@ export const runAgentHeartbeat = (id: string) =>
 
 export const clearAgentChatHistory = (id: string) =>
   call<AgentConnectorState>("agent_chat_clear", { id });
+
+export interface WhatsAppDirectQrState {
+  ok: boolean;
+  accountId: string;
+  status: "idle" | "starting" | "pending_qr" | "authenticated" | "connected" | "disconnected" | "expired" | "error";
+  qr?: string | null;
+  rawQr?: string | null;
+  phone?: string | null;
+  displayName?: string | null;
+  error?: string | null;
+}
+
+export const startWhatsAppDirectQr = (params: { id?: string; accountId?: string; reset?: boolean }) =>
+  call<WhatsAppDirectQrState>("wa_qr_start", params);
+
+export const pollWhatsAppDirectQr = (params: { id?: string; accountId: string }) =>
+  call<WhatsAppDirectQrState>("wa_qr_poll", params);
+
+export const stopWhatsAppDirectQr = (params: { id?: string; accountId: string }) =>
+  call<{ ok: boolean; accountId: string }>("wa_qr_stop", params);

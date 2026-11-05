@@ -358,6 +358,44 @@ try {
         exit;
     }
 
+    if ($action === 'wa_qr_start') {
+        $rawAccId = trim((string)($input['accountId'] ?? ($id ?: ('wa-' . substr(bin2hex(random_bytes(4)), 0, 8)))));
+        $reset = !array_key_exists('reset', $input) || !empty($input['reset']);
+        $res = ccrm_waai_qr_start($rawAccId, $reset);
+        echo json_encode(array_merge(['success' => !empty($res['ok'])], $res));
+        exit;
+    }
+
+    if ($action === 'wa_qr_poll') {
+        $rawAccId = trim((string)($input['accountId'] ?? ($id ?: '')));
+        if ($rawAccId === '') {
+            echo json_encode(['success' => false, 'error' => 'accountId is required.']);
+            exit;
+        }
+        $res = ccrm_waai_qr_poll($rawAccId);
+        if (($res['status'] ?? '') === 'connected' && $stored) {
+            $oldSettings = ccrm_company_mailbox_settings($stored);
+            $oldSettings['waAccountId'] = (string)($res['accountId'] ?? $rawAccId);
+            $oldSettings['waStatus'] = 'connected';
+            $blob = json_encode(ccrm_encrypt_config_secrets($oldSettings, ccrm_email_secret_keys()), JSON_UNESCAPED_UNICODE);
+            $newAddr = (string)$stored['address'];
+            if ((!empty($res['phone'])) && ($newAddr === '' || str_starts_with($newAddr, 'whatsapp:'))) {
+                $newAddr = (string)$res['phone'];
+            }
+            $pdo->prepare("UPDATE `company_mailboxes` SET `address` = ?, `settings_json` = ?, `last_success_at` = NOW(), `last_error` = NULL WHERE `id` = ?")
+                ->execute([$newAddr, $blob, $id]);
+        }
+        echo json_encode(array_merge(['success' => !empty($res['ok'])], $res));
+        exit;
+    }
+
+    if ($action === 'wa_qr_stop') {
+        $rawAccId = trim((string)($input['accountId'] ?? ($id ?: '')));
+        $res = $rawAccId !== '' ? ccrm_waai_qr_stop($rawAccId) : ['ok' => true];
+        echo json_encode(array_merge(['success' => true], $res));
+        exit;
+    }
+
     if ($action === 'agent_login_start') {
         $provider = strtolower(trim((string)($input['connectorType'] ?? 'claude')));
         $endpoint = trim((string)($input['agentEndpoint'] ?? ''));

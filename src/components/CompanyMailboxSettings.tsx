@@ -37,6 +37,9 @@ import {
   runSubscriptionAgent,
   saveMailbox,
   startAgentSubscriptionLogin,
+  startWhatsAppDirectQr,
+  pollWhatsAppDirectQr,
+  stopWhatsAppDirectQr,
   submitAgentSubscriptionCode,
   testMailbox,
   type CompanyMailbox,
@@ -48,7 +51,6 @@ import {
 } from "../utils/companyMailboxes";
 import { fetchModuleConfig, fetchSsoToken } from "./whatsapp/api/crmConnection";
 import { WaaiClient } from "./whatsapp/api/waaiClient";
-import type { WaAccount } from "./whatsapp/api/contract";
 import { SectionCard } from "./settings/SectionCard";
 
 interface Props {
@@ -563,57 +565,6 @@ export const ProviderLogo: React.FC<{ type: ConnectorType; className?: string }>
   }
 };
 
-/** Deterministic SVG QR matrix for instant local/demo WhatsApp QR preview when WAAI SSE stream is offline. */
-const SimulatedWhatsAppQrSvg: React.FC<{ seed: string }> = ({ seed }) => {
-  const cells = useMemo(() => {
-    let h = 2166136261;
-    for (let i = 0; i < seed.length; i++) {
-      h ^= seed.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    const grid: boolean[][] = Array.from({ length: 21 }, () => Array(21).fill(false));
-    const drawFinder = (r0: number, c0: number) => {
-      for (let r = 0; r < 7; r++) {
-        for (let c = 0; c < 7; c++) {
-          const border = r === 0 || r === 6 || c === 0 || c === 6;
-          const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-          grid[r0 + r][c0 + c] = border || inner;
-        }
-      }
-    };
-    drawFinder(0, 0);
-    drawFinder(0, 14);
-    drawFinder(14, 0);
-    for (let r = 0; r < 21; r++) {
-      for (let c = 0; c < 21; c++) {
-        if ((r < 8 && c < 8) || (r < 8 && c > 12) || (r > 12 && c < 8)) continue;
-        if (r >= 8 && r <= 12 && c >= 8 && c <= 12) continue;
-        h ^= (r * 31 + c * 17) & 0xff;
-        h = Math.imul(h, 16777619);
-        grid[r][c] = Math.abs(h) % 10 < 5;
-      }
-    }
-    return grid;
-  }, [seed]);
-
-  return (
-    <svg
-      viewBox="0 0 25 25"
-      className="w-44 h-44 rounded-lg bg-white p-2 shadow-sm border border-slate-200"
-      aria-label="WhatsApp QR Code"
-    >
-      {cells.map((row, r) =>
-        row.map((on, c) =>
-          on ? (
-            <rect key={`${r}-${c}`} x={c + 2} y={r + 2} width={0.92} height={0.92} rx={0.15} fill="#0f172a" />
-          ) : null,
-        ),
-      )}
-      <rect x="10.2" y="10.2" width="4.6" height="4.6" rx="1" fill="#10b981" />
-    </svg>
-  );
-};
-
 export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLanguage, users, showToast }) => {
   const lang = userLanguage ?? systemLanguage ?? "en";
   const t = COPY[lang] ?? COPY.en;
@@ -625,10 +576,13 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
   const [busy, setBusy] = useState<"save" | "test" | "login" | "cli" | "agent_test" | string | null>(null);
   const [formMsg, setFormMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
-  // WhatsApp QR pairing state
+  // WhatsApp direct WAAI QR pairing state
   const [waQrModalOpen, setWaQrModalOpen] = useState(false);
   const [waQrDataUrl, setWaQrDataUrl] = useState<string | null>(null);
-  const [waPairingStatus, setWaPairingStatus] = useState<"idle" | "streaming" | "simulated" | "connected">("idle");
+  const [waPairingStatus, setWaPairingStatus] = useState<
+    "idle" | "starting" | "pending_qr" | "authenticated" | "connected" | "error"
+  >("idle");
+  const [waPairingNote, setWaPairingNote] = useState<string | null>(null);
   const waStreamStopRef = useRef<(() => void) | null>(null);
 
   // Marveen Subscription OAuth wizard state
@@ -752,70 +706,203 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
     });
   };
 
+  const cancelWhatsAppQrPairing = () => {
+    waStreamStopRef.current?.();
+    waStreamStopRef.current = null;
+    if (editing?.settings.waAccountId) {
+      void stopWhatsAppDirectQr({
+        id: editing.id || undefined,
+        accountId: editing.settings.waAccountId,
+      }).catch(() => undefined);
+    }
+    setWaQrModalOpen(false);
+    setWaPairingStatus("idle");
+  };
+
   const startWhatsAppQrPairing = async () => {
     if (!editing) return;
     waStreamStopRef.current?.();
+    waStreamStopRef.current = null;
     setWaQrModalOpen(true);
     setWaQrDataUrl(null);
-    setWaPairingStatus("streaming");
+    setWaPairingStatus("starting");
+    setWaPairingNote("Connecting to WhatsApp via WAAI & requesting live multi-device QR code…");
     setFormMsg(null);
 
+    // 1. Try external WAAI module API (/wa-accounts + /wa-accounts/:id/stream) if configured
     try {
       const cfg = await fetchModuleConfig();
-      if (cfg.configured) {
-        const client = new WaaiClient({ baseUrl: cfg.base, fetchSsoToken: () => fetchSsoToken() });
-        const created = await client.request<{ account: WaAccount }>("/wa-accounts", {
-          method: "POST",
-          body: {
-            display_name: editing.name.trim() || "CCRM WhatsApp",
-            phone_e164: editing.address.trim() || null,
-          },
-        });
-        const accId = created.account.id;
-        setSetting("waAccountId", accId);
-        const stop = client.stream(`/wa-accounts/${encodeURIComponent(accId)}/stream`, (ev, rawData) => {
-          try {
-            const parsed = JSON.parse(rawData) as { qr?: string; status?: string };
-            if (ev === "qr" && parsed.qr) {
-              setWaQrDataUrl(parsed.qr);
-            }
-            if (ev === "status" && parsed.status === "connected") {
-              setSetting("waStatus", "connected");
-              setWaPairingStatus("connected");
-              stop();
-            }
-          } catch {
-            /* ignore malformed SSE frame */
-          }
-        });
-        waStreamStopRef.current = stop;
-        return;
+      const customBase = editing.settings.waServiceUrl?.trim();
+      const base = customBase
+        ? customBase.startsWith("http") && !customBase.includes("/api/ccrm/v1")
+          ? `${customBase.replace(/\/+$/, "")}/api/ccrm/v1`
+          : customBase
+        : cfg.configured
+          ? cfg.base
+          : null;
+
+      if (base && cfg.configured) {
+        const client = new WaaiClient({ base, fetchSsoToken: () => fetchSsoToken() });
+        const started = await client.post<{ account_id: string; worker_offline: boolean }>("/wa-accounts");
+        if (!started.worker_offline && started.account_id) {
+          const accId = started.account_id;
+          setSetting("waAccountId", accId);
+          const ctrl = new AbortController();
+          waStreamStopRef.current = () => ctrl.abort();
+
+          void client
+            .stream(
+              `/wa-accounts/${encodeURIComponent(accId)}/stream`,
+              (event) => {
+                if (event.event === "qr") {
+                  try {
+                    const parsed = JSON.parse(event.data) as { qr?: string } | string;
+                    const rawQr = typeof parsed === "string" ? parsed : parsed.qr ?? event.data;
+                    const dataUrl = rawQr.startsWith("data:") ? rawQr : `data:image/png;base64,${rawQr}`;
+                    setWaQrDataUrl(dataUrl);
+                    setWaPairingStatus("pending_qr");
+                    setWaPairingNote("Live WAAI WhatsApp QR ready — scan with WhatsApp on your phone.");
+                  } catch {
+                    const dataUrl = event.data.startsWith("data:")
+                      ? event.data
+                      : `data:image/png;base64,${event.data}`;
+                    setWaQrDataUrl(dataUrl);
+                    setWaPairingStatus("pending_qr");
+                  }
+                }
+                if (event.event === "status") {
+                  try {
+                    const st = JSON.parse(event.data) as { status?: string; phone_number?: string; display_name?: string };
+                    if (st.status === "connected") {
+                      ctrl.abort();
+                      setEditing((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              name: prev.name.trim() || st.display_name || "WhatsApp (WAAI)",
+                              address: prev.address.trim() || st.phone_number || `whatsapp:${accId}`,
+                              settings: {
+                                ...prev.settings,
+                                waAccountId: accId,
+                                waStatus: "connected",
+                              },
+                            }
+                          : prev,
+                      );
+                      setWaPairingStatus("connected");
+                      setWaQrModalOpen(false);
+                      setFormMsg({ kind: "ok", text: "WhatsApp device linked and connected via WAAI." });
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                }
+              },
+              { signal: ctrl.signal },
+            )
+            .catch(() => undefined);
+          return;
+        }
       }
     } catch {
-      // WAAI daemon not reachable in local/demo environment — render instant interactive QR pairing matrix
+      // External WAAI server not configured or unreachable — use CCRM's built-in WAAI Baileys QR worker
     }
-    setWaPairingStatus("simulated");
-  };
 
-  const confirmSimulatedWhatsAppQr = () => {
-    if (!editing) return;
-    const generatedId = editing.settings.waAccountId || `wa-${Date.now().toString(36)}`;
-    setEditing((prev) =>
-      prev
-        ? {
-            ...prev,
-            address: prev.address.trim() || `whatsapp:${generatedId}`,
-            settings: {
-              ...prev.settings,
-              waAccountId: generatedId,
-              waStatus: "connected",
-            },
+    // 2. Direct WAAI Baileys Multi-Device QR Worker (wss://web.whatsapp.com/ws/chat)
+    try {
+      const candidateAccId =
+        editing.settings.waAccountId?.trim() ||
+        (editing.id ? `wa-${editing.id}` : `wa-${Date.now().toString(36)}`);
+
+      const started = await startWhatsAppDirectQr({
+        id: editing.id || undefined,
+        accountId: candidateAccId,
+        reset: true,
+      });
+
+      const accId = started.accountId || candidateAccId;
+      setSetting("waAccountId", accId);
+
+      if (started.qr) {
+        setWaQrDataUrl(started.qr);
+        setWaPairingStatus("pending_qr");
+        setWaPairingNote("Live WhatsApp QR code active — point your phone camera (Linked Devices) at the QR code.");
+      } else if (started.status === "connected") {
+        setSetting("waStatus", "connected");
+        setWaPairingStatus("connected");
+        setWaQrModalOpen(false);
+        setFormMsg({ kind: "ok", text: "WhatsApp account is connected via WAAI." });
+        return;
+      } else if (started.status === "error") {
+        setWaPairingStatus("error");
+        setWaPairingNote(started.error || "Failed to generate WhatsApp QR code.");
+        return;
+      }
+
+      let stopped = false;
+      const timer = window.setInterval(async () => {
+        if (stopped) return;
+        try {
+          const poll = await pollWhatsAppDirectQr({
+            id: editing.id || undefined,
+            accountId: accId,
+          });
+          if (stopped) return;
+
+          if (poll.qr) {
+            setWaQrDataUrl(poll.qr);
+            setWaPairingStatus("pending_qr");
+            setWaPairingNote("Live WhatsApp QR code active (auto-refreshes every 20s) — scan with WhatsApp.");
           }
-        : prev,
-    );
-    setWaPairingStatus("connected");
-    setWaQrModalOpen(false);
-    setFormMsg({ kind: "ok", text: "WhatsApp QR code paired and session marked active." });
+          if (poll.status === "authenticated") {
+            setWaPairingStatus("authenticated");
+            setWaPairingNote("QR code scanned on phone! Finalizing WhatsApp multi-device link…");
+          }
+          if (poll.status === "connected") {
+            stopped = true;
+            window.clearInterval(timer);
+            setEditing((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    name: prev.name.trim() || poll.displayName || "WhatsApp (WAAI)",
+                    address:
+                      !prev.address.trim() || prev.address.startsWith("whatsapp:")
+                        ? poll.phone || `whatsapp:${accId}`
+                        : prev.address,
+                    settings: {
+                      ...prev.settings,
+                      waAccountId: accId,
+                      waStatus: "connected",
+                    },
+                  }
+                : prev,
+            );
+            setWaPairingStatus("connected");
+            setWaQrModalOpen(false);
+            setFormMsg({
+              kind: "ok",
+              text: `WhatsApp connected via WAAI${poll.phone ? ` (${poll.phone})` : ""}! Click Save Connector to finish.`,
+            });
+          } else if (poll.status === "error" || poll.status === "expired") {
+            stopped = true;
+            window.clearInterval(timer);
+            setWaPairingStatus("error");
+            setWaPairingNote(poll.error || "QR code expired. Click Refresh QR Code to generate a new one.");
+          }
+        } catch {
+          // ignore transient poll network hiccup
+        }
+      }, 1800);
+
+      waStreamStopRef.current = () => {
+        stopped = true;
+        window.clearInterval(timer);
+      };
+    } catch (err: unknown) {
+      setWaPairingStatus("error");
+      setWaPairingNote(err instanceof Error ? err.message : "Failed to start WAAI WhatsApp QR worker.");
+    }
   };
 
   const onStartSubscriptionOAuth = async () => {
@@ -1880,6 +1967,11 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     <div>
                       <div className="type-label text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
                         <QrCode className="w-4 h-4" /> {t.waSectionTitle}
+                        {editing.settings.waStatus === "connected" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-micro font-semibold">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> {t.waConnectedBadge}
+                          </span>
+                        )}
                       </div>
                       <p className="text-micro text-slate-600 dark:text-slate-300 mt-0.5">{t.waSectionDesc}</p>
                     </div>
@@ -1904,10 +1996,28 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           <img
                             src={waQrDataUrl}
                             alt="WhatsApp QR Code"
-                            className="w-44 h-44 rounded-lg border border-slate-200 p-1 bg-white"
+                            className="w-52 h-52 rounded-xl border border-slate-200 p-2 bg-white shadow-xs"
                           />
                         ) : (
-                          <SimulatedWhatsAppQrSvg seed={editing.name || editing.address || "ccrm-wa"} />
+                          <div className="w-52 h-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex flex-col items-center justify-center p-4 text-center gap-2">
+                            {waPairingStatus === "error" ? (
+                              <>
+                                <AlertCircle className="w-7 h-7 text-rose-500" />
+                                <span className="text-micro text-rose-600 dark:text-rose-400">
+                                  {waPairingNote || "QR code unavailable"}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
+                                <span className="text-micro text-slate-600 dark:text-slate-300">
+                                  {waPairingStatus === "authenticated"
+                                    ? "Completing WhatsApp handshake…"
+                                    : "Requesting live WhatsApp QR code from WAAI…"}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                       <div className="space-y-2 text-center sm:text-left">
@@ -1919,18 +2029,28 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           <li>Tap Menu / Settings → Linked Devices</li>
                           <li>Tap Link a Device and point your camera at this QR code</li>
                         </ol>
+                        {waPairingNote && (
+                          <div className="flex items-center gap-1.5 text-micro text-emerald-700 dark:text-emerald-300 font-medium pt-0.5">
+                            {waPairingStatus === "authenticated" || waPairingStatus === "starting" ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            )}
+                            <span>{waPairingNote}</span>
+                          </div>
+                        )}
                         <div className="pt-1 flex flex-wrap items-center gap-2">
                           <button
                             type="button"
-                            data-testid="whatsapp-confirm-qr-btn"
-                            onClick={confirmSimulatedWhatsAppQr}
+                            data-testid="whatsapp-refresh-qr-btn"
+                            onClick={() => void startWhatsAppQrPairing()}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-semibold"
                           >
-                            <Check className="w-3.5 h-3.5" /> {t.waMarkPairedBtn}
+                            <RefreshCw className="w-3.5 h-3.5" /> Refresh QR Code
                           </button>
                           <button
                             type="button"
-                            onClick={() => setWaQrModalOpen(false)}
+                            onClick={cancelWhatsAppQrPairing}
                             className="px-2.5 py-1.5 rounded-lg text-caption text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                           >
                             {t.cancel}

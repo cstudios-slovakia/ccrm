@@ -30,7 +30,11 @@ RUN chmod +x /usr/local/bin/install-php-extensions && \
     install-php-extensions imap pdo_mysql zip && \
     apt-get update && \
     apt-get install -y --no-install-recommends python3 nodejs npm ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /opt/ccrm-waai && \
+    cd /opt/ccrm-waai && \
+    npm init -y >/dev/null 2>&1 && \
+    npm install @whiskeysockets/baileys qrcode pino --no-audit --no-fund
 
 # Enable apache rewrite and headers modules, and let the checked-in .htaccess
 # files actually take effect. Without AllowOverride the container ignores both
