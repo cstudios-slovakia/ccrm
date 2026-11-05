@@ -2060,7 +2060,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             editing.connectorType === "claude"
                               ? "claude-sonnet-4-5"
                               : editing.connectorType === "antigravity"
-                                ? "gemini-2.5-pro"
+                                ? "gemini-3.5-flash-lite"
                                 : "gpt-5"
                           }
                         />

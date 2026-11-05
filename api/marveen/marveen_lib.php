@@ -1631,7 +1631,7 @@ if (!function_exists('ccrm_marveen_resolve_gemini_api_key')) {
                     continue;
                 }
                 // Verify the key works against generativelanguage.googleapis.com
-                $ch3 = curl_init('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=' . rawurlencode($candidateKey));
+                $ch3 = curl_init('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=' . rawurlencode($candidateKey));
                 curl_setopt_array($ch3, [
                     CURLOPT_POST => true,
                     CURLOPT_RETURNTRANSFER => true,
@@ -1960,17 +1960,21 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
         ?string $subagentId = null,
         int $depth = 0
     ): array {
-        $trimmedPreferred = trim($preferredModel);
+        $trimmedPreferred = preg_replace('#^models/#', '', trim($preferredModel));
+        // Never allow deprecated gemini-2.5-* models ("no longer available to new users")
+        if (str_starts_with($trimmedPreferred, 'gemini-2.5')) {
+            $trimmedPreferred = '';
+        }
         $candidateModels = array_values(array_unique(array_filter([
             ($trimmedPreferred !== '' && str_starts_with($trimmedPreferred, 'gemini-')) ? $trimmedPreferred : '',
-            'gemini-3.8-flash',
             'gemini-3.5-flash-lite',
+            'gemini-3.6-flash',
+            'gemini-3.5-flash',
             'gemini-3.1-flash-lite',
-            'gemini-2.5-flash',
-            'gemini-2.5-flash-lite',
+            'gemini-3.8-flash',
         ])));
         $modelIdx = 0;
-        $model = $candidateModels[0] ?? 'gemini-3.8-flash';
+        $model = $candidateModels[0] ?? 'gemini-3.5-flash-lite';
         $connectorId = (string)($connector['id'] ?? 'default');
         $isSubagent = ($subagentId !== null && $subagentId !== '') || $depth > 0;
 
@@ -2083,8 +2087,10 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
 
             $resp = null;
             $httpCode = 0;
-            while ($modelIdx < count($candidateModels)) {
-                $model = $candidateModels[$modelIdx];
+            $numModels = count($candidateModels);
+            for ($attempt = 0; $attempt < $numModels; $attempt++) {
+                $tryIdx = ($modelIdx + $attempt) % $numModels;
+                $model = $candidateModels[$tryIdx];
                 $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($apiKey);
                 $ch = curl_init($url);
                 curl_setopt_array($ch, [
@@ -2100,11 +2106,12 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
 
                 $resp = is_string($rawResp) ? json_decode($rawResp, true) : null;
                 if (is_array($resp) && !empty($resp['candidates'][0]['content']['parts'])) {
+                    // Stick to the working 3.x model for subsequent turns in this run
+                    $modelIdx = $tryIdx;
                     break;
                 }
-                // Retry automatically with the next fallback model on timeout (0), 404/429/5xx or high-demand spike
-                if (in_array($httpCode, [0, 404, 429, 500, 502, 503, 504], true) && ($modelIdx + 1) < count($candidateModels)) {
-                    $modelIdx++;
+                // Retry automatically with the next 3.x fallback model on timeout (0), 404/429/5xx or high-demand spike
+                if (in_array($httpCode, [0, 404, 429, 500, 502, 503, 504], true) && ($attempt + 1) < $numModels) {
                     continue;
                 }
                 break;
