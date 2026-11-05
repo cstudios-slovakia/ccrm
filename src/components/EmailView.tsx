@@ -15,6 +15,7 @@ import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
 import { nowLocalStamp, localeCodeFor, formatTimestampLocalized, todayLocalPlusDays } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
+import { Markdown } from "../utils/markdown";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
@@ -3049,7 +3050,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 </div>
                               )}
 
-                              <div className="text-body whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                              {msg.role === "assistant" ? (
+                                <Markdown content={msg.text} className="text-body leading-relaxed space-y-1.5" />
+                              ) : (
+                                <div className="text-body whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                              )}
                             </div>
                           </div>
                         ))

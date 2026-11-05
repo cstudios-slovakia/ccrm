@@ -385,7 +385,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     }
 
     // Horizontal Rule
-    if (trimmed === "---") {
+    if (/^(?:[-*_]{3,}|—+|–+)$/.test(trimmed)) {
       closeTable(`hr-${i}`);
       closeList(`hr-${i}`);
       closeParagraph(`hr-${i}`);
@@ -406,11 +406,11 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       const parsedContent = parseInlineStyles(content);
 
       if (level === 1) {
-        elements.push(<h1 key={`h1-${i}`} className="text-body font-bold my-3 text-slate-800 border-b pb-1">{parsedContent}</h1>);
+        elements.push(<h1 key={`h1-${i}`} className="text-body font-bold my-3 text-slate-900 border-b border-slate-200 pb-1">{parsedContent}</h1>);
       } else if (level === 2) {
-        elements.push(<h2 key={`h2-${i}`} className="text-ui font-bold my-2 text-slate-800">{parsedContent}</h2>);
+        elements.push(<h2 key={`h2-${i}`} className="text-body font-bold my-2 text-slate-900">{parsedContent}</h2>);
       } else {
-        elements.push(<h3 key={`h3-${i}`} className="type-overline my-1.5 text-slate-700">{parsedContent}</h3>);
+        elements.push(<h3 key={`h3-${i}`} className="text-ui font-bold my-1.5 text-slate-800">{parsedContent}</h3>);
       }
       continue;
     }
@@ -491,9 +491,9 @@ const parseInlineStyles = (text: string): React.ReactNode => {
   const parts: React.ReactNode[] = [];
   let index = 0;
 
-  // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`, [link](url)
+  // Regex matches: `code` first (so underscores/asterisks inside code are preserved), then **bold** / __bold__, *italic* / _italic_, [link](url)
   // Notice [^\)]+ allows spaces inside URLs (e.g. #client-Apex Development - Bytový Dom)
-  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/|#)[^\)]+)\)/g;
+  const inlineRegex = /(`)([^`]+)\1|(\*\*|__)(.*?)\3|(\*|_)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/|#)[^\)]+)\)/g;
   let match;
 
   const parseInnerStyles = (inner: string): React.ReactNode => {
@@ -510,14 +510,14 @@ const parseInlineStyles = (text: string): React.ReactNode => {
     }
 
     if (match[1]) {
-      // Bold
-      parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{parseInnerStyles(match[2])}</strong>);
-    } else if (match[3]) {
-      // Italic
-      parts.push(<em key={match.index} className="italic text-slate-800">{parseInnerStyles(match[4])}</em>);
-    } else if (match[5]) {
       // Inline Code
-      parts.push(<code key={match.index} className="bg-slate-100/80 px-1 py-0.5 rounded text-micro font-mono text-purple-700 border border-slate-200/50">{match[6]}</code>);
+      parts.push(<code key={match.index} className="bg-white/90 px-1.5 py-0.5 rounded-md text-micro font-mono text-purple-700 border border-slate-200">{match[2]}</code>);
+    } else if (match[3]) {
+      // Bold
+      parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{parseInnerStyles(match[4])}</strong>);
+    } else if (match[5]) {
+      // Italic
+      parts.push(<em key={match.index} className="italic text-slate-800">{parseInnerStyles(match[6])}</em>);
     } else if (match[7] !== undefined && match[8] !== undefined) {
       const linkLabel = match[7];
       const linkUrl = match[8].trim();
