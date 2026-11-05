@@ -17,6 +17,9 @@ require_once __DIR__ . '/api/task_reminders.php';
 require_once __DIR__ . '/api/recurring_tasks.php';
 require_once __DIR__ . '/api/read_scope.php';
 require_once __DIR__ . '/api/offer_document.php';
+// ccrm_employee_file_key() / ccrm_employee_private_gc(). schema.php loads this file only when
+// a migration actually runs, which the schema fingerprint skips on almost every request.
+require_once __DIR__ . '/api/employee_files.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
