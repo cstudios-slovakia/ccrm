@@ -3131,6 +3131,8 @@ if (!function_exists('ccrm_waai_storage_root')) {
             'qr' => $status['qr'] ?? null,
             'phone' => $status['phone'] ?? null,
             'displayName' => $status['displayName'] ?? null,
+            'historySyncChunks' => (int)($status['historySyncChunks'] ?? 0),
+            'lastHistorySyncAt' => $status['lastHistorySyncAt'] ?? null,
             'chats' => is_array($store['chats'] ?? null) ? $store['chats'] : [],
             'messages' => is_array($store['messages'] ?? null) ? $store['messages'] : new \stdClass(),
             'updatedAt' => $store['updatedAt'] ?? ($status['updatedAt'] ?? null),
@@ -3178,7 +3180,7 @@ if (!function_exists('ccrm_waai_storage_root')) {
         return $state;
     }
 
-    function ccrm_waai_resync_chats(array $mailboxRow): array {
+    function ccrm_waai_resync_chats(array $mailboxRow, string $chatId = ''): array {
         $accountId = ccrm_waai_resolve_account_id($mailboxRow);
         ccrm_waai_ensure_worker_running($accountId);
 
@@ -3191,6 +3193,7 @@ if (!function_exists('ccrm_waai_storage_root')) {
         @file_put_contents($outboxDir . '/' . $cmdId . '.json', json_encode([
             'id' => $cmdId,
             'action' => 'resync',
+            'chatId' => $chatId,
         ]));
         usleep(3_200_000);
         return ccrm_waai_get_chats($mailboxRow);

@@ -460,7 +460,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [waSending, setWaSending] = useState<boolean>(false);
   const [waInlineQrOpen, setWaInlineQrOpen] = useState<boolean>(false);
   const [waInlineQrUrl, setWaInlineQrUrl] = useState<string | null>(null);
-  const [waFilterType, setWaFilterType] = useState<"all" | "groups" | "direct">("all");
+  const [waFilterType, setWaFilterType] = useState<"all" | "groups" | "contacts">("all");
+  const waMessagesScrollRef = useRef<HTMLDivElement | null>(null);
   const [agentChats, setAgentChats] = useState<Record<string, AgentChatMessage[]>>({});
   const [agentStates, setAgentStates] = useState<Record<string, AgentConnectorState>>({});
   const [agentPrompt, setAgentPrompt] = useState<string>("");
@@ -1251,6 +1252,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           setWaState(st);
           if (st.qr && st.status === "pending_qr") {
             setWaInlineQrUrl(st.qr);
+            setWaInlineQrOpen(true);
           } else if (st.status === "connected") {
             setWaInlineQrOpen(false);
             setWaInlineQrUrl(null);
@@ -1265,18 +1267,30 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
 
     fetchChats();
-    const timer = setInterval(fetchChats, 4000);
+    const timer = setInterval(fetchChats, 3000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
   }, [selectedAccount?.id, selectedChannelType]);
 
-  const handleResyncWhatsApp = async () => {
+  // Auto-scroll WhatsApp conversation pane to the newest message at the bottom
+  const activeWaChatId = waSelectedLeadId || waState?.chats?.[0]?.id || "";
+  const activeWaMsgCount = activeWaChatId ? (waState?.messages?.[activeWaChatId]?.length ?? 0) : 0;
+  useEffect(() => {
+    if (selectedChannelType !== "whatsapp") return;
+    const el = waMessagesScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [selectedChannelType, activeWaChatId, activeWaMsgCount]);
+
+  const handleResyncWhatsApp = async (chatId?: string) => {
     if (!selectedAccount || waLoading) return;
     setWaLoading(true);
     try {
-      const st = await resyncWhatsAppChats(selectedAccount.id);
+      const st = await resyncWhatsAppChats(selectedAccount.id, chatId);
       setWaState(st);
       notify(
         t(
@@ -2440,15 +2454,34 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         </span>
                         <div className="min-w-0">
                           <div className="text-ui font-bold text-slate-900 truncate">{selectedAccount?.name}</div>
-                          <div className="text-micro text-emerald-700 font-mono truncate">
-                            {waState?.phone || selectedAccount?.address || "WAAI QR Connected"}
+                          <div className="text-micro font-mono truncate flex items-center gap-1.5">
+                            {waState?.status === "connected" ? (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                <span className="text-emerald-700 truncate">
+                                  {t("Live", "Naživo", "Élő")} · {waState?.phone || selectedAccount?.address}
+                                  {waState?.historySyncChunks ? ` · ${waState.historySyncChunks} sync` : ""}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                                <span className="text-amber-700 truncate">
+                                  {t(
+                                    "Scan QR for live messages",
+                                    "Naskenujte QR pre živé správy",
+                                    "Olvassa be a QR-t az élő üzenetekhez",
+                                  )}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
-                          onClick={() => void handleResyncWhatsApp()}
+                          onClick={() => void handleResyncWhatsApp(activeChat?.id)}
                           disabled={waLoading}
                           title={t("Sync WhatsApp chats & groups", "Synchronizovať WhatsApp konverzácie", "WhatsApp beszélgetések szinkronizálása")}
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold cursor-pointer disabled:opacity-50"
@@ -2467,29 +2500,35 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     </div>
 
                     {/* Inline QR Pairing Banner when requested or when session requires re-link */}
-                    {waInlineQrOpen && (
-                      <div className="p-3 rounded-2xl bg-white border border-emerald-200 shadow-xs space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-micro font-bold text-emerald-800">
-                            {t("Scan with WhatsApp → Linked Devices", "Naskenujte vo WhatsApp → Prepojené zariadenia", "Olvassa be: WhatsApp → Kapcsolt eszközök")}
+                    {(waInlineQrOpen || waState?.status === "pending_qr") && (
+                      <div className="p-3 rounded-2xl bg-amber-50/60 border border-emerald-300 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-micro font-bold text-emerald-900">
+                            {t(
+                              "Scan with WhatsApp → Linked Devices to sync today's live messages",
+                              "Naskenujte cez WhatsApp → Prepojené zariadenia pre synchronizáciu dnešných správ",
+                              "Olvassa be (WhatsApp → Kapcsolt eszközök) a mai élő üzenetek szinkronizálásához",
+                            )}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setWaInlineQrOpen(false)}
-                            className="text-slate-400 hover:text-slate-600 text-micro font-bold cursor-pointer"
-                          >
-                            ✕
-                          </button>
+                          {waInlineQrOpen && waState?.status === "connected" && (
+                            <button
+                              type="button"
+                              onClick={() => setWaInlineQrOpen(false)}
+                              className="text-slate-400 hover:text-slate-600 text-micro font-bold cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
                         <div className="flex items-center justify-center py-1">
                           {waInlineQrUrl || waState?.qr ? (
                             <img
                               src={waInlineQrUrl || waState?.qr || ""}
                               alt="WhatsApp QR"
-                              className="w-40 h-40 rounded-xl border border-emerald-100 object-contain"
+                              className="w-44 h-44 rounded-xl bg-white p-1.5 border border-emerald-200 object-contain shadow-2xs"
                             />
                           ) : (
-                            <div className="w-40 h-40 rounded-xl border border-emerald-100 flex items-center justify-center text-micro text-slate-400">
+                            <div className="w-44 h-44 rounded-xl bg-white border border-emerald-100 flex items-center justify-center text-micro text-slate-400">
                               <RefreshCw size={18} className="animate-spin text-emerald-600 mr-1.5" />
                               {t("Generating QR…", "Generujem QR…", "QR generálása…")}
                             </div>
@@ -2627,21 +2666,36 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             )}
                           </div>
                           <div className="text-caption text-emerald-700 font-mono truncate">
-                            {activeChat.phone ||
+                            {activeChat.participantsPreview ||
+                              activeChat.phone ||
                               (activeChat.isGroup
                                 ? t("WhatsApp Group Chat", "Skupinová konverzácia WhatsApp", "WhatsApp csoportos csevegés")
                                 : activeChat.id)}{" "}
                             · {selectedAccount?.name}
                           </div>
                         </div>
-                        {matchedLead &&
-                          renderCrmActions(matchedLead, {
-                            name: matchedLead.name,
-                            address: matchedLead.email || "",
-                          })}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => void handleResyncWhatsApp(activeChat.id)}
+                            disabled={waLoading}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-caption font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <RefreshCw size={13} className={waLoading ? "animate-spin" : ""} />
+                            {t("Sync latest", "Synchronizovať najnovšie", "Legfrissebbek szinkronizálása")}
+                          </button>
+                          {matchedLead &&
+                            renderCrmActions(matchedLead, {
+                              name: matchedLead.name,
+                              address: matchedLead.email || "",
+                            })}
+                        </div>
                       </div>
 
-                      <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-emerald-500/[0.02]">
+                      <div
+                        ref={waMessagesScrollRef}
+                        className="flex-1 overflow-y-auto p-6 space-y-3 bg-emerald-500/[0.02]"
+                      >
                         {liveMessages.length === 0 && crmWaEvents.length === 0 ? (
                           <div className="text-center py-12 text-slate-400 text-body">
                             {t(
@@ -2652,28 +2706,54 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </div>
                         ) : (
                           <>
-                            {liveMessages.map((msg) => (
-                              <div
-                                key={msg.id}
-                                className={`max-w-xl p-3.5 rounded-2xl shadow-xs space-y-1 ${
-                                  msg.fromMe
-                                    ? "ml-auto bg-emerald-600 text-white"
-                                    : "mr-auto bg-white border border-slate-200 text-slate-800"
-                                }`}
-                              >
+                            {liveMessages.map((msg) => {
+                              const imgSrc = msg.mediaUrl || msg.mediaPreviewUrl || "";
+                              const showCaption =
+                                msg.text &&
+                                !(imgSrc && (msg.text === "📷 Photo" || msg.text === "🏷️ Sticker"));
+                              return (
                                 <div
-                                  className={`text-micro flex items-center justify-between gap-3 ${
-                                    msg.fromMe ? "text-emerald-100" : "text-slate-400"
+                                  key={msg.id}
+                                  className={`max-w-xl p-3.5 rounded-2xl shadow-xs space-y-1.5 ${
+                                    msg.fromMe
+                                      ? "ml-auto bg-emerald-600 text-white"
+                                      : "mr-auto bg-white border border-slate-200 text-slate-800"
                                   }`}
                                 >
-                                  <span className="font-bold">
-                                    {msg.fromMe ? currentUser?.name || "Me" : msg.senderName || activeChat.name}
-                                  </span>
-                                  <span>{msg.timestamp}</span>
+                                  <div
+                                    className={`text-micro flex items-center justify-between gap-3 ${
+                                      msg.fromMe ? "text-emerald-100" : "text-slate-400"
+                                    }`}
+                                  >
+                                    <span
+                                      className={`font-bold ${
+                                        msg.fromMe ? "text-white" : "text-rose-600"
+                                      }`}
+                                    >
+                                      {msg.fromMe ? currentUser?.name || "Me" : msg.senderName || activeChat.name}
+                                    </span>
+                                    <span>{msg.timestamp}</span>
+                                  </div>
+                                  {imgSrc && (
+                                    <a
+                                      href={msg.mediaUrl || imgSrc}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="block overflow-hidden rounded-xl border border-black/10"
+                                    >
+                                      <img
+                                        src={imgSrc}
+                                        alt={msg.text || "WhatsApp media"}
+                                        className="max-h-72 w-full object-cover rounded-xl"
+                                      />
+                                    </a>
+                                  )}
+                                  {showCaption && (
+                                    <div className="text-body whitespace-pre-wrap break-words">{msg.text}</div>
+                                  )}
                                 </div>
-                                <div className="text-body whitespace-pre-wrap break-words">{msg.text}</div>
-                              </div>
-                            ))}
+                              );
+                            })}
                             {liveMessages.length === 0 &&
                               crmWaEvents.map((ev: any) => (
                                 <div

@@ -419,7 +419,8 @@ try {
         }
 
         if ($action === 'wa_resync') {
-            $res = ccrm_waai_resync_chats($stored);
+            $resyncChatId = trim((string)($input['chatId'] ?? ''));
+            $res = ccrm_waai_resync_chats($stored, $resyncChatId);
             echo json_encode(array_merge(['success' => true], $res));
             exit;
         }

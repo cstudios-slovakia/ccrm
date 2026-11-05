@@ -525,6 +525,7 @@ export interface WhatsAppChatSummary {
   phone?: string;
   isGroup?: boolean;
   participantCount?: number;
+  participantsPreview?: string;
   unreadCount?: number;
   pinned?: boolean;
   archived?: boolean;
@@ -539,6 +540,10 @@ export interface WhatsAppMessageItem {
   fromMe: boolean;
   senderName: string;
   text: string;
+  mediaType?: "image" | "video" | "audio" | "document";
+  mediaUrl?: string;
+  mediaPreviewUrl?: string;
+  fileName?: string;
   timestamp: string;
   createdAt?: string;
   tsMs: number;
@@ -551,6 +556,8 @@ export interface WhatsAppConnectorState {
   qr?: string | null;
   phone?: string | null;
   displayName?: string | null;
+  historySyncChunks?: number;
+  lastHistorySyncAt?: string | null;
   chats: WhatsAppChatSummary[];
   messages: Record<string, WhatsAppMessageItem[]>;
   updatedAt?: string | null;
@@ -563,5 +570,5 @@ export const getWhatsAppChats = (id: string) =>
 export const sendWhatsAppChatMessage = (params: { id: string; chatId: string; text: string }) =>
   call<WhatsAppConnectorState>("wa_send", params);
 
-export const resyncWhatsAppChats = (id: string) =>
-  call<WhatsAppConnectorState>("wa_resync", { id });
+export const resyncWhatsAppChats = (id: string, chatId?: string) =>
+  call<WhatsAppConnectorState>("wa_resync", { id, chatId });
