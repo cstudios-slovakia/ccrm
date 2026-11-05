@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   effectiveRecurringEndDate,
+  firstPaymentDay,
   isRecurringDateSkipped,
   nextRecurringChargeAfter,
   pauseRecurringRule,
@@ -9,6 +10,7 @@ import {
   recurringEarliestRepriceDate,
   recurringAmountsAt,
   recurringCharges,
+  recurringConfigFromFirstPayment,
   recurringOccurrences,
   recurringPlannedAmountAt,
   recurringTotalInRange,
@@ -379,43 +381,19 @@ test("every-N weekly rules skip the weeks in between, counted from the start dat
   assert.deepEqual(recurringOccurrences(fortnightly, "2026-01-12", "2026-01-31"), ["2026-01-19"]);
 });
 
-test("every-N weekly cycles count from the start date's week, so the own row is cycle one", () => {
-  // Started Thursday 2026-11-05, charges Wednesdays every 2 weeks. The rule's
-  // own row pays on 5 Nov; that week's Wednesday (4 Nov) is before the start,
-  // so the next charge is 18 Nov — not 11 Nov, six days after the first.
-  const fortnightly = rule({
-    recurringFrequency: "weekly",
-    recurringConfig: { dayOfWeek: 3, interval: 2 },
-    recurringStartDate: "2026-11-05"
-  });
-  assert.deepEqual(recurringOccurrences(fortnightly, "2026-11-01", "2026-12-31"), [
-    "2026-11-18",
-    "2026-12-02",
-    "2026-12-16",
-    "2026-12-30"
-  ]);
-  // Sunday is the last day of the start date's week, so it still charges then.
-  const sundays = rule({
-    recurringFrequency: "weekly",
-    recurringConfig: { dayOfWeek: 0, interval: 3 },
-    recurringStartDate: "2026-11-05"
-  });
-  assert.deepEqual(recurringOccurrences(sundays, "2026-11-01", "2026-12-15"), ["2026-11-08", "2026-11-29"]);
-});
-
-test("every-N monthly rules charge every Nth month from the start date's month", () => {
-  // Starts on the 20th, charges on the 15th: January is cycle one (its 15th is
-  // before the start, the rule's own row pays it), so April is the next charge.
+test("every-N monthly rules charge every Nth month from the first charge", () => {
+  // Starts on the 20th, charges on the 15th → first charge is February.
   const quarterly = rule({
     recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 15, interval: 3 },
     recurringStartDate: "2026-01-20"
   });
   assert.deepEqual(recurringOccurrences(quarterly, "2026-01-01", "2026-12-31"), [
-    "2026-04-15",
-    "2026-07-15",
-    "2026-10-15"
+    "2026-02-15",
+    "2026-05-15",
+    "2026-08-15",
+    "2026-11-15"
   ]);
-  assert.deepEqual(recurringOccurrences(quarterly, "2026-06-01", "2026-09-30"), ["2026-07-15"]);
+  assert.deepEqual(recurringOccurrences(quarterly, "2026-06-01", "2026-09-30"), ["2026-08-15"]);
 });
 
 test("every-N yearly rules charge every Nth year", () => {
@@ -424,14 +402,13 @@ test("every-N yearly rules charge every Nth year", () => {
     recurringConfig: { month: 3, dayOfMonth: 10, interval: 2 },
     recurringStartDate: "2026-04-01"
   });
-  // 2026 is cycle one (10 March is before the start), so 2028 is the next charge.
   assert.deepEqual(recurringOccurrences(biennial, "2026-01-01", "2032-12-31"), [
-    "2028-03-10",
-    "2030-03-10",
-    "2032-03-10"
+    "2027-03-10",
+    "2029-03-10",
+    "2031-03-10"
   ]);
   // The next charge is found even when it is more than a year away.
-  assert.equal(nextRecurringChargeAfter(biennial, "2028-03-10"), "2030-03-10");
+  assert.equal(nextRecurringChargeAfter(biennial, "2027-03-10"), "2029-03-10");
 });
 
 test("an interval of 1, 0 or junk behaves like a plain rule", () => {
@@ -440,4 +417,56 @@ test("an interval of 1, 0 or junk behaves like a plain rule", () => {
     const r = rule({ recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 1, interval } });
     assert.deepEqual(recurringOccurrences(r, "2026-01-01", "2026-04-30"), plain);
   }
+});
+
+test("the schedule is read off the first payment date", () => {
+  // Wednesday 11 Nov 2026, the 2nd Wednesday of its month.
+  assert.deepEqual(recurringConfigFromFirstPayment("2026-11-11", "weekly", { interval: 2 }), { dayOfWeek: 3, interval: 2 });
+  assert.deepEqual(recurringConfigFromFirstPayment("2026-11-11", "monthly"), { monthlyType: "day_of_month", dayOfMonth: 11 });
+  assert.deepEqual(recurringConfigFromFirstPayment("2026-11-11", "monthly", { monthlyType: "nth_weekday" }), {
+    monthlyType: "nth_weekday",
+    dayOfWeek: 3,
+    weekOfMonth: 2
+  });
+  assert.deepEqual(recurringConfigFromFirstPayment("2026-11-11", "yearly", { interval: 1 }), { month: 11, dayOfMonth: 11 });
+  // An interval of 1 is left out, so a plain rule is stored as before.
+  assert.equal("interval" in recurringConfigFromFirstPayment("2026-11-11", "monthly", { interval: 1 }), false);
+  assert.deepEqual(recurringConfigFromFirstPayment("", "weekly", { interval: 3 }), { interval: 3 });
+});
+
+test("a fortnightly rule pays on its first payment date and every two weeks after", () => {
+  const first = "2026-11-11";
+  const fortnightly = rule({
+    recurringFrequency: "weekly",
+    recurringConfig: recurringConfigFromFirstPayment(first, "weekly", { interval: 2 }),
+    recurringStartDate: first
+  });
+  assert.deepEqual(recurringOccurrences(fortnightly, "2026-11-01", "2026-12-31"), [
+    "2026-11-11",
+    "2026-11-25",
+    "2026-12-09",
+    "2026-12-23"
+  ]);
+});
+
+test("the last weekday and a day clamped to a short month survive a first payment date", () => {
+  // Friday 27 Nov 2026 is the 4th and also the last Friday of November.
+  assert.deepEqual(firstPaymentDay("2026-11-27"), { day: 27, weekday: 5, nth: 4, isLastOfMonth: true });
+  assert.equal(recurringConfigFromFirstPayment("2026-11-27", "monthly", { monthlyType: "nth_weekday" }).weekOfMonth, 4);
+  assert.equal(
+    recurringConfigFromFirstPayment("2026-11-27", "monthly", { monthlyType: "nth_weekday", lastWeekday: true }).weekOfMonth,
+    -1
+  );
+  // "Last" is dropped once the date is no longer the last such weekday.
+  assert.equal(
+    recurringConfigFromFirstPayment("2026-11-20", "monthly", { monthlyType: "nth_weekday", lastWeekday: true }).weekOfMonth,
+    3
+  );
+  // The 5th such weekday can only be the last one.
+  assert.equal(recurringConfigFromFirstPayment("2026-10-30", "monthly", { monthlyType: "nth_weekday" }).weekOfMonth, -1);
+  // A rule on the 31st whose first payment is 30 November stays on the 31st;
+  // a stored day the date does not clamp to is replaced by the date's own day.
+  assert.equal(recurringConfigFromFirstPayment("2026-11-30", "monthly", { dayOfMonth: 31 }).dayOfMonth, 31);
+  assert.equal(recurringConfigFromFirstPayment("2026-11-12", "monthly", { dayOfMonth: 31 }).dayOfMonth, 12);
+  assert.equal(recurringConfigFromFirstPayment("2027-02-28", "yearly", { dayOfMonth: 29 }).dayOfMonth, 29);
 });

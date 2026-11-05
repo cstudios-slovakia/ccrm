@@ -347,6 +347,73 @@ export function recurringInterval(config: FinancialRecurrenceConfig | null | und
   return Number.isFinite(n) && n > 1 ? Math.min(n, 999) : 1;
 }
 
+/** What a first-payment date offers a monthly rule: its day, its weekday, and which one of the month. */
+export interface FirstPaymentDay {
+  /** Day of the month, 1–31. */
+  day: number;
+  /** 0 = Sunday … 6 = Saturday. */
+  weekday: number;
+  /** 1–5: the 1st, 2nd … 5th such weekday of its month. */
+  nth: number;
+  /** No later such weekday in its month, so "the last Thursday" describes it too. */
+  isLastOfMonth: boolean;
+}
+
+export function firstPaymentDay(firstIso: string): FirstPaymentDay | null {
+  if (!isIsoDate(firstIso)) return null;
+  const date = fromIso(firstIso);
+  const day = date.getUTCDate();
+  return {
+    day,
+    weekday: date.getUTCDay(),
+    nth: Math.ceil(day / 7),
+    isLastOfMonth: day + 7 > daysInMonth(date.getUTCFullYear(), date.getUTCMonth())
+  };
+}
+
+/**
+ * A rule's schedule read off its first payment, the way a bank standing order
+ * or a calendar does it: a weekly rule pays on that weekday, a monthly one on
+ * that day (or that weekday of the month), a yearly one on that day of that
+ * month. The user picks one date instead of a start date plus a weekday that
+ * could disagree with it.
+ *
+ * `dayOfMonth` is the rule's stored day, kept when the first payment is that
+ * day clamped to a short month (a rule on the 31st whose first payment fell on
+ * 30 November stays on the 31st). `lastWeekday` keeps "the last Thursday" when
+ * the date is one.
+ */
+export function recurringConfigFromFirstPayment(
+  firstIso: string,
+  frequency: FinancialRecurringFrequency,
+  choice: {
+    monthlyType?: "day_of_month" | "nth_weekday";
+    lastWeekday?: boolean;
+    dayOfMonth?: number | null;
+    interval?: number;
+  } = {}
+): FinancialRecurrenceConfig {
+  const interval = recurringInterval({ interval: choice.interval });
+  const withInterval = (config: FinancialRecurrenceConfig): FinancialRecurrenceConfig =>
+    interval > 1 ? { ...config, interval } : config;
+  const first = firstPaymentDay(firstIso);
+  if (!first) return withInterval({});
+
+  const date = fromIso(firstIso);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const hint = Math.round(Number(choice.dayOfMonth));
+  const dayOfMonth = hint > first.day && hint <= 31 && clampDay(year, month, hint) === first.day ? hint : first.day;
+
+  if (frequency === "weekly") return withInterval({ dayOfWeek: first.weekday });
+  if (frequency === "yearly") return withInterval({ month: month + 1, dayOfMonth });
+  if (choice.monthlyType === "nth_weekday") {
+    const last = first.nth === 5 || (choice.lastWeekday === true && first.isLastOfMonth);
+    return withInterval({ monthlyType: "nth_weekday", dayOfWeek: first.weekday, weekOfMonth: last ? -1 : first.nth });
+  }
+  return withInterval({ monthlyType: "day_of_month", dayOfMonth });
+}
+
 /** Non-negative remainder, so a month before the anchor still lands in its cycle. */
 const mod = (n: number, m: number): number => ((n % m) + m) % m;
 
@@ -361,12 +428,6 @@ const lookaheadDays = (rule: Pick<RecurringRule, "recurringConfig">): number =>
  * The day an every-N rule counts its cycles from: its start date, else the
  * day it was recorded, else a fixed epoch so the answer never depends on the
  * window being asked about.
- *
- * The cycle is counted from the week / month / year this day falls in, not
- * from the first charge on or after it: the rule's own row on the start date
- * is its first payment (`recurringOwnRowCharge`), so a fortnightly rule
- * started on a Thursday and set to Wednesdays charges again 13 days later,
- * not 6.
  */
 const intervalAnchor = (rule: RecurringRule): string =>
   isIsoDate(rule.recurringStartDate)
@@ -396,16 +457,12 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
   if (frequency === "weekly") {
     const weekday = (config.dayOfWeek ?? 1) % 7;
     const step = 7 * interval;
-    let cursor: Date;
+    // Every-N: the first matching weekday on/after the anchor, then whole
+    // cycles forward (or back) to the first charge inside the window.
+    const cursor = fromIso(interval > 1 ? anchor : from);
+    cursor.setUTCDate(cursor.getUTCDate() + ((weekday - cursor.getUTCDay() + 7) % 7));
     if (interval > 1) {
-      // Every-N: the chosen weekday in the anchor's Monday-to-Sunday week,
-      // then whole cycles forward (or back) to the first charge in the window.
-      cursor = fromIso(anchor);
-      cursor.setUTCDate(cursor.getUTCDate() - ((cursor.getUTCDay() + 6) % 7) + ((weekday + 6) % 7));
       cursor.setUTCDate(cursor.getUTCDate() + Math.ceil(isoDaysBetween(toIso(cursor), from) / step) * step);
-    } else {
-      cursor = fromIso(from);
-      cursor.setUTCDate(cursor.getUTCDate() + ((weekday - cursor.getUTCDay() + 7) % 7));
     }
     while (toIso(cursor) <= to && dates.length < MAX_OCCURRENCES) {
       dates.push(toIso(cursor));
@@ -421,7 +478,8 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
     const month = Math.min(Math.max((config.month ?? 1) - 1, 0), 11);
     const yearlyOccurrence = (year: number) =>
       toIso(new Date(Date.UTC(year, month, clampDay(year, month, config.dayOfMonth ?? 1))));
-    const firstYear = Number(anchor.slice(0, 4));
+    const anchorYear = Number(anchor.slice(0, 4));
+    const firstYear = yearlyOccurrence(anchorYear) < anchor ? anchorYear + 1 : anchorYear;
     for (let year = fromDate.getUTCFullYear(); year <= toDate.getUTCFullYear(); year++) {
       if (interval > 1 && mod(year - firstYear, interval) !== 0) continue;
       const occurrence = yearlyOccurrence(year);
@@ -432,7 +490,8 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
 
   const anchorYear = Number(anchor.slice(0, 4));
   const anchorMonth = Number(anchor.slice(5, 7)) - 1;
-  const firstMonthIndex = anchorYear * 12 + anchorMonth;
+  const firstMonthIndex =
+    anchorYear * 12 + anchorMonth + (monthlyOccurrence(config, anchorYear, anchorMonth) < anchor ? 1 : 0);
 
   let year = fromDate.getUTCFullYear();
   let month = fromDate.getUTCMonth();

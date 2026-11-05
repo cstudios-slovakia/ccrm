@@ -32,7 +32,7 @@ test('the rule drawer shows only rule-wide fields', async ({ page }) => {
   await expect(drawer.getByText(/Issue Date|Dátum vystavenia/)).toHaveCount(0);
   await expect(drawer.getByText(/Due Date|Dátum splatnosti/)).toHaveCount(0);
 
-  await expect(drawer.getByText(/Start date|Dátum začiatku/)).toBeVisible();
+  await expect(drawer.getByText(/First payment|Prvá platba/)).toBeVisible();
   await expect(drawer.getByText(/^(End date|Dátum ukončenia)$/)).toBeVisible();
   await expect(drawer.getByText(/Planned Amount|Plánovaná suma/)).toBeVisible();
 
@@ -58,4 +58,52 @@ test('switching the rule to inactive pauses it from today', async ({ page }) => 
   await page.getByRole('button', { name: /Save Changes|Uložiť zmeny/ }).click();
   const row = page.locator('table tbody tr').filter({ hasText: WAGES }).first();
   await expect(row.getByText(/^(Paused|Pozastavené)$/)).toBeVisible(SETTLE);
+});
+
+const isoDay = (offset: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+test('a new recurring payment pays first on the date picked, every two weeks after it', async ({ page }) => {
+  await startSession(page);
+  await gotoView(page, '#financial/movements');
+  await page.getByRole('button', { name: /New Expense|Nový výdavok/ }).first().click();
+  const form = page.locator('form').filter({ hasText: /Recurring payment|Opakujúca sa platba/ }).last();
+  await expect(form).toBeVisible(SETTLE);
+
+  await form.getByText(/^(Recurring payment|Opakujúca sa platba)$/).click();
+  // A rule is not a single payment: no status, issue or due date, but a first payment, prefilled with today.
+  await expect(form.getByText(/^(Status|Stav úhrady)$/)).toHaveCount(0);
+  await expect(form.getByText(/Issue Date|Dátum vystavenia/)).toHaveCount(0);
+  const first = form.getByLabel(/^(First payment|Prvá platba)$/);
+  await expect(first).toHaveValue(isoDay(0));
+
+  // No weekday to pick: it is read off the first payment.
+  await expect(form.getByText(/^(Day of the Week|Deň v týždni)$/)).toHaveCount(0);
+  await first.fill(isoDay(6));
+  await form.getByRole('button', { name: /^(Weekly|Týždenne)$/ }).click();
+  await form.getByRole('button', { name: /^(Custom|Vlastné)$/ }).click();
+
+  const expected = await page.evaluate(
+    (days) => days.map((iso) => {
+      const [y, m, d] = iso.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('sk-SK', { day: 'numeric', month: 'numeric', year: 'numeric' });
+    }),
+    [isoDay(6), isoDay(20), isoDay(34), isoDay(48)]
+  );
+  await expect(form).toContainText(`Platby: ${expected.join(', ')}`);
+
+  await form.getByPlaceholder(/Material purchase|Nákup materiálu/).fill('Dvojtýždenný servis');
+  await form.locator('input[type="number"][step="0.01"]').first().fill('120');
+  await page.getByRole('button', { name: /^(Create Expense|Vytvoriť výdavok)$/ }).click();
+  await expect(form, 'the form saves and closes').toBeHidden(SETTLE);
+
+  // Switch tabs in place: a reload would drop the new rule from the mocked backend.
+  await page.getByRole('tab', { name: /Recurring Movements|Pravidelné pohyby/ }).click();
+  const row = page.locator('table tbody tr').filter({ hasText: 'Dvojtýždenný servis' }).first();
+  await expect(row).toBeVisible(SETTLE);
+  await expect(row.getByText(/^(Custom|Vlastné)$/)).toBeVisible();
+  await expect(row).toContainText(expected[0]);
 });
