@@ -22,6 +22,7 @@ import type {
   FinancialType,
   FinancialStatus,
   FinancialRecurringFrequency,
+  FinancialRecurrenceConfig,
   FinancialOperatingMode,
   FinancialSimplifiedTable,
   Project,
@@ -62,6 +63,7 @@ import {
   recurringCharges,
   recurringConfigFromFirstPayment,
   firstPaymentDay,
+  firstPaymentOnOrAfter,
   recurringInterval,
   recurringOccurrences,
   recurringPlannedAmountAt,
@@ -102,6 +104,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
+import { detachFromRule, dueChargeMovements } from "../utils/recurringRuleDeletion";
 import { useListFilter } from "../hooks/useListFilter";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
@@ -2047,7 +2050,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             if (skips.length === 0) return r;
             let next = r;
             for (const s of skips) {
-              next = { ...next, recurringSkippedDates: unskipRecurringDate(next, s.recurringOccurrenceDate!) };
+              // A due payment is stored for good: deleting it deletes it, the day stays
+              // skipped so it is not written again. Only a day still ahead goes back to the rule.
+              if (s.recurringOccurrenceDate! > todayLocal()) {
+                next = { ...next, recurringSkippedDates: unskipRecurringDate(next, s.recurringOccurrenceDate!) };
+              }
             }
             return next;
           })
@@ -4078,6 +4085,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       recurringStartDate: formIsRecurring ? formRecurringStartDate : null,
       recurringEndDate: formIsRecurring ? formRecurringEndDate || null : null,
       recurringPlannedEndDate: formIsRecurring ? formRecurringPlannedEndDate || null : null,
+      // The days a stored payment already stands in for. Dropping them would
+      // draw each of those payments a second time from the schedule.
+      recurringSkippedDates: formIsRecurring ? editingRecord?.recurringSkippedDates ?? null : null,
       recurringAmountHistory: amountHistory,
       projectId: formScope === "project" && formProjectId ? formProjectId : null,
       clientId: formScope === "client" && formClientId ? formClientId : (formScope === "project" && formProjectId ? (projects.find(p => p.id === formProjectId)?.clientId || projects.find(p => p.id === formProjectId)?.leadId || null) : null),
@@ -4223,8 +4233,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Delete Transaction
   const handleDeleteTransaction = (id: string) => {
     if (!canDelete) return;
-    // A movement standing in for one charge of a recurring rule: deleting it
-    // hands the day back to the rule, which charges it by its schedule again.
+    // A movement standing in for one charge of a recurring rule. A day still ahead
+    // goes back to the rule (it is calculated again); a day already due stays deleted.
     const target = financialRecords.find((r) => r.id === id);
     if (!target) return;
     const standsIn = target.recurringSourceId && target.recurringOccurrenceDate ? target : null;
@@ -4242,7 +4252,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         setFinancialRecords((prev) =>
           prev.map((r) =>
             r.id === standsIn.recurringSourceId
-              ? { ...r, recurringSkippedDates: unskipRecurringDate(r, standsIn.recurringOccurrenceDate!) }
+              ? standsIn.recurringOccurrenceDate! > todayLocal()
+                ? { ...r, recurringSkippedDates: unskipRecurringDate(r, standsIn.recurringOccurrenceDate!) }
+                : r // a due payment is stored for good: the day stays skipped, not written again
               : r
           )
         );
@@ -4255,6 +4267,54 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           )
         );
       },
+    });
+  };
+
+  // Delete a recurring rule for good. Unlike pausing, the rule is gone — but the
+  // payments it already made stay: each becomes a movement of its own first.
+  const handleDeleteRecurringRule = (rule: FinancialRecord) => {
+    if (!canDelete || !rule.isRecurring) return;
+    // Payments the app has not written down yet (it does so as each day
+    // arrives) are saved now, so deleting the rule loses none of them.
+    const kept = dueChargeMovements(
+      rule,
+      todayLocal(),
+      new Date().toISOString(),
+      new Set(financialRecords.map((r) => r.id))
+    ).map(detachFromRule);
+    const keptIds = new Set(kept.map((r) => r.id));
+    // Movements standing in for one of the rule's charges outlive it as plain ones.
+    const standInsBefore = financialRecords.filter((r) => r.recurringSourceId === rule.id);
+    const standInIds = new Set(standInsBefore.map((r) => r.id));
+    deleteRecordsWithUndo({
+      collection: "financialRecords",
+      allRecords: financialRecords,
+      targets: [rule],
+      setRecords: setFinancialRecords,
+      lang: userLanguage,
+      entity: "record",
+      titleOf: (r) => r.title,
+      onApplied: handleCloseModal,
+      applyExtra: () =>
+        setFinancialRecords((prev) => [
+          ...kept,
+          ...prev.map((r) => (standInIds.has(r.id) ? detachFromRule(r) : r))
+        ]),
+      revertExtra: () =>
+        setFinancialRecords((prev) =>
+          prev
+            .filter((r) => !keptIds.has(r.id))
+            .map((r) => {
+              const before = standInsBefore.find((s) => s.id === r.id);
+              return before
+                ? {
+                    ...r,
+                    recurringSourceId: before.recurringSourceId,
+                    recurringOccurrenceDate: before.recurringOccurrenceDate
+                  }
+                : r;
+            })
+        )
     });
   };
 
@@ -4279,47 +4339,50 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         t("Friday", "piatok", "péntek"),
         t("Saturday", "sobota", "szombat")
       ][weekday];
-    // Slovak "posledný pondelok" but "posledná streda / sobota / nedeľa".
-    const skLast = (weekday: number) => ([0, 3, 6].includes(weekday) ? "Posledná" : "Posledný");
-    const enOrdinal = (n: number) => ["1st", "2nd", "3rd", "4th", "5th"][n - 1];
-    const monthlyChoice: "day" | "nth" | "last" =
-      formMonthlyType !== "nth_weekday"
-        ? "day"
-        : firstPayment && (firstPayment.nth === 5 || (formWeekOfMonth === -1 && firstPayment.isLastOfMonth))
-          ? "last"
-          : "nth";
-    const monthlyChoiceOptions = firstPayment
-      ? [
-          {
-            value: "day",
-            label: t(`Day ${firstPayment.day} of every month`, `${firstPayment.day}. deň v mesiaci`, `Havonta, ${firstPayment.day}. napon`)
-          },
-          ...(firstPayment.nth <= 4
-            ? [
-                {
-                  value: "nth",
-                  label: t(
-                    `The ${enOrdinal(firstPayment.nth)} ${weekdayName(firstPayment.weekday)} of the month`,
-                    `${firstPayment.nth}. ${weekdayName(firstPayment.weekday)} v mesiaci`,
-                    `Havonta, ${firstPayment.nth}. ${weekdayName(firstPayment.weekday)}`
-                  )
-                }
-              ]
-            : []),
-          ...(firstPayment.isLastOfMonth
-            ? [
-                {
-                  value: "last",
-                  label: t(
-                    `The last ${weekdayName(firstPayment.weekday)} of the month`,
-                    `${skLast(firstPayment.weekday)} ${weekdayName(firstPayment.weekday)} v mesiaci`,
-                    `Havonta, utolsó ${weekdayName(firstPayment.weekday)}`
-                  )
-                }
-              ]
-            : [])
-        ]
-      : [];
+    // The schedule as the form stands: the pickers show it and move the first payment.
+    const picked = formRecurringRule().recurringConfig ?? {};
+    const pickedWeekday = String(picked.dayOfWeek ?? firstPayment?.weekday ?? 1);
+    const weekdayOptions = [1, 2, 3, 4, 5, 6, 0].map((d) => ({
+      value: String(d),
+      label: weekdayName(d).charAt(0).toUpperCase() + weekdayName(d).slice(1)
+    }));
+    const monthNames = [
+      t("January", "Január", "Január"), t("February", "Február", "Február"), t("March", "Marec", "Március"),
+      t("April", "Apríl", "Április"), t("May", "Máj", "Május"), t("June", "Jún", "Június"),
+      t("July", "Júl", "Július"), t("August", "August", "Augusztus"), t("September", "September", "Szeptember"),
+      t("October", "Október", "Október"), t("November", "November", "November"), t("December", "December", "December")
+    ];
+    /** Move the first payment to the next day the picked schedule falls on. */
+    const pickSchedule = (
+      frequency: FinancialRecurringFrequency,
+      config: FinancialRecurrenceConfig,
+      next: { monthlyType?: "day_of_month" | "nth_weekday"; weekOfMonth?: number; dayOfMonth?: number } = {}
+    ) => {
+      if (next.monthlyType) setFormMonthlyType(next.monthlyType);
+      if (next.weekOfMonth !== undefined) setFormWeekOfMonth(next.weekOfMonth);
+      if (next.dayOfMonth !== undefined) setFormDayOfMonth(next.dayOfMonth);
+      setFormRecurringStartDate(firstPaymentOnOrAfter(formRecurringStartDate || today, frequency, config));
+    };
+    const dayOfMonthInput = (
+      <input
+        type="number"
+        min="1"
+        max="31"
+        aria-label={t("Day of Month (1 - 31)", "Deň v mesiaci (1 - 31)", "Nap (1 - 31)")}
+        value={picked.dayOfMonth ?? firstPayment?.day ?? 1}
+        onChange={(e) => {
+          const day = Math.min(31, Math.max(1, parseInt(e.target.value) || 1));
+          pickSchedule(
+            formRecurringFreq,
+            formRecurringFreq === "yearly"
+              ? { month: picked.month ?? 1, dayOfMonth: day }
+              : { monthlyType: "day_of_month", dayOfMonth: day },
+            { monthlyType: "day_of_month", dayOfMonth: day }
+          );
+        }}
+        className="w-full px-3 py-1.5 bg-white  border border-slate-200  rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+      />
+    );
     const schedulePreview = (() => {
       if (!formIsRecurring || !formRecurringStartDate) return { dates: [] as string[], more: false };
       const span = 400 * (formRecurringCustom ? Math.max(1, formRecurringInterval) : 1);
@@ -4742,7 +4805,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <input
                 type="date"
                 value={formRecurringEndDate}
-                min={formRecurringStartDate || undefined}
+                // A paused rule ends today, which is before the first payment when that
+                // one is still ahead — the browser must not refuse that as an invalid date.
+                min={ruleActive ? formRecurringStartDate || undefined : undefined}
                 onChange={(e) => {
                   // A date typed by hand is the real end — nothing left to restore.
                   setFormRecurringEndDate(e.target.value);
@@ -4821,22 +4886,139 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               </div>
             )}
 
-            {/* MONTHLY: day N of the month, or that weekday of the month — both read off the first payment */}
-            {formRecurringFreq === "monthly" && firstPayment && (
+            {/* Day settings — the same choices as a recurring task. Picking one moves the first payment to match. */}
+            {formRecurringFreq === "weekly" && (
               <div className="animate-in fade-in">
                 <label className="text-caption font-bold text-slate-600  block mb-1">
-                  {t("Pays on", "Platí sa", "Fizetés napja")}
+                  {t("Day of the Week", "Deň v týždni", "A hét napja")}
                 </label>
                 <CustomSelect
-                  value={monthlyChoice}
-                  onChange={(val) => {
-                    setFormMonthlyType(val === "day" ? "day_of_month" : "nth_weekday");
-                    setFormWeekOfMonth(val === "last" ? -1 : firstPayment.nth);
-                  }}
-                  options={monthlyChoiceOptions}
+                  value={pickedWeekday}
+                  onChange={(val) => pickSchedule("weekly", { dayOfWeek: parseInt(val) })}
+                  options={weekdayOptions}
                   size="sm"
                   className="w-full text-ui font-semibold rounded-xl"
                 />
+              </div>
+            )}
+
+            {formRecurringFreq === "monthly" && (
+              <div className="space-y-2 animate-in fade-in">
+                <div className="flex flex-wrap items-center gap-4 text-ui font-semibold text-slate-700">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="financeMonthlyType"
+                      checked={formMonthlyType !== "nth_weekday"}
+                      onChange={() =>
+                        pickSchedule(
+                          "monthly",
+                          { monthlyType: "day_of_month", dayOfMonth: picked.dayOfMonth ?? firstPayment?.day ?? 1 },
+                          { monthlyType: "day_of_month" }
+                        )
+                      }
+                      className="text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>{t("Specific Day of Month", "Konkrétny deň v mesiaci", "A hónap adott napja")}</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="financeMonthlyType"
+                      checked={formMonthlyType === "nth_weekday"}
+                      onChange={() => {
+                        const week = firstPayment ? (firstPayment.nth === 5 ? -1 : firstPayment.nth) : 1;
+                        pickSchedule(
+                          "monthly",
+                          { monthlyType: "nth_weekday", dayOfWeek: firstPayment?.weekday ?? 1, weekOfMonth: week },
+                          { monthlyType: "nth_weekday", weekOfMonth: week }
+                        );
+                      }}
+                      className="text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span>{t("Relative Day (e.g. 1st Monday)", "Relatívny deň (napr. 1. pondelok)", "Relatív nap (pl. 1. hétfő)")}</span>
+                  </label>
+                </div>
+
+                {formMonthlyType === "nth_weekday" ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-caption font-bold text-slate-500 block mb-1">
+                        {t("Week of Month", "Týždeň v mesiaci", "Hét a hónapban")}
+                      </label>
+                      <CustomSelect
+                        value={String(picked.weekOfMonth ?? 1)}
+                        onChange={(val) => {
+                          const week = parseInt(val);
+                          pickSchedule(
+                            "monthly",
+                            { monthlyType: "nth_weekday", dayOfWeek: parseInt(pickedWeekday), weekOfMonth: week },
+                            { weekOfMonth: week }
+                          );
+                        }}
+                        options={[
+                          { value: "1", label: t("1st (First)", "1. (Prvý)", "1. (Első)") },
+                          { value: "2", label: t("2nd (Second)", "2. (Druhý)", "2. (Második)") },
+                          { value: "3", label: t("3rd (Third)", "3. (Tretí)", "3. (Harmadik)") },
+                          { value: "4", label: t("4th (Fourth)", "4. (Štvrtý)", "4. (Negyedik)") },
+                          { value: "-1", label: t("Last", "Posledný", "Utolsó") }
+                        ]}
+                        size="sm"
+                        className="w-full text-ui font-semibold rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-caption font-bold text-slate-500 block mb-1">
+                        {t("Weekday", "Deň v týždni", "Hétköznap")}
+                      </label>
+                      <CustomSelect
+                        value={pickedWeekday}
+                        onChange={(val) =>
+                          pickSchedule(
+                            "monthly",
+                            { monthlyType: "nth_weekday", dayOfWeek: parseInt(val), weekOfMonth: picked.weekOfMonth ?? 1 },
+                            { weekOfMonth: picked.weekOfMonth ?? 1 }
+                          )
+                        }
+                        options={weekdayOptions}
+                        size="sm"
+                        className="w-full text-ui font-semibold rounded-xl"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-caption font-bold text-slate-500 block mb-1">
+                      {t("Day of Month (1 - 31)", "Deň v mesiaci (1 - 31)", "Nap (1 - 31)")}
+                    </label>
+                    {dayOfMonthInput}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {formRecurringFreq === "yearly" && (
+              <div className="grid grid-cols-2 gap-2 animate-in fade-in">
+                <div>
+                  <label className="text-caption font-bold text-slate-500 block mb-1">
+                    {t("Month of Year", "Mesiac v roku", "Hónap")}
+                  </label>
+                  <CustomSelect
+                    value={String(picked.month ?? 1)}
+                    onChange={(val) =>
+                      pickSchedule("yearly", { month: parseInt(val), dayOfMonth: picked.dayOfMonth ?? firstPayment?.day ?? 1 })
+                    }
+                    options={monthNames.map((label, i) => ({ value: String(i + 1), label }))}
+                    size="sm"
+                    className="w-full text-ui font-semibold rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-caption font-bold text-slate-500 block mb-1">
+                    {t("Day of Month (1 - 31)", "Deň v mesiaci (1 - 31)", "Nap (1 - 31)")}
+                  </label>
+                  {dayOfMonthInput}
+                </div>
               </div>
             )}
 
@@ -8479,7 +8661,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                   tone="danger"
                                   lang={userLanguage}
                                   what={rec.title}
-                                  onConfirm={() => handleDeleteTransaction(rec.id)}
+                                  onConfirm={() => handleDeleteRecurringRule(rec)}
                                   className="p-1.5 hover:bg-rose-50  rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
                                   title={t("Delete rule", "Vymazať pravidlo", "Törlés")}
                               >
@@ -8586,6 +8768,24 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
             {/* Sticky Actions Footer */}
             <div className="px-6 py-4 border-t border-slate-100  bg-slate-50/80  flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2">
+                {canDelete && editingRecord?.isRecurring && !editingOccurrence && (
+                  <HoldToConfirmButton
+                    tone="danger"
+                    lang={userLanguage}
+                    what={editingRecord.title}
+                    onConfirm={() => handleDeleteRecurringRule(editingRecord)}
+                    title={t(
+                      "Delete the rule. Payments already made stay; no new ones are created.",
+                      "Vymazať pravidlo. Už vytvorené platby zostanú, nové sa nevytvoria.",
+                      "A szabály törlése. A már létrejött fizetések megmaradnak, újak nem jönnek létre."
+                    )}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-ui font-bold text-rose-600 hover:bg-rose-50 transition-colors"
+                    icon={<Trash2 className="h-4 w-4" />}
+                  >
+                    <span>{t("Delete rule", "Vymazať pravidlo", "Szabály törlése")}</span>
+                  </HoldToConfirmButton>
+                )}
               <button
                 type="button"
                 onClick={handleCloseModal}
@@ -8593,6 +8793,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               >
                 {t("Cancel", "Zrušiť", "Mégsem")}
               </button>
+              </div>
               <button
                 type="submit"
                 form="transaction-edit-form"
