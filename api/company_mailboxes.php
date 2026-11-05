@@ -45,6 +45,8 @@ $sessionUser = in_array($action, [
     'agent_run',
     'agent_state',
     'agent_memory_save',
+    'agent_artifact_save',
+    'agent_artifact_delete',
     'agent_subagent_save',
     'agent_subagent_delete',
     'agent_task_save',
@@ -402,6 +404,8 @@ try {
     if (in_array($action, [
         'agent_state',
         'agent_memory_save',
+        'agent_artifact_save',
+        'agent_artifact_delete',
         'agent_subagent_save',
         'agent_subagent_delete',
         'agent_task_save',
@@ -456,6 +460,21 @@ try {
             $saved = ccrm_marveen_save_memory($pdo, $id, $memContent, $subId !== '' ? $subId : null);
             $state = ccrm_marveen_get_connector_state($pdo, $stored);
             echo json_encode(array_merge(['success' => true, 'saved' => $saved], $state));
+            exit;
+        }
+
+        if ($action === 'agent_artifact_save') {
+            $art = ccrm_marveen_save_artifact($pdo, $id, $input);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true, 'artifact' => $art], $state));
+            exit;
+        }
+
+        if ($action === 'agent_artifact_delete') {
+            $artId = trim((string)($input['artifactId'] ?? ($input['name'] ?? '')));
+            ccrm_marveen_delete_artifact($pdo, $id, $artId);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true], $state));
             exit;
         }
 

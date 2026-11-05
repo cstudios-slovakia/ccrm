@@ -379,6 +379,13 @@ export interface AgentChatMessage {
   createdAt?: string;
 }
 
+export interface AgentArtifact {
+  id: string;
+  title: string;
+  content: string;
+  updatedAt?: string;
+}
+
 export interface AgentConnectorState {
   connectorId: string;
   mcpConnected: boolean;
@@ -386,6 +393,7 @@ export interface AgentConnectorState {
   memoryMd: string;
   memoryUpdatedAt?: string;
   subagentMemoryMd?: string;
+  artifacts?: AgentArtifact[];
   subagents: AgentSubagent[];
   tasks: AgentAutonomousTask[];
   chatHistory: AgentChatMessage[];
@@ -412,6 +420,16 @@ export const getAgentConnectorState = (id: string, subagentId?: string) =>
 
 export const saveAgentMemory = (params: { id: string; memoryMd: string; subagentId?: string }) =>
   call<AgentConnectorState>("agent_memory_save", params);
+
+export const saveAgentArtifact = (params: {
+  id: string;
+  name: string;
+  title?: string;
+  content: string;
+}) => call<AgentConnectorState>("agent_artifact_save", params);
+
+export const deleteAgentArtifact = (id: string, artifactId: string) =>
+  call<AgentConnectorState>("agent_artifact_delete", { id, artifactId });
 
 export const saveAgentSubagent = (params: {
   id: string;

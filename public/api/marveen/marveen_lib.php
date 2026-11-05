@@ -1176,10 +1176,109 @@ if (!function_exists('ccrm_marveen_clear_chat_history')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_list_artifacts')) {
+    function ccrm_marveen_list_artifacts(PDO $pdo, array $connector): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $artFile = $dir . '/artifacts.json';
+        $items = [];
+        if (is_file($artFile)) {
+            $decoded = json_decode((string)@file_get_contents($artFile), true);
+            if (is_array($decoded)) {
+                $items = $decoded;
+            }
+        } elseif (!empty($settings['artifacts']) && is_array($settings['artifacts'])) {
+            $items = $settings['artifacts'];
+            @file_put_contents($artFile, json_encode(array_values($items), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        }
+        $artDir = $dir . '/artifacts';
+        foreach ($items as &$a) {
+            $aid = (string)($a['id'] ?? '');
+            $filePath = $artDir . '/' . $aid;
+            if ($aid !== '' && is_file($filePath)) {
+                $a['content'] = (string)@file_get_contents($filePath);
+            }
+        }
+        unset($a);
+        return array_values($items);
+    }
+}
+
+if (!function_exists('ccrm_marveen_save_artifact')) {
+    function ccrm_marveen_save_artifact(PDO $pdo, string $connectorId, array $input): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $artDir = $dir . '/artifacts';
+        if (!is_dir($artDir)) {
+            @mkdir($artDir, 0700, true);
+        }
+        $artFile = $dir . '/artifacts.json';
+        $items = is_file($artFile) ? (json_decode((string)@file_get_contents($artFile), true) ?: []) : [];
+
+        $rawName = trim((string)($input['id'] ?? ($input['name'] ?? ($input['title'] ?? 'artifact.md'))));
+        $cleanName = preg_replace('/[^a-zA-Z0-9._-]/', '-', $rawName) ?: 'artifact.md';
+        if (!str_contains($cleanName, '.')) {
+            $cleanName .= '.md';
+        }
+        $title = trim((string)($input['title'] ?? $cleanName));
+        $content = (string)($input['content'] ?? '');
+        $nowIso = gmdate('c');
+
+        $existingIdx = null;
+        foreach ($items as $idx => $a) {
+            if (($a['id'] ?? '') === $cleanName) {
+                $existingIdx = $idx;
+                break;
+            }
+        }
+
+        $record = [
+            'id' => $cleanName,
+            'title' => $title,
+            'content' => $content,
+            'updatedAt' => $nowIso,
+        ];
+
+        if ($existingIdx !== null) {
+            $items[$existingIdx] = $record;
+        } else {
+            $items[] = $record;
+        }
+
+        @file_put_contents($artDir . '/' . $cleanName, $content);
+        @chmod($artDir . '/' . $cleanName, 0600);
+        @file_put_contents($artFile, json_encode(array_values($items), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($items): array {
+            $s['artifacts'] = array_values($items);
+            return $s;
+        });
+
+        return $record;
+    }
+}
+
+if (!function_exists('ccrm_marveen_delete_artifact')) {
+    function ccrm_marveen_delete_artifact(PDO $pdo, string $connectorId, string $artifactId): bool {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $artFile = $dir . '/artifacts.json';
+        $items = is_file($artFile) ? (json_decode((string)@file_get_contents($artFile), true) ?: []) : [];
+        $cleanName = preg_replace('/[^a-zA-Z0-9._-]/', '-', trim($artifactId));
+        $filtered = array_values(array_filter($items, static fn($a) => ($a['id'] ?? '') !== $cleanName && ($a['id'] ?? '') !== $artifactId));
+        @unlink($dir . '/artifacts/' . $cleanName);
+        @file_put_contents($artFile, json_encode($filtered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($filtered): array {
+            $s['artifacts'] = $filtered;
+            return $s;
+        });
+        return count($filtered) !== count($items);
+    }
+}
+
 if (!function_exists('ccrm_marveen_get_connector_state')) {
     function ccrm_marveen_get_connector_state(PDO $pdo, array $connector): array {
         $connectorId = (string)($connector['id'] ?? 'default');
         $mem = ccrm_marveen_get_memory($pdo, $connector);
+        $artifacts = ccrm_marveen_list_artifacts($pdo, $connector);
         $subagents = ccrm_marveen_list_subagents($pdo, $connector);
         $tasks = ccrm_marveen_list_tasks($pdo, $connector);
         $chatHistory = ccrm_marveen_get_chat_history($connectorId);
@@ -1189,6 +1288,7 @@ if (!function_exists('ccrm_marveen_get_connector_state')) {
             'mcpEndpoint' => ccrm_marveen_internal_mcp_url(),
             'memoryMd' => $mem['memoryMd'],
             'memoryUpdatedAt' => $mem['updatedAt'],
+            'artifacts' => $artifacts,
             'subagents' => $subagents,
             'tasks' => $tasks,
             'chatHistory' => $chatHistory,
@@ -1547,6 +1647,60 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                         ],
                     ],
                     'required' => ['entry'],
+                ],
+            ],
+            [
+                'name' => 'artifact_write',
+                'description' => 'Create or update a named artifact document (e.g. "lead-report.md", "followup-drafts.md", "strategy.md") visible in the user\'s Right Artifacts Sidebar.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'name' => [
+                            'type' => 'STRING',
+                            'description' => 'Filename of the artifact (e.g. "lead-report.md").',
+                        ],
+                        'title' => [
+                            'type' => 'STRING',
+                            'description' => 'Human-readable title of the artifact.',
+                        ],
+                        'content' => [
+                            'type' => 'STRING',
+                            'description' => 'Full Markdown or text content of the artifact.',
+                        ],
+                    ],
+                    'required' => ['name', 'content'],
+                ],
+            ],
+            [
+                'name' => 'artifact_read',
+                'description' => 'Read the content of a named artifact from the Right Artifacts Sidebar.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'name' => [
+                            'type' => 'STRING',
+                            'description' => 'Filename/ID of the artifact to read.',
+                        ],
+                    ],
+                    'required' => ['name'],
+                ],
+            ],
+            [
+                'name' => 'artifact_list',
+                'description' => 'List all saved artifacts on this connector.',
+            ],
+            [
+                'name' => 'artifact_delete',
+                'description' => 'Delete a named artifact by its filename/ID.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'name' => [
+                            'type' => 'STRING',
+                            'description' => 'Filename/ID of the artifact to delete.',
+                        ],
+                    ],
+                    'required' => ['name'],
                 ],
             ],
         ];
@@ -1944,6 +2098,10 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     'memory_read',
                     'memory_write',
                     'memory_append',
+                    'artifact_write',
+                    'artifact_read',
+                    'artifact_list',
+                    'artifact_delete',
                     'create_subagent',
                     'list_subagents',
                     'delete_subagent',
@@ -1987,6 +2145,52 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                             'tool' => 'memory_append',
                             'label' => $targetSubId ? "Appended to {$targetSubId} memory.md" : 'Appended to memory.md',
                             'detail' => $line,
+                        ];
+                    } elseif ($fnName === 'artifact_write') {
+                        $savedArt = ccrm_marveen_save_artifact($pdo, $connectorId, $fnArgs);
+                        $toolText = json_encode(['ok' => true, 'artifact' => $savedArt], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'memory',
+                            'tool' => 'artifact_write',
+                            'label' => "Saved artifact: {$savedArt['id']}",
+                            'detail' => $savedArt['title'],
+                        ];
+                    } elseif ($fnName === 'artifact_read') {
+                        $reqName = trim((string)($fnArgs['name'] ?? ''));
+                        $arts = ccrm_marveen_list_artifacts($pdo, $connector);
+                        $foundContent = 'Artifact not found: ' . $reqName;
+                        foreach ($arts as $a) {
+                            if (($a['id'] ?? '') === $reqName || ($a['title'] ?? '') === $reqName) {
+                                $foundContent = (string)($a['content'] ?? '');
+                                break;
+                            }
+                        }
+                        $toolText = $foundContent;
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'memory',
+                            'tool' => 'artifact_read',
+                            'label' => "Read artifact: {$reqName}",
+                        ];
+                    } elseif ($fnName === 'artifact_list') {
+                        $arts = ccrm_marveen_list_artifacts($pdo, $connector);
+                        $toolText = json_encode(['artifacts' => $arts], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'memory',
+                            'tool' => 'artifact_list',
+                            'label' => 'Listed artifacts (' . count($arts) . ')',
+                        ];
+                    } elseif ($fnName === 'artifact_delete') {
+                        $delName = trim((string)($fnArgs['name'] ?? ''));
+                        $deleted = ccrm_marveen_delete_artifact($pdo, $connectorId, $delName);
+                        $toolText = json_encode(['ok' => $deleted, 'deleted' => $delName]);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'memory',
+                            'tool' => 'artifact_delete',
+                            'label' => "Deleted artifact: {$delName}",
                         ];
                     } elseif ($fnName === 'create_subagent') {
                         $sub = ccrm_marveen_save_subagent($pdo, $connectorId, $fnArgs);

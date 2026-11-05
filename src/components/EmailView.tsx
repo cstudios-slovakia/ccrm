@@ -27,6 +27,7 @@ import { useListFilter } from "../hooks/useListFilter";
 import { PROVIDERS, ProviderLogo } from "./CompanyMailboxSettings";
 import {
   clearAgentChatHistory,
+  deleteAgentArtifact,
   deleteAgentSubagent,
   deleteAgentTask,
   getAgentConnectorState,
@@ -37,6 +38,7 @@ import {
   runAgentHeartbeat,
   runAgentTaskNow,
   runSubscriptionAgent,
+  saveAgentArtifact,
   saveAgentMemory,
   saveAgentSubagent,
   saveAgentTask,
@@ -450,12 +452,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [agentPrompt, setAgentPrompt] = useState<string>("");
   const [isAgentRunning, setIsAgentRunning] = useState<boolean>(false);
   const [activeChatSubagentId, setActiveChatSubagentId] = useState<string>("");
-  const [underChatTab, setUnderChatTab] = useState<"memory" | "subagents" | "tasks">("memory");
-  const [isUnderChatExpanded, setIsUnderChatExpanded] = useState<boolean>(true);
-  const [memoryTargetSubagentId, setMemoryTargetSubagentId] = useState<string>("");
+  // Right-sidebar selected artifact key: null = full-width chat; "memory:main" | "artifact:<id>" | "subagent:<id>" | "task:<id>" = 50/50 split with Content Editor
+  const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<string>("");
+  const [artifactTitleDraft, setArtifactTitleDraft] = useState<string>("");
+  const [subPromptDraft, setSubPromptDraft] = useState<string>("");
   const [isMemoryDirty, setIsMemoryDirty] = useState<boolean>(false);
   const [isSavingMemory, setIsSavingMemory] = useState<boolean>(false);
+  const [newArtifactOpen, setNewArtifactOpen] = useState<boolean>(false);
+  const [newArtifactName, setNewArtifactName] = useState<string>("");
   const [newSubagentOpen, setNewSubagentOpen] = useState<boolean>(false);
   const [newSubName, setNewSubName] = useState<string>("");
   const [newSubRole, setNewSubRole] = useState<string>("");
@@ -814,33 +819,61 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return () => clearInterval(interval);
   }, [hasMailAccount, isSelectedEmailChannel, selectedMailboxId, filter]);
 
+  const syncSelectedArtifactDraft = useCallback(
+    (state: AgentConnectorState, key: string | null) => {
+      if (!key) return;
+      if (key === "memory:main") {
+        setMemoryDraft(state.memoryMd ?? "");
+        setArtifactTitleDraft("memory.md");
+      } else if (key.startsWith("artifact:")) {
+        const artId = key.slice("artifact:".length);
+        const found = (state.artifacts ?? []).find((a) => a.id === artId);
+        if (found) {
+          setMemoryDraft(found.content ?? "");
+          setArtifactTitleDraft(found.title || found.id);
+        }
+      } else if (key.startsWith("subagent:")) {
+        const subId = key.slice("subagent:".length);
+        const found = (state.subagents ?? []).find((s) => s.id === subId);
+        if (found) {
+          setMemoryDraft(found.memoryMd ?? "");
+          setSubPromptDraft(found.systemPrompt ?? "");
+          setArtifactTitleDraft(`${found.name} (${found.id})`);
+        }
+      } else if (key.startsWith("task:")) {
+        const taskId = key.slice("task:".length);
+        const found = (state.tasks ?? []).find((tk) => tk.id === taskId);
+        if (found) {
+          setMemoryDraft(found.prompt ?? "");
+          setArtifactTitleDraft(found.title || found.id);
+        }
+      }
+    },
+    [],
+  );
+
   const applyAgentState = useCallback(
-    (accId: string, state: AgentConnectorState, targetSubId?: string) => {
+    (accId: string, state: AgentConnectorState, overrideKey?: string | null) => {
       setAgentStates((prev) => ({ ...prev, [accId]: state }));
       if (Array.isArray(state.chatHistory)) {
         setAgentChats((prev) => ({ ...prev, [accId]: state.chatHistory }));
       }
-      const subIdToRead = targetSubId !== undefined ? targetSubId : memoryTargetSubagentId;
-      if (!isMemoryDirty) {
-        if (subIdToRead) {
-          const foundSub = (state.subagents ?? []).find((s) => s.id === subIdToRead);
-          setMemoryDraft(foundSub?.memoryMd ?? state.subagentMemoryMd ?? state.memoryMd ?? "");
-        } else {
-          setMemoryDraft(state.memoryMd ?? "");
-        }
+      const keyToUse = overrideKey !== undefined ? overrideKey : selectedArtifactKey;
+      if (!isMemoryDirty && keyToUse) {
+        syncSelectedArtifactDraft(state, keyToUse);
       }
     },
-    [isMemoryDirty, memoryTargetSubagentId],
+    [isMemoryDirty, selectedArtifactKey, syncSelectedArtifactDraft],
   );
 
-  // Load persistent agent state (memory.md, subagents, autonomous tasks, chat history) & run autonomous heartbeat
+  // Load persistent agent state (memory.md, artifacts, subagents, autonomous tasks, chat history) & run autonomous heartbeat
   useEffect(() => {
     if (!selectedAccount || !isAgentConnector(selectedChannelType)) return;
     const accId = selectedAccount.id;
     let cancelled = false;
 
     setActiveChatSubagentId("");
-    setMemoryTargetSubagentId("");
+    setSelectedArtifactKey(null);
     setIsMemoryDirty(false);
 
     void getAgentConnectorState(accId)
@@ -872,42 +905,112 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
   }, [selectedAccount?.id, selectedChannelType]);
 
-  const handleSelectMemoryTarget = (subId: string) => {
+  const handleSelectArtifact = (key: string | null) => {
     if (!selectedAccount) return;
-    setMemoryTargetSubagentId(subId);
+    if (key === null || key === selectedArtifactKey) {
+      setSelectedArtifactKey(null);
+      setIsMemoryDirty(false);
+      return;
+    }
+    setSelectedArtifactKey(key);
     setIsMemoryDirty(false);
     const st = agentStates[selectedAccount.id];
-    if (!st) return;
-    if (!subId) {
-      setMemoryDraft(st.memoryMd ?? "");
-    } else {
-      const sub = (st.subagents ?? []).find((s) => s.id === subId);
-      setMemoryDraft(sub?.memoryMd ?? "");
+    if (st) {
+      syncSelectedArtifactDraft(st, key);
     }
   };
 
-  const handleSaveMemory = async () => {
-    if (!selectedAccount || isSavingMemory) return;
+  const handleSaveSelectedArtifact = async () => {
+    if (!selectedAccount || !selectedArtifactKey || isSavingMemory) return;
     setIsSavingMemory(true);
     try {
-      const st = await saveAgentMemory({
-        id: selectedAccount.id,
-        memoryMd: memoryDraft,
-        subagentId: memoryTargetSubagentId || undefined,
-      });
+      let st: AgentConnectorState;
+      if (selectedArtifactKey === "memory:main") {
+        st = await saveAgentMemory({
+          id: selectedAccount.id,
+          memoryMd: memoryDraft,
+        });
+      } else if (selectedArtifactKey.startsWith("artifact:")) {
+        const artId = selectedArtifactKey.slice("artifact:".length);
+        st = await saveAgentArtifact({
+          id: selectedAccount.id,
+          name: artId,
+          title: artifactTitleDraft || artId,
+          content: memoryDraft,
+        });
+      } else if (selectedArtifactKey.startsWith("subagent:")) {
+        const subId = selectedArtifactKey.slice("subagent:".length);
+        const existingSub = (agentStates[selectedAccount.id]?.subagents ?? []).find((s) => s.id === subId);
+        st = await saveAgentSubagent({
+          id: selectedAccount.id,
+          name: existingSub?.name || subId,
+          role: existingSub?.role || "Subagent",
+          systemPrompt: subPromptDraft || existingSub?.systemPrompt || "",
+          memoryMd: memoryDraft,
+        });
+      } else if (selectedArtifactKey.startsWith("task:")) {
+        const taskId = selectedArtifactKey.slice("task:".length);
+        const existingTask = (agentStates[selectedAccount.id]?.tasks ?? []).find((tk) => tk.id === taskId);
+        st = await saveAgentTask({
+          id: selectedAccount.id,
+          title: artifactTitleDraft || existingTask?.title || taskId,
+          prompt: memoryDraft,
+          intervalMinutes: existingTask?.intervalMinutes || 60,
+          subagentId: existingTask?.subagentId || undefined,
+          enabled: existingTask?.enabled ?? true,
+        });
+      } else {
+        return;
+      }
       setIsMemoryDirty(false);
-      applyAgentState(selectedAccount.id, st, memoryTargetSubagentId);
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
       notify(
         t(
-          "Saved memory.md — the agent will use it immediately on the next run.",
-          "Súbor memory.md uložený — agent ho okamžite použije pri ďalšom behu.",
-          "A memory.md mentve — az ügynök azonnal használja a következő futtatáskor.",
+          "Artifact saved — the agent will use the updated content immediately.",
+          "Artefakt uložený — agent okamžite použije aktualizovaný obsah.",
+          "Artefaktum mentve — az ügynök azonnal használja a frissített tartalmat.",
         ),
       );
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : String(e), "error");
     } finally {
       setIsSavingMemory(false);
+    }
+  };
+
+  const handleCreateArtifact = async () => {
+    if (!selectedAccount || !newArtifactName.trim()) return;
+    const raw = newArtifactName.trim();
+    const fileName = raw.includes(".") ? raw : `${raw.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}.md`;
+    try {
+      const initialContent = `# ${raw}\n\n`;
+      const st = await saveAgentArtifact({
+        id: selectedAccount.id,
+        name: fileName,
+        title: raw,
+        content: initialContent,
+      });
+      const newKey = `artifact:${fileName}`;
+      setSelectedArtifactKey(newKey);
+      setIsMemoryDirty(false);
+      applyAgentState(selectedAccount.id, st, newKey);
+      setNewArtifactName("");
+      setNewArtifactOpen(false);
+      notify(t("Artifact created!", "Artefakt vytvorený!", "Artefaktum létrehozva!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteArtifact = async (artId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentArtifact(selectedAccount.id, artId);
+      const nextKey = selectedArtifactKey === `artifact:${artId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
     }
   };
 
@@ -922,7 +1025,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
           newSubPrompt.trim() ||
           `You are ${newSubName.trim()} (${newSubRole.trim()}), a specialized CCRM subagent.`,
       });
-      applyAgentState(selectedAccount.id, st);
+      const createdSub = (st.subagents ?? [])[st.subagents.length - 1];
+      const nextKey = createdSub ? `subagent:${createdSub.id}` : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
       setNewSubName("");
       setNewSubRole("");
       setNewSubPrompt("");
@@ -938,11 +1044,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
     try {
       const st = await deleteAgentSubagent(selectedAccount.id, subagentId);
       if (activeChatSubagentId === subagentId) setActiveChatSubagentId("");
-      if (memoryTargetSubagentId === subagentId) {
-        setMemoryTargetSubagentId("");
-        setMemoryDraft(st.memoryMd ?? "");
-      }
-      applyAgentState(selectedAccount.id, st, "");
+      const nextKey = selectedArtifactKey === `subagent:${subagentId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : String(e), "error");
     }
@@ -959,7 +1063,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
         subagentId: newTaskSubagentId || undefined,
         enabled: true,
       });
-      applyAgentState(selectedAccount.id, st);
+      const createdTask = (st.tasks ?? [])[st.tasks.length - 1];
+      const nextKey = createdTask ? `task:${createdTask.id}` : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
       setNewTaskTitle("");
       setNewTaskPrompt("");
       setNewTaskInterval("60");
@@ -999,7 +1106,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!selectedAccount) return;
     try {
       const st = await deleteAgentTask(selectedAccount.id, taskId);
-      applyAgentState(selectedAccount.id, st);
+      const nextKey = selectedArtifactKey === `task:${taskId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : String(e), "error");
     }
@@ -2247,654 +2356,738 @@ export const EmailView: React.FC<EmailViewProps> = ({
           </div>
         </div>
       ) : isAgentConnector(selectedChannelType) ? (
-        /* SUBSCRIPTION AI AGENT + CCRM MCP CHAT + UNDER-CHAT MEMORY & SUBAGENTS WORKSPACE */
+        /* SUBSCRIPTION AI AGENT: CENTER (100% CHAT OR 50/50 SPLIT WITH ARTIFACT EDITOR) + RIGHT SIDEBAR (MEMORY & ARTIFACTS) */
         <div
           data-testid="communication-agent-layout"
-          className="flex-1 min-w-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden text-left"
+          className="flex-1 min-w-0 flex flex-col ws-lg:flex-row gap-4 h-full max-h-full overflow-hidden text-left"
         >
           {(() => {
             const meta = PROVIDERS[selectedChannelType] ?? PROVIDERS.claude;
             const accId = selectedAccount?.id || "";
             const history = agentChats[accId] ?? [];
             const st = agentStates[accId];
+            const artifactsList = st?.artifacts ?? [];
             const subagents = st?.subagents ?? [];
             const autonomousTasks = st?.tasks ?? [];
             const activeSubagentObj = subagents.find((s) => s.id === activeChatSubagentId) ?? null;
 
+            const isArtSelected = Boolean(selectedArtifactKey);
+            const selectedSubObj =
+              selectedArtifactKey?.startsWith("subagent:")
+                ? subagents.find((s) => `subagent:${s.id}` === selectedArtifactKey) ?? null
+                : null;
+            const selectedTaskObj =
+              selectedArtifactKey?.startsWith("task:")
+                ? autonomousTasks.find((tk) => `task:${tk.id}` === selectedArtifactKey) ?? null
+                : null;
+            const selectedNamedArt =
+              selectedArtifactKey?.startsWith("artifact:")
+                ? artifactsList.find((a) => `artifact:${a.id}` === selectedArtifactKey) ?? null
+                : null;
+
             return (
               <>
-                {/* 1. AGENT HEADER */}
-                <div className={`px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0 ${meta.modalHeaderBg}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
-                      <ProviderLogo type={selectedChannelType} className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={`px-2 py-0.5 rounded-md text-micro font-bold ${meta.badgeClass}`}>
-                          {meta.label}
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 text-micro font-bold">
-                          <Terminal size={11} /> CCRM MCP Connected
-                        </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/15 text-violet-700 text-micro font-bold">
-                          <FileText size={11} /> memory.md
-                        </span>
-                        {subagents.length > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-800 text-micro font-bold">
-                            <Bot size={11} /> {subagents.length} {t("Subagents", "Subagentov", "Alügynök")}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <h3 className="text-title font-heading font-bold text-slate-900">
-                          {selectedAccount?.name}
-                        </h3>
-                        {subagents.length > 0 && (
-                          <select
-                            value={activeChatSubagentId}
-                            onChange={(e) => setActiveChatSubagentId(e.target.value)}
-                            aria-label={t("Active agent or subagent", "Aktívny agent alebo subagent", "Aktív ügynök vagy alügynök")}
-                            className="px-2.5 py-1 rounded-lg bg-white/90 border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
-                          >
-                            <option value="">
-                              {t("Main Agent (Orchestrator)", "Hlavný agent (Orchestrátor)", "Fő ügynök (Orchestrator)")}
-                            </option>
-                            {subagents.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                🤖 {s.name} ({s.role})
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Quick Autonomous & CRM MCP Action Chips */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {[
-                      t("Summarize open leads", "Zhrnúť otvorené príležitosti", "Nyitott érdeklődők összegzése"),
-                      t("List overdue tasks", "Vypísať omeškané úlohy", "Lejárt feladatok listázása"),
-                      t(
-                        "Create a Lead Qualifier subagent",
-                        "Vytvoriť subagenta pre kvalifikáciu príležitostí",
-                        "Lead minősítő alügynök létrehozása",
-                      ),
-                    ].map((quickPrompt) => (
-                      <button
-                        key={quickPrompt}
-                        type="button"
-                        onClick={() => void handleSendAgentMessage(quickPrompt)}
-                        disabled={isAgentRunning}
-                        className="px-2.5 py-1 rounded-xl bg-white/90 hover:bg-white border border-slate-200 text-micro font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-40"
-                      >
-                        <Sparkles size={11} className="inline mr-1 text-amber-500" />
-                        {quickPrompt}
-                      </button>
-                    ))}
-                    {history.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => void handleClearAgentChat()}
-                        disabled={isAgentRunning}
-                        title={t("Clear chat history", "Vymazať históriu chatu", "Csevegési előzmények törlése")}
-                        className="px-2.5 py-1 rounded-xl bg-white/80 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-micro font-semibold text-slate-600 hover:text-rose-700 transition-colors cursor-pointer"
-                      >
-                        <Trash2 size={11} className="inline mr-1" />
-                        {t("Clear", "Vymazať", "Törlés")}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. CHAT MESSAGES AREA */}
-                <div className="flex-1 min-h-45 overflow-y-auto px-6 py-4 space-y-3">
-                  {history.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto gap-2.5 text-slate-500 py-4">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
-                        <Bot size={22} />
-                      </div>
-                      <div className="text-title-sm font-bold text-slate-800">
-                        {selectedAccount?.name} · {t("Autonomous CCRM MCP Agent", "Autonómny CCRM MCP Agent", "Autonóm CCRM MCP Ügynök")}
-                      </div>
-                      <p className="text-caption text-slate-500">
-                        {t(
-                          "Instruct the agent what to do in CCRM. It connects via MCP immediately, reads and writes its own memory.md below, can spawn specialized subagents, and executes tasks autonomously.",
-                          "Zadajte agentovi v chate, čo má urobiť v CCRM. Okamžite sa pripája cez MCP, číta a zapisuje svoj súbor memory.md nižšie, dokáže vytvárať subagentov a pracovať autonómne.",
-                          "Utasítsa az ügynököt a csevegésben. Azonnal csatlakozik MCP-n keresztül, olvassa és írja a lenti memory.md fájlt, alügynököket hozhat létre, és önállóan dolgozik.",
-                        )}
-                      </p>
-                    </div>
-                  ) : (
-                    history.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                      >
-                        <div
-                          className={`max-w-2xl p-3.5 rounded-2xl space-y-1.5 ${
-                            msg.role === "user"
-                              ? `${meta.accentBtn} shadow-xs`
-                              : "bg-slate-100 text-slate-800 border border-slate-200"
-                          }`}
-                        >
-                          <div className="text-micro opacity-80 flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-bold flex items-center gap-1.5">
-                              {msg.role === "user"
-                                ? msg.author || currentUser?.name || "You"
-                                : selectedAccount?.name}
-                              {msg.subagentId && (
-                                <span className="px-1.5 py-0.5 rounded bg-black/10 text-micro font-mono">
-                                  🤖 {msg.subagentId}
-                                </span>
-                              )}
-                              {msg.autonomous && (
-                                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-900 text-micro font-bold">
-                                  ⏰ {msg.taskTitle || t("Autonomous", "Autonómne", "Autonóm")}
-                                </span>
-                              )}
+                {/* CENTER AREA: 100% CHAT WHEN NO ARTIFACT SELECTED, 50/50 SPLIT WHEN ARTIFACT SELECTED */}
+                <div
+                  data-testid="agent-center-split-container"
+                  className={`flex-1 min-w-0 grid grid-cols-1 ${
+                    isArtSelected ? "ws-lg:grid-cols-2" : "ws-lg:grid-cols-1"
+                  } gap-4 h-full max-h-full overflow-hidden`}
+                >
+                  {/* LEFT HALF (OR FULL WIDTH): AGENT CHAT CARD */}
+                  <div
+                    data-testid="agent-chat-pane"
+                    className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                  >
+                    {/* 1. AGENT HEADER */}
+                    <div className={`px-5 py-3.5 flex flex-wrap items-center justify-between gap-2.5 shrink-0 ${meta.modalHeaderBg}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                          <ProviderLogo type={selectedChannelType} className="w-4.5 h-4.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`px-2 py-0.5 rounded-md text-micro font-bold ${meta.badgeClass}`}>
+                              {meta.label}
                             </span>
-                            <span>{msg.timestamp}</span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 text-micro font-bold">
+                              <Terminal size={11} /> CCRM MCP
+                            </span>
                           </div>
-
-                          {/* Autonomous Step Badges (Memory R/W, Subagent Creation/Delegation, MCP Tool Calls) */}
-                          {msg.steps && msg.steps.length > 0 && (
-                            <div className="flex flex-wrap gap-1 pt-0.5">
-                              {msg.steps.map((stItem) => (
-                                <span
-                                  key={stItem.id}
-                                  title={stItem.detail || stItem.tool}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-micro font-bold border ${
-                                    stItem.kind === "memory"
-                                      ? "bg-violet-50 text-violet-800 border-violet-200"
-                                      : stItem.kind === "subagent"
-                                        ? "bg-amber-50 text-amber-800 border-amber-200"
-                                        : stItem.kind === "schedule"
-                                          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                          : "bg-white text-slate-700 border-slate-200"
-                                  }`}
-                                >
-                                  {stItem.kind === "memory"
-                                    ? "📝"
-                                    : stItem.kind === "subagent"
-                                      ? "🤖"
-                                      : stItem.kind === "schedule"
-                                        ? "⏰"
-                                        : "⚡"}{" "}
-                                  {stItem.label}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                          <div className="text-body whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate">
+                              {selectedAccount?.name}
+                            </h3>
+                            {subagents.length > 0 && (
+                              <select
+                                value={activeChatSubagentId}
+                                onChange={(e) => setActiveChatSubagentId(e.target.value)}
+                                aria-label={t("Active agent or subagent", "Aktívny agent alebo subagent", "Aktív ügynök vagy alügynök")}
+                                className="px-2 py-0.5 rounded-lg bg-white/90 border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
+                              >
+                                <option value="">
+                                  {t("Main Agent", "Hlavný agent", "Fő ügynök")}
+                                </option>
+                                {subagents.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    🤖 {s.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    ))
-                  )}
-                  {isAgentRunning && (
-                    <div className="flex items-center gap-2 text-caption text-slate-500 font-semibold">
-                      <Loader2 size={15} className="animate-spin text-indigo-600" />
-                      {t(
-                        "Agent is working autonomously via CCRM MCP (reading/writing memory.md & tools)...",
-                        "Agent pracuje autonómne cez CCRM MCP (práca s memory.md a nástrojmi)...",
-                        "Az ügynök önállóan dolgozik a CCRM MCP-n keresztül (memory.md és eszközök)...",
-                      )}
-                    </div>
-                  )}
-                </div>
 
-                {/* 3. CHAT PROMPT INPUT BAR */}
-                <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-2 shrink-0 bg-white">
-                  <input
-                    type="text"
-                    value={agentPrompt}
-                    onChange={(e) => setAgentPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        void handleSendAgentMessage();
-                      }
-                    }}
-                    placeholder={
-                      activeSubagentObj
-                        ? `${t("Instruct subagent", "Zadajte pokyn subagentovi", "Utasítsa az alügynököt")} ${activeSubagentObj.name}...`
-                        : t(
-                            "Instruct the agent what to do, remember in memory.md, or delegate to a subagent...",
-                            "Zadajte agentovi, čo má urobiť, zapamätať si v memory.md alebo delegovať subagentovi...",
-                            "Utasítsa az ügynököt, mit tegyen, jegyezzen meg a memory.md-ben, vagy delegáljon alügynöknek...",
-                          )
-                    }
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleSendAgentMessage()}
-                    disabled={!agentPrompt.trim() || isAgentRunning}
-                    className={`px-5 py-2.5 rounded-xl text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer ${meta.accentBtn}`}
-                  >
-                    {isAgentRunning ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                    {t("Send", "Odoslať", "Küldés")}
-                  </button>
-                </div>
-
-                {/* 4. UNDER-CHAT AGENT WORKSPACE: LIVE memory.md EDITOR · SUBAGENTS · AUTONOMOUS TASKS */}
-                <div
-                  data-testid="agent-under-chat-workspace"
-                  className="border-t border-slate-200 bg-slate-50/90 flex flex-col shrink-0"
-                >
-                  {/* Workspace Tab Bar */}
-                  <div className="px-5 py-2 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2 bg-slate-100/80">
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUnderChatTab("memory");
-                          setIsUnderChatExpanded(true);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-micro font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          underChatTab === "memory" && isUnderChatExpanded
-                            ? "bg-white text-slate-900 shadow-2xs border border-slate-200"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        <FileText size={13} className="text-violet-600" />
-                        <span>memory.md</span>
-                        {isMemoryDirty && (
-                          <span className="w-2 h-2 rounded-full bg-amber-500" title="Unsaved changes" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUnderChatTab("subagents");
-                          setIsUnderChatExpanded(true);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-micro font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          underChatTab === "subagents" && isUnderChatExpanded
-                            ? "bg-white text-slate-900 shadow-2xs border border-slate-200"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        <Bot size={13} className="text-amber-600" />
-                        <span>
-                          {t("Subagents", "Subagenti", "Alügynökök")} ({subagents.length})
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUnderChatTab("tasks");
-                          setIsUnderChatExpanded(true);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-micro font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          underChatTab === "tasks" && isUnderChatExpanded
-                            ? "bg-white text-slate-900 shadow-2xs border border-slate-200"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        <Clock size={13} className="text-emerald-600" />
-                        <span>
-                          {t("Autonomous Loop", "Autonómne úlohy", "Autonóm feladatok")} ({autonomousTasks.length})
-                        </span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {underChatTab === "memory" && isUnderChatExpanded && (
-                        <>
-                          {subagents.length > 0 && (
-                            <select
-                              value={memoryTargetSubagentId}
-                              onChange={(e) => handleSelectMemoryTarget(e.target.value)}
-                              aria-label={t("Select memory file", "Vybrať súbor pamäte", "Memóriafájl kiválasztása")}
-                              className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-micro font-semibold text-slate-700 cursor-pointer"
-                            >
-                              <option value="">
-                                📄 {selectedAccount?.name} / memory.md
-                              </option>
-                              {subagents.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  🤖 subagents/{s.id}/memory.md ({s.name})
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                      {/* Quick Autonomous & CRM MCP Action Chips */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[
+                          t("Summarize open leads", "Zhrnúť otvorené príležitosti", "Nyitott érdeklődők összegzése"),
+                          t("List overdue tasks", "Vypísať omeškané úlohy", "Lejárt feladatok listázása"),
+                        ].map((quickPrompt) => (
+                          <button
+                            key={quickPrompt}
+                            type="button"
+                            onClick={() => void handleSendAgentMessage(quickPrompt)}
+                            disabled={isAgentRunning}
+                            className="px-2.5 py-1 rounded-xl bg-white/90 hover:bg-white border border-slate-200 text-micro font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-40"
+                          >
+                            <Sparkles size={11} className="inline mr-1 text-amber-500" />
+                            {quickPrompt}
+                          </button>
+                        ))}
+                        {history.length > 0 && (
                           <button
                             type="button"
-                            onClick={() => void handleSaveMemory()}
-                            disabled={isSavingMemory || !canEdit}
-                            data-testid="save-agent-memory-btn"
-                            className={`px-3 py-1 rounded-xl text-micro font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 ${
-                              isMemoryDirty
-                                ? "bg-violet-600 hover:bg-violet-500 text-white shadow-2xs"
-                                : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200"
-                            }`}
+                            onClick={() => void handleClearAgentChat()}
+                            disabled={isAgentRunning}
+                            title={t("Clear chat history", "Vymazať históriu chatu", "Csevegési előzmények törlése")}
+                            className="px-2 py-1 rounded-xl bg-white/80 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-micro font-semibold text-slate-600 hover:text-rose-700 transition-colors cursor-pointer"
                           >
-                            {isSavingMemory ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                            {t("Save memory.md", "Uložiť memory.md", "memory.md mentése")}
+                            <Trash2 size={11} className="inline mr-1" />
+                            {t("Clear", "Vymazať", "Törlés")}
                           </button>
-                        </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2. CHAT MESSAGES AREA */}
+                    <div className="flex-1 min-h-40 overflow-y-auto px-5 py-4 space-y-3">
+                      {history.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto gap-2.5 text-slate-500 py-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
+                            <Bot size={22} />
+                          </div>
+                          <div className="text-title-sm font-bold text-slate-800">
+                            {selectedAccount?.name} · {t("Autonomous CCRM MCP Agent", "Autonómny CCRM MCP Agent", "Autonóm CCRM MCP Ügynök")}
+                          </div>
+                          <p className="text-caption text-slate-500">
+                            {t(
+                              "Instruct the agent in chat. Select memory.md or any artifact in the right sidebar to halve the chat and open the live content editor.",
+                              "Zadajte agentovi pokyn v chate. Kliknutím na memory.md alebo artefakt v pravom paneli rozdelíte chat na polovicu a otvoríte editor obsahu.",
+                              "Utasítsa az ügynököt a csevegésben. Válassza ki a memory.md fájlt vagy bármely artefaktumot a jobb oldali sávban a felezett szerkesztő megnyitásához.",
+                            )}
+                          </p>
+                        </div>
+                      ) : (
+                        history.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                          >
+                            <div
+                              className={`max-w-xl p-3.5 rounded-2xl space-y-1.5 ${
+                                msg.role === "user"
+                                  ? `${meta.accentBtn} shadow-xs`
+                                  : "bg-slate-100 text-slate-800 border border-slate-200"
+                              }`}
+                            >
+                              <div className="text-micro opacity-80 flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-bold flex items-center gap-1.5">
+                                  {msg.role === "user"
+                                    ? msg.author || currentUser?.name || "You"
+                                    : selectedAccount?.name}
+                                  {msg.subagentId && (
+                                    <span className="px-1.5 py-0.5 rounded bg-black/10 text-micro font-mono">
+                                      🤖 {msg.subagentId}
+                                    </span>
+                                  )}
+                                  {msg.autonomous && (
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-900 text-micro font-bold">
+                                      ⏰ {msg.taskTitle || t("Autonomous", "Autonómne", "Autonóm")}
+                                    </span>
+                                  )}
+                                </span>
+                                <span>{msg.timestamp}</span>
+                              </div>
+
+                              {/* Autonomous Step Badges (clickable to open the corresponding artifact in the 50% editor) */}
+                              {msg.steps && msg.steps.length > 0 && (
+                                <div className="flex flex-wrap gap-1 pt-0.5">
+                                  {msg.steps.map((stItem) => (
+                                    <button
+                                      key={stItem.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (stItem.kind === "memory") {
+                                          if (stItem.tool?.startsWith("artifact_") && stItem.detail) {
+                                            handleSelectArtifact(`artifact:${stItem.detail}`);
+                                          } else {
+                                            handleSelectArtifact("memory:main");
+                                          }
+                                        }
+                                      }}
+                                      title={stItem.detail || stItem.tool}
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-micro font-bold border cursor-pointer ${
+                                        stItem.kind === "memory"
+                                          ? "bg-violet-50 hover:bg-violet-100 text-violet-800 border-violet-200"
+                                          : stItem.kind === "subagent"
+                                            ? "bg-amber-50 text-amber-800 border-amber-200"
+                                            : stItem.kind === "schedule"
+                                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                              : "bg-white text-slate-700 border-slate-200"
+                                      }`}
+                                    >
+                                      {stItem.kind === "memory"
+                                        ? "📝"
+                                        : stItem.kind === "subagent"
+                                          ? "🤖"
+                                          : stItem.kind === "schedule"
+                                            ? "⏰"
+                                            : "⚡"}{" "}
+                                      {stItem.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="text-body whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                            </div>
+                          </div>
+                        ))
                       )}
+                      {isAgentRunning && (
+                        <div className="flex items-center gap-2 text-caption text-slate-500 font-semibold">
+                          <Loader2 size={15} className="animate-spin text-indigo-600" />
+                          {t(
+                            "Agent is working autonomously via CCRM MCP...",
+                            "Agent pracuje autonómne cez CCRM MCP...",
+                            "Az ügynök önállóan dolgozik a CCRM MCP-n keresztül...",
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. CHAT PROMPT INPUT BAR */}
+                    <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-2 shrink-0 bg-white">
+                      <input
+                        type="text"
+                        value={agentPrompt}
+                        onChange={(e) => setAgentPrompt(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            void handleSendAgentMessage();
+                          }
+                        }}
+                        placeholder={
+                          activeSubagentObj
+                            ? `${t("Instruct subagent", "Zadajte pokyn subagentovi", "Utasítsa az alügynököt")} ${activeSubagentObj.name}...`
+                            : t(
+                                "Instruct the agent what to do, write to memory.md, or create an artifact...",
+                                "Zadajte agentovi, čo má urobiť, zapísať do memory.md alebo vytvoriť artefakt...",
+                                "Utasítsa az ügynököt, mit tegyen, írjon a memory.md-be vagy hozzon létre artefaktumot...",
+                              )
+                        }
+                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500"
+                      />
                       <button
                         type="button"
-                        onClick={() => setIsUnderChatExpanded((v) => !v)}
-                        className="p-1.5 rounded-lg hover:bg-white text-slate-500 hover:text-slate-800 cursor-pointer"
-                        title={isUnderChatExpanded ? t("Collapse panel", "Zbaliť panel", "Panel összecsukása") : t("Expand panel", "Rozbaliť panel", "Panel kibontása")}
+                        onClick={() => void handleSendAgentMessage()}
+                        disabled={!agentPrompt.trim() || isAgentRunning}
+                        className={`px-4 py-2.5 rounded-xl text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer ${meta.accentBtn}`}
                       >
-                        {isUnderChatExpanded ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+                        {isAgentRunning ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                        {t("Send", "Odoslať", "Küldés")}
                       </button>
                     </div>
                   </div>
 
-                  {/* Workspace Body */}
-                  {isUnderChatExpanded && (
-                    <div className="p-4 max-h-60 overflow-y-auto">
-                      {underChatTab === "memory" && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-micro text-slate-500">
-                            <span>
-                              {memoryTargetSubagentId
-                                ? `${t("Editing subagent memory:", "Úprava pamäte subagenta:", "Alügynök memóriájának szerkesztése:")} subagents/${memoryTargetSubagentId}/memory.md`
-                                : t(
-                                    "Persistent agent memory (read & written by the agent on every run, and editable by you here):",
-                                    "Trvalá pamäť agenta (agent ju číta a zapisuje pri každom behu a môžete ju tu priamo upravovať):",
-                                    "Állandó ügynökmemória (az ügynök minden futáskor olvassa és írja, és Ön is szerkesztheti itt):",
-                                  )}
+                  {/* RIGHT HALF OF CENTER (50% WIDTH): ARTIFACT CONTENT EDITOR (SHOWN WHEN AN ARTIFACT IS SELECTED) */}
+                  {isArtSelected && (
+                    <div
+                      data-testid="agent-artifact-editor-pane"
+                      className="glass-panel rounded-3xl border border-violet-200/80 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                    >
+                      {/* Editor Header */}
+                      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-micro font-bold ${
+                                selectedArtifactKey === "memory:main"
+                                  ? "bg-violet-100 text-violet-800"
+                                  : selectedSubObj
+                                    ? "bg-amber-100 text-amber-800"
+                                    : selectedTaskObj
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : "bg-indigo-100 text-indigo-800"
+                              }`}
+                            >
+                              {selectedArtifactKey === "memory:main"
+                                ? "MEMORY"
+                                : selectedSubObj
+                                  ? "SUBAGENT"
+                                  : selectedTaskObj
+                                    ? "AUTONOMOUS TASK"
+                                    : "ARTIFACT"}
                             </span>
-                            {st?.memoryUpdatedAt && (
-                              <span className="font-mono">
-                                {t("Updated:", "Aktualizované:", "Frissítve:")}{" "}
-                                {new Date(st.memoryUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {isMemoryDirty && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-micro font-semibold">
+                                {t("Unsaved", "Neuložené", "Mentetlen")}
                               </span>
                             )}
                           </div>
-                          <textarea
-                            data-testid="agent-memory-textarea"
-                            value={memoryDraft}
+                          <div className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
+                            {selectedArtifactKey === "memory:main"
+                              ? `${selectedAccount?.name} / memory.md`
+                              : selectedSubObj
+                                ? `🤖 ${selectedSubObj.name} · memory.md`
+                                : selectedTaskObj
+                                  ? `⏰ ${selectedTaskObj.title}`
+                                  : selectedNamedArt
+                                    ? `📄 ${selectedNamedArt.name}`
+                                    : artifactTitleDraft}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {selectedSubObj && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveChatSubagentId(selectedSubObj.id)}
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-micro font-bold cursor-pointer"
+                            >
+                              💬 {t("Instruct", "Pokyn", "Utasítás")}
+                            </button>
+                          )}
+                          {selectedTaskObj && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleRunTaskNow(selectedTaskObj.id)}
+                                disabled={isAgentRunning}
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
+                              >
+                                ▶ {t("Run now", "Spustiť", "Futtatás")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleToggleTask(selectedTaskObj)}
+                                className={`px-2.5 py-1.5 rounded-xl text-micro font-bold cursor-pointer ${
+                                  selectedTaskObj.enabled
+                                    ? "bg-slate-100 text-slate-700"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                {selectedTaskObj.enabled
+                                  ? t("Active", "Aktívne", "Aktív")
+                                  : t("Paused", "Pozastavené", "Szünetel")}
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveSelectedArtifact()}
+                            disabled={isSavingMemory || !canEdit}
+                            data-testid="save-agent-memory-btn"
+                            className={`px-3 py-1.5 rounded-xl text-micro font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 ${
+                              isMemoryDirty
+                                ? "bg-violet-600 hover:bg-violet-500 text-white shadow-2xs"
+                                : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200"
+                            }`}
+                          >
+                            {isSavingMemory ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                            {t("Save", "Uložiť", "Mentés")}
+                          </button>
+                          {selectedNamedArt && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteArtifact(selectedNamedArt.id)}
+                              title={t("Delete artifact", "Odstrániť artefakt", "Artefaktum törlése")}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          {selectedSubObj && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteSubagent(selectedSubObj.id)}
+                              title={t("Delete subagent", "Odstrániť subagenta", "Alügynök törlése")}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          {selectedTaskObj && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteTask(selectedTaskObj.id)}
+                              title={t("Delete task", "Odstrániť úlohu", "Feladat törlése")}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleSelectArtifact(null)}
+                            data-testid="close-artifact-editor-btn"
+                            title={t("Close editor", "Zavrieť editor", "Szerkesztő bezárása")}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 cursor-pointer"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Optional Subagent System Prompt Field */}
+                      {selectedSubObj && (
+                        <div className="px-5 py-2.5 border-b border-slate-100 bg-amber-50/40 space-y-1 shrink-0">
+                          <label className="block text-micro font-bold text-amber-900">
+                            {t("Subagent System Instructions", "Systémové pokyny subagenta", "Alügynök rendszerutasításai")} ({selectedSubObj.role})
+                          </label>
+                          <input
+                            type="text"
+                            value={subPromptDraft}
                             onChange={(e) => {
-                              setMemoryDraft(e.target.value);
+                              setSubPromptDraft(e.target.value);
                               setIsMemoryDirty(true);
                             }}
-                            onKeyDown={(e) => {
-                              if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-                                e.preventDefault();
-                                void handleSaveMemory();
-                              }
-                            }}
-                            rows={6}
-                            placeholder="# Agent Memory (memory.md)..."
-                            className="w-full p-3 rounded-2xl bg-white border border-slate-200 font-mono text-caption text-slate-800 focus:outline-none focus:border-violet-500 resize-y leading-relaxed"
+                            className="w-full px-3 py-1.5 rounded-xl bg-white border border-amber-200 text-caption text-slate-800 focus:outline-none focus:border-amber-500"
                           />
                         </div>
                       )}
 
-                      {underChatTab === "subagents" && (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-micro text-slate-500">
-                              {t(
-                                "The agent can create subagents autonomously from chat, or you can add/inspect them here.",
-                                "Agent môže vytvárať subagentov autonómne cez chat, alebo ich môžete pridať a spravovať tu.",
-                                "Az ügynök önállóan is létrehozhat alügynököket a csevegésből, vagy itt is kezelheti őket.",
-                              )}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setNewSubagentOpen((v) => !v)}
-                              className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <Plus size={12} /> {t("New Subagent", "Nový subagent", "Új alügynök")}
-                            </button>
-                          </div>
-
-                          {newSubagentOpen && (
-                            <div className="p-3 rounded-2xl bg-white border border-amber-200 space-y-2">
-                              <div className="grid grid-cols-1 ws-lg:grid-cols-2 gap-2">
-                                <input
-                                  type="text"
-                                  value={newSubName}
-                                  onChange={(e) => setNewSubName(e.target.value)}
-                                  placeholder={t("Subagent name (e.g. Lead Qualifier)", "Názov subagenta (napr. Lead Qualifier)", "Alügynök neve (pl. Lead Qualifier)")}
-                                  className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-caption"
-                                />
-                                <input
-                                  type="text"
-                                  value={newSubRole}
-                                  onChange={(e) => setNewSubRole(e.target.value)}
-                                  placeholder={t("Role / Specialty", "Rola / špecializácia", "Szerepkör / specializáció")}
-                                  className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-caption"
-                                />
-                              </div>
-                              <input
-                                type="text"
-                                value={newSubPrompt}
-                                onChange={(e) => setNewSubPrompt(e.target.value)}
-                                placeholder={t("System instructions for this subagent...", "Systémové pokyny pre tohto subagenta...", "Rendszerutasítások az alügynök számára...")}
-                                className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-caption"
-                              />
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setNewSubagentOpen(false)}
-                                  className="px-2.5 py-1 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
-                                >
-                                  {t("Cancel", "Zrušiť", "Mégse")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleCreateSubagent()}
-                                  className="px-3 py-1 rounded-lg bg-amber-600 text-white text-micro font-bold cursor-pointer"
-                                >
-                                  {t("Create Subagent", "Vytvoriť subagenta", "Alügynök létrehozása")}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {subagents.length === 0 ? (
-                            <div className="text-center py-4 text-caption text-slate-400">
-                              {t(
-                                "No subagents created yet. Ask the agent in chat: \"Create a subagent for lead qualification\".",
-                                "Zatiaľ žiadni subagenti. Napíšte agentovi do chatu: „Vytvor subagenta na kvalifikáciu príležitostí“.",
-                                "Még nincs alügynök. Írja a csevegésbe: „Hozz létre egy alügynököt a leadek minősítésére”.",
-                              )}
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-1 ws-lg:grid-cols-2 gap-2.5">
-                              {subagents.map((sub) => (
-                                <div
-                                  key={sub.id}
-                                  className="p-3 rounded-2xl bg-white border border-slate-200 flex flex-col justify-between gap-2"
-                                >
-                                  <div>
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-caption font-bold text-slate-900">
-                                        🤖 {sub.name}
-                                      </span>
-                                      <span className="text-micro font-mono text-slate-400">{sub.id}</span>
-                                    </div>
-                                    <div className="text-micro font-semibold text-amber-700">{sub.role}</div>
-                                    <p className="text-micro text-slate-500 line-clamp-2 mt-1">{sub.systemPrompt}</p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        handleSelectMemoryTarget(sub.id);
-                                        setUnderChatTab("memory");
-                                      }}
-                                      className="px-2 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-micro font-bold cursor-pointer"
-                                    >
-                                      📄 memory.md
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setActiveChatSubagentId(sub.id)}
-                                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
-                                    >
-                                      💬 {t("Instruct in Chat", "Pokyn v chate", "Utasítás csevegésben")}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleDeleteSubagent(sub.id)}
-                                      className="ml-auto p-1 rounded-lg text-slate-400 hover:text-rose-600 cursor-pointer"
-                                      title={t("Delete subagent", "Odstrániť subagenta", "Alügynök törlése")}
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {underChatTab === "tasks" && (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-micro text-slate-500">
-                              {t(
-                                "Standing autonomous instructions run periodically in the background via CCRM MCP.",
-                                "Trvalé autonómne úlohy sa pravidelne spúšťajú na pozadí cez CCRM MCP.",
-                                "Az állandó autonóm feladatok rendszeresen futnak a háttérben a CCRM MCP-n keresztül.",
-                              )}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setNewTaskOpen((v) => !v)}
-                              className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <Plus size={12} /> {t("New Autonomous Task", "Nová autonómna úloha", "Új autonóm feladat")}
-                            </button>
-                          </div>
-
-                          {newTaskOpen && (
-                            <div className="p-3 rounded-2xl bg-white border border-emerald-200 space-y-2">
-                              <div className="grid grid-cols-1 ws-lg:grid-cols-3 gap-2">
-                                <input
-                                  type="text"
-                                  value={newTaskTitle}
-                                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                                  placeholder={t("Task title", "Názov úlohy", "Feladat címe")}
-                                  className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-caption"
-                                />
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={newTaskInterval}
-                                  onChange={(e) => setNewTaskInterval(e.target.value)}
-                                  placeholder={t("Interval (minutes)", "Interval (minúty)", "Időköz (perc)")}
-                                  className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-caption"
-                                />
-                                <select
-                                  value={newTaskSubagentId}
-                                  onChange={(e) => setNewTaskSubagentId(e.target.value)}
-                                  className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-caption"
-                                >
-                                  <option value="">{t("Run with Main Agent", "Hlavný agent", "Fő ügynök")}</option>
-                                  {subagents.map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                      🤖 {s.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <input
-                                type="text"
-                                value={newTaskPrompt}
-                                onChange={(e) => setNewTaskPrompt(e.target.value)}
-                                placeholder={t("Autonomous instruction prompt...", "Pokyn pre autonómny beh...", "Autonóm utasítás...")}
-                                className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-caption"
-                              />
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setNewTaskOpen(false)}
-                                  className="px-2.5 py-1 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
-                                >
-                                  {t("Cancel", "Zrušiť", "Mégse")}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleCreateTask()}
-                                  className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-micro font-bold cursor-pointer"
-                                >
-                                  {t("Schedule Task", "Naplánovať úlohu", "Feladat ütemezése")}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {autonomousTasks.length === 0 ? (
-                            <div className="text-center py-4 text-caption text-slate-400">
-                              {t(
-                                "No recurring autonomous tasks yet. You can tell the agent in chat: \"Every 30 minutes check for new leads and summarize them\".",
-                                "Zatiaľ žiadne periodické autonómne úlohy. Napíšte do chatu napr.: „Každých 30 minút skontroluj nové príležitosti“.",
-                                "Még nincs ismétlődő autonóm feladat. Írhatja a csevegésbe: „30 percenként ellenőrizd az új érdeklődőket”.",
-                              )}
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {autonomousTasks.map((tk) => (
-                                <div
-                                  key={tk.id}
-                                  className="p-3 rounded-2xl bg-white border border-slate-200 flex flex-wrap items-center justify-between gap-2"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-caption font-bold text-slate-900">{tk.title}</span>
-                                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-micro font-bold">
-                                        {t("Every", "Každých", "Minden")} {tk.intervalMinutes}m
-                                      </span>
-                                      {tk.subagentId && (
-                                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-micro font-bold">
-                                          🤖 {tk.subagentId}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-micro text-slate-500 truncate mt-0.5">{tk.prompt}</div>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleRunTaskNow(tk.id)}
-                                      disabled={isAgentRunning}
-                                      className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
-                                    >
-                                      ▶ {t("Run now", "Spustiť teraz", "Futtatás most")}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleToggleTask(tk)}
-                                      className={`px-2.5 py-1 rounded-lg text-micro font-bold cursor-pointer ${
-                                        tk.enabled
-                                          ? "bg-slate-100 text-slate-700"
-                                          : "bg-amber-50 text-amber-700"
-                                      }`}
-                                    >
-                                      {tk.enabled ? t("Active", "Aktívne", "Aktív") : t("Paused", "Pozastavené", "Szünetel")}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleDeleteTask(tk.id)}
-                                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 cursor-pointer"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {/* Full-height Content Editor Textarea */}
+                      <div className="flex-1 p-4 flex flex-col min-h-0 overflow-hidden">
+                        <textarea
+                          data-testid="agent-memory-textarea"
+                          value={memoryDraft}
+                          onChange={(e) => {
+                            setMemoryDraft(e.target.value);
+                            setIsMemoryDirty(true);
+                          }}
+                          onKeyDown={(e) => {
+                            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+                              e.preventDefault();
+                              void handleSaveSelectedArtifact();
+                            }
+                          }}
+                          placeholder="# Markdown artifact content..."
+                          className="w-full flex-1 p-3.5 rounded-2xl bg-slate-50/70 focus:bg-white border border-slate-200 font-mono text-caption text-slate-800 focus:outline-none focus:border-violet-500 resize-none leading-relaxed overflow-y-auto"
+                        />
+                      </div>
                     </div>
                   )}
+                </div>
+
+                {/* RIGHT SIDEBAR: MEMORY & ARTIFACTS */}
+                <div
+                  data-testid="agent-artifacts-sidebar"
+                  className="w-full ws-lg:w-64 shrink-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                >
+                  <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <FileText size={14} className="text-violet-600" />
+                      <span className="text-caption font-bold text-slate-900">
+                        {t("Memory & Artifacts", "Pamäť a artefakty", "Memória és artefaktumok")}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNewArtifactOpen((v) => !v)}
+                      title={t("New artifact", "Nový artefakt", "Új artefaktum")}
+                      className="px-2 py-0.5 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-micro font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={11} /> {t("New", "Nový", "Új")}
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                    {/* New Artifact Inline Form */}
+                    {newArtifactOpen && (
+                      <div className="p-2.5 rounded-2xl bg-violet-50/60 border border-violet-200 space-y-2">
+                        <input
+                          type="text"
+                          value={newArtifactName}
+                          onChange={(e) => setNewArtifactName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void handleCreateArtifact();
+                            }
+                          }}
+                          placeholder={t("e.g. playbook.md", "napr. playbook.md", "pl. playbook.md")}
+                          className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-caption"
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setNewArtifactOpen(false)}
+                            className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                          >
+                            {t("Cancel", "Zrušiť", "Mégse")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleCreateArtifact()}
+                            className="px-2.5 py-0.5 rounded-lg bg-violet-600 text-white text-micro font-bold cursor-pointer"
+                          >
+                            {t("Create", "Vytvoriť", "Létrehozás")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 1: Memory & Named Artifacts */}
+                    <div className="space-y-1">
+                      <div className="px-1 text-micro font-bold uppercase tracking-wider text-slate-400">
+                        {t("Files & Memory", "Súbory a pamäť", "Fájlok és memória")}
+                      </div>
+
+                      {/* Primary memory.md */}
+                      <button
+                        type="button"
+                        data-testid="sidebar-artifact-memory-main"
+                        onClick={() => handleSelectArtifact("memory:main")}
+                        className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                          selectedArtifactKey === "memory:main"
+                            ? "bg-violet-50/90 border-violet-300 text-violet-950 shadow-2xs"
+                            : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                        }`}
+                      >
+                        <span className="w-7 h-7 rounded-xl bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
+                          <FileText size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-caption font-bold truncate">memory.md</div>
+                          <div className="text-micro text-slate-400 truncate">
+                            {t("Core agent memory", "Hlavná pamäť agenta", "Ügynök fő memóriája")}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Additional named artifacts */}
+                      {artifactsList.map((art) => {
+                        const key = `artifact:${art.id}`;
+                        const active = selectedArtifactKey === key;
+                        return (
+                          <button
+                            key={art.id}
+                            type="button"
+                            onClick={() => handleSelectArtifact(key)}
+                            className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                              active
+                                ? "bg-indigo-50/90 border-indigo-300 text-indigo-950 shadow-2xs"
+                                : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                            }`}
+                          >
+                            <span className="w-7 h-7 rounded-xl bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
+                              <FileText size={14} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-caption font-bold truncate">{art.name}</div>
+                              <div className="text-micro text-slate-400 truncate">{art.title}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Section 2: Subagents */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <div className="px-1 flex items-center justify-between">
+                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                          {t("Subagents", "Subagenti", "Alügynökök")} ({subagents.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setNewSubagentOpen((v) => !v)}
+                          className="text-micro font-bold text-amber-700 hover:text-amber-800 cursor-pointer"
+                        >
+                          + {t("Add", "Pridať", "Hozzáadás")}
+                        </button>
+                      </div>
+
+                      {newSubagentOpen && (
+                        <div className="p-2.5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-1.5">
+                          <input
+                            type="text"
+                            value={newSubName}
+                            onChange={(e) => setNewSubName(e.target.value)}
+                            placeholder={t("Name (e.g. Lead Qualifier)", "Názov", "Név")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="text"
+                            value={newSubRole}
+                            onChange={(e) => setNewSubRole(e.target.value)}
+                            placeholder={t("Role / Specialty", "Rola", "Szerepkör")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="text"
+                            value={newSubPrompt}
+                            onChange={(e) => setNewSubPrompt(e.target.value)}
+                            placeholder={t("System prompt...", "Systémový pokyn...", "Rendszerutasítás...")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setNewSubagentOpen(false)}
+                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                            >
+                              {t("Cancel", "Zrušiť", "Mégse")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCreateSubagent()}
+                              className="px-2.5 py-0.5 rounded-lg bg-amber-600 text-white text-micro font-bold cursor-pointer"
+                            >
+                              {t("Create", "Vytvoriť", "Létrehozás")}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {subagents.length === 0 ? (
+                        <div className="px-2 py-2 text-micro text-slate-400">
+                          {t("No subagents yet.", "Zatiaľ žiadni subagenti.", "Még nincs alügynök.")}
+                        </div>
+                      ) : (
+                        subagents.map((sub) => {
+                          const key = `subagent:${sub.id}`;
+                          const active = selectedArtifactKey === key;
+                          return (
+                            <button
+                              key={sub.id}
+                              type="button"
+                              onClick={() => handleSelectArtifact(key)}
+                              className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                                active
+                                  ? "bg-amber-50/90 border-amber-300 text-amber-950 shadow-2xs"
+                                  : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                              }`}
+                            >
+                              <span className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
+                                <Bot size={14} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-caption font-bold truncate">{sub.name}</div>
+                                <div className="text-micro text-amber-700 truncate">{sub.role}</div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Section 3: Autonomous Loop Tasks */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <div className="px-1 flex items-center justify-between">
+                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                          {t("Autonomous Loop", "Autonómne úlohy", "Autonóm feladatok")} ({autonomousTasks.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setNewTaskOpen((v) => !v)}
+                          className="text-micro font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                        >
+                          + {t("Add", "Pridať", "Hozzáadás")}
+                        </button>
+                      </div>
+
+                      {newTaskOpen && (
+                        <div className="p-2.5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-1.5">
+                          <input
+                            type="text"
+                            value={newTaskTitle}
+                            onChange={(e) => setNewTaskTitle(e.target.value)}
+                            placeholder={t("Task title", "Názov úlohy", "Feladat címe")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={newTaskInterval}
+                            onChange={(e) => setNewTaskInterval(e.target.value)}
+                            placeholder={t("Interval (min)", "Interval (min)", "Időköz (perc)")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="text"
+                            value={newTaskPrompt}
+                            onChange={(e) => setNewTaskPrompt(e.target.value)}
+                            placeholder={t("Instruction prompt...", "Pokyn...", "Utasítás...")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setNewTaskOpen(false)}
+                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                            >
+                              {t("Cancel", "Zrušiť", "Mégse")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCreateTask()}
+                              className="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white text-micro font-bold cursor-pointer"
+                            >
+                              {t("Schedule", "Naplánovať", "Ütemezés")}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {autonomousTasks.length === 0 ? (
+                        <div className="px-2 py-2 text-micro text-slate-400">
+                          {t("No standing tasks.", "Žiadne trvalé úlohy.", "Nincs állandó feladat.")}
+                        </div>
+                      ) : (
+                        autonomousTasks.map((tk) => {
+                          const key = `task:${tk.id}`;
+                          const active = selectedArtifactKey === key;
+                          return (
+                            <button
+                              key={tk.id}
+                              type="button"
+                              onClick={() => handleSelectArtifact(key)}
+                              className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                                active
+                                  ? "bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs"
+                                  : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                              }`}
+                            >
+                              <span className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                                <Clock size={14} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-caption font-bold truncate">{tk.title}</div>
+                                <div className="text-micro text-emerald-700 truncate">
+                                  {t("Every", "Každých", "Minden")} {tk.intervalMinutes}m ·{" "}
+                                  {tk.enabled ? t("Active", "Aktívne", "Aktív") : t("Paused", "Pozastavené", "Szünetel")}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
                 </div>
               </>
             );
