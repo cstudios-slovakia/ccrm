@@ -1274,6 +1274,63 @@ if (!function_exists('ccrm_marveen_delete_artifact')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_get_autonomous_config')) {
+    function ccrm_marveen_get_autonomous_config(PDO $pdo, array $connector): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $autoFile = $dir . '/autonomous.json';
+        $defaults = [
+            'enabled' => true,
+            'intervalMinutes' => 15,
+            'instructions' => "Review your memory.md, artifacts, and CCRM state via MCP. Execute any pending autonomous goals, follow-ups, or subagent delegations recorded in memory.md. Update memory.md with your progress. If no autonomous actions are needed right now, reply with [IDLE].",
+            'lastRunAt' => null,
+            'lastStatus' => null,
+            'cronCount' => 0,
+            'updatedAt' => gmdate('c'),
+        ];
+        if (is_file($autoFile)) {
+            $decoded = json_decode((string)@file_get_contents($autoFile), true);
+            if (is_array($decoded)) {
+                return array_merge($defaults, $decoded);
+            }
+        }
+        if (!empty($settings['autonomousMode']) && is_array($settings['autonomousMode'])) {
+            $merged = array_merge($defaults, $settings['autonomousMode']);
+            @file_put_contents($autoFile, json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+            return $merged;
+        }
+        @file_put_contents($autoFile, json_encode($defaults, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        return $defaults;
+    }
+}
+
+if (!function_exists('ccrm_marveen_save_autonomous_config')) {
+    function ccrm_marveen_save_autonomous_config(PDO $pdo, string $connectorId, array $input): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $autoFile = $dir . '/autonomous.json';
+        $current = is_file($autoFile) ? (json_decode((string)@file_get_contents($autoFile), true) ?: []) : [];
+        $record = [
+            'enabled' => array_key_exists('enabled', $input) ? (bool)$input['enabled'] : (bool)($current['enabled'] ?? true),
+            'intervalMinutes' => max(1, (int)($input['intervalMinutes'] ?? ($current['intervalMinutes'] ?? 15))),
+            'instructions' => array_key_exists('instructions', $input)
+                ? trim((string)$input['instructions'])
+                : (string)($current['instructions'] ?? "Review your memory.md, artifacts, and CCRM state via MCP. Execute any pending autonomous goals, follow-ups, or subagent delegations recorded in memory.md. Update memory.md with your progress. If no autonomous actions are needed right now, reply with [IDLE]."),
+            'lastRunAt' => array_key_exists('lastRunAt', $input) ? $input['lastRunAt'] : ($current['lastRunAt'] ?? null),
+            'lastStatus' => array_key_exists('lastStatus', $input) ? $input['lastStatus'] : ($current['lastStatus'] ?? null),
+            'cronCount' => array_key_exists('cronCount', $input) ? (int)$input['cronCount'] : (int)($current['cronCount'] ?? 0),
+            'updatedAt' => gmdate('c'),
+        ];
+        @file_put_contents($autoFile, json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        @chmod($autoFile, 0600);
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($record): array {
+            $s['autonomousMode'] = $record;
+            return $s;
+        });
+        return $record;
+    }
+}
+
 if (!function_exists('ccrm_marveen_get_connector_state')) {
     function ccrm_marveen_get_connector_state(PDO $pdo, array $connector): array {
         $connectorId = (string)($connector['id'] ?? 'default');
@@ -1281,6 +1338,7 @@ if (!function_exists('ccrm_marveen_get_connector_state')) {
         $artifacts = ccrm_marveen_list_artifacts($pdo, $connector);
         $subagents = ccrm_marveen_list_subagents($pdo, $connector);
         $tasks = ccrm_marveen_list_tasks($pdo, $connector);
+        $autonomousMode = ccrm_marveen_get_autonomous_config($pdo, $connector);
         $chatHistory = ccrm_marveen_get_chat_history($connectorId);
         return [
             'connectorId' => $connectorId,
@@ -1291,6 +1349,7 @@ if (!function_exists('ccrm_marveen_get_connector_state')) {
             'artifacts' => $artifacts,
             'subagents' => $subagents,
             'tasks' => $tasks,
+            'autonomousMode' => $autonomousMode,
             'chatHistory' => $chatHistory,
         ];
     }
@@ -2522,71 +2581,143 @@ if (!function_exists('ccrm_marveen_run_autonomous_ticks')) {
                 continue;
             }
             $row['settings'] = $settings;
-            $tasks = ccrm_marveen_list_tasks($pdo, $row);
-            if (empty($tasks)) {
-                continue;
-            }
-            $userIds = is_array($settings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $settings['userIds']))) : [];
-            $runAsUser = $userIds[0] ?? (string)($row['owner_user_id'] ?? '');
-            if ($runAsUser === '') {
-                $uStmt = $pdo->query("SELECT `id` FROM `users` ORDER BY `role` = 'admin' DESC, `id` ASC LIMIT 1");
-                $runAsUser = (string)($uStmt ? $uStmt->fetchColumn() : '');
-            }
-            if ($runAsUser === '') {
+
+            // Acquire non-blocking per-connector lock so overlapping cron ticks never collide
+            $dir = ccrm_marveen_connector_dir($cid);
+            $lockFp = @fopen($dir . '/.cron.lock', 'c');
+            if ($lockFp && !@flock($lockFp, LOCK_EX | LOCK_NB)) {
+                @fclose($lockFp);
                 continue;
             }
 
-            foreach ($tasks as $task) {
-                $tid = (string)($task['id'] ?? '');
-                if ($forceTaskId !== null && $forceTaskId !== '') {
-                    if ($tid !== $forceTaskId) {
-                        continue;
+            try {
+                $userIds = is_array($settings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $settings['userIds']))) : [];
+                $runAsUser = $userIds[0] ?? (string)($row['owner_user_id'] ?? '');
+                if ($runAsUser === '') {
+                    $uStmt = $pdo->query("SELECT `id` FROM `users` ORDER BY `role` = 'admin' DESC, `id` ASC LIMIT 1");
+                    $runAsUser = (string)($uStmt ? $uStmt->fetchColumn() : '');
+                }
+                if ($runAsUser === '') {
+                    continue;
+                }
+
+                // A) Execute due scheduled tasks in tasks.json
+                $tasks = ccrm_marveen_list_tasks($pdo, $row);
+                foreach ($tasks as $task) {
+                    $tid = (string)($task['id'] ?? '');
+                    if ($forceTaskId !== null && $forceTaskId !== '') {
+                        if ($tid !== $forceTaskId) {
+                            continue;
+                        }
+                    } else {
+                        if (empty($task['enabled'])) {
+                            continue;
+                        }
+                        $intervalSec = max(60, ((int)($task['intervalMinutes'] ?? 60)) * 60);
+                        $lastRunTs = !empty($task['lastRunAt']) ? strtotime((string)$task['lastRunAt']) : 0;
+                        if ($lastRunTs > 0 && ($now - $lastRunTs) < $intervalSec) {
+                            continue;
+                        }
                     }
-                } else {
-                    if (empty($task['enabled'])) {
-                        continue;
-                    }
-                    $intervalSec = max(60, ((int)($task['intervalMinutes'] ?? 60)) * 60);
-                    $lastRunTs = !empty($task['lastRunAt']) ? strtotime((string)$task['lastRunAt']) : 0;
-                    if ($lastRunTs > 0 && ($now - $lastRunTs) < $intervalSec) {
-                        continue;
+
+                    $subId = !empty($task['subagentId']) ? (string)$task['subagentId'] : null;
+                    $res = ccrm_marveen_run_agent(
+                        $pdo,
+                        $row,
+                        $runAsUser,
+                        "[Autonomous Cron Task: " . ($task['title'] ?? $tid) . "]\n" . (string)($task['prompt'] ?? ''),
+                        '',
+                        $subId
+                    );
+
+                    $task['lastRunAt'] = gmdate('c');
+                    $task['lastStatus'] = !empty($res['ok']) ? 'ok' : ('error: ' . ($res['error'] ?? 'failed'));
+                    ccrm_marveen_save_task($pdo, $cid, $task);
+
+                    $botMsg = [
+                        'id' => 'auto-' . uniqid('', false),
+                        'role' => 'assistant',
+                        'autonomous' => true,
+                        'taskTitle' => (string)($task['title'] ?? $tid),
+                        'subagentId' => $subId,
+                        'text' => !empty($res['ok'])
+                            ? (string)($res['text'] ?? 'Autonomous task completed.')
+                            : ('⚠️ Autonomous task error: ' . (string)($res['error'] ?? 'failed')),
+                        'steps' => $res['steps'] ?? [],
+                        'timestamp' => date('H:i'),
+                        'createdAt' => gmdate('c'),
+                    ];
+                    ccrm_marveen_append_chat_message($cid, $botMsg);
+                    $executed[] = [
+                        'connectorId' => $cid,
+                        'taskId' => $tid,
+                        'ok' => !empty($res['ok']),
+                        'message' => $botMsg,
+                    ];
+                }
+
+                // B) Execute Connector-Level Autonomous Cron Loop (`autonomous.json`)
+                $autoCfg = ccrm_marveen_get_autonomous_config($pdo, $row);
+                $shouldRunAuto = false;
+                $isManualTrigger = ($forceTaskId === '__autonomous__');
+                if ($isManualTrigger) {
+                    $shouldRunAuto = true;
+                } elseif ($forceTaskId === null || $forceTaskId === '') {
+                    if (!empty($autoCfg['enabled'])) {
+                        $autoIntervalSec = max(60, ((int)($autoCfg['intervalMinutes'] ?? 15)) * 60);
+                        $lastAutoTs = !empty($autoCfg['lastRunAt']) ? strtotime((string)$autoCfg['lastRunAt']) : 0;
+                        if ($lastAutoTs === 0 || ($now - $lastAutoTs) >= $autoIntervalSec) {
+                            $shouldRunAuto = true;
+                        }
                     }
                 }
 
-                $subId = !empty($task['subagentId']) ? (string)$task['subagentId'] : null;
-                $res = ccrm_marveen_run_agent(
-                    $pdo,
-                    $row,
-                    $runAsUser,
-                    "[Autonomous Task: " . ($task['title'] ?? $tid) . "]\n" . (string)($task['prompt'] ?? ''),
-                    '',
-                    $subId
-                );
+                if ($shouldRunAuto) {
+                    $autoPrompt = "[Autonomous Server Cron Tick]\n"
+                        . (string)($autoCfg['instructions'] ?? "Review your memory.md, artifacts, and CCRM state via MCP. Execute any pending autonomous goals, follow-ups, or subagent delegations recorded in memory.md. Update memory.md with your progress. If no autonomous actions are needed right now, reply with [IDLE].");
 
-                $task['lastRunAt'] = gmdate('c');
-                $task['lastStatus'] = !empty($res['ok']) ? 'ok' : ('error: ' . ($res['error'] ?? 'failed'));
-                ccrm_marveen_save_task($pdo, $cid, $task);
+                    $res = ccrm_marveen_run_agent($pdo, $row, $runAsUser, $autoPrompt, '', null);
+                    $replyText = trim((string)($res['text'] ?? ''));
+                    $steps = is_array($res['steps'] ?? null) ? $res['steps'] : [];
+                    $isIdle = !empty($res['ok']) && (stripos($replyText, '[IDLE]') !== false || stripos($replyText, 'HEARTBEAT_OK') !== false) && empty($steps);
 
-                $botMsg = [
-                    'id' => 'auto-' . uniqid('', false),
-                    'role' => 'assistant',
-                    'autonomous' => true,
-                    'taskTitle' => (string)($task['title'] ?? $tid),
-                    'subagentId' => $subId,
-                    'text' => !empty($res['ok'])
-                        ? (string)($res['text'] ?? 'Autonomous task completed.')
-                        : ('⚠️ Autonomous task error: ' . (string)($res['error'] ?? 'failed')),
-                    'steps' => $res['steps'] ?? [],
-                    'timestamp' => date('H:i'),
-                    'createdAt' => gmdate('c'),
-                ];
-                ccrm_marveen_append_chat_message($cid, $botMsg);
-                $executed[] = [
-                    'connectorId' => $cid,
-                    'taskId' => $tid,
-                    'ok' => !empty($res['ok']),
-                    'message' => $botMsg,
-                ];
+                    $autoCfg['lastRunAt'] = gmdate('c');
+                    $autoCfg['cronCount'] = ((int)($autoCfg['cronCount'] ?? 0)) + 1;
+                    $autoCfg['lastStatus'] = !empty($res['ok'])
+                        ? ($isIdle ? 'idle' : 'ok')
+                        : ('error: ' . ($res['error'] ?? 'failed'));
+                    ccrm_marveen_save_autonomous_config($pdo, $cid, $autoCfg);
+
+                    // Append to chat history whenever the agent performed work, reported findings, or was manually triggered
+                    if (!$isIdle || $isManualTrigger) {
+                        $botMsg = [
+                            'id' => 'cron-' . uniqid('', false),
+                            'role' => 'assistant',
+                            'autonomous' => true,
+                            'taskTitle' => 'Autonomous Cron',
+                            'subagentId' => null,
+                            'text' => !empty($res['ok'])
+                                ? ($isIdle ? '✓ Autonomous cron tick completed (no pending actions in memory.md).' : ($replyText ?: 'Autonomous cron tick completed.'))
+                                : ('⚠️ Autonomous cron error: ' . (string)($res['error'] ?? 'failed')),
+                            'steps' => $steps,
+                            'timestamp' => date('H:i'),
+                            'createdAt' => gmdate('c'),
+                        ];
+                        ccrm_marveen_append_chat_message($cid, $botMsg);
+                    }
+
+                    $executed[] = [
+                        'connectorId' => $cid,
+                        'taskId' => '__autonomous__',
+                        'ok' => !empty($res['ok']),
+                        'status' => $autoCfg['lastStatus'],
+                    ];
+                }
+            } finally {
+                if ($lockFp) {
+                    @flock($lockFp, LOCK_UN);
+                    @fclose($lockFp);
+                }
             }
         }
 

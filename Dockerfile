@@ -53,6 +53,9 @@ RUN cd /var/www/html && composer install --no-dev --no-interaction --prefer-dist
 COPY --from=builder /app/dist /var/www/html
 
 # Adjust permissions so Apache user (www-data) can write config.php and handle uploads
-RUN chown -R www-data:www-data /var/www/html
+RUN chown -R www-data:www-data /var/www/html && \
+    printf '#!/bin/sh\nset -e\n(while true; do sleep 60; su -s /bin/sh www-data -c "php /var/www/html/api/cron.php >/dev/null 2>&1" || true; done) &\nexec apache2-foreground "$@"\n' > /usr/local/bin/ccrm-entrypoint.sh && \
+    chmod +x /usr/local/bin/ccrm-entrypoint.sh
 
 EXPOSE 80
+CMD ["/usr/local/bin/ccrm-entrypoint.sh"]

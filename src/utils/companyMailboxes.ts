@@ -381,8 +381,19 @@ export interface AgentChatMessage {
 
 export interface AgentArtifact {
   id: string;
+  name?: string;
   title: string;
   content: string;
+  updatedAt?: string;
+}
+
+export interface AgentAutonomousConfig {
+  enabled: boolean;
+  intervalMinutes: number;
+  instructions: string;
+  lastRunAt?: string | null;
+  lastStatus?: string | null;
+  cronCount?: number;
   updatedAt?: string;
 }
 
@@ -396,6 +407,7 @@ export interface AgentConnectorState {
   artifacts?: AgentArtifact[];
   subagents: AgentSubagent[];
   tasks: AgentAutonomousTask[];
+  autonomousMode?: AgentAutonomousConfig;
   chatHistory: AgentChatMessage[];
 }
 
@@ -473,6 +485,13 @@ export const deleteAgentTask = (id: string, taskId: string) =>
 
 export const runAgentTaskNow = (id: string, taskId?: string) =>
   call<AgentConnectorState>("agent_task_run", { id, taskId });
+
+export const saveAgentAutonomousConfig = (params: {
+  id: string;
+  enabled?: boolean;
+  intervalMinutes?: number;
+  instructions?: string;
+}) => call<AgentConnectorState>("agent_autonomous_save", params);
 
 export const runAgentHeartbeat = (id: string) =>
   call<AgentConnectorState>("agent_heartbeat", { id });

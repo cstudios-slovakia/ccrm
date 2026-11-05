@@ -411,6 +411,7 @@ try {
         'agent_task_save',
         'agent_task_delete',
         'agent_task_run',
+        'agent_autonomous_save',
         'agent_heartbeat',
         'agent_chat_clear',
         'agent_run',
@@ -508,9 +509,16 @@ try {
             exit;
         }
 
+        if ($action === 'agent_autonomous_save') {
+            $autoCfg = ccrm_marveen_save_autonomous_config($pdo, $id, $input);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored);
+            echo json_encode(array_merge(['success' => true, 'autonomousMode' => $autoCfg], $state));
+            exit;
+        }
+
         if ($action === 'agent_task_run' || $action === 'agent_heartbeat') {
-            $forceTaskId = $action === 'agent_task_run' ? trim((string)($input['taskId'] ?? '')) : null;
-            $hb = ccrm_marveen_run_autonomous_ticks($pdo, $id, $forceTaskId !== '' ? $forceTaskId : null);
+            $forceTaskId = $action === 'agent_task_run' ? (trim((string)($input['taskId'] ?? '')) ?: '__autonomous__') : null;
+            $hb = ccrm_marveen_run_autonomous_ticks($pdo, $id, $forceTaskId);
             $state = ccrm_marveen_get_connector_state($pdo, $stored);
             echo json_encode(array_merge(['success' => true, 'executed' => $hb['executed'] ?? []], $state));
             exit;

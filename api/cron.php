@@ -22,38 +22,44 @@ try {
     exit;
 }
 
-// The token may arrive in a header (preferred: `curl -H "X-Cron-Token: ..."`, or
-// Authorization: Bearer) or, for existing crontabs, as ?token= (VULN-07: URLs end up
-// in access logs, so new setups should use a header).
-$token = trim((string)($_SERVER['HTTP_X_CRON_TOKEN'] ?? ''));
-if ($token === '') {
-    $authHeader = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '')));
-    if ($authHeader !== '' && preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
-        $token = trim($m[1]);
-    }
-}
-if ($token === '') {
-    $token = (string)($_GET['token'] ?? '');
-}
-$autoConfig = ccrm_load_automation_config($pdo);
-$configuredToken = (string)($autoConfig['cronToken'] ?? '');
+// CLI invocations (`php /var/www/html/api/cron.php` from system/container crontab)
+// are already local to the server and do not require an HTTP token.
+$isCli = (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg');
 
-// Token verification (constant-time, and an unset token never matches).
-if ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $token)) {
-    // Not the cron token: fall back to a signed-in ADMIN session. That path runs the
-    // whole automation pipeline, so it is not open to every user, and it must be a
-    // POST so a cross-site link or image cannot trigger it with the session cookie.
-    require_once __DIR__ . '/auth.php';
-    $sessionUser = ccrm_current_user();
-    if (!$sessionUser) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'message' => 'Unauthorized. Invalid token.']);
-        exit;
+if (!$isCli) {
+    // The token may arrive in a header (preferred: `curl -H "X-Cron-Token: ..."`, or
+    // Authorization: Bearer) or, for existing crontabs, as ?token= (VULN-07: URLs end up
+    // in access logs, so new setups should use a header).
+    $token = trim((string)($_SERVER['HTTP_X_CRON_TOKEN'] ?? ''));
+    if ($token === '') {
+        $authHeader = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '')));
+        if ($authHeader !== '' && preg_match('/^Bearer\s+(.+)$/i', $authHeader, $m)) {
+            $token = trim($m[1]);
+        }
     }
-    if (!ccrm_is_admin($sessionUser) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'Forbidden.']);
-        exit;
+    if ($token === '') {
+        $token = (string)($_GET['token'] ?? '');
+    }
+    $autoConfig = ccrm_load_automation_config($pdo);
+    $configuredToken = (string)($autoConfig['cronToken'] ?? '');
+
+    // Token verification (constant-time, and an unset token never matches).
+    if ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $token)) {
+        // Not the cron token: fall back to a signed-in ADMIN session. That path runs the
+        // whole automation pipeline, so it is not open to every user, and it must be a
+        // POST so a cross-site link or image cannot trigger it with the session cookie.
+        require_once __DIR__ . '/auth.php';
+        $sessionUser = ccrm_current_user();
+        if (!$sessionUser) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthorized. Invalid token.']);
+            exit;
+        }
+        if (!ccrm_is_admin($sessionUser) || ($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Forbidden.']);
+            exit;
+        }
     }
 }
 

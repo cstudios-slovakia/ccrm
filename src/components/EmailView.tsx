@@ -39,6 +39,7 @@ import {
   runAgentTaskNow,
   runSubscriptionAgent,
   saveAgentArtifact,
+  saveAgentAutonomousConfig,
   saveAgentMemory,
   saveAgentSubagent,
   saveAgentTask,
@@ -825,6 +826,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (key === "memory:main") {
         setMemoryDraft(state.memoryMd ?? "");
         setArtifactTitleDraft("memory.md");
+      } else if (key === "cron:main") {
+        setMemoryDraft(
+          state.autonomousMode?.instructions ??
+            "Review your memory.md, artifacts, and CCRM state via MCP. Execute any pending autonomous goals, follow-ups, or subagent delegations recorded in memory.md. Update memory.md with your progress. If no autonomous actions are needed right now, reply with [IDLE].",
+        );
+        setArtifactTitleDraft("Autonomous Cron (cron.php)");
       } else if (key.startsWith("artifact:")) {
         const artId = key.slice("artifact:".length);
         const found = (state.artifacts ?? []).find((a) => a.id === artId);
@@ -866,7 +873,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
     [isMemoryDirty, selectedArtifactKey, syncSelectedArtifactDraft],
   );
 
-  // Load persistent agent state (memory.md, artifacts, subagents, autonomous tasks, chat history) & run autonomous heartbeat
+  // Load persistent agent state (memory.md, artifacts, subagents, autonomous tasks, chat history)
+  // & poll read-only state every 15s to display work executed by the server cronjob (`cron.php` / `agent_cron.php`).
   useEffect(() => {
     if (!selectedAccount || !isAgentConnector(selectedChannelType)) return;
     const accId = selectedAccount.id;
@@ -889,19 +897,19 @@ export const EmailView: React.FC<EmailViewProps> = ({
         /* ignore offline/mock */
       });
 
-    const hbInterval = setInterval(() => {
-      void runAgentHeartbeat(accId)
+    const syncInterval = setInterval(() => {
+      void getAgentConnectorState(accId)
         .then((st) => {
           if (!cancelled) applyAgentState(accId, st);
         })
         .catch(() => {
           /* ignore */
         });
-    }, 60000);
+    }, 15000);
 
     return () => {
       cancelled = true;
-      clearInterval(hbInterval);
+      clearInterval(syncInterval);
     };
   }, [selectedAccount?.id, selectedChannelType]);
 
@@ -929,6 +937,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
         st = await saveAgentMemory({
           id: selectedAccount.id,
           memoryMd: memoryDraft,
+        });
+      } else if (selectedArtifactKey === "cron:main") {
+        const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
+        st = await saveAgentAutonomousConfig({
+          id: selectedAccount.id,
+          enabled: autoCfg?.enabled ?? true,
+          intervalMinutes: autoCfg?.intervalMinutes ?? 15,
+          instructions: memoryDraft,
         });
       } else if (selectedArtifactKey.startsWith("artifact:")) {
         const artId = selectedArtifactKey.slice("artifact:".length);
@@ -975,6 +991,22 @@ export const EmailView: React.FC<EmailViewProps> = ({
       notify(e instanceof Error ? e.message : String(e), "error");
     } finally {
       setIsSavingMemory(false);
+    }
+  };
+
+  const handleUpdateAutonomousCron = async (patch: { enabled?: boolean; intervalMinutes?: number }) => {
+    if (!selectedAccount) return;
+    try {
+      const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
+      const st = await saveAgentAutonomousConfig({
+        id: selectedAccount.id,
+        enabled: patch.enabled ?? autoCfg?.enabled ?? true,
+        intervalMinutes: patch.intervalMinutes ?? autoCfg?.intervalMinutes ?? 15,
+        instructions: selectedArtifactKey === "cron:main" ? memoryDraft : autoCfg?.instructions,
+      });
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
     }
   };
 
@@ -2627,20 +2659,24 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               className={`px-2 py-0.5 rounded-md text-micro font-bold ${
                                 selectedArtifactKey === "memory:main"
                                   ? "bg-violet-100 text-violet-800"
-                                  : selectedSubObj
-                                    ? "bg-amber-100 text-amber-800"
-                                    : selectedTaskObj
-                                      ? "bg-emerald-100 text-emerald-800"
-                                      : "bg-indigo-100 text-indigo-800"
+                                  : selectedArtifactKey === "cron:main"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : selectedSubObj
+                                      ? "bg-amber-100 text-amber-800"
+                                      : selectedTaskObj
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-indigo-100 text-indigo-800"
                               }`}
                             >
                               {selectedArtifactKey === "memory:main"
                                 ? "MEMORY"
-                                : selectedSubObj
-                                  ? "SUBAGENT"
-                                  : selectedTaskObj
-                                    ? "AUTONOMOUS TASK"
-                                    : "ARTIFACT"}
+                                : selectedArtifactKey === "cron:main"
+                                  ? "AUTONOMOUS CRONJOB"
+                                  : selectedSubObj
+                                    ? "SUBAGENT"
+                                    : selectedTaskObj
+                                      ? "AUTONOMOUS TASK"
+                                      : "ARTIFACT"}
                             </span>
                             {isMemoryDirty && (
                               <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-micro font-semibold">
@@ -2651,17 +2687,64 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           <div className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
                             {selectedArtifactKey === "memory:main"
                               ? `${selectedAccount?.name} / memory.md`
-                              : selectedSubObj
-                                ? `🤖 ${selectedSubObj.name} · memory.md`
-                                : selectedTaskObj
-                                  ? `⏰ ${selectedTaskObj.title}`
-                                  : selectedNamedArt
-                                    ? `📄 ${selectedNamedArt.name}`
-                                    : artifactTitleDraft}
+                              : selectedArtifactKey === "cron:main"
+                                ? `⏰ ${t("Autonomous Cron (api/cron.php)", "Autonómny Cron (api/cron.php)", "Autonóm Cron (api/cron.php)")}`
+                                : selectedSubObj
+                                  ? `🤖 ${selectedSubObj.name} · memory.md`
+                                  : selectedTaskObj
+                                    ? `⏰ ${selectedTaskObj.title}`
+                                    : selectedNamedArt
+                                      ? `📄 ${selectedNamedArt.name}`
+                                      : artifactTitleDraft}
                           </div>
                         </div>
 
                         <div className="flex items-center gap-1.5">
+                          {selectedArtifactKey === "cron:main" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleRunTaskNow("__autonomous__")}
+                                disabled={isAgentRunning}
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
+                              >
+                                ▶ {t("Trigger Cron Now", "Spustiť Cron teraz", "Cron indítása most")}
+                              </button>
+                              <select
+                                value={String(st?.autonomousMode?.intervalMinutes ?? 15)}
+                                onChange={(e) =>
+                                  void handleUpdateAutonomousCron({
+                                    intervalMinutes: Math.max(1, parseInt(e.target.value, 10) || 15),
+                                  })
+                                }
+                                aria-label={t("Cron interval", "Interval cronu", "Cron időköz")}
+                                className="px-2 py-1.5 rounded-xl bg-white border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
+                              >
+                                <option value="1">1m</option>
+                                <option value="5">5m</option>
+                                <option value="15">15m</option>
+                                <option value="30">30m</option>
+                                <option value="60">60m</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleUpdateAutonomousCron({
+                                    enabled: !(st?.autonomousMode?.enabled ?? true),
+                                  })
+                                }
+                                className={`px-2.5 py-1.5 rounded-xl text-micro font-bold cursor-pointer ${
+                                  (st?.autonomousMode?.enabled ?? true)
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                {(st?.autonomousMode?.enabled ?? true)
+                                  ? t("Cron Active", "Cron aktívny", "Cron aktív")
+                                  : t("Paused", "Pozastavené", "Szünetel")}
+                              </button>
+                            </>
+                          )}
                           {selectedSubObj && (
                             <button
                               type="button"
@@ -2751,6 +2834,35 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </button>
                         </div>
                       </div>
+
+                      {/* Optional Autonomous Cron Info Banner */}
+                      {selectedArtifactKey === "cron:main" && (
+                        <div className="px-5 py-2.5 border-b border-slate-100 bg-emerald-50/50 space-y-1 shrink-0">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-emerald-900 font-semibold">
+                            <span>
+                              {t(
+                                "Executed autonomously by server cronjob:",
+                                "Spúšťané autonómne serverovým cronjobom:",
+                                "A szerver cronjob önállóan futtatja:",
+                              )}{" "}
+                              <code className="px-1.5 py-0.5 rounded bg-white border border-emerald-200 font-mono text-emerald-800">
+                                * * * * * php /var/www/html/api/cron.php
+                              </code>
+                            </span>
+                            {st?.autonomousMode?.lastRunAt && (
+                              <span className="font-mono text-emerald-700">
+                                {t("Last cron tick:", "Posledný beh cronu:", "Utolsó cron futás:")}{" "}
+                                {new Date(st.autonomousMode.lastRunAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })}{" "}
+                                ({st.autonomousMode.lastStatus || "ok"})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Optional Subagent System Prompt Field */}
                       {selectedSubObj && (
@@ -2995,20 +3107,47 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       )}
                     </div>
 
-                    {/* Section 3: Autonomous Loop Tasks */}
+                    {/* Section 3: Autonomous Loop (Cronjob) */}
                     <div className="space-y-1.5 pt-2 border-t border-slate-100">
                       <div className="px-1 flex items-center justify-between">
                         <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
-                          {t("Autonomous Loop", "Autonómne úlohy", "Autonóm feladatok")} ({autonomousTasks.length})
+                          {t("Autonomous Cron", "Autonómny Cron", "Autonóm Cron")}
                         </span>
                         <button
                           type="button"
                           onClick={() => setNewTaskOpen((v) => !v)}
                           className="text-micro font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
                         >
-                          + {t("Add", "Pridať", "Hozzáadás")}
+                          + {t("Task", "Úloha", "Feladat")}
                         </button>
                       </div>
+
+                      {/* Primary Server Cronjob Autonomous Mode */}
+                      <button
+                        type="button"
+                        data-testid="sidebar-artifact-cron-main"
+                        onClick={() => handleSelectArtifact("cron:main")}
+                        className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                          selectedArtifactKey === "cron:main"
+                            ? "bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs"
+                            : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                        }`}
+                      >
+                        <span className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                          <Clock size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-caption font-bold truncate">
+                            {t("Autonomous Cron", "Autonómny Cron", "Autonóm Cron")}
+                          </div>
+                          <div className="text-micro text-emerald-700 truncate">
+                            {t("Every", "Každých", "Minden")} {st?.autonomousMode?.intervalMinutes ?? 15}m ·{" "}
+                            {(st?.autonomousMode?.enabled ?? true)
+                              ? t("Cron Active", "Cron aktívny", "Cron aktív")
+                              : t("Paused", "Pozastavené", "Szünetel")}
+                          </div>
+                        </div>
+                      </button>
 
                       {newTaskOpen && (
                         <div className="p-2.5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-1.5">
