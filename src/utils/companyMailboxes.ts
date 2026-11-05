@@ -518,3 +518,50 @@ export const pollWhatsAppDirectQr = (params: { id?: string; accountId: string })
 
 export const stopWhatsAppDirectQr = (params: { id?: string; accountId: string }) =>
   call<{ ok: boolean; accountId: string }>("wa_qr_stop", params);
+
+export interface WhatsAppChatSummary {
+  id: string;
+  name: string;
+  phone?: string;
+  isGroup?: boolean;
+  participantCount?: number;
+  unreadCount?: number;
+  pinned?: boolean;
+  archived?: boolean;
+  lastMessageText?: string;
+  lastMessageAt?: string;
+  lastMessageTs?: number;
+}
+
+export interface WhatsAppMessageItem {
+  id: string;
+  chatId: string;
+  fromMe: boolean;
+  senderName: string;
+  text: string;
+  timestamp: string;
+  createdAt?: string;
+  tsMs: number;
+}
+
+export interface WhatsAppConnectorState {
+  ok: boolean;
+  accountId: string;
+  status: string;
+  qr?: string | null;
+  phone?: string | null;
+  displayName?: string | null;
+  chats: WhatsAppChatSummary[];
+  messages: Record<string, WhatsAppMessageItem[]>;
+  updatedAt?: string | null;
+  error?: string | null;
+}
+
+export const getWhatsAppChats = (id: string) =>
+  call<WhatsAppConnectorState>("wa_chats", { id });
+
+export const sendWhatsAppChatMessage = (params: { id: string; chatId: string; text: string }) =>
+  call<WhatsAppConnectorState>("wa_send", params);
+
+export const resyncWhatsAppChats = (id: string) =>
+  call<WhatsAppConnectorState>("wa_resync", { id });

@@ -54,6 +54,9 @@ $sessionUser = in_array($action, [
     'agent_task_run',
     'agent_heartbeat',
     'agent_chat_clear',
+    'wa_chats',
+    'wa_send',
+    'wa_resync',
 ], true)
     ? ccrm_require_auth()
     : ccrm_require_admin();
@@ -393,6 +396,43 @@ try {
         $rawAccId = trim((string)($input['accountId'] ?? ($id ?: '')));
         $res = $rawAccId !== '' ? ccrm_waai_qr_stop($rawAccId) : ['ok' => true];
         echo json_encode(array_merge(['success' => true], $res));
+        exit;
+    }
+
+    if (in_array($action, ['wa_chats', 'wa_send', 'wa_resync'], true)) {
+        if (!$stored) throw new \InvalidArgumentException('WhatsApp connector not found.');
+        $settings = ccrm_company_mailbox_settings($stored);
+        $userIds = ccrm_normalize_user_ids($settings['userIds'] ?? null, $stored['owner_user_id'] ?? null);
+        $callerId = (string)($sessionUser['id'] ?? '');
+        $isAdmin = strtolower((string)($sessionUser['role'] ?? '')) === 'admin';
+        if (!$isAdmin && !empty($userIds) && !in_array($callerId, $userIds, true)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'You are not assigned to this WhatsApp connector.']);
+            exit;
+        }
+        $stored['settings'] = $settings;
+
+        if ($action === 'wa_chats') {
+            $res = ccrm_waai_get_chats($stored);
+            echo json_encode(array_merge(['success' => true], $res));
+            exit;
+        }
+
+        if ($action === 'wa_resync') {
+            $res = ccrm_waai_resync_chats($stored);
+            echo json_encode(array_merge(['success' => true], $res));
+            exit;
+        }
+
+        // $action === 'wa_send'
+        $chatId = trim((string)($input['chatId'] ?? ''));
+        $text = trim((string)($input['text'] ?? ''));
+        if ($chatId === '' || $text === '') {
+            throw new \InvalidArgumentException('chatId and text are required.');
+        }
+        $author = (string)($sessionUser['name'] ?? 'User');
+        $res = ccrm_waai_send_message($stored, $chatId, $text, $author);
+        echo json_encode(array_merge(['success' => !empty($res['ok'])], $res));
         exit;
     }
 

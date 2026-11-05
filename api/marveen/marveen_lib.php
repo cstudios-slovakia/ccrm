@@ -3019,4 +3019,180 @@ if (!function_exists('ccrm_waai_storage_root')) {
         }
         return ['ok' => true, 'accountId' => $accountId];
     }
+
+    function ccrm_waai_resolve_account_id(array $mailboxRow): string {
+        $settings = is_array($mailboxRow['settings'] ?? null)
+            ? $mailboxRow['settings']
+            : (json_decode((string)($mailboxRow['settings_json'] ?? '{}'), true) ?: []);
+        $explicit = trim((string)($settings['waAccountId'] ?? ''));
+        $accountsRoot = ccrm_waai_storage_root() . '/accounts';
+        if ($explicit !== '') {
+            $sanitized = ccrm_waai_sanitize_account_id($explicit);
+            if (is_dir($accountsRoot . '/' . $sanitized)) {
+                return $sanitized;
+            }
+        }
+        // Fallback: match by phone number or pick the most recently connected account directory
+        $addrPhone = preg_replace('/\D/', '', (string)($mailboxRow['address'] ?? ''));
+        if (is_dir($accountsRoot)) {
+            $dirs = @scandir($accountsRoot) ?: [];
+            $bestDir = '';
+            $bestMtime = 0;
+            foreach ($dirs as $d) {
+                if ($d === '.' || $d === '..') continue;
+                $full = $accountsRoot . '/' . $d;
+                if (!is_dir($full)) continue;
+                $stFile = $full . '/status.json';
+                if (is_file($stFile)) {
+                    $st = json_decode((string)@file_get_contents($stFile), true);
+                    $stPhone = preg_replace('/\D/', '', (string)($st['phone'] ?? ''));
+                    if ($addrPhone !== '' && $stPhone !== '' && $addrPhone === $stPhone) {
+                        return $d;
+                    }
+                    $mtime = (int)@filemtime($stFile);
+                    if ($mtime >= $bestMtime) {
+                        $bestMtime = $mtime;
+                        $bestDir = $d;
+                    }
+                }
+            }
+            if ($bestDir !== '') {
+                return $bestDir;
+            }
+        }
+        return $explicit !== '' ? ccrm_waai_sanitize_account_id($explicit) : ('wa-' . ccrm_waai_sanitize_account_id((string)($mailboxRow['id'] ?? 'default')));
+    }
+
+    function ccrm_waai_is_worker_alive(string $accountDir): bool {
+        $pidFile = $accountDir . '/worker.pid';
+        if (!is_file($pidFile)) return false;
+        $pid = (int)trim((string)@file_get_contents($pidFile));
+        if ($pid <= 0) return false;
+        if (is_dir('/proc/' . $pid)) return true;
+        if (function_exists('posix_kill')) {
+            return @posix_kill($pid, 0);
+        }
+        $out = [];
+        $code = 1;
+        @exec('kill -0 ' . $pid . ' 2>/dev/null', $out, $code);
+        return $code === 0;
+    }
+
+    function ccrm_waai_ensure_worker_running(string $accountId): void {
+        $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
+        if (!is_file($accountDir . '/auth/creds.json')) {
+            return;
+        }
+        $storeFile = $accountDir . '/store.json';
+        if (!ccrm_waai_is_worker_alive($accountDir)) {
+            $workerScript = __DIR__ . '/waai_qr_worker.cjs';
+            $logFile = $accountDir . '/worker.log';
+            $cmd = sprintf(
+                'nohup node %s %s %s resume > %s 2>&1 &',
+                escapeshellarg($workerScript),
+                escapeshellarg($accountDir),
+                escapeshellarg($accountId),
+                escapeshellarg($logFile)
+            );
+            @exec($cmd);
+
+            // If store.json does not exist yet, wait up to 5.5s for initial contacts/groups sync
+            if (!is_file($storeFile)) {
+                $deadline = microtime(true) + 5.5;
+                while (microtime(true) < $deadline) {
+                    if (is_file($storeFile)) {
+                        $raw = @file_get_contents($storeFile);
+                        $dec = is_string($raw) ? json_decode($raw, true) : null;
+                        if (is_array($dec) && !empty($dec['chats'])) {
+                            break;
+                        }
+                    }
+                    usleep(250_000);
+                }
+            }
+        }
+    }
+
+    function ccrm_waai_get_chats(array $mailboxRow): array {
+        $accountId = ccrm_waai_resolve_account_id($mailboxRow);
+        ccrm_waai_ensure_worker_running($accountId);
+
+        $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
+        $statusFile = $accountDir . '/status.json';
+        $storeFile = $accountDir . '/store.json';
+
+        $status = is_file($statusFile) ? (json_decode((string)@file_get_contents($statusFile), true) ?: []) : [];
+        $store = is_file($storeFile) ? (json_decode((string)@file_get_contents($storeFile), true) ?: []) : [];
+
+        return [
+            'ok' => true,
+            'accountId' => $accountId,
+            'status' => (string)($status['status'] ?? 'connected'),
+            'qr' => $status['qr'] ?? null,
+            'phone' => $status['phone'] ?? null,
+            'displayName' => $status['displayName'] ?? null,
+            'chats' => is_array($store['chats'] ?? null) ? $store['chats'] : [],
+            'messages' => is_array($store['messages'] ?? null) ? $store['messages'] : new \stdClass(),
+            'updatedAt' => $store['updatedAt'] ?? ($status['updatedAt'] ?? null),
+        ];
+    }
+
+    function ccrm_waai_send_message(array $mailboxRow, string $chatId, string $text, string $author = ''): array {
+        $accountId = ccrm_waai_resolve_account_id($mailboxRow);
+        ccrm_waai_ensure_worker_running($accountId);
+
+        $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
+        $outboxDir = $accountDir . '/outbox';
+        if (!is_dir($outboxDir)) {
+            @mkdir($outboxDir, 0775, true);
+        }
+
+        $cmdId = 'send-' . bin2hex(random_bytes(5));
+        $cmdFile = $outboxDir . '/' . $cmdId . '.json';
+        $resFile = $outboxDir . '/' . $cmdId . '.result.json';
+
+        @file_put_contents($cmdFile, json_encode([
+            'id' => $cmdId,
+            'action' => 'send',
+            'chatId' => $chatId,
+            'text' => $text,
+            'author' => $author,
+        ], JSON_UNESCAPED_UNICODE));
+
+        $deadline = microtime(true) + 4.5;
+        $sendResult = null;
+        while (microtime(true) < $deadline) {
+            if (is_file($resFile)) {
+                $sendResult = json_decode((string)@file_get_contents($resFile), true);
+                @unlink($resFile);
+                break;
+            }
+            usleep(180_000);
+        }
+
+        $state = ccrm_waai_get_chats($mailboxRow);
+        if (is_array($sendResult) && empty($sendResult['ok'])) {
+            $state['ok'] = false;
+            $state['error'] = $sendResult['error'] ?? 'Failed to send WhatsApp message.';
+        }
+        return $state;
+    }
+
+    function ccrm_waai_resync_chats(array $mailboxRow): array {
+        $accountId = ccrm_waai_resolve_account_id($mailboxRow);
+        ccrm_waai_ensure_worker_running($accountId);
+
+        $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
+        $outboxDir = $accountDir . '/outbox';
+        if (!is_dir($outboxDir)) {
+            @mkdir($outboxDir, 0775, true);
+        }
+        $cmdId = 'resync-' . bin2hex(random_bytes(4));
+        @file_put_contents($outboxDir . '/' . $cmdId . '.json', json_encode([
+            'id' => $cmdId,
+            'action' => 'resync',
+        ]));
+        usleep(3_200_000);
+        return ccrm_waai_get_chats($mailboxRow);
+    }
 }

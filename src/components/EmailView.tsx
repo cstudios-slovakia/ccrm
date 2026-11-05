@@ -7,7 +7,7 @@ import {
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
   CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock, MailOpen,
   Type, MessagesSquare, Inbox, Paperclip, UserPlus, ExternalLink, History, Download, FolderPlus,
-  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft, Bot, MessageCircle, QrCode, Settings, Sparkles, Terminal
+  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft, Bot, MessageCircle, QrCode, Settings, Sparkles, Terminal, Users
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import type { ModuleAccess } from "../utils/permissions";
@@ -31,10 +31,13 @@ import {
   deleteAgentSubagent,
   deleteAgentTask,
   getAgentConnectorState,
+  getWhatsAppChats,
   inferConnectorType,
   isAgentConnector,
   isEmailConnector,
   listMyConnectors,
+  pollWhatsAppDirectQr,
+  resyncWhatsAppChats,
   runAgentHeartbeat,
   runAgentTaskNow,
   runSubscriptionAgent,
@@ -43,10 +46,14 @@ import {
   saveAgentMemory,
   saveAgentSubagent,
   saveAgentTask,
+  sendWhatsAppChatMessage,
+  startWhatsAppDirectQr,
   type AgentChatMessage,
   type AgentConnectorState,
   type CompanyMailbox,
   type ConnectorType,
+  type WhatsAppChatSummary,
+  type WhatsAppConnectorState,
 } from "../utils/companyMailboxes";
 
 interface EmailViewProps {
@@ -448,6 +455,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [waSelectedLeadId, setWaSelectedLeadId] = useState<string>("");
   const [waSearchQuery, setWaSearchQuery] = useState<string>("");
   const [waDraftMessage, setWaDraftMessage] = useState<string>("");
+  const [waState, setWaState] = useState<WhatsAppConnectorState | null>(null);
+  const [waLoading, setWaLoading] = useState<boolean>(false);
+  const [waSending, setWaSending] = useState<boolean>(false);
+  const [waInlineQrOpen, setWaInlineQrOpen] = useState<boolean>(false);
+  const [waInlineQrUrl, setWaInlineQrUrl] = useState<string | null>(null);
+  const [waFilterType, setWaFilterType] = useState<"all" | "groups" | "direct">("all");
   const [agentChats, setAgentChats] = useState<Record<string, AgentChatMessage[]>>({});
   const [agentStates, setAgentStates] = useState<Record<string, AgentConnectorState>>({});
   const [agentPrompt, setAgentPrompt] = useState<string>("");
@@ -1225,28 +1238,143 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
-  const handleSendWhatsAppMessage = (targetLead: Lead) => {
-    const text = waDraftMessage.trim();
-    if (!text || !canEdit) return;
-    const newEvent = {
-      id: `wa-${Date.now()}`,
-      type: "note" as const,
-      timestamp: nowLocalStamp(),
-      title: `WhatsApp (${selectedAccount?.name || "WhatsApp"})`,
-      content: `📤 WhatsApp → ${targetLead.phone || targetLead.name}:\n${text}`,
-      author: currentUser?.name || "",
+  // Load & poll live WhatsApp chats/groups/messages when a WhatsApp connector is active
+  useEffect(() => {
+    if (!selectedAccount || selectedChannelType !== "whatsapp") return;
+    let cancelled = false;
+    setWaLoading(true);
+
+    const fetchChats = () => {
+      void getWhatsAppChats(selectedAccount.id)
+        .then((st) => {
+          if (cancelled) return;
+          setWaState(st);
+          if (st.qr && st.status === "pending_qr") {
+            setWaInlineQrUrl(st.qr);
+          } else if (st.status === "connected") {
+            setWaInlineQrOpen(false);
+            setWaInlineQrUrl(null);
+          }
+        })
+        .catch(() => {
+          /* ignore */
+        })
+        .finally(() => {
+          if (!cancelled) setWaLoading(false);
+        });
     };
-    setLeads((prev: Lead[]) =>
-      prev.map((l) => (l.id === targetLead.id ? { ...l, timeline: [newEvent, ...(l.timeline || [])] } : l)),
-    );
+
+    fetchChats();
+    const timer = setInterval(fetchChats, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType]);
+
+  const handleResyncWhatsApp = async () => {
+    if (!selectedAccount || waLoading) return;
+    setWaLoading(true);
+    try {
+      const st = await resyncWhatsAppChats(selectedAccount.id);
+      setWaState(st);
+      notify(
+        t(
+          `Synced ${st.chats?.length ?? 0} WhatsApp chats & groups.`,
+          `Synchronizovaných ${st.chats?.length ?? 0} WhatsApp konverzácií a skupín.`,
+          `${st.chats?.length ?? 0} WhatsApp beszélgetés és csoport szinkronizálva.`,
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  const handleStartInlineWaQr = async () => {
+    if (!selectedAccount) return;
+    setWaInlineQrOpen(true);
+    setWaInlineQrUrl(null);
+    try {
+      const started = await startWhatsAppDirectQr({
+        id: selectedAccount.id,
+        accountId: selectedAccount.settings?.waAccountId || waState?.accountId || `wa-${selectedAccount.id}`,
+        reset: true,
+      });
+      if (started.qr) {
+        setWaInlineQrUrl(started.qr);
+      }
+      const accId = started.accountId;
+      const pollTimer = setInterval(async () => {
+        try {
+          const p = await pollWhatsAppDirectQr({ id: selectedAccount.id, accountId: accId });
+          if (p.qr) setWaInlineQrUrl(p.qr);
+          if (p.status === "connected") {
+            clearInterval(pollTimer);
+            setWaInlineQrOpen(false);
+            setWaInlineQrUrl(null);
+            notify(
+              t(
+                "WhatsApp linked! Syncing chats & groups…",
+                "WhatsApp prepojený! Synchronizujem konverzácie a skupiny…",
+                "WhatsApp összekapcsolva! Beszélgetések szinkronizálása…",
+              ),
+            );
+            void handleResyncWhatsApp();
+          }
+        } catch {
+          clearInterval(pollTimer);
+        }
+      }, 1800);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleSendWhatsAppMessage = async (
+    targetChat: WhatsAppChatSummary,
+    matchedLead: Lead | null,
+  ) => {
+    const text = waDraftMessage.trim();
+    if (!text || !selectedAccount || waSending) return;
     setWaDraftMessage("");
-    notify(
-      t(
-        "WhatsApp message sent & logged to contact timeline!",
-        "WhatsApp správa odoslaná a zapísaná na časovú os!",
-        "WhatsApp üzenet elküldve és rögzítve az idővonalon!",
-      ),
-    );
+    setWaSending(true);
+
+    // Log to CRM lead timeline if matched
+    if (matchedLead && canEdit) {
+      const newEvent = {
+        id: `wa-${Date.now()}`,
+        type: "note" as const,
+        timestamp: nowLocalStamp(),
+        title: `WhatsApp (${selectedAccount?.name || "WhatsApp"})`,
+        content: `📤 WhatsApp → ${matchedLead.phone || matchedLead.name}:\n${text}`,
+        author: currentUser?.name || "",
+      };
+      setLeads((prev: Lead[]) =>
+        prev.map((l) => (l.id === matchedLead.id ? { ...l, timeline: [newEvent, ...(l.timeline || [])] } : l)),
+      );
+    }
+
+    try {
+      const nextState = await sendWhatsAppChatMessage({
+        id: selectedAccount.id,
+        chatId: targetChat.id,
+        text,
+      });
+      setWaState(nextState);
+      notify(
+        t(
+          "WhatsApp message sent!",
+          "WhatsApp správa odoslaná!",
+          "WhatsApp üzenet elküldve!",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaSending(false);
+    }
   };
 
   // Compose a new email
@@ -2237,155 +2365,365 @@ export const EmailView: React.FC<EmailViewProps> = ({
           data-testid="communication-whatsapp-layout"
           className="flex-1 min-w-0 grid grid-cols-1 ws-lg:grid-cols-12 gap-4 h-full max-h-full overflow-hidden"
         >
-          {/* WhatsApp Contacts Column */}
-          <div className="ws-lg:col-span-4 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
-            <div className="p-4 border-b border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent space-y-3 shrink-0">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
-                    <MessageCircle size={16} />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-ui font-bold text-slate-900 truncate">{selectedAccount?.name}</div>
-                    <div className="text-micro text-emerald-700 font-mono truncate">
-                      {selectedAccount?.address || "WAAI QR Connected"}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.hash = "settings/email/mailboxes";
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-micro font-bold"
-                >
-                  <QrCode size={12} /> QR
-                </button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={waSearchQuery}
-                  onChange={(e) => setWaSearchQuery(e.target.value)}
-                  placeholder={t("Search WhatsApp contacts...", "Hľadať WhatsApp kontakty...", "WhatsApp kapcsolatok keresése...")}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-caption text-slate-700 focus:outline-none focus:border-emerald-400"
-                />
-              </div>
-            </div>
+          {(() => {
+            // Merge live WAAI WhatsApp chats/groups/contacts with CRM leads
+            const liveChats: WhatsAppChatSummary[] = Array.isArray(waState?.chats) ? waState!.chats : [];
+            const seenPhones = new Set(
+              liveChats
+                .map((c) => (c.phone || "").replace(/\D/g, ""))
+                .filter(Boolean),
+            );
+            const crmFallbackChats: WhatsAppChatSummary[] = leads
+              .filter((l) => {
+                const digits = (l.phone || "").replace(/\D/g, "");
+                return !digits || !seenPhones.has(digits);
+              })
+              .map((l) => {
+                const digits = (l.phone || "").replace(/\D/g, "");
+                return {
+                  id: digits ? `${digits}@s.whatsapp.net` : `lead-${l.id}`,
+                  name: l.name || l.phone || "Contact",
+                  phone: l.phone || "",
+                  isGroup: false,
+                  unreadCount: 0,
+                  lastMessageText: "",
+                  lastMessageTs: 0,
+                };
+              });
 
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-              {leads
-                .filter((l) => {
-                  const q = waSearchQuery.toLowerCase();
-                  if (!q) return true;
-                  return (
-                    (l.name || "").toLowerCase().includes(q) ||
-                    (l.phone || "").toLowerCase().includes(q)
-                  );
-                })
-                .map((lead) => {
-                  const active = (waSelectedLeadId || leads[0]?.id) === lead.id;
-                  return (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => setWaSelectedLeadId(String(lead.id))}
-                      className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors cursor-pointer ${
-                        active ? "bg-emerald-50/70" : "hover:bg-slate-50"
-                      }`}
-                    >
-                      <span className="h-9 w-9 rounded-xl bg-emerald-500/15 text-emerald-700 text-caption font-bold flex items-center justify-center shrink-0">
-                        {initialsOf(lead.name)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-ui font-bold text-slate-900 truncate">{lead.name}</div>
-                        <div className="text-micro text-slate-500 font-mono truncate">
-                          {lead.phone || t("No phone number", "Bez telefónneho čísla", "Nincs telefonszám")}
+            const allWaChats = [...liveChats, ...crmFallbackChats];
+            const filteredWaChats = allWaChats.filter((ch) => {
+              if (waFilterType === "groups" && !ch.isGroup) return false;
+              if (waFilterType === "contacts" && ch.isGroup) return false;
+              const q = waSearchQuery.trim().toLowerCase();
+              if (!q) return true;
+              return (
+                (ch.name || "").toLowerCase().includes(q) ||
+                (ch.phone || "").toLowerCase().includes(q) ||
+                (ch.lastMessageText || "").toLowerCase().includes(q)
+              );
+            });
+
+            const activeChat =
+              filteredWaChats.find((c) => c.id === waSelectedLeadId) ??
+              allWaChats.find((c) => c.id === waSelectedLeadId) ??
+              filteredWaChats[0] ??
+              null;
+
+            const activeDigits = (activeChat?.phone || "").replace(/\D/g, "");
+            const matchedLead = activeChat
+              ? (leads.find((l) => {
+                  const lDigits = (l.phone || "").replace(/\D/g, "");
+                  if (activeDigits && lDigits && activeDigits === lDigits) return true;
+                  return (l.name || "").toLowerCase() === (activeChat.name || "").toLowerCase();
+                }) ?? null)
+              : null;
+
+            const liveMessages = activeChat ? (waState?.messages?.[activeChat.id] ?? []) : [];
+            const crmWaEvents = matchedLead
+              ? (matchedLead.timeline ?? []).filter(
+                  (ev: any) =>
+                    (ev.title || "").toLowerCase().includes("whatsapp") ||
+                    (ev.content || "").toLowerCase().includes("whatsapp"),
+                )
+              : [];
+
+            return (
+              <>
+                {/* WhatsApp Chats, Groups & Contacts Column */}
+                <div className="ws-lg:col-span-4 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
+                  <div className="p-4 border-b border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent space-y-3 shrink-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+                          <MessageCircle size={16} />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-ui font-bold text-slate-900 truncate">{selectedAccount?.name}</div>
+                          <div className="text-micro text-emerald-700 font-mono truncate">
+                            {waState?.phone || selectedAccount?.address || "WAAI QR Connected"}
+                          </div>
                         </div>
                       </div>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-
-          {/* WhatsApp Conversation & Composer Column */}
-          <div className="ws-lg:col-span-8 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
-            {(() => {
-              const targetLead = leads.find((l) => String(l.id) === (waSelectedLeadId || String(leads[0]?.id))) ?? null;
-              if (!targetLead) {
-                return emptyPane(t("Select a contact to message on WhatsApp", "Vyberte kontakt pre WhatsApp správu", "Válasszon egy kapcsolatot WhatsApp üzenethez"));
-              }
-              const waEvents = (targetLead.timeline ?? []).filter(
-                (ev: any) =>
-                  (ev.title || "").toLowerCase().includes("whatsapp") ||
-                  (ev.content || "").toLowerCase().includes("whatsapp"),
-              );
-              return (
-                <>
-                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
-                    <div>
-                      <h3 className="text-title font-heading font-bold text-slate-900">{targetLead.name}</h3>
-                      <div className="text-caption text-emerald-700 font-mono">
-                        {targetLead.phone || t("Phone not set", "Telefón nenastavený", "Telefonszám nincs megadva")} · {selectedAccount?.name}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => void handleResyncWhatsApp()}
+                          disabled={waLoading}
+                          title={t("Sync WhatsApp chats & groups", "Synchronizovať WhatsApp konverzácie", "WhatsApp beszélgetések szinkronizálása")}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw size={11} className={waLoading ? "animate-spin" : ""} />
+                          {t("Sync", "Sync", "Szinkron")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleStartInlineWaQr()}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-micro font-bold cursor-pointer"
+                        >
+                          <QrCode size={12} /> QR
+                        </button>
                       </div>
                     </div>
-                    {renderCrmActions(targetLead, { name: targetLead.name, address: targetLead.email || "" })}
+
+                    {/* Inline QR Pairing Banner when requested or when session requires re-link */}
+                    {waInlineQrOpen && (
+                      <div className="p-3 rounded-2xl bg-white border border-emerald-200 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-micro font-bold text-emerald-800">
+                            {t("Scan with WhatsApp → Linked Devices", "Naskenujte vo WhatsApp → Prepojené zariadenia", "Olvassa be: WhatsApp → Kapcsolt eszközök")}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setWaInlineQrOpen(false)}
+                            className="text-slate-400 hover:text-slate-600 text-micro font-bold cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-center py-1">
+                          {waInlineQrUrl || waState?.qr ? (
+                            <img
+                              src={waInlineQrUrl || waState?.qr || ""}
+                              alt="WhatsApp QR"
+                              className="w-40 h-40 rounded-xl border border-emerald-100 object-contain"
+                            />
+                          ) : (
+                            <div className="w-40 h-40 rounded-xl border border-emerald-100 flex items-center justify-center text-micro text-slate-400">
+                              <RefreshCw size={18} className="animate-spin text-emerald-600 mr-1.5" />
+                              {t("Generating QR…", "Generujem QR…", "QR generálása…")}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={waSearchQuery}
+                        onChange={(e) => setWaSearchQuery(e.target.value)}
+                        placeholder={t("Search WhatsApp chats & groups...", "Hľadať WhatsApp chaty a skupiny...", "WhatsApp beszélgetések és csoportok keresése...")}
+                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-caption text-slate-700 focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+
+                    {/* Filter Pills: All / Groups / Contacts */}
+                    <div className="flex items-center justify-between gap-1 pt-0.5">
+                      <div className="flex items-center gap-1">
+                        {(
+                          [
+                            { id: "all", label: t("All", "Všetko", "Összes"), count: allWaChats.length },
+                            {
+                              id: "groups",
+                              label: t("Groups", "Skupiny", "Csoportok"),
+                              count: allWaChats.filter((c) => c.isGroup).length,
+                            },
+                            {
+                              id: "contacts",
+                              label: t("Contacts", "Kontakty", "Kapcsolatok"),
+                              count: allWaChats.filter((c) => !c.isGroup).length,
+                            },
+                          ] as const
+                        ).map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setWaFilterType(tab.id)}
+                            className={`px-2.5 py-1 rounded-lg text-micro font-bold transition-colors cursor-pointer ${
+                              waFilterType === tab.id
+                                ? "bg-emerald-600 text-white"
+                                : "bg-white/80 text-slate-600 hover:bg-emerald-50 border border-slate-200/80"
+                            }`}
+                          >
+                            {tab.label} ({tab.count})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-emerald-500/[0.02]">
-                    {waEvents.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 text-body">
-                        {t(
-                          "No WhatsApp messages logged for this contact yet. Send a message below.",
-                          "Pre tento kontakt zatiaľ nie sú zaznamenané žiadne WhatsApp správy. Napíšte správu nižšie.",
-                          "Ehhez a kapcsolathoz még nincs WhatsApp üzenet. Írjon üzenetet alább.",
-                        )}
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                    {filteredWaChats.length === 0 ? (
+                      <div className="p-6 text-center text-caption text-slate-400 space-y-2">
+                        <div>
+                          {waLoading
+                            ? t("Syncing WhatsApp chats…", "Synchronizujem WhatsApp konverzácie…", "WhatsApp beszélgetések szinkronizálása…")
+                            : t("No WhatsApp chats match your filter.", "Žiadne WhatsApp konverzácie nezodpovedajú filtru.", "Nincs a szűrőnek megfelelő WhatsApp beszélgetés.")}
+                        </div>
                       </div>
                     ) : (
-                      waEvents.map((ev: any) => (
-                        <div
-                          key={ev.id}
-                          className="max-w-xl ml-auto p-3.5 rounded-2xl bg-emerald-600 text-white shadow-xs space-y-1"
-                        >
-                          <div className="text-micro opacity-80 flex items-center justify-between gap-2">
-                            <span>{ev.author || currentUser?.name}</span>
-                            <span>{ev.timestamp}</span>
-                          </div>
-                          <div className="text-body whitespace-pre-wrap">{ev.content}</div>
-                        </div>
-                      ))
+                      filteredWaChats.map((chat) => {
+                        const active = activeChat?.id === chat.id;
+                        return (
+                          <button
+                            key={chat.id}
+                            type="button"
+                            onClick={() => setWaSelectedLeadId(chat.id)}
+                            className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors cursor-pointer ${
+                              active ? "bg-emerald-50/80" : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <span
+                              className={`h-9 w-9 rounded-xl text-caption font-bold flex items-center justify-center shrink-0 ${
+                                chat.isGroup
+                                  ? "bg-teal-500/15 text-teal-700"
+                                  : "bg-emerald-500/15 text-emerald-700"
+                              }`}
+                            >
+                              {chat.isGroup ? <Users size={15} /> : initialsOf(chat.name)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-ui font-bold text-slate-900 truncate">{chat.name}</span>
+                                {chat.lastMessageAt && (
+                                  <span className="text-micro text-slate-400 shrink-0">
+                                    {formatListDate(chat.lastMessageAt)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-micro text-slate-500 truncate mt-0.5">
+                                {chat.lastMessageText ? (
+                                  chat.lastMessageText
+                                ) : chat.isGroup ? (
+                                  t("WhatsApp Group", "WhatsApp skupina", "WhatsApp csoport")
+                                ) : (
+                                  <span className="font-mono">
+                                    {chat.phone || t("WhatsApp Contact", "WhatsApp kontakt", "WhatsApp kapcsolat")}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
+                </div>
 
-                  <div className="p-4 border-t border-slate-100 flex items-center gap-2 shrink-0">
-                    <input
-                      type="text"
-                      value={waDraftMessage}
-                      onChange={(e) => setWaDraftMessage(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendWhatsAppMessage(targetLead);
-                        }
-                      }}
-                      placeholder={t("Write a WhatsApp message...", "Napíšte WhatsApp správu...", "Írjon WhatsApp üzenetet...")}
-                      className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSendWhatsAppMessage(targetLead)}
-                      disabled={!waDraftMessage.trim() || !canEdit}
-                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer"
-                    >
-                      <Send size={15} /> {t("Send", "Odoslať", "Küldés")}
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
+                {/* WhatsApp Conversation & Composer Column */}
+                <div className="ws-lg:col-span-8 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
+                  {!activeChat ? (
+                    emptyPane(
+                      t(
+                        "Select a WhatsApp chat or group",
+                        "Vyberte WhatsApp konverzáciu alebo skupinu",
+                        "Válasszon egy WhatsApp beszélgetést vagy csoportot",
+                      ),
+                    )
+                  ) : (
+                    <>
+                      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-title font-heading font-bold text-slate-900 truncate">
+                              {activeChat.name}
+                            </h3>
+                            {activeChat.isGroup && (
+                              <span className="px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200 text-micro font-bold uppercase shrink-0">
+                                {t("Group", "Skupina", "Csoport")}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-caption text-emerald-700 font-mono truncate">
+                            {activeChat.phone ||
+                              (activeChat.isGroup
+                                ? t("WhatsApp Group Chat", "Skupinová konverzácia WhatsApp", "WhatsApp csoportos csevegés")
+                                : activeChat.id)}{" "}
+                            · {selectedAccount?.name}
+                          </div>
+                        </div>
+                        {matchedLead &&
+                          renderCrmActions(matchedLead, {
+                            name: matchedLead.name,
+                            address: matchedLead.email || "",
+                          })}
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-emerald-500/[0.02]">
+                        {liveMessages.length === 0 && crmWaEvents.length === 0 ? (
+                          <div className="text-center py-12 text-slate-400 text-body">
+                            {t(
+                              "No messages in this WhatsApp conversation yet. Write a message below.",
+                              "V tejto WhatsApp konverzácii zatiaľ nie sú žiadne správy. Napíšte správu nižšie.",
+                              "Ebben a WhatsApp beszélgetésben még nincs üzenet. Írjon üzenetet alább.",
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            {liveMessages.map((msg) => (
+                              <div
+                                key={msg.id}
+                                className={`max-w-xl p-3.5 rounded-2xl shadow-xs space-y-1 ${
+                                  msg.fromMe
+                                    ? "ml-auto bg-emerald-600 text-white"
+                                    : "mr-auto bg-white border border-slate-200 text-slate-800"
+                                }`}
+                              >
+                                <div
+                                  className={`text-micro flex items-center justify-between gap-3 ${
+                                    msg.fromMe ? "text-emerald-100" : "text-slate-400"
+                                  }`}
+                                >
+                                  <span className="font-bold">
+                                    {msg.fromMe ? currentUser?.name || "Me" : msg.senderName || activeChat.name}
+                                  </span>
+                                  <span>{msg.timestamp}</span>
+                                </div>
+                                <div className="text-body whitespace-pre-wrap break-words">{msg.text}</div>
+                              </div>
+                            ))}
+                            {liveMessages.length === 0 &&
+                              crmWaEvents.map((ev: any) => (
+                                <div
+                                  key={ev.id}
+                                  className="max-w-xl ml-auto p-3.5 rounded-2xl bg-emerald-600 text-white shadow-xs space-y-1"
+                                >
+                                  <div className="text-micro opacity-80 flex items-center justify-between gap-2">
+                                    <span>{ev.author || currentUser?.name}</span>
+                                    <span>{ev.timestamp}</span>
+                                  </div>
+                                  <div className="text-body whitespace-pre-wrap">{ev.content}</div>
+                                </div>
+                              ))}
+                          </>
+                        )}
+                      </div>
+
+                      <div className="p-4 border-t border-slate-100 flex items-center gap-2 shrink-0">
+                        <input
+                          type="text"
+                          value={waDraftMessage}
+                          onChange={(e) => setWaDraftMessage(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              void handleSendWhatsAppMessage(activeChat, matchedLead);
+                            }
+                          }}
+                          placeholder={t(
+                            "Write a WhatsApp message...",
+                            "Napíšte WhatsApp správu...",
+                            "Írjon WhatsApp üzenetet...",
+                          )}
+                          className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleSendWhatsAppMessage(activeChat, matchedLead)}
+                          disabled={!waDraftMessage.trim() || !canEdit || waSending}
+                          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer"
+                        >
+                          <Send size={15} /> {t("Send", "Odoslať", "Küldés")}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       ) : isAgentConnector(selectedChannelType) ? (
         /* SUBSCRIPTION AI AGENT: CENTER (100% CHAT OR 50/50 SPLIT WITH ARTIFACT EDITOR) + RIGHT SIDEBAR (MEMORY & ARTIFACTS) */
