@@ -1324,12 +1324,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         // save that follows is not: sync.php silently drops a non-admin write, so
         // the UI would show "Connected" until the next poll reverted it.
         if (updateIntegrationsConfig && getPermission("general_config") === "edit") {
-          updateIntegrationsConfig({
-            ...integrationsConfig,
+          updateIntegrationsConfig((prev: any) => ({
+            ...(prev || {}),
             zernioApiKey: key,
             zernioConnected: true,
             zernioAccounts: data.accounts || []
-          });
+          }));
         }
         (window as any).showToast(t("Zernio connection successful!", "Pripojenie k Zernio bolo úspešné!", "Sikeres csatlakozás a Zernióhoz!"));
       } else {
@@ -1360,12 +1360,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setZernioTestResult(null);
     setIsEditingZernioKey(true);
     if (updateIntegrationsConfig) {
-      updateIntegrationsConfig({
-        ...integrationsConfig,
+      updateIntegrationsConfig((prev: any) => ({
+        ...(prev || {}),
         zernioApiKey: "",
         zernioConnected: false,
         zernioAccounts: []
-      });
+      }));
     }
     (window as any).showToast(t("Zernio configuration reset.", "Konfigurácia Zernio bola resetovaná.", "Zernio konfiguráció visszaállítva."), "info");
   };
@@ -2026,8 +2026,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (data.success) {
         setVectorDbValidated(true);
         if (updateIntegrationsConfig) {
-          updateIntegrationsConfig({
-            ...integrationsConfig,
+          updateIntegrationsConfig((prev: any) => ({
+            ...(prev || {}),
             vectorDb,
             mariaDbHost,
             mariaDbPort,
@@ -2039,7 +2039,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             pineconeApiKey,
             pineconeIndex,
             vectorDbValidated: true
-          });
+          }));
         }
       } else {
         setVectorDbValidated(false);
@@ -4173,8 +4173,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 setIsSyncing(false);
                                 setIsConnected(true);
                                 if (updateIntegrationsConfig) {
-                                  updateIntegrationsConfig({
-                                    ...integrationsConfig,
+                                  updateIntegrationsConfig((prev: any) => ({
+                                    ...(prev || {}),
                                     metaAppId,
                                     metaAppSecret,
                                     metaAccessToken,
@@ -4183,7 +4183,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     googleClientSecret,
                                     googleRefreshToken,
                                     adsConnected: true
-                                  });
+                                  }));
                                 }
                                 (window as any).showToast(
                                   userLanguage === "sk" 
@@ -4608,10 +4608,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 setVectorDbValidated(false);
                                 setValidationResult(null);
                                 if (updateIntegrationsConfig) {
-                                  updateIntegrationsConfig({
-                                    ...integrationsConfig,
+                                  updateIntegrationsConfig((prev: any) => ({
+                                    ...(prev || {}),
                                     vectorDbValidated: false
-                                  });
+                                  }));
                                 }
                               }}
                               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-95"

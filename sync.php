@@ -3406,6 +3406,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // The GET sends these two blobs only to roles that use them (invoices,
             // financial, general_config); everyone else holds an empty default, which
             // must never be written back over the stored company identity and keys.
+                // Leave a trail in the audit log whenever a stored secret meets a blank:
+                // who cleared which key, or that a blank was ignored. Key names only.
+                foreach (ccrm_integration_secret_keys() as $secretKey) {
+                    $inboundSecret = $s['integrationsConfig'][$secretKey] ?? null;
+                    if (!empty($existingIntegrations[$secretKey]) && array_key_exists($secretKey, $s['integrationsConfig'])
+                        && ($inboundSecret === null || $inboundSecret === '')) {
+                        $cleared = in_array($secretKey, $clearSecrets, true);
+                        ccrm_audit_log($pdo, $sessionUser, $cleared ? 'settings.secret_cleared' : 'settings.secret_blank_ignored', $secretKey);
+                    }
+                }
             $canSeeBilling = ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config');
             if ($canSeeBilling && array_key_exists('companyBillingSettings', $s) && is_array($s['companyBillingSettings'])) {
                 $billingValue = json_encode($s['companyBillingSettings'], JSON_UNESCAPED_UNICODE);
