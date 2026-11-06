@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   effectiveRecurringEndDate,
   firstPaymentDay,
+  firstPaymentOnOrAfter,
   isRecurringDateSkipped,
   nextRecurringChargeAfter,
   pauseRecurringRule,
@@ -469,4 +470,29 @@ test("the last weekday and a day clamped to a short month survive a first paymen
   assert.equal(recurringConfigFromFirstPayment("2026-11-30", "monthly", { dayOfMonth: 31 }).dayOfMonth, 31);
   assert.equal(recurringConfigFromFirstPayment("2026-11-12", "monthly", { dayOfMonth: 31 }).dayOfMonth, 12);
   assert.equal(recurringConfigFromFirstPayment("2027-02-28", "yearly", { dayOfMonth: 29 }).dayOfMonth, 29);
+});
+
+test("a picked weekday, day or month moves the first payment to the next matching day", () => {
+  // Friday 6 Nov 2026.
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "weekly", { dayOfWeek: 5 }), "2026-11-06");
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "weekly", { dayOfWeek: 1 }), "2026-11-09");
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "monthly", { monthlyType: "day_of_month", dayOfMonth: 15 }), "2026-11-15");
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "monthly", { monthlyType: "day_of_month", dayOfMonth: 1 }), "2026-12-01");
+  // A day the month is too short for lands on its last day.
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "monthly", { monthlyType: "day_of_month", dayOfMonth: 31 }), "2026-11-30");
+  assert.equal(
+    firstPaymentOnOrAfter("2026-11-06", "monthly", { monthlyType: "nth_weekday", dayOfWeek: 1, weekOfMonth: 2 }),
+    "2026-11-09"
+  );
+  assert.equal(
+    firstPaymentOnOrAfter("2026-11-06", "monthly", { monthlyType: "nth_weekday", dayOfWeek: 4, weekOfMonth: -1 }),
+    "2026-11-26"
+  );
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "yearly", { month: 3, dayOfMonth: 8 }), "2027-03-08");
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "yearly", { month: 11, dayOfMonth: 20 }), "2026-11-20");
+  // An every-N interval does not push the first payment out.
+  assert.equal(firstPaymentOnOrAfter("2026-11-06", "weekly", { dayOfWeek: 1, interval: 3 }), "2026-11-09");
+  // Reading the picked date back gives the pick again.
+  const picked = firstPaymentOnOrAfter("2026-11-06", "monthly", { monthlyType: "day_of_month", dayOfMonth: 31 });
+  assert.equal(recurringConfigFromFirstPayment(picked, "monthly", { dayOfMonth: 31 }).dayOfMonth, 31);
 });

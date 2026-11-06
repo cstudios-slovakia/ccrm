@@ -39,6 +39,8 @@ import { isDoneTaskState } from "./utils/projectTasks";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
+import { materializeDueCharges } from "./utils/recurringRuleDeletion";
+import { todayLocal } from "./utils/localTime";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { isClientRecord, recordHref } from "./utils/clientRecord";
 import { hasLaunchIntent } from "./utils/launchIntent";
@@ -2314,6 +2316,30 @@ ${log.payload || ''}
       return { listFilters: next };
     });
   };
+
+  // A recurring rule's payment is written to the database when its day arrives,
+  // not recomputed from the schedule on every read (see recurringRuleDeletion.ts).
+  // Only a session that may edit finance and was handed the finance records does
+  // it, and only after the first sync, so it never works from an empty or
+  // withheld list. Deterministic ids make two sessions writing the same payment
+  // converge on one row.
+  const canMaterializeCharges =
+    isInitialSyncResolved && !isDemoMode && access.module("financial").edit && !readScope.restricted.includes("financialRecords");
+  const materializeChargesRef = useRef<() => void>(() => {});
+  materializeChargesRef.current = () => {
+    if (!canMaterializeCharges) return;
+    const prev = financialRecordsRef.current;
+    const next = materializeDueCharges(prev, todayLocal(), new Date().toISOString());
+    if (next !== prev) updateFinancialRecordsAndSync(next);
+  };
+  useEffect(() => {
+    materializeChargesRef.current();
+  }, [financialRecords, canMaterializeCharges]);
+  useEffect(() => {
+    // An app left open across midnight must still notice the new day.
+    const timer = window.setInterval(() => materializeChargesRef.current(), 10 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // The context value must not close over a stale setter: pushStateToServer reads
   // isInitialSyncResolved from its own closure and silently drops pushes when it

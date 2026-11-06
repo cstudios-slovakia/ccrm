@@ -414,6 +414,29 @@ export function recurringConfigFromFirstPayment(
   return withInterval({ monthlyType: "day_of_month", dayOfMonth });
 }
 
+/**
+ * The first payment a picked schedule leads to: the earliest day on or after
+ * `fromIso` that `config` falls on. This is how "every Friday" or "the 15th"
+ * chosen in the form moves the first-payment date — the date stays the one
+ * source of truth for the rule (`recurringConfigFromFirstPayment` reads it back).
+ * Falls back to `fromIso` when the config matches nothing within a year.
+ */
+export function firstPaymentOnOrAfter(
+  fromIso: string,
+  frequency: FinancialRecurringFrequency,
+  config: FinancialRecurrenceConfig
+): string {
+  if (!isIsoDate(fromIso)) return fromIso;
+  // One cycle is enough: the interval only decides which cycles count after the first payment.
+  const { interval: _interval, ...single } = config;
+  const hit = scheduledOccurrences(
+    { recurringFrequency: frequency, recurringConfig: single } as RecurringRule,
+    fromIso,
+    shiftIsoDate(fromIso, 400)
+  )[0];
+  return hit ?? fromIso;
+}
+
 /** Non-negative remainder, so a month before the anchor still lands in its cycle. */
 const mod = (n: number, m: number): number => ((n % m) + m) % m;
 
