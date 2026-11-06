@@ -33,8 +33,13 @@ export const LOCK_FILE = path.join(os.tmpdir(), 'ccrm-qa-run.lock');
    a one-worker run completed cleanly with 1.4 GB free; below that it pages. CI
    runners are dedicated, so they skip the check. */
 export const MIN_FREE_MB = Number(process.env.QA_MIN_FREE_MB ?? (process.env.CI ? 0 : 1536));
-/* How long to queue behind another run, low memory or a busy port. */
-export const WAIT_MINUTES = Number(process.env.QA_WAIT_MIN ?? 30);
+/* How long to queue behind another run, low memory or a busy port. Zero by
+   default: with several agent sessions on one machine, a queue meant each of
+   them sat idle for the whole wait and then usually gave up anyway. A run that
+   cannot start now is skipped at once (exit 2, `QA: pending`) and covered
+   later by `npm run test:qa:pending`. A human who wants to queue sets
+   QA_WAIT_MIN=n. */
+export const WAIT_MINUTES = Number(process.env.QA_WAIT_MIN ?? 0);
 /* A lock older than this belongs to a run that is hung or was killed without
    cleanup — the run itself is capped at 45 minutes. */
 const STALE_LOCK_MINUTES = 60;
@@ -153,9 +158,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * Resolves once this run may start: no other run holds the lock, enough
  * memory is free, and (when `checkPort` is on) the port is not held by
- * something this runner did not start. Prints why it is waiting, once per
- * reason. Throws after `WAIT_MINUTES` rather than start a run whose findings
- * would be noise. The lock is released automatically when the process exits.
+ * something this runner did not start. With `WAIT_MINUTES` at 0 (the default)
+ * it checks once and throws straight away if the run cannot start; otherwise
+ * it prints why it is waiting, once per reason, and throws after
+ * `WAIT_MINUTES` rather than start a run whose findings would be noise. The lock is released automatically when the process exits.
  *
  * @param {{ scope: string, port: string | number, checkPort?: boolean, log?: (line: string) => void }} opts
  */
@@ -181,6 +187,9 @@ export async function admitRun({ scope, port, checkPort = true, log = console.lo
       continue; /* the lock was just released or was stale; try again right away */
     }
     const reason = reasons.join('; ');
+    if (WAIT_MINUTES <= 0) {
+      throw new Error(`QA run skipped: ${reason}. Not waiting (QA_WAIT_MIN=n queues for n minutes).`);
+    }
     if (reason !== lastReason) {
       log(`Waiting: ${reason}`);
       lastReason = reason;

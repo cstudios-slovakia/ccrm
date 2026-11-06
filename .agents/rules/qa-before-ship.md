@@ -19,13 +19,14 @@ the build commit:
 2. Run QA on **your own files only**, never plain `npm run test:qa`. Redirect the
    output to a log file and read it (no `tail`/`head` pipes):
    ```bash
-   QA_WAIT_MIN=10 node scripts/qa/run-qa.mjs --files <files you changed> > qa.log 2>&1
+   node scripts/qa/run-qa.mjs --files <files you changed> > qa.log 2>&1
    ```
 3. Act on the exit code:
    - **0** - commit as usual.
    - **1** - findings. Triage and fix under the rules in section 5: never loosen
      a check; a run that hit its cap or ran under load is load, not evidence.
-   - **2** (not admitted within 10 min), **or** the shell tool cut the call off
+   - **2** (skipped: another run is live, RAM is low or the port is busy - the
+     runner checks once and never waits), **or** the shell tool cut the call off
      before a verdict, **or** the user said to skip QA - commit anyway with a
      line `QA: pending` in the commit message body (above the co-author
      trailers), and tell the user in the reply.
@@ -72,8 +73,8 @@ Several sessions share this machine and often this checkout. Every one of them
 following this rule at once is what overloaded it, so `scripts/qa/run-qa.mjs`
 admits one run at a time. The rules that go with it:
 
-- **If it prints `Waiting: ...`, wait** - up to the 10 minutes `QA_WAIT_MIN=10`
-  allows, then see exit code 2 above. Never kill the other run, never sweep
+- **If it prints `QA run skipped: ...`, move on** - see exit code 2 above. Do
+  not retry in a loop or wait for it yourself. Never kill the other run, never sweep
   processes by port, never set another `QA_PORT` to run beside it.
 - **Never start a QA run as a background task.** A backgrounded shell task that
   gets cut off kills the run halfway. Run it in the foreground and read the
@@ -83,7 +84,7 @@ admits one run at a time. The rules that go with it:
 - **Pure logic needs no browser.** A change confined to `src/utils` is covered by
   `npm run test:unit`; the scoped run would only add the shell tests.
 - **Do not pipe the runner through `tail` or `head`.** The output then only
-  appears when the run ends, so you cannot see `Waiting:`, the scope line
+  appears when the run ends, so you cannot see the scope line
   (`Scope: FULL SUITE` means stop and reconsider) or progress.
 - A run that hits its time cap (15 min scoped, 45 full) or reports defects while
   other runs were live is **load, not evidence** - re-run it alone before
