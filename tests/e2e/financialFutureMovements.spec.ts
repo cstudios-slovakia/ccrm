@@ -94,7 +94,7 @@ test.describe('Finance — future movements', () => {
     // drawn once, never a second time from the rule.
     await expect(drawnChargeRows(page).filter({ hasText: WAGES })).toHaveCount(0);
     // Beside the stored payments, at most the rule's own row.
-    const ownRows = rowsFor(page, WAGES).and(page.locator(':not([data-recurring-payment])'));
+    const ownRows = rowsFor(page, WAGES).filter({ hasNot: page.locator('[data-recurring-payment]') });
     expect(await ownRows.count()).toBeLessThanOrEqual(1);
   });
 
@@ -119,7 +119,11 @@ test.describe('Finance — future movements', () => {
     // It opens that payment against its rule (the rule's title and the day it
     // stands in for), never a form for a new movement.
     await expect(page.locator('#transaction-edit-form')).toBeVisible(SETTLE);
-    await expect(page.locator('#transaction-edit-form input[type="text"]').first()).toHaveValue(/Mzdy — mesačné/);
+    // The title is not the first field of a stored payment's form (the invoice
+    // number comes first), so look for it among the text fields.
+    await expect
+      .poll(() => page.locator('#transaction-edit-form input[type="text"]').evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value)))
+      .toContain('Mzdy — mesačné');
   });
 
   test('switching it on draws the expected movements once, and they cannot be edited in place', async ({ page }) => {
