@@ -12,10 +12,12 @@ import { gotoView, startSession } from './helpers/appDriver';
  *    forecast moves it to the day the money is expected, and must not leave a
  *    copy behind, or the same invoice would be counted in both months.
  *  - `fr-4` — the monthly wages rule, 6 400 € on the 15th, started 200 days
- *    ago, with no end date. The charges it has already made are drawn in the
- *    ledger as settled rows; the ones still to come are the overlay's. It
- *    charges forever, which is why the overlay is bounded to one month and
- *    offers the next one instead of rendering an infinite ledger.
+ *    ago, with no end date. The charges it has already made are stored as
+ *    settled movements of their own (`materializeDueCharges`, run when the app
+ *    loads), so the ledger shows them as ordinary rows; the ones still to come
+ *    are the overlay's. It charges forever, which is why the overlay is bounded
+ *    to one month and offers the next one instead of rendering an infinite
+ *    ledger.
  *
  * The QA dataset runs the app in Slovak, so every label is matched in both.
  */
@@ -46,8 +48,15 @@ const rowsFor = (page: Page, text: string): Locator => rows(page).filter({ hasTe
  */
 const forecastRows = (page: Page): Locator => page.locator('table tbody tr[data-forecast]');
 
-/** Charges a recurring rule has already made — settled, but not stored records of their own. */
-const pastChargeRows = (page: Page): Locator => page.locator('table tbody tr[data-recurring-charge]');
+/** Charges the schedule still draws on its own — none once the materializer has stored every due one. */
+const drawnChargeRows = (page: Page): Locator => page.locator('table tbody tr[data-recurring-charge]');
+
+/**
+ * Charges a recurring rule has already made: stored movements of their own, which
+ * carry the "Recurring" badge their rule gives them.
+ */
+const storedChargeRows = (page: Page): Locator =>
+  page.locator('table tbody tr').filter({ has: page.locator('[data-recurring-payment]') });
 
 const futureToggle = (page: Page): Locator => page.getByRole('button', { name: FUTURE_TOGGLE });
 
@@ -77,34 +86,38 @@ test.describe('Finance — future movements', () => {
     await expect(futureToggle(page)).toHaveAttribute('aria-pressed', 'false');
     await expect(forecastRows(page)).toHaveCount(0);
 
-    // The wages rule draws every charge it has made up to today — and none of
-    // the ones still to come, which only the overlay draws.
-    await expect(pastChargeRows(page).filter({ hasText: WAGES })).toHaveCount(wagesChargesToDate(), SETTLE);
-    // Beside them, at most the rule's own row: it is hidden when it falls on a
-    // charge day, because that day is one payment and is drawn once.
-    const ownRows = rowsFor(page, WAGES).and(page.locator(':not([data-recurring-charge])'));
+    // The wages rule has stored every charge it has made up to today as a
+    // movement of its own — and none of the ones still to come, which only the
+    // overlay draws.
+    await expect(storedChargeRows(page).filter({ hasText: WAGES })).toHaveCount(wagesChargesToDate(), SETTLE);
+    // Nothing is left for the schedule to draw: a due day is a stored movement,
+    // drawn once, never a second time from the rule.
+    await expect(drawnChargeRows(page).filter({ hasText: WAGES })).toHaveCount(0);
+    // Beside the stored payments, at most the rule's own row.
+    const ownRows = rowsFor(page, WAGES).and(page.locator(':not([data-recurring-payment])'));
     expect(await ownRows.count()).toBeLessThanOrEqual(1);
   });
 
-  test('a charge the rule already made can only be followed back to the rule', async ({ page }) => {
+  test('a charge the rule already made is a stored movement that opens against its rule', async ({ page }) => {
     await startSession(page);
     await openMovements(page);
 
-    const charge = pastChargeRows(page).filter({ hasText: WAGES }).first();
+    const charge = storedChargeRows(page).filter({ hasText: WAGES }).first();
     await expect(charge).toBeVisible(SETTLE);
 
-    // No status picker and no delete: one action, the way back to the rule.
-    const actions = charge.locator('td').last().getByRole('button');
-    await expect(actions).toHaveCount(1);
+    // Stored, so it is a movement like any other: it can be edited and deleted.
+    const edit = charge.getByRole('button', { name: /Edit movement|Upraviť pohyb|Szerkesztés/ });
+    await expect(edit).toHaveCount(1);
 
-    // The checkbox column stays hidden until the user asks for it. A charge
-    // still cannot be ticked then: nothing of it is stored.
+    // The checkbox column stays hidden until the user asks for it. A stored
+    // charge can be ticked then, unlike one still drawn from the schedule.
     await expect(page.getByRole('checkbox', { name: /Select movement|Vybrať pohyb|Tétel kijelölése/ })).toHaveCount(0);
     await page.getByRole('button', { name: /^(Select|Vybrať|Kijelölés)$/ }).click();
-    await expect(charge.getByRole('checkbox')).toBeDisabled();
-    await actions.click();
+    await expect(charge.getByRole('checkbox')).toBeEnabled();
+    await edit.click();
 
-    // It opens the rule itself for editing, never a form for a new movement.
+    // It opens that payment against its rule (the rule's title and the day it
+    // stands in for), never a form for a new movement.
     await expect(page.locator('#transaction-edit-form')).toBeVisible(SETTLE);
     await expect(page.locator('#transaction-edit-form input[type="text"]').first()).toHaveValue(/Mzdy — mesačné/);
   });
