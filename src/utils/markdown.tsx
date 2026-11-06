@@ -195,9 +195,35 @@ export const normalizeEntityLinks = (text: string): string => {
   return result;
 };
 
+export interface MarkdownOptions {
+  renderSpeaker?: (speakerId: string) => React.ReactNode;
+}
+
+// A `[[P1]] ` token becomes a private-use placeholder before parsing, so the inline link rule
+// (`[label](url)`) cannot swallow it, and is turned into a node where plain text is rendered.
+const SPEAKER_TOKEN_RE = /\[\[(P[1-9]\d?)\]\] ?/g;
+const SPEAKER_OPEN = "";
+const SPEAKER_CLOSE = "";
+const renderWithSpeakers = (plain: string, renderSpeaker: (id: string) => React.ReactNode): React.ReactNode => {
+  const re = new RegExp(`${SPEAKER_OPEN}(P[1-9][0-9]?)${SPEAKER_CLOSE}`, "g");
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(plain)) !== null) {
+    if (m.index > last) out.push(renderTextWithFilePills(plain.slice(last, m.index)));
+    out.push(<React.Fragment key={`sp-${m.index}`}>{renderSpeaker(m[1])}</React.Fragment>);
+    last = m.index + m[0].length;
+  }
+  if (!out.length) return renderTextWithFilePills(plain);
+  if (last < plain.length) out.push(renderTextWithFilePills(plain.slice(last)));
+  return out;
+};
+
 // Safe, lightweight utility to convert basic markdown string into React elements
-export const parseMarkdown = (text: string): React.ReactNode[] => {
-  const normalizedText = normalizeEntityLinks(text || "");
+export const parseMarkdown = (text: string, options?: MarkdownOptions): React.ReactNode[] => {
+  let normalizedText = normalizeEntityLinks(text || "");
+  if (options?.renderSpeaker) normalizedText = normalizedText.replace(SPEAKER_TOKEN_RE, (_m, id) => `${SPEAKER_OPEN}${id}${SPEAKER_CLOSE}`);
+  const parseInlineStyles = (s: string): React.ReactNode => parseInlineWith(s, options);
   const lines = normalizedText.split("\n");
   const elements: React.ReactNode[] = [];
   
@@ -487,8 +513,10 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
 };
 
 // Parser for inline styles: bold (**text**), italic (*text*), code (`code`), links ([text](url))
-const parseInlineStyles = (text: string): React.ReactNode => {
+const parseInlineWith = (text: string, options?: MarkdownOptions): React.ReactNode => {
   const parts: React.ReactNode[] = [];
+  const renderLeaf = (plain: string): React.ReactNode =>
+    options?.renderSpeaker ? renderWithSpeakers(plain, options.renderSpeaker) : renderTextWithFilePills(plain);
   let index = 0;
 
   // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`, [link](url)
@@ -498,15 +526,15 @@ const parseInlineStyles = (text: string): React.ReactNode => {
 
   const parseInnerStyles = (inner: string): React.ReactNode => {
     if (!/[*_`\[]/.test(inner)) {
-      return renderTextWithFilePills(inner);
+      return renderLeaf(inner);
     }
-    return parseInlineStyles(inner);
+    return parseInlineWith(inner, options);
   };
 
   while ((match = inlineRegex.exec(text)) !== null) {
     // Add preceding plain text
     if (match.index > index) {
-      parts.push(renderTextWithFilePills(text.substring(index, match.index)));
+      parts.push(renderLeaf(text.substring(index, match.index)));
     }
 
     if (match[1]) {
@@ -549,17 +577,19 @@ const parseInlineStyles = (text: string): React.ReactNode => {
 
   // Add remaining plain text
   if (index < text.length) {
-    parts.push(renderTextWithFilePills(text.substring(index)));
+    parts.push(renderLeaf(text.substring(index)));
   }
 
-  return parts.length > 0 ? parts : renderTextWithFilePills(text);
+  return parts.length > 0 ? parts : renderLeaf(text);
 };
 
 interface MarkdownProps {
   content: string;
   className?: string;
+  /** Optional: render `[[P1]]` speaker tokens through this (the live meeting document's chips). */
+  renderSpeaker?: (speakerId: string) => React.ReactNode;
 }
 
-export const Markdown: React.FC<MarkdownProps> = ({ content, className = "space-y-1.5" }) => {
-  return <div className={className}>{parseMarkdown(content || "")}</div>;
+export const Markdown: React.FC<MarkdownProps> = ({ content, className = "space-y-1.5", renderSpeaker }) => {
+  return <div className={className}>{parseMarkdown(content || "", renderSpeaker ? { renderSpeaker } : undefined)}</div>;
 };

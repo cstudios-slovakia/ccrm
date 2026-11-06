@@ -68,10 +68,10 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | # | Phase | Agent effort | Status | Version / commit | Date |
 |---|---|---|---|---|---|
 | 1 | Soniox key in Settings, usage ledger, secret registry | low | ✅ | v1.13.70-Nectarine (9dc72281, labelled .68) | 2026-11-06 |
-| 2 | Soniox live transport with speakers | high | 🟡 | v1.13.69-Nectarine | 2026-11-06 |
-| 3 | Live document formatter: endpoint, state machine, hook | high | 🟡 | v1.13.70-Nectarine | 2026-11-06 |
-| 4 | Panel redesign and Meeting Room wiring | medium | ⬜ | | |
-| 5 | Orchestrator: integration, QA, changelog, commits | — | ⬜ | | |
+| 2 | Soniox live transport with speakers | high | 🟡 | v1.13.71-Nectarine (109b1271, labelled .69) | 2026-11-06 |
+| 3 | Live document formatter: endpoint, state machine, hook | high | 🟡 | v1.13.72-Nectarine (bfa1d063) | 2026-11-06 |
+| 4 | Panel redesign and Meeting Room wiring | medium | 🟡 | v1.13.75-Nectarine | 2026-11-06 |
+| 5 | Orchestrator: integration, QA, changelog, commits | — | ✅ | v1.13.75-Nectarine | 2026-11-06 |
 
 ## A3. Phases
 
@@ -184,12 +184,16 @@ Focus helper block and its props; leave other sessions' hunks alone), new
 `src/components/meeting/SpeakerChip.tsx` if you want one, and `src/utils/markdown.tsx` only for an
 **additive optional** prop if you need one for the chips.
 
-- [ ] Panel per C4: Document | Transcript switch, sections, live tail, speaker chips with rename,
+- [x] Panel per C4: Document | Transcript switch, sections, live tail, speaker chips with rename,
       provider hint, Catch me up and "Use live transcript" with speaker names.
-- [ ] `MeetingRoomView.tsx`: run `useLiveDocument`, hold `speakerNames` (cleared with the live text on
+- [x] `MeetingRoomView.tsx`: run `useLiveDocument`, hold `speakerNames` (cleared with the live text on
       a new recording), pass the names to `liveTranscriptToText` in `useLiveTranscriptAsNote`.
 
-**Left over:** —
+**Left over:** 🟡 only because the panel has not been seen in a browser with real speech (the QA suite mocks the backend and cannot produce a live transcript). Built as specified, plus:
+- Testable logic in a new `src/utils/focusPanel.ts` (+ test): live-tail grouping, chip colour, `withSpeakerName` (trims, caps 40 chars, empty name = reset).
+- `Markdown` got an optional `renderSpeaker` prop. `[[Pn]]` becomes a private-use placeholder before parsing, so the link rule can't swallow it. Without the prop, the output is the same code path as before.
+- The panel remembers the last non-null `provider`, so the Soniox hint doesn't flicker after Stop.
+- The orchestrator moved "Updating…" from an absolute top-right badge (it could cover a long heading) to a reserved line under the open section.
 
 ### Phase 5: Orchestrator
 

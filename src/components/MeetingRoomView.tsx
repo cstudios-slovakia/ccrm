@@ -22,7 +22,9 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
 import { useLiveTranscription } from "../hooks/useLiveTranscription";
 import { MeetingFocusPanel } from "./meeting/MeetingFocusPanel";
-import { liveTranscriptToText } from "../utils/liveTranscript";
+import { liveTranscriptToText, speakerDisplayName } from "../utils/liveTranscript";
+import { useLiveDocument } from "../hooks/useLiveDocument";
+import { withSpeakerName } from "../utils/focusPanel";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -247,6 +249,15 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     languages: systemLanguage === "en" ? ["en"] : [systemLanguage, "en"],
   });
   const clearLiveTranscript = liveTranscript.clear;
+  const liveDocument = useLiveDocument({
+    enabled: focusHelperAvailable && focusHelperOn,
+    segments: liveTranscript.segments,
+    recordingState,
+    language: systemLanguage,
+  });
+  // Renames of "Participant N" (speaker id -> name), shared by the panel and "Use live transcript".
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
+  const renameSpeaker = (id: string, name: string) => setSpeakerNames((names) => withSpeakerName(names, id, name));
   // The official transcription of the saved file failed: the panel then offers the live text.
   const [officialTranscriptFailed, setOfficialTranscriptFailed] = useState(false);
   // The transcription field currently holds the live draft, so the official Transcribe stays on offer.
@@ -255,12 +266,15 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   useEffect(() => {
     if (recordingState === "none") {
       clearLiveTranscript();
+      setSpeakerNames({});
       setOfficialTranscriptFailed(false);
       setTranscriptIsLiveDraft(false);
     }
   }, [recordingState, clearLiveTranscript]);
   const useLiveTranscriptAsNote = () => {
-    const text = liveTranscriptToText(liveTranscript.segments, true);
+    const text = liveTranscriptToText(liveTranscript.segments, true, (id) =>
+      speakerDisplayName(id, speakerNames, systemLanguage),
+    );
     if (!text) return;
     const marker = t(
       "[Live transcript – draft, not the official transcription]",
@@ -2618,6 +2632,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               onRetry={liveTranscript.retry}
               officialFailed={officialTranscriptFailed}
               onUseLive={useLiveTranscriptAsNote}
+              provider={liveTranscript.provider}
+              liveDocument={liveDocument}
+              speakerNames={speakerNames}
+              onRenameSpeaker={renameSpeaker}
+              userKey={String(currentUser?.id || currentUser?.email || "me")}
             />
           )}
 
