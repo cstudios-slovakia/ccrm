@@ -15,7 +15,7 @@ export const INTEGRATION_SECRET_KEYS = [
   "smtpPassword", "exchClientSecret", "exchPassword",
   "metaAppSecret", "metaAccessToken", "googleClientSecret",
   "googleRefreshToken", "googleDevToken", "mariaDbPassword",
-  "qdrantApiKey", "pineconeApiKey", "zernioApiKey",
+  "qdrantApiKey", "pineconeApiKey", "zernioApiKey", "sonioxApiKey",
 ] as const;
 
 const isBlank = (v: unknown): boolean => v === undefined || v === null || v === "";

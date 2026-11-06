@@ -51,7 +51,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $model = trim((string)($body['model'] ?? ''));
     $allowed = [
         'voice_call' => '/^gpt-realtime[A-Za-z0-9._-]{0,40}$/',
-        'live_transcription' => '/^gpt-live-transcribe[A-Za-z0-9._-]{0,20}$/',
+        'live_transcription' => '/^(?:gpt-live-transcribe[A-Za-z0-9._-]{0,20}|stt-rt-[A-Za-z0-9._-]{1,20})$/',
     ];
     if (!isset($allowed[$feature]) || !preg_match($allowed[$feature], $model)) {
         http_response_code(400);

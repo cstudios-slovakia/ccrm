@@ -1806,6 +1806,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (changed("campaigns")) setCampaigns(integrationsConfig.campaigns || []);
       if (changed("openAiKey")) setOpenAiKey(integrationsConfig.openAiKey || "");
       if (changed("anthropicKey")) setAnthropicKey(integrationsConfig.anthropicKey || "");
+      if (changed("sonioxApiKey")) setSonioxApiKey(integrationsConfig.sonioxApiKey || "");
       if (changed("geminiKey")) setGeminiKey(integrationsConfig.geminiKey || "");
       if (changed("vectorDb")) setVectorDb(integrationsConfig.vectorDb || "none");
       if (changed("mariaDbHost")) setMariaDbHost(integrationsConfig.mariaDbHost || "");
@@ -1828,6 +1829,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // every AI credential lives in one place.
   const [anthropicKey, setAnthropicKey] = React.useState("");
   const [geminiKey, setGeminiKey] = React.useState("");
+  const [sonioxApiKey, setSonioxApiKey] = React.useState("");
   const [vectorDb, setVectorDb] = React.useState<"none" | "mariadb" | "qdrant" | "pinecone">("none");
   const [mariaDbHost, setMariaDbHost] = React.useState("");
   const [mariaDbPort, setMariaDbPort] = React.useState("3306");
@@ -2102,13 +2104,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // AI credentials and the vector database settings save themselves too.
   const aiDraft = JSON.stringify({
-    openAiKey, anthropicKey, geminiKey, vectorDb, mariaDbHost, mariaDbPort, mariaDbUser, mariaDbPassword,
+    openAiKey, anthropicKey, geminiKey, sonioxApiKey, vectorDb, mariaDbHost, mariaDbPort, mariaDbUser, mariaDbPassword,
     mariaDbName, qdrantUrl, qdrantApiKey, pineconeApiKey, pineconeIndex, vectorDbValidated,
   });
   const aiStored = JSON.stringify({
     openAiKey: integrationsConfig?.openAiKey || "",
     anthropicKey: integrationsConfig?.anthropicKey || "",
     geminiKey: integrationsConfig?.geminiKey || "",
+    sonioxApiKey: integrationsConfig?.sonioxApiKey || "",
     vectorDb: integrationsConfig?.vectorDb || "none",
     mariaDbHost: integrationsConfig?.mariaDbHost || "",
     mariaDbPort: integrationsConfig?.mariaDbPort || "3306",
@@ -4367,6 +4370,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         />
                       </div>
         
+                      <div className="space-y-2 pt-4 border-t border-slate-100">
+                        <label className="type-overline text-slate-500 block">
+                          {t("Live meeting transcription (Soniox)", "Živý prepis stretnutí (Soniox)", "Élő megbeszélés-átirat (Soniox)")}
+                        </label>
+                        <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
+                          {t(
+                            "Optional. With a key, Meeting Room's Focus helper tells speakers apart (Participant 1, 2, …) and transcribes live for about $0.12 per hour. Without it, the Focus helper uses OpenAI without speakers. Create a key at soniox.com.",
+                            "Voliteľné. S kľúčom Pomocník sústredenia v Zasadačke rozlišuje hovoriacich (Účastník 1, 2, …) a prepisuje naživo za približne 0,12 $ za hodinu. Bez neho používa OpenAI bez rozlíšenia hovoriacich. Kľúč vytvoríte na soniox.com.",
+                            "Opcionális. Kulccsal a Tárgyaló Fókuszsegédje megkülönbözteti a beszélőket (1., 2. résztvevő, …), és élőben átír kb. 0,12 $/óra áron. Nélküle a Fókuszsegéd az OpenAI-t használja, beszélők nélkül. Kulcsot a soniox.com oldalon hozhat létre."
+                          )}
+                        </p>
+                        <label className="type-overline text-slate-500 block">
+                          {t("Soniox API key", "API kľúč Soniox", "Soniox API-kulcs")}
+                        </label>
+                        <SecretInput
+                          className="max-w-2xl"
+                          language={userLanguage}
+                          disabled={getPermission("ai_config") === "view"}
+                          value={sonioxApiKey}
+                          onChange={setSonioxApiKey}
+                          placeholder="snx_..."
+                        />
+                      </div>
+
                       <div className="space-y-4 pt-4 border-t border-slate-100">
                         <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
                           {t(

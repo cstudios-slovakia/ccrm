@@ -71,6 +71,9 @@ const AI_MODEL_PRICE_TABLE: Record<string, AiModelPrice> = {
   "gpt-transcribe": token(0, 0, { usdPerMinute: 0.0045 }),
   "whisper-1": token(0, 0, { usdPerMinute: 0.006 }),
   "gpt-live-transcribe": token(0, 0, { usdPerMinute: 0.017 }),
+  // Soniox real-time, $0.12/h, diarization included. The bare prefix covers later versions.
+  "stt-rt": token(0, 0, { usdPerMinute: 0.002 }),
+  "stt-rt-v6": token(0, 0, { usdPerMinute: 0.002 }),
 };
 
 const GEMINI_38_INTRO_UNTIL = "2027-01";

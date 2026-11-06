@@ -2043,7 +2043,7 @@ HTACCESS;
             'smtpPassword', 'exchClientSecret', 'exchPassword',
             'metaAppSecret', 'metaAccessToken', 'googleClientSecret',
             'googleRefreshToken', 'googleDevToken', 'mariaDbPassword',
-            'qdrantApiKey', 'pineconeApiKey', 'zernioApiKey',
+            'qdrantApiKey', 'pineconeApiKey', 'zernioApiKey', 'sonioxApiKey',
         ];
     }
 

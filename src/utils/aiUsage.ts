@@ -40,6 +40,7 @@ const FEATURES: Record<string, { en: string; sk: string; hu: string }> = {
   workflow: { en: "Workflow agent", sk: "Agent workflowu", hu: "Munkafolyamat-ügynök" },
   voice_call: { en: "Live voice call", sk: "Živý hlasový hovor", hu: "Élő hanghívás" },
   live_transcription: { en: "Live transcription", sk: "Živý prepis", hu: "Élő átirat" },
+  meeting_live_document: { en: "Live meeting document", sk: "Živý dokument stretnutia", hu: "Élő megbeszélés-dokumentum" },
   meeting_catch_up: { en: "Meeting catch-up", sk: "Rýchle zhrnutie stretnutia", hu: "Megbeszélés gyors összefoglalója" },
 };
 
@@ -68,6 +69,8 @@ const MODEL_NAMES: Record<string, string> = {
   "gpt-transcribe": "GPT Transcribe",
   "whisper-1": "Whisper",
   "gpt-live-transcribe": "GPT Live Transcribe",
+  "stt-rt-v6": "Soniox real-time",
+  "stt-rt": "Soniox real-time",
 };
 
 const modelNameKeys = Object.keys(MODEL_NAMES).sort((a, b) => b.length - a.length);
@@ -166,10 +169,10 @@ export const reportVoiceUsage = (event: { type?: string; response?: any; usage?:
  * (in checkpoints, so a closed tab loses at most a minute). Goes through the same ledger row as
  * `reportVoiceUsage` uses for `live_transcription`.
  */
-export const reportLiveTranscriptionSeconds = (seconds: number): void => {
+export const reportLiveTranscriptionSeconds = (seconds: number, model = "gpt-live-transcribe"): void => {
   const s = num(seconds);
   if (s < 1) return;
-  postUsage({ feature: "live_transcription", model: "gpt-live-transcribe", audioSeconds: Math.round(s * 100) / 100 });
+  postUsage({ feature: "live_transcription", model, audioSeconds: Math.round(s * 100) / 100 });
 };
 
 const postUsage = (body: Record<string, unknown>): void => {

@@ -61,3 +61,11 @@ test("embeddings, Claude and an unknown model", () => {
   assert.equal(aiFeatureLabel("sai_swarm", "sk"), "SAI skúška");
   assert.equal(aiFeatureLabel("not_a_feature", "en"), "not_a_feature");
 });
+
+test("Soniox real-time is priced by the minute, also for later versions", () => {
+  const a = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, inputAudioTokens: 0, outputAudioTokens: 0, audioSeconds: 3600 };
+  assert.ok(Math.abs((priceAiUsage("stt-rt-v6", a, "2026-11") ?? 0) - 0.12) < 1e-9);
+  assert.ok(Math.abs((priceAiUsage("stt-rt-v7", a, "2026-11") ?? 0) - 0.12) < 1e-9);
+  assert.equal(aiModelLabel("stt-rt-v6"), "Soniox real-time");
+  assert.equal(aiFeatureLabel("meeting_live_document", "sk"), "Živý dokument stretnutia");
+});
