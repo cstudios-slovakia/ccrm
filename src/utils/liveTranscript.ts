@@ -19,6 +19,8 @@ export interface LiveSegment {
   /** Elapsed recording time (seconds) of the last update. */
   updatedSec: number;
   failed?: boolean;
+  /** App-level speaker id "P1", "P2", … Absent when the provider has no diarization (OpenAI). */
+  speaker?: string;
 }
 
 export interface LiveTranscriptState {
@@ -147,13 +149,44 @@ export const recentSegments = (segments: LiveSegment[], nowSec: number, windowSe
 export const recentSegmentIds = (segments: LiveSegment[], nowSec: number, windowSec: number): Set<string> =>
   new Set(recentSegments(segments, nowSec, windowSec).map((s) => s.id));
 
+/** "P3" -> 3; anything else -> null. */
+export const speakerNumber = (id: string | undefined): number | null => {
+  const m = typeof id === "string" ? /^P(\d{1,3})$/.exec(id) : null;
+  return m ? Number(m[1]) : null;
+};
+
+const PARTICIPANT_LABEL = { en: "Participant", sk: "Účastník", hu: "Résztvevő" } as const;
+
+/** Display name: a rename from `names` if set, else "Participant N" / "Účastník N" / "Résztvevő N". */
+export const speakerDisplayName = (
+  id: string,
+  names: Record<string, string>,
+  lang: "en" | "sk" | "hu",
+): string => {
+  const renamed = names?.[id]?.trim();
+  if (renamed) return renamed;
+  const n = speakerNumber(id);
+  const label = PARTICIPANT_LABEL[lang] ?? PARTICIPANT_LABEL.en;
+  return n == null ? id : `${label} ${n}`;
+};
+
+/** "Name: " when the segment has a speaker and a resolver is given. */
+const speakerPrefix = (s: LiveSegment, nameOf?: (speakerId: string) => string): string =>
+  s.speaker && nameOf ? `${nameOf(s.speaker)}: ` : "";
+
 /**
  * Text for the "Catch me up" request: everything spoken in the last `windowSec` seconds, oldest
  * first. A segment counts when it STARTED inside the window, or is still being transcribed.
+ * With `nameOf`, a line of a known speaker starts with `Name: `.
  */
-export const catchUpText = (segments: LiveSegment[], nowSec: number, windowSec = 120): string =>
+export const catchUpText = (
+  segments: LiveSegment[],
+  nowSec: number,
+  windowSec = 120,
+  nameOf?: (speakerId: string) => string,
+): string =>
   recentSegments(segments, nowSec, windowSec)
-    .map((s) => s.text.trim())
+    .map((s) => `${speakerPrefix(s, nameOf)}${s.text.trim()}`)
     .join("\n");
 
 export const formatClock = (sec: number): string => {
@@ -166,8 +199,18 @@ export const formatClock = (sec: number): string => {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 };
 
-/** The whole live transcript as plain text, for "Use live transcript". */
-export const liveTranscriptToText = (segments: LiveSegment[], withTimestamps = false): string =>
+/**
+ * The whole live transcript as plain text, for "Use live transcript". With a speaker (and a
+ * `nameOf` resolver) a line reads "[mm:ss] Participant 1: text".
+ */
+export const liveTranscriptToText = (
+  segments: LiveSegment[],
+  withTimestamps = false,
+  nameOf?: (speakerId: string) => string,
+): string =>
   visibleSegments(segments)
-    .map((s) => (withTimestamps ? `[${formatClock(s.startSec)}] ${s.text.trim()}` : s.text.trim()))
+    .map((s) => {
+      const body = `${speakerPrefix(s, nameOf)}${s.text.trim()}`;
+      return withTimestamps ? `[${formatClock(s.startSec)}] ${body}` : body;
+    })
     .join("\n");

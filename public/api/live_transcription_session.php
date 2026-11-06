@@ -5,11 +5,18 @@
  * The recording itself and the official transcript (gpt-transcribe over the whole
  * file, transcribe_meeting.php) are untouched. This endpoint only serves the live layer:
  *
- *   create_session  mint a short-lived Realtime client secret for a TRANSCRIPTION session
- *                   (session.type = "transcription", model gpt-live-transcribe, pinned here).
+ *   create_session  with a Soniox key configured: mint a Soniox TEMPORARY key for a real-time
+ *                   WebSocket (model stt-rt-v6 and URL pinned here, speaker diarization on the
+ *                   browser side) and answer {provider: "soniox", api_key, ws_url, ...}.
+ *                   Without one: mint a short-lived Realtime client secret for a TRANSCRIPTION
+ *                   session (session.type = "transcription", model gpt-live-transcribe, pinned
+ *                   here) and answer {provider: "openai", client_secret, ...}.
  *   exchange_sdp    post the browser's WebRTC SDP offer to OpenAI with that client secret.
  *                   The master key never leaves the server and is never used as a fallback.
  *   catch_up        2-3 bullet recap of the last minutes of the live transcript (cheap text model).
+ *
+ * The OpenAI key stays required for both providers: the document and "catch me up" use it.
+ * The Soniox master key never reaches the browser, only a temporary key (60 s to connect).
  *
  * Deliberately NOT realtime_session.php: that one carries the voice-assistant prompt and
  * write tools and is gated by rag_ai. A meeting transcript needs none of it.
@@ -83,8 +90,8 @@ if ($openAiKey === '') {
     exit;
 }
 
-/** POST JSON/SDP to OpenAI. Returns [httpCode, body, curlError]. */
-function ccrm_live_openai_post(string $url, string $authToken, string $body, string $contentType, int $timeout): array
+/** POST a JSON/SDP body with a Bearer token (OpenAI, Soniox). Returns [httpCode, body, curlError]. */
+function ccrm_live_post(string $url, string $authToken, string $body, string $contentType, int $timeout): array
 {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -102,6 +109,12 @@ function ccrm_live_openai_post(string $url, string $authToken, string $body, str
     $err = curl_error($ch);
     curl_close($ch);
     return [$code, is_string($res) ? $res : '', $err];
+}
+
+/** The OpenAI-flavoured name the callers below use; same request. */
+function ccrm_live_openai_post(string $url, string $authToken, string $body, string $contentType, int $timeout): array
+{
+    return ccrm_live_post($url, $authToken, $body, $contentType, $timeout);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -126,6 +139,54 @@ if ($action === 'create_session') {
         if (count($hints) >= 2) {
             break;
         }
+    }
+
+    // Soniox (live speaker diarization). Model and URL are pinned here, never read from the
+    // request. The browser gets a temporary key that opens one WebSocket within 60 s and
+    // closes it after at most 5 h (the stream limit is 300 minutes).
+    $sonioxKey = trim((string)($integrationsConfig['sonioxApiKey'] ?? ''));
+    if ($sonioxKey !== '') {
+        $refId = 'ccrm-user-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string)($sessionUser['id'] ?? ''));
+        [$sCode, $sBody, $sCurlErr] = ccrm_live_post(
+            'https://api.soniox.com/v1/auth/temporary-api-key',
+            $sonioxKey,
+            json_encode([
+                'usage_type' => 'transcribe_websocket',
+                'expires_in_seconds' => 60,
+                'client_reference_id' => substr($refId, 0, 256),
+                'max_session_duration_seconds' => 18000,
+            ]),
+            'application/json',
+            15
+        );
+        if ($sCode !== 200 && $sCode !== 201) {
+            $sErr = json_decode($sBody, true);
+            $sMsg = is_array($sErr)
+                ? (string)($sErr['error_message'] ?? $sErr['message'] ?? ($sErr['error']['message'] ?? ''))
+                : '';
+            if ($sMsg === '') {
+                $sMsg = $sCurlErr !== '' ? $sCurlErr : 'Soniox API error';
+            }
+            http_response_code($sCode >= 400 && $sCode <= 599 ? $sCode : 502);
+            echo json_encode(['success' => false, 'message' => 'Could not start the live transcript (Soniox, HTTP ' . $sCode . '): ' . $sMsg]);
+            exit;
+        }
+        $sData = json_decode($sBody, true);
+        $tempKey = is_array($sData) ? (string)($sData['api_key'] ?? '') : '';
+        if ($tempKey === '') {
+            http_response_code(502);
+            echo json_encode(['success' => false, 'message' => 'Soniox did not return a temporary key.']);
+            exit;
+        }
+        echo json_encode([
+            'success' => true,
+            'provider' => 'soniox',
+            'api_key' => $tempKey,
+            'model' => 'stt-rt-v6',
+            'ws_url' => 'wss://stt-rt.soniox.com/transcribe-websocket',
+            'expires_at' => $sData['expires_at'] ?? null,
+        ]);
+        exit;
     }
 
     // Model pinned here, not read from the request. Turn detection is null on purpose:
@@ -195,6 +256,7 @@ if ($action === 'create_session') {
 
     echo json_encode([
         'success' => true,
+        'provider' => 'openai',
         'client_secret' => $secret,
         'expires_at' => $data['expires_at'] ?? null,
     ]);
@@ -265,7 +327,8 @@ if (ccrm_rate_limit_exceeded($pdo, 'live_catch_up', (string)($sessionUser['id'] 
 }
 
 $prompt = "Below is the most recent part of a live, automatically generated transcript of a meeting. "
-    . "It may contain recognition mistakes and has no speaker labels. "
+    . "It may contain recognition mistakes. Lines may start with a speaker label such as \"Participant 1:\"; "
+    . "keep who said what when it matters. "
     . "Someone lost focus and needs to catch up. Write 2 to 3 short bullet points (one line each) "
     . "saying what was just discussed, what was decided or asked, and what is open right now. "
     . "Write in {$langName}. Output only the bullets, each starting with \"- \". Do not invent anything that is not in the text.\n\n"

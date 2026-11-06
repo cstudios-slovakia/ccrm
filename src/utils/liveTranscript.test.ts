@@ -8,7 +8,10 @@ import {
   liveTranscriptToText,
   recentSegmentIds,
   recentSegments,
+  speakerDisplayName,
+  speakerNumber,
   visibleSegments,
+  type LiveSegment,
   type LiveTranscriptState,
   type RealtimeTranscriptEvent,
 } from "./liveTranscript.ts";
@@ -143,6 +146,58 @@ test("liveTranscriptToText gives plain lines, optionally with timestamps", () =>
   ]);
   assert.equal(liveTranscriptToText(s.segments), "Hi.\nBye.");
   assert.equal(liveTranscriptToText(s.segments, true), "[00:05] Hi.\n[01:10] Bye.");
+});
+
+// --- speakers ---------------------------------------------------------------------------
+
+const turn = (id: string, text: string, startSec: number, speaker?: string, final = true): LiveSegment => ({
+  id,
+  text,
+  final,
+  startSec,
+  updatedSec: startSec,
+  ...(speaker ? { speaker } : {}),
+});
+
+test("speakerNumber reads P<n> and nothing else", () => {
+  assert.equal(speakerNumber("P3"), 3);
+  assert.equal(speakerNumber("P12"), 12);
+  assert.equal(speakerNumber("3"), null);
+  assert.equal(speakerNumber("Peter"), null);
+  assert.equal(speakerNumber("P"), null);
+  assert.equal(speakerNumber(undefined), null);
+});
+
+test("speakerDisplayName prefers a rename, else the localised Participant N", () => {
+  assert.equal(speakerDisplayName("P2", {}, "en"), "Participant 2");
+  assert.equal(speakerDisplayName("P2", {}, "sk"), "Účastník 2");
+  assert.equal(speakerDisplayName("P2", {}, "hu"), "Résztvevő 2");
+  assert.equal(speakerDisplayName("P2", { P2: "  Jana " }, "sk"), "Jana");
+  assert.equal(speakerDisplayName("P2", { P2: "   " }, "en"), "Participant 2");
+  assert.equal(speakerDisplayName("P1", { P2: "Jana" }, "en"), "Participant 1");
+});
+
+test("liveTranscriptToText puts the speaker name before the text when a resolver is given", () => {
+  const segs = [turn("a", "Hello.", 5, "P1"), turn("b", "Hi.", 70, "P2"), turn("c", "No speaker.", 80)];
+  const nameOf = (id: string) => speakerDisplayName(id, { P2: "Jana" }, "en");
+  assert.equal(liveTranscriptToText(segs, true, nameOf), "[00:05] Participant 1: Hello.\n[01:10] Jana: Hi.\n[01:20] No speaker.");
+  assert.equal(liveTranscriptToText(segs, false, nameOf), "Participant 1: Hello.\nJana: Hi.\nNo speaker.");
+  // Without a resolver the output is exactly what it was before speakers existed.
+  assert.equal(liveTranscriptToText(segs), "Hello.\nHi.\nNo speaker.");
+  assert.equal(liveTranscriptToText(segs, true), "[00:05] Hello.\n[01:10] Hi.\n[01:20] No speaker.");
+});
+
+test("catchUpText prefixes the speaker name only when a resolver is given and the segment has a speaker", () => {
+  const segs = [turn("a", "old", 0, "P1"), turn("b", "first", 200, "P1"), turn("c", "second", 230, "P2"), turn("d", "third", 250)];
+  const nameOf = (id: string) => `<${id}>`;
+  assert.equal(catchUpText(segs, 260, 120, nameOf), "<P1>: first\n<P2>: second\nthird");
+  assert.equal(catchUpText(segs, 260, 120), "first\nsecond\nthird");
+});
+
+test("an OpenAI segment (no speaker field) is unchanged by the speaker helpers", () => {
+  const s = run([[{ type: DONE, item_id: "a", transcript: "Hi." }, 5]]);
+  assert.equal(s.segments[0].speaker, undefined);
+  assert.equal(liveTranscriptToText(s.segments, true, (id) => id), "[00:05] Hi.");
 });
 
 // --- commit detection -------------------------------------------------------------------
