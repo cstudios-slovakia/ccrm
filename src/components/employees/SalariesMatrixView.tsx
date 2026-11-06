@@ -16,6 +16,7 @@ import type {
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 import { formatNumber } from "../../utils/currency";
 import { salaryDue } from "../../utils/payslip";
+import { canonicalSalaryPeriodKey } from "../../utils/salaryPeriod";
 
 interface SalariesMatrixViewProps {
   employees: Employee[];
@@ -25,6 +26,8 @@ interface SalariesMatrixViewProps {
   systemLanguage?: string;
   systemCurrency?: string;
   onSelectEmployee?: (employeeId: string) => void;
+  /** Admin: may reopen a closed payroll month. */
+  canReopenPayroll?: boolean;
 }
 
 export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
@@ -34,7 +37,8 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
   onSaveSalary,
   systemLanguage = "sk",
   systemCurrency = "€",
-  onSelectEmployee
+  onSelectEmployee,
+  canReopenPayroll = false
 }) => {
   const currentYear = new Date().getFullYear();
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
@@ -100,7 +104,8 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
     const map = new Map<string, EmployeeSalary>();
     for (const sal of salaries) {
       if (sal.year === selectedYear) {
-        map.set(`${sal.employeeId}_${sal.periodKey}`, sal);
+        // A record saved before keys carried the year (`M05`) still lands in its month
+        map.set(`${sal.employeeId}_${canonicalSalaryPeriodKey(sal)}`, sal);
       }
     }
     return map;
@@ -482,6 +487,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
           monthName={fullMonthNames[selectedCell.periodNumber - 1]}
           existingRecord={selectedCell.salaryRecord}
           settings={settings}
+          canReopen={canReopenPayroll}
           onClose={() => setSelectedCell(null)}
           onSave={(saved) => {
             onSaveSalary(saved);

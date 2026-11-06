@@ -13,6 +13,7 @@
  */
 
 require_once __DIR__ . '/employee_name.php';
+require_once __DIR__ . '/payroll_lib.php';
 
 if (!function_exists('ccrm_schema_statements')) {
 
@@ -1034,6 +1035,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
               `financial_record_id` VARCHAR(50) NULL,
               `note` TEXT NULL,
+              `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen',
+              `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_sal_emp (`employee_id`),
@@ -1933,6 +1936,17 @@ if (!function_exists('ccrm_schema_statements')) {
         if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
             $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
         }
+        // Payroll records: the month's close is a recorded fact, not re-derived from the live status
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_at')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen' AFTER `note`");
+        }
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_by')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month' AFTER `closed_at`");
+        }
+        // Period keys without a year (`M05`) collided across years on uk_emp_period: rekey and merge.
+        // Before the closed_at backfill, so the merged survivor is the row that gets stamped.
+        ccrm_migrate_salary_period_keys($pdo);
+        ccrm_backfill_salary_closed_at($pdo);
         ccrm_migrate_employee_identity($pdo);
         ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
@@ -2811,6 +2825,8 @@ if (!function_exists('ccrm_schema_statements')) {
                   `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
                   `financial_record_id` VARCHAR(50) NULL,
                   `note` TEXT NULL,
+                  `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen',
+                  `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month',
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX idx_sal_emp (`employee_id`),
@@ -3428,7 +3444,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

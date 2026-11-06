@@ -172,15 +172,29 @@ function ccrm_te_month_is_paid(string $entryDate, array $keys): bool {
     return false;
 }
 
-/** Paid payroll period keys for one employee. A missing table does not lock anyone. */
+/**
+ * SQL condition for a closed payroll month. The close is a recorded fact (`closed_at`, stamped when
+ * the month was first paid in full), so a later edit that makes it partially paid again does not
+ * unlock its entries. Before the column exists the live status is the only signal.
+ */
+function ccrm_te_closed_sql(\PDO $pdo): string {
+    static $sql = null;
+    if ($sql === null) {
+        $sql = ccrm_column_exists($pdo, 'employee_salaries', 'closed_at') ? '`closed_at` IS NOT NULL' : "`status` = 'paid'";
+    }
+    return $sql;
+}
+
+/** Closed payroll period keys for one employee. A missing table does not lock anyone. */
 function ccrm_te_paid_keys(\PDO $pdo, ?string $employeeId): array {
     if ($employeeId === null || $employeeId === '') {
         return [];
     }
     try {
-        $stmt = $pdo->prepare("SELECT `period_key` FROM `employee_salaries` WHERE `employee_id` = ? AND `status` = 'paid'");
+        $stmt = $pdo->prepare("SELECT `period_key`, `period_type`, `year`, `period_number` FROM `employee_salaries` WHERE `employee_id` = ? AND " . ccrm_te_closed_sql($pdo));
         $stmt->execute([$employeeId]);
-        return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+        // A legacy key without its year (`M05`) is rebuilt, so the right year locks
+        return array_map('ccrm_salary_period_key', $stmt->fetchAll(\PDO::FETCH_ASSOC));
     } catch (\Throwable $e) {
         return [];
     }
@@ -253,10 +267,10 @@ function ccrm_te_stamp_paid_months(\PDO $pdo, array $entries): array {
     if ($ids) {
         try {
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            $stmt = $pdo->prepare("SELECT `employee_id`, `period_key` FROM `employee_salaries` WHERE `status` = 'paid' AND `employee_id` IN ($placeholders)");
+            $stmt = $pdo->prepare("SELECT `employee_id`, `period_key`, `period_type`, `year`, `period_number` FROM `employee_salaries` WHERE " . ccrm_te_closed_sql($pdo) . " AND `employee_id` IN ($placeholders)");
             $stmt->execute(array_keys($ids));
             foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-                $map[(string)$row['employee_id']][] = (string)$row['period_key'];
+                $map[(string)$row['employee_id']][] = ccrm_salary_period_key($row);
             }
         } catch (\Throwable $e) {
             $map = [];

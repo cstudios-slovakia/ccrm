@@ -18,7 +18,7 @@ import type {
   UserProfile as AuthUser,
   RolePermission
 } from "../../types";
-import type { ModuleAccess } from "../../utils/permissions";
+import { isAdminRoleName, type ModuleAccess } from "../../utils/permissions";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import { DEFAULT_EMPLOYEE_SETTINGS } from "../../utils/employeeSettingsDefaults";
 import { EmployeeListView } from "./EmployeeListView";
@@ -199,6 +199,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   roles = [],
   selfService = false
 }) => {
+  // Reopening a closed payroll month unlocks its time entries; the server honours it for admins only
+  const canReopenPayroll = isAdminRoleName(_currentUser?.role);
   // Navigation state derived from URL hash
   const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
   const [requestedView, setCurrentView] = useState<EmployeesViewName>(initialUrlState.view);
@@ -466,6 +468,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             rights={rights}
             users={users}
             roles={roles}
+            canReopenPayroll={canReopenPayroll}
           />
         )}
 
@@ -516,6 +519,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
             onSelectEmployee={(empId) => navigateToEmployeeDetail(empId)}
+            canReopenPayroll={canReopenPayroll}
           />
         )}
 

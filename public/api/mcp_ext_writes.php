@@ -16,6 +16,10 @@
  * Settling money stays a decision made in the app.
  */
 
+// ccrm_column_exists(), and the payroll definitions (due, status, period key) shared with sync.php
+require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/payroll_lib.php';
+
 // ---------------------------------------------------------------------------
 // Small shared helpers
 // ---------------------------------------------------------------------------
@@ -684,9 +688,12 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
     $ex->execute([$empId, $periodKey]);
     $existing = $ex->fetch(\PDO::FETCH_ASSOC);
     $itemName = 'Base salary';
+    // A closed month (first paid in full, not reopened by an admin) is not changed from here
+    $hasClosedAt = ccrm_column_exists($pdo, 'employee_salaries', 'closed_at');
     if ($existing) {
-        if ($existing['status'] === 'paid') {
-            throw new \InvalidArgumentException("The {$periodKey} payout for this employee is already paid; correct it in the app.");
+        $isClosed = $hasClosedAt ? !empty($existing['closed_at']) : $existing['status'] === 'paid';
+        if ($isClosed) {
+            throw new \InvalidArgumentException("The {$periodKey} payout for this employee is already paid and the month is closed; correct it in the app.");
         }
         $items = json_decode((string)$existing['items_json'], true);
         if (is_array($items) && (count($items) > 1 || (count($items) === 1 && ($items[0]['categoryId'] ?? 'base') !== 'base'))) {
@@ -696,7 +703,13 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
     }
 
     $salId = $existing['id'] ?? ('sal-' . $empId . '-' . $periodKey);
-    $status = ($totalPaid >= $totalSalary && $totalSalary > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'pending');
+    // Paid against Cena práce once the payslip is in (typed in the app), otherwise the gross: the
+    // same definition as the app and sync.php, so this tool cannot mark a month paid at the gross.
+    $laborCost = $existing['labor_cost'] ?? null;
+    $due = ccrm_salary_due(['labor_cost' => $laborCost, 'total_salary' => $totalSalary]);
+    $status = ccrm_salary_status($due, $totalPaid);
+    // The month closes the first time it becomes paid in full
+    $closedAt = ($hasClosedAt && $status === 'paid' && ($existing['status'] ?? null) !== 'paid') ? date('Y-m-d H:i:s') : null;
 
     if (!$dueDate) {
         $dueDay = (int)($emp['salary_due_day'] ?: $defaults['dueDay']);
@@ -709,20 +722,22 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
     $autoExpense = $emp['auto_expense'] !== null ? ((int)$emp['auto_expense'] === 1) : $defaults['autoExpense'];
     $finId = $existing['financial_record_id'] ?? null;
 
-    mcp_tx($pdo, function () use ($pdo, $user, $emp, $empId, $periodKey, $year, $month, $totalSalary, $totalPaid, $status, $dueDate, $payDate, $method, $args, $salId, $itemName, $autoExpense, $defaults, &$finId) {
-        if ($autoExpense && ($totalSalary > 0 || $totalPaid > 0)) {
+    mcp_tx($pdo, function () use ($pdo, $user, $emp, $empId, $periodKey, $year, $month, $totalSalary, $totalPaid, $due, $status, $closedAt, $dueDate, $payDate, $method, $args, $salId, $itemName, $autoExpense, $defaults, &$finId) {
+        if ($autoExpense && ($due > 0 || $totalPaid > 0)) {
             $catId = $emp['expense_category_id'] ?: $defaults['expenseCategoryId'];
             $finId = $finId ?: ('fr-sal-' . $salId);
-            $frStatus = $totalPaid >= $totalSalary && $totalSalary > 0 ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
+            $frStatus = $status === 'pending' ? 'planned' : $status;
+            // Like sync.php: amounts, status and dates follow the payroll month; title and category
+            // are set when the expense is created only.
             $pdo->prepare(
                 "INSERT INTO financial_records (id, type, subtype, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, payment_method, created_by)
                  VALUES (?, 'expense', 'salary', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                 ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description), category_id = VALUES(category_id),
+                 ON DUPLICATE KEY UPDATE
                     amount_planned = VALUES(amount_planned), amount_real = VALUES(amount_real), status = VALUES(status),
                     due_date = VALUES(due_date), paid_date = VALUES(paid_date), payment_method = VALUES(payment_method)"
             )->execute([
                 $finId, "Salary: {$emp['name']} ({$periodKey})", "Monthly payroll salary payout for {$emp['name']}", $catId,
-                $totalSalary, $totalPaid, mcp_currency($pdo), $frStatus, sprintf('%04d-%02d-01', $year, $month), $dueDate,
+                $due, $totalPaid, mcp_currency($pdo), $frStatus, sprintf('%04d-%02d-01', $year, $month), $dueDate,
                 $totalPaid > 0 ? $payDate : null, $method, $user['email'],
             ]);
         } else {
@@ -736,10 +751,14 @@ function mcp_do_record_salary_payout(\PDO $pdo, array $user, array $args): array
                 status = VALUES(status), due_date = VALUES(due_date), payment_date = VALUES(payment_date), payment_method = VALUES(payment_method),
                 financial_record_id = VALUES(financial_record_id), note = VALUES(note)"
         )->execute([$salId, $empId, $periodKey, $year, $month, $items, $totalSalary, $totalPaid, $status, $dueDate, $payDate, $method, $finId, $args['note'] ?? null]);
+        if ($closedAt !== null) {
+            $pdo->prepare("UPDATE employee_salaries SET closed_at = ?, closed_by = ? WHERE id = ? AND closed_at IS NULL")
+                ->execute([$closedAt, $user['email'] ?? null, $salId]);
+        }
     });
 
-    mcp_audit($pdo, $user, 'record_salary_payout', "Recorded salary payout {$salId} for employee {$empId} ({$periodKey}): {$totalPaid} of {$totalSalary}");
-    return ['success' => true, 'id' => $salId, 'status' => $status, 'total_salary' => $totalSalary, 'total_paid' => $totalPaid, 'financial_record_id' => $finId, 'due_date' => $dueDate];
+    mcp_audit($pdo, $user, 'record_salary_payout', "Recorded salary payout {$salId} for employee {$empId} ({$periodKey}): {$totalPaid} of {$due} due (gross {$totalSalary})");
+    return ['success' => true, 'id' => $salId, 'status' => $status, 'total_salary' => $totalSalary, 'amount_due' => $due, 'total_paid' => $totalPaid, 'financial_record_id' => $finId, 'due_date' => $dueDate];
 }
 
 // ---------------------------------------------------------------------------

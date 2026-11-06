@@ -75,3 +75,28 @@ test("a month stamped on an entry counts when the salary list is missing", () =>
   assert.equal(isEntryLocked({ entryDate: "2026-05-20", approvalStatus: null }, settings, now), true);
   assert.equal(isEntryLocked({ entryDate: "2026-08-01", approvalStatus: null }, settings, now), false);
 });
+
+test("a closed month stays locked after a higher Cena práce makes it partially paid", () => {
+  const salaries = [
+    { employeeId: "e1", periodKey: "2026-10", status: "partially_paid", closedAt: "2026-10-31 09:00:00" }
+  ];
+  const keys = paidMonthsForOwner(salaries, [], { employeeId: "e1" });
+  assert.deepEqual(keys, ["2026-10"]);
+  assert.equal(lockReason({ entryDate: "2026-10-03" }, { lockAfterDays: null, paidPayrollMonths: keys }, now), "paid_payroll");
+});
+
+test("a reopened month is not a lock even while it is still paid", () => {
+  const salaries = [{ employeeId: "e1", periodKey: "2026-10", status: "paid", closedAt: null }];
+  assert.deepEqual(paidMonthsForOwner(salaries, [], { employeeId: "e1" }), []);
+});
+
+test("a closed month saved under the legacy M05 key locks its own year only", () => {
+  const salaries = [
+    { employeeId: "e1", periodKey: "M05", year: 2025, periodNumber: 5, status: "paid", closedAt: "2025-06-10 08:00:00" }
+  ];
+  const keys = paidMonthsForOwner(salaries, [], { employeeId: "e1" });
+  assert.deepEqual(keys, ["2025-05"]);
+  const settings: LockSettings = { lockAfterDays: null, paidPayrollMonths: keys };
+  assert.equal(isEntryLocked({ entryDate: "2025-05-12" }, settings, now), true);
+  assert.equal(isEntryLocked({ entryDate: "2026-05-12" }, settings, now), false);
+});

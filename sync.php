@@ -2300,6 +2300,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'paymentMethod' => $row['payment_method'] ?? 'bank_transfer',
                     'financialRecordId' => $row['financial_record_id'],
                     'note' => $row['note'],
+                    // Absent (not null) before the column exists, so the client falls back to the status
+                    ...(array_key_exists('closed_at', $row) ? ['closedAt' => $row['closed_at'], 'closedBy' => $row['closed_by'] ?? null] : []),
                     'createdAt' => $row['created_at'],
                     'updatedAt' => $row['updated_at'],
                 ];
@@ -3306,6 +3308,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
                 $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
+            }
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_at')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen' AFTER `note`");
+            }
+            if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_by')) {
+                $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month' AFTER `closed_at`");
             }
         }
 
@@ -6363,9 +6371,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 4.18. Synchronize Employee Salaries & Auto-Expense Linkage
         if (isset($payload['employeeSalaries']) && is_array($payload['employeeSalaries']) && !$ccrm_skip_writes('employees', 'employeeSalaries') && !$ccrm_skip_unless('employees.salaries', 'employeeSalaries')) {
-            $stmt = $pdo->query("SELECT `id` FROM `employee_salaries`");
-            $existingSalIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            // Stored status and close stamp per id: `closed_at` is server-owned (stamped when the month
+            // first becomes paid, cleared only by an admin reopen), so the payload never sets it.
+            $storedSalById = [];
+            $stmt = $pdo->query("SELECT `id`, `status`, `closed_at`, `closed_by` FROM `employee_salaries`");
+            while ($sRow = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $storedSalById[$sRow['id']] = $sRow;
+            }
+            $existingSalIds = array_keys($storedSalById);
             $processedSalIds = [];
+            // Another record already holding this employee's month (unique key uk_emp_period)
+            $findSalClash = $pdo->prepare("SELECT * FROM `employee_salaries` WHERE `employee_id` = ? AND `period_key` = ? AND `id` <> ?");
 
             // Load employee lookup for auto-expense checks
             $empLookup = [];
@@ -6384,9 +6400,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (
                 `id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`,
                 `items_json`, `total_salary`, `total_paid`, `labor_cost`, `net_pay`, `status`, `due_date`, `payment_date`,
-                `payment_method`, `financial_record_id`, `note`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `payment_method`, `financial_record_id`, `note`, `closed_at`, `closed_by`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
+                `closed_at` = VALUES(`closed_at`),
+                `closed_by` = VALUES(`closed_by`),
                 `employee_id` = VALUES(`employee_id`),
                 `period_type` = VALUES(`period_type`),
                 `period_key` = VALUES(`period_key`),
@@ -6404,16 +6422,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `financial_record_id` = VALUES(`financial_record_id`),
                 `note` = VALUES(`note`)");
 
-            // Prepared statement for financial_records upsert
+            // Prepared statement for financial_records upsert. The payroll month is the source of
+            // truth for amounts, status and dates; title, description and category are set when the
+            // expense is created only, so re-saving an old month does not move it to today's
+            // category or employee name, nor revert a category chosen in Finance.
             $upsertFr = $pdo->prepare("INSERT INTO `financial_records` (
                 `id`, `type`, `subtype`, `title`, `description`, `category_id`,
                 `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`,
                 `due_date`, `paid_date`, `payment_method`, `created_by`
             ) VALUES (?, 'expense', 'salary', ?, ?, ?, ?, ?, 'EUR', ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                `title` = VALUES(`title`),
-                `description` = VALUES(`description`),
-                `category_id` = VALUES(`category_id`),
                 `amount_planned` = VALUES(`amount_planned`),
                 `amount_real` = VALUES(`amount_real`),
                 `status` = VALUES(`status`),
@@ -6427,21 +6445,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $empId = $sal['employeeId'];
                 $empInfo = $empLookup[$empId] ?? null;
 
+                // The month's identity is year + month. A key without its year (`M05`, written by an
+                // older client) is rebuilt from the record, or May of two years would collide.
+                $salPeriodKey = ccrm_salary_period_key($sal);
+
+                // A different id already holds this employee's month: the unique key would make this
+                // upsert overwrite that row in place. Keep one (more paid out, then newer edit); the
+                // other is logged in full to the audit log.
+                $findSalClash->execute([$empId, $salPeriodKey, $salId]);
+                $salClash = $findSalClash->fetch(PDO::FETCH_ASSOC);
+                if ($salClash) {
+                    if (ccrm_salary_keep_first($salClash, $sal)) {
+                        ccrm_payroll_audit($pdo, $sessionUser, 'salary.duplicate_rejected',
+                            "Payroll month {$salPeriodKey} of employee {$empId} already stored as {$salClash['id']}; dropped incoming {$salId}: "
+                            . json_encode($sal, JSON_UNESCAPED_UNICODE));
+                        $processedSalIds[] = $salId;
+                        continue;
+                    }
+                    ccrm_salary_retire_duplicate($pdo, $salClash, (string)$salId, $sessionUser);
+                }
+
                 $totalSalary = (float)($sal['totalSalary'] ?? 0);
                 $totalPaid = (float)($sal['totalPaid'] ?? 0);
                 $salLaborCost = isset($sal['laborCost']) && is_numeric($sal['laborCost']) ? (float)$sal['laborCost'] : null;
                 // What the month costs the company: Cena práce once the payslip is in, otherwise the
                 // gross. Vyplatené is measured against it, and it is the amount the expense books.
-                $salDue = $salLaborCost !== null ? $salLaborCost : $totalSalary;
+                $salDue = ccrm_salary_due(['laborCost' => $salLaborCost, 'totalSalary' => $totalSalary]);
+                $salStatus = ccrm_salary_status($salDue, $totalPaid);
 
-                // Determine salary record status
-                $salStatus = $sal['status'] ?? 'pending';
-                if ($totalPaid >= $salDue && $salDue > 0) {
-                    $salStatus = 'paid';
-                } elseif ($totalPaid > 0) {
-                    $salStatus = 'partially_paid';
-                } else {
-                    $salStatus = 'pending';
+                // Closing the month is an event, recorded once: the first time it becomes paid in full.
+                // A later edit that makes it partially paid again (Cena práce typed in above the gross)
+                // does not reopen it; only an admin's explicit reopen does.
+                $storedSal = $storedSalById[$salId] ?? null;
+                $salClosedAt = $storedSal['closed_at'] ?? null;
+                $salClosedBy = $storedSal['closed_by'] ?? null;
+                $salReopened = false;
+                // The request names the stamp it reopens, so a stale copy cannot undo a newer close
+                if ($salClosedAt !== null && isset($sal['reopenClosedAt']) && (string)$sal['reopenClosedAt'] === (string)$salClosedAt) {
+                    if (ccrm_is_admin($sessionUser)) {
+                        ccrm_payroll_audit($pdo, $sessionUser, 'salary.reopen',
+                            "Reopened payroll month {$salPeriodKey} of employee {$empId} ({$salId}), closed {$salClosedAt}");
+                        $salClosedAt = null;
+                        $salClosedBy = null;
+                        $salReopened = true;
+                    }
+                }
+                if ($salClosedAt === null && !$salReopened && $salStatus === 'paid' && ($storedSal['status'] ?? null) !== 'paid') {
+                    $salClosedAt = date('Y-m-d H:i:s');
+                    $salClosedBy = $sessionEmail;
                 }
 
                 // Compute due date if not provided
@@ -6462,7 +6513,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($empAutoExp && ($salDue > 0 || $totalPaid > 0)) {
                     $targetCatId = !empty($empInfo['expense_category_id']) ? $empInfo['expense_category_id'] : $defaultExpenseCatId;
                     $empDisplayName = $empInfo['name'] ?? ('Employee ' . $empId);
-                    $frTitle = "Salary: {$empDisplayName} ({$sal['periodKey']})";
+                    $frTitle = "Salary: {$empDisplayName} ({$salPeriodKey})";
                     $frStatus = ($totalPaid >= $salDue && $salDue > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
                     $paidDate = ($totalPaid > 0) ? (!empty($sal['paymentDate']) ? $sal['paymentDate'] : date('Y-m-d')) : null;
                     $issueDate = sprintf('%04d-%02d-01', (int)($sal['year'] ?? date('Y')), (int)($sal['periodNumber'] ?? date('n')));
@@ -6491,7 +6542,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $salId,
                     $empId,
                     $sal['periodType'] ?? 'monthly',
-                    $sal['periodKey'],
+                    $salPeriodKey,
                     (int)$sal['year'],
                     (int)$sal['periodNumber'],
                     json_encode($sal['items'] ?? [], JSON_UNESCAPED_UNICODE),
@@ -6504,7 +6555,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($sal['paymentDate']) ? $sal['paymentDate'] : null,
                     $sal['paymentMethod'] ?? 'bank_transfer',
                     $finRecordId,
-                    $sal['note'] ?? null
+                    $sal['note'] ?? null,
+                    $salClosedAt,
+                    $salClosedBy
                 ]);
                 $processedSalIds[] = $salId;
             }
@@ -6544,13 +6597,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $vacStatus = $vac['status'] ?? 'approved';
                 // Who approved is the server's call, never the client's: it is the
                 // session user at the moment the status BECOMES approved or rejected,
-                // and the stored value while it stays that way. Any other status has
-                // nobody who decided it.
+                // and the stored value while it stays that way. Leave that was approved
+                // and is now taken keeps its approver: taking it does not undo who
+                // approved it. Any other status has nobody who decided it.
                 $prevVac = $storedVac[$vacId] ?? null;
                 if (in_array($vacStatus, ['approved', 'rejected'], true)) {
                     $vacApprovedBy = ($prevVac !== null && $prevVac['status'] === $vacStatus && ($prevVac['approved_by'] ?? '') !== '')
                         ? $prevVac['approved_by']
                         : $sessionEmail;
+                } elseif ($vacStatus === 'taken' && $prevVac !== null && in_array($prevVac['status'], ['approved', 'taken'], true) && ($prevVac['approved_by'] ?? '') !== '') {
+                    $vacApprovedBy = $prevVac['approved_by'];
                 } else {
                     $vacApprovedBy = null;
                 }

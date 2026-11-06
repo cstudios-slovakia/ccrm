@@ -1379,6 +1379,18 @@ export interface EmployeeSalary {
   paymentMethod?: string | null;
   financialRecordId?: string | null;
   note?: string | null;
+  /**
+   * When the month was closed: stamped by the server the first time it becomes paid in full, and
+   * kept when a later edit (a higher Cena práce) makes it partially paid again. The time-entry lock
+   * reads this, not `status`. Cleared only by an admin's explicit reopen. Server-owned.
+   */
+  closedAt?: string | null;
+  closedBy?: string | null;
+  /**
+   * An admin's request to reopen the month: the `closedAt` being reopened. The server clears the
+   * stamp only while it still equals this value, so a copy re-sent later cannot undo a newer close.
+   */
+  reopenClosedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
