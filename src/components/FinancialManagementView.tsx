@@ -2175,6 +2175,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       // and none of its days have been replaced by a stored movement.
       recurringAmountHistory: null,
       recurringSkippedDates: null,
+      recurringMaterializedThrough: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -4088,6 +4089,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       // The days a stored payment already stands in for. Dropping them would
       // draw each of those payments a second time from the schedule.
       recurringSkippedDates: formIsRecurring ? editingRecord?.recurringSkippedDates ?? null : null,
+      // How far the rule's payments are already stored: a schedule edit must not
+      // reach back past it and write those days again.
+      recurringMaterializedThrough: formIsRecurring ? editingRecord?.recurringMaterializedThrough ?? null : null,
       recurringAmountHistory: amountHistory,
       projectId: formScope === "project" && formProjectId ? formProjectId : null,
       clientId: formScope === "client" && formClientId ? formClientId : (formScope === "project" && formProjectId ? (projects.find(p => p.id === formProjectId)?.clientId || projects.find(p => p.id === formProjectId)?.leadId || null) : null),
@@ -4100,9 +4104,24 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     };
 
     setFinancialRecords((prev) => {
-      const exists = prev.some((r) => r.id === recordPayload.id);
-      if (exists) {
-        return prev.map((r) => (r.id === recordPayload.id ? recordPayload : r));
+      const current = prev.find((r) => r.id === recordPayload.id);
+      if (current) {
+        // The materializer may have stored a payment while the form was open
+        // (a new day, another session): keep the rule's newest skipped days and
+        // watermark, not the copy taken when the form opened.
+        const merged =
+          recordPayload.isRecurring && current.isRecurring
+            ? {
+                ...recordPayload,
+                recurringSkippedDates: current.recurringSkippedDates ?? recordPayload.recurringSkippedDates ?? null,
+                recurringMaterializedThrough:
+                  [current.recurringMaterializedThrough, recordPayload.recurringMaterializedThrough]
+                    .filter((d): d is string => !!d)
+                    .sort()
+                    .pop() ?? null
+              }
+            : recordPayload;
+        return prev.map((r) => (r.id === recordPayload.id ? merged : r));
       }
       return [recordPayload, ...prev];
     });

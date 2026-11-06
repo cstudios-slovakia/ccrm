@@ -1,6 +1,6 @@
 import type { FinancialCategory, FinancialRecord, FinancialType } from "../types";
 import { effectiveParentId } from "./financialCategoryTree.ts";
-import { isRecurringDateSkipped, recurringAmountsAt, recurringCharges } from "./recurringExpenses.ts";
+import { isRecurringDateSkipped, recurringAmountsAt, recurringCharges, recurringOccurrences } from "./recurringExpenses.ts";
 import { evaluateEquation } from "./equationEvaluator.ts";
 
 // The finance "Overview Table" is a matrix of category rows × period columns.
@@ -144,7 +144,9 @@ export function recurringOwnRowCharge(
   // A stored movement replaced the rule's own payment on that day: it counts,
   // the row does not (see `FinancialRecord.recurringSkippedDates`).
   if (isRecurringDateSkipped(rec, date)) return null;
-  if (recurringCharges(rec, "0000-01-01", date).length > 0) return null;
+  // The whole schedule, stored past included: a charge on or before the row's day
+  // stands for the rule, whether it is still drawn or already a stored movement.
+  if (recurringOccurrences(rec, "0000-01-01", date).length > 0) return null;
   const { real, estimated } = splitRecordAmounts(rec);
   if (real === 0 && estimated === 0) return null;
   return { date, real, estimated };

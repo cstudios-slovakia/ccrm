@@ -51,7 +51,8 @@ export type RecurringRule = Pick<
   // rule from just its schedule fields — but when present they let
   // `effectiveRecurringEndDate` catch a rule paused the old way, by `status`
   // alone, before pausing became an end date (see `pauseRecurringRule`).
-  Partial<Pick<FinancialRecord, "status" | "updatedAt" | "issueDate">>;
+  // `recurringMaterializedThrough` lets `recurringCharges` leave the stored past alone.
+  Partial<Pick<FinancialRecord, "status" | "updatedAt" | "issueDate" | "recurringMaterializedThrough">>;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -536,13 +537,21 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
 /**
  * What the rule costs over a date range: one entry per charge, each carrying
  * the amount that was in force on that day.
+ *
+ * Nothing on or before the rule's `recurringMaterializedThrough` is drawn: up
+ * to that day every charge is a stored movement or deliberately absent. So a
+ * schedule edit (a moved first payment, another weekday or cadence) or the
+ * resume of a paused rule cannot add charges to the past.
+ * `recurringOccurrences` still describes the whole schedule.
  */
 export function recurringCharges(
   rule: RecurringRule,
   startIso: string,
   endIso: string
 ): { date: string; amount: number }[] {
-  return recurringOccurrences(rule, startIso, endIso).map((date) => ({
+  const through = rule.recurringMaterializedThrough;
+  const from = isIsoDate(through) && isIsoDate(startIso) && startIso <= through ? shiftIsoDate(through, 1) : startIso;
+  return recurringOccurrences(rule, from, endIso).map((date) => ({
     date,
     amount: recurringPlannedAmountAt(rule, date)
   }));

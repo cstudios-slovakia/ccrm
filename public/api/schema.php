@@ -739,6 +739,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_skipped_dates_json` TEXT NULL COMMENT 'Scheduled days a stored movement stands in for, as a JSON list of YYYY-MM-DD days',
               `recurring_source_id` VARCHAR(50) NULL COMMENT 'On a one-off movement: the recurring rule whose charge it replaces',
               `recurring_occurrence_date` DATE NULL COMMENT 'On a one-off movement: the scheduled day it stands in for',
+              `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it',
               `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
               `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
               `invoice_number` VARCHAR(100) NULL,
@@ -1909,6 +1910,13 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_occurrence_date')) {
             $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_occurrence_date` DATE NULL AFTER `recurring_source_id`");
+        }
+        // How far a recurring rule's payments are stored (recurringRuleDeletion.ts).
+        // Existing rules migrate as NULL on purpose: no rule has been materialized
+        // yet, and a watermark set from a hand-edited stand-in's day would hide the
+        // un-stored charges before it. The first client run sets it.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_materialized_through')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it' AFTER `recurring_occurrence_date`");
         }
         if (!ccrm_column_exists($pdo, 'leads', 'division')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `division` VARCHAR(100) NULL AFTER `owner`");

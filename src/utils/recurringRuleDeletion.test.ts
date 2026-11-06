@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { FinancialRecord } from "../types";
-import { recurringOccurrences } from "./recurringExpenses.ts";
+import { recurringCharges, recurringOccurrences } from "./recurringExpenses.ts";
 import { recurringOwnRowCharge } from "./financialOverviewTable.ts";
 import { detachFromRule, dueChargeId, dueChargeMovements, materializeDueCharges, storedChargeKeys } from "./recurringRuleDeletion.ts";
 
@@ -208,6 +208,100 @@ test("the own-row payment is stored once, and stays deleted once deleted", () =>
   assert.equal(materializeDueCharges(once, TODAY, NOW), once);
   const deleted = once.filter((r) => r.id !== dueChargeId("fr-rent", "2025-12-18"));
   assert.equal(materializeDueCharges(deleted, TODAY, NOW), deleted);
+});
+
+// --- Stored-vs-derived audit, finance #1 / #2: the watermark keeps the stored past fixed ---
+
+const stored = (records: FinancialRecord[]) => records.filter((r) => !r.isRecurring);
+const storedTotal = (records: FinancialRecord[]) => stored(records).reduce((sum, r) => sum + r.amountReal, 0);
+const editRule = (records: FinancialRecord[], over: Partial<FinancialRecord>) =>
+  records.map((r) => (r.id === "fr-rent" ? { ...r, ...over } : r));
+
+test("the watermark moves to today on every run, also on a day nothing is due", () => {
+  const once = materializeDueCharges([rent()], TODAY, NOW);
+  assert.equal(once.find((r) => r.id === "fr-rent")!.recurringMaterializedThrough, TODAY);
+  const nextDay = materializeDueCharges(once, "2026-04-16", NOW);
+  assert.notEqual(nextDay, once);
+  assert.equal(stored(nextDay).length, stored(once).length, "no payment on the 16th");
+  assert.equal(nextDay.find((r) => r.id === "fr-rent")!.recurringMaterializedThrough, "2026-04-16");
+});
+
+test("a stored payment is not a movement-in-waiting: the schedule reader skips days up to the watermark", () => {
+  const rule = materializeDueCharges([rent()], TODAY, NOW).find((r) => r.id === "fr-rent")!;
+  // Even with its skipped list gone, the rule draws nothing it has already passed.
+  assert.deepEqual(recurringCharges({ ...rule, recurringSkippedDates: null }, "2026-01-01", "2026-05-31").map((c) => c.date), [
+    "2026-05-01"
+  ]);
+});
+
+test("a schedule edit after materializing writes no past payment (#1)", () => {
+  const once = materializeDueCharges([rent()], TODAY, NOW);
+  assert.equal(storedTotal(once), 2000);
+  // "First payment" moved from 1 Jan to 15 Jan: the schedule now falls on the 15th.
+  const edited = editRule(once, {
+    recurringStartDate: "2026-01-15",
+    recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 15 }
+  });
+  assert.equal(materializeDueCharges(edited, TODAY, NOW), edited);
+  const nextDay = materializeDueCharges(edited, "2026-04-16", NOW);
+  assert.equal(storedTotal(nextDay), 2000, "15 Apr is on or before the watermark");
+  // The change applies from the next charge.
+  const may = materializeDueCharges(nextDay, "2026-05-16", NOW);
+  assert.equal(storedTotal(may), 2500);
+  assert.deepEqual(stored(may).map((r) => r.issueDate).sort().slice(-1), ["2026-05-15"]);
+});
+
+test("a cadence change after materializing writes no past payment (#1)", () => {
+  const once = materializeDueCharges([rent()], TODAY, NOW);
+  const weekly = editRule(once, { recurringFrequency: "weekly", recurringConfig: { dayOfWeek: 1 } });
+  assert.equal(materializeDueCharges(weekly, TODAY, NOW), weekly);
+});
+
+test("moving the first payment earlier writes no extra history (#1, open question 3)", () => {
+  const once = materializeDueCharges([rent()], TODAY, NOW);
+  const earlier = editRule(once, { recurringStartDate: "2025-10-01" });
+  assert.equal(materializeDueCharges(earlier, TODAY, NOW), earlier);
+});
+
+test("pause, days pass, resume: the paused months are not written as paid (#2)", () => {
+  const once = materializeDueCharges([rent()], TODAY, NOW);
+  // Paused on 15 Apr: a pause stamps today as the end date.
+  const paused = editRule(once, { recurringEndDate: TODAY, recurringPlannedEndDate: null });
+  const may = materializeDueCharges(paused, "2026-05-10", NOW);
+  const june = materializeDueCharges(may, "2026-06-10", NOW);
+  assert.equal(storedTotal(june), 2000);
+  // Resumed on 10 June: the end date is restored (none).
+  const resumed = editRule(june, { recurringEndDate: null });
+  assert.equal(materializeDueCharges(resumed, "2026-06-10", NOW), resumed);
+  // The next charge after the resume is written as usual.
+  const july = materializeDueCharges(resumed, "2026-07-02", NOW);
+  assert.equal(storedTotal(july), 2500);
+  assert.equal(stored(july).some((r) => r.issueDate === "2026-05-01" || r.issueDate === "2026-06-01"), false);
+});
+
+test("resume after a pause nobody opened the app during: the first run still passes the paused days (#2)", () => {
+  const once = materializeDueCharges([rent()], TODAY, NOW);
+  const paused = editRule(once, { recurringEndDate: TODAY });
+  // The app is opened on 10 June: the run sees the rule still paused, then the user resumes it.
+  const opened = materializeDueCharges(paused, "2026-06-10", NOW);
+  const resumed = editRule(opened, { recurringEndDate: null });
+  assert.equal(storedTotal(materializeDueCharges(resumed, "2026-06-10", NOW)), 2000);
+});
+
+test("a deleted payment stays deleted even when its rule lost its skipped list", () => {
+  const once = materializeDueCharges([rent()], TODAY, NOW);
+  const withoutMarch = editRule(
+    once.filter((r) => r.id !== dueChargeId("fr-rent", "2026-03-01")),
+    { recurringSkippedDates: null }
+  );
+  const healed = materializeDueCharges(withoutMarch, TODAY, NOW);
+  assert.equal(healed.some((r) => r.id === dueChargeId("fr-rent", "2026-03-01")), false);
+});
+
+test("a rule that has not started yet gets no watermark", () => {
+  const future = rent({ recurringStartDate: "2026-06-01", issueDate: "2026-06-01" });
+  const out = materializeDueCharges([future], TODAY, NOW);
+  assert.equal(out[0].recurringMaterializedThrough, undefined);
 });
 
 test("a rule row that only plans its first charge is not a payment and writes nothing extra", () => {

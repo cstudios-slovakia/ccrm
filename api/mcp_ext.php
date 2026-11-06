@@ -308,8 +308,16 @@ function mcp_rec_amount_at(array $rule, string $dateIso): float {
     return $a['amountReal'] > 0 ? $a['amountReal'] : $a['amountPlanned'];
 }
 
-/** recurringCharges: one entry per charge, priced at the amount in force that day. */
+/**
+ * recurringCharges: one entry per charge, priced at the amount in force that day.
+ * Nothing on or before the rule's recurringMaterializedThrough is drawn: those
+ * charges are stored movements (or deliberately absent).
+ */
 function mcp_rec_charges(array $rule, string $startIso, string $endIso): array {
+    $through = $rule['recurringMaterializedThrough'] ?? null;
+    if (mcp_iso_ok($through) && mcp_iso_ok($startIso) && $startIso <= $through) {
+        $startIso = mcp_iso_shift($through, 1);
+    }
     return array_map(
         fn($d) => ['date' => $d, 'amount' => mcp_rec_amount_at($rule, $d)],
         mcp_rec_occurrences($rule, $startIso, $endIso)
@@ -351,6 +359,7 @@ function mcp_fin_record(array $r): array {
         'recurringEndDate' => $r['recurring_end_date'] ?: null,
         'recurringAmountHistory' => is_array($hist) ? $hist : null,
         'recurringSkippedDates' => is_array($skip) ? $skip : null,
+        'recurringMaterializedThrough' => ($r['recurring_materialized_through'] ?? null) ?: null,
         'projectId' => $r['project_id'] ?: null,
         'clientId' => $r['client_id'] ?: null,
         'invoiceNumber' => $r['invoice_number'] ?: null,
@@ -396,7 +405,7 @@ function mcp_fin_recurring_own_row(array $rec): ?array {
     if ($date === '') return null;
     $skipped = $rec['recurringSkippedDates'] ?? null;
     if (is_array($skipped) && in_array($date, $skipped, true)) return null;
-    if (count(mcp_rec_charges($rec, '0000-01-01', $date)) > 0) return null;
+    if (count(mcp_rec_occurrences($rec, '0000-01-01', $date)) > 0) return null;
     [$real, $est] = mcp_fin_split($rec);
     if ($real == 0.0 && $est == 0.0) return null;
     return ['date' => $date, 'real' => $real, 'estimated' => $est];

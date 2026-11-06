@@ -63,11 +63,28 @@ const firstDay = (rule: FinancialRecord): string | null => {
   return isIsoDate(from) ? from : null;
 };
 
-/** Every charge of the rule on or before today that the schedule still draws. */
+/**
+ * Every charge of the rule on or before today that the schedule still draws.
+ * `recurringCharges` starts after `recurringMaterializedThrough`, so a day the
+ * materializer has already passed is never drawn again.
+ */
 const dueCharges = (rule: FinancialRecord, todayIso: string) => {
   const from = firstDay(rule);
   if (!rule.isRecurring || !from || !isIsoDate(todayIso) || from > todayIso) return [];
   return recurringCharges(rule, from, todayIso).filter(({ amount }) => amount > 0);
+};
+
+/**
+ * Whether the run must move the rule's watermark up to today. Only a rule that
+ * has started: before its first day there is nothing to remember, and a rule
+ * whose start is later moved into the past then writes that history as a new
+ * rule does.
+ */
+const watermarkBehind = (rule: FinancialRecord, todayIso: string) => {
+  const from = firstDay(rule);
+  if (!rule.isRecurring || !from || !isIsoDate(todayIso) || from > todayIso) return false;
+  const through = rule.recurringMaterializedThrough;
+  return !isIsoDate(through) || through < todayIso;
 };
 
 /**
@@ -113,6 +130,7 @@ export function dueChargeMovements(
     recurringPlannedEndDate: null,
     recurringAmountHistory: null,
     recurringSkippedDates: null,
+    recurringMaterializedThrough: null,
     recurringSourceId: rule.id,
     recurringOccurrenceDate: date,
     // The rule's files stay with the rule's own row, not on every payment.
@@ -153,12 +171,18 @@ const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.
  *
  * A payment held only on the rule's own row is stored too, and the row then
  * becomes a plain template: planned, dated on its first payment.
+ *
+ * Every started rule's `recurringMaterializedThrough` moves up to today, also
+ * on a day nothing is due and while the rule is paused. Days up to it are never
+ * drawn again, so a schedule edit or a resume cannot write past payments
+ * (finance audit #1, #2). This touches each rule once a day.
  */
 export function materializeDueCharges(records: FinancialRecord[], todayIso: string, nowIso: string): FinancialRecord[] {
   const stored = storedChargeKeys(records);
   const created: FinancialRecord[] = [];
   const skipsByRule = new Map<string, Set<string>>();
   const ownRowStored = new Set<string>();
+  const advance = new Set(records.filter((r) => watermarkBehind(r, todayIso)).map((r) => r.id));
   const addSkip = (ruleId: string, day: string) => {
     const days = skipsByRule.get(ruleId) ?? new Set<string>();
     days.add(day);
@@ -186,8 +210,9 @@ export function materializeDueCharges(records: FinancialRecord[], todayIso: stri
   let changed = created.length > 0;
   const updated = records.map((r) => {
     const days = skipsByRule.get(r.id);
-    if (!days && !ownRowStored.has(r.id)) return r;
+    if (!days && !ownRowStored.has(r.id) && !advance.has(r.id)) return r;
     let next = r;
+    if (advance.has(r.id)) next = { ...next, recurringMaterializedThrough: todayIso };
     if (days) {
       const before = (r.recurringSkippedDates || []).filter(isIsoDate);
       const skipped = [...days].reduce((list, day) => skipRecurringDate({ recurringSkippedDates: list }, day), before);

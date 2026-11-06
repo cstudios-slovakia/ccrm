@@ -584,6 +584,12 @@ Core financial movement records representing current and planned/future incomes,
 * `recurring_config_json` TEXT (Recurrence rule configuration: `dayOfWeek`, `dayOfMonth`, `weekOfMonth`, `month`, optional `interval` — every N weeks/months/years, counted from `recurring_start_date`)
 * `recurring_start_date` DATE
 * `recurring_end_date` DATE
+* `recurring_planned_end_date` DATE [NULLable] (The end date a paused rule really has, restored on resume; a pause stamps `recurring_end_date` with today)
+* `recurring_amount_history_json` TEXT [NULLable] (Superseded amounts of a recurring rule: `[{until, amountPlanned, amountReal}]`)
+* `recurring_skipped_dates_json` TEXT [NULLable] (Scheduled days a stored movement stands in for, as a JSON list of `YYYY-MM-DD` days)
+* `recurring_source_id` VARCHAR(50) [NULLable] (On a one-off movement: the recurring rule whose charge it replaces or stores; materialized charges have the id `fr-rec-<rule>-<day>`)
+* `recurring_occurrence_date` DATE [NULLable] (On a one-off movement: the scheduled day it stands in for)
+* `recurring_materialized_through` DATE [NULLable] (On a recurring rule: every charge on or before this day is a stored movement or deliberately absent (deleted, or a paused day). Advanced to today by the client materializer (`src/utils/recurringRuleDeletion.ts`) on every run; schedule readers (`recurringCharges`, `mcp_rec_charges`) draw only after it, so a schedule edit or a resume changes only the future. Never moves back: `sync.php` keeps the greater of the stored and incoming value. NULL until the first run.)
 * `project_id` VARCHAR(50) [NULLable, links to `projects.id`; NULL means Global company-wide record]
 * `client_id` VARCHAR(50) [NULLable, links to `leads.id` / client; NULL means Global company-wide record]
 * `invoice_number` VARCHAR(100) (e.g. `FA-2026-0001`)

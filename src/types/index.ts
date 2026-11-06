@@ -1043,6 +1043,15 @@ export interface FinancialRecord {
    */
   recurringSkippedDates?: string[] | null;
   /**
+   * On a recurring rule: every charge on or before this day (`YYYY-MM-DD`) is
+   * either a stored movement or deliberately absent (deleted by the user, or a
+   * day the rule was paused). The materializer advances it to today on every
+   * run, and `recurringCharges` never draws a day on or before it, so editing
+   * the schedule or resuming a paused rule changes only the future.
+   * `null` until the first run (see `recurringRuleDeletion.ts`).
+   */
+  recurringMaterializedThrough?: string | null;
+  /**
    * On a one-off movement: the recurring rule it replaces one charge of, and
    * the scheduled day (`YYYY-MM-DD`) it stands in for. Deleting the movement
    * un-skips that day on the rule, so the schedule charges it again.

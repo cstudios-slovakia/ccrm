@@ -2115,6 +2115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'recurringSkippedDates' => !empty($row['recurring_skipped_dates_json']) ? json_decode($row['recurring_skipped_dates_json'], true) : null,
                     'recurringSourceId' => $row['recurring_source_id'] ?? null,
                     'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
+                    'recurringMaterializedThrough' => $row['recurring_materialized_through'] ?? null,
                     'projectId' => $row['project_id'],
                     'clientId' => $row['client_id'],
                     'invoiceNumber' => $row['invoice_number'],
@@ -3306,6 +3307,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
                 $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
+            }
+        }
+
+        // 4.14 writes the recurring rule's watermark (recurringRuleDeletion.ts).
+        if (isset($payload['financialRecords']) && is_array($payload['financialRecords']) && !$ccrm_skip_writes('financial', 'financialRecords')) {
+            if (ccrm_table_exists($pdo, 'financial_records') && !ccrm_column_exists($pdo, 'financial_records', 'recurring_materialized_through')) {
+                $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it'");
             }
         }
 
@@ -5906,7 +5914,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedFrIds = [];
             $canSeeSalaryRows = ccrm_can($scope, 'employees.salaries');
 
-            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_planned_end_date`, `recurring_amount_history_json`, `recurring_skipped_dates_json`, `recurring_source_id`, `recurring_occurrence_date`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_planned_end_date` = VALUES(`recurring_planned_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `recurring_skipped_dates_json` = VALUES(`recurring_skipped_dates_json`), `recurring_source_id` = VALUES(`recurring_source_id`), `recurring_occurrence_date` = VALUES(`recurring_occurrence_date`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
+            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_planned_end_date`, `recurring_amount_history_json`, `recurring_skipped_dates_json`, `recurring_source_id`, `recurring_occurrence_date`, `recurring_materialized_through`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_planned_end_date` = VALUES(`recurring_planned_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `recurring_skipped_dates_json` = VALUES(`recurring_skipped_dates_json`), `recurring_source_id` = VALUES(`recurring_source_id`), `recurring_occurrence_date` = VALUES(`recurring_occurrence_date`), `recurring_materialized_through` = IF(VALUES(`is_recurring`) = 1, GREATEST(COALESCE(`recurring_materialized_through`, VALUES(`recurring_materialized_through`)), COALESCE(VALUES(`recurring_materialized_through`), `recurring_materialized_through`)), NULL), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
 
             foreach ($payload['financialRecords'] as $fr) {
                 $frId = $fr['id'];
@@ -5934,6 +5942,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $frRecurringEndDate = ccrm_date_only($fr['recurringEndDate'] ?? null);
                 $frRecurringPlannedEndDate = ccrm_date_only($fr['recurringPlannedEndDate'] ?? null);
                 $frRecurringOccurrenceDate = ccrm_date_only($fr['recurringOccurrenceDate'] ?? null);
+                $frMaterializedThrough = !empty($fr['isRecurring']) ? ccrm_date_only($fr['recurringMaterializedThrough'] ?? null) : null;
                 // Only well-formed days make it into the skipped list — the schedule
                 // compares them as strings, so a stray datetime would never match.
                 $frSkippedDates = [];
@@ -5969,6 +5978,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($frSkippedDates) ? json_encode($frSkippedDates) : null,
                     !empty($fr['recurringSourceId']) ? mb_substr((string) $fr['recurringSourceId'], 0, 50, 'UTF-8') : null,
                     $frRecurringOccurrenceDate,
+                    $frMaterializedThrough,
                     !empty($fr['projectId']) ? $fr['projectId'] : null,
                     $frClientId,
                     $fr['invoiceNumber'] ?? null,
