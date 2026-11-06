@@ -48,3 +48,12 @@ test("an untouched custom-entry map is not unsaved work", () => {
   assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: { unifiedEntriesData: { e1: ["r1"] } } }), true);
   assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: {} }), false);
 });
+
+test("a refused registry counts only when the push changed it", () => {
+  // Every push carries the registry whole, so App.tsx drops it from the payload it
+  // checks when it still matches what the server sent. Without that, a user with no
+  // general_config edit was warned on every push, starting right after login.
+  const registry = [{ id: "e1", name: "Cars" }];
+  assert.equal(skipIsLostWork("unifiedEntries", { unifiedEntries: registry }), true);
+  assert.equal(skipIsLostWork("unifiedEntries", { unifiedEntries: undefined }), false);
+});

@@ -342,6 +342,12 @@ function App() {
   // pull) wrote it back with any unrelated edit and wiped the SMTP server another
   // tab had just saved. sync.php keeps the stored config when the key is absent.
   const integrationsSigRef = useRef<string | null>(null);
+  // The unified-entry registry as the server last sent or accepted it. Every push
+  // carries the registry whole (sync.php walks it to reach each entry's rows), and
+  // sync.php refuses it from anyone without general_config edit. That refusal is
+  // only lost work when the registry differs from this; otherwise every push by
+  // such a user warned "Some changes were not saved".
+  const unifiedEntriesSigRef = useRef<string | null>(null);
   const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
   const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
   const customDashboardsRef = useRef<CustomDashboard[]>([]);
@@ -1725,7 +1731,14 @@ ${log.payload || ''}
               financialBlobSigRef.current[key] = JSON.stringify(payload[key] ?? null);
             }
           }
-          const skippedWork = [...skipped].filter((tag) => skipIsLostWork(tag, payload as { [key: string]: unknown }));
+          const registrySig = JSON.stringify(payload.unifiedEntries ?? null);
+          const workPayload = registrySig === unifiedEntriesSigRef.current
+            ? { ...payload, unifiedEntries: undefined }
+            : payload;
+          if (payload.unifiedEntries !== undefined && !skipHoldsBaseline(skipped, "unifiedEntries")) {
+            unifiedEntriesSigRef.current = registrySig;
+          }
+          const skippedWork = [...skipped].filter((tag) => skipIsLostWork(tag, workPayload as { [key: string]: unknown }));
           const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
           if (conflictCount > 0) pullAfterConflictRef.current = true;
           const blockedCount = [...deleteBlockedKeys].length;
@@ -2950,6 +2963,7 @@ ${log.payload || ''}
         setMeetingNotes((prev) => JSON.stringify(prev) === JSON.stringify(data.meetingNotes) ? prev : data.meetingNotes);
       }
       if (data.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+        unifiedEntriesSigRef.current = JSON.stringify(data.unifiedEntries);
         setUnifiedEntries((prev) => JSON.stringify(prev) === JSON.stringify(data.unifiedEntries) ? prev : data.unifiedEntries);
       }
       if (data.unifiedEntriesData) {
