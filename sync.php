@@ -3334,7 +3334,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingIntegrations = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? json_decode($existingIntegrationsRaw, true) : [];
             if (!is_array($existingIntegrations)) { $existingIntegrations = []; }
             if (isset($s['integrationsConfig']) && is_array($s['integrationsConfig'])) {
-                $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys());
+                // A blank secret only clears the stored one when the client says the
+                // user did it (`clearSecrets`); a stale blank from an old tab is ignored.
+                $clearSecrets = isset($s['clearSecrets']) && is_array($s['clearSecrets'])
+                    ? array_values(array_filter($s['clearSecrets'], 'is_string'))
+                    : [];
+                $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys(), $clearSecrets);
                 // Encrypt secrets at rest before persisting. Values preserved from
                 // storage are already encrypted (encrypt is a no-op on them).
                 $mergedIntegrations = ccrm_encrypt_config_secrets($mergedIntegrations, ccrm_integration_secret_keys());

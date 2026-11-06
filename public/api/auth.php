@@ -2589,9 +2589,22 @@ HTACCESS;
      * Merge an inbound config over the stored one, preserving secrets the client
      * left masked or omitted.
      */
-    function ccrm_merge_secrets(array $incoming, array $existing, array $secretKeys): array {
+    function ccrm_merge_secrets(array $incoming, array $existing, array $secretKeys, ?array $explicitClear = null): array {
         foreach ($secretKeys as $k) {
             $hasRealIncoming = array_key_exists($k, $incoming) && $incoming[$k] !== CCRM_SECRET_MASK;
+            // Opt-in strict mode ($explicitClear !== null): a blank is NOT a real value
+            // unless the caller listed the key as deliberately cleared. Every sync push
+            // carries the client's whole integrations config, so a tab that still holds
+            // a stale '' (loaded before the key was saved) would otherwise wipe the
+            // stored secret on its next unrelated push.
+            if ($hasRealIncoming && $explicitClear !== null
+                && (!isset($incoming[$k]) || $incoming[$k] === '')
+                && !in_array($k, $explicitClear, true)) {
+                if (!empty($existing[$k])) {
+                    error_log('[ccrm secrets] ignored a blank "' . $k . '" that was not an explicit clear');
+                }
+                $hasRealIncoming = false;
+            }
             if (!$hasRealIncoming) {
                 if (array_key_exists($k, $existing)) {
                     $incoming[$k] = $existing[$k];

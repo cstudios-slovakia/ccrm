@@ -13,6 +13,7 @@ import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
 import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import { clearedSecretKeys } from "./utils/secretClears";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
@@ -333,6 +334,9 @@ function App() {
   const serverSettingsAppliedRef = useRef(false);
   const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
   const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
+  // Integration secrets the user emptied since the last push. Sent once as
+  // `clearSecrets`; without it the server keeps a stored secret when it receives a blank.
+  const pendingClearSecretsRef = useRef<Set<string>>(new Set());
   const customDashboardsRef = useRef<CustomDashboard[]>([]);
   const projectTypesRef = useRef<ProjectType[]>([]);
   const projectsRef = useRef<Project[]>([]);
@@ -1485,6 +1489,7 @@ ${log.payload || ''}
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
         companyBillingSettings: companyBillingSettingsRef.current,
         invoicingIntegrations: invoicingIntegrationsRef.current,
+        clearSecrets: [...pendingClearSecretsRef.current],
         financialMode: financialModeRef.current,
         financialSimplifiedTable: financialSimplifiedTableRef.current
       }
@@ -1619,6 +1624,8 @@ ${log.payload || ''}
         lastConfirmedPushSigRef.current = computePushSig(payload);
         let out: any = null;
         try {
+        // The clears this push carried are stored now; a failed push keeps them queued.
+        for (const k of payload.settings?.clearSecrets ?? []) pendingClearSecretsRef.current.delete(k);
           out = await res.json();
         } catch { /* non-JSON (PHP warning before the body) — still advance below */ }
         try {
@@ -1883,6 +1890,7 @@ ${log.payload || ''}
       const updated = typeof next === "function" ? next(prev) : next;
       pushStateToServer(undefined, undefined, undefined, updated);
       return updated;
+      for (const k of clearedSecretKeys(prev, updated)) pendingClearSecretsRef.current.add(k);
     });
   };
 
