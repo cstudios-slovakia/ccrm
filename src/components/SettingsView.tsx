@@ -5134,6 +5134,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           setProjectTypes={setProjectTypes}
           userLanguage={userLanguage}
           canEdit={getPermission("general_config") === "edit"}
+          projects={projects}
         />
         );
       case "projects/statuses":

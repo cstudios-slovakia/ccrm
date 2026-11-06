@@ -22,7 +22,7 @@ import { parseAppHash } from "../utils/hash";
 import {
   defaultProjectStatus,
   evaluateProjectDeadline,
-  isClosedProjectStatus,
+  finishedAtForStatus,
   openProjectStatuses,
   projectDisplayName,
   projectDelayReason,
@@ -998,11 +998,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     setProjects(prev =>
       prev.map(p => {
         if (!selectedProjectIds.has(p.id)) return p;
-        const isClosing = isClosedProjectStatus(newStatus, projectStatuses);
+        // The same rule as the project card: completing stamps today, cancelling
+        // keeps whatever date is stored, reopening clears it.
+        const nextFinished = finishedAtForStatus(newStatus, p.finishedAt, todayLocal(), projectStatuses);
         return {
           ...p,
           status: newStatus,
-          finishedAt: isClosing ? (p.finishedAt || todayLocal()) : null,
+          finishedAt: nextFinished || null,
         };
       })
     );
@@ -1762,6 +1764,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             leadCategories={leadCategories}
             autoStartCreate={pendingTypeCreate}
             onAutoStartCreateHandled={() => setPendingTypeCreate(false)}
+            projects={projects}
           />
         </div>
       ) : (

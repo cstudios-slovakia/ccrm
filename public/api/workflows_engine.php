@@ -1008,7 +1008,11 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 'status' => $newStatus
                             ];
                         } else {
-                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ? WHERE `id` = ?");
+                            // The finish date follows the status the same way it
+                            // does in the app, so an automation-completed project
+                            // is not left "closed" with no date it finished.
+                            $finishedSql = ccrm_finished_at_sql_for_status($newStatus, $pdo);
+                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ?" . ($finishedSql ? ", {$finishedSql}" : "") . " WHERE `id` = ?");
                             foreach ($projectIds as $pid) {
                                 $upd->execute([$newStatus, $pid]);
                             }

@@ -18,7 +18,7 @@ import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, calculateOrderTotals } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { isClientRecord } from "../utils/clientRecord";
-import { applyClientProfile } from "../utils/leadClient";
+import { applyClientProfile, clientProfileGroups } from "../utils/leadClient";
 import { getDefaultVatRate } from "../utils/vat";
 import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
@@ -1059,77 +1059,93 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       } | null;
     }> = {};
 
+    // A lead linked to its client by `clientId` belongs to that client's profile,
+    // whatever its own name; everything else still groups by name. A profile takes
+    // its name and details from its client record when it has one, so the route
+    // (#client-<name>) and the header always show the client, not a linked deal.
+    const groups = clientProfileGroups(leads);
+    const leadById = new Map(leads.map(l => [l.id, l]));
+    const anchorIdByKey = new Map<string, string>();
     leads.forEach(lead => {
-      const clientKey = lead.name.trim().toLowerCase();
+      const group = groups.get(lead);
+      const clientKey = group?.key ?? `name:${lead.name.trim().toLowerCase()}`;
       if (!profilesMap[clientKey]) {
+        const anchor = (group?.anchorId && leadById.get(group.anchorId)) || lead;
+        if (group?.anchorId) anchorIdByKey.set(clientKey, group.anchorId);
+        // Details come from the client record when the profile has one. The
+        // per-lead loop below still adds every lead's own value, categories and
+        // timeline, the anchor's included, exactly once.
         profilesMap[clientKey] = {
-          name: lead.name,
-          city: lead.city || "",
-          clientType: lead.clientType || "person",
-          source: lead.source || "website",
-          owner: lead.owner || "",
+          name: anchor.name,
+          city: anchor.city || "",
+          clientType: anchor.clientType || "person",
+          source: anchor.source || "website",
+          owner: anchor.owner || "",
           totalValue: 0,
-          adjustment: Number(lead.adjustment) || 0,
+          adjustment: Number(anchor.adjustment) || 0,
           leadsCount: 0,
           associatedLeads: [],
-          createdAt: lead.createdAt || "",
+          createdAt: anchor.createdAt || "",
 
-          phone: lead.phone || "",
-          email: lead.email || "",
-          street: lead.address?.street || "",
-          postalCode: lead.address?.postalCode || "",
-          country: lead.address?.country || "Slovakia",
-          companyId: lead.companyId || "",
-          taxId: lead.taxId || "",
-          vatId: lead.vatId || "",
-          contactPerson: lead.contactPerson || "",
-          website: lead.website || "",
-          establishmentDate: lead.establishmentDate || "",
-          legalForm: lead.legalForm || "",
-          skNace: lead.skNace || "",
-          organizationSize: lead.organizationSize || "",
-          ownershipType: lead.ownershipType || "",
-          dataSource: lead.dataSource || "",
-          dissolutionDate: lead.dissolutionDate || "",
-          region: lead.region || "",
-          district: lead.district || "",
-          timeline: lead.timeline || [],
+          phone: anchor.phone || "",
+          email: anchor.email || "",
+          street: anchor.address?.street || "",
+          postalCode: anchor.address?.postalCode || "",
+          country: anchor.address?.country || "Slovakia",
+          companyId: anchor.companyId || "",
+          taxId: anchor.taxId || "",
+          vatId: anchor.vatId || "",
+          contactPerson: anchor.contactPerson || "",
+          website: anchor.website || "",
+          establishmentDate: anchor.establishmentDate || "",
+          legalForm: anchor.legalForm || "",
+          skNace: anchor.skNace || "",
+          organizationSize: anchor.organizationSize || "",
+          ownershipType: anchor.ownershipType || "",
+          dataSource: anchor.dataSource || "",
+          dissolutionDate: anchor.dissolutionDate || "",
+          region: anchor.region || "",
+          district: anchor.district || "",
+          // A copy: the merge below pushes other leads' events into it.
+          timeline: [...(anchor.timeline || [])],
           categories: [],
           ticketAllowedEmails: [],
-          clientCategoryId: lead.clientCategoryId || null,
-          priceLevelId: lead.priceLevelId || null,
-          archived: !!lead.archived,
-          aiSummary: lead.aiSummary || "",
-          aiSummaryFingerprint: lead.aiSummaryFingerprint || "",
-          financialSummary: lead.financialSummary || "",
-          vatValidationResult: lead.vatValidationResult || null
+          clientCategoryId: anchor.clientCategoryId || null,
+          priceLevelId: anchor.priceLevelId || null,
+          archived: !!anchor.archived,
+          aiSummary: anchor.aiSummary || "",
+          aiSummaryFingerprint: anchor.aiSummaryFingerprint || "",
+          financialSummary: anchor.financialSummary || "",
+          vatValidationResult: anchor.vatValidationResult || null
         };
-      } else {
-        if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
-          profilesMap[clientKey].aiSummary = lead.aiSummary;
-          profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
-        }
-        if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
-          profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
-        }
-        if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
-          profilesMap[clientKey].priceLevelId = lead.priceLevelId;
-        }
-        // Archived only while every lead of the profile is: a new deal under the
-        // same name brings the client back into the register on its own.
-        profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
-        if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
-          profilesMap[clientKey].financialSummary = lead.financialSummary;
-        }
-        if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
-          profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
-        }
-        if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
-          profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
-        }
-        if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
-          profilesMap[clientKey].createdAt = lead.createdAt;
-        }
+      }
+      // Fold this lead into its profile. Every merge below keeps the first value
+      // it finds, so it is a no-op for the anchor that seeded the profile, and the
+      // first lead seen counts too when it is not the anchor.
+      if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
+        profilesMap[clientKey].aiSummary = lead.aiSummary;
+        profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
+      }
+      if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
+        profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
+      }
+      if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
+        profilesMap[clientKey].priceLevelId = lead.priceLevelId;
+      }
+      // Archived only while every lead of the profile is: a new deal under the
+      // same name brings the client back into the register on its own.
+      profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
+      if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
+        profilesMap[clientKey].financialSummary = lead.financialSummary;
+      }
+      if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
+        profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
+      }
+      if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
+        profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
+      }
+      if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
+        profilesMap[clientKey].createdAt = lead.createdAt;
       }
       profilesMap[clientKey].totalValue += (Number(lead.value) || 0);
       profilesMap[clientKey].leadsCount += 1;
@@ -1160,6 +1176,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           }
         });
       }
+    });
+
+    // The client record leads its profile's list: "the profile's first lead" is
+    // where new invoices, tasks and documents of the client attach.
+    anchorIdByKey.forEach((anchorId, key) => {
+      const list = profilesMap[key]?.associatedLeads;
+      const at = list ? list.findIndex(l => l.id === anchorId) : -1;
+      if (list && at > 0) list.unshift(...list.splice(at, 1));
     });
 
     // Add adjustment to total client value & sort timelines chronologically (Newest First)
@@ -1648,9 +1672,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
     const nextList = [...current, raw];
+    // Every lead of the profile, not only the same-name ones: the list shown is
+    // the union of all of them (see allClientProfiles).
+    const memberIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
     setLeads((prev) =>
       prev.map((lead) =>
-        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+        memberIds.has(lead.id)
           ? { ...lead, ticketAllowedEmails: nextList }
           : lead,
       ),
@@ -1661,9 +1688,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const handleRemoveClientWhitelistEmail = (email: string) => {
     if (!canEdit || !activeClient) return;
     const nextList = (activeClient.ticketAllowedEmails || []).filter((em) => em !== email);
+    const memberIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
     setLeads((prev) =>
       prev.map((lead) =>
-        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+        memberIds.has(lead.id)
           ? { ...lead, ticketAllowedEmails: nextList }
           : lead,
       ),
@@ -3207,14 +3235,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
 
 
-  // Archive or restore a client profile. A profile is every lead sharing the
-  // name, so all of them change together — the same rule the profile editor uses.
+  // Archive or restore a client profile. A profile is its client record, the
+  // leads linked to it by id and the unlinked leads sharing its name (see
+  // allClientProfiles), so all of them change together: the profile counts as
+  // archived only while every one of them is.
   const setClientArchived = (clientName: string, archived: boolean) => {
     const key = clientName.trim().toLowerCase();
+    const profile = allClientProfiles.find(c => c.name.trim().toLowerCase() === key);
+    const memberIds = new Set(
+      profile
+        ? profile.associatedLeads.map(l => l.id)
+        : leads.filter(lead => lead.name.trim().toLowerCase() === key).map(l => l.id)
+    );
     if (archived) {
       // Held and undoable: one Undo puts every lead row of the profile back.
       archiveLeadsWithUndo({
-        targets: leads.filter(lead => lead.name.trim().toLowerCase() === key && !lead.archived),
+        targets: leads.filter(lead => memberIds.has(lead.id) && !lead.archived),
         setLeads,
         lang: systemLanguage,
         label: { entity: "client", title: clientName },
@@ -3222,7 +3258,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
     setLeads(prev => prev.map(lead =>
-      lead.name.trim().toLowerCase() === key && !!lead.archived !== archived ? { ...lead, archived } : lead
+      memberIds.has(lead.id) && !!lead.archived !== archived ? { ...lead, archived } : lead
     ));
     (window as any).showToast?.(
       t("Client restored — back in the client list.", "Klient obnovený — je späť v zozname klientov.", "Ügyfél visszaállítva — újra az ügyféllistán.")
@@ -5034,11 +5070,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     lang={systemLanguage}
                                     what={attached.name || event.title}
                                     onConfirm={() => {
-                                    const clientKey = activeClient.name.trim().toLowerCase();
+                                    const memberIds = new Set((activeClient.associatedLeads || []).map(l => l.id));
                                     // The event stays. Undo puts this one file back on it.
                                     const snapshots = new Map<string, TimelineEvent>();
                                     leads.forEach(lead => {
-                                      if (lead.name.trim().toLowerCase() !== clientKey) return;
+                                      if (!memberIds.has(lead.id)) return;
                                       const found = (lead.timeline || []).find(evt => evt.id === event.id);
                                       if (found) snapshots.set(lead.id, found);
                                     });

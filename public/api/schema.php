@@ -402,7 +402,10 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // Projects (Base common table)
+            // Projects (Base common table). The project type FK is RESTRICT, not
+            // CASCADE: a type is a template, and deleting a template must never
+            // take the projects made from it along with it. Existing installs are
+            // converted by ccrm_migrate_project_type_fk_restrict().
             "CREATE TABLE IF NOT EXISTS `projects` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `project_type_id` VARCHAR(50) NOT NULL,
@@ -432,7 +435,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
+              FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Project Managers (Junction table)
@@ -1428,6 +1431,40 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Turns the `projects.project_type_id` foreign key from ON DELETE CASCADE
+     * into ON DELETE RESTRICT, so deleting a project type can never delete the
+     * projects made from it. sync.php refuses such a delete before it gets
+     * here; this is the database-level backstop for every other writer.
+     *
+     * Idempotent: does nothing once no CASCADE rule remains. Two statements,
+     * not one: MySQL only drops and adds a foreign key in one ALTER with
+     * ALGORITHM=INPLACE, which it refuses while foreign_key_checks is on. If
+     * the ADD fails (orphaned rows on an install that somehow lost the FK),
+     * the table is left without the key, which still cascades nothing.
+     */
+    function ccrm_migrate_project_type_fk_restrict(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'projects') || !ccrm_table_exists($pdo, 'project_types')) {
+            return;
+        }
+        $stmt = $pdo->query(
+            "SELECT `CONSTRAINT_NAME` FROM information_schema.REFERENTIAL_CONSTRAINTS
+             WHERE `CONSTRAINT_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'projects'
+               AND `REFERENCED_TABLE_NAME` = 'project_types' AND `DELETE_RULE` = 'CASCADE'"
+        );
+        $names = $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+        foreach ($names as $name) {
+            $safe = preg_replace('/[^A-Za-z0-9_]/', '', (string)$name);
+            if ($safe === '') continue;
+            $pdo->exec("ALTER TABLE `projects` DROP FOREIGN KEY `{$safe}`");
+            try {
+                $pdo->exec("ALTER TABLE `projects` ADD CONSTRAINT `{$safe}` FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT");
+            } catch (\Throwable $e) {
+                error_log('[ccrm] projects.project_type_id FK not re-added as RESTRICT: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
      * Idempotent migrations for databases created by older CCRM versions.
      * Each step checks the live schema before mutating it, so it is safe to
      * run on every install/update without relying on try/catch swallowing.
@@ -1697,6 +1734,10 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'project_types', 'list_columns_json')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `list_columns_json` LONGTEXT NULL AFTER `file_fields_json`");
         }
+        // Deleting a project type used to CASCADE to every project of that type
+        // (and from there to its managers, data, timeline and Gantt rows). The
+        // type is a template; its projects are history and must survive it.
+        ccrm_migrate_project_type_fk_restrict($pdo);
         // Projects had no name of their own — they borrowed the paired lead's,
         // which left an unpaired project unnameable. NULL on every existing row,
         // and projectDisplayName() keeps showing the lead's name for those.

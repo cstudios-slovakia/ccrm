@@ -521,3 +521,22 @@ export const projectPipelineSegments = (
 
   return segments;
 };
+
+/**
+ * How many projects (archived ones included) use each project type.
+ *
+ * A project type is a template. Deleting it used to delete every project made
+ * from it on the server; the server now refuses to delete a type that still has
+ * projects, and Project settings uses this count to say so before anyone tries.
+ */
+export const projectCountByType = (
+  projects: ReadonlyArray<{ projectTypeId?: string | null }>,
+): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const p of projects) {
+    const typeId = p.projectTypeId;
+    if (!typeId) continue;
+    counts.set(typeId, (counts.get(typeId) ?? 0) + 1);
+  }
+  return counts;
+};

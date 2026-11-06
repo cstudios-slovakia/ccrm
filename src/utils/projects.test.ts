@@ -14,6 +14,7 @@ import {
   projectDisplayName,
   projectMissedDeadline,
   projectNeedsDelayReason,
+  projectCountByType,
   projectPipelineSegments,
   projectStartDate,
   projectStatusBadgeStyle,
@@ -441,4 +442,18 @@ test("projectTypeHasInvoiceDate respects explicit flag and falls back to hasDead
   assert.equal(projectTypeHasInvoiceDate({ hasInvoiceDate: undefined, hasDeadline: false }), false);
   assert.equal(projectTypeHasInvoiceDate(null), false);
   assert.equal(projectTypeHasInvoiceDate(undefined), false);
+});
+
+test("projectCountByType counts every project of a type, archived ones included", () => {
+  const counts = projectCountByType([
+    { projectTypeId: "pt-a" },
+    { projectTypeId: "pt-a", archived: true } as { projectTypeId: string },
+    { projectTypeId: "pt-b" },
+    { projectTypeId: "" },
+    { projectTypeId: null },
+  ]);
+  assert.equal(counts.get("pt-a"), 2);
+  assert.equal(counts.get("pt-b"), 1);
+  assert.equal(counts.get("pt-unused"), undefined);
+  assert.equal(counts.size, 2);
 });

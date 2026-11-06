@@ -678,8 +678,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     gantt,
   });
   // A finish before the start is the one value that is never written — the
-  // card says so under the dates, and the save resumes once it is fixed.
-  const finishBeforeStart = !!(finishedAt && startDate && finishedAt < startDate);
+  // card says so under the dates, and the save resumes once it is fixed. Only
+  // where the dates are shown: a type without them still gets its finish date
+  // stamped on completion, and a save must not stall on a field nobody can see.
+  const finishBeforeStart = !!(projectType?.hasDeadline && finishedAt && startDate && finishedAt < startDate);
 
   useEffect(() => {
     if (!project || !canEdit || loadedId !== project.id) return;
@@ -2149,8 +2151,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   if (!canEdit) return;
                   setStatus(v);
                   // Completing stamps today as the real finish, reopening clears
-                  // it — see finishedAtForStatus. Only where the field is shown.
-                  const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal(), projectStatuses) : finishedAt;
+                  // it — see finishedAtForStatus. Also for a type without the
+                  // deadline field: the date it was finished is a fact either way.
+                  const nextFinished = finishedAtForStatus(v, finishedAt, todayLocal(), projectStatuses);
                   setFinishedAt(nextFinished);
                 }}
                 className="!font-black"

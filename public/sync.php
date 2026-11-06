@@ -141,14 +141,17 @@ function ccrm_attr_column(string $attrId): string {
 /**
  * Creates the dynamic tables of one project type — proj_data_<id>,
  * proj_timeline_<id>, proj_gantt_<id> — and adds a column for every attribute
- * the type defines. Idempotent. `$prune` also drops the columns of attributes
- * the type no longer has; the self-heal in ccrm_heal_project_type_tables()
- * passes false, because it rebuilds the type from the stored row and must
- * never delete a column on that evidence alone.
+ * the type defines. Idempotent.
+ *
+ * It never drops a column. Removing an attribute (or a file slot, or a
+ * timeline attribute) from the type used to DROP its column, which erased that
+ * field in every project of the type, past ones included. The column now
+ * stays: the attribute is no longer shown because the type no longer defines
+ * it, and adding it back under the same id brings its stored values back.
  *
  * Runs DDL, which MySQL commits implicitly: call it outside a transaction.
  */
-function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $prune = true): void {
+function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt): void {
     $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($pt['id']));
     $dataTable = "proj_data_" . $safeId;
     $timelineTable = "proj_timeline_" . $safeId;
@@ -167,11 +170,11 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
     // comma before it, or the statement ends in ", )" and never parses.
     if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createData)); } catch(\Exception $e) {}
 
-    // Add or Remove Columns for Data Table
+    // Add Columns for Data Table (never removed — see the doc comment).
     // The built-in "Files" attribute keeps each document slot's uploads
     // in a column of its own, exactly like a "files" attribute. The
     // columns stay while the switch is off, so turning it off hides the
-    // files instead of deleting them; only removing a slot drops one.
+    // files instead of deleting them.
     $attributes = array_merge(
         is_array($pt['attributes'] ?? null) ? $pt['attributes'] : [],
         is_array($pt['fileFields'] ?? null) ? $pt['fileFields'] : []
@@ -181,33 +184,12 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
     while($col = $currentColsStmt->fetch(PDO::FETCH_ASSOC)) {
         $existingCols[] = $col['Field'];
     }
-    $expectedCols = ['id', 'project_id', 'created_at', 'updated_at'];
-
     foreach ($attributes as $attr) {
         $colName = ccrm_attr_column($attr['id']);
-        $expectedCols[] = $colName;
         if (!in_array($colName, $existingCols)) {
             $addCol = "ALTER TABLE `{$dataTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
             $pdo->exec($addCol);
             if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
-        }
-    }
-
-    // A client older than the Files attribute sends no fileFields at all.
-    // Its silence must not read as "every slot was removed", which would
-    // drop the columns and every file uploaded into them.
-    $keepFileCols = !$prune || !array_key_exists('fileFields', $pt);
-    // The same rule for the attribute list itself: a record that does
-    // not carry `attributes` at all (a partial writer, an older build)
-    // says nothing about which columns to keep, so none are dropped.
-    $keepAttrCols = !$prune || !array_key_exists('attributes', $pt);
-    foreach ($existingCols as $col) {
-        if ($keepFileCols && str_starts_with($col, 'attr_file_')) continue;
-        if ($keepAttrCols && !str_starts_with($col, 'attr_file_')) continue;
-        if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
-            $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
-            $pdo->exec($dropCol);
-            if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
         }
     }
 
@@ -232,7 +214,7 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
         if ($ragPdo) try { $ragPdo->exec($addEvType); } catch(\Exception $e) {}
     }
 
-    // Add or Remove Columns for Timeline Table
+    // Add Columns for Timeline Table (never removed either)
     $timelineAttributes = [];
     if (isset($pt['timelineEventTypes']) && is_array($pt['timelineEventTypes'])) {
         foreach ($pt['timelineEventTypes'] as $et) {
@@ -249,27 +231,12 @@ function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $pru
     while($col = $currentTcolsStmt->fetch(PDO::FETCH_ASSOC)) {
         $existingTcols[] = $col['Field'];
     }
-    $expectedTcols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
-
     foreach ($timelineAttributes as $attr) {
         $colName = ccrm_attr_column($attr['id']);
-        $expectedTcols[] = $colName;
         if (!in_array($colName, $existingTcols)) {
             $addCol = "ALTER TABLE `{$timelineTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
             $pdo->exec($addCol);
             if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
-        }
-    }
-
-    // A record without `timelineEventTypes` says nothing about which
-    // columns to keep (see $keepAttrCols above) — drop none.
-    $keepTimelineCols = !$prune || !array_key_exists('timelineEventTypes', $pt);
-    foreach ($existingTcols as $col) {
-        if ($keepTimelineCols) break;
-        if (str_starts_with($col, 'attr_') && !in_array($col, $expectedTcols)) {
-            $dropCol = "ALTER TABLE `{$timelineTable}` DROP COLUMN `{$col}`";
-            $pdo->exec($dropCol);
-            if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
         }
     }
 
@@ -326,7 +293,7 @@ function ccrm_heal_project_type_tables(PDO $pdo, array $projects, $ragPdo = null
                 'attributes' => json_decode($row['attributes_json'] ?? '[]', true) ?: [],
                 'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
                 'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true) ?: [],
-            ], false);
+            ]);
         } catch (Throwable $e) {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
         }
@@ -3978,6 +3945,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.2.5. Synchronize Project Types & Projects
+        // Project types this push deletes. Applied after the projects section,
+        // once that push's own project deletions have happened.
+        $ptPendingDelete = [];
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             // (`has_tickets` column healing runs before the transaction opens — see above.)
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
@@ -4078,22 +4048,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : array_diff($existingPtIds, $processedPtIds);
             $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true, $isDeltaSync);
             if (!empty($ptToDelete) && !$ccrm_skip_deletes('general_config', 'projectTypes')) {
-                $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
-                foreach ($ptToDelete as $ptId) {
-                    $delPt->execute([$ptId]);
-                    // Queue the dynamic-table DROPs for AFTER the commit. Running DDL
-                    // here implicitly commits the transaction in MySQL, so the final
-                    // commit() then threw "There is no active transaction" and the whole
-                    // push reported a 500 even though the rows had been written — and
-                    // every earlier write in the request lost its rollback. Deferring
-                    // keeps the transaction intact; the tables are orphaned rather than
-                    // dropped if the transaction is rolled back, which is recoverable
-                    // (dropping them is not).
-                    $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
-                    $deferredTableDrops[] = "proj_data_{$safeId}";
-                    $deferredTableDrops[] = "proj_timeline_{$safeId}";
-                    $deferredTableDrops[] = "proj_gantt_{$safeId}";
-                }
+                // Carried out after the projects section below, so a push that
+                // deletes a type's last projects and then the type lands both.
+                $ptPendingDelete = array_values($ptToDelete);
             }
         }
 
@@ -4410,6 +4367,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $delProj->execute([$pid]);
                     $unlinkProjTasks->execute([$pid]);
                 }
+            }
+        }
+
+        // Deletion of Project Types (queued above).
+        //
+        // A project type is a template. Deleting it used to CASCADE to every
+        // project of that type and DROP their data, timeline and Gantt tables, so
+        // removing an "obsolete" template erased the projects made from it. A type
+        // that still has projects (archived ones included) is now refused and
+        // reported in `deleteBlocked`: its projects have to be moved to another
+        // type or deleted first. The FK is ON DELETE RESTRICT as a backstop.
+        if (!empty($ptPendingDelete)) {
+            $ptInUse = $pdo->prepare("SELECT 1 FROM `projects` WHERE `project_type_id` = ? LIMIT 1");
+            $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
+            $ptRefused = [];
+            foreach ($ptPendingDelete as $ptId) {
+                $ptInUse->execute([$ptId]);
+                $hasProjects = $ptInUse->fetchColumn() !== false;
+                $ptInUse->closeCursor();
+                if ($hasProjects) {
+                    $ptRefused[] = $ptId;
+                    continue;
+                }
+                $delPt->execute([$ptId]);
+                // Queue the dynamic-table DROPs for AFTER the commit. Running DDL
+                // here implicitly commits the transaction in MySQL, so the final
+                // commit() then threw "There is no active transaction" and the whole
+                // push reported a 500 even though the rows had been written — and
+                // every earlier write in the request lost its rollback. Deferring
+                // keeps the transaction intact; the tables are orphaned rather than
+                // dropped if the transaction is rolled back, which is recoverable
+                // (dropping them is not). The type has no projects left, so the
+                // tables hold no project's data.
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
+                $deferredTableDrops[] = "proj_data_{$safeId}";
+                $deferredTableDrops[] = "proj_timeline_{$safeId}";
+                $deferredTableDrops[] = "proj_gantt_{$safeId}";
+            }
+            if ($ptRefused) {
+                error_log('[ccrm] REFUSED project type delete, projects still use it: ' . implode(', ', $ptRefused));
+                $GLOBALS['ccrm_delete_blocked'] = $GLOBALS['ccrm_delete_blocked'] ?? [];
+                $GLOBALS['ccrm_delete_blocked']['project_types'] = array_values(array_unique(array_merge(
+                    $GLOBALS['ccrm_delete_blocked']['project_types'] ?? [],
+                    $ptRefused
+                )));
             }
         }
 

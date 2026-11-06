@@ -283,7 +283,7 @@ Common blueprints / templates defining dynamic attributes and configurations.
 ### `projects`
 Individual instances of active project lifecycles.
 * `id` VARCHAR(50) [PK]
-* `project_type_id` VARCHAR(50)
+* `project_type_id` VARCHAR(50) (FK to `project_types.id`, **ON DELETE RESTRICT**: a type that still has projects, archived ones included, cannot be deleted. `sync.php` refuses such a delete and reports it in `deleteBlocked.project_types`; installs created with the old CASCADE rule are converted by `ccrm_migrate_project_type_fk_restrict()`)
 * `lead_id` VARCHAR(50)
 * `client_id` VARCHAR(50)
 * `division` VARCHAR(100) (assigned business division)
@@ -305,7 +305,7 @@ Junction table mapping project managers to projects.
 
 ### Dynamic Tables (Per Project Type)
 Each custom project type with ID `{safeId}` generates three tables:
-1. `proj_data_{safeId}`: Stores values for custom attributes (`attr_{attributeId}`).
+1. `proj_data_{safeId}`: Stores values for custom attributes (`attr_{attributeId}`). Columns are only ever added: removing an attribute or file slot from the type keeps its column and the values in it (they are just no longer shown), the same for timeline attribute columns in `proj_timeline_{safeId}`. The three tables are dropped only when their type is deleted, which requires the type to have no projects.
 2. `proj_timeline_{safeId}`: Chronological notes/events relating to the project.
 3. `proj_gantt_{safeId}`: Tasks and dates for Gantt rendering (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`).
 
