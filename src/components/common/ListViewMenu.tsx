@@ -7,7 +7,28 @@ import type { DropPosition } from "../../utils/reorder";
 
 /* The sort select portals its option panel to <body>; a click in it must not
    read as a click outside this menu. */
-const SORT_PANEL_CLASS = "project-view-menu-sort-panel";
+const SORT_PANEL_CLASS = "list-view-menu-sort-panel";
+
+/* Full class strings per accent, so Tailwind sees every one of them. The
+   leads module is blue; projects and price offers use slate and indigo. */
+const ACCENTS = {
+  indigo: {
+    activeDirection: "bg-slate-700 text-white",
+    dropLine: "bg-indigo-500",
+    gripHover: "group-hover:text-indigo-500",
+    checkbox: "accent-indigo-600",
+    resetHover: "hover:text-indigo-600",
+  },
+  blue: {
+    activeDirection: "bg-blue-600 text-white",
+    dropLine: "bg-blue-500",
+    gripHover: "group-hover:text-blue-500",
+    checkbox: "accent-blue-600",
+    resetHover: "hover:text-blue-600",
+  },
+} as const;
+
+export type ListViewMenuAccent = keyof typeof ACCENTS;
 
 export interface ListViewSort<K extends string> {
   key: K;
@@ -44,11 +65,13 @@ export interface ListViewMenuProps<K extends string, C extends ListViewColumn> {
   columnsScope: string;
   /** "Use default settings": default order and default columns. */
   onReset: () => void;
+  /** Colour of the active sort direction, drop lines, checkboxes and hovers. Defaults to indigo. */
+  accent?: ListViewMenuAccent;
 }
 
 /**
  * A list's "View" menu: how the rows are ordered and which columns the table
- * draws, in one popover. Shared by the projects list and the price offers list.
+ * draws, in one popover. Shared by the leads, projects and price offers lists.
  */
 export function ListViewMenu<K extends string, C extends ListViewColumn>({
   t,
@@ -66,7 +89,9 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
   canEditColumns,
   columnsScope,
   onReset,
+  accent = "indigo",
 }: ListViewMenuProps<K, C>) {
+  const tone = ACCENTS[accent];
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -165,7 +190,7 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
                         aria-pressed={active}
                         className={cn(
                           "h-9 w-9 flex items-center justify-center transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
-                          active ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
+                          active ? tone.activeDirection : "bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
                         )}
                       >
                         <Icon className="h-4 w-4" />
@@ -197,10 +222,10 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
                       )}
                     >
                       {drop === "before" && (
-                        <span className="pointer-events-none absolute inset-x-0 -top-px h-0.5 rounded-full bg-indigo-500" />
+                        <span className={cn("pointer-events-none absolute inset-x-0 -top-px h-0.5 rounded-full", tone.dropLine)} />
                       )}
                       {drop === "after" && (
-                        <span className="pointer-events-none absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-indigo-500" />
+                        <span className={cn("pointer-events-none absolute inset-x-0 -bottom-px h-0.5 rounded-full", tone.dropLine)} />
                       )}
                       <span
                         className={cn("shrink-0", draggable && "cursor-grab active:cursor-grabbing")}
@@ -214,7 +239,7 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
                       >
                         {locked
                           ? <Lock className="h-3.5 w-3.5 text-slate-300" />
-                          : <GripVertical className={cn("h-3.5 w-3.5 text-slate-300 transition-colors duration-150", draggable && "group-hover:text-indigo-500")} />}
+                          : <GripVertical className={cn("h-3.5 w-3.5 text-slate-300 transition-colors duration-150", draggable && tone.gripHover)} />}
                       </span>
                       <label className={cn(
                         "flex items-center gap-2 min-w-0 flex-1",
@@ -225,7 +250,7 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
                           checked={col.visible}
                           disabled={!canEditColumns || locked}
                           onChange={() => toggleColumn(col.key)}
-                          className="h-4 w-4 shrink-0 rounded border-slate-300 accent-indigo-600 cursor-pointer disabled:cursor-default"
+                          className={cn("h-4 w-4 shrink-0 rounded border-slate-300 cursor-pointer disabled:cursor-default", tone.checkbox)}
                         />
                         <span className={cn("text-ui font-medium truncate", col.visible ? "text-slate-800" : "text-slate-500")}>
                           {label}
@@ -243,7 +268,7 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
             <button
               type="button"
               onClick={onReset}
-              className="text-ui font-semibold text-slate-600 hover:text-indigo-600 transition-colors duration-150 cursor-pointer"
+              className={cn("text-ui font-semibold text-slate-600 transition-colors duration-150 cursor-pointer", tone.resetHover)}
             >
               {t("Use default settings", "Použiť predvolené nastavenia", "Alapértelmezett beállítások")}
             </button>
