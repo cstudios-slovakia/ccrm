@@ -34,10 +34,21 @@ When asked to test the app, audit the UI, or verify a change:
 Deep detail on coverage, categories and severity lives in
 [`.agents/skills/ccrm-qa-audit/SKILL.md`](.agents/skills/ccrm-qa-audit/SKILL.md).
 
+## "Make a build" is a checklist, not a command
+
+When the user says "make a build" (or "do a build", "build it"), follow
+[`.agents/rules/make-a-build.md`](.agents/rules/make-a-build.md) **completely**: look at the
+working tree, commit all pending source work in logical groups, test, bump, changelog,
+build, commit, verify, and end with the per-step report. **No step is skipped unless the
+user names it in the same message.** A build made from source that git does not hold is
+broken, and "I only ran typecheck" is a skipped step.
+
 ## Workflow rules
 
 These live in `.agents/rules/` and apply to every change:
 
+- [`make-a-build.md`](.agents/rules/make-a-build.md) — the full "make a build" checklist;
+  nothing in it is skippable without the user saying so.
 - [`qa-before-ship.md`](.agents/rules/qa-before-ship.md) — run the audit when a
   feature or fix is finished, before the build commit.
 - [`commit-and-versioning.md`](.agents/rules/commit-and-versioning.md) — commit
@@ -65,7 +76,7 @@ These live in `.agents/rules/` and apply to every change:
 
 The order when finishing a change:
 
-> **test → bump version → changelog → build → commit**
+> **tree check → commit pending work → test → bump version → changelog → build → commit → verify**
 
 `npm run deploy` re-runs the tests and refuses to ship if they fail
 (`DEPLOY_SKIP_QA=1` overrides, and means shipping unverified).

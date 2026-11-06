@@ -10,7 +10,11 @@ description: Commit after every significant change and bump app version on every
 
 ## 2. Version Bumping Rule ("One Build = One Version Bump")
 - Every significant change, new build, or release milestone requires bumping the application version.
-- **Single Source of Truth**: Update `export const VERSION = "1.8.X-Imbe";` in [`src/utils/version.ts`](file:///c:/Users/peter/Work/Vibe%20coding/ccrm/src/utils/version.ts).
-- **Changelog**: Add a structured entry to [`1.8-imbe-changelog.md`](file:///c:/Users/peter/Work/Vibe%20coding/ccrm/1.8-imbe-changelog.md) with date `(YYYY-MM-DD)` and bulleted breakdown of user-facing changes, bug fixes, and architectural additions.
+- **Single Source of Truth**: Update `export const VERSION = "1.13.X-Nectarine";` in [`src/utils/version.ts`](../../src/utils/version.ts).
+- **Changelog**: Add a structured entry to [`1.13-nectarine-changelog.md`](../../1.13-nectarine-changelog.md) with date `(YYYY-MM-DD)` and bulleted breakdown of user-facing changes, bug fixes, and architectural additions.
 - **Commit Message Suffix**: Suffix the commit message with the version tag, e.g.:
-  `feat(module): description of feature (v1.8.X-Imbe)` or `fix(module): description of fix (v1.8.X-Imbe)`.
+  `feat(module): description of feature (v1.13.X-Nectarine)` or `fix(module): description of fix (v1.13.X-Nectarine)`.
+
+## 3. A build
+
+"Make a build" is the full checklist in [`make-a-build.md`](./make-a-build.md); nothing in it may be skipped unless the user says so.
