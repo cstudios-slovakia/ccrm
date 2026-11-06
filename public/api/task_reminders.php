@@ -275,8 +275,30 @@ function ccrm_maybe_process_task_reminders(PDO $pdo): void {
 }
 
 /**
+ * Mail headers that make a client flag a message as important. Outlook, Apple
+ * Mail and Thunderbird read them; Gmail ignores them, which is why the
+ * assignment e-mail also names the priority in its subject and body.
+ *
+ * Mail has only high / normal / low, so only a high-priority task raises the
+ * flag: medium is the task default and maps to "normal", which is what a
+ * message without these headers already is.
+ */
+function ccrm_task_priority_mail_headers(?string $priority): array {
+    if ($priority !== 'high') return [];
+    return [
+        'X-Priority' => '1 (Highest)',
+        'X-MSMail-Priority' => 'High',
+        'Importance' => 'High',
+    ];
+}
+
+/**
  * Send an email notification when a task is assigned to a user.
  * Silently skipped if outgoing mail is not configured.
+ *
+ * Medium and high priority tasks carry the priority in the subject
+ * ("[High priority] New Task Assigned: …") and as a coloured badge in the body;
+ * high ones are also flagged as important through the mail headers.
  */
 function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?string $actorName = null): bool {
     try {
@@ -343,7 +365,12 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             };
             $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
 
-            $subject = $t('New Task Assigned', 'Priradená nová úloha', 'Új feladat kijelölve') . ': ' . $task['title'];
+            $priorityKey = (string)($task['priority'] ?? 'medium');
+            $subjectTag = [
+                'high' => '[' . $t('High priority', 'Vysoká priorita', 'Magas prioritás') . '] ',
+                'medium' => '[' . $t('Medium priority', 'Stredná priorita', 'Közepes prioritás') . '] ',
+            ][$priorityKey] ?? '';
+            $subject = $subjectTag . $t('New Task Assigned', 'Priradená nová úloha', 'Új feladat kijelölve') . ': ' . $task['title'];
 
             $deadlineStr = !empty($task['deadline']) ? $task['deadline'] : $t('No deadline', 'Bez termínu', 'Nincs határidő');
             if (!empty($task['deadlineTime'])) $deadlineStr .= ' ' . $task['deadlineTime'];
@@ -352,7 +379,14 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
                 'high' => $t('High', 'Vysoká', 'Magas'),
                 'medium' => $t('Medium', 'Stredná', 'Közepes'),
                 'low' => $t('Low', 'Nízka', 'Alacsony'),
-            ][$task['priority'] ?? 'medium'] ?? ($task['priority'] ?? 'medium');
+            ][$priorityKey] ?? $priorityKey;
+            // Status colours, as in the app: rose for high, amber for medium.
+            $badgeStyle = [
+                'high' => 'background:#ffe4e6;color:#be123c;border:1px solid #fecdd3',
+                'medium' => 'background:#fef3c7;color:#b45309;border:1px solid #fde68a',
+            ][$priorityKey] ?? 'background:#f1f5f9;color:#475569;border:1px solid #e2e8f0';
+            $priorityHtml = '<span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:bold;' . $badgeStyle . '">'
+                . $esc($priority) . '</span>';
 
             $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#1e293b;border:1px solid #e2e8f0;border-radius:12px">'
                 . '<p style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#4f46e5;font-weight:bold;margin:0 0 8px">'
@@ -362,7 +396,7 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
                 . $esc($t('A task has been assigned to you by', 'Bola vám priradená nová úloha používateľom', 'Új feladatot jelölt ki Önnek')) . ' <strong>' . $esc($creator) . '</strong>.</p>'
                 . '<table style="font-size:14px;border-collapse:collapse;margin:0 0 16px;width:100%">'
                 . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Deadline', 'Termín', 'Határidő')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($deadlineStr) . '</td></tr>'
-                . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Priority', 'Priorita', 'Prioritás')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($priority) . '</td></tr>';
+                . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Priority', 'Priorita', 'Prioritás')) . '</td><td style="padding:6px 0">' . $priorityHtml . '</td></tr>';
             if ($leadName) {
                 $html .= '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Client / Lead', 'Klient / Lead', 'Ügyfél / Lead')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($leadName) . '</td></tr>';
             }
@@ -377,7 +411,7 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             }
             $html .= '</div>';
 
-            ccrm_send_system_mail($config, $recipient['email'], $subject, $html);
+            ccrm_send_system_mail($config, $recipient['email'], $subject, $html, ccrm_task_priority_mail_headers($priorityKey));
             $sentCount++;
         }
         return $sentCount > 0;

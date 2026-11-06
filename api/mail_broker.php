@@ -1294,8 +1294,13 @@ function ccrm_system_mail_configured(array $config): bool {
  * "Send e-mail" actions logged success with nothing in the inbox.
  *
  * Throws on any misconfiguration or SMTP-level rejection.
+ *
+ * `$extraHeaders` is a name => value map added to the message head, e.g. the
+ * X-Priority / Importance pair from ccrm_task_priority_mail_headers(). Names
+ * that are not plain header tokens are dropped and CR/LF is stripped from
+ * values, so a caller cannot inject a header or end the head early.
  */
-function ccrm_send_system_mail(array $config, string $to, string $subject, string $html) {
+function ccrm_send_system_mail(array $config, string $to, string $subject, string $html, array $extraHeaders = []) {
     $to = trim($to);
     if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
         throw new Exception('No valid recipient address: ' . ($to === '' ? '(empty)' : $to));
@@ -1414,6 +1419,10 @@ function ccrm_send_system_mail(array $config, string $to, string $subject, strin
     $message .= "From: " . $fromHeader . "\r\n";
     $message .= "To: <" . $to . ">\r\n";
     $message .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
+    foreach ($extraHeaders as $name => $value) {
+        if (!is_string($name) || !preg_match('/^[A-Za-z][A-Za-z0-9-]*$/', $name)) continue;
+        $message .= $name . ': ' . str_replace(["\r", "\n"], '', (string)$value) . "\r\n";
+    }
     $message .= "Date: " . date('r') . "\r\n\r\n";
     $message .= $html;
     // Dot-stuff any line that begins with '.' so it is not read as end-of-data.
