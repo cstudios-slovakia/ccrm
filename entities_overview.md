@@ -206,6 +206,11 @@ Action items generated from meetings.
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
+Link to the real task: assigning a suggestion creates a `tasks` row with id `task-mt-<meeting_tasks.id>`
+(`src/utils/meetingSuggestions.ts`). The "Created" badge checks that this task exists; `assigned_user` alone
+does not mean a task was created. Suggestions converted before this convention (`task-ai-<timestamp>` ids) are
+matched on title and assignee.
+
 ---
 
 ## 5. Communications & Email Cache

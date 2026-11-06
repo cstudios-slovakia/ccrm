@@ -1,9 +1,46 @@
 import type { Task } from "../types";
 
-/** A task in a done state: "done" by name, or the last configured state. */
-export const isDoneTaskState = (status: string, taskStates: string[]): boolean =>
-  (status || "").toLowerCase() === "done" ||
-  (taskStates.length > 0 && status === taskStates[taskStates.length - 1]);
+/*
+  "Is this task done?" — the one TypeScript rule; ccrm_task_status_is_done() in
+  public/api/task_done.php is its PHP twin. A task is done when its status is the
+  literal "done" (any case) or the configured done state: the last entry of the
+  task-state list. Settings keeps that entry last (addTaskState inserts before it,
+  and it cannot be deleted, only renamed), so editing the list never moves the
+  done marker. taskDoneRuleGuard.test.ts fails if a copy of this rule reappears.
+*/
+
+/** The configured state that finishes a task: the last one, or undefined with no states. */
+export const configuredDoneTaskState = (taskStates: string[]): string | undefined =>
+  taskStates.length > 0 ? taskStates[taskStates.length - 1] : undefined;
+
+/** A task in a done state: "done" by name, or the configured done state. */
+export const isDoneTaskState = (status: string, taskStates: string[]): boolean => {
+  if ((status || "").toLowerCase() === "done") return true;
+  const done = configuredDoneTaskState(taskStates);
+  return done !== undefined && status === done;
+};
+
+/** The state a task moves to when it is finished: the first done one in the list. */
+export const doneTaskState = (taskStates: string[]): string =>
+  taskStates.find((st) => isDoneTaskState(st, taskStates)) || "Done";
+
+/**
+ * The state list with `state` added. It goes in before the done state, not after
+ * it: appending would make the new state the done marker and silently reopen
+ * every finished task in every reader (overdue badges, reminders, the recurring
+ * generator, workflow dedupe).
+ */
+export const addTaskState = (taskStates: string[], state: string): string[] =>
+  taskStates.length === 0
+    ? [state]
+    : [...taskStates.slice(0, -1), state, taskStates[taskStates.length - 1]];
+
+/**
+ * True for the state that marks tasks as done. Settings refuses to delete it:
+ * the state before it would become "done" instead (by default "Blocked").
+ */
+export const isDoneMarkerState = (state: string, taskStates: string[]): boolean =>
+  taskStates.length > 1 && state === configuredDoneTaskState(taskStates);
 
 /**
  * A task is overdue once its deadline (date + optional time, defaulting to
@@ -123,8 +160,7 @@ export const toggleTaskDone = (
   if (isDoneTaskState(task.status, taskStates)) {
     return { ...task, status: taskStates[0] || "New", completedBy: undefined, completedAt: undefined };
   }
-  const doneState =
-    taskStates.find((st) => st.toLowerCase() === "done") || taskStates[taskStates.length - 1] || "Done";
+  const doneState = doneTaskState(taskStates);
   return { ...task, status: doneState, completedBy: userName || undefined, completedAt: localStampStr(now) };
 };
 

@@ -4923,13 +4923,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // see the stored date. A later date counts as one postponement and pins the original.
                         $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`, `original_deadline`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `original_deadline` = IF(VALUES(`deadline`) > `deadline` AND `original_deadline` IS NULL, `deadline`, `original_deadline`), `deadline_moves` = `deadline_moves` + IF(VALUES(`deadline`) > `deadline`, 1, 0), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)"); /* recurring-template: sync creates or updates normal tasks */
 
-            // "Requires conclusion": which states finish a task, for the guard below.
-            $conclusionTaskStates = json_decode((string)($pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn() ?: '[]'), true);
-            $conclusionTaskStates = is_array($conclusionTaskStates) ? array_values($conclusionTaskStates) : [];
+            // Which states finish a task: the "requires conclusion" guard, the
+            // recurring trigger, completion notifications and ticket auto-resolve
+            // below all ask the one rule in api/task_done.php.
+            require_once __DIR__ . '/api/task_done.php';
+            $conclusionTaskStates = ccrm_task_states_setting($pdo);
             $conclusionIsDone = function ($status) use ($conclusionTaskStates) {
-                $status = (string)$status;
-                return strtolower($status) === 'done'
-                    || ($conclusionTaskStates && $status === (string)end($conclusionTaskStates));
+                return ccrm_task_status_is_done($status, $conclusionTaskStates);
             };
 
             foreach ($payload['tasks'] as $t) {
@@ -5069,7 +5069,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]);
                         ccrm_trigger_workflow('task_status_changed', $triggerPayload, $pdo);
 
-                        if (strtolower($newTaskStatus) === 'done' || (function_exists('ccrm_is_done_task_status') && ccrm_is_done_task_status($newTaskStatus, $pdo))) {
+                        // Configured done state (e.g. "Hotovo", "Kész"), not just the
+                        // literal 'done': the old check called a helper that was never
+                        // defined, so SK/HU installs sent no completion mail or push and
+                        // never auto-resolved linked tickets.
+                        if ($conclusionIsDone($newTaskStatus) && !$conclusionIsDone($oldTaskStatus)) {
                             ccrm_send_task_completed_email_notification($pdo, $t, $sessionUserName);
                             ccrm_send_task_completed_push_notification($pdo, $t, $sessionUserName);
 
@@ -5088,7 +5092,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $otherTasksStmt->execute([$linkedTckId]);
                                     $allDone = true;
                                     foreach ($otherTasksStmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $linkedSt) {
-                                        if (strtolower((string)$linkedSt) !== 'done' && !(function_exists('ccrm_is_done_task_status') && ccrm_is_done_task_status((string)$linkedSt, $pdo))) {
+                                        if (!$conclusionIsDone((string)$linkedSt)) {
                                             $allDone = false;
                                             break;
                                         }

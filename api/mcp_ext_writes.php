@@ -170,13 +170,14 @@ function mcp_task_state_check(\PDO $pdo, string $status): string {
     $states = mcp_config_json($pdo, 'TASK_STATES', []);
     if (!is_array($states) || !$states) return $status;
     foreach ($states as $s) { if (strtolower($s) === strtolower($status)) return $s; }
-    if (strtolower($status) === 'done') return end($states);
+    if (strtolower($status) === 'done') return mcp_task_done_state($pdo);
     throw new \InvalidArgumentException("Unknown task status '{$status}'. Configured statuses: " . implode(', ', $states) . '.');
 }
 
 function mcp_task_done_state(\PDO $pdo): string {
+    require_once __DIR__ . '/task_done.php';
     $states = mcp_config_json($pdo, 'TASK_STATES', []);
-    return (is_array($states) && $states) ? (string)end($states) : 'done';
+    return ccrm_task_done_state(is_array($states) ? $states : []) ?? 'done';
 }
 
 function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {

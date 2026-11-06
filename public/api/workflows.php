@@ -45,6 +45,24 @@ if (!$automationAllowed) {
 }
 
 // Helpers
+
+/** The workflow's current name, or null when it does not exist. */
+function ccrm_workflow_name(\PDO $pdo, string $id): ?string {
+    $stmt = $pdo->prepare("SELECT `name` FROM `workflows` WHERE `id` = ? LIMIT 1");
+    $stmt->execute([$id]);
+    $name = $stmt->fetchColumn();
+    return $name === false ? null : (string)$name;
+}
+
+/** audit_log detail for a workflow change: "<id> "<name>" (key: value, ...)". */
+function ccrm_workflow_audit_detail(string $id, ?string $name, array $facts = []): string {
+    $parts = [];
+    foreach ($facts as $k => $v) {
+        $parts[] = $k . ': ' . $v;
+    }
+    return $id . ($name !== null ? ' "' . mb_substr($name, 0, 200) . '"' : '') . ($parts ? ' (' . implode(', ', $parts) . ')' : '');
+}
+
 function generate_uuid() {
     return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
         mt_rand(0, 0xffff), mt_rand(0, 0xffff),
@@ -208,6 +226,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ");
                 $stmt->execute([$name, $description, $trigger_type, $trigger_config_json, $nodes_json, $edges_json, $is_active, $id]);
             }
+            ccrm_audit_log($pdo, $sessionUser, 'workflow.save', ccrm_workflow_audit_detail($id, $name, [
+                'trigger' => $trigger_type,
+                'active' => $is_active ? 'yes' : 'no',
+            ]));
 
             echo json_encode(['success' => true, 'id' => $id]);
         } catch (\Throwable $e) {
@@ -245,6 +267,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 VALUES (?, ?, ?, ?, ?, ?, ?, 0)
             ");
             $ins->execute([$newId, $newName, $wf['description'], $wf['trigger_type'], $wf['trigger_config_json'], $wf['nodes_json'], $wf['edges_json']]);
+            ccrm_audit_log($pdo, $sessionUser, 'workflow.clone', ccrm_workflow_audit_detail($newId, $newName, ['from' => $id]));
 
             echo json_encode(['success' => true, 'id' => $newId]);
         } catch (\Throwable $e) {
@@ -267,6 +290,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $stmt = $pdo->prepare("UPDATE `workflows` SET `is_active` = ? WHERE `id` = ?");
             $stmt->execute([$is_active, $id]);
+            ccrm_audit_log($pdo, $sessionUser, 'workflow.toggle', ccrm_workflow_audit_detail($id, ccrm_workflow_name($pdo, $id), [
+                'active' => $is_active ? 'yes' : 'no',
+            ]));
             echo json_encode(['success' => true]);
         } catch (\Throwable $e) {
             ccrm_log_exception($e);
@@ -285,8 +311,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            $name = ccrm_workflow_name($pdo, $id);
             $pdo->beginTransaction();
-            
+
             // Delete definition
             $stmt = $pdo->prepare("DELETE FROM `workflows` WHERE `id` = ?");
             $stmt->execute([$id]);
@@ -295,10 +322,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt2 = $pdo->prepare("DELETE FROM `workflow_queue` WHERE `workflow_id` = ?");
             $stmt2->execute([$id]);
 
-            // Delete execution logs
+            // Delete execution logs. Whether run history should outlive the
+            // workflow (it carries lead payloads) is an open product decision;
+            // until then the audit row at least records who deleted what and how
+            // much history went with it.
             $stmt3 = $pdo->prepare("DELETE FROM `workflow_logs` WHERE `workflow_id` = ?");
             $stmt3->execute([$id]);
 
+            ccrm_audit_log($pdo, $sessionUser, 'workflow.delete', ccrm_workflow_audit_detail($id, $name, [
+                'run logs deleted' => (string)$stmt3->rowCount(),
+                'queued runs dropped' => (string)$stmt2->rowCount(),
+            ]));
             $pdo->commit();
             echo json_encode(['success' => true]);
         } catch (\Throwable $e) {

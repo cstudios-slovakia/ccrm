@@ -29,6 +29,7 @@ import {
   buildProjectTasks,
   computeTaskDateRange,
   getTaskCreationDate,
+  doneTaskState,
   isDoneTaskState,
   localDateStr,
   localStampStr,
@@ -268,7 +269,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   const toggleDone = async (task: Task) => {
     if (!canEditTask(task, currentUser, taskAccess)) return;
     let conclusion: string | undefined;
-    if (needsConclusionToFinish(task, taskStates[taskStates.length - 1] || "Done", taskStates)) {
+    if (needsConclusionToFinish(task, doneTaskState(taskStates), taskStates)) {
       const written = await askConclusion(task);
       if (written === null) return;
       conclusion = written;

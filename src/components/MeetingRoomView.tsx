@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus, MicOff } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
 import { cn } from "../utils/cn";
+import { doneTaskState } from "../utils/projectTasks";
+import { isSuggestionConverted, meetingSuggestionTaskId } from "../utils/meetingSuggestions";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
@@ -103,6 +105,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   initialView = "list",
   onClearInitialView,
   integrationsConfig,
+  tasks = [],
   setTasks: setTasksRaw,
   taskStates = ["New", "In progress", "Blocked", "Done"]
 }) => {
@@ -1076,17 +1079,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     window.location.hash = `meetings/${meeting.id}`;
   };
 
-  const updateTaskAssignment = (taskId: string, username: string) => {
-    const targetTask = viewState === "new"
+  const findSuggestion = (taskId: string) =>
+    viewState === "new"
       ? newAutomatedTasks.find(t => t.id === taskId)
       : (selectedMeeting?.automatedTasks || []).find(t => t.id === taskId);
-    
-    if (targetTask && username && !targetTask.assignedUser) {
+
+  /**
+   * Turn a suggestion into a real task assigned to `username`, once: the task id
+   * is derived from the suggestion (meetingSuggestionTaskId), so the "Created"
+   * badge can check that the task exists and a repeat cannot add a second one.
+   */
+  const createTaskFromSuggestion = (targetTask: MeetingTask, username: string) => {
       const mapMeetingTaskStatusToCrmStatus = (status: "todo" | "in_progress" | "done") => {
-        if (status === "done") {
-          const found = taskStates.find(s => s.toLowerCase() === "done");
-          return found || taskStates[taskStates.length - 1] || "Done";
-        }
+        if (status === "done") return doneTaskState(taskStates);
         if (status === "in_progress") {
           const found = taskStates.find(s => s.toLowerCase() === "in progress" || s.toLowerCase() === "in_progress");
           return found || taskStates[1] || "In progress";
@@ -1095,7 +1100,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       };
 
       const newCrmTask: Task = {
-        id: `task-ai-${Date.now()}`,
+        id: meetingSuggestionTaskId(targetTask.id),
         title: targetTask.title,
         description: targetTask.description || `AI extracted suggestion from meeting notes`,
         status: mapMeetingTaskStatusToCrmStatus(targetTask.status),
@@ -1108,11 +1113,17 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         assignedUsers: [username],
         relatedLeadId: (viewState === "new" ? attachedLeads[0] : selectedMeeting?.leadId) || undefined
       };
-      setTasks(prev => [newCrmTask, ...prev]);
-      
+      setTasks(prev => (prev.some(task => task.id === newCrmTask.id) ? prev : [newCrmTask, ...prev]));
+
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t(`Task created and assigned to ${username}!`, `Úloha bola vytvorená a priradená používateľovi ${username}!`, `A feladat létrehozva és hozzárendelve ${username} felhasználóhoz!`));
       }
+  };
+
+  const updateTaskAssignment = (taskId: string, username: string) => {
+    const targetTask = findSuggestion(taskId);
+    if (targetTask && username && !isSuggestionConverted(targetTask, tasks)) {
+      createTaskFromSuggestion(targetTask, username);
     }
 
     if (viewState === "new") {
@@ -1139,6 +1150,12 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   };
 
   const handleSaveTaskDetails = (updatedTask: MeetingTask) => {
+    // An assignee set in the drawer creates the task, the same as the inline
+    // picker; before, it only showed the "Created" badge with no task behind it.
+    const before = findSuggestion(updatedTask.id);
+    if (updatedTask.assignedUser && !isSuggestionConverted(before || updatedTask, tasks)) {
+      createTaskFromSuggestion(updatedTask, updatedTask.assignedUser);
+    }
     if (viewState === "new") {
       const updatedTasks = newAutomatedTasks.map(t => 
         t.id === updatedTask.id ? updatedTask : t
@@ -1664,7 +1681,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               ) : (
                 automatedTasks.map(task => {
                   const isAssigningThis = assigningTaskId === task.id;
-                  const isCreated = !!task.assignedUser;
+                  const isCreated = isSuggestionConverted(task, tasks);
 
                   return (
                     <div key={task.id} className={cn(

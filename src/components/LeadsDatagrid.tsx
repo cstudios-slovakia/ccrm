@@ -4,6 +4,7 @@ import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
+import { isDoneTaskState } from "../utils/projectTasks";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { useListFilter, useListDateFilter } from "../hooks/useListFilter";
@@ -1187,13 +1188,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return leadStates.find((s) => s.toLowerCase() === key) || stateName;
     };
 
-    const isDoneState = (status: string) => {
-        return (
-            status.toLowerCase() === "done" ||
-            (taskStates.length > 0 &&
-                status === taskStates[taskStates.length - 1])
-        );
-    };
+    const isDoneState = (status: string) => isDoneTaskState(status, taskStates);
 
     // Completing a task that requires a conclusion asks for it first.
     const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(systemLanguage);
