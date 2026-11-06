@@ -214,3 +214,46 @@ export const liveTranscriptToText = (
       return withTimestamps ? `[${formatClock(s.startSec)}] ${body}` : body;
     })
     .join("\n");
+
+/** Who spoke when during the live transcript, and the names given to speakers there. */
+export interface LiveSpeakerTimeline {
+  /** Speaker id -> name, only speakers the user renamed. */
+  names: Record<string, string>;
+  /** [speakerId, startSec, endSec], recording time, oldest first, one per run of one speaker. */
+  turns: Array<[string, number, number]>;
+}
+
+const MAX_TIMELINE_TURNS = 4000;
+
+/**
+ * The live speaker timeline for the official transcript, so names given to "Participant N" chips
+ * carry over: the server matches each speaker of the official (Soniox async) transcript to the
+ * live speaker it overlaps most in time. Null when there is nothing to carry over (no renamed
+ * speaker, or no live speakers at all, e.g. OpenAI live).
+ */
+export const liveSpeakerTimeline = (
+  segments: LiveSegment[],
+  names: Record<string, string>,
+): LiveSpeakerTimeline | null => {
+  const named: Record<string, string> = {};
+  for (const [id, name] of Object.entries(names || {})) {
+    const clean = typeof name === "string" ? name.replace(/\s+/g, " ").trim().slice(0, 40) : "";
+    if (clean && speakerNumber(id) != null) named[id] = clean;
+  }
+  if (!Object.keys(named).length) return null;
+  const turns: Array<[string, number, number]> = [];
+  const round = (n: number) => Math.round(n * 10) / 10;
+  for (const s of visibleSegments(segments)) {
+    if (!s.speaker || speakerNumber(s.speaker) == null) continue;
+    const start = Math.max(0, s.startSec);
+    const end = Math.max(start, s.updatedSec);
+    const last = turns[turns.length - 1];
+    if (last && last[0] === s.speaker && start - last[2] <= 1) {
+      last[2] = round(Math.max(last[2], end));
+    } else {
+      turns.push([s.speaker, round(start), round(end)]);
+    }
+  }
+  if (!turns.length) return null;
+  return { names: named, turns: turns.slice(-MAX_TIMELINE_TURNS) };
+};

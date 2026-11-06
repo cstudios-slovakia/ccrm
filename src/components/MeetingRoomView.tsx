@@ -24,7 +24,7 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
 import { useLiveTranscription } from "../hooks/useLiveTranscription";
 import { MeetingFocusPanel } from "./meeting/MeetingFocusPanel";
-import { liveTranscriptToText, speakerDisplayName } from "../utils/liveTranscript";
+import { liveSpeakerTimeline, liveTranscriptToText, speakerDisplayName } from "../utils/liveTranscript";
 import { useLiveDocument } from "../hooks/useLiveDocument";
 import { withSpeakerName } from "../utils/focusPanel";
 import { useUserPref } from "../utils/userPrefs";
@@ -656,7 +656,10 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           manualNotes: manualNotesText,
           durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined,
           // Language hint and the "Participant N" label for a Soniox transcript.
-          language: systemLanguage
+          language: systemLanguage,
+          // Names given to speakers in the Focus helper, with who spoke when, so the official
+          // transcript can use them (the server matches its speakers to these by time).
+          speakerTimeline: viewState === "new" ? liveSpeakerTimeline(liveTranscript.segments, speakerNames) ?? undefined : undefined
         })
       }, 300000); // Soniox runs the transcript as a job the server waits for (up to ~4 min).
       const data = await res.json();

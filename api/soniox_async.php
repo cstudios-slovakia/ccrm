@@ -59,11 +59,96 @@ if (!function_exists('ccrm_soniox_transcribe_file')) {
     }
 
     /**
+     * The live speaker timeline the browser sent (liveSpeakerTimeline() in liveTranscript.ts),
+     * validated: ['names' => [P1 => name], 'turns' => [[P1, startMs, endMs], ...]] or null.
+     */
+    function ccrm_soniox_clean_timeline($raw): ?array
+    {
+        if (!is_array($raw) || !is_array($raw['names'] ?? null) || !is_array($raw['turns'] ?? null)) {
+            return null;
+        }
+        $names = [];
+        foreach ($raw['names'] as $id => $name) {
+            if (!is_string($id) || !preg_match('/^P\d{1,3}$/', $id) || !is_string($name)) {
+                continue;
+            }
+            // One line, no control characters, no colon (it would break "Name: text").
+            $clean = preg_replace('/[\x00-\x1F\x7F:]+/u', ' ', $name) ?? '';
+            $clean = trim(preg_replace('/\s+/u', ' ', $clean) ?? '');
+            if ($clean !== '') {
+                $names[$id] = mb_substr($clean, 0, 40);
+            }
+        }
+        $turns = [];
+        foreach (array_slice($raw['turns'], 0, 4000) as $turn) {
+            if (!is_array($turn) || count($turn) < 3 || !is_string($turn[0]) || !preg_match('/^P\d{1,3}$/', $turn[0])
+                || !is_numeric($turn[1]) || !is_numeric($turn[2])) {
+                continue;
+            }
+            $start = (int)round(max(0, (float)$turn[1]) * 1000);
+            $end = (int)round(max(0, (float)$turn[2]) * 1000);
+            if ($end > $start) {
+                $turns[] = [$turn[0], $start, $end];
+            }
+        }
+        if (!$names || !$turns) {
+            return null;
+        }
+        usort($turns, static fn($a, $b) => $a[1] <=> $b[1]);
+        return ['names' => $names, 'turns' => $turns];
+    }
+
+    /**
+     * Soniox speaker label -> the name the user gave the matching live speaker. Each official
+     * speaker is matched to the live speaker its words overlap most in recording time; the match
+     * must cover at least 60 % of its overlapped speech and 2 s, or the speaker keeps its
+     * number. Live and official numbering differ, so time is the only reliable key.
+     */
+    function ccrm_soniox_speaker_names(array $tokens, ?array $timeline): array
+    {
+        if ($timeline === null) {
+            return [];
+        }
+        $turns = $timeline['turns'];
+        $overlap = []; // asyncLabel => [liveId => ms]
+        $from = 0;
+        $count = count($turns);
+        foreach ($tokens as $tok) {
+            $label = (string)($tok['speaker'] ?? '');
+            if ($label === '' || !isset($tok['start_ms'])) {
+                continue;
+            }
+            $start = (int)$tok['start_ms'];
+            $end = max($start + 1, (int)($tok['end_ms'] ?? $start));
+            // Tokens arrive in time order: skip live turns that ended before this token.
+            while ($from < $count && $turns[$from][2] <= $start) {
+                $from++;
+            }
+            for ($i = $from; $i < $count && $turns[$i][1] < $end; $i++) {
+                $ms = min($end, $turns[$i][2]) - max($start, $turns[$i][1]);
+                if ($ms > 0) {
+                    $overlap[$label][$turns[$i][0]] = ($overlap[$label][$turns[$i][0]] ?? 0) + $ms;
+                }
+            }
+        }
+        $result = [];
+        foreach ($overlap as $label => $byLive) {
+            arsort($byLive);
+            $bestLive = (string)array_key_first($byLive);
+            $best = $byLive[$bestLive];
+            if ($best >= 2000 && $best >= 0.6 * array_sum($byLive) && isset($timeline['names'][$bestLive])) {
+                $result[(string)$label] = $timeline['names'][$bestLive];
+            }
+        }
+        return $result;
+    }
+
+    /**
      * Soniox tokens -> transcript text. With speakers: one "[mm:ss] Participant N: text" line per
      * run of one speaker's speech, speakers numbered in order of first appearance (the same
      * shape the live Focus helper writes). Without speakers: the plain text.
      */
-    function ccrm_soniox_tokens_to_text(array $tokens, bool $withSpeakers, string $participantLabel = 'Participant'): string
+    function ccrm_soniox_tokens_to_text(array $tokens, bool $withSpeakers, string $participantLabel = 'Participant', array $speakerNames = []): string
     {
         if (!$withSpeakers) {
             $text = '';
@@ -78,13 +163,16 @@ if (!function_exists('ccrm_soniox_transcribe_file')) {
         $numbers = [];
         $lines = [];
         $current = null; // ['speaker' => label, 'start' => ms, 'text' => string]
-        $flush = static function () use (&$current, &$lines, &$numbers, $participantLabel) {
+        $flush = static function () use (&$current, &$lines, &$numbers, $participantLabel, $speakerNames) {
             if ($current === null) {
                 return;
             }
             $text = trim(preg_replace('/\s+/u', ' ', $current['text']) ?? $current['text']);
             if ($text !== '') {
-                $who = $current['speaker'] !== '' ? $participantLabel . ' ' . $numbers[$current['speaker']] . ': ' : '';
+                $who = '';
+                if ($current['speaker'] !== '') {
+                    $who = ($speakerNames[$current['speaker']] ?? ($participantLabel . ' ' . $numbers[$current['speaker']])) . ': ';
+                }
                 $lines[] = ccrm_soniox_stamp((int)$current['start']) . ' ' . $who . $text;
             }
             $current = null;
@@ -123,6 +211,7 @@ if (!function_exists('ccrm_soniox_transcribe_file')) {
         bool $diarize,
         string $participantLabel,
         string $referenceId,
+        ?array $liveTimeline = null,
         int $maxWaitSeconds = 240
     ): array {
         $model = 'stt-async-v6';
@@ -201,7 +290,12 @@ if (!function_exists('ccrm_soniox_transcribe_file')) {
         }
         $tokens = is_array($transcript['tokens'] ?? null) ? $transcript['tokens'] : [];
         $text = $tokens
-            ? ccrm_soniox_tokens_to_text($tokens, $diarize, $participantLabel)
+            ? ccrm_soniox_tokens_to_text(
+                $tokens,
+                $diarize,
+                $participantLabel,
+                $diarize ? ccrm_soniox_speaker_names($tokens, $liveTimeline) : []
+            )
             : trim((string)($transcript['text'] ?? ''));
         return ['ok' => true, 'text' => $text, 'seconds' => $durationMs / 1000, 'model' => $model];
     }

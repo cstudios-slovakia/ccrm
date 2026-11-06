@@ -90,8 +90,10 @@ is set. 🟡 only because nothing has run against Soniox with a real key yet.
   and the button reads "Prepísať" instead of "Prepísať a zhrnúť".
 - A one-time notice under the recorder when no Soniox key is set ("Got it" / ×, user pref
   `sonioxNoticeDismissed`), and a permanent notice in Settings → AI above the Soniox key.
-- Not done: the live chips' renames are not carried over to the official transcript's speaker
-  numbers (they are numbered separately); a long recording waits in one request (browser 300 s).
+- Live renames carry over (v1.13.84): the browser sends `speakerTimeline` (`liveSpeakerTimeline()`:
+  names + `[speakerId, startSec, endSec]` turns); `ccrm_soniox_speaker_names()` maps each official
+  speaker to the live speaker it overlaps most in time (≥ 60 % of its overlapped speech and ≥ 2 s).
+- Not done: a long recording waits in one request (browser 300 s).
 
 ## A3. Phases
 

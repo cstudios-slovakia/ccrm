@@ -5,6 +5,7 @@ import {
   catchUpText,
   createTranscriptState,
   formatClock,
+  liveSpeakerTimeline,
   liveTranscriptToText,
   recentSegmentIds,
   recentSegments,
@@ -279,4 +280,28 @@ test("only expiry-like error events are treated as an expired session", () => {
   assert.equal(isSessionExpiredError({ message: "Session expired" }), true);
   assert.equal(isSessionExpiredError({ code: "invalid_event", message: "bad event" }), false);
   assert.equal(isSessionExpiredError(null), false);
+});
+
+test("liveSpeakerTimeline carries renamed speakers with merged turns", () => {
+  const seg = (id: string, speaker: string | undefined, startSec: number, updatedSec: number) => ({
+    id, text: "x", final: true, startSec, updatedSec, speaker,
+  });
+  const segments = [
+    seg("a", "P1", 0, 4),
+    seg("b", "P1", 4.5, 9),
+    seg("c", "P2", 9.2, 15),
+    seg("d", "P1", 20, 22),
+  ];
+  assert.deepEqual(liveSpeakerTimeline(segments, { P1: "  Ján   Novák " }), {
+    names: { P1: "Ján Novák" },
+    turns: [["P1", 0, 9], ["P2", 9.2, 15], ["P1", 20, 22]],
+  });
+});
+
+test("liveSpeakerTimeline is null when there is nothing to carry over", () => {
+  const seg = { id: "a", text: "x", final: true, startSec: 0, updatedSec: 3 };
+  assert.equal(liveSpeakerTimeline([{ ...seg, speaker: "P1" }], {}), null);
+  assert.equal(liveSpeakerTimeline([{ ...seg, speaker: "P1" }], { P1: "   " }), null);
+  assert.equal(liveSpeakerTimeline([seg], { P1: "Ján" }), null);
+  assert.equal(liveSpeakerTimeline([{ ...seg, speaker: "P1" }], { bogus: "Ján" }), null);
 });

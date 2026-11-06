@@ -152,7 +152,9 @@ if ($sonioxKey !== '') {
     $refId = 'ccrm-' . ($transcribeOnly ? 'voice-note' : 'meeting') . '-' . preg_replace('/[^A-Za-z0-9_-]/', '', (string)($transcribeOnly ? basename($audioFile) : $meetingId));
     // A voice note is one person speaking; diarization would only add "Participant 1:".
     $diarize = !$transcribeOnly;
-    $result = ccrm_soniox_transcribe_file($sonioxKey, $localPath, $mimeType, $hints, $diarize, $participantLabel, $refId);
+    // Names given to speakers in the live Focus helper carry over (matched by time).
+    $liveTimeline = $diarize ? ccrm_soniox_clean_timeline($data['speakerTimeline'] ?? null) : null;
+    $result = ccrm_soniox_transcribe_file($sonioxKey, $localPath, $mimeType, $hints, $diarize, $participantLabel, $refId, $liveTimeline);
     if ($result['ok'] && $result['text'] !== '') {
         $transcription = $result['text'];
         $speakers = $diarize;
@@ -258,7 +260,7 @@ You MUST respond ONLY with a valid JSON object matching the following structure:
 
 Do not wrap the JSON output in markdown code blocks or add any text outside of the JSON object.
 " . ($speakers ? "
-Transcription lines start with a timestamp and a speaker label such as \"Participant 1:\" (or its translation). Keep who said what where it matters (decisions, commitments, owners of action items), using those labels.
+Transcription lines start with a timestamp and a speaker label: a person's name or a label such as \"Participant 1:\" (or its translation). Keep who said what where it matters (decisions, commitments, owners of action items), using those labels.
 " : "") . "
 Transcription:
 " . $transcription . "
