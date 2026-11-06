@@ -60,6 +60,7 @@ import {
   recurringAmountHistoryAfterChange,
   recurringChargeAmount,
   recurringEarliestRepriceDate,
+  recurringCadence,
   recurringCharges,
   recurringConfigFromFirstPayment,
   firstPaymentDay,
@@ -2358,7 +2359,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     let activeCount = 0;
 
     allRecurring.forEach((r) => {
-      const total = recurringTotalInRange(r, rangeStart, rangeEnd);
+      // The cadence, not what is left to draw: a charge already stored today still counts.
+      const total = recurringTotalInRange(recurringCadence(r), rangeStart, rangeEnd);
       if (total > 0) activeCount += 1;
       if (r.type === "income") totalAnnualIncome += total;
       else totalAnnualExpense += total;
@@ -8479,7 +8481,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       )
                         .toISOString()
                         .slice(0, 10);
-                      const monthlyCost = recurringTotalInRange(rec, currentMonthStart, currentMonthEnd);
+                      const monthlyCost = recurringTotalInRange(recurringCadence(rec), currentMonthStart, currentMonthEnd);
                       const nextCharge = getNextRecurringDueDate(rec);
                       const cadenceText = getRecurrenceDescription(rec);
                       // Amounts the rule used to charge, so a price rise reads

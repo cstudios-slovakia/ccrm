@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { FinancialRecord } from "../types";
-import { recurringCharges, recurringOccurrences } from "./recurringExpenses.ts";
+import {
+  recurringAmountHistoryAfterChange,
+  recurringCadence,
+  recurringCharges,
+  recurringOccurrences,
+  recurringTotalInRange
+} from "./recurringExpenses.ts";
 import { recurringOwnRowCharge } from "./financialOverviewTable.ts";
 import { detachFromRule, dueChargeId, dueChargeMovements, materializeDueCharges, storedChargeKeys } from "./recurringRuleDeletion.ts";
 
@@ -302,6 +308,21 @@ test("a rule that has not started yet gets no watermark", () => {
   const future = rent({ recurringStartDate: "2026-06-01", issueDate: "2026-06-01" });
   const out = materializeDueCharges([future], TODAY, NOW);
   assert.equal(out[0].recurringMaterializedThrough, undefined);
+});
+
+// --- Stored-vs-derived audit, finance #6: figures describing a rule ignore which charges are stored ---
+
+test("the monthly cost of a materialized rule equals the unmaterialized one", () => {
+  const rule = materializeDueCharges([rent()], TODAY, NOW).find((r) => r.id === "fr-rent")!;
+  assert.equal(recurringTotalInRange(rule, "2026-04-01", "2026-04-30"), 0, "the drawable rest is empty");
+  assert.equal(recurringTotalInRange(recurringCadence(rule), "2026-04-01", "2026-04-30"), 500);
+  assert.equal(recurringTotalInRange(recurringCadence(rule), TODAY, "2027-04-15"), 12 * 500);
+});
+
+test("repricing a materialized rule still pins the old price for the charges already made", () => {
+  const rule = materializeDueCharges([rent()], TODAY, NOW).find((r) => r.id === "fr-rent")!;
+  const history = recurringAmountHistoryAfterChange(rule, { amountPlanned: 600, amountReal: 0 }, "2026-05-01");
+  assert.deepEqual(history, [{ until: "2026-04-30", amountPlanned: 500, amountReal: 0 }]);
 });
 
 test("a rule row that only plans its first charge is not a payment and writes nothing extra", () => {

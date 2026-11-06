@@ -169,7 +169,19 @@ function hasChargedBy(rule: RecurringRule, dateIso: string): boolean {
   if (start > dateIso) return false;
 
   const firstYear = shiftIsoDate(start, lookaheadDays(rule));
-  return recurringOccurrences(rule, start, firstYear < dateIso ? firstYear : dateIso).length > 0;
+  // The whole schedule: a charge already stored as a movement (a skipped day)
+  // has been charged too, so the old price must still be pinned for it.
+  return scheduledOccurrences(rule, start, firstYear < dateIso ? firstYear : dateIso).length > 0;
+}
+
+/**
+ * The rule's plain cadence, ignoring which of its charges are already stored
+ * as movements (skipped days, `recurringMaterializedThrough`). For figures that
+ * describe the rule — "≈ X / month", per year, active or paused — which must not
+ * drop a charge just because it has been written down.
+ */
+export function recurringCadence<T extends RecurringRule>(rule: T): T {
+  return { ...rule, recurringSkippedDates: null, recurringMaterializedThrough: null };
 }
 
 /**
