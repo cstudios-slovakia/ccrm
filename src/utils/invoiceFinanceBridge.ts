@@ -22,6 +22,29 @@ import { DEFAULT_INVOICE_STATUS_DEFS, isLiveInvoiceStatus, type OfferStatusDef }
 export const invoiceMovementId = (invoiceId: string) => `fr-inv-${invoiceId}`;
 
 /**
+ * Settle an invoice's linked movement: money for it has been received (an
+ * order already paid when the invoice is issued from it). Every entry point
+ * that issues an invoice from a paid order calls this, so "paid" lands in the
+ * ledger, the one place money is recorded (stored-vs-derived audit, finance #8).
+ * A movement that is already settled is left as it is: never re-priced or re-dated.
+ */
+export function markInvoiceMovementPaid(
+  records: FinancialRecord[],
+  invoiceId: string,
+  amount: number,
+  paidDate: string
+): FinancialRecord[] {
+  const id = invoiceMovementId(invoiceId);
+  let changed = false;
+  const next = records.map((r) => {
+    if (r.id !== id || isFullyPaid(r)) return r;
+    changed = true;
+    return { ...r, status: "paid" as const, amountReal: amount, paidDate };
+  });
+  return changed ? next : records;
+}
+
+/**
  * Only a real invoice is expected income — a price offer or a proforma is not —
  * and not one that was withdrawn or turned down. That is read from the status's
  * group (Price offers → Settings → Invoice statuses are configurable), so a
