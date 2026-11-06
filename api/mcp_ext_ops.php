@@ -425,7 +425,10 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             }
             if ($task['owner'] !== null && $task['owner'] !== '') $names[$task['owner']] = true;
             $ins = $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)");
-            foreach (array_keys($names) as $n) $ins->execute([$taskId, $n]);
+            $addedAny = false;
+            foreach (array_keys($names) as $n) { $ins->execute([$taskId, $n]); $addedAny = $addedAny || $ins->rowCount() > 0; }
+            // Assignees are not a column of tasks, so mark the task as changed by hand.
+            if ($addedAny) $pdo->prepare("UPDATE tasks SET updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?")->execute([$taskId]);
             mcp_audit($pdo, $user, 'task_assignees_add', "Task {$taskId}: assignees " . implode(', ', array_keys($names)));
             $cur = $pdo->prepare("SELECT user_name FROM task_assignees WHERE task_id = ? ORDER BY user_name");
             $cur->execute([$taskId]);
@@ -444,13 +447,17 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             $insTag = $pdo->prepare("INSERT IGNORE INTO tags (id, name) VALUES (?, ?)");
             $insLink = $pdo->prepare("INSERT IGNORE INTO task_tags (task_id, tag_name) VALUES (?, ?)");
             $added = [];
+            $linkedAny = false;
             foreach ($args['tags'] as $t) {
                 $name = trim((string)$t);
                 if ($name === '' || mb_strlen($name) > 100) throw new \InvalidArgumentException('Tag names must be 1-100 characters.');
                 $insTag->execute(['tag-' . substr(sha1(strtolower($name)), 0, 16), $name]);
                 $insLink->execute([$taskId, $name]);
+                if ($insLink->rowCount() > 0) $linkedAny = true;
                 $added[] = $name;
             }
+            // Tags are not a column of tasks, so mark the task as changed by hand.
+            if ($linkedAny) $pdo->prepare("UPDATE tasks SET updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?")->execute([$taskId]);
             mcp_audit($pdo, $user, 'task_tags_add', "Task {$taskId}: tags " . implode(', ', $added));
             return ['success' => true, 'task_id' => $taskId, 'tags_added' => $added];
         }

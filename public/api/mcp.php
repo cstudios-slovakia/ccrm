@@ -668,14 +668,19 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 3: Tasks & Collaboration
         [
             'name' => 'list_tasks',
-            'description' => 'List and filter tasks across projects, clients, and team members.',
+            'description' => 'List and filter tasks across projects, clients, and team members. Each task carries created_at and updated_at (ISO 8601 with the CRM time zone offset). '
+                . 'updated_at moves on any edit to the task, including its assignees and tags; comments are on the linked client timeline and do not count. '
+                . 'To find what changed in a period use updated_from/updated_to with sort_by=updated_at. Time filters take YYYY-MM-DD or YYYY-MM-DD HH:MM in CRM local time (' . date_default_timezone_get() . ').',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'status' => ['type' => 'string', 'description' => 'Filter by a configured task status'],
                     'bucket' => ['type' => 'string', 'enum' => ['overdue', 'today', 'tomorrow', 'upcoming', 'done'], 'description' => 'Time bucket as in the task panel (upcoming = later than tomorrow)'],
-                    'created_from' => ['type' => 'string', 'description' => 'Created on/after (YYYY-MM-DD)'],
-                    'created_to' => ['type' => 'string', 'description' => 'Created on/before (YYYY-MM-DD)'],
+                    'created_from' => ['type' => 'string', 'description' => 'Created at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'],
+                    'created_to' => ['type' => 'string', 'description' => 'Created before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'],
+                    'updated_from' => ['type' => 'string', 'description' => 'Last changed at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'],
+                    'updated_to' => ['type' => 'string', 'description' => 'Last changed before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'],
+                    'sort_by' => ['type' => 'string', 'enum' => ['deadline', 'updated_at', 'created_at'], 'description' => 'deadline (default, soonest first), updated_at or created_at (newest first)'],
                     'priority' => ['type' => 'string', 'description' => 'Filter by priority: low, medium, high'],
                     'owner' => ['type' => 'string', 'description' => 'Filter by assignee name'],
                     'project_id' => ['type' => 'string', 'description' => 'Filter by related project ID'],
@@ -1797,8 +1802,12 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 $where[] = $scopeSql;
                 $params = array_merge($params, $scopeParams);
             }
-            if (!empty($args['created_from'])) { $where[] = "DATE(created_at) >= ?"; $params[] = mcp_require_date($args, 'created_from'); }
-            if (!empty($args['created_to'])) { $where[] = "DATE(created_at) <= ?"; $params[] = mcp_require_date($args, 'created_to'); }
+            // Moments go through UNIX_TIMESTAMP(): see mcp_optional_moment for why.
+            foreach ([['created_from', 'created_at', '>=', false], ['created_to', 'created_at', '<', true],
+                      ['updated_from', 'updated_at', '>=', false], ['updated_to', 'updated_at', '<', true]] as [$key, $col, $op, $upper]) {
+                $ts = mcp_optional_moment($args, $key, $upper);
+                if ($ts !== null) { $where[] = "UNIX_TIMESTAMP($col) $op ?"; $params[] = $ts; }
+            }
             if (!empty($args['bucket'])) {
                 // The time buckets of the task panel: overdue / today / tomorrow / upcoming (later than tomorrow) / done.
                 $bucket = mcp_enum($args, 'bucket', ['overdue', 'today', 'tomorrow', 'upcoming', 'done']);
@@ -1819,25 +1828,33 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
             $offset = max(0, (int)($args['offset'] ?? 0));
 
+            $orderBy = [
+                'deadline' => 'deadline ASC, priority DESC, id ASC',
+                'updated_at' => 'updated_at DESC, id ASC',
+                'created_at' => 'created_at DESC, id ASC',
+            ][mcp_enum($args, 'sort_by', ['deadline', 'updated_at', 'created_at'], 'deadline')];
+
             $where[] = ccrm_sql_real_tasks();
-            $sql = "SELECT id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_lead_id, related_project_id, created_at  
-                    FROM tasks 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY deadline ASC, priority DESC 
+            $sql = "SELECT id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_lead_id, related_project_id,
+                           completed_by, completed_at, UNIX_TIMESTAMP(created_at) AS created_ts, UNIX_TIMESTAMP(updated_at) AS updated_ts
+                    FROM tasks
+                    WHERE " . implode(' AND ', $where) . "
+                    ORDER BY $orderBy
                     LIMIT $limit OFFSET $offset";
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return array_map('mcp_task_moments', $stmt->fetchAll(\PDO::FETCH_ASSOC));
 
         case 'get_task':
             [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $stmt = $pdo->prepare("SELECT * FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+            $stmt = $pdo->prepare("SELECT *, UNIX_TIMESTAMP(created_at) AS created_ts, UNIX_TIMESTAMP(updated_at) AS updated_ts FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
             $stmt->execute(array_merge([$args['id']], $scopeParams));
             $task = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$task) {
                 throw new \Exception("Task not found with ID: " . $args['id']);
             }
+            $task = mcp_task_moments($task);
 
             // Assignees
             $asStmt = $pdo->prepare("SELECT user_name FROM task_assignees WHERE task_id = ?");

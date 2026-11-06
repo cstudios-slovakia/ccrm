@@ -95,6 +95,55 @@ function mcp_optional_date(array $args, string $key): ?string {
     return mcp_require_date($args, $key);
 }
 
+/**
+ * A moment filter (created_from, updated_to, ...) as Unix seconds, or null when absent.
+ *
+ * Accepts a date (YYYY-MM-DD) or a date and time (YYYY-MM-DD HH:MM[:SS], a 'T' works
+ * too), read in the app's time zone (config.php) unless it carries Z or +01:00.
+ * A bare date on an upper bound ($upper) means "to the end of that day"; a date and
+ * time on an upper bound is exclusive.
+ *
+ * Callers compare with UNIX_TIMESTAMP(column), never the column itself: a TIMESTAMP
+ * comes back in the MySQL session's time zone, which is not set and is often UTC
+ * on a server, while PHP runs in Europe/Bratislava.
+ *
+ * @return int|null Lower bound: inclusive. Upper bound: exclusive.
+ */
+function mcp_optional_moment(array $args, string $key, bool $upper = false): ?int {
+    if (!isset($args[$key]) || trim((string)$args[$key]) === '') return null;
+    $v = trim((string)$args[$key]);
+    $ok = preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?\s*(Z|[+-]\d{2}:?\d{2})?$/i', $v, $m) === 1
+        && checkdate((int)$m[2], (int)$m[3], (int)$m[1])
+        && (!isset($m[4]) || $m[4] === '' || ((int)$m[4] < 24 && (int)$m[5] < 60 && (int)($m[6] ?? 0) < 60));
+    if (!$ok) {
+        throw new \InvalidArgumentException("'{$key}' must be YYYY-MM-DD or YYYY-MM-DD HH:MM (" . date_default_timezone_get() . " time).");
+    }
+    $dateOnly = !isset($m[4]) || $m[4] === '';
+    try {
+        $dt = new \DateTimeImmutable($v);
+    } catch (\Throwable $e) {
+        throw new \InvalidArgumentException("'{$key}' is not a valid date or time.");
+    }
+    // A bare date keeps the old inclusive "whole day" meaning; a time is exclusive, so
+    // back-to-back windows (14:22-16:22, then 16:22-18:22) never report a change twice.
+    if ($dateOnly && $upper) $dt = $dt->modify('+1 day');
+    return $dt->getTimestamp();
+}
+
+/** A UNIX_TIMESTAMP() value as an ISO 8601 moment in the app's time zone, e.g. 2026-11-06T14:44:12+01:00. */
+function mcp_format_moment($unix): ?string {
+    if ($unix === null || $unix === '') return null;
+    return date('c', (int)floor((float)$unix));
+}
+
+/** A task row selected with created_ts/updated_ts: created_at and updated_at become app-time ISO moments. */
+function mcp_task_moments(array $row): array {
+    $row['created_at'] = mcp_format_moment($row['created_ts'] ?? null);
+    $row['updated_at'] = mcp_format_moment($row['updated_ts'] ?? null);
+    unset($row['created_ts'], $row['updated_ts']);
+    return $row;
+}
+
 function mcp_number(array $args, string $key, bool $required = false, ?float $min = null, ?float $max = null): ?float {
     if (!isset($args[$key]) || $args[$key] === '') {
         if ($required) throw new \InvalidArgumentException("'{$key}' is required.");

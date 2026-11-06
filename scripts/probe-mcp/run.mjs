@@ -565,6 +565,35 @@ async function writeChecks() {
   check('bucket=done finds it', (await call(A, 'list_tasks', { bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === t1), '');
   check('complete_task on an unknown id fails', isErr(await call(A, 'complete_task', { id: 'missing' }), /not found/), '');
 
+  // "what changed since": updated_at in list_tasks, updated_from/updated_to, sort_by
+  // 1590998400 = 2020-06-01 10:00 in Europe/Bratislava (CEST), independent of the MySQL session zone.
+  const ageTask = (id) => sql(`UPDATE tasks SET updated_at = FROM_UNIXTIME(1590998400) WHERE id = ${sq(id)}`);
+  const changedSince = async (from, id) => (await call(A, 'list_tasks', { updated_from: from, bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === id);
+  const listed = (await call(A, 'list_tasks', { search: 'Bucket', bucket: 'done' })).find?.((t) => t.id === t1);
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  check('list_tasks returns created_at and updated_at as ISO moments with an offset', listed && isoRe.test(listed.created_at) && isoRe.test(listed.updated_at), JSON.stringify(listed));
+  const dbUnix = Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM tasks WHERE id = ${sq(t1)}`));
+  check('updated_at is the same moment the database holds, whatever the MySQL time zone', listed && Date.parse(listed.updated_at) / 1000 === dbUnix, `${listed?.updated_at} vs ${dbUnix}`);
+  ageTask(t1);
+  check('updated_from leaves out a task last changed before it', !(await changedSince('2021-01-01', t1)), '');
+  check('updated_from takes a time of day', await changedSince('2020-06-01 09:59', t1) && !(await changedSince('2020-06-01 10:01', t1)), '');
+  check('updated_to is exclusive with a time, whole-day with a date',
+    !(await call(A, 'list_tasks', { updated_to: '2020-06-01 10:00', bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === t1)
+      && (await call(A, 'list_tasks', { updated_to: '2020-06-01', bucket: 'done', search: 'Bucket' })).some?.((t) => t.id === t1), '');
+  check('a malformed updated_from is refused', isErr(await call(A, 'list_tasks', { updated_from: 'yesterday' }), /YYYY-MM-DD/), '');
+  check('a malformed sort_by is refused', isErr(await call(A, 'list_tasks', { sort_by: 'title' }), /sort_by/), '');
+  await call(A, 'set_task_tags', { task_id: t1, tags: ['urgent'] });
+  check('re-adding an existing tag does not mark the task changed', !(await changedSince('2021-01-01', t1)), '');
+  await call(A, 'set_task_tags', { task_id: t1, tags: ['fresh-tag'] });
+  check('adding a tag marks the task changed', await changedSince('2021-01-01', t1), '');
+  ageTask(t1);
+  await call(A, 'set_task_assignees', { task_id: t1, assignees: ['Probe Admin'] });
+  check('re-adding an existing assignee does not mark the task changed', !(await changedSince('2021-01-01', t1)), '');
+  r = await call(A, 'create_task', { title: 'Bucket newest', deadline: '2020-01-01' });
+  await call(A, 'complete_task', { id: r.id });
+  const byUpdate = await call(A, 'list_tasks', { search: 'Bucket', bucket: 'done', sort_by: 'updated_at' });
+  check('sort_by=updated_at puts the most recently changed first', byUpdate[0]?.id === r.id && byUpdate.at(-1)?.id === t1, JSON.stringify(byUpdate.map?.((t) => t.id)));
+
   // small guards
   r = await call(A, 'create_task', { title: 'Unlinked', deadline: '2030-01-01' });
   check('add_task_comment refuses a task with no linked lead (nothing would be stored)', isErr(await call(A, 'add_task_comment', { task_id: r.id, comment: 'hi' }), /not linked to a lead/), '');

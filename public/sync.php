@@ -680,6 +680,24 @@ if (!defined('CCRM_MASS_DELETE_FRACTION')) define('CCRM_MASS_DELETE_FRACTION', 0
  * last-write-wins. A null $baseSyncedAt (legacy client that never sent one) keeps
  * the old unconditional-write behaviour.
  */
+/**
+ * True when two lists of names (task assignees, task tags) hold the same set.
+ * Order, duplicates, surrounding spaces and letter case are ignored, matching
+ * the case-insensitive primary keys of task_assignees and task_tags.
+ */
+function ccrm_same_name_set(array $a, array $b): bool {
+    $norm = function (array $list): array {
+        $out = [];
+        foreach ($list as $v) {
+            $k = mb_strtolower(trim((string)$v));
+            if ($k !== '') $out[$k] = true;
+        }
+        ksort($out);
+        return array_keys($out);
+    };
+    return $norm($a) === $norm($b);
+}
+
 function ccrm_write_would_clobber(?array $dbRow, ?string $baseSyncedAt): bool {
     if ($dbRow === null || $baseSyncedAt === null) {
         return false;
@@ -5201,7 +5219,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Sync task tags (Delete & Insert list)
+                $oldTags = [];
+                $newTags = [];
                 try {
+                    if (!$isNewTask) {
+                        $oldTagStmt = $pdo->prepare("SELECT `tag_name` FROM `task_tags` WHERE `task_id` = ?");
+                        $oldTagStmt->execute([$taskId]);
+                        $oldTags = $oldTagStmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                    }
+
                     $delTaskTags = $pdo->prepare("DELETE FROM `task_tags` WHERE `task_id` = ?");
                     $delTaskTags->execute([$taskId]);
 
@@ -5215,11 +5241,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $tagId = 'tag-' . substr(md5(strtolower($cleanTag)), 0, 16);
                                 $insTagDef->execute([$tagId, $cleanTag]);
                                 $insTaskTag->execute([$taskId, $cleanTag]);
+                                $newTags[] = $cleanTag;
                             }
                         }
                     }
                 } catch (\Throwable $e) {
                     ccrm_log_exception($e);
+                }
+
+                // Assignees and tags live in their own tables, so changing only them
+                // leaves tasks.updated_at untouched and the task never shows up as
+                // "changed since" (MCP list_tasks updated_from). Bump it, but only on
+                // a real change: an unchanged re-send must not look like an edit.
+                if (!$isNewTask) {
+                    $newAssigneeList = isset($t['assignedUsers']) && is_array($t['assignedUsers']) ? $t['assignedUsers'] : [];
+                    if (!ccrm_same_name_set($oldAssignees, $newAssigneeList) || !ccrm_same_name_set($oldTags, $newTags)) {
+                        $pdo->prepare("UPDATE `tasks` SET `updated_at` = CURRENT_TIMESTAMP(3) WHERE `id` = ?")->execute([$taskId]);
+                    }
                 }
             }
 
