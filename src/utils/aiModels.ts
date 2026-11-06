@@ -74,6 +74,9 @@ const AI_MODEL_PRICE_TABLE: Record<string, AiModelPrice> = {
   // Soniox real-time, $0.12/h, diarization included. The bare prefix covers later versions.
   "stt-rt": token(0, 0, { usdPerMinute: 0.002 }),
   "stt-rt-v6": token(0, 0, { usdPerMinute: 0.002 }),
+  // Soniox async (the official meeting transcript), $0.10/h, diarization included.
+  "stt-async": token(0, 0, { usdPerMinute: 0.1 / 60 }),
+  "stt-async-v6": token(0, 0, { usdPerMinute: 0.1 / 60 }),
 };
 
 const GEMINI_38_INTRO_UNTIL = "2027-01";

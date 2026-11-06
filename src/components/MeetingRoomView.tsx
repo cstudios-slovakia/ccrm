@@ -27,6 +27,8 @@ import { MeetingFocusPanel } from "./meeting/MeetingFocusPanel";
 import { liveTranscriptToText, speakerDisplayName } from "../utils/liveTranscript";
 import { useLiveDocument } from "../hooks/useLiveDocument";
 import { withSpeakerName } from "../utils/focusPanel";
+import { useUserPref } from "../utils/userPrefs";
+import { openAiSettings } from "../utils/aiConfig";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -227,10 +229,18 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [newAutomatedTasks, setNewAutomatedTasks] = useState<MeetingTask[]>([]);
 
   const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+  // Soniox transcribes too, and tells speakers apart. Either key is enough to transcribe; the AI
+  // summary, live document and "Catch me up" need OpenAI's text model.
+  const isSonioxConfigured = !!(integrationsConfig?.sonioxApiKey && integrationsConfig.sonioxApiKey.trim() !== "");
+  const isTranscriptionConfigured = isOpenAiConfigured || isSonioxConfigured;
+  // One-time hint in the recorder: without a Soniox key, recordings work but speakers are not
+  // told apart. Dismissed per user (synced), never shown again after that.
+  const [sonioxNoticeDismissed, setSonioxNoticeDismissed] = useUserPref("sonioxNoticeDismissed");
   const transcriptionAvailable = viewState === "new" ? !!newTranscription : !!selectedMeeting?.transcription;
 
   // Focus helper: a live transcript beside the recording (new-note flow only). Opt-in because it
-  // costs money, remembered per user on this device, and only offered when OpenAI is configured.
+  // costs money, remembered per user on this device, and only offered when a transcription key
+  // (OpenAI or Soniox) is configured.
   const focusHelperKey = `ccrm_focus_helper:${currentUser?.id || currentUser?.email || "me"}`;
   const [focusHelperOn, setFocusHelperOn] = useState<boolean>(() => {
     try { return localStorage.getItem(focusHelperKey) === "1"; } catch { return false; }
@@ -241,7 +251,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       return !on;
     });
   };
-  const focusHelperAvailable = isOpenAiConfigured && canEdit && viewState === "new";
+  const focusHelperAvailable = isTranscriptionConfigured && canEdit && viewState === "new";
   const recordDurationRef = React.useRef(0);
   recordDurationRef.current = recordDuration;
   const liveTranscript = useLiveTranscription({
@@ -253,7 +263,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   });
   const clearLiveTranscript = liveTranscript.clear;
   const liveDocument = useLiveDocument({
-    enabled: focusHelperAvailable && focusHelperOn,
+    enabled: focusHelperAvailable && focusHelperOn && isOpenAiConfigured,
     segments: liveTranscript.segments,
     recordingState,
     language: systemLanguage,
@@ -644,11 +654,35 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         body: JSON.stringify({
           meetingId: viewState === "new" ? currentNoteId : selectedMeeting?.id,
           manualNotes: manualNotesText,
-          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined
+          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined,
+          // Language hint and the "Participant N" label for a Soniox transcript.
+          language: systemLanguage
         })
-      });
+      }, 300000); // Soniox runs the transcript as a job the server waits for (up to ~4 min).
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.minutes === false) {
+        // The transcript is here but there is no AI summary: no OpenAI key (a Soniox-only setup)
+        // or the summary call failed. Keep the transcript; the summary can be generated later.
+        if (viewState === "new") {
+          setNewTranscription(data.transcription);
+          clearLiveTranscript();
+          setTranscriptIsLiveDraft(false);
+          setMeetingNotes(prev => prev.map(n => n.id === currentNoteId ? { ...n, transcription: data.transcription } : n));
+        } else if (selectedMeeting) {
+          const updatedNote = { ...selectedMeeting, transcription: data.transcription };
+          setSelectedMeeting(updatedNote);
+          setMeetingNotes(prev => prev.map(m => m.id === selectedMeeting.id ? updatedNote : m));
+        }
+        setActiveTab("transcription");
+        if (typeof (window as any).showToast === "function") {
+          (window as any).showToast(
+            data.minutesError
+              ? t("Transcript ready. The AI summary failed: ", "Prepis je hotový. AI zhrnutie zlyhalo: ", "Az átirat elkészült. Az AI-összefoglaló sikertelen: ") + data.minutesError
+              : t("Transcript ready.", "Prepis je hotový.", "Az átirat elkészült."),
+            data.minutesError ? "error" : undefined,
+          );
+        }
+      } else if (res.ok && data.success) {
         const extractedTasks: MeetingTask[] = (data.actionItems || []).map((title: string, idx: number) => ({
           id: `task-${Date.now()}-${idx}`,
           title: title,
@@ -922,9 +956,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               aria-checked={focusHelperOn}
               onClick={toggleFocusHelper}
               title={t(
-                "Live transcript to catch up when you lose focus. Uses OpenAI audio billed per minute.",
-                "Živý prepis, keď stratíte pozornosť. Využíva zvuk OpenAI účtovaný za minútu.",
-                "Élő átirat, ha elveszíti a fonalat. Az OpenAI percenként számlázott hangszolgáltatását használja."
+                "Live transcript to catch up when you lose focus. Billed per minute of audio.",
+                "Živý prepis, keď stratíte pozornosť. Účtuje sa za minútu zvuku.",
+                "Élő átirat, ha elveszíti a fonalat. Hangpercenként számlázva."
               )}
               className="flex items-center gap-2 px-2 h-9 rounded-xl text-ui font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
             >
@@ -1010,7 +1044,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </>
           )}
 
-          {recordingState === "stopped" && isOpenAiConfigured && (!transcriptionAvailable || transcriptIsLiveDraft) && (
+          {recordingState === "stopped" && isTranscriptionConfigured && (!transcriptionAvailable || transcriptIsLiveDraft) && (
             <button
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
@@ -1035,7 +1069,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               ) : (
                 <>
                   <Sparkles className="h-3.5 w-3.5" />
-                  {t("Transcribe", "Prepísať a zhrnúť", "Átírás és összegzés")}
+                  {isOpenAiConfigured
+                    ? t("Transcribe", "Prepísať a zhrnúť", "Átírás és összegzés")
+                    : t("Transcribe", "Prepísať", "Átírás")}
                 </>
               )}
             </button>
@@ -2637,6 +2673,46 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           {/* Recording Bar */}
           {renderRecordingBar()}
 
+          {/* No Soniox key: recording works the same, only without speaker labels. Shown once. */}
+          {recordingState !== "none" && !isSonioxConfigured && !sonioxNoticeDismissed && (
+            <div
+              role="status"
+              className="w-full max-w-212.5 -mt-3 mb-6 flex items-start gap-3 px-4 py-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 text-left animate-fade-in"
+            >
+              <Users className="h-4 w-4 mt-0.5 text-indigo-500 shrink-0" />
+              <p className="flex-1 min-w-0 text-ui text-slate-600">
+                {t(
+                  "Recordings are transcribed either way. To tell speakers apart (Participant 1, 2, …), add a Soniox API key in ",
+                  "Nahrávky sa prepíšu v každom prípade. Aby sa rozlíšili hovoriaci (Účastník 1, 2, …), doplňte API kľúč Soniox v ",
+                  "A felvételek mindenképp átíródnak. A beszélők megkülönböztetéséhez (1., 2. résztvevő, …) adjon meg Soniox API-kulcsot itt: "
+                )}
+                <button
+                  type="button"
+                  onClick={openAiSettings}
+                  className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline cursor-pointer"
+                >
+                  {t("Settings → AI", "Nastaveniach → AI", "Beállítások → AI")}
+                </button>
+                .
+              </p>
+              <button
+                type="button"
+                onClick={() => setSonioxNoticeDismissed(true)}
+                className="shrink-0 px-2.5 h-7 rounded-lg text-caption font-semibold text-indigo-700 hover:bg-white/80 cursor-pointer transition-colors active:scale-95"
+              >
+                {t("Got it", "Rozumiem", "Értem")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSonioxNoticeDismissed(true)}
+                aria-label={t("Dismiss", "Zavrieť", "Bezárás")}
+                className="shrink-0 -mr-1 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-white/80 cursor-pointer transition-all hover:rotate-90"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Focus helper: live transcript while recording; kept after Stop until the official transcript arrives */}
           {focusHelperAvailable && focusHelperOn && recordingState !== "none" && !newTranscription && (
             <MeetingFocusPanel
@@ -2654,6 +2730,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               speakerNames={speakerNames}
               onRenameSpeaker={renameSpeaker}
               userKey={String(currentUser?.id || currentUser?.email || "me")}
+              aiText={isOpenAiConfigured}
             />
           )}
 

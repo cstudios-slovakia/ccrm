@@ -34,6 +34,19 @@ export const hasOpenAiKey = (integrationsConfig: any): boolean => {
   return typeof key === "string" && key.trim() !== "";
 };
 
+/** Whether a Soniox key is stored (meeting transcription with speaker diarization). */
+export const hasSonioxKey = (integrationsConfig: any): boolean => {
+  const key = integrationsConfig?.sonioxApiKey;
+  return typeof key === "string" && key.trim() !== "";
+};
+
+/**
+ * Whether recordings can be transcribed: either key will do (Soniox tells speakers apart,
+ * OpenAI writes plain text). Summaries still need OpenAI, see hasOpenAiKey.
+ */
+export const hasTranscriptionKey = (integrationsConfig: any): boolean =>
+  hasOpenAiKey(integrationsConfig) || hasSonioxKey(integrationsConfig);
+
 export interface AiApiError {
   /** Stable identifier emitted by the endpoint, or a synthetic client-side one. */
   code: string;

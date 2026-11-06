@@ -72,6 +72,26 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 3 | Live document formatter: endpoint, state machine, hook | high | 🟡 | v1.13.72-Nectarine (bfa1d063) | 2026-11-06 |
 | 4 | Panel redesign and Meeting Room wiring | medium | 🟡 | v1.13.75-Nectarine | 2026-11-06 |
 | 5 | Orchestrator: integration, QA, changelog, commits | — | ✅ | v1.13.75-Nectarine | 2026-11-06 |
+| 6 | Soniox for the official transcript (D1); either key records and transcribes; Soniox notices | — | 🟡 | (next build) | 2026-11-06 |
+
+**Phase 6** (user's request of 2026-11-06): D1 is done, and the recording no longer cares which key
+is set. 🟡 only because nothing has run against Soniox with a real key yet.
+- `transcribe_meeting.php`: with a Soniox key the official transcript is Soniox async `stt-async-v6`
+  (`public/api/soniox_async.php`: upload, job, poll up to 240 s, transcript, delete both), meetings
+  with diarization as `[mm:ss] Participant N: text` lines (label in the system language), voice notes
+  as plain text. If Soniox fails and an OpenAI key exists, `gpt-transcribe` takes over. Without
+  either key: 400 `no_transcription_key`.
+- The minutes step needs OpenAI. Without the key, or when the summary fails, the answer still
+  carries the transcript with `minutes: false` (previously a failed summary threw the transcript away).
+- `live_transcription_session.php`: `create_session` works with only a Soniox key; `exchange_sdp`
+  and `catch_up` still need OpenAI.
+- Meeting Room: the Focus helper, the Transcribe button and voice notes (`hasTranscriptionKey`) need
+  either key. Without OpenAI the panel shows the Transcript view only (no document, no Catch me up),
+  and the button reads "Prepísať" instead of "Prepísať a zhrnúť".
+- A one-time notice under the recorder when no Soniox key is set ("Got it" / ×, user pref
+  `sonioxNoticeDismissed`), and a permanent notice in Settings → AI above the Soniox key.
+- Not done: the live chips' renames are not carried over to the official transcript's speaker
+  numbers (they are numbered separately); a long recording waits in one request (browser 300 s).
 
 ## A3. Phases
 
@@ -213,8 +233,9 @@ Focus helper block and its props; leave other sessions' hunks alone), new
 2. **OpenAI live stays as the fallback.** Without a Soniox key the Focus helper behaves as in
    v1.13.64: no speakers, but the document still forms. The server decides the provider; the browser
    follows `provider`.
-3. **The Focus helper still requires an OpenAI key** (the document and Catch me up use the configured
-   cheap text model, `ccrm_ai_model()`). The switch's availability rule is unchanged.
+3. ~~The Focus helper still requires an OpenAI key.~~ Revised in phase 6: either key runs the live
+   transcript; the document and Catch me up need OpenAI (the configured cheap text model,
+   `ccrm_ai_model()`) and are hidden without it.
 4. **The master Soniox key never reaches the browser.** The browser gets a temporary key
    (`snx_temp_…`, 60 s to connect, session cap 5 h) and passes it in the WebSocket protocols list.
    The `api_key` field in the start message is deprecated and refused from 2027-01-15, so never use it.
@@ -231,7 +252,8 @@ Focus helper block and its props; leave other sessions' hunks alone), new
 9. **Speaker attribution in the markdown is a token `[[P1]]`**, not a name. The panel renders it as a
    coloured chip with the current display name, so renaming a speaker needs no new LLM call.
 10. **Nothing new is stored.** The document lives in memory like the live transcript. The official
-    transcript after Stop is unchanged (`gpt-transcribe`); see D1 for the later option.
+    transcript after Stop is Soniox async with speakers when a Soniox key is set, else
+    `gpt-transcribe` (phase 6, D1).
 11. Cadence: about every 12–30 s (C3.3). At `gpt-6-luna` prices that's about $0.08 per meeting hour.
 
 ---
@@ -572,7 +594,7 @@ the "Use live transcript" card.
 
 # Part D. Later options (not scheduled)
 
-## D1. Soniox for the official transcript after Stop
+## D1. Soniox for the official transcript after Stop (done in phase 6)
 
 Today, after Stop the whole recording goes to OpenAI `gpt-transcribe` ($0.27/h, plain text, no
 speakers; `public/api/transcribe_meeting.php`). Soniox async transcription costs $0.10/h with speaker

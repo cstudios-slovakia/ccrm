@@ -44,6 +44,7 @@ import { AiKeyBanner } from "./ui/AiKeyBanner";
 import { EntityTasksPanel } from "./EntityTasksPanel";
 import {
   hasOpenAiKey,
+  hasTranscriptionKey,
   isAiKeyProblem,
   networkAiApiError,
   openAiSettings,
@@ -2497,7 +2498,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           // A timeline note has no meeting_notes row to look the recording up
           // by, so say which stored file to transcribe.
           audioFile: uploadedAudioFile || undefined,
-          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined
+          durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined,
+          language: systemLanguage
         })
       });
       const data = await res.json();
@@ -2619,7 +2621,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         onResume={resumeRecording}
         onStop={stopRecording}
         onRemove={removeAudioFile}
-        canTranscribe={isOpenAiConfigured}
+        canTranscribe={hasTranscriptionKey(integrationsConfig)}
         isTranscribing={isTranscribing}
         isUploadingAudio={isUploadingAudio}
         hasUploadedAudio={!!uploadedAudioFile}
