@@ -1229,6 +1229,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // The rule's first payment. Prefilled with today, and the preview under it
   // lists the payments it leads to.
   const [formRecurringStartDate, setFormRecurringStartDate] = useState(todayLocal());
+  // Where a run of schedule picks started, so each pick counts from there and a half-typed day (the "1" of "15") cannot push the first payment a month on.
+  const pickAnchorRef = useRef<{ anchor: string; produced: string } | null>(null);
   const [formRecurringEndDate, setFormRecurringEndDate] = useState("");
   // The real planned end a pause tucks away, restored on resume — see
   // `pauseRecurringRule`. Only ever written by the "Zrušené" status shortcut
@@ -4382,7 +4384,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       if (next.monthlyType) setFormMonthlyType(next.monthlyType);
       if (next.weekOfMonth !== undefined) setFormWeekOfMonth(next.weekOfMonth);
       if (next.dayOfMonth !== undefined) setFormDayOfMonth(next.dayOfMonth);
-      setFormRecurringStartDate(firstPaymentOnOrAfter(formRecurringStartDate || today, frequency, config));
+      const run = pickAnchorRef.current;
+      const anchor = run && run.produced === formRecurringStartDate ? run.anchor : formRecurringStartDate || today;
+      const produced = firstPaymentOnOrAfter(anchor, frequency, config);
+      pickAnchorRef.current = { anchor, produced };
+      setFormRecurringStartDate(produced);
     };
     const dayOfMonthInput = (
       <input

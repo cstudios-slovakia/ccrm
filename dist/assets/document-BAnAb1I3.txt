@@ -1,4 +1,0 @@
-Demo document
-
-This file stands in for the document in the demo chat. Nothing real is behind it:
-the WhatsApp module is showing sample data and nothing is sent to WhatsApp.
