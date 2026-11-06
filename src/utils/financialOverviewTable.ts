@@ -1,6 +1,6 @@
 import type { FinancialCategory, FinancialRecord, FinancialType } from "../types";
 import { effectiveParentId } from "./financialCategoryTree.ts";
-import { isRecurringDateSkipped, recurringAmountsAt, recurringCharges } from "./recurringExpenses.ts";
+import { isRecurringDateSkipped, recurringAmountsAt, recurringCharges, recurringOccurrences } from "./recurringExpenses.ts";
 import { evaluateEquation } from "./equationEvaluator.ts";
 
 // The finance "Overview Table" is a matrix of category rows × period columns.
@@ -144,10 +144,33 @@ export function recurringOwnRowCharge(
   // A stored movement replaced the rule's own payment on that day: it counts,
   // the row does not (see `FinancialRecord.recurringSkippedDates`).
   if (isRecurringDateSkipped(rec, date)) return null;
-  if (recurringCharges(rec, "0000-01-01", date).length > 0) return null;
+  // The whole schedule, stored past included: a charge on or before the row's day
+  // stands for the rule, whether it is still drawn or already a stored movement.
+  if (recurringOccurrences(rec, "0000-01-01", date).length > 0) return null;
   const { real, estimated } = splitRecordAmounts(rec);
   if (real === 0 && estimated === 0) return null;
   return { date, real, estimated };
+}
+
+/**
+ * Whether a stored record is a movement of money in its own right. A recurring
+ * rule is not: its payments are stored as movements of their own
+ * (`recurringRuleDeletion.ts`), and only its future is calculated. The finance
+ * counterpart of `ccrm_sql_real_tasks()`; in SQL it is `is_recurring = 0`.
+ */
+export const isRealMovement = (rec: Pick<FinancialRecord, "isRecurring">): boolean => !rec.isRecurring;
+
+/**
+ * What a stored record adds when movements are summed outside Finance's own
+ * tables (project billing, client and project pages): a one-off split by its
+ * status, a recurring rule only through `recurringOwnRowCharge` (a legacy
+ * payment on its own row), never as one more charge next to the payments it
+ * has stored.
+ */
+export function movementAmounts(rec: FinancialRecord): { real: number; estimated: number } {
+  if (isRealMovement(rec)) return splitRecordAmounts(rec);
+  const own = recurringOwnRowCharge(rec);
+  return own ? { real: own.real, estimated: own.estimated } : { real: 0, estimated: 0 };
 }
 
 export interface OverviewTableAggregate {

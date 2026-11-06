@@ -4,6 +4,48 @@ import type { FinancialRecord, ProjectType } from "../types";
 import { projectBilling, resolveProjectValue } from "./projectBilling.ts";
 import { aggregateOverviewTable, type OverviewColumn } from "./financialOverviewTable.ts";
 import { projectFutureMovements } from "./futureMovements.ts";
+import { materializeDueCharges } from "./recurringRuleDeletion.ts";
+
+// --- Stored-vs-derived audit, finance #4 / CRM S5-3: a recurring rule's row is not a movement ---
+
+/** A monthly retainer of 100 on the project since 1 August, as v1.13.61 saves a new rule. */
+const retainer = (over: Partial<FinancialRecord> = {}): FinancialRecord =>
+  inc({
+    id: "fr-retainer",
+    amountPlanned: 100,
+    status: "planned",
+    issueDate: "2026-08-01",
+    isRecurring: true,
+    recurringFrequency: "monthly",
+    recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 1 },
+    recurringStartDate: "2026-08-01",
+    recurringEndDate: null,
+    ...over,
+  });
+
+test("S5-3: projectBilling of a materialized rule is the sum of its stored payments, no phantom open charge", () => {
+  const records = materializeDueCharges([retainer()], "2026-11-06", "2026-11-06T00:00:00.000Z");
+  const b = projectBilling(1000, records, P);
+  assert.equal(b.received, 400);
+  assert.equal(b.invoicedOpen, 0);
+  assert.equal(b.invoiced, 400);
+  assert.equal(b.stillToBePaid, 600);
+});
+
+test("S5-3: a rule row alone adds nothing to project billing", () => {
+  const b = projectBilling(1000, [retainer()], P);
+  assert.equal(b.received, 0);
+  assert.equal(b.invoicedOpen, 0);
+});
+
+test("S5-3: a legacy rule whose own row is a payment still counts it once, before and after materializing", () => {
+  const legacy = retainer({ status: "paid", amountReal: 100, issueDate: "2026-07-20", paidDate: "2026-07-20" });
+  assert.equal(projectBilling(1000, [legacy], P).received, 100);
+  const records = materializeDueCharges([legacy], "2026-11-06", "2026-11-06T00:00:00.000Z");
+  const b = projectBilling(1000, records, P);
+  assert.equal(b.received, 500, "July's own-row payment plus August to November");
+  assert.equal(b.invoicedOpen, 0);
+});
 
 const P = "p1";
 const inc = (over: Partial<FinancialRecord>): FinancialRecord => ({

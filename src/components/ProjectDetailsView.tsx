@@ -24,7 +24,7 @@ import {
 } from "../utils/currency";
 import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
-import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { isRealMovement, movementAmounts, recurringOwnRowCharge } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeStyle, projectStatusDotStyle, projectStatusOptions, projectTypeHasInvoiceDate } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
@@ -716,13 +716,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     let totalPlannedExpenses = 0;
     let totalRealExpenses = 0;
 
+    // A recurring rule is not one more movement next to the payments it has
+    // stored; its row counts only when it holds a legacy payment of its own.
+    const plannedOf = (r: FinancialRecord) => (isRealMovement(r) || recurringOwnRowCharge(r) ? r.amountPlanned || 0 : 0);
     projectFinancials.forEach((r) => {
-      const { real } = splitRecordAmounts(r);
+      const { real } = movementAmounts(r);
       if (r.type === "income") {
-        totalPlannedIncome += r.amountPlanned || 0;
+        totalPlannedIncome += plannedOf(r);
         totalRealIncome += real;
       } else {
-        totalPlannedExpenses += r.amountPlanned || 0;
+        totalPlannedExpenses += plannedOf(r);
         totalRealExpenses += real;
       }
     });
@@ -746,8 +749,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       if (!catMap[catId]) {
         catMap[catId] = { name, planned: 0, real: 0, color };
       }
-      catMap[catId].planned += e.amountPlanned || 0;
-      catMap[catId].real += splitRecordAmounts(e).real;
+      catMap[catId].planned += plannedOf(e);
+      catMap[catId].real += movementAmounts(e).real;
     });
 
     return {

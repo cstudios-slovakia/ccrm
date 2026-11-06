@@ -523,7 +523,7 @@ echo 'ok';`);
     const r = await post({ baseSyncedAt: await clock(), financialRecords: [
       { id: frId, type: "expense", subtype: "regular", title: "Nájom", amountPlanned: 500, amountReal: 0, currency: "EUR", status: "planned",
         issueDate: "2026-01-01", isRecurring: true, recurringFrequency: "monthly", recurringStartDate: "2026-01-01", recurringEndDate: "2026-09-19",
-        recurringPlannedEndDate: "2027-12-31", recurringSkippedDates: ["2026-09-01", "2026-03-01"], recurringAmountHistory: [], attachments: [] },
+        recurringPlannedEndDate: "2027-12-31", recurringSkippedDates: ["2026-09-01", "2026-03-01"], recurringMaterializedThrough: "2026-09-19", recurringAmountHistory: [], attachments: [] },
       { id: `${frId}-one`, type: "expense", subtype: "regular", title: "Nájom – september", amountPlanned: 520, amountReal: 520, currency: "EUR",
         status: "paid", issueDate: "2026-09-01", paidDate: "2026-09-01", recurringSourceId: frId, recurringOccurrenceDate: "2026-09-01", attachments: [] },
     ] });
@@ -533,6 +533,7 @@ echo 'ok';`);
     const one = frs.find((x) => x.id === `${frId}-one`);
     check("financial record: recurringPlannedEndDate reads back", rule?.recurringPlannedEndDate === "2027-12-31", `value=${JSON.stringify(rule?.recurringPlannedEndDate)}`);
     check("financial record: recurringSkippedDates read back (sorted)", deepEq(rule?.recurringSkippedDates, ["2026-03-01", "2026-09-01"]), `value=${JSON.stringify(rule?.recurringSkippedDates)}`);
+    check("financial record: recurringMaterializedThrough reads back", rule?.recurringMaterializedThrough === "2026-09-19", `value=${JSON.stringify(rule?.recurringMaterializedThrough)}`);
     check("financial record: recurringSourceId / recurringOccurrenceDate read back", one?.recurringSourceId === frId && one?.recurringOccurrenceDate === "2026-09-01", `value=${JSON.stringify(pick(one, ["recurringSourceId", "recurringOccurrenceDate"]))}`);
   }
 

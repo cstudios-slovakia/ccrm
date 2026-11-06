@@ -54,7 +54,8 @@ import { isClientRecord } from "../utils/clientRecord";
 import { contactDetailsFor, resolveLinkedClient } from "../utils/leadClient";
 import { formatMoney } from "../utils/currency";
 import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } from "../utils/localTime";
-import { invoiceMovementId } from "../utils/invoiceFinanceBridge";
+import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
+import { nextDocumentNumber } from "../utils/documentNumbering";
 import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
 import { useListFilter } from "../hooks/useListFilter";
@@ -105,7 +106,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   priceLevels = [],
   warehouses = [],
   setWarehouseMovements,
-  invoicesOffers: _invoicesOffers = [],
+  invoicesOffers = [],
   invoiceStatuses,
   setInvoicesOffers,
   financialRecords: _financialRecords = [],
@@ -317,9 +318,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
     const nowIso = new Date().toISOString();
     const newInvoiceId = `inv_${Date.now()}`;
-    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 9000) + 1000
-    )}`;
+    // The next number of the invoice series, as MCP issues it (mcp_next_document_number,
+    // FA, 3 digits): a random number could collide with one already issued.
+    const newInvoiceNumber = nextDocumentNumber(
+      invoicesOffers.map((io) => io.documentNumber),
+      "FA",
+      new Date().getFullYear(),
+      3
+    );
 
     // Resolve attached client
     let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
@@ -394,18 +400,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
     // 2. If order was already paid, ensure financial record is marked paid
     if (order.paymentStatus === "paid" && setFinancialRecords) {
-      const recId = invoiceMovementId(newInvoiceId);
       setFinancialRecords(prev =>
-        prev.map(r =>
-          r.id === recId
-            ? {
-                ...r,
-                status: "paid",
-                amountReal: order.totalGrossAmount,
-                paidDate: order.paidAt || order.orderDate || todayLocal()
-              }
-            : r
-        )
+        markInvoiceMovementPaid(prev, newInvoiceId, order.totalGrossAmount, order.paidAt || order.orderDate || todayLocal())
       );
     }
 

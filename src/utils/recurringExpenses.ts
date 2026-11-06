@@ -51,7 +51,8 @@ export type RecurringRule = Pick<
   // rule from just its schedule fields — but when present they let
   // `effectiveRecurringEndDate` catch a rule paused the old way, by `status`
   // alone, before pausing became an end date (see `pauseRecurringRule`).
-  Partial<Pick<FinancialRecord, "status" | "updatedAt" | "issueDate">>;
+  // `recurringMaterializedThrough` lets `recurringCharges` leave the stored past alone.
+  Partial<Pick<FinancialRecord, "status" | "updatedAt" | "issueDate" | "recurringMaterializedThrough">>;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -168,7 +169,19 @@ function hasChargedBy(rule: RecurringRule, dateIso: string): boolean {
   if (start > dateIso) return false;
 
   const firstYear = shiftIsoDate(start, lookaheadDays(rule));
-  return recurringOccurrences(rule, start, firstYear < dateIso ? firstYear : dateIso).length > 0;
+  // The whole schedule: a charge already stored as a movement (a skipped day)
+  // has been charged too, so the old price must still be pinned for it.
+  return scheduledOccurrences(rule, start, firstYear < dateIso ? firstYear : dateIso).length > 0;
+}
+
+/**
+ * The rule's plain cadence, ignoring which of its charges are already stored
+ * as movements (skipped days, `recurringMaterializedThrough`). For figures that
+ * describe the rule — "≈ X / month", per year, active or paused — which must not
+ * drop a charge just because it has been written down.
+ */
+export function recurringCadence<T extends RecurringRule>(rule: T): T {
+  return { ...rule, recurringSkippedDates: null, recurringMaterializedThrough: null };
 }
 
 /**
@@ -414,6 +427,29 @@ export function recurringConfigFromFirstPayment(
   return withInterval({ monthlyType: "day_of_month", dayOfMonth });
 }
 
+/**
+ * The first payment a picked schedule leads to: the earliest day on or after
+ * `fromIso` that `config` falls on. This is how "every Friday" or "the 15th"
+ * chosen in the form moves the first-payment date — the date stays the one
+ * source of truth for the rule (`recurringConfigFromFirstPayment` reads it back).
+ * Falls back to `fromIso` when the config matches nothing within a year.
+ */
+export function firstPaymentOnOrAfter(
+  fromIso: string,
+  frequency: FinancialRecurringFrequency,
+  config: FinancialRecurrenceConfig
+): string {
+  if (!isIsoDate(fromIso)) return fromIso;
+  // One cycle is enough: the interval only decides which cycles count after the first payment.
+  const { interval: _interval, ...single } = config;
+  const hit = scheduledOccurrences(
+    { recurringFrequency: frequency, recurringConfig: single } as RecurringRule,
+    fromIso,
+    shiftIsoDate(fromIso, 400)
+  )[0];
+  return hit ?? fromIso;
+}
+
 /** Non-negative remainder, so a month before the anchor still lands in its cycle. */
 const mod = (n: number, m: number): number => ((n % m) + m) % m;
 
@@ -513,13 +549,21 @@ function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: str
 /**
  * What the rule costs over a date range: one entry per charge, each carrying
  * the amount that was in force on that day.
+ *
+ * Nothing on or before the rule's `recurringMaterializedThrough` is drawn: up
+ * to that day every charge is a stored movement or deliberately absent. So a
+ * schedule edit (a moved first payment, another weekday or cadence) or the
+ * resume of a paused rule cannot add charges to the past.
+ * `recurringOccurrences` still describes the whole schedule.
  */
 export function recurringCharges(
   rule: RecurringRule,
   startIso: string,
   endIso: string
 ): { date: string; amount: number }[] {
-  return recurringOccurrences(rule, startIso, endIso).map((date) => ({
+  const through = rule.recurringMaterializedThrough;
+  const from = isIsoDate(through) && isIsoDate(startIso) && startIso <= through ? shiftIsoDate(through, 1) : startIso;
+  return recurringOccurrences(rule, from, endIso).map((date) => ({
     date,
     amount: recurringPlannedAmountAt(rule, date)
   }));

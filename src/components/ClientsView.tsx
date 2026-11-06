@@ -57,7 +57,9 @@ import { todayLocal, todayLocalPlusDays, nowLocalStamp, formatDateLocalized, for
 import { chartTheme, useAppearance } from "../utils/theme";
 import { chartFonts, useViewSize } from "../utils/viewSize";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
-import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { isRealMovement, movementAmounts, recurringOwnRowCharge } from "../utils/financialOverviewTable";
+import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
+import { nextDocumentNumber } from "../utils/documentNumbering";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
 import { FiledMailBody, MailAccountBadge } from "./FiledMail";
@@ -467,7 +469,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   warehouseItems = [],
   warehouses = [],
   setWarehouseMovements,
-  invoicesOffers: _invoicesOffers = [],
+  invoicesOffers = [],
   invoiceStatuses,
   priceLevels = [],
   setInvoicesOffers,
@@ -1806,9 +1808,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
     const nowIso = new Date().toISOString();
     const newInvoiceId = `inv_${Date.now()}`;
-    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 9000) + 1000
-    )}`;
+    // The next number of the invoice series, as MCP issues it (mcp_next_document_number,
+    // FA, 3 digits): a random number could collide with one already issued.
+    const newInvoiceNumber = nextDocumentNumber(
+      invoicesOffers.map((io) => io.documentNumber),
+      "FA",
+      new Date().getFullYear(),
+      3
+    );
 
     let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
     if (!targetLead && order.billing?.ico) {
@@ -1878,6 +1885,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     };
 
     setInvoicesOffers?.(prev => [newInvoice, ...prev]);
+
+    // An order already paid: the invoice's ledger movement is settled too, as the
+    // Orders module does. Otherwise it would wait in "awaiting payment" forever.
+    if (order.paymentStatus === "paid" && setFinancialRecords) {
+      setFinancialRecords(prev =>
+        markInvoiceMovementPaid(prev, newInvoiceId, order.totalGrossAmount, order.paidAt || order.orderDate || todayLocal())
+      );
+    }
 
     const updatedOrder: Order = {
       ...order,
@@ -5293,10 +5308,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Client Financial Summary Cards */}
                   {clientInvoices.length > 0 && (() => {
-                    const totalPlanned = clientInvoices.reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
-                    const totalReal = clientInvoices.reduce((acc, r) => acc + splitRecordAmounts(r).real, 0);
-                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
-                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
+                    // A recurring rule is not one more movement next to the payments it has
+                    // stored; its row counts only when it holds a legacy payment of its own.
+                    const totalPlanned = clientInvoices.reduce((acc, r) => acc + (isRealMovement(r) || recurringOwnRowCharge(r) ? r.amountPlanned || 0 : 0), 0);
+                    const totalReal = clientInvoices.reduce((acc, r) => acc + movementAmounts(r).real, 0);
+                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + movementAmounts(r).estimated, 0);
+                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + movementAmounts(r).estimated, 0);
 
                     return (
                       <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
