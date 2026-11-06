@@ -175,6 +175,10 @@ if (!function_exists('demo_seed_employees')) {
             ]);
             $rows++;
         }
+        // A paid month is closed (its time entries lock); the stamp is what the lock reads
+        if (function_exists('ccrm_backfill_salary_closed_at')) {
+            ccrm_backfill_salary_closed_at($pdo);
+        }
 
         // Leave calendar: working days of the edition's calendar, no overlaps per person.
         $years = [$year - 1, $year, $year + 1];

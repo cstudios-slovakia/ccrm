@@ -245,7 +245,7 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'get_payroll_summary',
-            'description' => 'Payroll totals per month for a year: salary planned, paid and remaining, for active employees, plus the nominal monthly payroll from the salary settings.',
+            'description' => 'Payroll totals per month for a year: planned (labour cost from the payslip, or the gross salary until it is entered), paid and remaining, for every payroll record of the year including people archived since, plus the nominal monthly payroll of active employees from their contracts.',
             'inputSchema' => ['type' => 'object', 'properties' => ['year' => ['type' => 'integer']]],
         ],
         [
@@ -581,7 +581,10 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
 
         case 'get_payroll_summary': {
             $year = isset($args['year']) ? (int)$args['year'] : (int)date('Y');
-            $stmt = $pdo->prepare("SELECT s.period_key, SUM(s.total_salary) planned, SUM(s.total_paid) paid, COUNT(*) records FROM employee_salaries s JOIN employees e ON e.id = s.employee_id WHERE e.is_active = 1 AND s.year = ? GROUP BY s.period_key ORDER BY s.period_key");
+            // Planned = what each month costs: Cena práce once the payslip is in, otherwise the gross
+            // (ccrm_salary_due / salaryDue). Past months count every stored record, including those of
+            // people archived since; only the nominal figure below is about current contracts.
+            $stmt = $pdo->prepare("SELECT s.period_key, SUM(COALESCE(s.labor_cost, s.total_salary)) planned, SUM(s.total_paid) paid, COUNT(*) records FROM employee_salaries s WHERE s.year = ? GROUP BY s.period_key ORDER BY s.period_key");
             $stmt->execute([$year]);
             $months = []; $tp = 0.0; $tpaid = 0.0;
             foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {

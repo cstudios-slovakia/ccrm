@@ -26,6 +26,12 @@ import {
   salaryDue,
   salaryStatus
 } from "../../utils/payslip";
+import {
+  isCanonicalSalaryPeriodKey,
+  isPayrollPeriodClosed,
+  salaryPeriodKey,
+  salaryRecordForPeriod
+} from "../../utils/salaryPeriod";
 
 export interface SalaryCellDrawerProps {
   employee: Employee;
@@ -36,6 +42,10 @@ export interface SalaryCellDrawerProps {
   existingRecord?: EmployeeSalary | null;
   settings: EmployeeSettings;
   canChangePeriod?: boolean;
+  /** The employee's other payroll records, so a period that already has one is not saved twice. */
+  salaries?: EmployeeSalary[];
+  /** Admin: may reopen a closed payroll month (unlocks its time entries again). */
+  canReopen?: boolean;
   onClose: () => void;
   onSave: (salary: EmployeeSalary) => void;
   systemLanguage?: string;
@@ -51,6 +61,8 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
   existingRecord,
   settings,
   canChangePeriod = false,
+  salaries,
+  canReopen = false,
   onClose,
   onSave,
   systemLanguage = "sk",
@@ -103,10 +115,22 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
     t("December", "December", "December")
   ], [systemLanguage]);
 
+  // The record's identity: always year and month (YYYY-MM), never a key without its year, or May of
+  // two years would collide on the server's unique (employee, period) key.
   const activePeriodKey = useMemo(() => {
-    if (!canChangePeriod && initialPeriodKey) return initialPeriodKey;
-    return activeMonthNum < 10 ? `M0${activeMonthNum}` : `M${activeMonthNum}`;
-  }, [activeMonthNum, canChangePeriod, initialPeriodKey]);
+    if (!canChangePeriod && initialPeriodKey && isCanonicalSalaryPeriodKey(initialPeriodKey)) return initialPeriodKey;
+    return salaryPeriodKey(activeYear, activeMonthNum);
+  }, [activeYear, activeMonthNum, canChangePeriod, initialPeriodKey]);
+
+  // Another record already holds the chosen month: saving would overwrite it, so the save is refused
+  const periodTakenBy = useMemo(
+    () => salaryRecordForPeriod(salaries, employee.id, activePeriodKey, existingRecord?.id ?? null),
+    [salaries, employee.id, activePeriodKey, existingRecord?.id]
+  );
+
+  // Closed once first paid in full; stays closed after a later edit. Only an admin reopens it.
+  const isClosed = !!existingRecord && isPayrollPeriodClosed(existingRecord);
+  const [reopenRequested, setReopenRequested] = useState<boolean>(false);
 
   const currentMonthName = useMemo(() => {
     return monthNames[activeMonthNum - 1] || initialMonthName || `Month ${activeMonthNum}`;
@@ -262,6 +286,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
   };
 
   const handleSave = () => {
+    if (periodTakenBy) return;
     // On a payslip the paid amount lives on the record, not on the rows; an unnamed Iné row is "Iné"
     const savedItems = showPayslip
       ? items.map((it) => ({
@@ -291,6 +316,14 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
       paymentMethod: paymentMethod as any,
       financialRecordId: existingRecord?.financialRecordId,
       note: note.trim() || undefined,
+      // Server-owned: carried as it is, cleared only through `reopenClosedAt`, honoured for admins. A
+      // month becoming paid now is shown closed straight away; the server's stamp replaces it on pull.
+      closedAt: reopenRequested
+        ? null
+        : existingRecord?.closedAt ||
+          (status === "paid" && existingRecord?.status !== "paid" ? new Date().toISOString() : existingRecord?.closedAt),
+      closedBy: reopenRequested ? null : existingRecord?.closedBy,
+      reopenClosedAt: reopenRequested ? existingRecord?.closedAt ?? null : undefined,
       createdAt: existingRecord?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -388,6 +421,54 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                   className="w-20 px-3 py-1.5 rounded-xl border border-amber-300/80 bg-white text-ui font-bold text-slate-800 shadow-sm"
                 />
               </div>
+            </div>
+          )}
+
+          {periodTakenBy && (
+            <div
+              role="alert"
+              data-testid="salary-period-taken"
+              className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-ui font-semibold text-rose-800"
+            >
+              {t(
+                "This month already has a salary record. Open it from the list to edit it.",
+                "Za tento mesiac už mzda existuje. Upravte ju zo zoznamu.",
+                "Erre a hónapra már van bérrekord. A listából szerkessze."
+              )}
+            </div>
+          )}
+
+          {isClosed && (
+            <div
+              data-testid="salary-period-closed"
+              className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200"
+            >
+              <div className="flex items-center gap-2 text-ui font-semibold text-slate-700">
+                <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+                <span>
+                  {reopenRequested
+                    ? t(
+                        "The month will be reopened on save; its time entries unlock.",
+                        "Mesiac sa po uložení znovu otvorí a jeho výkazy času sa odomknú.",
+                        "Mentéskor a hónap újra megnyílik, időbejegyzései feloldódnak."
+                      )
+                    : t(
+                        "Month closed: it was paid in full, so its time entries are locked.",
+                        "Mesiac je uzavretý: bol vyplatený celý, výkazy času sú zamknuté.",
+                        "A hónap lezárva: teljesen kifizetve, időbejegyzései zárolva."
+                      )}
+                </span>
+              </div>
+              {canReopen && (
+                <button
+                  type="button"
+                  onClick={() => setReopenRequested((v) => !v)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition shrink-0 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  {reopenRequested ? t("Keep closed", "Ponechať uzavretý", "Maradjon lezárva") : t("Reopen month", "Znovu otvoriť", "Újranyitás")}
+                </button>
+              )}
             </div>
           )}
 
@@ -870,7 +951,8 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="px-5 py-2 text-body font-heading font-bold text-white bg-gradient-to-r from-[#c29b62] to-[#b58b4c] hover:shadow-lg rounded-xl shadow-md shadow-[#c29b62]/25 transition cursor-pointer"
+              disabled={!!periodTakenBy}
+              className="px-5 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-body font-heading font-bold text-white bg-gradient-to-r from-[#c29b62] to-[#b58b4c] hover:shadow-lg rounded-xl shadow-md shadow-[#c29b62]/25 transition cursor-pointer"
             >
               {t("Save Period Salary", "Uložiť mzdu", "Bér mentése")}
             </button>

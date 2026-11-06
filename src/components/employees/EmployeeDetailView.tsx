@@ -70,6 +70,8 @@ interface EmployeeDetailViewProps {
   /** Logins and roles, for the "linked user account" picker. */
   users?: UserProfile[];
   roles?: RolePermission[];
+  /** Admin: may reopen a closed payroll month. */
+  canReopenPayroll?: boolean;
 }
 
 export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
@@ -90,7 +92,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   systemCurrency = "€",
   rights = FULL_EMPLOYEE_RIGHTS,
   users = [],
-  roles = []
+  roles = [],
+  canReopenPayroll = false
 }) => {
   // Check if Toggl API key is configured
   const hasTogglKey = useMemo(() => {
@@ -2379,6 +2382,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           existingRecord={salaryToEdit}
           settings={settings}
           canChangePeriod={true}
+          salaries={employeeSalaries}
+          canReopen={canReopenPayroll}
           onClose={() => {
             setIsSalaryModalOpen(false);
             setSalaryToEdit(null);

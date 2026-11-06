@@ -42,6 +42,9 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
         durationSec: entrySeconds(e, clock),
         cost: e.cost,
         currency: deps.currency,
+        costRate: e.costRate,
+        costRateSource: e.costRateSource,
+        costRateBasisDays: e.costRateBasisDays,
       })),
       people: [...ids].map((id) => {
         const user = deps.users.find((u) => u.id === id);
@@ -162,7 +165,21 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                 return (
                   <tr key={row.userId} className="border-b border-slate-100">
                     <td className="px-3 py-3 font-semibold text-slate-900">{row.name}</td>
-                    <td className="px-3 py-3 tabular-nums">{row.loadedSalary == null ? "—" : moneyStr(row.loadedSalary)}</td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {row.loadedSalary == null ? "—" : moneyStr(row.loadedSalary)}
+                      {row.rateBasis === "contract" && row.loadedSalary != null && (
+                        <span
+                          className="block type-meta text-slate-400"
+                          title={t(
+                            "No priced time entry this month, so this is today's contract salary, not necessarily the one valid that month.",
+                            "Tento mesiac nie je žiadny ocenený záznam času, preto ide o dnešnú zmluvnú mzdu, nie nutne o tú, ktorá platila v danom mesiaci.",
+                            "Ebben a hónapban nincs beárazott időbejegyzés, ezért ez a mai szerződéses bér, nem feltétlenül az akkor érvényes.",
+                          )}
+                        >
+                          {t("current contract", "aktuálna zmluva", "jelenlegi szerződés")}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 tabular-nums text-violet-700" title={costRateTooltip(row.rate, { t, money: moneyStr, monthLabel, country })}>
                       {row.rate.rate == null ? "—" : `${moneyStr(row.rate.rate)}/h`}
                     </td>
