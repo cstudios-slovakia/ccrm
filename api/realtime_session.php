@@ -326,6 +326,8 @@ if ($action === 'create_task') {
             $insAss = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `user_name` = VALUES(`user_name`)");
             $insAss->execute([$taskId, $owner]);
         }
+        require_once __DIR__ . '/task_reminders.php';
+        ccrm_notify_new_task_assignees($pdo, $taskId, $creator);
 
         echo json_encode([
             'success' => true,
@@ -588,6 +590,8 @@ if ($action === 'add_project_task') {
             $insAss = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `user_name` = VALUES(`user_name`)");
             $insAss->execute([$taskId, $owner]);
         }
+        require_once __DIR__ . '/task_reminders.php';
+        ccrm_notify_new_task_assignees($pdo, $taskId, $creator);
 
         echo json_encode([
             'success' => true,

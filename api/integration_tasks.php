@@ -526,6 +526,13 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         if (!$stale) {
             ccrm_int_audit($pdo, $client, 'integration_task_push', ($created ? 'create ' : 'update ') . $row['id'] . ' ext=' . $externalId);
         }
+        if ($created) {
+            // A new task tells its assignees like any other (D9 revised): who or
+            // what created it does not matter. After the commit, so a rolled-back
+            // push never mails anyone; a task pushed already completed is skipped.
+            require_once __DIR__ . '/task_reminders.php';
+            ccrm_notify_new_task_assignees($pdo, (string)$row['id']);
+        }
         $stmt = $pdo->prepare("SELECT " . CCRM_INT_TASK_COLUMNS . " FROM `tasks` t WHERE t.`id` = ? AND " . ccrm_sql_real_tasks('t'));
         $stmt->execute([$row['id']]);
         $fresh = ccrm_int_task_serialize_rows($pdo, $client, [$stmt->fetch(\PDO::FETCH_ASSOC)])[0];

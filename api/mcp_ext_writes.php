@@ -207,6 +207,9 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
         foreach (array_unique($assignees) as $a) $ins->execute([$id, $a]);
     });
     mcp_audit($pdo, $user, 'task_create', "Created task '$title' (ID: $id, deadline: $deadline)");
+    // After the commit, so a rolled-back create never mails anyone.
+    require_once __DIR__ . '/task_reminders.php';
+    ccrm_notify_new_task_assignees($pdo, $id, $user['name']);
     return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees))];
 }
 

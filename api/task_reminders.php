@@ -422,6 +422,51 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
 }
 
 /**
+ * Tell the owner and assignees of a task that was just created, by e-mail and
+ * push, whatever created it: a workflow, the voice assistant, an MCP client or
+ * the integration API. sync.php and recurring_tasks.php build the task array
+ * themselves and call the two senders directly; every other creator writes
+ * straight to the tables and calls this with the new id, so the task is read
+ * back in the shape those senders expect. A task created as already finished
+ * notifies nobody. Never throws: a failed notification must not fail the write.
+ */
+function ccrm_notify_new_task_assignees(PDO $pdo, string $taskId, ?string $actorName = null): void {
+    try {
+        // `task_kind IS NULL` is ccrm_sql_real_tasks(), written out because not
+        // every caller has recurring_tasks.php or schema.php loaded.
+        $stmt = $pdo->prepare(
+            "SELECT `id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `owner`, `created_by`,
+                    `related_lead_id`, `completed_at`
+               FROM `tasks` WHERE `id` = ? AND `task_kind` IS NULL LIMIT 1" /* recurring-template: notify reads one just-created real task */
+        );
+        $stmt->execute([$taskId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || !empty($row['completed_at'])) return;
+
+        $assStmt = $pdo->prepare("SELECT `user_name` FROM `task_assignees` WHERE `task_id` = ?");
+        $assStmt->execute([$taskId]);
+
+        $task = [
+            'id' => $row['id'],
+            'title' => $row['title'],
+            'description' => $row['description'],
+            'priority' => $row['priority'],
+            'deadline' => $row['deadline'],
+            'deadlineTime' => $row['deadline_time'],
+            'owner' => $row['owner'],
+            'createdBy' => $row['created_by'],
+            'relatedLeadId' => $row['related_lead_id'],
+            'assignedUsers' => $assStmt->fetchAll(PDO::FETCH_COLUMN) ?: [],
+        ];
+        ccrm_send_task_assigned_email_notification($pdo, $task, $actorName);
+        require_once __DIR__ . '/webpush.php';
+        ccrm_send_task_assigned_push_notification($pdo, $task, $actorName);
+    } catch (\Throwable $e) {
+        error_log('[ccrm new task notification] ' . $taskId . ': ' . $e->getMessage());
+    }
+}
+
+/**
  * Send an email notification when a task is completed/done.
  * Silently skipped if outgoing mail is not configured.
  */

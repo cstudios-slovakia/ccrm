@@ -299,8 +299,10 @@ decision D9.
   link yet (it lands on Tasks). Opening the drawer from `?task=` comes with the task badges in
   phase 6.
 - **D9.** Like the MCP task tools, these writes go straight to the tables: no `task_created` /
-  `task_status_changed` workflows, no assignment or completion e-mails, no ticket auto-resolve
-  (`ticket_task_links`). If a completion from WAAI should resolve a linked ticket, that is a
+  `task_status_changed` workflows, no completion e-mails, no ticket auto-resolve
+  (`ticket_task_links`). **Revised in v1.13.76:** a *new* task does e-mail and push its
+  assignees, like a task created anywhere else (`ccrm_notify_new_task_assignees()`); an update,
+  or a task pushed already completed, notifies nobody. If a completion from WAAI should resolve a linked ticket, that is a
   follow-up.
 - Rate limit, auth order and error envelope are those of phase 1; `integration_refs` rows for
   tasks use `kind = 'task'`, `local_id` = the CCRM task id, `applied_snapshot` = the composed
@@ -901,7 +903,7 @@ only (`news-craft-cms.md`) — never hardcode a "What's new" text.
 | D6 | Background "is on WhatsApp" checks for CRM numbers without a chat | **Decided:** Off; on-demand check on click only (`/open`). |
 | D7 | CCRM CSP `frame-src` | **Decided (2026-10-29): `'self' https:`** in `public/.htaccess` (and root `.htaccess`). |
 | D8 | Direction B (CCRM tasks into WAAI) at go-live | **Decided:** Off at go-live; decide after a week of direction A. |
-| D9 | CCRM notifications/automations for WAAI-origin tasks | **Decided:** None (WAAI already notifies; writes go straight to tables). |
+| D9 | CCRM notifications/automations for WAAI-origin tasks | **Decided:** No automations; writes go straight to tables. **Revised v1.13.76:** a new task sends the assignment e-mail and push, whatever created it. |
 | D10 | Daily chat summaries on the client timeline | **Decided:** Opt-in, off by default (phase 9). |
 | D11 | Tasks without a stated deadline | **Decided:** `today + 7 days`, marked "not stated in chat" (`dueInferred`); configurable per client. |
 

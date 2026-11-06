@@ -939,6 +939,10 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 $insAss->execute([$taskId, $owner]);
                             }
 
+                            // The owner hears about it as if a colleague had assigned it.
+                            require_once __DIR__ . '/task_reminders.php';
+                            ccrm_notify_new_task_assignees($pdo, $taskId);
+
                             $outputPayload = [
                                 'id' => $taskId,
                                 'title' => $title,
