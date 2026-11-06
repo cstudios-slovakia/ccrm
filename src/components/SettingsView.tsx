@@ -74,6 +74,7 @@ import { deleteRecordsWithUndo, archiveRecordsWithUndo } from "../utils/recordAc
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
+import { addTaskState, isDoneMarkerState } from "../utils/projectTasks";
 import { clearErrorLogsWithUndo } from "../utils/errorLogs";
 import { useUserPref } from "../utils/userPrefs";
 import { PROJECT_AUTO_CREATE_ENABLED } from "../utils/featureFlags";
@@ -5175,6 +5176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           setProjectTypes={setProjectTypes}
           userLanguage={userLanguage}
           canEdit={getPermission("general_config") === "edit"}
+          projects={projects}
         />
         );
       case "projects/statuses":
@@ -6296,6 +6298,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             );
                                             return;
                                           }
+                                          // The last state is what marks a task done. Deleting it
+                                          // would make the state before it "done" and reopen every
+                                          // finished task, so it can only be renamed.
+                                          if (isDoneMarkerState(state, taskStates)) {
+                                            (window as any).showToast(
+                                              t(
+                                                "This state marks tasks as done. Rename it instead of deleting it.",
+                                                "Tento stav označuje úlohy ako hotové. Namiesto vymazania ho premenujte.",
+                                                "Ez az állapot jelöli a feladatokat késznek. Törlés helyett nevezze át."
+                                              )
+                                            );
+                                            return;
+                                          }
                                           const taskStateIndex = taskStates.indexOf(state);
                                           const taskStateColor = taskStateColors[state];
                                           runUndoable({
@@ -6357,7 +6372,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   );
                                   return;
                                 }
-                                setTaskStates([...taskStates, val]);
+                                // Before the done state, never after it (see addTaskState).
+                                setTaskStates(addTaskState(taskStates, val));
                                 setTaskStateColors(prev => ({
                                   ...prev,
                                   [val]: "#3b82f6" // Default blue

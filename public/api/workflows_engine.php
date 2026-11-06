@@ -9,6 +9,30 @@ if (file_exists($configFile)) {
 }
 
 // Helpers
+if (!function_exists('ccrm_timer_workflow_due')) {
+    /**
+     * Should a timer workflow fire now? It last fired at the later of its last
+     * queued timer run and its last logged run (MySQL DATETIME strings, either may
+     * be null); it is due once `$intervalMinutes` have passed since then, or when
+     * it has never fired. cron.php reads the queue, not just the log, so a run that
+     * failed before logging or is still waiting in a backlog is not fired again.
+     */
+    function ccrm_timer_workflow_due(?string $lastQueued, ?string $lastLogged, string $now, int $intervalMinutes): bool {
+        $last = null;
+        foreach ([$lastQueued, $lastLogged] as $stamp) {
+            $ts = ($stamp !== null && $stamp !== '') ? strtotime($stamp) : false;
+            if ($ts !== false && ($last === null || $ts > $last)) {
+                $last = $ts;
+            }
+        }
+        if ($last === null) {
+            return true;
+        }
+        $nowTs = strtotime($now);
+        return $nowTs !== false && ($nowTs - $last) >= max(1, $intervalMinutes) * 60;
+    }
+}
+
 if (!function_exists('ccrm_resolve_json_path')) {
     /**
      * Resolve one {{$namespace.field}} path.
@@ -273,19 +297,15 @@ if (!function_exists('ccrm_workflow_open_task_exists')) {
         if ($workflowId === null || $workflowId === '') {
             return false;
         }
-        $states = ccrm_workflow_task_states($pdo);
-        $lastState = $states ? (string)end($states) : null;
+        require_once __DIR__ . '/task_done.php';
+        [$notDoneSql, $notDoneParams] = ccrm_sql_task_not_done(ccrm_workflow_task_states($pdo));
 
         $sql = "SELECT COUNT(*) FROM `tasks`
                  WHERE " . ccrm_sql_real_tasks() . "
                    AND `workflow_id` = ?
                    AND `archived` = 0
-                   AND LOWER(`status`) <> 'done'";
-        $params = [$workflowId];
-        if ($lastState !== null && strtolower($lastState) !== 'done') {
-            $sql .= " AND `status` <> ?";
-            $params[] = $lastState;
-        }
+                   AND {$notDoneSql}";
+        $params = array_merge([$workflowId], $notDoneParams);
         // Scope to the record the workflow fired for. Tasks that could not be
         // linked (the trigger payload carried no record id) are matched on the
         // rendered title alone, which already carries the client name.
@@ -992,7 +1012,11 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 'status' => $newStatus
                             ];
                         } else {
-                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ? WHERE `id` = ?");
+                            // The finish date follows the status the same way it
+                            // does in the app, so an automation-completed project
+                            // is not left "closed" with no date it finished.
+                            $finishedSql = ccrm_finished_at_sql_for_status($newStatus, $pdo);
+                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ?" . ($finishedSql ? ", {$finishedSql}" : "") . " WHERE `id` = ?");
                             foreach ($projectIds as $pid) {
                                 $upd->execute([$newStatus, $pid]);
                             }

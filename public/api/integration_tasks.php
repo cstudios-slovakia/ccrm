@@ -14,6 +14,8 @@
  * sets `updated_at`, so sync.php's omission and clobber guards protect it from a stale client.
  */
 
+require_once __DIR__ . '/task_done.php';
+
 if (!function_exists('ccrm_int_handle_task_push')) {
 
     define('CCRM_INT_TASK_MAX_ASSIGNEES', 20);
@@ -26,17 +28,15 @@ if (!function_exists('ccrm_int_handle_task_push')) {
 
     /** The configured task states in order: first = a new task, last = done. */
     function ccrm_int_task_states(\PDO $pdo): array {
-        $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn();
-        $states = is_string($raw) ? json_decode($raw, true) : null;
-        return is_array($states) ? array_values(array_map('strval', $states)) : [];
+        return ccrm_task_states_setting($pdo);
     }
 
     function ccrm_int_task_is_done(string $status, array $states): bool {
-        return strtolower($status) === 'done' || ($states !== [] && $status === (string)end($states));
+        return ccrm_task_status_is_done($status, $states);
     }
 
     function ccrm_int_task_done_state(array $states): string {
-        return $states !== [] ? (string)end($states) : 'done';
+        return ccrm_task_done_state($states) ?? 'done';
     }
 
     function ccrm_int_task_initial_state(array $states): string {
@@ -706,12 +706,9 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         $where[] = "({$sec} > ? OR ({$sec} = ? AND t.`id` > ?))";
         array_push($params, $since, $since, $afterId);
         if ($openOnly) {
-            $states = ccrm_int_task_states($pdo);
-            $where[] = "LOWER(t.`status`) <> 'done'";
-            if ($states !== []) {
-                $where[] = "t.`status` <> ?";
-                $params[] = (string)end($states);
-            }
+            [$notDoneSql, $notDoneParams] = ccrm_sql_task_not_done(ccrm_int_task_states($pdo), 't.`status`');
+            $where[] = $notDoneSql;
+            array_push($params, ...$notDoneParams);
         }
 
         $stmt = $pdo->prepare(

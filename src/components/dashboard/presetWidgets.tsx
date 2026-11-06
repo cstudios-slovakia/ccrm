@@ -17,7 +17,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Building2, Plus, User } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { formatDateLocalized, nowLocalStamp } from "../../utils/localTime";
-import { isTaskOverdue } from "../../utils/projectTasks";
+import { isDoneTaskState as isDoneTaskStatus, isTaskOverdue } from "../../utils/projectTasks";
 import type { Language } from "../../utils/translations";
 import {
   visibleColumnsOf,
@@ -74,14 +74,9 @@ const num = (value: any): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/** A task state is "done" when it is the last configured one, or literally done. */
-export const isDoneTaskState = (status: any, taskStates: string[]): boolean => {
-  const raw = String(status ?? "").trim().toLowerCase();
-  if (!raw) return false;
-  if (raw === "done" || raw === "hotová" || raw === "hotovo" || raw === "kész") return true;
-  const last = taskStates[taskStates.length - 1];
-  return !!last && last.toLowerCase() === raw;
-};
+/** The shared "task is done" rule (utils/projectTasks), tolerant of a missing status. */
+export const isDoneTaskState = (status: any, taskStates: string[]): boolean =>
+  isDoneTaskStatus(String(status ?? ""), taskStates);
 
 /** …and "blocked" when it says so, in any of the three app languages. */
 const isBlockedTaskState = (status: any): boolean =>

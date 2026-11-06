@@ -13,6 +13,7 @@
  */
 
 require_once __DIR__ . '/employee_name.php';
+require_once __DIR__ . '/payroll_lib.php';
 
 if (!function_exists('ccrm_schema_statements')) {
 
@@ -401,7 +402,10 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // Projects (Base common table)
+            // Projects (Base common table). The project type FK is RESTRICT, not
+            // CASCADE: a type is a template, and deleting a template must never
+            // take the projects made from it along with it. Existing installs are
+            // converted by ccrm_migrate_project_type_fk_restrict().
             "CREATE TABLE IF NOT EXISTS `projects` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `project_type_id` VARCHAR(50) NOT NULL,
@@ -431,7 +435,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-              FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
+              FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Project Managers (Junction table)
@@ -754,6 +758,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_skipped_dates_json` TEXT NULL COMMENT 'Scheduled days a stored movement stands in for, as a JSON list of YYYY-MM-DD days',
               `recurring_source_id` VARCHAR(50) NULL COMMENT 'On a one-off movement: the recurring rule whose charge it replaces',
               `recurring_occurrence_date` DATE NULL COMMENT 'On a one-off movement: the scheduled day it stands in for',
+              `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it',
               `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
               `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
               `invoice_number` VARCHAR(100) NULL,
@@ -1050,6 +1055,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
               `financial_record_id` VARCHAR(50) NULL,
               `note` TEXT NULL,
+              `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen',
+              `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_sal_emp (`employee_id`),
@@ -1440,6 +1447,40 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Turns the `projects.project_type_id` foreign key from ON DELETE CASCADE
+     * into ON DELETE RESTRICT, so deleting a project type can never delete the
+     * projects made from it. sync.php refuses such a delete before it gets
+     * here; this is the database-level backstop for every other writer.
+     *
+     * Idempotent: does nothing once no CASCADE rule remains. Two statements,
+     * not one: MySQL only drops and adds a foreign key in one ALTER with
+     * ALGORITHM=INPLACE, which it refuses while foreign_key_checks is on. If
+     * the ADD fails (orphaned rows on an install that somehow lost the FK),
+     * the table is left without the key, which still cascades nothing.
+     */
+    function ccrm_migrate_project_type_fk_restrict(PDO $pdo): void {
+        if (!ccrm_table_exists($pdo, 'projects') || !ccrm_table_exists($pdo, 'project_types')) {
+            return;
+        }
+        $stmt = $pdo->query(
+            "SELECT `CONSTRAINT_NAME` FROM information_schema.REFERENTIAL_CONSTRAINTS
+             WHERE `CONSTRAINT_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'projects'
+               AND `REFERENCED_TABLE_NAME` = 'project_types' AND `DELETE_RULE` = 'CASCADE'"
+        );
+        $names = $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+        foreach ($names as $name) {
+            $safe = preg_replace('/[^A-Za-z0-9_]/', '', (string)$name);
+            if ($safe === '') continue;
+            $pdo->exec("ALTER TABLE `projects` DROP FOREIGN KEY `{$safe}`");
+            try {
+                $pdo->exec("ALTER TABLE `projects` ADD CONSTRAINT `{$safe}` FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT");
+            } catch (\Throwable $e) {
+                error_log('[ccrm] projects.project_type_id FK not re-added as RESTRICT: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
      * Idempotent migrations for databases created by older CCRM versions.
      * Each step checks the live schema before mutating it, so it is safe to
      * run on every install/update without relying on try/catch swallowing.
@@ -1714,6 +1755,10 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'project_types', 'list_columns_json')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `list_columns_json` LONGTEXT NULL AFTER `file_fields_json`");
         }
+        // Deleting a project type used to CASCADE to every project of that type
+        // (and from there to its managers, data, timeline and Gantt rows). The
+        // type is a template; its projects are history and must survive it.
+        ccrm_migrate_project_type_fk_restrict($pdo);
         // Projects had no name of their own — they borrowed the paired lead's,
         // which left an unpaired project unnameable. NULL on every existing row,
         // and projectDisplayName() keeps showing the lead's name for those.
@@ -1931,6 +1976,13 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_occurrence_date')) {
             $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_occurrence_date` DATE NULL AFTER `recurring_source_id`");
         }
+        // How far a recurring rule's payments are stored (recurringRuleDeletion.ts).
+        // Existing rules migrate as NULL on purpose: no rule has been materialized
+        // yet, and a watermark set from a hand-edited stand-in's day would hide the
+        // un-stored charges before it. The first client run sets it.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_materialized_through')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_materialized_through` DATE NULL COMMENT 'Recurring rule: every charge on or before this day is stored or deliberately absent; the schedule only draws after it' AFTER `recurring_occurrence_date`");
+        }
         if (!ccrm_column_exists($pdo, 'leads', 'division')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `division` VARCHAR(100) NULL AFTER `owner`");
         }
@@ -1954,6 +2006,17 @@ if (!function_exists('ccrm_schema_statements')) {
         if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
             $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
         }
+        // Payroll records: the month's close is a recorded fact, not re-derived from the live status
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_at')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen' AFTER `note`");
+        }
+        if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'closed_by')) {
+            $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month' AFTER `closed_at`");
+        }
+        // Period keys without a year (`M05`) collided across years on uk_emp_period: rekey and merge.
+        // Before the closed_at backfill, so the merged survivor is the row that gets stamped.
+        ccrm_migrate_salary_period_keys($pdo);
+        ccrm_backfill_salary_closed_at($pdo);
         ccrm_migrate_employee_identity($pdo);
         ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
@@ -1978,6 +2041,7 @@ if (!function_exists('ccrm_schema_statements')) {
             error_log('[ccrm schema] employee document migration skipped: ' . $e->getMessage());
         }
         ccrm_migrate_tickets($pdo);
+        ccrm_backfill_ticket_resolve_due($pdo);
         ccrm_migrate_time_tracking($pdo);
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);
@@ -2832,6 +2896,8 @@ if (!function_exists('ccrm_schema_statements')) {
                   `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
                   `financial_record_id` VARCHAR(50) NULL,
                   `note` TEXT NULL,
+                  `closed_at` DATETIME NULL COMMENT 'Month closed: stamped when first paid in full; locks its time entries; cleared only by an admin reopen',
+                  `closed_by` VARCHAR(255) NULL COMMENT 'Who saved the record that closed the month',
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX idx_sal_emp (`employee_id`),
@@ -3273,6 +3339,71 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Restores `tickets.resolve_due_at` lost by the sync key mismatch: tickets created
+     * in the Tickets view sent `resolutionDueAt`, which sync.php did not read, so the
+     * resolution SLA was stored as NULL. Recomputed as created_at + the priority's
+     * resolution target, with the same precedence as ccrm_compute_ticket_sla():
+     * the project's or client's support contract hours, then TICKET_SETTINGS
+     * (`resolutionMins` or `resolveHours`), then the built-in default.
+     *
+     * Only manual tickets are touched (the widget and e-mail paths always stored a
+     * value) and only where the column is NULL, so it is idempotent. Pauses were never
+     * recorded, so none are added. created_at is used in whatever clock it was written.
+     */
+    function ccrm_backfill_ticket_resolve_due(PDO $pdo): void {
+        try {
+            if (!ccrm_table_exists($pdo, 'tickets') || !ccrm_column_exists($pdo, 'tickets', 'resolve_due_at')) return;
+            $rows = $pdo->query(
+                "SELECT `id`, `priority`, `project_id`, `client_id`, `created_at` FROM `tickets`
+                 WHERE `resolve_due_at` IS NULL AND `source` = 'manual' AND `created_at` IS NOT NULL"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            if (empty($rows)) return;
+
+            $defaults = ['critical' => 240, 'high' => 480, 'normal' => 1440, 'low' => 2880];
+            $targetMins = $defaults;
+            if (ccrm_table_exists($pdo, 'system_settings')) {
+                $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TICKET_SETTINGS' LIMIT 1")->fetchColumn();
+                $decoded = $raw ? json_decode((string)$raw, true) : null;
+                if (is_array($decoded) && isset($decoded['slaTargets']) && is_array($decoded['slaTargets'])) {
+                    foreach ($defaults as $prio => $def) {
+                        $t = $decoded['slaTargets'][$prio] ?? null;
+                        if (!is_array($t)) continue;
+                        if (isset($t['resolutionMins']) && (float)$t['resolutionMins'] > 0) {
+                            $targetMins[$prio] = (int)round((float)$t['resolutionMins']);
+                        } elseif (isset($t['resolveHours']) && (float)$t['resolveHours'] > 0) {
+                            $targetMins[$prio] = (int)round(((float)$t['resolveHours']) * 60);
+                        }
+                    }
+                }
+            }
+
+            $contracts = [];
+            if (ccrm_table_exists($pdo, 'support_contracts')) {
+                $contracts = $pdo->query("SELECT * FROM `support_contracts` ORDER BY `created_at` ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
+
+            $upd = $pdo->prepare("UPDATE `tickets` SET `resolve_due_at` = ? WHERE `id` = ? AND `resolve_due_at` IS NULL");
+            foreach ($rows as $r) {
+                $prio = isset($targetMins[$r['priority'] ?? '']) ? (string)$r['priority'] : 'normal';
+                $mins = $targetMins[$prio];
+                foreach ($contracts as $sc) {
+                    $matches = (!empty($r['project_id']) && ($sc['project_id'] ?? null) === $r['project_id'])
+                        || (!empty($r['client_id']) && ($sc['client_id'] ?? null) === $r['client_id']);
+                    if (!$matches) continue;
+                    $hours = (float)($sc['sla_resolve_' . $prio . '_hours'] ?? 0);
+                    if ($hours > 0) $mins = (int)round($hours * 60);
+                    break;
+                }
+                $createdTs = strtotime((string)$r['created_at']);
+                if ($createdTs === false) continue;
+                $upd->execute([date('Y-m-d H:i:s', $createdTs + $mins * 60), $r['id']]);
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] ccrm_backfill_ticket_resolve_due: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Migrates ticket system tables and columns on leads, project_types, and projects.
      */
     function ccrm_migrate_tickets(PDO $pdo, bool $backfillHashes = true): void {
@@ -3449,7 +3580,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

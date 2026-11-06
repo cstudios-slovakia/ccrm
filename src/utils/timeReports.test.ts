@@ -126,6 +126,7 @@ test("salary split uses Employee.salaryAmount and lists time without an employee
   assert.equal(report.withoutSalary.length, 1);
   assert.equal(report.withoutSalary[0].name, "No record");
   assert.equal(report.withoutSalary[0].seconds, 1800);
+  assert.equal(erik.rateBasis, "contract");
 
   const hidden = buildSalaryReport({
     entries: [{ userId: "u2", projectId: "client", entryDate: "2026-05-06", durationSec: 1800, cost: 77, currency: "EUR" }],
@@ -141,4 +142,45 @@ test("salary split uses Employee.salaryAmount and lists time without an employee
   });
   assert.equal(hidden.withoutSalary[0].seconds, 1800);
   assert.deepEqual(hidden.withoutSalary[0].cost, {});
+});
+
+const salaryInput = (salaryAmount: number) => ({
+  // May 2026 was priced at €3,200: 3200 / (20 days × 8 h) × 1.352 = €27.04/h, frozen on the entries
+  entries: [
+    { userId: "u1", projectId: "client", entryDate: "2026-05-04", durationSec: 7200, cost: 54.08, currency: "EUR", costRate: 27.04, costRateSource: "monthly", costRateBasisDays: 20 },
+    { userId: "u1", projectId: null, entryDate: "2026-05-05", durationSec: 3600, cost: 27.04, currency: "EUR", costRate: 27.04, costRateSource: "monthly", costRateBasisDays: 20 },
+  ],
+  people: [{ userId: "u1", name: "Erik", employeeId: "e1", active: true, kind: "employee", salaryType: "monthly", salaryAmount, workCountry: "SK" as const }],
+  projects: [{ id: "client", isInternal: false }],
+  from: "2026-05-01",
+  to: "2026-05-31",
+  viewerUserId: "u1",
+  canCosts: true,
+  currency: "EUR",
+  settings: DEFAULT_COST_SETTINGS,
+  monthWorkingDays: () => 20,
+});
+
+test("a past month keeps the salary its entries were priced at after a raise", () => {
+  const report = buildSalaryReport(salaryInput(3500));
+  const erik = report.rows[0];
+  assert.equal(erik.rateBasis, "snapshot");
+  assert.equal(erik.rate.rate, 27.04);
+  assert.equal(erik.loadedSalary, 3200);
+  assert.equal(report.totals.loadedSalary.EUR, 3200);
+  assert.equal(erik.clientCost.EUR, 54.08);
+});
+
+test("an unchanged salary is shown as the contract amount, from the snapshot", () => {
+  const erik = buildSalaryReport(salaryInput(3200)).rows[0];
+  assert.equal(erik.rateBasis, "snapshot");
+  assert.equal(erik.loadedSalary, 3200);
+  assert.equal(erik.rate.amount, 3200);
+});
+
+test("a person without a priced entry falls back to today's contract", () => {
+  const input = salaryInput(3500);
+  const erik = buildSalaryReport({ ...input, entries: input.entries.map((e) => ({ ...e, costRate: null })) }).rows[0];
+  assert.equal(erik.rateBasis, "contract");
+  assert.equal(erik.loadedSalary, 3500);
 });

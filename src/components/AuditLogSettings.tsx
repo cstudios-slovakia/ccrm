@@ -31,6 +31,7 @@ const ACTION_GROUPS: { value: string; en: string; sk: string; hu: string }[] = [
   { value: "revoke_mcp_key", en: "MCP keys (revoked)", sk: "MCP kľúče (zrušenie)", hu: "MCP kulcsok (visszavonás)" },
   { value: "license.", en: "Licence", sk: "Licencia", hu: "Licenc" },
   { value: "error_logs.", en: "Error logs", sk: "Chybové záznamy", hu: "Hibanaplók" },
+  { value: "workflow.", en: "Automations", sk: "Automatizácie", hu: "Automatizálások" },
 ];
 
 /** Security-relevant actions get a stronger chip so they stand out in a long list. */

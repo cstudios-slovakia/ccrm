@@ -888,6 +888,8 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $expenseByCat = [];
 
                 foreach ($finRecords as $fr) {
+                    // A recurring rule is not money of its own: its payments are stored rows.
+                    if ((int)($fr['is_recurring'] ?? 0) === 1) continue;
                     $amtReal = (float)($fr['amount_real'] ?? 0);
                     $amtPlan = (float)($fr['amount_planned'] ?? 0);
                     $type = $fr['type'];
@@ -1366,7 +1368,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 // Recent salaries summary
                 if ($hrPay && $pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
                     $salSummaryStmt = $pdo->query("
-                        SELECT es.`period_key`, es.`total_salary`, es.`total_paid`, es.`status`, es.`payment_date`, es.`due_date`, e.`name` as `emp_name`
+                        SELECT es.*, e.`name` as `emp_name`
                         FROM `employee_salaries` es
                         JOIN `employees` e ON es.`employee_id` = e.`id`
                         ORDER BY es.`year` DESC, es.`period_number` DESC
@@ -1376,7 +1378,13 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     if (!empty($salRows)) {
                         $hrBlock .= "\n--- RECENT PAYROLL & SALARY RECORDS ---\n";
                         foreach ($salRows as $sr) {
-                            $hrBlock .= "- Period " . $sr['period_key'] . " | " . $sr['emp_name'] . ": Salary €" . number_format((float)$sr['total_salary'], 2) . " | Paid €" . number_format((float)$sr['total_paid'], 2) . " [Status: " . strtoupper($sr['status']) . ", Due: " . ($sr['due_date'] ?: 'N/A') . "]\n";
+                            // Paid is measured against the labour cost (Cena práce) once the payslip is in,
+                            // otherwise the gross: the same "due" as the app (payslip.ts salaryDue)
+                            $laborCost = isset($sr['labor_cost']) && is_numeric($sr['labor_cost']) ? (float)$sr['labor_cost'] : null;
+                            $hrBlock .= "- Period " . $sr['period_key'] . " | " . $sr['emp_name'] . ": Gross salary €" . number_format((float)$sr['total_salary'], 2)
+                                . ($laborCost !== null ? " | Labour cost €" . number_format($laborCost, 2) : '')
+                                . " | Paid €" . number_format((float)$sr['total_paid'], 2) . " of €" . number_format($laborCost ?? (float)$sr['total_salary'], 2)
+                                . " [Status: " . strtoupper($sr['status']) . (!empty($sr['closed_at']) ? ", CLOSED" : '') . ", Due: " . ($sr['due_date'] ?: 'N/A') . "]\n";
                         }
                     }
                 }

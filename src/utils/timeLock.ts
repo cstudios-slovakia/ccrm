@@ -12,6 +12,8 @@
  * the entry — `lockReason` still names the lock so the drawer can say why.
  */
 
+import { canonicalSalaryPeriodKey, isPayrollPeriodClosed } from "./salaryPeriod.ts";
+
 export interface LockableEntry {
   /** YYYY-MM-DD, company timezone. */
   entryDate: string;
@@ -79,11 +81,19 @@ export const isEntryLocked = (entry: LockableEntry, settings: LockSettings, nowI
   return lockReason(entry, settings, nowIso) !== null;
 };
 
-/** A payroll row, as far as the lock needs to see it. `status === "paid"` is a lock. */
+/**
+ * A payroll row, as far as the lock needs to see it. A closed month (`closedAt`, stamped when it was
+ * first paid in full) is a lock; a row from a server that does not send `closedAt` falls back to
+ * `status === "paid"`. Year and period number rebuild a legacy key that lacks the year (`M05`).
+ */
 export interface PayrollPeriod {
   employeeId: string;
   periodKey: string;
   status: string;
+  closedAt?: string | null;
+  year?: number;
+  periodNumber?: number;
+  periodType?: "monthly" | "weekly";
 }
 
 export interface PayrollPerson {
@@ -114,7 +124,12 @@ export const paidMonthsForOwner = (
   };
   if (employeeId && salaries) {
     for (const row of salaries) {
-      if (row.employeeId === employeeId && row.status === "paid") add(row.periodKey);
+      if (row.employeeId !== employeeId || !isPayrollPeriodClosed(row)) continue;
+      add(
+        row.year !== undefined && row.periodNumber !== undefined
+          ? canonicalSalaryPeriodKey({ periodKey: row.periodKey, year: row.year, periodNumber: row.periodNumber, periodType: row.periodType })
+          : row.periodKey
+      );
     }
   }
   for (const month of stampedMonths ?? []) add(month);

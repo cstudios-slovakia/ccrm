@@ -3,14 +3,18 @@
  *
  * Rounding (`settings.rounding`) is applied here and in the client PDF only.
  * Cost of other people is dropped unless the viewer has `time_tracking_costs`.
- * Salary figures are `Employee.salaryAmount` — never an EmployeeSalary total,
- * which mixes base pay with bonuses.
+ * Salary figures are base pay — never an EmployeeSalary total, which mixes base
+ * pay with bonuses. In the salary allocation a month's rate and base pay come
+ * from the rate frozen on that month's entries (the salary valid then), and
+ * only a person with no priced entry falls back to today's
+ * `Employee.salaryAmount` (flagged `rateBasis: "contract"`).
  */
 
-import { computeCostRate, type CostRate } from "./timeCost.ts";
+import { computeCostRate, round2, type CostRate } from "./timeCost.ts";
 import { hoursOf } from "./timeTracking.ts";
 import {
   addMoney,
+  frozenCostRate,
   sumMoney,
   visibleEntryCost,
   type MoneyByCurrency,
@@ -286,6 +290,10 @@ export interface SalaryEntry {
   durationSec: number;
   cost?: number | null;
   currency?: string;
+  /** The rate frozen on the entry when it was priced (time_entries.cost_rate and its basis). */
+  costRate?: number | null;
+  costRateSource?: string | null;
+  costRateBasisDays?: number | null;
 }
 
 export interface SalaryRow {
@@ -294,8 +302,13 @@ export interface SalaryRow {
   employeeId: string;
   loadedSalary: number | null;
   currency: string;
-  /** This month's rate from `salaryAmount`, for the tooltip (month and basis). */
+  /** The month's rate, for the tooltip (month and basis): frozen on its entries, else today's contract. */
   rate: CostRate;
+  /**
+   * Where rate and salary come from: "snapshot" = the rate frozen on the month's entries (the salary
+   * valid then); "contract" = today's contract, because the person has no priced entry that month.
+   */
+  rateBasis: "snapshot" | "contract";
   trackedSeconds: number;
   clientSeconds: number;
   internalSeconds: number;
@@ -339,6 +352,42 @@ export const monthRange = (ym: string): { from: string; to: string } => {
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const mm = String(m).padStart(2, "0");
   return { from: `${y}-${mm}-01`, to: `${y}-${mm}-${String(last).padStart(2, "0")}` };
+};
+
+type SalarySettings = { hoursBasis: "workingDays" | "fixed"; fixedHoursPerMonth: number; hoursPerDay: number; employerMultiplier: number };
+
+/**
+ * The rate a person's entries of the month were priced at: the frozen snapshot carrying the most
+ * tracked time (entries of one month normally share one), with the base pay it implies. Null when
+ * none of the entries carries a rate. `workingDays` only stands in for a monthly snapshot that
+ * recorded no day count while the basis is now working days.
+ */
+export const snapshotSalaryRate = (
+  entries: readonly SalaryEntry[],
+  settings: SalarySettings,
+  workingDays: number,
+): CostRate | null => {
+  const weight = new Map<string, { seconds: number; rate: CostRate }>();
+  for (const e of entries) {
+    const frozen = frozenCostRate(e, settings);
+    if (!frozen) continue;
+    const key = `${frozen.rate}|${frozen.source}|${frozen.basisDays ?? ""}`;
+    const slot = weight.get(key) ?? { seconds: 0, rate: frozen };
+    slot.seconds += Math.max(0, Math.round(e.durationSec || 0));
+    weight.set(key, slot);
+  }
+  let best: { seconds: number; rate: CostRate } | null = null;
+  for (const slot of weight.values()) if (!best || slot.seconds > best.seconds) best = slot;
+  if (!best || best.rate.rate == null) return null;
+  const r = best.rate;
+  const rate = r.rate as number;
+  const gross = rate / r.multiplier;
+  if (r.source === "hourly" || r.source === "contractor_hourly") return { ...r, amount: round2(gross) };
+  if (r.source === "daily" || r.source === "contractor_daily") return { ...r, amount: round2(gross * settings.hoursPerDay) };
+  const basisHours =
+    r.basisHours ??
+    (settings.hoursBasis === "fixed" ? settings.fixedHoursPerMonth : workingDays * settings.hoursPerDay);
+  return { ...r, basisHours, amount: basisHours > 0 ? round2(gross * basisHours) : null };
 };
 
 export const buildSalaryReport = (input: {
@@ -398,19 +447,31 @@ export const buildSalaryReport = (input: {
       const basis = input.settings.hoursBasis === "fixed"
         ? { hours: input.settings.fixedHoursPerMonth }
         : { hours: days * input.settings.hoursPerDay };
-      const rate = computeCostRate(
+      const contractRate = computeCostRate(
         { kind: p.kind, salaryType: p.salaryType, salaryAmount: p.salaryAmount },
         days,
         input.settings,
       );
-      const basisSeconds = basis.hours * 3600;
+      const contractSalary = p.salaryAmount != null && Number.isFinite(Number(p.salaryAmount)) ? Number(p.salaryAmount) : null;
+      // The month's own rate, frozen on its entries: a raise since then does not rewrite it
+      const snapshot = snapshotSalaryRate(
+        inRange.filter((e) => e.userId === p.userId),
+        input.settings,
+        days,
+      );
+      // Same rate as today's contract: the contract amount is that month's salary to the cent
+      const sameAsContract = snapshot != null && contractRate.rate != null && snapshot.rate === contractRate.rate && snapshot.source === contractRate.source;
+      const rate = snapshot ? (sameAsContract ? { ...snapshot, amount: contractRate.amount } : snapshot) : contractRate;
+      const loadedSalary = snapshot ? (sameAsContract ? contractSalary : snapshot.amount) : contractSalary;
+      const basisSeconds = (snapshot?.basisHours ?? basis.hours) * 3600;
       return {
         userId: p.userId,
         name: p.name,
         employeeId: p.employeeId as string,
-        loadedSalary: p.salaryAmount != null && Number.isFinite(Number(p.salaryAmount)) ? Number(p.salaryAmount) : null,
+        loadedSalary,
         currency: input.currency,
         rate,
+        rateBasis: snapshot ? ("snapshot" as const) : ("contract" as const),
         trackedSeconds: acc.seconds,
         clientSeconds: acc.clientSeconds,
         internalSeconds: acc.internalSeconds,

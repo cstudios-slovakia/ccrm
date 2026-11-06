@@ -206,6 +206,11 @@ Action items generated from meetings.
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
+Link to the real task: assigning a suggestion creates a `tasks` row with id `task-mt-<meeting_tasks.id>`
+(`src/utils/meetingSuggestions.ts`). The "Created" badge checks that this task exists; `assigned_user` alone
+does not mean a task was created. Suggestions converted before this convention (`task-ai-<timestamp>` ids) are
+matched on title and assignee.
+
 ---
 
 ## 5. Communications & Email Cache
@@ -278,7 +283,7 @@ Common blueprints / templates defining dynamic attributes and configurations.
 ### `projects`
 Individual instances of active project lifecycles.
 * `id` VARCHAR(50) [PK]
-* `project_type_id` VARCHAR(50)
+* `project_type_id` VARCHAR(50) (FK to `project_types.id`, **ON DELETE RESTRICT**: a type that still has projects, archived ones included, cannot be deleted. `sync.php` refuses such a delete and reports it in `deleteBlocked.project_types`; installs created with the old CASCADE rule are converted by `ccrm_migrate_project_type_fk_restrict()`)
 * `lead_id` VARCHAR(50)
 * `client_id` VARCHAR(50)
 * `division` VARCHAR(100) (assigned business division)
@@ -300,7 +305,7 @@ Junction table mapping project managers to projects.
 
 ### Dynamic Tables (Per Project Type)
 Each custom project type with ID `{safeId}` generates three tables:
-1. `proj_data_{safeId}`: Stores values for custom attributes (`attr_{attributeId}`).
+1. `proj_data_{safeId}`: Stores values for custom attributes (`attr_{attributeId}`). Columns are only ever added: removing an attribute or file slot from the type keeps its column and the values in it (they are just no longer shown), the same for timeline attribute columns in `proj_timeline_{safeId}`. The three tables are dropped only when their type is deleted, which requires the type to have no projects.
 2. `proj_timeline_{safeId}`: Chronological notes/events relating to the project.
 3. `proj_gantt_{safeId}`: Tasks and dates for Gantt rendering (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`).
 
@@ -596,6 +601,12 @@ Core financial movement records representing current and planned/future incomes,
 * `recurring_config_json` TEXT (Recurrence rule configuration: `dayOfWeek`, `dayOfMonth`, `weekOfMonth`, `month`, optional `interval` — every N weeks/months/years, counted from `recurring_start_date`)
 * `recurring_start_date` DATE
 * `recurring_end_date` DATE
+* `recurring_planned_end_date` DATE [NULLable] (The end date a paused rule really has, restored on resume; a pause stamps `recurring_end_date` with today)
+* `recurring_amount_history_json` TEXT [NULLable] (Superseded amounts of a recurring rule: `[{until, amountPlanned, amountReal}]`)
+* `recurring_skipped_dates_json` TEXT [NULLable] (Scheduled days a stored movement stands in for, as a JSON list of `YYYY-MM-DD` days)
+* `recurring_source_id` VARCHAR(50) [NULLable] (On a one-off movement: the recurring rule whose charge it replaces or stores; materialized charges have the id `fr-rec-<rule>-<day>`)
+* `recurring_occurrence_date` DATE [NULLable] (On a one-off movement: the scheduled day it stands in for)
+* `recurring_materialized_through` DATE [NULLable] (On a recurring rule: every charge on or before this day is a stored movement or deliberately absent (deleted, or a paused day). Advanced to today by the client materializer (`src/utils/recurringRuleDeletion.ts`) on every run; schedule readers (`recurringCharges`, `mcp_rec_charges`) draw only after it, so a schedule edit or a resume changes only the future. Never moves back: `sync.php` keeps the greater of the stored and incoming value. NULL until the first run.)
 * `project_id` VARCHAR(50) [NULLable, links to `projects.id`; NULL means Global company-wide record]
 * `client_id` VARCHAR(50) [NULLable, links to `leads.id` / client; NULL means Global company-wide record]
 * `invoice_number` VARCHAR(100) (e.g. `FA-2026-0001`)
@@ -659,7 +670,7 @@ Periodic payroll statements (monthly or weekly) tracking multi-category salary b
 * `id` VARCHAR(50) [PK] (e.g. `sal-1727650000000-efgh`)
 * `employee_id` VARCHAR(50) (References `employees.id`)
 * `period_type` ENUM('monthly', 'weekly') (Default `monthly`)
-* `period_key` VARCHAR(20) (Period key, e.g. `2026-09` or `2026-W39`)
+* `period_key` VARCHAR(20) (Period key, always built from `year` and `period_number`: `2026-09` or `2026-W39`. `UNIQUE (employee_id, period_key)`. Keys without a year (`M05`, written by the profile drawer before 1.13) are rekeyed by `ccrm_migrate_salary_period_keys()` and normalised by `sync.php` on write; when two records hold one month the one with more paid out (then the newer edit) is kept and the other is written to `audit_log` in full. Helpers: `api/payroll_lib.php`, `src/utils/salaryPeriod.ts`)
 * `year` INT
 * `period_number` INT (Month 1-12 or Week 1-53)
 * `items_json` TEXT (JSON array of category line items `[{ categoryId, categoryName, salary, paid }]`)
@@ -667,12 +678,14 @@ Periodic payroll statements (monthly or weekly) tracking multi-category salary b
 * `total_paid` DECIMAL(12, 2) (Total amount paid out so far. Status and the auto-expense measure it against `labor_cost` when filled in, otherwise against `total_salary`; on an employee's record it is one amount for the month, the item rows carry no paid value)
 * `labor_cost` DECIMAL(12, 2) [NULLable] (Cena práce from the month's payslip, typed in by hand; employees only, NULL for contractors and ledger lines. When set, it is the auto-expense's planned amount instead of `total_salary`)
 * `net_pay` DECIMAL(12, 2) [NULLable] (Na výplatu from the payslip, typed in by hand; employees only. Not stored, computed in the UI: Odvody zamestnávateľa = `labor_cost − total_salary`, Odvody a daň zamestnanca = `total_salary − net_pay`)
-* `status` ENUM('pending', 'partially_paid', 'paid') (Mapped to `financial_records.status`: pending = planned, paid = paid, partially_paid = partially_paid)
+* `status` ENUM('pending', 'partially_paid', 'paid') (Mapped to `financial_records.status`: pending = planned, paid = paid, partially_paid = partially_paid. Re-derived on every save from `total_paid` vs `ccrm_salary_due()`, so it is the live state, not the close; the time-entry lock reads `closed_at`)
 * `due_date` DATE [NULLable] (Calculated salary due date based on period and salaryDueDay)
 * `payment_date` DATE [NULLable] (Date of actual payment settlement)
 * `payment_method` VARCHAR(50) (Default `bank_transfer`)
-* `financial_record_id` VARCHAR(50) [NULLable] (Linked `financial_records.id` for automatic expense tracking)
+* `financial_record_id` VARCHAR(50) [NULLable] (Linked `financial_records.id` for automatic expense tracking. The `fr-sal-*` expense takes its amounts, status and dates from this row on every save; its title, description and category are set when it is created only)
 * `note` TEXT [NULLable]
+* `closed_at` DATETIME [NULLable] (The month was closed: stamped server-side (`sync.php`, MCP `record_salary_payout`) the first time the status becomes `paid`; kept when a later edit makes it partially paid again. Locks the month's time entries (`time_entries.php` `ccrm_te_paid_keys`, `src/utils/timeLock.ts`). Cleared only by an admin's reopen: the client sends `reopenClosedAt` = the stamp being reopened, and the server clears it only while it still matches, with an `audit_log` row `salary.reopen`. Backfilled from `payment_date` for months already paid)
+* `closed_by` VARCHAR(255) [NULLable] (Email of the session whose save closed the month)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
@@ -686,7 +699,7 @@ Employee leave and absence logs (holidays, doctor visits, sick leave, unpaid tim
 * `days_count` DECIMAL(5, 1) (Calculated working days excluding weekends)
 * `status` ENUM('requested', 'approved', 'rejected', 'taken') (Approval status)
 * `note` TEXT [NULLable]
-* `approved_by` VARCHAR(100) [NULLable] (Name/ID of authorizer)
+* `approved_by` VARCHAR(100) [NULLable] (Email of the session that approved or rejected it, stamped by `sync.php` on the transition. Kept when approved leave moves to `taken`; NULL for any other status)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 

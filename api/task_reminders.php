@@ -18,6 +18,7 @@
  * and moving the task to another date or time earns a fresh reminder.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/task_done.php';
 require_once __DIR__ . '/mail_broker.php';
 
 if (!defined('CCRM_TASK_REMINDER_MORNING')) {
@@ -176,7 +177,7 @@ function ccrm_process_task_reminders(PDO $pdo, ?string $now = null): array {
         $settings[$row['key']] = $row['value'];
     }
     $taskStates = json_decode($settings['TASK_STATES'] ?? '[]', true) ?: [];
-    $lastState = $taskStates ? (string)end($taskStates) : null;
+    $taskStates = is_array($taskStates) ? array_values($taskStates) : [];
     $systemLang = $settings['SYSTEM_LANGUAGE'] ?? 'sk';
 
     // A "1 day before" reminder for a task due tomorrow can be due today; nothing
@@ -213,7 +214,7 @@ function ccrm_process_task_reminders(PDO $pdo, ?string $now = null): array {
 
     foreach ($tasks as $task) {
         $status = (string)$task['status'];
-        if (strtolower($status) === 'done' || ($lastState !== null && $status === $lastState)) continue;
+        if (ccrm_task_status_is_done($status, $taskStates)) continue;
         $map = json_decode((string)$task['email_reminders_json'], true);
         if (!is_array($map)) continue;
 

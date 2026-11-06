@@ -983,7 +983,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'list_expenses',
-            'description' => 'Query recorded business expenses.',
+            'description' => 'Query recorded business expenses (stored movements; recurring rules are listed by list_recurring_movements).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1292,7 +1292,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'record_salary_payout',
-            'description' => 'Record the monthly salary obligation and payment of an employee (YYYY-MM). Mirrors the app: creates/updates the linked payroll expense when the employee has auto-expense on. A period already paid, or split into components, is refused (edit it in the app).',
+            'description' => 'Record the monthly salary obligation and payment of an employee (YYYY-MM). Mirrors the app: creates/updates the linked payroll expense when the employee has auto-expense on. Paid is measured against the labour cost from the payslip once it is entered in the app, otherwise against total_salary. A closed period (paid in full once), or one split into components, is refused (edit it in the app).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -2223,7 +2223,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return mcp_do_update_invoice_status($pdo, $user, $args);
 
         case 'list_expenses':
-            $where = ["type = 'expense'"];
+            // A recurring rule is not an expense of its own: its payments are stored rows.
+            $where = ["type = 'expense'", "is_recurring = 0"];
             $params = [];
 
             if (!empty($args['category_id'])) {

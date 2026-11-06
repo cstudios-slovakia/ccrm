@@ -498,8 +498,10 @@ if ($action === 'update_project') {
     if (isset($payload['status']) && in_array($payload['status'], ccrm_project_statuses($pdo), true)) {
         $updates[] = "`status` = ?";
         $params[] = $payload['status'];
-        if (ccrm_project_status_group($payload['status'], $pdo) === 'completed') {
-            $updates[] = "`finished_at` = COALESCE(`finished_at`, CURRENT_DATE)";
+        // Stamps on completing and clears on reopening, like the app does.
+        $finishedSql = ccrm_finished_at_sql_for_status($payload['status'], $pdo);
+        if ($finishedSql) {
+            $updates[] = $finishedSql;
         }
     }
     if (isset($payload['budget'])) {

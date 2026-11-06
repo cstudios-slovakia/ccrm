@@ -5,9 +5,9 @@ import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Check, LayoutGrid, Rows3, Li
 import { CustomSelect } from "./ui/CustomSelect";
 import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
-import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
+import type { Project, ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
-import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays, projectTypeHasInvoiceDate } from "../utils/projects";
+import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays, projectCountByType, projectTypeHasInvoiceDate } from "../utils/projects";
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
 import { registerPendingSave } from "../utils/pendingSaves";
@@ -39,6 +39,12 @@ interface ProjectSettingsProps {
   autoStartCreate?: boolean;
   /** Called once the request above has been honoured, so it fires only once. */
   onAutoStartCreateHandled?: () => void;
+  /**
+   * Every project, archived ones included. A type that still has projects
+   * cannot be deleted (the server refuses it too), so its delete button is
+   * disabled and says why.
+   */
+  projects?: Project[];
 }
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
@@ -240,7 +246,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   setProjectAutoCreate,
   leadCategories = [],
   autoStartCreate = false,
-  onAutoStartCreateHandled
+  onAutoStartCreateHandled,
+  projects = []
 }) => {
   /* The view the projects screen opens on. The same preference the toggle in
      the list writes, deliberately: a separate stored default would sooner or
@@ -257,9 +264,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const [editSection, setEditSection] = useState<EditSection>("general");
   // Attributes and file fields of a saved type that were removed but can still be
-  // undone. Removing one makes the server drop the data stored under it, which no
-  // Undo can bring back — so the removal is only *shown* until the undo window
-  // closes, and applied (and autosaved) when it does.
+  // undone. The removal is only *shown* until the undo window closes, and applied
+  // (and autosaved) when it does. The server keeps the stored values of a removed
+  // attribute (it never drops the column), so adding it back under the same id
+  // would bring them back; the type just stops showing it.
   const [pendingRemovedIds, setPendingRemovedIds] = useState<ReadonlySet<string>>(new Set());
   const hideRemoved = (id: string) => setPendingRemovedIds(prev => new Set(prev).add(id));
   const unhideRemoved = (id: string) => setPendingRemovedIds(prev => {
@@ -483,8 +491,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       undoLabel: undoLabel(userLanguage),
       apply: () => hideRemoved(attrId),
       revert: () => unhideRemoved(attrId),
-      // Removing it wipes the stored values for existing projects — so it only
-      // happens here, once Undo is no longer possible. The persisted type is
+      // Applied here, once Undo is no longer possible. The persisted type is
       // written directly: the editor may be gone by then.
       onCommit: () => {
         unhideRemoved(attrId);
@@ -521,8 +528,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       undoLabel: undoLabel(userLanguage),
       apply: () => hideRemoved(fieldId),
       revert: () => unhideRemoved(fieldId),
-      // Removing it deletes the files attached to it in existing projects, so it
-      // waits for the undo window to close (see handleRemoveAttribute).
+      // Waits for the undo window to close, like handleRemoveAttribute. The
+      // server keeps the slot's column, so its uploads stay stored.
       onCommit: () => {
         unhideRemoved(fieldId);
         setFileFields(prev => prev.filter(f => f.id !== fieldId));
@@ -873,11 +880,30 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     );
   };
 
-  // Deleting a type also drops its data tables and every project of that type on
-  // the server, so the delete is held back until the undo window closes.
+  // A type is a template: its projects must outlive it. A type still used by any
+  // project (archived ones included) cannot be deleted — the server refuses it as
+  // well — so its projects have to be moved to another type or deleted first.
+  const projectsByType = React.useMemo(() => projectCountByType(projects), [projects]);
+  const typeDeleteBlockedReason = (typeId: string): string | undefined => {
+    const n = projectsByType.get(typeId) ?? 0;
+    if (n === 0) return undefined;
+    return t(
+      `${n} ${n === 1 ? "project uses" : "projects use"} this type. Move them to another type or delete them first.`,
+      `Tento typ používa ${n} ${n === 1 ? "projekt" : n < 5 ? "projekty" : "projektov"}. Najprv ich presuňte na iný typ alebo vymažte.`,
+      `${n} projekt használja ezt a típust. Előbb helyezze át őket egy másik típusba, vagy törölje őket.`
+    );
+  };
+
+  // Deleting an unused type also drops its (empty) data tables on the server, so
+  // the delete is held back until the undo window closes.
   const deleteTypeWithUndo = (typeId: string, extra?: { apply: () => void }) => {
     const target = projectTypes.find(pt => pt.id === typeId);
     if (!target) return;
+    const blocked = typeDeleteBlockedReason(typeId);
+    if (blocked) {
+      (window as any).showToast?.(blocked, "warning");
+      return;
+    }
     deleteRecordsWithUndo({
       collection: "projectTypes",
       allRecords: projectTypes,
@@ -1820,7 +1846,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   lang={userLanguage}
                   what={editingType?.name}
                   onConfirm={handleDeleteEditingType}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border border-rose-200 text-ui font-bold text-rose-600 hover:bg-rose-50"
+                  disabled={!!typeDeleteBlockedReason(editingType.id)}
+                  title={typeDeleteBlockedReason(editingType.id)}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border border-rose-200 text-ui font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   icon={<Trash2 className="h-4 w-4" />}
               ><span>{t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}</span>
               </HoldToConfirmButton>
@@ -2018,8 +2046,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     lang={userLanguage}
                     what={type.name}
                     onConfirm={() => handleDeleteType(type.id)}
-                    className="shrink-0 rounded-xl p-2 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-600"
-                    title={t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}
+                    disabled={!!typeDeleteBlockedReason(type.id)}
+                    className="shrink-0 rounded-xl p-2 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                    title={typeDeleteBlockedReason(type.id) ?? t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}
                   >
                     <Trash2 className="h-4.5 w-4.5" />
                   </HoldToConfirmButton>

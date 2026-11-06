@@ -377,7 +377,7 @@ function mcp_payment_status(string $status, float $settled, float $expected, ?st
 
 /** One income movement of a project, as an installment of its payment schedule. */
 function mcp_installment_row(array $r, string $today): array {
-    [$settled, $expected] = mcp_fin_split($r);
+    [$settled, $expected] = mcp_fin_movement_split($r);
     return [
         'id' => $r['id'], 'title' => $r['title'], 'invoice_number' => $r['invoiceNumber'],
         'issue_date' => $r['issueDate'], 'due_date' => $r['dueDate'], 'paid_date' => $r['paidDate'],
@@ -397,7 +397,14 @@ function mcp_project_financials(\PDO $pdo, array $p, array &$ctx): array {
     $records = mcp_income_by_project($pdo, [(string)$p['id']])[$p['id']] ?? [];
     $b = mcp_project_billing(mcp_project_value($pdo, $p, $ctx), $records);
     $today = mcp_today();
-    $schedule = array_map(fn($r) => mcp_installment_row($r, $today), $records);
+    // A recurring rule is a schedule, not an installment: its payments are stored rows of
+    // their own. Its row stays only while it holds a legacy payment (mcp_fin_movement_split).
+    $rules = array_values(array_filter($records, fn($r) => !empty($r['isRecurring'])));
+    $installmentRecords = array_values(array_filter(
+        $records,
+        fn($r) => empty($r['isRecurring']) || mcp_fin_recurring_own_row($r) !== null
+    ));
+    $schedule = array_map(fn($r) => mcp_installment_row($r, $today), $installmentRecords);
     usort($schedule, fn($a, $b) => [$a['due_date'] ?: $a['issue_date'], $a['id']] <=> [$b['due_date'] ?: $b['issue_date'], $b['id']]);
     $plannedOpen = 0.0;
     foreach ($schedule as $s) { if ($s['status'] === 'planned') $plannedOpen += $s['open']; }
@@ -413,6 +420,11 @@ function mcp_project_financials(\PDO $pdo, array $p, array &$ctx): array {
         'planned_not_issued' => mcp_round2($plannedOpen),
         'installment_based' => count($schedule) > 1,
         'installments' => $schedule,
+        'recurring_rules' => array_map(fn($r) => [
+            'id' => $r['id'], 'title' => $r['title'], 'frequency' => $r['recurringFrequency'],
+            'amount' => mcp_round2(mcp_rec_amount_at($r, $today)), 'currency' => $r['currency'],
+            'start_date' => $r['recurringStartDate'], 'end_date' => $r['recurringEndDate'],
+        ], $rules),
         'basis' => 'As on the project page: invoiced_total counts every income movement filed on the project (issued or planned, cancelled excluded); planned_not_issued is the part of it still only planned. remaining_billable = max(0, contract_value − invoiced_total). contract_value is the first positive of the project value, the project type\'s money attributes, the paired lead value.',
     ];
 }

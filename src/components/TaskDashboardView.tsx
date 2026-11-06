@@ -62,7 +62,7 @@ import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
-import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
+import { isDoneTaskState, isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
 import { nowLocalStamp } from "../utils/localTime";
 import {
     TASK_GROUP_BY_STORAGE_KEY,
@@ -558,13 +558,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     leadStateParents,
 }) => {
     const brand = useBrandName();
-    const isDoneState = (status: string) => {
-        return (
-            status.toLowerCase() === "done" ||
-            (taskStates.length > 0 &&
-                status === taskStates[taskStates.length - 1])
-        );
-    };
+    const isDoneState = (status: string) => isDoneTaskState(status, taskStates);
 
     const isClosedRecentTask = (t: Task): boolean => {
         if (t.archived) return false;

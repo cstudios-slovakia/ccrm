@@ -60,6 +60,7 @@ import {
   recurringAmountHistoryAfterChange,
   recurringChargeAmount,
   recurringEarliestRepriceDate,
+  recurringCadence,
   recurringCharges,
   recurringConfigFromFirstPayment,
   firstPaymentDay,
@@ -104,7 +105,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
-import { detachFromRule, dueChargeMovements } from "../utils/recurringRuleDeletion";
+import { detachFromRule, dueChargeMovements, storedChargeKeys } from "../utils/recurringRuleDeletion";
 import { useListFilter } from "../hooks/useListFilter";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
@@ -2177,6 +2178,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       // and none of its days have been replaced by a stored movement.
       recurringAmountHistory: null,
       recurringSkippedDates: null,
+      recurringMaterializedThrough: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -2359,7 +2361,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     let activeCount = 0;
 
     allRecurring.forEach((r) => {
-      const total = recurringTotalInRange(r, rangeStart, rangeEnd);
+      // The cadence, not what is left to draw: a charge already stored today still counts.
+      const total = recurringTotalInRange(recurringCadence(r), rangeStart, rangeEnd);
       if (total > 0) activeCount += 1;
       if (r.type === "income") totalAnnualIncome += total;
       else totalAnnualExpense += total;
@@ -4090,6 +4093,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       // The days a stored payment already stands in for. Dropping them would
       // draw each of those payments a second time from the schedule.
       recurringSkippedDates: formIsRecurring ? editingRecord?.recurringSkippedDates ?? null : null,
+      // How far the rule's payments are already stored: a schedule edit must not
+      // reach back past it and write those days again.
+      recurringMaterializedThrough: formIsRecurring ? editingRecord?.recurringMaterializedThrough ?? null : null,
       recurringAmountHistory: amountHistory,
       projectId: formScope === "project" && formProjectId ? formProjectId : null,
       clientId: formScope === "client" && formClientId ? formClientId : (formScope === "project" && formProjectId ? (projects.find(p => p.id === formProjectId)?.clientId || projects.find(p => p.id === formProjectId)?.leadId || null) : null),
@@ -4102,9 +4108,24 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     };
 
     setFinancialRecords((prev) => {
-      const exists = prev.some((r) => r.id === recordPayload.id);
-      if (exists) {
-        return prev.map((r) => (r.id === recordPayload.id ? recordPayload : r));
+      const current = prev.find((r) => r.id === recordPayload.id);
+      if (current) {
+        // The materializer may have stored a payment while the form was open
+        // (a new day, another session): keep the rule's newest skipped days and
+        // watermark, not the copy taken when the form opened.
+        const merged =
+          recordPayload.isRecurring && current.isRecurring
+            ? {
+                ...recordPayload,
+                recurringSkippedDates: current.recurringSkippedDates ?? recordPayload.recurringSkippedDates ?? null,
+                recurringMaterializedThrough:
+                  [current.recurringMaterializedThrough, recordPayload.recurringMaterializedThrough]
+                    .filter((d): d is string => !!d)
+                    .sort()
+                    .pop() ?? null
+              }
+            : recordPayload;
+        return prev.map((r) => (r.id === recordPayload.id ? merged : r));
       }
       return [recordPayload, ...prev];
     });
@@ -4282,7 +4303,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       rule,
       todayLocal(),
       new Date().toISOString(),
-      new Set(financialRecords.map((r) => r.id))
+      storedChargeKeys(financialRecords)
     ).map(detachFromRule);
     const keptIds = new Set(kept.map((r) => r.id));
     // Movements standing in for one of the rule's charges outlive it as plain ones.
@@ -8466,7 +8487,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       )
                         .toISOString()
                         .slice(0, 10);
-                      const monthlyCost = recurringTotalInRange(rec, currentMonthStart, currentMonthEnd);
+                      const monthlyCost = recurringTotalInRange(recurringCadence(rec), currentMonthStart, currentMonthEnd);
                       const nextCharge = getNextRecurringDueDate(rec);
                       const cadenceText = getRecurrenceDescription(rec);
                       // Amounts the rule used to charge, so a price rise reads

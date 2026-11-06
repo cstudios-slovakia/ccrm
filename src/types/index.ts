@@ -908,6 +908,8 @@ export interface WarehouseItem {
 }
 
 export interface WarehouseStock {
+  /** Synthetic `<warehouseId>:<itemId>`, emitted by sync.php so the delta diff can track the row. */
+  id?: string;
   warehouseId: string;
   itemId: string;
   quantity: number;
@@ -1061,6 +1063,15 @@ export interface FinancialRecord {
    * day here, so the table, trend, ledger and forecast all stop charging it.
    */
   recurringSkippedDates?: string[] | null;
+  /**
+   * On a recurring rule: every charge on or before this day (`YYYY-MM-DD`) is
+   * either a stored movement or deliberately absent (deleted by the user, or a
+   * day the rule was paused). The materializer advances it to today on every
+   * run, and `recurringCharges` never draws a day on or before it, so editing
+   * the schedule or resuming a paused rule changes only the future.
+   * `null` until the first run (see `recurringRuleDeletion.ts`).
+   */
+  recurringMaterializedThrough?: string | null;
   /**
    * On a one-off movement: the recurring rule it replaces one charge of, and
    * the scheduled day (`YYYY-MM-DD`) it stands in for. Deleting the movement
@@ -1400,6 +1411,18 @@ export interface EmployeeSalary {
   paymentMethod?: string | null;
   financialRecordId?: string | null;
   note?: string | null;
+  /**
+   * When the month was closed: stamped by the server the first time it becomes paid in full, and
+   * kept when a later edit (a higher Cena práce) makes it partially paid again. The time-entry lock
+   * reads this, not `status`. Cleared only by an admin's explicit reopen. Server-owned.
+   */
+  closedAt?: string | null;
+  closedBy?: string | null;
+  /**
+   * An admin's request to reopen the month: the `closedAt` being reopened. The server clears the
+   * stamp only while it still equals this value, so a copy re-sent later cannot undo a newer close.
+   */
+  reopenClosedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1774,6 +1797,17 @@ export interface SupportContract {
   currency?: string;
   slaFirstResponseMins?: number | null;
   slaResolutionMins?: number | null;
+  /** Per-priority SLA hours, synced from `support_contracts.sla_response_*_hours`. */
+  slaResponseCriticalHours?: number | null;
+  slaResponseHighHours?: number | null;
+  slaResponseNormalHours?: number | null;
+  slaResponseLowHours?: number | null;
+  slaResolveCriticalHours?: number | null;
+  slaResolveHighHours?: number | null;
+  slaResolveNormalHours?: number | null;
+  slaResolveLowHours?: number | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   isActive?: boolean;

@@ -974,6 +974,21 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * The `finished_at` assignment that goes with moving a project to $status, as
+     * an SQL fragment for an UPDATE, or null to leave the column alone. The same
+     * rule as finishedAtForStatus() in src/utils/projects.ts and
+     * mcp_finished_at_for_status(): a completed status stamps today unless a date
+     * is already stored, a cancelled one keeps whatever is stored, and any open
+     * status clears it (reopening a project means it is not finished).
+     */
+    function ccrm_finished_at_sql_for_status(string $status, ?\PDO $pdo = null): ?string {
+        $group = ccrm_project_status_group($status, $pdo);
+        if ($group === 'completed') return "`finished_at` = COALESCE(`finished_at`, CURRENT_DATE)";
+        if ($group === 'cancelled') return null;
+        return "`finished_at` = NULL";
+    }
+
+    /**
      * The statuses every installation starts with for a price offer, before
      * anyone opens Price offers → Settings → Offer statuses. Mirrors
      * DEFAULT_OFFER_STATUS_DEFS in src/utils/offerStatuses.ts. `invoiced` is

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
+import { applyOrderFulfillment, buildOrderFulfillmentMovement, planOrderFulfillment } from "../utils/orderFulfillment";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
 import { 
@@ -17,7 +18,7 @@ import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, calculateOrderTotals } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { isClientRecord } from "../utils/clientRecord";
-import { applyClientProfile } from "../utils/leadClient";
+import { applyClientProfile, clientProfileGroups } from "../utils/leadClient";
 import { getDefaultVatRate } from "../utils/vat";
 import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
@@ -57,7 +58,9 @@ import { todayLocal, todayLocalPlusDays, nowLocalStamp, formatDateLocalized, for
 import { chartTheme, useAppearance } from "../utils/theme";
 import { chartFonts, useViewSize } from "../utils/viewSize";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
-import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { isRealMovement, movementAmounts, recurringOwnRowCharge } from "../utils/financialOverviewTable";
+import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
+import { nextDocumentNumber } from "../utils/documentNumbering";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
 import { FiledMailBody, MailAccountBadge } from "./FiledMail";
@@ -111,6 +114,7 @@ interface ClientsViewProps {
   companyBillingSettings?: CompanyBillingSettings | null;
   warehouseItems?: WarehouseItem[];
   warehouses?: Warehouse[];
+  warehouseMovements?: WarehouseMovement[];
   setWarehouseMovements?: (movements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => void;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: (invoices: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
@@ -464,10 +468,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   setOrders,
   orderAccess,
   companyBillingSettings,
+  warehouseMovements = [],
   warehouseItems = [],
   warehouses = [],
   setWarehouseMovements,
-  invoicesOffers: _invoicesOffers = [],
+  invoicesOffers = [],
   invoiceStatuses,
   priceLevels = [],
   setInvoicesOffers,
@@ -1054,77 +1059,93 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       } | null;
     }> = {};
 
+    // A lead linked to its client by `clientId` belongs to that client's profile,
+    // whatever its own name; everything else still groups by name. A profile takes
+    // its name and details from its client record when it has one, so the route
+    // (#client-<name>) and the header always show the client, not a linked deal.
+    const groups = clientProfileGroups(leads);
+    const leadById = new Map(leads.map(l => [l.id, l]));
+    const anchorIdByKey = new Map<string, string>();
     leads.forEach(lead => {
-      const clientKey = lead.name.trim().toLowerCase();
+      const group = groups.get(lead);
+      const clientKey = group?.key ?? `name:${lead.name.trim().toLowerCase()}`;
       if (!profilesMap[clientKey]) {
+        const anchor = (group?.anchorId && leadById.get(group.anchorId)) || lead;
+        if (group?.anchorId) anchorIdByKey.set(clientKey, group.anchorId);
+        // Details come from the client record when the profile has one. The
+        // per-lead loop below still adds every lead's own value, categories and
+        // timeline, the anchor's included, exactly once.
         profilesMap[clientKey] = {
-          name: lead.name,
-          city: lead.city || "",
-          clientType: lead.clientType || "person",
-          source: lead.source || "website",
-          owner: lead.owner || "",
+          name: anchor.name,
+          city: anchor.city || "",
+          clientType: anchor.clientType || "person",
+          source: anchor.source || "website",
+          owner: anchor.owner || "",
           totalValue: 0,
-          adjustment: Number(lead.adjustment) || 0,
+          adjustment: Number(anchor.adjustment) || 0,
           leadsCount: 0,
           associatedLeads: [],
-          createdAt: lead.createdAt || "",
+          createdAt: anchor.createdAt || "",
 
-          phone: lead.phone || "",
-          email: lead.email || "",
-          street: lead.address?.street || "",
-          postalCode: lead.address?.postalCode || "",
-          country: lead.address?.country || "Slovakia",
-          companyId: lead.companyId || "",
-          taxId: lead.taxId || "",
-          vatId: lead.vatId || "",
-          contactPerson: lead.contactPerson || "",
-          website: lead.website || "",
-          establishmentDate: lead.establishmentDate || "",
-          legalForm: lead.legalForm || "",
-          skNace: lead.skNace || "",
-          organizationSize: lead.organizationSize || "",
-          ownershipType: lead.ownershipType || "",
-          dataSource: lead.dataSource || "",
-          dissolutionDate: lead.dissolutionDate || "",
-          region: lead.region || "",
-          district: lead.district || "",
-          timeline: lead.timeline || [],
+          phone: anchor.phone || "",
+          email: anchor.email || "",
+          street: anchor.address?.street || "",
+          postalCode: anchor.address?.postalCode || "",
+          country: anchor.address?.country || "Slovakia",
+          companyId: anchor.companyId || "",
+          taxId: anchor.taxId || "",
+          vatId: anchor.vatId || "",
+          contactPerson: anchor.contactPerson || "",
+          website: anchor.website || "",
+          establishmentDate: anchor.establishmentDate || "",
+          legalForm: anchor.legalForm || "",
+          skNace: anchor.skNace || "",
+          organizationSize: anchor.organizationSize || "",
+          ownershipType: anchor.ownershipType || "",
+          dataSource: anchor.dataSource || "",
+          dissolutionDate: anchor.dissolutionDate || "",
+          region: anchor.region || "",
+          district: anchor.district || "",
+          // A copy: the merge below pushes other leads' events into it.
+          timeline: [...(anchor.timeline || [])],
           categories: [],
           ticketAllowedEmails: [],
-          clientCategoryId: lead.clientCategoryId || null,
-          priceLevelId: lead.priceLevelId || null,
-          archived: !!lead.archived,
-          aiSummary: lead.aiSummary || "",
-          aiSummaryFingerprint: lead.aiSummaryFingerprint || "",
-          financialSummary: lead.financialSummary || "",
-          vatValidationResult: lead.vatValidationResult || null
+          clientCategoryId: anchor.clientCategoryId || null,
+          priceLevelId: anchor.priceLevelId || null,
+          archived: !!anchor.archived,
+          aiSummary: anchor.aiSummary || "",
+          aiSummaryFingerprint: anchor.aiSummaryFingerprint || "",
+          financialSummary: anchor.financialSummary || "",
+          vatValidationResult: anchor.vatValidationResult || null
         };
-      } else {
-        if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
-          profilesMap[clientKey].aiSummary = lead.aiSummary;
-          profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
-        }
-        if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
-          profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
-        }
-        if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
-          profilesMap[clientKey].priceLevelId = lead.priceLevelId;
-        }
-        // Archived only while every lead of the profile is: a new deal under the
-        // same name brings the client back into the register on its own.
-        profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
-        if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
-          profilesMap[clientKey].financialSummary = lead.financialSummary;
-        }
-        if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
-          profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
-        }
-        if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
-          profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
-        }
-        if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
-          profilesMap[clientKey].createdAt = lead.createdAt;
-        }
+      }
+      // Fold this lead into its profile. Every merge below keeps the first value
+      // it finds, so it is a no-op for the anchor that seeded the profile, and the
+      // first lead seen counts too when it is not the anchor.
+      if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
+        profilesMap[clientKey].aiSummary = lead.aiSummary;
+        profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
+      }
+      if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
+        profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
+      }
+      if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
+        profilesMap[clientKey].priceLevelId = lead.priceLevelId;
+      }
+      // Archived only while every lead of the profile is: a new deal under the
+      // same name brings the client back into the register on its own.
+      profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
+      if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
+        profilesMap[clientKey].financialSummary = lead.financialSummary;
+      }
+      if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
+        profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
+      }
+      if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
+        profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
+      }
+      if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
+        profilesMap[clientKey].createdAt = lead.createdAt;
       }
       profilesMap[clientKey].totalValue += (Number(lead.value) || 0);
       profilesMap[clientKey].leadsCount += 1;
@@ -1155,6 +1176,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           }
         });
       }
+    });
+
+    // The client record leads its profile's list: "the profile's first lead" is
+    // where new invoices, tasks and documents of the client attach.
+    anchorIdByKey.forEach((anchorId, key) => {
+      const list = profilesMap[key]?.associatedLeads;
+      const at = list ? list.findIndex(l => l.id === anchorId) : -1;
+      if (list && at > 0) list.unshift(...list.splice(at, 1));
     });
 
     // Add adjustment to total client value & sort timelines chronologically (Newest First)
@@ -1643,9 +1672,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
     const nextList = [...current, raw];
+    // Every lead of the profile, not only the same-name ones: the list shown is
+    // the union of all of them (see allClientProfiles).
+    const memberIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
     setLeads((prev) =>
       prev.map((lead) =>
-        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+        memberIds.has(lead.id)
           ? { ...lead, ticketAllowedEmails: nextList }
           : lead,
       ),
@@ -1656,9 +1688,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const handleRemoveClientWhitelistEmail = (email: string) => {
     if (!canEdit || !activeClient) return;
     const nextList = (activeClient.ticketAllowedEmails || []).filter((em) => em !== email);
+    const memberIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
     setLeads((prev) =>
       prev.map((lead) =>
-        lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()
+        memberIds.has(lead.id)
           ? { ...lead, ticketAllowedEmails: nextList }
           : lead,
       ),
@@ -1739,43 +1772,41 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const handleFulfillWarehouse = (order: Order) => {
     if (!canEditOrders || !setWarehouseMovements) return;
-    const physicalItems = (order.items || []).filter(i => i.itemType === "product" && i.quantity > 0);
-    if (physicalItems.length === 0) {
-      alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+    const plan = planOrderFulfillment(order, warehouseItems);
+    if (plan.lines.length === 0) {
+      if (plan.alreadyFulfilled.length > 0 && plan.skippedNonCatalog.length === 0) {
+        alert(t("All products of this order have already been issued from the warehouse.", "Všetky produkty tejto objednávky už boli vyskladnené.", "A rendelés összes terméke már ki lett adva a raktárból."));
+      } else if (plan.skippedNonCatalog.length > 0) {
+        alert(t("The remaining products of this order are not warehouse items, so they cannot be put on a delivery note.", "Zvyšné produkty tejto objednávky nie sú skladové položky, preto ich nemožno vyskladniť.", "A rendelés többi terméke nem raktári tétel, ezért nem adható ki."));
+      } else {
+        alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+      }
+      return;
+    }
+    const warehouseId = order.warehouseId || warehouses?.[0]?.id || "";
+    if (!warehouseId) {
+      alert(t("Create a warehouse first.", "Najprv vytvorte sklad.", "Először hozzon létre egy raktárt."));
       return;
     }
 
-    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${physicalItems.length} products?`, `Vystaviť výdajku zo skladu pre ${physicalItems.length} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${physicalItems.length} termékre?`))) return;
+    const count = plan.lines.length;
+    const skipped = plan.skippedNonCatalog.length;
+    const skippedNote = skipped > 0
+      ? t(` (${skipped} non-warehouse products are left out)`, ` (${skipped} neskladových produktov sa vynechá)`, ` (${skipped} nem raktári termék kimarad)`)
+      : "";
+    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${count} products?`, `Vystaviť výdajku zo skladu pre ${count} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${count} termékre?`) + skippedNote)) return;
 
-    const warehouseId = order.warehouseId || (warehouses?.[0]?.id ?? "wh-default");
-    const newMovement: WarehouseMovement = {
-      id: `mov_${Date.now()}`,
-      documentNumber: `VYD-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      type: "outward",
-      status: "confirmed",
-      warehouseId,
-      leadId: order.clientId || undefined,
-      totalCostValue: 0,
-      totalSellValue: order.itemsNetAmount,
-      totalProfitValue: 0,
-      createdBy: propCurrentUser?.name || "System",
-      note: `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`,
-      issuedAt: new Date().toISOString().split("T")[0],
-      createdAt: new Date().toISOString(),
-      items: physicalItems.map(item => ({
-        id: `mov_item_${Date.now()}_${Math.random()}`,
-        itemId: item.itemId || item.id,
-        quantity: item.quantity,
-        unitPurchasePrice: 0,
-        unitSellPrice: item.unitPrice,
-        totalPrice: item.totalNetAmount,
-        note: item.name
-      }))
-    };
-
-    setWarehouseMovements(prev => [newMovement, ...prev]);
+    const note = `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`;
+    const createdBy = propCurrentUser?.name || "System";
+    const now = new Date();
+    // The VYD number and the movement id follow what is already on file.
+    const movement = buildOrderFulfillmentMovement(order, plan, { existingMovements: warehouseMovements, warehouseId, createdBy, note, now });
+    const documentNumber = movement.documentNumber;
+    setWarehouseMovements(prev => [movement, ...prev]);
+    // What was issued is stored on the order lines, so a second click issues nothing.
+    setOrders?.(prev => prev.map(o => (o.id === order.id ? applyOrderFulfillment(o, plan) : o)));
     const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-    toast?.(t(`Delivery note ${newMovement.documentNumber} created!`, `Výdajka ${newMovement.documentNumber} bola úspešne vytvorená!`, `A(z) ${newMovement.documentNumber} kiadási bizonylat elkészült!`));
+    toast?.(t(`Delivery note ${documentNumber} created!`, `Výdajka ${documentNumber} bola úspešne vytvorená!`, `A(z) ${documentNumber} kiadási bizonylat elkészült!`));
   };
 
   const handleCreateInvoice = async (order: Order) => {
@@ -1806,9 +1837,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
     const nowIso = new Date().toISOString();
     const newInvoiceId = `inv_${Date.now()}`;
-    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
-      Math.floor(Math.random() * 9000) + 1000
-    )}`;
+    // The next number of the invoice series, as MCP issues it (mcp_next_document_number,
+    // FA, 3 digits): a random number could collide with one already issued.
+    const newInvoiceNumber = nextDocumentNumber(
+      invoicesOffers.map((io) => io.documentNumber),
+      "FA",
+      new Date().getFullYear(),
+      3
+    );
 
     let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
     if (!targetLead && order.billing?.ico) {
@@ -1878,6 +1914,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     };
 
     setInvoicesOffers?.(prev => [newInvoice, ...prev]);
+
+    // An order already paid: the invoice's ledger movement is settled too, as the
+    // Orders module does. Otherwise it would wait in "awaiting payment" forever.
+    if (order.paymentStatus === "paid" && setFinancialRecords) {
+      setFinancialRecords(prev =>
+        markInvoiceMovementPaid(prev, newInvoiceId, order.totalGrossAmount, order.paidAt || order.orderDate || todayLocal())
+      );
+    }
 
     const updatedOrder: Order = {
       ...order,
@@ -3191,14 +3235,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
 
 
-  // Archive or restore a client profile. A profile is every lead sharing the
-  // name, so all of them change together — the same rule the profile editor uses.
+  // Archive or restore a client profile. A profile is its client record, the
+  // leads linked to it by id and the unlinked leads sharing its name (see
+  // allClientProfiles), so all of them change together: the profile counts as
+  // archived only while every one of them is.
   const setClientArchived = (clientName: string, archived: boolean) => {
     const key = clientName.trim().toLowerCase();
+    const profile = allClientProfiles.find(c => c.name.trim().toLowerCase() === key);
+    const memberIds = new Set(
+      profile
+        ? profile.associatedLeads.map(l => l.id)
+        : leads.filter(lead => lead.name.trim().toLowerCase() === key).map(l => l.id)
+    );
     if (archived) {
       // Held and undoable: one Undo puts every lead row of the profile back.
       archiveLeadsWithUndo({
-        targets: leads.filter(lead => lead.name.trim().toLowerCase() === key && !lead.archived),
+        targets: leads.filter(lead => memberIds.has(lead.id) && !lead.archived),
         setLeads,
         lang: systemLanguage,
         label: { entity: "client", title: clientName },
@@ -3206,7 +3258,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return;
     }
     setLeads(prev => prev.map(lead =>
-      lead.name.trim().toLowerCase() === key && !!lead.archived !== archived ? { ...lead, archived } : lead
+      memberIds.has(lead.id) && !!lead.archived !== archived ? { ...lead, archived } : lead
     ));
     (window as any).showToast?.(
       t("Client restored — back in the client list.", "Klient obnovený — je späť v zozname klientov.", "Ügyfél visszaállítva — újra az ügyféllistán.")
@@ -5018,11 +5070,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     lang={systemLanguage}
                                     what={attached.name || event.title}
                                     onConfirm={() => {
-                                    const clientKey = activeClient.name.trim().toLowerCase();
+                                    const memberIds = new Set((activeClient.associatedLeads || []).map(l => l.id));
                                     // The event stays. Undo puts this one file back on it.
                                     const snapshots = new Map<string, TimelineEvent>();
                                     leads.forEach(lead => {
-                                      if (lead.name.trim().toLowerCase() !== clientKey) return;
+                                      if (!memberIds.has(lead.id)) return;
                                       const found = (lead.timeline || []).find(evt => evt.id === event.id);
                                       if (found) snapshots.set(lead.id, found);
                                     });
@@ -5293,10 +5345,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Client Financial Summary Cards */}
                   {clientInvoices.length > 0 && (() => {
-                    const totalPlanned = clientInvoices.reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
-                    const totalReal = clientInvoices.reduce((acc, r) => acc + splitRecordAmounts(r).real, 0);
-                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
-                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
+                    // A recurring rule is not one more movement next to the payments it has
+                    // stored; its row counts only when it holds a legacy payment of its own.
+                    const totalPlanned = clientInvoices.reduce((acc, r) => acc + (isRealMovement(r) || recurringOwnRowCharge(r) ? r.amountPlanned || 0 : 0), 0);
+                    const totalReal = clientInvoices.reduce((acc, r) => acc + movementAmounts(r).real, 0);
+                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + movementAmounts(r).estimated, 0);
+                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + movementAmounts(r).estimated, 0);
 
                     return (
                       <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">

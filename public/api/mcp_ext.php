@@ -357,8 +357,16 @@ function mcp_rec_amount_at(array $rule, string $dateIso): float {
     return $a['amountReal'] > 0 ? $a['amountReal'] : $a['amountPlanned'];
 }
 
-/** recurringCharges: one entry per charge, priced at the amount in force that day. */
+/**
+ * recurringCharges: one entry per charge, priced at the amount in force that day.
+ * Nothing on or before the rule's recurringMaterializedThrough is drawn: those
+ * charges are stored movements (or deliberately absent).
+ */
 function mcp_rec_charges(array $rule, string $startIso, string $endIso): array {
+    $through = $rule['recurringMaterializedThrough'] ?? null;
+    if (mcp_iso_ok($through) && mcp_iso_ok($startIso) && $startIso <= $through) {
+        $startIso = mcp_iso_shift($through, 1);
+    }
     return array_map(
         fn($d) => ['date' => $d, 'amount' => mcp_rec_amount_at($rule, $d)],
         mcp_rec_occurrences($rule, $startIso, $endIso)
@@ -400,6 +408,7 @@ function mcp_fin_record(array $r): array {
         'recurringEndDate' => $r['recurring_end_date'] ?: null,
         'recurringAmountHistory' => is_array($hist) ? $hist : null,
         'recurringSkippedDates' => is_array($skip) ? $skip : null,
+        'recurringMaterializedThrough' => ($r['recurring_materialized_through'] ?? null) ?: null,
         'projectId' => $r['project_id'] ?: null,
         'clientId' => $r['client_id'] ?: null,
         'invoiceNumber' => $r['invoice_number'] ?: null,
@@ -445,10 +454,22 @@ function mcp_fin_recurring_own_row(array $rec): ?array {
     if ($date === '') return null;
     $skipped = $rec['recurringSkippedDates'] ?? null;
     if (is_array($skipped) && in_array($date, $skipped, true)) return null;
-    if (count(mcp_rec_charges($rec, '0000-01-01', $date)) > 0) return null;
+    if (count(mcp_rec_occurrences($rec, '0000-01-01', $date)) > 0) return null;
     [$real, $est] = mcp_fin_split($rec);
     if ($real == 0.0 && $est == 0.0) return null;
     return ['date' => $date, 'real' => $real, 'estimated' => $est];
+}
+
+/**
+ * movementAmounts: what a stored record adds when movements are summed outside the
+ * finance tables. A one-off is split by its status; a recurring rule only through
+ * its own row (a legacy payment the schedule does not account for), never as one
+ * more charge next to the payments it has stored. Real movements in SQL: is_recurring = 0.
+ */
+function mcp_fin_movement_split(array $rec): array {
+    if (empty($rec['isRecurring'])) return mcp_fin_split($rec);
+    $own = mcp_fin_recurring_own_row($rec);
+    return $own ? [(float)$own['real'], (float)$own['estimated']] : [0.0, 0.0];
 }
 
 function mcp_fin_categories(\PDO $pdo): array {
@@ -689,7 +710,7 @@ function mcp_project_value(\PDO $pdo, array $p, array &$ctx): float {
 function mcp_project_billing(float $value, array $incomeRecords): array {
     $received = 0.0; $open = 0.0;
     foreach ($incomeRecords as $r) {
-        [$real, $est] = mcp_fin_split($r);
+        [$real, $est] = mcp_fin_movement_split($r);
         $received += $real;
         $open += $est;
     }
@@ -1022,7 +1043,8 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
             $recs = mcp_fin_load($pdo, implode(' AND ', $where), $params, "$dateExpr DESC, id DESC", $limit + $offset);
             $recs = array_slice($recs, $offset);
             return array_map(function ($r) {
-                [$real, $est] = mcp_fin_split($r);
+                // A recurring rule is listed, but it is not money of its own: its payments are stored rows.
+                [$real, $est] = mcp_fin_movement_split($r);
                 return [
                     'id' => $r['id'], 'type' => $r['type'], 'subtype' => $r['subtype'], 'title' => $r['title'],
                     'status' => $r['status'], 'category_id' => $r['categoryId'], 'project_id' => $r['projectId'], 'client_id' => $r['clientId'],

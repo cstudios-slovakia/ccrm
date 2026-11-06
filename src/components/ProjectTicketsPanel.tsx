@@ -43,6 +43,7 @@ import {
   clampRetainerResetDay,
   computeProjectRetainerUsage,
   computeTicketSlaDueDates,
+  findTicketSupportContract,
   evaluateTicketSla,
   formatDurationMinutes,
   getTicketStatusLabel,
@@ -278,7 +279,14 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
     if (!canEdit || !setTickets || !newSubject.trim()) return;
     const nowStr = new Date().toISOString().replace("T", " ").slice(0, 19);
     const tckNum = nextTicketNumber(tickets);
-    const sla = computeTicketSlaDueDates(newPriority, ticketSettings);
+    const sla = computeTicketSlaDueDates(
+      newPriority,
+      ticketSettings,
+      findTicketSupportContract(supportContracts, {
+        projectId: project.id,
+        leadId: project.leadId || project.clientId || null,
+      }),
+    );
     const tckId = `tck-${Date.now().toString(36)}`;
     const firstImg = newAttachments.find(isImageAttachment);
     const newTicket: Ticket = {
