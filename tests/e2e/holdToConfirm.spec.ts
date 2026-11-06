@@ -4,6 +4,7 @@ import {
   captureRequests,
   captureSync,
   holdToConfirm,
+  SHORT_HOLD_MS,
   holdWithKeyboard,
   undoButton,
   undoToast,
@@ -67,7 +68,7 @@ test.describe('Hold to confirm — tasks', () => {
     await expect(inMain(page, TASK_DONE).first()).toBeVisible();
     await expect(undoToast(page)).toHaveCount(0);
 
-    await holdToConfirm(del, 200);
+    await holdToConfirm(del, SHORT_HOLD_MS);
     await expect(inMain(page, TASK_DONE).first()).toBeVisible();
     await expect(undoToast(page)).toHaveCount(0);
   });
@@ -173,7 +174,7 @@ test.describe('Hold to confirm — leads, projects, clients', () => {
     await del.click();
     await expect(inMain(page, LEAD_NAME).first()).toBeVisible();
 
-    await holdToConfirm(del, 200);
+    await holdToConfirm(del, SHORT_HOLD_MS);
     await expect(inMain(page, LEAD_NAME).first()).toBeVisible();
 
     await holdToConfirm(del);

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
 import { TEST_USER, buildSyncPayload } from './helpers/fixture';
+import { clickTableHead } from './helpers/tableHead';
 
 /**
  * Projects can be put in a hand-set order by dragging a row (table) or a card
@@ -119,9 +120,9 @@ test.describe('Project reordering', () => {
     // Sort the table by name, descending, so it cannot match the structure by chance.
     await page.getByRole('button', { name: 'Zobrazenie zoznamu' }).click();
     const nameHeader = page.locator('thead').getByRole('button', { name: 'Projekt', exact: true });
-    await nameHeader.click();
-    await nameHeader.click();
-    await expect(page.locator('thead th[aria-sort="descending"]')).toHaveCount(1);
+    await clickTableHead(nameHeader);
+    await clickTableHead(nameHeader);
+    await expect(page.locator('.table-page-wrap thead th[aria-sort="descending"]')).toHaveCount(1);
     const sorted = await rowIds(page);
 
     // A sorted table refuses the drag that used to overwrite the structure.
@@ -130,7 +131,7 @@ test.describe('Project reordering', () => {
     // The structure is where it was, headers are plain labels, rows drag.
     await page.getByRole('button', { name: 'Zobrazenie štruktúry' }).click();
     await expect.poll(() => rowIds(page)).toEqual(structure);
-    await expect(page.locator('thead th[aria-sort]')).toHaveCount(0);
+    await expect(page.locator('.table-page-wrap thead th[aria-sort]')).toHaveCount(0);
     const last = structure[structure.length - 1];
     await dragOnto(page.locator(`tr[data-project-row="${last}"]`), page.locator(`tr[data-project-row="${structure[0]}"]`), 'top');
     const expected = [last, ...structure.slice(0, -1)];
@@ -138,7 +139,7 @@ test.describe('Project reordering', () => {
 
     // Back in the table the name sort is still on.
     await page.getByRole('button', { name: 'Zobrazenie zoznamu' }).click();
-    await expect(page.locator('thead th[aria-sort="descending"]')).toHaveCount(1);
+    await expect(page.locator('.table-page-wrap thead th[aria-sort="descending"]')).toHaveCount(1);
     await expect.poll(() => rowIds(page)).toEqual(sorted);
     await expect.poll(() => storedSort(store)?.order, { timeout: 10_000 }).toEqual(expected);
   });

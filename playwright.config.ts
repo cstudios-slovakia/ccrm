@@ -62,7 +62,7 @@ export default defineConfig({
 
   /* A deep audit of one module opens drawers, fills forms and walks every
      dropdown, so it needs far longer than a conventional assertion test. */
-  timeout: 4 * 60 * 1000,
+  timeout: Number(process.env.QA_TEST_TIMEOUT_MS ?? 4 * 60 * 1000),
   expect: { timeout: 5000 },
 
   /* A ceiling on the whole run. A run on a memory-starved machine does not
