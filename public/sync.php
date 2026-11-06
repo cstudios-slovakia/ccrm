@@ -3375,6 +3375,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `category_id` VARCHAR(50) NULL COMMENT 'offer_categories.id - not a foreign key, the app clears it when a category is deleted' AFTER `custom_template_style_json`");
             }
         }
+        // Same guard for the AI offer template columns the upsert below names: a worker
+        // on a cached schema.php can stamp SCHEMA_FINGERPRINT without adding them, and
+        // every save then fails with "Unknown column" until `php ccrm migrate` runs.
+        if (isset($payload['aiCustomTemplates']) && is_array($payload['aiCustomTemplates']) && !$ccrm_skip_writes('general_config', 'aiCustomTemplates')) {
+            if (!ccrm_column_exists($pdo, 'ai_custom_templates', 'layout_json')) {
+                $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `layout_json` TEXT NULL AFTER `badge_style`");
+            }
+            if (!ccrm_column_exists($pdo, 'ai_custom_templates', 'document_json')) {
+                $pdo->exec("ALTER TABLE `ai_custom_templates` ADD COLUMN `document_json` LONGTEXT NULL AFTER `layout_json`");
+            }
+        }
 
         $pdo->beginTransaction();
 
