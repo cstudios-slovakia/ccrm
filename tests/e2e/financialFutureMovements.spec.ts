@@ -119,11 +119,9 @@ test.describe('Finance — future movements', () => {
     // It opens that payment against its rule (the rule's title and the day it
     // stands in for), never a form for a new movement.
     await expect(page.locator('#transaction-edit-form')).toBeVisible(SETTLE);
-    // The title is not the first field of a stored payment's form (the invoice
-    // number comes first), so look for it among the text fields.
-    await expect
-      .poll(() => page.locator('#transaction-edit-form input[type="text"]').evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value)))
-      .toContain('Mzdy — mesačné');
+    // A stored payment opens the payment form, which names the rule it belongs to
+    // in its read-only source panel; the rule's own fields are edited elsewhere.
+    await expect(page.locator('#transaction-edit-form [data-occurrence-source]')).toContainText('Mzdy — mesačné');
   });
 
   test('switching it on draws the expected movements once, and they cannot be edited in place', async ({ page }) => {
