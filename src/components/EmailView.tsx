@@ -470,6 +470,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [waInlineQrUrl, setWaInlineQrUrl] = useState<string | null>(null);
   const [waFilterType, setWaFilterType] = useState<"all" | "groups" | "contacts">("all");
   const waMessagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const agentChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const emailThreadScrollRef = useRef<HTMLDivElement | null>(null);
   const [agentChats, setAgentChats] = useState<Record<string, AgentChatMessage[]>>({});
   const [agentStates, setAgentStates] = useState<Record<string, AgentConnectorState>>({});
   const [agentPrompt, setAgentPrompt] = useState<string>("");
@@ -1543,12 +1545,40 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const activeWaMsgCount = activeWaChatId ? (waState?.messages?.[activeWaChatId]?.length ?? 0) : 0;
   useEffect(() => {
     if (selectedChannelType !== "whatsapp") return;
-    const el = waMessagesScrollRef.current;
-    if (!el) return;
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-  }, [selectedChannelType, activeWaChatId, activeWaMsgCount]);
+    const scrollToBottom = () => {
+      const el = waMessagesScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeWaChatId, activeWaMsgCount]);
+
+  // Auto-scroll AI Agent chat pane to the newest message at the bottom by default
+  const activeAgentChatKey = selectedAccount
+    ? activeChatSubagentId
+      ? `${selectedAccount.id}:${activeChatSubagentId}`
+      : selectedAccount.id
+    : "";
+  const activeAgentMsgCount = activeAgentChatKey ? (agentChats[activeAgentChatKey]?.length ?? 0) : 0;
+  useEffect(() => {
+    if (!isAgentConnector(selectedChannelType) || visualTriggersOpen) return;
+    const scrollToBottom = () => {
+      const el = agentChatScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeChatSubagentId, visualTriggersOpen, activeAgentMsgCount, isAgentRunning]);
 
   const handleResyncWhatsApp = async (chatId?: string) => {
     if (!selectedAccount || waLoading) return;
@@ -1814,6 +1844,25 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!isThreadedMode || !selectedThreadId) return null;
     return threadedEmails.find(t => t.id === selectedThreadId) || null;
   }, [isThreadedMode, selectedThreadId, threadedEmails]);
+
+  // Auto-scroll Email Thread conversation pane to the newest message at the bottom by default
+  const activeThreadEmailCount = activeThread?.emails?.length ?? 0;
+  const latestThreadUid = activeThread?.latestEmail?.uid;
+  const latestThreadBodyLoaded = Boolean(latestThreadUid && threadBodies[latestThreadUid]);
+  useEffect(() => {
+    if (!isSelectedEmailChannel || !isThreadedMode || !activeThread) return;
+    const scrollToBottom = () => {
+      const el = emailThreadScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [isSelectedEmailChannel, isThreadedMode, activeThread?.id, activeThreadEmailCount, latestThreadBodyLoaded]);
 
   // Toggle expand/collapse inside conversation flow and load detail inline lazily
   const toggleEmailExpand = async (email: any) => {
@@ -3998,7 +4047,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     </div>
 
                     {/* 2. CHAT MESSAGES AREA */}
-                    <div className="flex-1 min-h-40 overflow-y-auto px-5 py-4 space-y-3">
+                    <div
+                      ref={agentChatScrollRef}
+                      className="flex-1 min-h-40 overflow-y-auto px-5 py-4 space-y-3"
+                    >
                       {history.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto gap-2.5 text-slate-500 py-4">
                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
@@ -4636,7 +4688,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => openNewTriggerModal("whatsapp", undefined, activeChatSubagentId)}
+                            onClick={() =>
+                              openNewTriggerModal({
+                                sourceType: "whatsapp",
+                                targetSubagentId: activeChatSubagentId,
+                              })
+                            }
                             className="text-micro font-bold text-violet-700 hover:text-violet-800 cursor-pointer"
                           >
                             + {t("Add", "Pridať", "Hozzáadás")}
@@ -4647,7 +4704,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       {(st?.triggers || []).length === 0 ? (
                         <button
                           type="button"
-                          onClick={() => openNewTriggerModal("whatsapp", undefined, activeChatSubagentId)}
+                          onClick={() =>
+                            openNewTriggerModal({
+                              sourceType: "whatsapp",
+                              targetSubagentId: activeChatSubagentId,
+                            })
+                          }
                           className="w-full px-3 py-2 rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 hover:bg-violet-50/70 text-left text-micro text-violet-700 font-semibold cursor-pointer transition-all"
                         >
                           ⚡ {t("Connect WhatsApp, Email or CRM event ($0 idle cost)", "Prepojiť WhatsApp, e-mail alebo CRM udalosť ($0 nečinné náklady)", "WhatsApp, e-mail vagy CRM esemény bekötése ($0 üresjárati költség)")}
@@ -4676,9 +4738,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                     ? "Email"
                                     : `CRM · ${tr.filter?.eventType || "event"}`}
                                 {" → "}
-                                {tr.targetAgentId === "main"
+                                {!tr.targetSubagentId || tr.targetSubagentId === "main"
                                   ? "Main"
-                                  : subagents.find((s) => s.id === tr.targetAgentId)?.name || tr.targetAgentId}
+                                  : subagents.find((s) => s.id === tr.targetSubagentId)?.name || tr.targetSubagentId}
                               </div>
                             </div>
                           </button>
@@ -4826,7 +4888,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </span>
                           <div>
                             <div className="text-title-sm font-heading font-bold text-slate-900">
-                              {editingTriggerId
+                              {triggerDraftId
                                 ? t("Edit Reactive Event Trigger", "Upraviť reaktívny spúšťač", "Reaktív trigger szerkesztése")
                                 : t("New Reactive Event Trigger", "Nový reaktívny spúšťač", "Új reaktív esemény trigger")}
                             </div>
@@ -4881,13 +4943,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 const nextType = e.target.value as "whatsapp" | "email" | "crm_event";
                                 setTriggerDraftSourceType(nextType);
                                 if (nextType === "whatsapp") {
-                                  const waAcc = accounts.find((a) => getChannelKind(a) === "whatsapp");
-                                  setTriggerDraftSourceAccountId(waAcc?.id || "");
+                                  const waAcc = availableAccounts.find((a) => a.connectorType === "whatsapp");
+                                  setTriggerDraftSourceConnectorId(waAcc?.id || "");
                                 } else if (nextType === "email") {
-                                  const emAcc = accounts.find((a) => getChannelKind(a) === "email");
-                                  setTriggerDraftSourceAccountId(emAcc?.id || "");
+                                  const emAcc = availableAccounts.find((a) => isEmailConnector(a.connectorType));
+                                  setTriggerDraftSourceConnectorId(emAcc?.id || "");
                                 } else {
-                                  setTriggerDraftSourceAccountId("");
+                                  setTriggerDraftSourceConnectorId("");
                                 }
                               }}
                               className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-body font-semibold text-slate-800"
@@ -4904,11 +4966,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             </label>
                             <select
                               data-testid="trigger-target-agent-select"
-                              value={triggerDraftTargetAgentId}
-                              onChange={(e) => setTriggerDraftTargetAgentId(e.target.value)}
+                              value={triggerDraftTargetSubagentId}
+                              onChange={(e) => setTriggerDraftTargetSubagentId(e.target.value)}
                               className="w-full px-3 py-2 rounded-xl bg-violet-50/70 border border-violet-200 text-body font-bold text-violet-950"
                             >
-                              <option value="main">✦ {selectedAccount?.name} (Main Agent)</option>
+                              <option value="">✦ {selectedAccount?.name} (Main Agent)</option>
                               {subagents.map((sub) => (
                                 <option key={sub.id} value={sub.id}>
                                   🤖 {sub.name} ({sub.role})
@@ -4927,18 +4989,22 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 : t("Email Mailbox", "E-mailová schránka", "E-mail postafiók")}
                             </label>
                             <select
-                              value={triggerDraftSourceAccountId}
-                              onChange={(e) => setTriggerDraftSourceAccountId(e.target.value)}
+                              value={triggerDraftSourceConnectorId}
+                              onChange={(e) => setTriggerDraftSourceConnectorId(e.target.value)}
                               className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-caption font-semibold text-slate-800"
                             >
                               <option value="">
                                 {t("Any connected channel", "Akýkoľvek pripojený kanál", "Bármely csatlakoztatott csatorna")}
                               </option>
-                              {accounts
-                                .filter((a) => getChannelKind(a) === triggerDraftSourceType)
+                              {availableAccounts
+                                .filter((a) =>
+                                  triggerDraftSourceType === "whatsapp"
+                                    ? a.connectorType === "whatsapp"
+                                    : isEmailConnector(a.connectorType),
+                                )
                                 .map((acc) => (
                                   <option key={acc.id} value={acc.id}>
-                                    {acc.name} ({acc.email})
+                                    {acc.name} ({acc.address})
                                   </option>
                                 ))}
                             </select>
@@ -4997,8 +5063,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 </label>
                                 <input
                                   type="text"
-                                  value={triggerDraftKeyword}
-                                  onChange={(e) => setTriggerDraftKeyword(e.target.value)}
+                                  value={triggerDraftKeywordContains}
+                                  onChange={(e) => setTriggerDraftKeywordContains(e.target.value)}
                                   placeholder={t("Any message if blank", "Akákoľvek správa ak prázdne", "Üresen minden üzenet")}
                                   className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
                                 />
@@ -5156,7 +5222,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-caption font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
                         >
                           <Zap size={13} />
-                          {editingTriggerId
+                          {triggerDraftId
                             ? t("Save Trigger", "Uložiť spúšťač", "Trigger mentése")
                             : t("Connect Trigger", "Prepojiť spúšťač", "Trigger bekötése")}
                         </button>
@@ -5354,7 +5420,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 </div>
 
                 {/* Messages, oldest first */}
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3 scrollbar-thin" onScroll={onListScroll}>
+                <div
+                  ref={emailThreadScrollRef}
+                  className="flex-1 overflow-y-auto px-6 py-5 space-y-3 scrollbar-thin"
+                  onScroll={onListScroll}
+                >
                   {activeThread.emails.map((email) => {
                     const isExpanded = !!expandedEmailUids[email.uid];
                     const bodyObj = threadBodies[email.uid];
