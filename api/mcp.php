@@ -670,7 +670,8 @@ function mcp_core_tool_definitions(): array {
             'name' => 'list_tasks',
             'description' => 'List and filter tasks across projects, clients, and team members. Each task carries created_at and updated_at (ISO 8601 with the CRM time zone offset). '
                 . 'updated_at moves on any edit to the task, including its assignees and tags; comments are on the linked client timeline and do not count. '
-                . 'To find what changed in a period use updated_from/updated_to with sort_by=updated_at. Time filters take YYYY-MM-DD or YYYY-MM-DD HH:MM in CRM local time (' . date_default_timezone_get() . ').',
+                . 'To find what changed in a period use updated_from/updated_to with sort_by=updated_at. Time filters take YYYY-MM-DD or YYYY-MM-DD HH:MM in CRM local time (' . date_default_timezone_get() . '); '
+                . 'if the user is in another time zone, append their offset (2026-11-06 14:22+05:00) or convert to CRM time first.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
