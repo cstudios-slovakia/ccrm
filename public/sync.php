@@ -3406,6 +3406,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $clearSecrets = isset($s['clearSecrets']) && is_array($s['clearSecrets'])
                     ? array_values(array_filter($s['clearSecrets'], 'is_string'))
                     : [];
+                // Leave a trail in the audit log whenever a stored secret meets a blank:
+                // who cleared which key, or that a blank was ignored. Key names only.
+                foreach (ccrm_integration_secret_keys() as $secretKey) {
+                    $inboundSecret = $s['integrationsConfig'][$secretKey] ?? null;
+                    if (!empty($existingIntegrations[$secretKey]) && array_key_exists($secretKey, $s['integrationsConfig'])
+                        && ($inboundSecret === null || $inboundSecret === '')) {
+                        $cleared = in_array($secretKey, $clearSecrets, true);
+                        ccrm_audit_log($pdo, $sessionUser, $cleared ? 'settings.secret_cleared' : 'settings.secret_blank_ignored', $secretKey);
+                    }
+                }
                 $mergedIntegrations = ccrm_merge_secrets($s['integrationsConfig'], $existingIntegrations, ccrm_integration_secret_keys(), $clearSecrets);
                 // Encrypt secrets at rest before persisting. Values preserved from
                 // storage are already encrypted (encrypt is a no-op on them).
@@ -3424,16 +3434,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // The GET sends these two blobs only to roles that use them (invoices,
             // financial, general_config); everyone else holds an empty default, which
             // must never be written back over the stored company identity and keys.
-                // Leave a trail in the audit log whenever a stored secret meets a blank:
-                // who cleared which key, or that a blank was ignored. Key names only.
-                foreach (ccrm_integration_secret_keys() as $secretKey) {
-                    $inboundSecret = $s['integrationsConfig'][$secretKey] ?? null;
-                    if (!empty($existingIntegrations[$secretKey]) && array_key_exists($secretKey, $s['integrationsConfig'])
-                        && ($inboundSecret === null || $inboundSecret === '')) {
-                        $cleared = in_array($secretKey, $clearSecrets, true);
-                        ccrm_audit_log($pdo, $sessionUser, $cleared ? 'settings.secret_cleared' : 'settings.secret_blank_ignored', $secretKey);
-                    }
-                }
             $canSeeBilling = ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config');
             if ($canSeeBilling && array_key_exists('companyBillingSettings', $s) && is_array($s['companyBillingSettings'])) {
                 $billingValue = json_encode($s['companyBillingSettings'], JSON_UNESCAPED_UNICODE);
@@ -5256,7 +5256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$isNewTask) {
                     $newAssigneeList = isset($t['assignedUsers']) && is_array($t['assignedUsers']) ? $t['assignedUsers'] : [];
                     if (!ccrm_same_name_set($oldAssignees, $newAssigneeList) || !ccrm_same_name_set($oldTags, $newTags)) {
-                        $pdo->prepare("UPDATE `tasks` SET `updated_at` = CURRENT_TIMESTAMP(3) WHERE `id` = ?")->execute([$taskId]);
+                        $pdo->prepare("UPDATE `tasks` SET `updated_at` = CURRENT_TIMESTAMP(3) WHERE `id` = ?")->execute([$taskId]); /* recurring-template: by-id touch, any task kind */
                     }
                 }
             }
