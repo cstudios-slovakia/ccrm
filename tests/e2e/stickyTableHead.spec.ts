@@ -125,7 +125,8 @@ test.describe('page-sticky table heads', () => {
     await scrollMain(page, 1500);
     // Grow the wrapper, as a new page of rows does: the hook's ResizeObserver
     // re-places the copy now. (Padding would not do: it watches content boxes.)
-    await wrap.evaluate((el) => {
+    await wrap.evaluate((node) => {
+      const el = node as HTMLElement;
       el.style.minHeight = `${el.offsetHeight + 40}px`;
     });
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
