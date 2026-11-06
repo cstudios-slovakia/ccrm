@@ -58,33 +58,46 @@ if ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $
 }
 
 // 1. Process Timer Triggers
+//
+// "When did this timer last fire" is the last timer row it put on the queue, not
+// its last execution log: the log is written at the end of a run, so a run that
+// threw before logging, or one still waiting behind a backlog, made every cron
+// tick think the timer had never fired and enqueue it again. Queue rows are kept
+// (marked completed/failed), so they are the stored record of each fire. The log
+// still counts, so a manual run keeps resetting the clock as it did before.
+// A named lock keeps two overlapping cron calls from both enqueuing the same fire.
+$timerLock = false;
 try {
+    $timerLock = (int)$pdo->query("SELECT GET_LOCK('ccrm_workflow_timers', 0)")->fetchColumn() === 1;
+} catch (Throwable $e) {
+    $timerLock = true; // no named locks on this server: run unguarded, as before
+}
+if ($timerLock) try {
     $stmt = $pdo->prepare("SELECT * FROM `workflows` WHERE `trigger_type` = 'timer' AND `is_active` = 1");
     $stmt->execute();
     $timerWorkflows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $now = time();
-    
+
+    $lastFireStmt = $pdo->prepare(
+        "SELECT (SELECT MAX(`created_at`) FROM `workflow_queue` WHERE `workflow_id` = ? AND `trigger_event_type` = 'timer') AS `last_queued`,
+                (SELECT MAX(`created_at`) FROM `workflow_logs` WHERE `workflow_id` = ?) AS `last_logged`,
+                NOW() AS `db_now`"
+    );
+
     foreach ($timerWorkflows as $wf) {
         $config = json_decode($wf['trigger_config_json'] ?? '{}', true) ?: [];
         $intervalMinutes = (int)($config['interval_minutes'] ?? 60);
         if ($intervalMinutes <= 0) $intervalMinutes = 60;
-        
-        // Find last run from logs
-        $lastLogStmt = $pdo->prepare("SELECT MAX(`created_at`) FROM `workflow_logs` WHERE `workflow_id` = ?");
-        $lastLogStmt->execute([$wf['id']]);
-        $lastRunStr = $lastLogStmt->fetchColumn();
-        
-        $shouldTrigger = false;
-        if (!$lastRunStr) {
-            $shouldTrigger = true;
-        } else {
-            $lastRunTs = strtotime($lastRunStr);
-            if (($now - $lastRunTs) >= ($intervalMinutes * 60)) {
-                $shouldTrigger = true;
-            }
-        }
-        
+
+        // All three timestamps come from MySQL, so PHP's time zone cannot skew them.
+        $lastFireStmt->execute([$wf['id'], $wf['id']]);
+        $fire = $lastFireStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $shouldTrigger = ccrm_timer_workflow_due(
+            $fire['last_queued'] ?? null,
+            $fire['last_logged'] ?? null,
+            (string)($fire['db_now'] ?? date('Y-m-d H:i:s')),
+            $intervalMinutes
+        );
+
         if ($shouldTrigger) {
             $payload = [
                 'triggered_at' => date('Y-m-d H:i:s'),
@@ -99,6 +112,8 @@ try {
     }
 } catch (Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+} finally {
+    try { $pdo->query("SELECT RELEASE_LOCK('ccrm_workflow_timers')"); } catch (Throwable $e) {}
 }
 
 // 2. Task e-mail reminders ("Notify me by e-mail" in the task drawer)

@@ -12,22 +12,18 @@
 // Shared helpers
 // ============================================================================
 
+require_once __DIR__ . '/task_done.php';
+
+/** The shared "task is done" rule (task_done.php). */
 function mcp_done_task_state(string $status, array $taskStates): bool {
-    if (strtolower($status) === 'done') return true;
-    return $taskStates && $status === end($taskStates);
+    return ccrm_task_status_is_done($status, $taskStates);
 }
 
-/** SQL fragment (and params) for "task is open", mirroring isDoneState. */
+/** SQL fragment (and params) for "task is open", the same rule as mcp_done_task_state. */
 function mcp_open_task_sql(\PDO $pdo, string $alias = ''): array {
     $a = $alias === '' ? '' : $alias . '.';
     $states = mcp_config_json($pdo, 'TASK_STATES', []);
-    $sql = "(LOWER({$a}status) <> 'done'";
-    $params = [];
-    if (is_array($states) && $states) {
-        $sql .= " AND {$a}status <> ?";
-        $params[] = (string)end($states);
-    }
-    return [$sql . ')', $params];
+    return ccrm_sql_task_not_done(is_array($states) ? $states : [], "{$a}status");
 }
 
 /** Lead stages in the order the pipeline shows them (orderLeadStates). */

@@ -312,6 +312,40 @@ function ccrm_recurring_next_after_completion(
 }
 
 /**
+ * After-completion mode, once the occurrence the generator created last is gone
+ * (the user deleted it, "Only this task"): the next due date is one interval
+ * after the deleted occurrence's date `$skipped` (or after `$base`, the previous
+ * completion or the series start, if that is later), and always after `$skipped`.
+ * That is what the delete dialog promises: "The series continues with the next
+ * scheduled date."
+ *
+ * Without this the next date is recomputed from the previous completion, which is
+ * exactly the deleted occurrence's date, and the generator recreates it within a
+ * minute (the unique key cannot stop it: that row no longer exists).
+ *
+ * The result depends only on stored dates, never on today, so a next occurrence
+ * whose start date is still ahead is the same date on every run until it is due.
+ */
+function ccrm_recurring_next_after_skip(
+    string $base,
+    ?string $skipped,
+    int $interval,
+    string $frequency,
+    string $weekendRule
+): string {
+    if ($skipped !== null && $skipped > $base) {
+        $base = $skipped;
+    }
+    $next = ccrm_recurring_next_after_completion($base, $interval, $frequency, $weekendRule);
+    for ($guard = 0; $skipped !== null && $next <= $skipped && $guard < 400; $guard++) {
+        // A weekend shift can land back on (or before) the skipped date.
+        $base = date('Y-m-d', strtotime("{$base} +1 day"));
+        $next = ccrm_recurring_next_after_completion($base, $interval, $frequency, $weekendRule);
+    }
+    return $next;
+}
+
+/**
  * Validates and normalizes recurrence JSON payload.
  * Drops unknown keys, clamps interval and leadDays.
  * Preserves server-owned cursor unless explicit resume transition.
@@ -387,13 +421,11 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
     $summary = ['checked' => 0, 'created' => 0, 'gated' => 0, 'ended' => 0, 'skipped' => 0];
     $today = date('Y-m-d');
 
-    // Retrieve configured done task states
-    $taskStatesRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn();
-    $taskStates = json_decode((string)($taskStatesRaw ?: '[]'), true);
-    $taskStates = is_array($taskStates) ? array_values($taskStates) : [];
+    // Configured task states; "done" is the shared rule in task_done.php.
+    require_once __DIR__ . '/task_done.php';
+    $taskStates = ccrm_task_states_setting($pdo);
     $isDoneStatus = function ($status) use ($taskStates): bool {
-        $st = (string)$status;
-        return strtolower($st) === 'done' || ($taskStates && $st === (string)end($taskStates));
+        return ccrm_task_status_is_done($status, $taskStates);
     };
 
     $sql = "SELECT * FROM `tasks` WHERE `task_kind` = 'recurring'"; /* recurring-template: generator fetch templates */
@@ -459,7 +491,28 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
         $startDate = null;
 
         if ($mode === 'after_completion') {
-            if ($latestOccurrence !== null) {
+            // The occurrence this series created last no longer exists: the user
+            // deleted it ("Only this task", which skips it). Continue after it
+            // instead of recomputing the same date and bringing it back.
+            $cursorId = (string)($rec['lastOccurrenceId'] ?? '');
+            $cursorGone = $cursorId !== ''
+                && !in_array($cursorId, array_map('strval', array_column($occurrences, 'id')), true);
+            if ($cursorGone) {
+                // Stored dates only (see ccrm_recurring_next_after_skip).
+                $base = $latestOccurrence !== null
+                    ? (!empty($latestOccurrence['completed_at'])
+                        ? substr((string)$latestOccurrence['completed_at'], 0, 10)
+                        : (string)$latestOccurrence['recurring_occurrence_date'])
+                    : (!empty($rec['startsOn']) ? (string)$rec['startsOn'] : $today);
+                $shiftedDeadline = ccrm_recurring_next_after_skip(
+                    $base,
+                    !empty($rec['lastOccurrence']) ? (string)$rec['lastOccurrence'] : null,
+                    (int)($rec['interval'] ?? 1),
+                    $frequency,
+                    $weekendRule
+                );
+                $scheduledDate = $shiftedDeadline;
+            } elseif ($latestOccurrence !== null) {
                 // Next due date = previous completion date + interval
                 $compAt = !empty($latestOccurrence['completed_at'])
                     ? substr((string)$latestOccurrence['completed_at'], 0, 10)

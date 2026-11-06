@@ -85,7 +85,7 @@ import {
   ticketLoggedTotalAdjustment,
   computeProjectRetainerUsage,
 } from "../utils/tickets";
-import { isDoneTaskState } from "../utils/projectTasks";
+import { doneTaskState, isDoneTaskState } from "../utils/projectTasks";
 import { projectDisplayName } from "../utils/projects";
 import {
   nowLocalStamp,
@@ -1013,10 +1013,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const handleToggleTaskDone = (tsk: Task) => {
     if (!canEdit) return;
     const done = isDoneTaskState(tsk.status, taskStates);
-    const doneState =
-      taskStates.find((s) => isDoneTaskState(s, taskStates)) ||
-      taskStates[taskStates.length - 1] ||
-      "Done";
+    const doneState = doneTaskState(taskStates);
     const openState =
       taskStates.find((s) => !isDoneTaskState(s, taskStates)) ||
       taskStates[0] ||
