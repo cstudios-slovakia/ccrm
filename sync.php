@@ -1952,12 +1952,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             if ($pdo->query("SHOW TABLES LIKE 'warehouse_stock'")->rowCount() > 0) {
                 $stockStmt = $pdo->query("SELECT * FROM `warehouse_stock`");
                 while ($row = $stockStmt->fetch()) {
+                    // Synthetic id: the table's key is (warehouse_id, item_id). Without an id
+                    // the client's delta diff cannot track a row and re-sends the whole
+                    // stock table as absolute quantities on every push, reverting
+                    // concurrent changes (MCP, other tabs). Same format as stockRowId()
+                    // in src/utils/syncDiff.ts. Writes ignore it.
                     $warehouseStock[] = [
                         'warehouseId' => $row['warehouse_id'],
                         'itemId' => $row['item_id'],
                         'quantity' => (float)($row['quantity'] ?? 0),
                         'reservedQuantity' => (float)($row['reserved_quantity'] ?? 0),
                         'location' => $row['location'],
+                        'id' => $row['warehouse_id'] . ':' . $row['item_id'],
                     ];
                 }
             }
@@ -5114,7 +5120,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         }
                                     }
                                     if ($allDone) {
-                                        $pdo->prepare("UPDATE `tickets` SET `status` = 'resolved', `resolved_at` = COALESCE(`resolved_at`, NOW()), `updated_at` = NOW() WHERE `id` = ? AND `status` NOT IN ('resolved', 'closed')")->execute([$linkedTckId]);
+                                        // The resolved status and the terminal set come from the
+                                        // configured TICKET_STATUSES, not a hardcoded 'resolved'.
+                                        $resolvedKey = null;
+                                        $firstTerminalKey = null;
+                                        $terminalKeys = ['resolved', 'closed'];
+                                        $statusDefs = [];
+                                        $sysLang = 'sk';
+                                        try {
+                                            $cfgStmt = $pdo->query("SELECT `key`, `value` FROM `system_settings` WHERE `key` IN ('TICKET_STATUSES', 'SYSTEM_LANGUAGE')");
+                                            $cfg = $cfgStmt ? ($cfgStmt->fetchAll(PDO::FETCH_KEY_PAIR) ?: []) : [];
+                                            if (!empty($cfg['SYSTEM_LANGUAGE'])) $sysLang = strtolower(trim((string)$cfg['SYSTEM_LANGUAGE'], "\" \t"));
+                                            $defs = !empty($cfg['TICKET_STATUSES']) ? json_decode((string)$cfg['TICKET_STATUSES'], true) : null;
+                                            if (is_array($defs)) {
+                                                foreach ($defs as $d) {
+                                                    if (!is_array($d)) continue;
+                                                    $k = (string)($d['key'] ?? ($d['id'] ?? ''));
+                                                    if ($k === '') continue;
+                                                    $statusDefs[$k] = $d;
+                                                    $cat = (string)($d['category'] ?? ($d['group'] ?? ''));
+                                                    if (!empty($d['isTerminal']) || $cat === 'resolved' || $cat === 'closed') {
+                                                        $terminalKeys[] = $k;
+                                                        if ($firstTerminalKey === null) $firstTerminalKey = $k;
+                                                    }
+                                                    if ($resolvedKey === null && $cat === 'resolved') $resolvedKey = $k;
+                                                }
+                                            }
+                                        } catch (\Throwable $e) {}
+                                        $resolvedKey = $resolvedKey ?? $firstTerminalKey ?? 'resolved';
+                                        $terminalKeys = array_values(array_unique($terminalKeys));
+
+                                        $oldStStmt = $pdo->prepare("SELECT `status` FROM `tickets` WHERE `id` = ?");
+                                        $oldStStmt->execute([$linkedTckId]);
+                                        $oldTicketStatus = $oldStStmt->fetchColumn();
+                                        if ($oldTicketStatus !== false && !in_array((string)$oldTicketStatus, $terminalKeys, true)) {
+                                            $termPh = implode(',', array_fill(0, count($terminalKeys), '?'));
+                                            $resolveStmt = $pdo->prepare("UPDATE `tickets` SET `status` = ?, `resolved_at` = COALESCE(`resolved_at`, NOW()), `updated_at` = NOW() WHERE `id` = ? AND `status` NOT IN ($termPh)");
+                                            $resolveStmt->execute(array_merge([$resolvedKey, $linkedTckId], $terminalKeys));
+                                            if ($resolveStmt->rowCount() > 0) {
+                                                // Leave the same trace in the thread as a manual status change
+                                                // (TicketsView createStatusChangeMessage). The guarded UPDATE
+                                                // above makes this run once per resolution; INSERT IGNORE on a
+                                                // deterministic id covers a retried request.
+                                                $labelOf = function (string $key) use ($statusDefs, $sysLang): string {
+                                                    $d = $statusDefs[$key] ?? null;
+                                                    if (!is_array($d)) return $key;
+                                                    $field = 'label' . ucfirst($sysLang);
+                                                    foreach ([$field, 'labelSk', 'labelEn', 'label', 'name'] as $f) {
+                                                        if (!empty($d[$f])) return (string)$d[$f];
+                                                    }
+                                                    return $key;
+                                                };
+                                                $reasons = ['sk' => 'všetky prepojené úlohy sú hotové', 'en' => 'all linked tasks are done', 'hu' => 'minden kapcsolódó feladat kész'];
+                                                $reason = $reasons[$sysLang] ?? $reasons['en'];
+                                                $autoNow = date('Y-m-d H:i:s');
+                                                $autoMsgId = 'tmsg-auto-' . substr(sha1($linkedTckId . '|' . $taskId . '|' . $autoNow), 0, 24);
+                                                $pdo->prepare("INSERT IGNORE INTO `ticket_messages` (`id`, `ticket_id`, `author_type`, `author_name`, `is_internal`, `event_type`, `body`, `attachments_json`, `created_at`) VALUES (?, ?, 'system', 'System', 0, 'status_changed', ?, '[]', ?)")
+                                                    ->execute([$autoMsgId, $linkedTckId, $labelOf((string)$oldTicketStatus) . ' → ' . $labelOf($resolvedKey) . ' (' . $reason . ')', $autoNow]);
+                                            }
+                                        }
                                     }
                                 }
                             } catch (\Throwable $e) {
@@ -6908,7 +6972,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         elseif (!in_array($rawTier, ['basic', 'pro', 'enterprise', 'project_only'], true)) $rawTier = 'basic';
 
                         $clientId = !empty($sc['clientId']) ? (string)$sc['clientId'] : (!empty($sc['leadId']) ? (string)$sc['leadId'] : null);
-                        $hourlyRate = isset($sc['hourlyRate']) && $sc['hourlyRate'] !== '' ? (float)$sc['hourlyRate'] : (isset($sc['hourlyOverageRate']) && $sc['hourlyOverageRate'] !== '' ? (float)$sc['hourlyOverageRate'] : 0.0);
+                        // The Tickets view used to send `overageRate` / `monthlyHoursIncluded` only,
+                        // which this block did not read: the contract came back with 10 h and rate 0.
+                        // Accept every spelling the client types carry.
+                        $hourlyRate = 0.0;
+                        foreach (['hourlyRate', 'hourlyOverageRate', 'overageRate'] as $rateKey) {
+                            if (isset($sc[$rateKey]) && $sc[$rateKey] !== '' && $sc[$rateKey] !== null) { $hourlyRate = (float)$sc[$rateKey]; break; }
+                        }
+                        $monthlyHours = 10.0;
+                        foreach (['monthlyHours', 'monthlyHoursIncluded'] as $hoursKey) {
+                            if (isset($sc[$hoursKey]) && $sc[$hoursKey] !== '' && $sc[$hoursKey] !== null) { $monthlyHours = (float)$sc[$hoursKey]; break; }
+                        }
                         $validFrom = !empty($sc['validFrom']) ? substr((string)$sc['validFrom'], 0, 10) : (!empty($sc['periodStart']) ? substr((string)$sc['periodStart'], 0, 10) : null);
                         $validUntil = !empty($sc['validUntil']) ? substr((string)$sc['validUntil'], 0, 10) : (!empty($sc['periodEnd']) ? substr((string)$sc['periodEnd'], 0, 10) : null);
                         $notes = isset($sc['notes']) && $sc['notes'] !== '' ? (string)$sc['notes'] : (isset($sc['name']) ? (string)$sc['name'] : null);
@@ -6918,7 +6992,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $clientId,
                             !empty($sc['projectId']) ? (string)$sc['projectId'] : null,
                             $rawTier,
-                            (float)($sc['monthlyHours'] ?? 10.0),
+                            $monthlyHours,
                             $hourlyRate,
                             (float)($sc['slaResponseCriticalHours'] ?? 1),
                             (float)($sc['slaResponseHighHours'] ?? 4),
@@ -6952,6 +7026,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $existingTicketIds = $pdo->query("SELECT `id` FROM `tickets`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
                     $processedTicketIds = [];
 
+                    // SLA due dates are set once at creation. COALESCE keeps them when a push
+                    // lacks them (an older tab, a key spelling it does not know) instead of
+                    // erasing the commitment.
                     $upsertTicket = $pdo->prepare("
                         INSERT INTO `tickets` (
                             `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
@@ -6982,9 +7059,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             `metadata_json` = VALUES(`metadata_json`),
                             `attachments_json` = VALUES(`attachments_json`),
                             `email_message_id` = COALESCE(`tickets`.`email_message_id`, VALUES(`email_message_id`)),
-                            `first_response_due_at` = VALUES(`first_response_due_at`),
+                            `first_response_due_at` = COALESCE(VALUES(`first_response_due_at`), `tickets`.`first_response_due_at`),
                             `first_responded_at` = VALUES(`first_responded_at`),
-                            `resolve_due_at` = VALUES(`resolve_due_at`),
+                            `resolve_due_at` = COALESCE(VALUES(`resolve_due_at`), `tickets`.`resolve_due_at`),
                             `sla_paused_at` = VALUES(`sla_paused_at`),
                             `sla_paused_seconds` = VALUES(`sla_paused_seconds`),
                             `resolved_at` = VALUES(`resolved_at`),
@@ -7033,7 +7110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         $firstRespDue = !empty($tck['slaFirstResponseDueAt']) ? $tck['slaFirstResponseDueAt'] : ($tck['firstResponseDueAt'] ?? null);
                         $firstRespAt = !empty($tck['slaFirstRespondedAt']) ? $tck['slaFirstRespondedAt'] : ($tck['firstRespondedAt'] ?? null);
-                        $resolveDue = !empty($tck['slaResolutionDueAt']) ? $tck['slaResolutionDueAt'] : ($tck['resolveDueAt'] ?? null);
+                        // Three spellings reach this point: `slaResolutionDueAt` (what we return),
+                        // `resolveDueAt` (older clients) and `resolutionDueAt` (TicketsView before
+                        // the fix, and what computeTicketSlaDueDates() returns). Missing the last one
+                        // stored NULL and lost the resolution SLA of every manual ticket.
+                        $resolveDue = !empty($tck['slaResolutionDueAt']) ? $tck['slaResolutionDueAt']
+                            : (!empty($tck['resolutionDueAt']) ? $tck['resolutionDueAt'] : ($tck['resolveDueAt'] ?? null));
                         $pausedSecs = isset($tck['slaPausedTotalSeconds']) ? (int)$tck['slaPausedTotalSeconds'] : (int)($tck['slaPausedSeconds'] ?? 0);
                         $isArchivedVal = (!empty($tck['isArchived']) || !empty($tck['archived'])) ? 1 : 0;
 
@@ -7099,14 +7181,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                             if (empty($keepMsgIds)) {
                                 if ($isDeltaSync && $baseSyncedAt !== null) {
-                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND NOT (`author_type` = 'client' AND `created_at` > ?)")->execute([$tckId, $baseSyncedAt]);
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND NOT (`author_type` IN ('client', 'system') AND `created_at` > ?)")->execute([$tckId, $baseSyncedAt]);
                                 } else {
                                     $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ?")->execute([$tckId]);
                                 }
                             } else {
                                 $ph = implode(',', array_fill(0, count($keepMsgIds), '?'));
                                 if ($isDeltaSync && $baseSyncedAt !== null) {
-                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph) AND NOT (`author_type` = 'client' AND `created_at` > ?)")->execute(array_merge([$tckId], $keepMsgIds, [$baseSyncedAt]));
+                                    $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph) AND NOT (`author_type` IN ('client', 'system') AND `created_at` > ?)")->execute(array_merge([$tckId], $keepMsgIds, [$baseSyncedAt]));
                                 } else {
                                     $pdo->prepare("DELETE FROM `ticket_messages` WHERE `ticket_id` = ? AND `id` NOT IN ($ph)")->execute(array_merge([$tckId], $keepMsgIds));
                                 }

@@ -22,6 +22,41 @@ export const hashRecord = (record: any): string => {
   return hash;
 };
 
+// --- Warehouse stock rows ----------------------------------------------------
+// `warehouse_stock` has a composite key (warehouse_id, item_id) and no id column.
+// A row without an id cannot sit in a baseline, so diffRecords() used to send the
+// whole stock table, as absolute quantities, on every push from a warehouse editor.
+// That silently reverted any stock change made meanwhile by MCP or another tab.
+// The synthetic id `<warehouseId>:<itemId>` (sync.php emits the same on read) lets
+// the diff send only the rows this tab actually changed.
+
+export const stockRowId = (row: { warehouseId?: unknown; itemId?: unknown }): string =>
+  `${String(row.warehouseId ?? "")}:${String(row.itemId ?? "")}`;
+
+// Same object in, same object out, so hashRecord's identity cache keeps working
+// and an untouched locally-created row hashes identically push after push.
+const stockIdCache = new WeakMap<object, any>();
+
+export const withStockRowIds = <T extends { warehouseId?: unknown; itemId?: unknown; id?: unknown }>(
+  rows: readonly T[] | undefined,
+): (T & { id: string })[] => {
+  const out: (T & { id: string })[] = [];
+  for (const r of rows ?? []) {
+    if (!r || typeof r !== "object") continue;
+    if (r.id != null && r.id !== "") {
+      out.push(r as T & { id: string });
+      continue;
+    }
+    let withId = stockIdCache.get(r);
+    if (!withId) {
+      withId = { ...r, id: stockRowId(r) };
+      stockIdCache.set(r, withId);
+    }
+    out.push(withId);
+  }
+  return out;
+};
+
 export const baselineOf = (records: any[] | undefined): RecordBaseline => {
   const out: RecordBaseline = new Map();
   for (const r of records ?? []) {

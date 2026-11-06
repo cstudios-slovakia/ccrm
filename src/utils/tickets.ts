@@ -403,14 +403,85 @@ export const nextTicketNumber = (tickets: Ticket[]): string => {
 
 export const generateTicketNumber = nextTicketNumber;
 
+const positiveNumber = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * SLA targets in minutes for one priority. Mirrors `ccrm_compute_ticket_sla()` in
+ * `public/api/tickets.php`, so a ticket gets the same due dates whether the browser
+ * or the server creates it:
+ *   1. the support contract's per-priority hours (`slaResponse<Priority>Hours`,
+ *      `slaResolve<Priority>Hours`, as synced from `support_contracts`);
+ *   2. the contract's flat minute overrides, if any;
+ *   3. the ticket settings' target, in minutes (`firstResponseMins`) or in hours
+ *      (`responseHours`, the shape the server seeds into TICKET_SETTINGS);
+ *   4. 240 / 1440 minutes.
+ */
+export const resolveTicketSlaTargetMinutes = (
+  priority: TicketPriority,
+  settings: TicketSettingsConfig | null | undefined,
+  contract?: SupportContract | null,
+): { firstResponseMins: number; resolutionMins: number } => {
+  const target: Record<string, unknown> =
+    (settings?.slaTargets?.[priority] as unknown as Record<string, unknown>) ||
+    (settings?.slaTargets?.normal as unknown as Record<string, unknown>) ||
+    (DEFAULT_TICKET_SETTINGS.slaTargets.normal as unknown as Record<string, unknown>);
+  const fromHours = (h: unknown): number | null => {
+    const n = positiveNumber(h);
+    return n === null ? null : Math.round(n * 60);
+  };
+  const c = (contract || {}) as Record<string, unknown>;
+  const p = capitalize(String(priority || "normal"));
+  const firstResponseMins =
+    fromHours(c[`slaResponse${p}Hours`]) ??
+    positiveNumber(c.slaFirstResponseMins) ??
+    positiveNumber(target.firstResponseMins) ??
+    fromHours(target.responseHours) ??
+    240;
+  const resolutionMins =
+    fromHours(c[`slaResolve${p}Hours`]) ??
+    positiveNumber(c.slaResolutionMins) ??
+    positiveNumber(target.resolutionMins) ??
+    fromHours(target.resolveHours) ??
+    1440;
+  return { firstResponseMins, resolutionMins };
+};
+
+/**
+ * The support contract that governs a new ticket's SLA. Same rule as the widget
+ * (`ticket_widget.php`): an explicitly chosen contract, else the first contract on
+ * the project or on the client.
+ */
+export const findTicketSupportContract = (
+  contracts: readonly SupportContract[] | null | undefined,
+  ref: { contractId?: string | null; projectId?: string | null; leadId?: string | null },
+): SupportContract | null => {
+  const list = contracts || [];
+  if (ref.contractId) {
+    const byId = list.find((c) => c.id === ref.contractId);
+    if (byId) return byId;
+  }
+  if (!ref.projectId && !ref.leadId) return null;
+  return (
+    list.find(
+      (c) =>
+        (ref.projectId && c.projectId === ref.projectId) ||
+        (ref.leadId && (c.leadId === ref.leadId || c.clientId === ref.leadId)),
+    ) || null
+  );
+};
+
 export const computeTicketSlaDueDates = (
   priority: TicketPriority,
   settings: TicketSettingsConfig,
   contract?: SupportContract | null,
 ): { firstResponseDueAt: string; resolutionDueAt: string } => {
-  const target = settings?.slaTargets?.[priority] || settings?.slaTargets?.normal || DEFAULT_TICKET_SETTINGS.slaTargets.normal;
-  const firstMins = contract?.slaFirstResponseMins || target.firstResponseMins || 240;
-  const resMins = contract?.slaResolutionMins || target.resolutionMins || 1440;
+  const { firstResponseMins: firstMins, resolutionMins: resMins } =
+    resolveTicketSlaTargetMinutes(priority, settings, contract);
   const now = Date.now();
   const fmt = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice(0, 19);
   return {

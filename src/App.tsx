@@ -80,7 +80,7 @@ import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
-import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, skipHoldsBaseline, skipIsLostWork, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
+import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
 import { workableProjectStubs } from "./utils/workableProjects";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
@@ -1531,7 +1531,9 @@ ${log.payload || ''}
       narrow("warehouses", liveWarehouses);
       narrow("suppliers", liveSuppliers);
       narrow("warehouseItems", liveWarehouseItems);
-      narrow("warehouseStock", liveWarehouseStock);
+      // Stock rows carry no id of their own; without one every row would be re-sent
+      // as an absolute quantity on every push (see withStockRowIds).
+      narrow("warehouseStock", withStockRowIds(liveWarehouseStock));
       narrow("warehouseBatches", liveWarehouseBatches);
       narrow("warehouseMovements", liveWarehouseMovements);
       narrow("financialCategories", liveFinancialCategories);
@@ -3139,7 +3141,7 @@ ${log.payload || ''}
         warehouses: baselineOf(rawData.warehouses ?? warehousesRef.current),
         suppliers: baselineOf(rawData.suppliers ?? suppliersRef.current),
         warehouseItems: baselineOf(rawData.warehouseItems ?? warehouseItemsRef.current),
-        warehouseStock: baselineOf(rawData.warehouseStock ?? warehouseStockRef.current),
+        warehouseStock: baselineOf(withStockRowIds(rawData.warehouseStock ?? warehouseStockRef.current)),
         warehouseBatches: baselineOf(rawData.warehouseBatches ?? warehouseBatchesRef.current),
         warehouseMovements: baselineOf(rawData.warehouseMovements ?? warehouseMovementsRef.current),
         financialCategories: baselineOf(rawData.financialCategories ?? financialCategoriesRef.current),
@@ -3681,6 +3683,7 @@ ${log.payload || ''}
           companyBillingSettings={companyBillingSettings}
           warehouseItems={warehouseItems}
           warehouses={warehouses}
+          warehouseMovements={warehouseMovements}
           setWarehouseMovements={updateWarehouseMovementsAndSync}
           invoicesOffers={invoicesOffers}
           setInvoicesOffers={updateInvoicesOffersAndSync}
@@ -4010,6 +4013,7 @@ ${log.payload || ''}
             companyBillingSettings={companyBillingSettings}
             warehouseItems={warehouseItems}
             warehouses={warehouses}
+            warehouseMovements={warehouseMovements}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
@@ -4128,6 +4132,7 @@ ${log.payload || ''}
             setLeads={updateLeadsAndSync}
             warehouseItems={warehouseItems}
             warehouses={warehouses}
+            warehouseMovements={warehouseMovements}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}

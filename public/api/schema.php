@@ -1979,6 +1979,7 @@ if (!function_exists('ccrm_schema_statements')) {
             error_log('[ccrm schema] employee document migration skipped: ' . $e->getMessage());
         }
         ccrm_migrate_tickets($pdo);
+        ccrm_backfill_ticket_resolve_due($pdo);
         ccrm_migrate_time_tracking($pdo);
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);
@@ -3273,6 +3274,71 @@ if (!function_exists('ccrm_schema_statements')) {
                 'icon' => $c[5],
             ];
         }, $tree);
+    }
+
+    /**
+     * Restores `tickets.resolve_due_at` lost by the sync key mismatch: tickets created
+     * in the Tickets view sent `resolutionDueAt`, which sync.php did not read, so the
+     * resolution SLA was stored as NULL. Recomputed as created_at + the priority's
+     * resolution target, with the same precedence as ccrm_compute_ticket_sla():
+     * the project's or client's support contract hours, then TICKET_SETTINGS
+     * (`resolutionMins` or `resolveHours`), then the built-in default.
+     *
+     * Only manual tickets are touched (the widget and e-mail paths always stored a
+     * value) and only where the column is NULL, so it is idempotent. Pauses were never
+     * recorded, so none are added. created_at is used in whatever clock it was written.
+     */
+    function ccrm_backfill_ticket_resolve_due(PDO $pdo): void {
+        try {
+            if (!ccrm_table_exists($pdo, 'tickets') || !ccrm_column_exists($pdo, 'tickets', 'resolve_due_at')) return;
+            $rows = $pdo->query(
+                "SELECT `id`, `priority`, `project_id`, `client_id`, `created_at` FROM `tickets`
+                 WHERE `resolve_due_at` IS NULL AND `source` = 'manual' AND `created_at` IS NOT NULL"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            if (empty($rows)) return;
+
+            $defaults = ['critical' => 240, 'high' => 480, 'normal' => 1440, 'low' => 2880];
+            $targetMins = $defaults;
+            if (ccrm_table_exists($pdo, 'system_settings')) {
+                $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TICKET_SETTINGS' LIMIT 1")->fetchColumn();
+                $decoded = $raw ? json_decode((string)$raw, true) : null;
+                if (is_array($decoded) && isset($decoded['slaTargets']) && is_array($decoded['slaTargets'])) {
+                    foreach ($defaults as $prio => $def) {
+                        $t = $decoded['slaTargets'][$prio] ?? null;
+                        if (!is_array($t)) continue;
+                        if (isset($t['resolutionMins']) && (float)$t['resolutionMins'] > 0) {
+                            $targetMins[$prio] = (int)round((float)$t['resolutionMins']);
+                        } elseif (isset($t['resolveHours']) && (float)$t['resolveHours'] > 0) {
+                            $targetMins[$prio] = (int)round(((float)$t['resolveHours']) * 60);
+                        }
+                    }
+                }
+            }
+
+            $contracts = [];
+            if (ccrm_table_exists($pdo, 'support_contracts')) {
+                $contracts = $pdo->query("SELECT * FROM `support_contracts` ORDER BY `created_at` ASC")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
+
+            $upd = $pdo->prepare("UPDATE `tickets` SET `resolve_due_at` = ? WHERE `id` = ? AND `resolve_due_at` IS NULL");
+            foreach ($rows as $r) {
+                $prio = isset($targetMins[$r['priority'] ?? '']) ? (string)$r['priority'] : 'normal';
+                $mins = $targetMins[$prio];
+                foreach ($contracts as $sc) {
+                    $matches = (!empty($r['project_id']) && ($sc['project_id'] ?? null) === $r['project_id'])
+                        || (!empty($r['client_id']) && ($sc['client_id'] ?? null) === $r['client_id']);
+                    if (!$matches) continue;
+                    $hours = (float)($sc['sla_resolve_' . $prio . '_hours'] ?? 0);
+                    if ($hours > 0) $mins = (int)round($hours * 60);
+                    break;
+                }
+                $createdTs = strtotime((string)$r['created_at']);
+                if ($createdTs === false) continue;
+                $upd->execute([date('Y-m-d H:i:s', $createdTs + $mins * 60), $r['id']]);
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] ccrm_backfill_ticket_resolve_due: ' . $e->getMessage());
+        }
     }
 
     /**

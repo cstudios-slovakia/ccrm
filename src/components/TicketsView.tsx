@@ -78,6 +78,7 @@ import {
   isClosedTicketStatus,
   evaluateTicketSla,
   computeSlaDueDates,
+  findTicketSupportContract,
   generateTicketNumber,
   formatDurationMinutes,
   parseDurationColonInput,
@@ -747,11 +748,6 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     e.preventDefault();
     if (!canEdit || !newSubject.trim()) return;
     const now = nowLocalStamp();
-    const { firstResponseDueAt, resolutionDueAt } = computeSlaDueDates(
-      now,
-      newPriority,
-      ticketSettings,
-    );
 
     // If a project is chosen and has a paired client, automatically attach that client
     let resolvedLeadId = newLeadId || null;
@@ -760,6 +756,20 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       if (proj?.leadId) resolvedLeadId = proj.leadId;
       else if (proj?.clientId) resolvedLeadId = proj.clientId;
     }
+
+    // Same contract choice as the widget and e-mail paths on the server, so a
+    // ticket's SLA does not depend on where it was created.
+    const slaContract = findTicketSupportContract(supportContracts, {
+      contractId: newContractId || null,
+      projectId: newProjectId || null,
+      leadId: resolvedLeadId,
+    });
+    const { firstResponseDueAt, resolutionDueAt } = computeSlaDueDates(
+      now,
+      newPriority,
+      ticketSettings,
+      slaContract,
+    );
 
     const ticketId = `tkt-${Date.now()}`;
     const firstImg = newTicketAttachments.find(isImageAttachment);
@@ -783,7 +793,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       reporterName: newReporterName.trim() || currentUser?.name || "Client",
       reporterEmail: newReporterEmail.trim(),
       assignedUsers: newAssignee ? [newAssignee] : [],
+      // sync.php stores `slaFirstResponseDueAt` / `slaResolutionDueAt`; send the
+      // canonical keys as well as the short ones the UI reads.
+      slaFirstResponseDueAt: firstResponseDueAt,
       firstResponseDueAt,
+      slaResolutionDueAt: resolutionDueAt,
       resolutionDueAt,
       screenshotPath: firstImg
         ? firstImg.path || firstImg.url || firstImg.dataUrl || null
@@ -1244,8 +1258,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       name: contractName.trim(),
       projectId: contractProjectId || null,
       leadId: contractLeadId || null,
+      // sync.php stores `monthlyHours` and `hourlyRate`; the other spellings are
+      // what the retainer readers look at.
+      monthlyHours: Number(contractHours) || 10,
       monthlyHoursIncluded: Number(contractHours) || 10,
       hoursUsedThisMonth: 0,
+      hourlyRate: Number(contractRate) || 65,
+      hourlyOverageRate: Number(contractRate) || 65,
       overageRate: Number(contractRate) || 65,
       currency: "EUR",
       slaTier: contractTier,

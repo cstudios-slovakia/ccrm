@@ -889,6 +889,8 @@ export interface WarehouseItem {
 }
 
 export interface WarehouseStock {
+  /** Synthetic `<warehouseId>:<itemId>`, emitted by sync.php so the delta diff can track the row. */
+  id?: string;
   warehouseId: string;
   itemId: string;
   quantity: number;
@@ -1774,6 +1776,17 @@ export interface SupportContract {
   currency?: string;
   slaFirstResponseMins?: number | null;
   slaResolutionMins?: number | null;
+  /** Per-priority SLA hours, synced from `support_contracts.sla_response_*_hours`. */
+  slaResponseCriticalHours?: number | null;
+  slaResponseHighHours?: number | null;
+  slaResponseNormalHours?: number | null;
+  slaResponseLowHours?: number | null;
+  slaResolveCriticalHours?: number | null;
+  slaResolveHighHours?: number | null;
+  slaResolveNormalHours?: number | null;
+  slaResolveLowHours?: number | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
   periodStart?: string | null;
   periodEnd?: string | null;
   isActive?: boolean;

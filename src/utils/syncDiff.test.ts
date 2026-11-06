@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { skipHoldsBaseline, skipIsLostWork, skippedCollection } from "./syncDiff.ts";
+import { baselineOf, diffRecords, skipHoldsBaseline, skipIsLostWork, skippedCollection, stockRowId, withStockRowIds } from "./syncDiff.ts";
 
 test("a reason suffix belongs to its collection", () => {
   assert.equal(skippedCollection("users:nameTaken"), "users");
@@ -47,4 +47,36 @@ test("an untouched custom-entry map is not unsaved work", () => {
   assert.equal(skipIsLostWork("unifiedEntriesData", { unifiedEntriesData: { e1: [{ id: "r1" }] } }), true);
   assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: { unifiedEntriesData: { e1: ["r1"] } } }), true);
   assert.equal(skipIsLostWork("unifiedEntriesData:delete", { deleted: {} }), false);
+});
+
+// Stored-vs-derived audit W2: stock rows have no id of their own, so every push used
+// to re-send the whole stock table as absolute numbers and revert concurrent changes.
+
+test("an unchanged stock row is not re-sent", () => {
+  // As sync.php returns them: with the synthetic id.
+  const server = [
+    { warehouseId: "wh-1", itemId: "it-1", quantity: 10, reservedQuantity: 0, location: null, id: "wh-1:it-1" },
+    { warehouseId: "wh-1", itemId: "it-2", quantity: 4, reservedQuantity: 0, location: null, id: "wh-1:it-2" },
+  ];
+  const baseline = baselineOf(withStockRowIds(server));
+  // A lead edit elsewhere: the stock list is untouched.
+  assert.deepEqual(diffRecords(withStockRowIds(server), baseline).changed, []);
+  // A receipt on it-2 only.
+  const edited = [server[0], { ...server[1], quantity: 7 }];
+  const { changed } = diffRecords(withStockRowIds(edited), baseline);
+  assert.equal(changed.length, 1);
+  assert.equal(changed[0].itemId, "it-2");
+  assert.equal(changed[0].quantity, 7);
+});
+
+test("a stock row created in this tab gets a stable id and is sent once", () => {
+  const local = { warehouseId: "wh-2", itemId: "it-9", quantity: 3, reservedQuantity: 0 };
+  const first = withStockRowIds([local]);
+  assert.equal(first[0].id, "wh-2:it-9");
+  assert.equal(first[0].id, stockRowId(local));
+  // Same source object, same normalised object: the baseline hash matches next time.
+  assert.equal(withStockRowIds([local])[0], first[0]);
+  const sent = diffRecords(first, new Map());
+  assert.equal(sent.changed.length, 1);
+  assert.deepEqual(diffRecords(withStockRowIds([local]), sent.next).changed, []);
 });

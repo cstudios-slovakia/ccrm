@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
+import { applyOrderFulfillment, buildOrderFulfillmentMovement, planOrderFulfillment } from "../utils/orderFulfillment";
 import type { PriceLevel } from "../utils/priceLevels";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
@@ -70,6 +71,7 @@ export interface OrdersViewProps {
   /** The configured price levels: a product is priced on the customer's level. */
   priceLevels?: PriceLevel[];
   warehouses?: Warehouse[];
+  warehouseMovements?: WarehouseMovement[];
   setWarehouseMovements?: React.Dispatch<React.SetStateAction<WarehouseMovement[]>>;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
@@ -102,6 +104,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   setOrders,
   leads,
   setLeads,
+  warehouseMovements = [],
   warehouseItems = [],
   priceLevels = [],
   warehouses = [],
@@ -250,43 +253,41 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // Convert order products into outward warehouse movement
   const handleFulfillWarehouse = (order: Order) => {
     if (!canEdit || !setWarehouseMovements) return;
-    const physicalItems = (order.items || []).filter(i => i.itemType === "product" && i.quantity > 0);
-    if (physicalItems.length === 0) {
-      alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+    const plan = planOrderFulfillment(order, warehouseItems);
+    if (plan.lines.length === 0) {
+      if (plan.alreadyFulfilled.length > 0 && plan.skippedNonCatalog.length === 0) {
+        alert(t("All products of this order have already been issued from the warehouse.", "Všetky produkty tejto objednávky už boli vyskladnené.", "A rendelés összes terméke már ki lett adva a raktárból."));
+      } else if (plan.skippedNonCatalog.length > 0) {
+        alert(t("The remaining products of this order are not warehouse items, so they cannot be put on a delivery note.", "Zvyšné produkty tejto objednávky nie sú skladové položky, preto ich nemožno vyskladniť.", "A rendelés többi terméke nem raktári tétel, ezért nem adható ki."));
+      } else {
+        alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+      }
+      return;
+    }
+    const warehouseId = order.warehouseId || warehouses[0]?.id || "";
+    if (!warehouseId) {
+      alert(t("Create a warehouse first.", "Najprv vytvorte sklad.", "Először hozzon létre egy raktárt."));
       return;
     }
 
-    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${physicalItems.length} products?`, `Vystaviť výdajku zo skladu pre ${physicalItems.length} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${physicalItems.length} termékre?`))) return;
+    const count = plan.lines.length;
+    const skipped = plan.skippedNonCatalog.length;
+    const skippedNote = skipped > 0
+      ? t(` (${skipped} non-warehouse products are left out)`, ` (${skipped} neskladových produktov sa vynechá)`, ` (${skipped} nem raktári termék kimarad)`)
+      : "";
+    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${count} products?`, `Vystaviť výdajku zo skladu pre ${count} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${count} termékre?`) + skippedNote)) return;
 
-    const warehouseId = order.warehouseId || (warehouses[0]?.id ?? "wh-default");
-    const newMovement: WarehouseMovement = {
-      id: `mov_${Date.now()}`,
-      documentNumber: `VYD-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      type: "outward",
-      status: "confirmed",
-      warehouseId,
-      leadId: order.clientId || undefined,
-      totalCostValue: 0,
-      totalSellValue: order.itemsNetAmount,
-      totalProfitValue: 0,
-      createdBy: currentUser?.name || "System",
-      note: `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`,
-      issuedAt: new Date().toISOString().split("T")[0],
-      createdAt: new Date().toISOString(),
-      items: physicalItems.map(item => ({
-        id: `mov_item_${Date.now()}_${Math.random()}`,
-        itemId: item.itemId || item.id,
-        quantity: item.quantity,
-        unitPurchasePrice: 0,
-        unitSellPrice: item.unitPrice,
-        totalPrice: item.totalNetAmount,
-        note: item.name
-      }))
-    };
-
-    setWarehouseMovements(prev => [newMovement, ...prev]);
+    const note = `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`;
+    const createdBy = currentUser?.name || "System";
+    const now = new Date();
+    // The VYD number and the movement id follow what is already on file.
+    const movement = buildOrderFulfillmentMovement(order, plan, { existingMovements: warehouseMovements, warehouseId, createdBy, note, now });
+    const documentNumber = movement.documentNumber;
+    setWarehouseMovements(prev => [movement, ...prev]);
+    // What was issued is stored on the order lines, so a second click issues nothing.
+    setOrders(prev => prev.map(o => (o.id === order.id ? applyOrderFulfillment(o, plan) : o)));
     const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-    toast?.(t(`Delivery note ${newMovement.documentNumber} created!`, `Výdajka ${newMovement.documentNumber} bola úspešne vytvorená!`, `A(z) ${newMovement.documentNumber} kiadási bizonylat elkészült!`));
+    toast?.(t(`Delivery note ${documentNumber} created!`, `Výdajka ${documentNumber} bola úspešne vytvorená!`, `A(z) ${documentNumber} kiadási bizonylat elkészült!`));
   };
 
   // Convert order into invoice
