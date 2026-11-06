@@ -130,8 +130,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
   const [threadBodies, setThreadBodies] = useState<Record<string, any>>({});
   
-  // Thread mode configurations
-  const [isThreadedMode, setIsThreadedMode] = useState(false);
+  // Thread mode configurations (enabled by default so incoming & sent emails stay grouped in conversation threads)
+  const [isThreadedMode, setIsThreadedMode] = useState(true);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [expandedEmailUids, setExpandedEmailUids] = useState<Record<string, boolean>>({});
 
@@ -499,11 +499,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Visual Trigger Studio & Event-Driven Routing State
   const [visualTriggersOpen, setVisualTriggersOpen] = useState<boolean>(false);
-  const [wiringSource, setWiringSource] = useState<{
-    sourceType: "whatsapp" | "email" | "crm_event";
-    sourceConnectorId: string;
-    label: string;
-  } | null>(null);
   const [triggerModalOpen, setTriggerModalOpen] = useState<boolean>(false);
   const [triggerDraftId, setTriggerDraftId] = useState<string>("");
   const [triggerDraftName, setTriggerDraftName] = useState<string>("");
@@ -1293,7 +1288,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
       applyAgentState(selectedAccount.id, st);
       setTriggerModalOpen(false);
-      setWiringSource(null);
       notify(
         t(
           "Reactive event trigger saved! Zero-cost idle mode is active.",
@@ -1345,12 +1339,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
       const res = await testAgentTrigger(selectedAccount.id, triggerId);
       applyAgentState(selectedAccount.id, res);
       if (res.testResult?.ok) {
+        const alreadyMsg = (res.testResult as { alreadyReplied?: boolean; text?: string }).alreadyReplied
+          ? (res.testResult as { text?: string }).text
+          : null;
         notify(
-          t(
-            "Trigger test executed with 50-msg / 5-day context!",
-            "Test spúšťača vykonaný s kontextom 50 správ / 5 dní!",
-            "Indító teszt végrehajtva 50 üzenet / 5 nap kontextussal!",
-          ),
+          alreadyMsg ||
+            t(
+              "Trigger test executed with 50-msg / 5-day context!",
+              "Test spúšťača vykonaný s kontextom 50 správ / 5 dní!",
+              "Indító teszt végrehajtva 50 üzenet / 5 nap kontextussal!",
+            ),
         );
       } else {
         notify(res.testResult?.error || t("Trigger test failed.", "Test spúšťača zlyhal.", "Indító teszt sikertelen."), "error");
@@ -1795,20 +1793,51 @@ export const EmailView: React.FC<EmailViewProps> = ({
     });
 
     const threadsMap: Record<string, any[]> = {};
-    
-    filtered.forEach(email => {
-      // Strips Re:, Fwd:, etc.
-      let normSubject = (email.subject || "")
-        .replace(/^(re|fwd|fw|odp|odpověď|rehg|ref|odpověd|odp):\s*/i, "")
-        .trim();
-      if (!normSubject) {
-        normSubject = t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)");
+    const msgIdToThreadKey: Record<string, string> = {};
+
+    const normalizeSubject = (raw: string) => {
+      let s = (raw || "").trim();
+      const prefixRe = /^(?:(?:re|fwd|fw|odp|odpověď|rehg|ref|odpověd|válasz|aw|wg|sv|vs)(?:\[\d+\])?:\s*)+/i;
+      while (prefixRe.test(s)) {
+        s = s.replace(prefixRe, "").trim();
       }
-      
-      if (!threadsMap[normSubject]) {
-        threadsMap[normSubject] = [];
+      return s || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)");
+    };
+
+    // Sort oldest to newest first so `in_reply_to` / `references` can link to earlier messages' `message_id`
+    const chronological = [...filtered].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+
+    chronological.forEach((email) => {
+      const normSubj = normalizeSubject(email.subject || "");
+      let threadKey = "";
+
+      const inReplyTo = (email.in_reply_to || "").trim();
+      if (inReplyTo && msgIdToThreadKey[inReplyTo]) {
+        threadKey = msgIdToThreadKey[inReplyTo];
       }
-      threadsMap[normSubject].push(email);
+      if (!threadKey && email.references) {
+        const refs = String(email.references).split(/\s+/).filter(Boolean);
+        for (let i = refs.length - 1; i >= 0; i--) {
+          if (msgIdToThreadKey[refs[i]]) {
+            threadKey = msgIdToThreadKey[refs[i]];
+            break;
+          }
+        }
+      }
+      if (!threadKey) {
+        threadKey = normSubj;
+      }
+
+      if (email.message_id) {
+        msgIdToThreadKey[String(email.message_id).trim()] = threadKey;
+      }
+
+      if (!threadsMap[threadKey]) {
+        threadsMap[threadKey] = [];
+      }
+      threadsMap[threadKey].push(email);
     });
     
     const threadsList = Object.keys(threadsMap).map(subject => {
@@ -3284,7 +3313,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
             const activeSubagentObj = subagents.find((s) => s.id === activeChatSubagentId) ?? null;
             const siblingWaAccount =
               availableAccounts.find((a) => a.connectorType === "whatsapp") ?? null;
-            const siblingEmailAccounts = availableAccounts.filter((a) => isEmailConnector(a.connectorType));
 
             const isArtSelected = Boolean(selectedArtifactKey);
             const selectedSubObj =
@@ -3358,6 +3386,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
+                            onClick={() => setNewSubagentOpen(true)}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 text-micro font-bold flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Bot size={13} /> + {t("Create Agent", "Vytvoriť agenta", "Ügynök létrehozása")}
+                          </button>
+                          <button
+                            type="button"
                             data-testid="new-visual-trigger-btn"
                             onClick={() => openNewTriggerModal()}
                             className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -3368,7 +3403,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             type="button"
                             onClick={() => {
                               setVisualTriggersOpen(false);
-                              setWiringSource(null);
                             }}
                             className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
                           >
@@ -3377,535 +3411,250 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Interactive Wiring Banner when a Source is selected */}
-                      {wiringSource && (
-                        <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-2 text-caption text-amber-900 font-semibold shrink-0">
-                          <span className="flex items-center gap-2">
-                            <Zap size={14} className="text-amber-600 animate-pulse" />
-                            {t("Source selected:", "Vybraný zdroj:", "Kiválasztott forrás:")}{" "}
-                            <strong className="px-2 py-0.5 rounded bg-white border border-amber-300">
-                              {wiringSource.label}
-                            </strong>{" "}
-                            ➔{" "}
-                            {t(
-                              "Now click any Target Agent on the right to connect them!",
-                              "Teraz kliknite na ľubovoľného cieľového agenta vpravo pre ich prepojenie!",
-                              "Most kattintson bármelyik cél ügynökre jobb oldalon az összekötéshez!",
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setWiringSource(null)}
-                            className="text-micro font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
-                          >
-                            {t("Cancel", "Zrušiť", "Mégse")}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* 3-Column Visual Wiring Canvas */}
-                      <div className="flex-1 min-h-0 overflow-y-auto p-5 grid grid-cols-1 ws-lg:grid-cols-12 gap-5 items-start">
-                        {/* COLUMN 1 (4 cols): SOURCE CONNECTIONS */}
-                        <div className="ws-lg:col-span-4 space-y-3">
-                          <div className="flex items-center justify-between px-1">
-                            <span className="text-micro font-bold uppercase tracking-wider text-slate-500">
-                              1. {t("Source Connections (Triggers)", "Zdrojové pripojenia (Spúšťače)", "Forrás kapcsolatok (Indítók)")}
-                            </span>
-                            <span className="text-micro text-slate-400">
-                              {t("Click to wire ➔", "Kliknite pre prepojenie ➔", "Kattintson a bekötéshez ➔")}
-                            </span>
+                      {/* Connections Canvas: Source on Left ➔ Squiggly Line in Middle ➔ Which Agent Runs on Right (with Events Ran on Top) */}
+                      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+                        {triggersList.length === 0 ? (
+                          <div className="p-8 rounded-3xl border-2 border-dashed border-amber-200 bg-amber-50/30 text-center space-y-3 max-w-lg mx-auto my-6">
+                            <GitBranch size={28} className="mx-auto text-amber-500" />
+                            <div className="text-body font-bold text-slate-800">
+                              {t("No connections wired yet", "Zatiaľ žiadne prepojenia", "Még nincs bekötött kapcsolat")}
+                            </div>
+                            <p className="text-caption text-slate-500 leading-relaxed">
+                              {t(
+                                "Connect a WhatsApp, Email, or CRM source to an AI Agent so it wakes up automatically only when an event happens ($0 idle cost).",
+                                "Prepojte zdroj WhatsApp, E-mail alebo CRM s AI agentom, aby sa prebudil iba pri udalosti ($0 v nečinnosti).",
+                                "Kössön össze egy WhatsApp, E-mail vagy CRM forrást egy AI ügynökkel, hogy csak esemény érkezésekor fusson ($0 üresjárati költség).",
+                              )}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => openNewTriggerModal()}
+                              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-caption font-bold cursor-pointer shadow-xs"
+                            >
+                              + {t("New Trigger Wire", "Nové prepojenie", "Új indító kapcsolat")}
+                            </button>
                           </div>
+                        ) : (
+                          triggersList.map((trig) => {
+                            const targetSub = subagents.find((s) => s.id === trig.targetSubagentId);
+                            const sourceAcc = availableAccounts.find((a) => a.id === trig.sourceConnectorId);
+                            const eventsRanCount = trig.triggerCount ?? 0;
+                            const filterSummary =
+                              trig.sourceType === "whatsapp"
+                                ? trig.filter?.chatMatch
+                                  ? `Chat: ${trig.filter.chatMatch}`
+                                  : trig.filter?.onlyGroup
+                                    ? t("All Groups", "Všetky skupiny", "Minden csoport")
+                                    : trig.filter?.onlyDirect
+                                      ? t("Direct Chats", "Priame chaty", "Közvetlen csevegések")
+                                      : t("Any WhatsApp Chat", "Akýkoľvek WhatsApp chat", "Bármely WhatsApp csevegés")
+                                : trig.sourceType === "email"
+                                  ? trig.filter?.subjectContains ||
+                                    trig.filter?.fromContains ||
+                                    t("All New Emails", "Všetky nové e-maily", "Minden új e-mail")
+                                  : trig.filter?.eventType || "lead_created";
 
-                          {/* WhatsApp Sources */}
-                          {availableAccounts
-                            .filter((a) => a.connectorType === "whatsapp")
-                            .map((waAcc) => {
-                              const isWiring =
-                                wiringSource?.sourceType === "whatsapp" && wiringSource.sourceConnectorId === waAcc.id;
-                              const linkedCount = triggersList.filter(
-                                (tr) => tr.sourceType === "whatsapp" && (!tr.sourceConnectorId || tr.sourceConnectorId === waAcc.id),
-                              ).length;
-                              return (
-                                <button
-                                  key={waAcc.id}
-                                  type="button"
-                                  data-testid={`trigger-source-whatsapp-${waAcc.id}`}
-                                  onClick={() =>
-                                    setWiringSource(
-                                      isWiring
-                                        ? null
-                                        : {
-                                            sourceType: "whatsapp",
-                                            sourceConnectorId: waAcc.id,
-                                            label: `WhatsApp · ${waAcc.name}`,
-                                          },
-                                    )
-                                  }
-                                  className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-                                    isWiring
-                                      ? "bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400/40 shadow-sm"
-                                      : "bg-white hover:bg-emerald-50/40 border-emerald-200/80 shadow-2xs"
-                                  }`}
-                                >
-                                  <span className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
-                                    <MessageCircle size={18} />
-                                  </span>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-1">
-                                      <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-micro font-bold uppercase">
-                                        WhatsApp
-                                      </span>
-                                      {linkedCount > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-micro font-bold">
-                                          {linkedCount} {t("wired", "prepojené", "bekötve")}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-caption font-bold text-slate-900 truncate mt-1">{waAcc.name}</div>
-                                    <div className="text-micro text-slate-500 font-mono truncate">{waAcc.address}</div>
-                                    <div className="mt-1.5 text-micro text-emerald-700 font-semibold">
-                                      ⚡ {t("Fires on new group or direct message", "Spustí sa pri novej skupinovej alebo priamej správe", "Új csoportos vagy közvetlen üzenetkor indul")}
-                                    </div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-
-                          {/* Email Sources */}
-                          {siblingEmailAccounts.map((emAcc) => {
-                            const isWiring =
-                              wiringSource?.sourceType === "email" && wiringSource.sourceConnectorId === emAcc.id;
-                            const linkedCount = triggersList.filter(
-                              (tr) => tr.sourceType === "email" && tr.sourceConnectorId === emAcc.id,
-                            ).length;
                             return (
-                              <button
-                                key={emAcc.id}
-                                type="button"
-                                data-testid={`trigger-source-email-${emAcc.id}`}
-                                onClick={() =>
-                                  setWiringSource(
-                                    isWiring
-                                      ? null
-                                      : {
-                                          sourceType: "email",
-                                          sourceConnectorId: emAcc.id,
-                                          label: `Email · ${emAcc.name}`,
-                                        },
-                                  )
-                                }
-                                className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-                                  isWiring
-                                    ? "bg-pink-50 border-pink-500 ring-2 ring-pink-400/40 shadow-sm"
-                                    : "bg-white hover:bg-pink-50/40 border-slate-200/90 shadow-2xs"
+                              <div
+                                key={trig.id}
+                                data-testid={`trigger-wire-card-${trig.id}`}
+                                className={`p-4 rounded-3xl border transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center ${
+                                  trig.enabled
+                                    ? "bg-white border-amber-300/80 shadow-xs"
+                                    : "bg-slate-50/80 border-slate-200 opacity-75"
                                 }`}
                               >
-                                <span className="w-9 h-9 rounded-xl bg-pink-500/15 text-pink-700 flex items-center justify-center shrink-0">
-                                  <Mail size={18} />
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="px-1.5 py-0.5 rounded bg-pink-100 text-pink-800 text-micro font-bold uppercase">
-                                      {emAcc.connectorType.toUpperCase()}
-                                    </span>
-                                    {linkedCount > 0 && (
-                                      <span className="px-1.5 py-0.5 rounded-full bg-pink-600 text-white text-micro font-bold">
-                                        {linkedCount} {t("wired", "prepojené", "bekötve")}
+                                {/* LEFT (4 cols): SOURCE CONNECTION */}
+                                <div
+                                  onClick={() => openEditTriggerModal(trig)}
+                                  className={`ws-lg:col-span-4 p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                    trig.sourceType === "whatsapp"
+                                      ? "bg-emerald-50/40 hover:bg-emerald-50/80 border-emerald-200/90"
+                                      : trig.sourceType === "email"
+                                        ? "bg-pink-50/40 hover:bg-pink-50/80 border-pink-200/90"
+                                        : "bg-indigo-50/40 hover:bg-indigo-50/80 border-indigo-200/90"
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                      trig.sourceType === "whatsapp"
+                                        ? "bg-emerald-500/15 text-emerald-700"
+                                        : trig.sourceType === "email"
+                                          ? "bg-pink-500/15 text-pink-700"
+                                          : "bg-indigo-500/15 text-indigo-700"
+                                    }`}
+                                  >
+                                    {trig.sourceType === "whatsapp" ? (
+                                      <MessageCircle size={19} />
+                                    ) : trig.sourceType === "email" ? (
+                                      <Mail size={19} />
+                                    ) : (
+                                      <Activity size={19} />
+                                    )}
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded text-micro font-bold uppercase ${
+                                          trig.sourceType === "whatsapp"
+                                            ? "bg-emerald-100 text-emerald-800"
+                                            : trig.sourceType === "email"
+                                              ? "bg-pink-100 text-pink-800"
+                                              : "bg-indigo-100 text-indigo-800"
+                                        }`}
+                                      >
+                                        {trig.sourceType === "whatsapp"
+                                          ? "WHATSAPP"
+                                          : trig.sourceType === "email"
+                                            ? (sourceAcc?.connectorType || "SMTP").toUpperCase()
+                                            : "CRM EVENT"}
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded-md bg-white/90 border border-slate-200 text-slate-700 text-micro font-mono truncate">
+                                        {filterSummary}
+                                      </span>
+                                    </div>
+                                    <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                      {sourceAcc?.name ||
+                                        (trig.sourceType === "whatsapp"
+                                          ? "WhatsApp"
+                                          : trig.sourceType === "email"
+                                            ? "Email Inbox"
+                                            : t("Leads, Projects & Tickets", "Príležitosti, Projekty a Tikety", "Érdeklődők, Projektek és Jegyek"))}
+                                    </div>
+                                    {sourceAcc?.address && (
+                                      <div className="text-micro text-slate-500 font-mono truncate">{sourceAcc.address}</div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* MIDDLE (4 cols): SQUIGGLY LINE & WIRE CONTROLS */}
+                                <div className="ws-lg:col-span-4 flex flex-col items-center justify-center gap-2 px-2">
+                                  <div className="flex items-center gap-1.5 text-micro font-bold text-slate-700">
+                                    <span>{trig.name}</span>
+                                    {trig.autoReply && (
+                                      <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold">
+                                        ↩ Auto-Reply
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-caption font-bold text-slate-900 truncate mt-1">{emAcc.name}</div>
-                                  <div className="text-micro text-slate-500 font-mono truncate">{emAcc.address}</div>
-                                  <div className="mt-1.5 text-micro text-pink-700 font-semibold">
-                                    ⚡ {t("Fires when a new email arrives in INBOX", "Spustí sa pri príchode nového e-mailu do INBOXu", "Új beérkező e-mail esetén indul")}
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
 
-                          {/* CRM System Events Source */}
-                          <button
-                            type="button"
-                            data-testid="trigger-source-crm-event"
-                            onClick={() =>
-                              setWiringSource(
-                                wiringSource?.sourceType === "crm_event"
-                                  ? null
-                                  : {
-                                      sourceType: "crm_event",
-                                      sourceConnectorId: "crm",
-                                      label: t("CRM System Event", "Systémová udalosť CRM", "CRM Rendszeresemény"),
-                                    },
-                              )
-                            }
-                            className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
-                              wiringSource?.sourceType === "crm_event"
-                                ? "bg-indigo-50 border-indigo-500 ring-2 ring-indigo-400/40 shadow-sm"
-                                : "bg-white hover:bg-indigo-50/40 border-slate-200/90 shadow-2xs"
-                            }`}
-                          >
-                            <span className="w-9 h-9 rounded-xl bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
-                              <Activity size={18} />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-micro font-bold uppercase">
-                                  CRM EVENT
-                                </span>
-                              </div>
-                              <div className="text-caption font-bold text-slate-900 truncate mt-1">
-                                {t("Leads, Projects & Tickets", "Príležitosti, Projekty a Tikety", "Érdeklődők, Projektek és Jegyek")}
-                              </div>
-                              <div className="mt-1 text-micro text-indigo-700 font-semibold">
-                                ⚡ {t("Fires when a CRM record is created", "Spustí sa pri vytvorení CRM záznamu", "CRM rekord létrehozásakor indul")}
-                              </div>
-                            </div>
-                          </button>
-                        </div>
-
-                        {/* COLUMN 2 (4 cols): ACTIVE VISUAL WIRES & EVENT ROUTING */}
-                        <div className="ws-lg:col-span-4 space-y-3">
-                          <div className="flex items-center justify-between px-1">
-                            <span className="text-micro font-bold uppercase tracking-wider text-slate-500">
-                              2. {t("Active Trigger Wires", "Aktívne prepojenia", "Aktív indító kapcsolatok")} ({triggersList.length})
-                            </span>
-                          </div>
-
-                          {triggersList.length === 0 ? (
-                            <div className="p-6 rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50/30 text-center space-y-2.5">
-                              <GitBranch size={24} className="mx-auto text-amber-500" />
-                              <div className="text-caption font-bold text-slate-800">
-                                {t("No reactive triggers wired yet", "Zatiaľ žiadne reaktívne spúšťače", "Még nincs bekötött reaktív indító")}
-                              </div>
-                              <p className="text-micro text-slate-500 leading-relaxed">
-                                {t(
-                                  "Click a Source Connection on the left and a Target Agent on the right (or click + New Trigger Wire) so your agent wakes up automatically only when a message arrives.",
-                                  "Kliknite na zdroj vľavo a cieľového agenta vpravo (alebo na + Nové prepojenie), aby sa váš agent prebudil iba pri príchode správy.",
-                                  "Kattintson egy forrásra bal oldalon és egy cél ügynökre jobb oldalon, hogy az ügynök csak üzenet érkezésekor ébredjen fel ($0 üresjárati költség).",
-                                )}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => openNewTriggerModal()}
-                                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold cursor-pointer"
-                              >
-                                + {t("Create First Trigger", "Vytvoriť prvý spúšťač", "Első indító létrehozása")}
-                              </button>
-                            </div>
-                          ) : (
-                            triggersList.map((trig) => {
-                              const targetSub = subagents.find((s) => s.id === trig.targetSubagentId);
-                              const sourceAcc = availableAccounts.find((a) => a.id === trig.sourceConnectorId);
-                              const filterSummary =
-                                trig.sourceType === "whatsapp"
-                                  ? trig.filter?.chatMatch
-                                    ? `Chat: ${trig.filter.chatMatch}`
-                                    : trig.filter?.onlyGroup
-                                      ? t("All Groups", "Všetky skupiny", "Minden csoport")
-                                      : trig.filter?.onlyDirect
-                                        ? t("Direct Chats", "Priame chaty", "Közvetlen csevegések")
-                                        : t("Any WhatsApp Chat", "Akýkoľvek WhatsApp chat", "Bármely WhatsApp csevegés")
-                                  : trig.sourceType === "email"
-                                    ? trig.filter?.subjectContains || trig.filter?.fromContains || t("All New Emails", "Všetky nové e-maily", "Minden új e-mail")
-                                    : trig.filter?.eventType || "lead_created";
-
-                              return (
-                                <div
-                                  key={trig.id}
-                                  data-testid={`trigger-wire-card-${trig.id}`}
-                                  className={`p-3.5 rounded-2xl border transition-all space-y-2.5 ${
-                                    trig.enabled
-                                      ? "bg-white border-amber-300/90 shadow-xs"
-                                      : "bg-slate-50/80 border-slate-200 opacity-75"
-                                  }`}
-                                >
-                                  {/* Top Row: Source ➔ Bezier Wire SVG ➔ Target Agent */}
-                                  <div className="flex items-center justify-between gap-1.5">
-                                    <span
-                                      className={`px-2 py-0.5 rounded-lg text-micro font-bold truncate max-w-[40%] ${
-                                        trig.sourceType === "whatsapp"
-                                          ? "bg-emerald-100 text-emerald-900"
-                                          : trig.sourceType === "email"
-                                            ? "bg-pink-100 text-pink-900"
-                                            : "bg-indigo-100 text-indigo-900"
-                                      }`}
-                                    >
-                                      {trig.sourceType === "whatsapp"
-                                        ? `💬 ${sourceAcc?.name || "WhatsApp"}`
-                                        : trig.sourceType === "email"
-                                          ? `✉️ ${sourceAcc?.name || "Email"}`
-                                          : "⚡ CRM"}
-                                    </span>
-
-                                    {/* Animated Bezier Wire SVG */}
-                                    <svg width="46" height="16" viewBox="0 0 46 16" className="shrink-0 overflow-visible">
-                                      <path
-                                        d="M 2 8 C 16 1, 30 15, 44 8"
-                                        fill="none"
-                                        stroke={trig.enabled ? "#f59e0b" : "#94a3b8"}
-                                        strokeWidth="2"
-                                        strokeDasharray={trig.enabled ? "4 2" : undefined}
-                                      />
-                                      <circle cx="44" cy="8" r="3" fill={trig.enabled ? "#f59e0b" : "#94a3b8"} />
-                                    </svg>
-
-                                    <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-950 border border-amber-300 text-micro font-bold truncate max-w-[42%]">
-                                      🤖 {targetSub ? targetSub.name : t("Main Agent", "Hlavný agent", "Fő ügynök")}
-                                    </span>
-                                  </div>
-
-                                  {/* Trigger Title & Filter Pill */}
-                                  <div>
-                                    <div className="text-caption font-bold text-slate-900">{trig.name}</div>
-                                    <div className="flex flex-wrap items-center gap-1 mt-1">
-                                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-micro font-mono">
-                                        {filterSummary}
-                                      </span>
-                                      {trig.autoReply && (
-                                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold">
-                                          ↩ Auto-Reply
-                                        </span>
-                                      )}
-                                      <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-micro font-semibold">
-                                        50 msgs / 5d
-                                      </span>
-                                    </div>
-                                  </div>
+                                  {/* Prominent Squiggly Bezier Wire */}
+                                  <svg width="100%" height="34" viewBox="0 0 240 34" className="w-full max-w-60 overflow-visible">
+                                    <circle cx="6" cy="17" r="4" fill={trig.enabled ? "#10b981" : "#94a3b8"} />
+                                    <path
+                                      d="M 10 17 C 48 2, 76 32, 120 17 C 164 2, 192 32, 230 17"
+                                      fill="none"
+                                      stroke={trig.enabled ? "#f59e0b" : "#94a3b8"}
+                                      strokeWidth="2.5"
+                                      strokeDasharray={trig.enabled ? "6 4" : undefined}
+                                    />
+                                    <circle cx="234" cy="17" r="4.5" fill={trig.enabled ? "#f59e0b" : "#94a3b8"} />
+                                  </svg>
 
                                   {trig.instructions && (
-                                    <div className="text-micro text-slate-600 line-clamp-2 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                                    <div className="text-micro text-slate-500 line-clamp-1 max-w-full px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100">
                                       {trig.instructions}
                                     </div>
                                   )}
 
-                                  {/* Footer Actions */}
-                                  <div className="pt-1 border-t border-slate-100 flex items-center justify-between gap-2">
-                                    <span className="text-micro text-slate-400 font-mono">
-                                      ⚡ {trig.triggerCount ?? 0}×
-                                      {trig.lastStatus ? ` · ${trig.lastStatus}` : ""}
+                                  {/* Compact Wire Controls */}
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleTestTrigger(trig.id)}
+                                      disabled={isTestingTriggerId === trig.id}
+                                      title={t("Test trigger now with real 50-msg / 5-day conversation context", "Otestovať spúšťač teraz", "Indító tesztelése most")}
+                                      className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-micro font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                                    >
+                                      {isTestingTriggerId === trig.id ? (
+                                        <Loader2 size={11} className="animate-spin" />
+                                      ) : (
+                                        <Play size={11} />
+                                      )}
+                                      {t("Test", "Test", "Teszt")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditTriggerModal(trig)}
+                                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                                    >
+                                      {t("Edit", "Upraviť", "Szerk.")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleToggleTriggerEnabled(trig)}
+                                      className={`px-2.5 py-1 rounded-lg text-micro font-bold cursor-pointer ${
+                                        trig.enabled
+                                          ? "bg-emerald-600 text-white"
+                                          : "bg-slate-200 text-slate-600"
+                                      }`}
+                                    >
+                                      {trig.enabled ? t("On", "Zap.", "Be") : t("Off", "Vyp.", "Ki")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDeleteTrigger(trig.id)}
+                                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* RIGHT (4 cols): WHICH AGENT RUNS (WITH NUMBER OF EVENTS RAN ON TOP) */}
+                                <div className="ws-lg:col-span-4 flex flex-col">
+                                  {/* Top of the Agent: Number of Events Ran */}
+                                  <div className="flex items-center justify-between px-1 mb-1.5">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-micro font-bold">
+                                      ⚡ {eventsRanCount}{" "}
+                                      {eventsRanCount === 1
+                                        ? t("event ran", "spustená udalosť", "lefutott esemény")
+                                        : t("events ran", "spustených udalostí", "lefutott esemény")}
                                     </span>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleTestTrigger(trig.id)}
-                                        disabled={isTestingTriggerId === trig.id}
-                                        title={t("Test trigger now with real 50-msg / 5-day conversation context", "Otestovať spúšťač teraz", "Indító tesztelése most")}
-                                        className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-micro font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
-                                      >
-                                        {isTestingTriggerId === trig.id ? (
-                                          <Loader2 size={11} className="animate-spin" />
-                                        ) : (
-                                          <Play size={11} />
-                                        )}
-                                        {t("Test", "Test", "Teszt")}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => openEditTriggerModal(trig)}
-                                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
-                                      >
-                                        {t("Edit", "Upraviť", "Szerk.")}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleToggleTriggerEnabled(trig)}
-                                        className={`px-2 py-1 rounded-lg text-micro font-bold cursor-pointer ${
-                                          trig.enabled
-                                            ? "bg-emerald-600 text-white"
-                                            : "bg-slate-200 text-slate-600"
+                                    {trig.lastTriggeredAt && (
+                                      <span className="text-micro text-slate-400 font-mono truncate">
+                                        {trig.lastStatus || "ok"}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div
+                                    onClick={() => {
+                                      setActiveChatSubagentId(targetSub ? targetSub.id : "");
+                                      setVisualTriggersOpen(false);
+                                    }}
+                                    className="p-3.5 rounded-2xl border border-indigo-200/90 bg-indigo-50/30 hover:bg-indigo-50/70 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <span
+                                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                          targetSub
+                                            ? "bg-amber-500/15 text-amber-700"
+                                            : "bg-indigo-500/15 text-indigo-700"
                                         }`}
                                       >
-                                        {trig.enabled ? t("On", "Zap.", "Be") : t("Off", "Vyp.", "Ki")}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDeleteTrigger(trig.id)}
-                                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                                      >
-                                        <Trash2 size={13} />
-                                      </button>
+                                        {targetSub ? <Bot size={18} /> : <Sparkles size={18} />}
+                                      </span>
+                                      <div className="min-w-0">
+                                        <div className="text-caption font-bold text-slate-900 truncate">
+                                          {targetSub
+                                            ? `🤖 ${targetSub.name}`
+                                            : `✦ ${selectedAccount?.name} (${t("Main Agent", "Hlavný agent", "Fő ügynök")})`}
+                                        </div>
+                                        <div className="text-micro text-slate-500 truncate">
+                                          {targetSub ? targetSub.role : meta.label}
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-
-                        {/* COLUMN 3 (4 cols): TARGET AI AGENTS (MULTIPLE AGENTS PER AI CONNECTION) */}
-                        <div className="ws-lg:col-span-4 space-y-3">
-                          <div className="flex items-center justify-between px-1">
-                            <span className="text-micro font-bold uppercase tracking-wider text-slate-500">
-                              3. {t("Target AI Agents", "Cieľoví AI agenti", "Cél AI Ügynökök")} ({subagents.length + 1})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setNewSubagentOpen(true)}
-                              className="text-micro font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
-                            >
-                              + {t("Create Agent", "Vytvoriť agenta", "Ügynök létrehozása")}
-                            </button>
-                          </div>
-
-                          {/* Main Agent Target Card */}
-                          <div
-                            data-testid="trigger-target-main-agent"
-                            onClick={() => {
-                              if (wiringSource) {
-                                openNewTriggerModal({
-                                  sourceType: wiringSource.sourceType,
-                                  sourceConnectorId: wiringSource.sourceConnectorId,
-                                  targetSubagentId: "",
-                                });
-                              }
-                            }}
-                            className={`p-3.5 rounded-2xl border transition-all space-y-2 ${
-                              wiringSource
-                                ? "bg-indigo-50/70 hover:bg-indigo-100/80 border-indigo-400 cursor-pointer shadow-xs"
-                                : "bg-white border-slate-200 shadow-2xs"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
-                                  <Sparkles size={16} />
-                                </span>
-                                <div className="min-w-0">
-                                  <div className="text-caption font-bold text-slate-900 truncate">
-                                    ✦ {selectedAccount?.name} ({t("Main Agent", "Hlavný agent", "Fő ügynök")})
-                                  </div>
-                                  <div className="text-micro text-slate-500 truncate">{meta.label}</div>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openNewTriggerModal({
-                                    sourceType: wiringSource?.sourceType,
-                                    sourceConnectorId: wiringSource?.sourceConnectorId,
-                                    targetSubagentId: "",
-                                  });
-                                }}
-                                className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold shrink-0 cursor-pointer"
-                              >
-                                ⚡ {t("Wire Trigger", "Prepojiť", "Bekötés")}
-                              </button>
-                            </div>
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-micro">
-                              <span className="text-slate-500">
-                                ⚡ {triggersList.filter((tr) => !tr.targetSubagentId || tr.targetSubagentId === "main").length}{" "}
-                                {t("reactive triggers", "reaktívnych spúšťačov", "reaktív indító")}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleUpdateAutonomousCron({
-                                    enabled: !(st?.autonomousMode?.enabled ?? false),
-                                  });
-                                }}
-                                className={`px-2 py-0.5 rounded-lg font-bold cursor-pointer ${
-                                  st?.autonomousMode?.enabled
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : "bg-slate-100 text-slate-500"
-                                }`}
-                              >
-                                💓 {t("Heartbeat:", "Heartbeat:", "Heartbeat:")}{" "}
-                                {st?.autonomousMode?.enabled ? `${st.autonomousMode.intervalMinutes ?? 15}m` : t("Off ($0)", "Vyp. ($0)", "Ki ($0)")}
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Independent Agents Created Under This Connection */}
-                          {subagents.map((sub) => {
-                            const subTrigs = triggersList.filter((tr) => tr.targetSubagentId === sub.id);
-                            return (
-                              <div
-                                key={sub.id}
-                                data-testid={`trigger-target-agent-${sub.id}`}
-                                onClick={() => {
-                                  if (wiringSource) {
-                                    openNewTriggerModal({
-                                      sourceType: wiringSource.sourceType,
-                                      sourceConnectorId: wiringSource.sourceConnectorId,
-                                      targetSubagentId: sub.id,
-                                    });
-                                  }
-                                }}
-                                className={`p-3.5 rounded-2xl border transition-all space-y-2 ${
-                                  wiringSource
-                                    ? "bg-amber-50/80 hover:bg-amber-100/80 border-amber-400 cursor-pointer shadow-xs"
-                                    : "bg-white border-slate-200 shadow-2xs"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
-                                      <Bot size={16} />
+                                    <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 text-micro font-bold shrink-0">
+                                      💬 {t("Chat", "Chat", "Chat")}
                                     </span>
-                                    <div className="min-w-0">
-                                      <div className="text-caption font-bold text-slate-900 truncate">{sub.name}</div>
-                                      <div className="text-micro text-amber-700 truncate">{sub.role}</div>
-                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        openNewTriggerModal({
-                                          sourceType: wiringSource?.sourceType,
-                                          sourceConnectorId: wiringSource?.sourceConnectorId,
-                                          targetSubagentId: sub.id,
-                                        });
-                                      }}
-                                      className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold cursor-pointer"
-                                    >
-                                      ⚡ {t("Wire", "Prepojiť", "Bekötés")}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveChatSubagentId(sub.id);
-                                        setVisualTriggersOpen(false);
-                                      }}
-                                      title={t("Open Agent Chat", "Otvoriť chat agenta", "Ügynök csevegés megnyitása")}
-                                      className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
-                                    >
-                                      💬
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-micro">
-                                  <span className="text-slate-500">
-                                    ⚡ {subTrigs.length} {t("reactive triggers", "reaktívnych spúšťačov", "reaktív indító")}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void handleToggleSubagentHeartbeat(sub, {
-                                        heartbeatEnabled: !sub.heartbeatEnabled,
-                                      });
-                                    }}
-                                    className={`px-2 py-0.5 rounded-lg font-bold cursor-pointer ${
-                                      sub.heartbeatEnabled
-                                        ? "bg-emerald-100 text-emerald-800"
-                                        : "bg-slate-100 text-slate-500"
-                                    }`}
-                                  >
-                                    💓 {t("Heartbeat:", "Heartbeat:", "Heartbeat:")}{" "}
-                                    {sub.heartbeatEnabled ? `${sub.heartbeatIntervalMinutes ?? 15}m` : t("Off ($0)", "Vyp. ($0)", "Ki ($0)")}
-                                  </button>
                                 </div>
                               </div>
                             );
-                          })}
-                        </div>
+                          })
+                        )}
                       </div>
                     </div>
                   ) : (

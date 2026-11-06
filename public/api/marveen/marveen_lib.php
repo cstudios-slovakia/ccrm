@@ -2950,7 +2950,18 @@ if (!function_exists('ccrm_marveen_send_connector_email')) {
         fwrite($socket, "QUIT\r\n");
         fclose($socket);
 
-        // Cache the outgoing message in mail_envelopes so it appears in thread context immediately
+        // Append the sent message to the IMAP Sent folder so it appears in real IMAP Sent & threads
+        $filedToImapSent = false;
+        try {
+            require_once dirname(__DIR__) . '/mail_broker.php';
+            if (function_exists('ccrm_append_to_sent')) {
+                $filedToImapSent = (bool)ccrm_append_to_sent($settings, $message);
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal if IMAP Sent append is unavailable
+        }
+
+        // Cache the outgoing message in mail_envelopes so it appears in thread context and mailbox UI immediately
         try {
             $mailboxKey = 'c:' . $emailConnector['id'];
             $fakeUid = (int)(time() * 10 + random_int(1, 9));
@@ -2984,6 +2995,7 @@ if (!function_exists('ccrm_marveen_send_connector_email')) {
         return [
             'ok' => true,
             'messageId' => $messageId,
+            'filedToSent' => $filedToImapSent,
             'from' => $smtpUser,
             'to' => $to,
             'subject' => $subject,
@@ -3194,6 +3206,20 @@ if (!function_exists('ccrm_marveen_execute_email_tool')) {
                         if ($to === '' && !empty($orig['from_address'])) {
                             $to = (string)$orig['from_address'];
                         }
+                        if ($subject === '' && !empty($orig['subject'])) {
+                            $origSubj = (string)$orig['subject'];
+                            $subject = preg_match('/^re:/i', $origSubj) ? $origSubj : ('Re: ' . $origSubj);
+                        }
+                    }
+                } catch (\Throwable $e) {}
+            } elseif ($to !== '') {
+                try {
+                    $st = $pdo->prepare("SELECT `message_id`, `references_hdr`, `subject` FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `from_address` = ? AND `is_outgoing` = 0 ORDER BY `email_date` DESC, `uid` DESC LIMIT 1");
+                    $st->execute([$mailboxKey, $to]);
+                    $orig = $st->fetch(PDO::FETCH_ASSOC);
+                    if ($orig) {
+                        $inReplyTo = (string)($orig['message_id'] ?? '');
+                        $references = trim(((string)($orig['references_hdr'] ?? '')) . ' ' . $inReplyTo);
                         if ($subject === '' && !empty($orig['subject'])) {
                             $origSubj = (string)$orig['subject'];
                             $subject = preg_match('/^re:/i', $origSubj) ? $origSubj : ('Re: ' . $origSubj);
@@ -3626,6 +3652,18 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                                 continue;
                             }
 
+                            // If the very latest message in the thread is from us (fromMe), we already replied!
+                            $lastThreadMsg = $thread[count($thread) - 1];
+                            if (!empty($lastThreadMsg['fromMe'])) {
+                                $lastTs = (int)($lastThreadMsg['tsMs'] ?? 0);
+                                if ($lastTs > $newMaxWatermarkMs) {
+                                    $newMaxWatermarkMs = $lastTs;
+                                    $trig['watermarkTsMs'] = $newMaxWatermarkMs;
+                                    $dirty = true;
+                                }
+                                continue;
+                            }
+
                             // Find new incoming (!fromMe) messages after watermarkMs not yet in processedIds
                             $newIncoming = [];
                             foreach ($thread as $m) {
@@ -3641,7 +3679,7 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                                     }
                                     continue;
                                 }
-                                if ($mId !== '' && in_array($mId, $processedIds, true)) {
+                                if ($mId !== '' && (in_array($mId, $processedIds, true) || in_array('wa:' . $mId, $processedIds, true))) {
                                     continue;
                                 }
                                 $mText = trim((string)($m['text'] ?? ''));
@@ -3661,6 +3699,7 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                                 foreach ($newIncoming as $nm) {
                                     if (!empty($nm['id'])) {
                                         $processedIds[] = (string)$nm['id'];
+                                        $processedIds[] = 'wa:' . (string)$nm['id'];
                                     }
                                 }
                                 $trig['processedIds'] = array_values(array_slice(array_unique($processedIds), -200));
@@ -3722,6 +3761,15 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                                 $trig['lastEmailUid'] = $eUid;
                                 $dirty = true;
                             }
+                            $emEventKey = 'email:' . $mailboxKey . ':' . $eUid;
+                            $emMsgIdKey = !empty($em['message_id']) ? ('msgid:' . (string)$em['message_id']) : '';
+                            if (
+                                in_array($emEventKey, $processedIds, true) ||
+                                ($emMsgIdKey !== '' && in_array($emMsgIdKey, $processedIds, true))
+                            ) {
+                                continue;
+                            }
+
                             $fromAddr = strtolower(trim((string)($em['from_address'] ?? '')));
                             $subj = (string)($em['subject'] ?? '');
                             $preview = (string)($em['preview'] ?? '');
@@ -3758,6 +3806,27 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                                 $tSt->execute([$mailboxKey, $fromAddr, '%' . $fromAddr . '%']);
                                 $threadRows = $tSt->fetchAll(PDO::FETCH_ASSOC) ?: [];
                             } catch (\Throwable $e) {}
+
+                            // If the latest email in the thread with this sender is already an outgoing reply, skip!
+                            if (!empty($threadRows)) {
+                                $latestThreadRow = $threadRows[count($threadRows) - 1];
+                                if (!empty($latestThreadRow['is_outgoing'])) {
+                                    $processedIds[] = $emEventKey;
+                                    if ($emMsgIdKey !== '') {
+                                        $processedIds[] = $emMsgIdKey;
+                                    }
+                                    $trig['processedIds'] = array_values(array_slice(array_unique($processedIds), -200));
+                                    $dirty = true;
+                                    continue;
+                                }
+                            }
+
+                            $processedIds[] = $emEventKey;
+                            if ($emMsgIdKey !== '') {
+                                $processedIds[] = $emMsgIdKey;
+                            }
+                            $trig['processedIds'] = array_values(array_slice(array_unique($processedIds), -200));
+                            $dirty = true;
 
                             $mappedForCtx = array_map(static fn(array $r) => [
                                 'id' => 'uid-' . ($r['uid'] ?? ''),
@@ -3844,6 +3913,10 @@ if (!function_exists('ccrm_marveen_test_trigger')) {
             'conversationTranscript' => '',
         ];
 
+        $processedIds = is_array($trig['processedIds'] ?? null) ? $trig['processedIds'] : [];
+        $alreadyRepliedReason = null;
+        $recordProcessedKeys = [];
+
         if ($sType === 'whatsapp') {
             $waConnectors = ccrm_marveen_list_sibling_whatsapp_connectors($pdo, $aiConnector);
             $waRow = $waConnectors[0] ?? null;
@@ -3866,6 +3939,16 @@ if (!function_exists('ccrm_marveen_test_trigger')) {
                     $thread = is_array($waState['messages'][$chatId] ?? null) ? $waState['messages'][$chatId] : [];
                     $ctxWindow = ccrm_marveen_build_conversation_context($thread, $minMsgs, $minDays, $maxChars);
                     $lastMsg = !empty($thread) ? $thread[count($thread) - 1] : null;
+                    $lastMsgId = (string)($lastMsg['id'] ?? '');
+                    if (
+                        !empty($lastMsg['fromMe']) ||
+                        ($lastMsgId !== '' && (in_array($lastMsgId, $processedIds, true) || in_array('wa:' . $lastMsgId, $processedIds, true)))
+                    ) {
+                        $alreadyRepliedReason = "✓ Already replied to the latest message in {$chatName} — skipped duplicate reply.";
+                    } elseif ($lastMsgId !== '') {
+                        $recordProcessedKeys[] = $lastMsgId;
+                        $recordProcessedKeys[] = 'wa:' . $lastMsgId;
+                    }
                     $eventCtx = [
                         'sourceLabel' => ($waRow['name'] ?? 'WhatsApp') . ' · ' . $chatName,
                         'summary' => "WhatsApp ({$chatName})",
@@ -3889,27 +3972,54 @@ if (!function_exists('ccrm_marveen_test_trigger')) {
             if ($emRow) {
                 $mailboxKey = 'c:' . $emRow['id'];
                 try {
-                    $st = $pdo->prepare("SELECT * FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `is_outgoing` = 0 ORDER BY `email_date` DESC, `uid` DESC LIMIT 50");
+                    // Find latest incoming message first
+                    $st = $pdo->prepare("SELECT * FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `is_outgoing` = 0 ORDER BY `email_date` DESC, `uid` DESC LIMIT 1");
                     $st->execute([$mailboxKey]);
-                    $rows = array_reverse($st->fetchAll(PDO::FETCH_ASSOC) ?: []);
-                    if (!empty($rows)) {
-                        $lastEm = $rows[count($rows) - 1];
+                    $lastEm = $st->fetch(PDO::FETCH_ASSOC);
+                    if ($lastEm) {
+                        $fromAddr = strtolower(trim((string)($lastEm['from_address'] ?? '')));
+                        $subj = (string)($lastEm['subject'] ?? '');
+                        $lastUid = (int)($lastEm['uid'] ?? 0);
+                        $emEventKey = 'email:' . $mailboxKey . ':' . $lastUid;
+                        $emMsgIdKey = !empty($lastEm['message_id']) ? ('msgid:' . (string)$lastEm['message_id']) : '';
+
+                        // Load full thread (BOTH incoming and outgoing) with this sender so outgoing replies are visible
+                        $tSt = $pdo->prepare(
+                            "SELECT * FROM `mail_envelopes`
+                             WHERE `mailbox_key` = ? AND (`from_address` = ? OR `to_address` LIKE ?)
+                             ORDER BY `email_date` ASC, `uid` ASC LIMIT 120"
+                        );
+                        $tSt->execute([$mailboxKey, $fromAddr, '%' . $fromAddr . '%']);
+                        $threadRows = $tSt->fetchAll(PDO::FETCH_ASSOC) ?: [$lastEm];
+
+                        $latestInThread = $threadRows[count($threadRows) - 1] ?? null;
+                        if (
+                            !empty($latestInThread['is_outgoing']) ||
+                            in_array($emEventKey, $processedIds, true) ||
+                            ($emMsgIdKey !== '' && in_array($emMsgIdKey, $processedIds, true))
+                        ) {
+                            $alreadyRepliedReason = "✓ Already replied to the latest email from {$fromAddr} — skipped duplicate reply.";
+                        } else {
+                            $recordProcessedKeys[] = $emEventKey;
+                            if ($emMsgIdKey !== '') {
+                                $recordProcessedKeys[] = $emMsgIdKey;
+                            }
+                        }
+
                         $mapped = array_map(static fn(array $r) => [
                             'id' => 'uid-' . ($r['uid'] ?? ''),
                             'fromMe' => !empty($r['is_outgoing']),
-                            'senderName' => $r['from_name'] ?: $r['from_address'],
+                            'senderName' => !empty($r['is_outgoing']) ? 'Me' : (($r['from_name'] ?: $r['from_address']) ?: 'Sender'),
                             'text' => "[Subject: " . ($r['subject'] ?? '') . "] " . ($r['preview'] ?? ''),
                             'createdAt' => $r['email_date'] ?? '',
-                        ], $rows);
+                        ], $threadRows);
                         $ctxWindow = ccrm_marveen_build_conversation_context($mapped, $minMsgs, $minDays, $maxChars);
-                        $fromAddr = (string)($lastEm['from_address'] ?? '');
-                        $subj = (string)($lastEm['subject'] ?? '');
                         $eventCtx = [
                             'sourceLabel' => ($emRow['name'] ?? 'Email') . ' (' . ($emRow['address'] ?? '') . ')',
                             'summary' => "Email from {$fromAddr}: {$subj}",
                             'sender' => $fromAddr,
                             'subject' => $subj,
-                            'emailUid' => (int)($lastEm['uid'] ?? 0),
+                            'emailUid' => $lastUid,
                             'replyToAddress' => $fromAddr,
                             'replySubject' => preg_match('/^re:/i', $subj) ? $subj : ('Re: ' . $subj),
                             'latestMessageText' => "Subject: {$subj}\nFrom: {$fromAddr}\n\n" . ($lastEm['preview'] ?? ''),
@@ -3920,8 +4030,27 @@ if (!function_exists('ccrm_marveen_test_trigger')) {
             }
         }
 
+        if ($alreadyRepliedReason !== null) {
+            return [
+                'ok' => true,
+                'triggerId' => $triggerId,
+                'alreadyReplied' => true,
+                'text' => $alreadyRepliedReason,
+                'steps' => [],
+            ];
+        }
+
+        if (!empty($recordProcessedKeys)) {
+            $processedIds = array_merge($processedIds, $recordProcessedKeys);
+            $trig['processedIds'] = array_values(array_slice(array_unique($processedIds), -200));
+        }
+
         $res = ccrm_marveen_execute_single_trigger_event($pdo, $aiConnector, $trig, $eventCtx);
         @file_put_contents($trigFile, json_encode(array_values($triggers), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $cid, static function (array $s) use ($triggers): array {
+            $s['triggers'] = array_values($triggers);
+            return $s;
+        });
         return $res;
     }
 }
@@ -4215,6 +4344,7 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
         ];
 
         $steps = [];
+        $sentReplyTargets = [];
         $maxTurns = $isSubagent ? 8 : 15;
         for ($turn = 0; $turn < $maxTurns; $turn++) {
             $payload = [
@@ -4327,10 +4457,24 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     'whatsapp_send_message',
                     'whatsapp_sync_chat',
                 ], true)) {
-                    $waExec = ccrm_marveen_execute_whatsapp_tool($pdo, $connector, $fnName, $fnArgs);
-                    $toolText = (string)($waExec['toolText'] ?? '');
-                    if (!empty($waExec['step'])) {
-                        $steps[] = $waExec['step'];
+                    $waReplyKey = $fnName === 'whatsapp_send_message'
+                        ? ('wa:' . strtolower(trim((string)($fnArgs['chat'] ?? ($fnArgs['chat_id'] ?? 'default')))))
+                        : '';
+                    if ($waReplyKey !== '' && isset($sentReplyTargets[$waReplyKey])) {
+                        $toolText = json_encode([
+                            'ok' => true,
+                            'alreadySent' => true,
+                            'message' => 'A WhatsApp reply was already sent to this chat in this run. Do not send duplicate replies.',
+                        ]);
+                    } else {
+                        $waExec = ccrm_marveen_execute_whatsapp_tool($pdo, $connector, $fnName, $fnArgs);
+                        $toolText = (string)($waExec['toolText'] ?? '');
+                        if ($waReplyKey !== '' && str_contains($toolText, '"ok":true')) {
+                            $sentReplyTargets[$waReplyKey] = true;
+                        }
+                        if (!empty($waExec['step'])) {
+                            $steps[] = $waExec['step'];
+                        }
                     }
                 } elseif ($pdo !== null && in_array($fnName, [
                     'email_list_accounts',
@@ -4338,10 +4482,24 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     'email_read_thread',
                     'email_send_reply',
                 ], true)) {
-                    $emExec = ccrm_marveen_execute_email_tool($pdo, $connector, $fnName, $fnArgs);
-                    $toolText = (string)($emExec['toolText'] ?? '');
-                    if (!empty($emExec['step'])) {
-                        $steps[] = $emExec['step'];
+                    $emReplyKey = $fnName === 'email_send_reply'
+                        ? ('em:' . strtolower(trim((string)($fnArgs['to'] ?? ($fnArgs['reply_to_uid'] ?? 'default')))))
+                        : '';
+                    if ($emReplyKey !== '' && isset($sentReplyTargets[$emReplyKey])) {
+                        $toolText = json_encode([
+                            'ok' => true,
+                            'alreadySent' => true,
+                            'message' => 'An email reply was already sent to this recipient in this run. Do not send duplicate replies.',
+                        ]);
+                    } else {
+                        $emExec = ccrm_marveen_execute_email_tool($pdo, $connector, $fnName, $fnArgs);
+                        $toolText = (string)($emExec['toolText'] ?? '');
+                        if ($emReplyKey !== '' && str_contains($toolText, '"ok":true')) {
+                            $sentReplyTargets[$emReplyKey] = true;
+                        }
+                        if (!empty($emExec['step'])) {
+                            $steps[] = $emExec['step'];
+                        }
                     }
                 } elseif ($pdo !== null && $connector !== null && in_array($fnName, [
                     'memory_read',

@@ -388,9 +388,43 @@ try {
             // and asking for a folder that does not exist reads as an empty one —
             // no error, and no outgoing mail on any timeline.
             $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
-            $result = fetch_imap_emails($emailSettings, $folder, $page, 25, $filter, $searchEmail);
+            try {
+                $result = fetch_imap_emails($emailSettings, $folder, $page, 25, $filter, $searchEmail);
+            } catch (\Throwable $imapEx) {
+                if ($uiFolder === 'Sent') {
+                    $result = ['emails' => [], 'pagination' => ['total' => 0, 'unseen' => 0, 'page' => $page, 'limit' => 25, 'pages' => 1]];
+                } else {
+                    throw $imapEx;
+                }
+            }
             if (!empty($result['emails']) && is_array($result['emails'])) {
                 ccrm_upsert_cached_envelopes($pdo, $activeMailboxKey, $uiFolder, $result['emails']);
+            }
+            // For Sent folder, also merge any locally recorded outgoing envelopes (e.g. AI agent replies or SMTP-only sends)
+            // from `mail_envelopes` so sent emails are always visible in the mailbox and threads even if IMAP Sent wasn't appended.
+            if ($uiFolder === 'Sent') {
+                $cachedSent = ccrm_read_cached_envelopes($pdo, $activeMailboxKey, 'Sent', $emailSettings, $userEmail, $page, 50, $filter, $searchEmail);
+                $seenUids = [];
+                $seenMsgIds = [];
+                foreach (($result['emails'] ?? []) as $emItem) {
+                    $seenUids[(int)($emItem['uid'] ?? 0)] = true;
+                    if (!empty($emItem['message_id'])) {
+                        $seenMsgIds[(string)$emItem['message_id']] = true;
+                    }
+                }
+                foreach (($cachedSent['emails'] ?? []) as $cItem) {
+                    $cUid = (int)($cItem['uid'] ?? 0);
+                    $cMsgId = (string)($cItem['message_id'] ?? '');
+                    if (isset($seenUids[$cUid]) || ($cMsgId !== '' && isset($seenMsgIds[$cMsgId]))) {
+                        continue;
+                    }
+                    $result['emails'][] = $cItem;
+                }
+                if (!empty($result['emails'])) {
+                    usort($result['emails'], static function (array $a, array $b): int {
+                        return strcmp((string)($b['date'] ?? ''), (string)($a['date'] ?? ''));
+                    });
+                }
             }
             echo json_encode(array_merge(['success' => true, 'folder' => $folder], $result));
             break;
@@ -403,7 +437,26 @@ try {
             if (empty($uid)) {
                 throw new Exception('Missing email UID.');
             }
-            $email = fetch_imap_email_detail($emailSettings, $folder, $uid);
+            try {
+                $email = fetch_imap_email_detail($emailSettings, $folder, $uid);
+            } catch (\Throwable $detailEx) {
+                // Fallback to cached envelope preview when an outgoing reply was stored in `mail_envelopes`
+                $envStmt = $pdo->prepare("SELECT `preview`, `seen` FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `uid` = ? LIMIT 1");
+                $envStmt->execute([$activeMailboxKey, (int)$uid]);
+                $envRow = $envStmt->fetch(PDO::FETCH_ASSOC);
+                if ($envRow) {
+                    $previewText = (string)($envRow['preview'] ?? '');
+                    $email = [
+                        'uid' => $uid,
+                        'html' => nl2br(htmlspecialchars($previewText, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
+                        'text' => $previewText,
+                        'attachments' => [],
+                        'seen' => !empty($envRow['seen']),
+                    ];
+                } else {
+                    throw $detailEx;
+                }
+            }
             echo json_encode(['success' => true, 'email' => $email]);
             break;
 
@@ -417,6 +470,31 @@ try {
                 throw new Exception('Invalid email payload.');
             }
             $sendResult = send_smtp_email($emailSettings, $payload['to'], $payload['subject'], $payload['html']);
+            // Record the sent message in `mail_envelopes` immediately so it appears in the mailbox & thread right away
+            try {
+                ccrm_ensure_mail_envelopes_table($pdo);
+                $fakeUid = (int)(time() * 10 + random_int(1, 9));
+                $plainPreview = mb_substr(trim(strip_tags((string)($payload['html'] ?? ''))), 0, 480, 'UTF-8');
+                $insStmt = $pdo->prepare(
+                    "INSERT IGNORE INTO `mail_envelopes` (
+                        `mailbox_key`, `folder`, `uid`, `event_id`, `subject`,
+                        `from_name`, `from_address`, `to_name`, `to_address`,
+                        `email_date`, `is_outgoing`, `seen`, `size`,
+                        `message_id`, `in_reply_to`, `references_hdr`, `preview`
+                    ) VALUES (?, 'Sent', ?, ?, ?, '', ?, '', ?, NOW(), 1, 1, ?, ?, '', '', ?)"
+                );
+                $insStmt->execute([
+                    $activeMailboxKey,
+                    $fakeUid,
+                    'email-sent-' . uniqid('', false),
+                    mb_substr((string)($payload['subject'] ?? ''), 0, 500, 'UTF-8'),
+                    mb_substr($userEmail, 0, 255, 'UTF-8'),
+                    mb_substr((string)($payload['to'] ?? ''), 0, 255, 'UTF-8'),
+                    strlen((string)($payload['html'] ?? '')),
+                    (string)($sendResult['message_id'] ?? ''),
+                    $plainPreview,
+                ]);
+            } catch (\Throwable $e) {}
             // `filed_to_sent` is false when the message was delivered but the
             // archive copy could not be stored. The send still succeeded; the
             // client says so, because an unfiled copy will not reach the timeline.
