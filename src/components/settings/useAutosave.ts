@@ -29,6 +29,15 @@ export const useAutosave = <T,>({
   latest.current = { value, dirty, enabled, save };
   const pending = React.useRef(false);
   const savedTimer = React.useRef<number | undefined>(undefined);
+  // Only a change made after mount is an edit. A form's first render holds its empty
+  // initial drafts, before the effect that seeds them from the stored value has run,
+  // so it reads as dirty. Counting that as pending let the unmount flush below write
+  // the empty form over the stored settings whenever the screen closed before that
+  // seed rendered — on every load in dev, where StrictMode unmounts each component
+  // once. That is how a hard refresh on Settings → E-mail wiped the SMTP server.
+  const mountedValue = React.useRef(value);
+  const editedSinceMount = React.useRef(false);
+  if (!editedSinceMount.current && value !== mountedValue.current) editedSinceMount.current = true;
 
   const flush = React.useCallback(() => {
     const cur = latest.current;
@@ -41,7 +50,7 @@ export const useAutosave = <T,>({
   }, []);
 
   React.useEffect(() => {
-    if (!enabled || !dirty) {
+    if (!enabled || !dirty || !editedSinceMount.current) {
       // The edit went away (typed back to what is stored, or the stored value arrived): nothing to write.
       if (pending.current) {
         pending.current = false;

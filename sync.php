@@ -1015,7 +1015,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'installed' => true,
             'demoMode' => $isDemoMode,
             'dataVersion' => $dataVersion,
-            'sessionUser' => ['email' => $sessionEmail],
+            'sessionUser' => ['id' => (string)$sessionUser['id'], 'email' => $sessionEmail],
         ]);
         exit;
     }
@@ -2856,7 +2856,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // silently rebinds this tab's writes to them, with no 401 to notice.
         // Reporting the identity back lets the client stop instead of filing
         // one person's work under another's name.
-        'sessionUser' => ['email' => $sessionEmail],
+        'sessionUser' => ['id' => (string)$sessionUser['id'], 'email' => $sessionEmail],
         'demoMode' => $isDemoMode,
         // Highest POST protocol this build understands. The client MUST see this
         // before it may send a delta payload: an older sync.php has no idea what

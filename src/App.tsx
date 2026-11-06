@@ -14,6 +14,7 @@ import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
 import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { clearedSecretKeys } from "./utils/secretClears";
+import { findSelf, isDifferentSessionUser } from "./utils/sessionIdentity";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
@@ -332,11 +333,17 @@ function App() {
   // connection vanished: the server's secret merge kept the password, the
   // default integrationsConfig wiped vectorDb, host, user and database name.
   const serverSettingsAppliedRef = useRef(false);
-  const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
-  const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
   // Integration secrets the user emptied since the last push. Sent once as
   // `clearSecrets`; without it the server keeps a stored secret when it receives a blank.
   const pendingClearSecretsRef = useRef<Set<string>>(new Set());
+  // The integrations config as this tab last received it from, or confirmed to, the
+  // server. A push carries the config only when it differs: every push used to send
+  // it whole, so a tab holding an older copy (a background tab, one that missed a
+  // pull) wrote it back with any unrelated edit and wiped the SMTP server another
+  // tab had just saved. sync.php keeps the stored config when the key is absent.
+  const integrationsSigRef = useRef<string | null>(null);
+  const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
+  const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
   const customDashboardsRef = useRef<CustomDashboard[]>([]);
   const projectTypesRef = useRef<ProjectType[]>([]);
   const projectsRef = useRef<Project[]>([]);
@@ -1493,9 +1500,9 @@ ${log.payload || ''}
         ticketStatuses,
         ticketSettings,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
+        clearSecrets: [...pendingClearSecretsRef.current],
         companyBillingSettings: companyBillingSettingsRef.current,
         invoicingIntegrations: invoicingIntegrationsRef.current,
-        clearSecrets: [...pendingClearSecretsRef.current],
         financialMode: financialModeRef.current,
         financialSimplifiedTable: financialSimplifiedTableRef.current
       }
@@ -1503,6 +1510,14 @@ ${log.payload || ''}
     // No server settings seen yet → these are defaults, not edits. sync.php
     // leaves every stored setting untouched when the block is absent.
     if (!serverSettingsAppliedRef.current) delete payload.settings;
+    if (
+      payload.settings &&
+      payload.settings.clearSecrets.length === 0 &&
+      integrationsSigRef.current !== null &&
+      JSON.stringify(payload.settings.integrationsConfig ?? null) === integrationsSigRef.current
+    ) {
+      delete payload.settings.integrationsConfig;
+    }
     if (
       employeeSettingsSigRef.current !== null &&
       JSON.stringify(payload.employeeSettings ?? null) === employeeSettingsSigRef.current
@@ -1629,10 +1644,13 @@ ${log.payload || ''}
         // The server now holds this exact payload — remember it so a later 401
         // can tell a genuine unsaved edit apart from an echoed no-op push.
         lastConfirmedPushSigRef.current = computePushSig(payload);
-        let out: any = null;
-        try {
         // The clears this push carried are stored now; a failed push keeps them queued.
         for (const k of payload.settings?.clearSecrets ?? []) pendingClearSecretsRef.current.delete(k);
+        if (payload.settings?.integrationsConfig !== undefined) {
+          integrationsSigRef.current = JSON.stringify(payload.settings.integrationsConfig);
+        }
+        let out: any = null;
+        try {
           out = await res.json();
         } catch { /* non-JSON (PHP warning before the body) — still advance below */ }
         try {
@@ -1895,14 +1913,15 @@ ${log.payload || ''}
   const updateIntegrationsConfigAndSync = (next: any) => {
     setIntegrationsConfig((prev: any) => {
       const updated = typeof next === "function" ? next(prev) : next;
+      for (const k of clearedSecretKeys(prev, updated)) pendingClearSecretsRef.current.add(k);
       pushStateToServer(undefined, undefined, undefined, updated);
       return updated;
-      for (const k of clearedSecretKeys(prev, updated)) pendingClearSecretsRef.current.add(k);
     });
   };
 
   const syncIntegrationsConfig = (config: any) => {
     if (!config) return;
+    integrationsSigRef.current = JSON.stringify(config);
     setIntegrationsConfig((prev: any) => {
       if (JSON.stringify(config) === JSON.stringify(prev)) return prev;
       return config;
@@ -2206,7 +2225,7 @@ ${log.payload || ''}
     // everything that keys off the currentUser identity.
     setCurrentUser(me => {
       if (!me) return me;
-      const updatedMe = nextUsers.find(u => u.email === me.email);
+      const updatedMe = findSelf(nextUsers, me);
       if (!updatedMe || JSON.stringify(updatedMe) === JSON.stringify(me)) return me;
       return updatedMe;
     });
@@ -2765,11 +2784,7 @@ ${log.payload || ''}
        header keeps showing the old name while sync.php files every change under
        the new one. The server now reports whose session it is, so treat a
        disagreement as "this tab is no longer logged in as who it thinks". */
-    const sessionUserChanged = (data: any) => {
-      const serverEmail = String(data?.sessionUser?.email || "").trim().toLowerCase();
-      const shownEmail = String(currentUser?.email || "").trim().toLowerCase();
-      return serverEmail !== "" && shownEmail !== "" && serverEmail !== shownEmail;
-    };
+    const sessionUserChanged = (data: any) => isDifferentSessionUser(data?.sessionUser, currentUser);
 
     // A pull hands back the same data as a brand-new object. Keep the old
     // identity when nothing changed: editors seed their drafts from these
@@ -2913,7 +2928,7 @@ ${log.payload || ''}
         // reset itself every few seconds — which wiped forms while typing.
         setCurrentUser((prev) => {
           if (!prev) return adoptSession ? (adoptableSessionUser(data) ?? prev) : prev;
-          const updatedMe = data.users.find((u: UserProfile) => u.email === prev.email);
+          const updatedMe = findSelf(data.users as UserProfile[], prev);
           if (!updatedMe) return prev;
           const getNormUser = (u: UserProfile) => {
             const meta = typeof u.metadata_json === "string"

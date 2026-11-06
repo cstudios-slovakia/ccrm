@@ -37,6 +37,8 @@ import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
 import { InlineRenameName } from "./ui/InlineRenameName";
+import { CommitOnBlurInput } from "./ui/CommitOnBlurInput";
+import { findSelf } from "../utils/sessionIdentity";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
 import { EUROPEAN_COUNTRIES, registryCountryOf } from "../utils/companyRegistry";
@@ -2772,10 +2774,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleUpdateUser = (updated: UserProfile) => {
     if (!canAdministerUsers) return;
-    // Match on the identity the record had before this edit — matching on
-    // updated.email loses the change whenever the email itself is what changed.
-    const previousEmail = selectedUser?.email ?? updated.email;
-    setUsers(prev => prev.map(u => u.email === previousEmail ? updated : u));
+    // Match on the identity the record had before this edit: the id, or for a row
+    // without one the previous email (updated.email is the new value when the email
+    // itself is what changed).
+    const before = selectedUser ?? updated;
+    setUsers(prev => {
+      const self = findSelf(prev, before);
+      return self ? prev.map(u => (u === self ? updated : u)) : prev;
+    });
     setSelectedUser(updated);
   };
 
@@ -3283,14 +3289,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {/* Name setting */}
                                 <div className="space-y-1">
                                   <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
-                                  <input
+                                  <CommitOnBlurInput
+                                    key={`name-${selectedUser.id}`}
                                     type="text"
+                                    required
+                                    trim
                                     disabled={!canAdministerUsers}
                                     value={selectedUser.name}
-                                    onChange={(e) => {
-                                      const updated = { ...selectedUser, name: e.target.value };
-                                      handleUpdateUser(updated);
-                                    }}
+                                    onCommit={(name) => handleUpdateUser({ ...selectedUser, name })}
                                     className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
                                   />
                                 </div>
@@ -3298,14 +3304,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {/* Email Address */}
                                 <div className="space-y-1">
                                   <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
-                                  <input
+                                  <CommitOnBlurInput
+                                    key={`email-${selectedUser.id}`}
                                     type="email"
+                                    required
+                                    trim
                                     disabled={!canAdministerUsers}
                                     value={selectedUser.email}
-                                    onChange={(e) => {
-                                      const updated = { ...selectedUser, email: e.target.value };
-                                      handleUpdateUser(updated);
-                                    }}
+                                    onCommit={(email) => handleUpdateUser({ ...selectedUser, email })}
                                     className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
                                   />
                                 </div>
@@ -3313,15 +3319,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {/* Password */}
                                 <div className="space-y-1">
                                   <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
-                                  <input
+                                  <CommitOnBlurInput
+                                    key={`password-${selectedUser.id}`}
                                     type="text"
                                     placeholder={getTranslation(userLanguage, "settings.managers.placeholder_password")}
                                     disabled={!canAdministerUsers}
                                     value={selectedUser.password || ""}
-                                    onChange={(e) => {
-                                      const updated = { ...selectedUser, password: e.target.value };
-                                      handleUpdateUser(updated);
-                                    }}
+                                    onCommit={(password) => handleUpdateUser({ ...selectedUser, password })}
                                     className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
                                   />
                                 </div>
