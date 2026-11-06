@@ -696,6 +696,16 @@ if (!function_exists('ccrm_trigger_workflow')) {
             if (!empty($hasEnqueued) && !$pdo->inTransaction()) {
                 ccrm_process_workflow_queue($pdo);
             }
+
+            if ($pdo instanceof PDO && !$pdo->inTransaction()) {
+                $marveenLib = __DIR__ . '/marveen/marveen_lib.php';
+                if (is_file($marveenLib)) {
+                    require_once $marveenLib;
+                    if (function_exists('ccrm_marveen_process_crm_event_triggers')) {
+                        ccrm_marveen_process_crm_event_triggers($pdo, (string)$eventType, is_array($payload) ? $payload : []);
+                    }
+                }
+            }
         } catch (\Throwable $e) {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
         }

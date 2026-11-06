@@ -982,11 +982,11 @@ if (!function_exists('ccrm_marveen_save_subagent')) {
         $rawId = trim((string)($input['id'] ?? $name));
         $id = preg_replace('/[^a-z0-9_-]/', '-', strtolower($rawId)) ?: ('sub-' . substr(bin2hex(random_bytes(3)), 0, 6));
         $id = trim($id, '-');
-        if ($id === '') {
-            $id = 'sub-' . substr(bin2hex(random_bytes(3)), 0, 6);
+        if ($id === '' || $id === 'main') {
+            $id = 'agent-' . substr(bin2hex(random_bytes(3)), 0, 6);
         }
 
-        $role = trim((string)($input['role'] ?? 'Specialized CCRM Subagent'));
+        $role = trim((string)($input['role'] ?? 'Specialized CCRM Agent'));
         $systemPrompt = trim((string)($input['systemPrompt'] ?? ($input['system_prompt'] ?? '')));
         $nowIso = gmdate('c');
 
@@ -997,19 +997,42 @@ if (!function_exists('ccrm_marveen_save_subagent')) {
                 break;
             }
         }
+        $prev = $existingIdx !== null ? $subs[$existingIdx] : [];
 
-        $defaultSubMem = "# Subagent Memory — {$name}\n\n## Role\n{$role}\n\n## Operating Notes\n- Keep findings and specialized context for {$name} here.\n";
+        $defaultSubMem = "# Agent Memory — {$name}\n\n## Role\n{$role}\n\n## Operating Notes\n- Keep findings, persona rules, and specialized context for {$name} here.\n";
         $memoryMd = isset($input['memoryMd']) || isset($input['memory_md'])
             ? (string)($input['memoryMd'] ?? $input['memory_md'])
-            : ($existingIdx !== null ? (string)($subs[$existingIdx]['memoryMd'] ?? $defaultSubMem) : $defaultSubMem);
+            : (string)($prev['memoryMd'] ?? $defaultSubMem);
+
+        $palette = ['#8b5cf6', '#10b981', '#0ea5e9', '#f59e0b', '#ec4899', '#6366f1'];
+        $defaultColor = $palette[count($subs) % count($palette)];
+        $avatarColor = trim((string)($input['avatarColor'] ?? ($prev['avatarColor'] ?? $defaultColor)));
+
+        $heartbeatEnabled = array_key_exists('heartbeatEnabled', $input)
+            ? (bool)$input['heartbeatEnabled']
+            : (bool)($prev['heartbeatEnabled'] ?? false);
+        $heartbeatInterval = max(1, (int)($input['heartbeatIntervalMinutes'] ?? ($prev['heartbeatIntervalMinutes'] ?? 15)));
+        $heartbeatInstructions = array_key_exists('heartbeatInstructions', $input)
+            ? trim((string)$input['heartbeatInstructions'])
+            : (string)($prev['heartbeatInstructions'] ?? "Review your memory.md and execute any pending periodic tasks. If nothing is due, reply with [IDLE].");
+        $reactiveEnabled = array_key_exists('reactiveEnabled', $input)
+            ? (bool)$input['reactiveEnabled']
+            : (bool)($prev['reactiveEnabled'] ?? true);
 
         $record = [
             'id' => $id,
             'name' => $name,
             'role' => $role,
-            'systemPrompt' => $systemPrompt !== '' ? $systemPrompt : "You are {$name} ({$role}), a specialized CCRM subagent.",
+            'avatarColor' => $avatarColor,
+            'systemPrompt' => $systemPrompt !== '' ? $systemPrompt : "You are {$name} ({$role}), a specialized CCRM AI agent.",
             'memoryMd' => rtrim($memoryMd) . "\n",
-            'createdAt' => $existingIdx !== null ? (string)($subs[$existingIdx]['createdAt'] ?? $nowIso) : $nowIso,
+            'heartbeatEnabled' => $heartbeatEnabled,
+            'heartbeatIntervalMinutes' => $heartbeatInterval,
+            'heartbeatInstructions' => $heartbeatInstructions,
+            'lastHeartbeatAt' => $prev['lastHeartbeatAt'] ?? null,
+            'lastHeartbeatStatus' => $prev['lastHeartbeatStatus'] ?? null,
+            'reactiveEnabled' => $reactiveEnabled,
+            'createdAt' => (string)($prev['createdAt'] ?? $nowIso),
             'updatedAt' => $nowIso,
         ];
 
@@ -1141,10 +1164,24 @@ if (!function_exists('ccrm_marveen_delete_task')) {
     }
 }
 
-if (!function_exists('ccrm_marveen_get_chat_history')) {
-    function ccrm_marveen_get_chat_history(string $connectorId): array {
+if (!function_exists('ccrm_marveen_chat_history_file')) {
+    function ccrm_marveen_chat_history_file(string $connectorId, ?string $subagentId = null): string {
         $dir = ccrm_marveen_connector_dir($connectorId);
-        $chatFile = $dir . '/chat_history.json';
+        $cleanSub = $subagentId !== null ? preg_replace('/[^a-z0-9_-]/', '-', strtolower(trim($subagentId))) : '';
+        if ($cleanSub !== '' && $cleanSub !== 'main') {
+            $subDir = $dir . '/subagents/' . $cleanSub;
+            if (!is_dir($subDir)) {
+                @mkdir($subDir, 0700, true);
+            }
+            return $subDir . '/chat_history.json';
+        }
+        return $dir . '/chat_history.json';
+    }
+}
+
+if (!function_exists('ccrm_marveen_get_chat_history')) {
+    function ccrm_marveen_get_chat_history(string $connectorId, ?string $subagentId = null): array {
+        $chatFile = ccrm_marveen_chat_history_file($connectorId, $subagentId);
         if (!is_file($chatFile)) {
             return [];
         }
@@ -1154,10 +1191,10 @@ if (!function_exists('ccrm_marveen_get_chat_history')) {
 }
 
 if (!function_exists('ccrm_marveen_append_chat_message')) {
-    function ccrm_marveen_append_chat_message(string $connectorId, array $msg): array {
-        $dir = ccrm_marveen_connector_dir($connectorId);
-        $chatFile = $dir . '/chat_history.json';
-        $history = ccrm_marveen_get_chat_history($connectorId);
+    function ccrm_marveen_append_chat_message(string $connectorId, array $msg, ?string $subagentId = null): array {
+        $effectiveSub = $subagentId ?? (isset($msg['subagentId']) && is_string($msg['subagentId']) ? $msg['subagentId'] : null);
+        $chatFile = ccrm_marveen_chat_history_file($connectorId, $effectiveSub);
+        $history = ccrm_marveen_get_chat_history($connectorId, $effectiveSub);
         $history[] = $msg;
         if (count($history) > 100) {
             $history = array_slice($history, -100);
@@ -1169,9 +1206,8 @@ if (!function_exists('ccrm_marveen_append_chat_message')) {
 }
 
 if (!function_exists('ccrm_marveen_clear_chat_history')) {
-    function ccrm_marveen_clear_chat_history(string $connectorId): void {
-        $dir = ccrm_marveen_connector_dir($connectorId);
-        $chatFile = $dir . '/chat_history.json';
+    function ccrm_marveen_clear_chat_history(string $connectorId, ?string $subagentId = null): void {
+        $chatFile = ccrm_marveen_chat_history_file($connectorId, $subagentId);
         @file_put_contents($chatFile, "[]\n");
     }
 }
@@ -1281,7 +1317,7 @@ if (!function_exists('ccrm_marveen_get_autonomous_config')) {
         $dir = ccrm_marveen_connector_dir($connectorId);
         $autoFile = $dir . '/autonomous.json';
         $defaults = [
-            'enabled' => true,
+            'enabled' => false,
             'intervalMinutes' => 15,
             'instructions' => "Review your memory.md, artifacts, and CCRM state via MCP. Execute any pending autonomous goals, follow-ups, or subagent delegations recorded in memory.md. Update memory.md with your progress. If no autonomous actions are needed right now, reply with [IDLE].",
             'lastRunAt' => null,
@@ -1311,7 +1347,7 @@ if (!function_exists('ccrm_marveen_save_autonomous_config')) {
         $autoFile = $dir . '/autonomous.json';
         $current = is_file($autoFile) ? (json_decode((string)@file_get_contents($autoFile), true) ?: []) : [];
         $record = [
-            'enabled' => array_key_exists('enabled', $input) ? (bool)$input['enabled'] : (bool)($current['enabled'] ?? true),
+            'enabled' => array_key_exists('enabled', $input) ? (bool)$input['enabled'] : (bool)($current['enabled'] ?? false),
             'intervalMinutes' => max(1, (int)($input['intervalMinutes'] ?? ($current['intervalMinutes'] ?? 15))),
             'instructions' => array_key_exists('instructions', $input)
                 ? trim((string)$input['instructions'])
@@ -1332,16 +1368,21 @@ if (!function_exists('ccrm_marveen_save_autonomous_config')) {
 }
 
 if (!function_exists('ccrm_marveen_get_connector_state')) {
-    function ccrm_marveen_get_connector_state(PDO $pdo, array $connector): array {
+    function ccrm_marveen_get_connector_state(PDO $pdo, array $connector, ?string $subagentId = null): array {
         $connectorId = (string)($connector['id'] ?? 'default');
+        $cleanSub = ($subagentId !== null && $subagentId !== '' && $subagentId !== 'main') ? $subagentId : null;
         $mem = ccrm_marveen_get_memory($pdo, $connector);
         $artifacts = ccrm_marveen_list_artifacts($pdo, $connector);
         $subagents = ccrm_marveen_list_subagents($pdo, $connector);
         $tasks = ccrm_marveen_list_tasks($pdo, $connector);
         $autonomousMode = ccrm_marveen_get_autonomous_config($pdo, $connector);
-        $chatHistory = ccrm_marveen_get_chat_history($connectorId);
-        return [
+        $chatHistory = ccrm_marveen_get_chat_history($connectorId, $cleanSub);
+        $triggers = function_exists('ccrm_marveen_list_triggers') ? ccrm_marveen_list_triggers($pdo, $connector) : [];
+        $allTriggers = function_exists('ccrm_marveen_list_all_triggers') ? ccrm_marveen_list_all_triggers($pdo) : $triggers;
+
+        $state = [
             'connectorId' => $connectorId,
+            'activeAgentId' => $cleanSub ?: 'main',
             'mcpConnected' => true,
             'mcpEndpoint' => ccrm_marveen_internal_mcp_url(),
             'memoryMd' => $mem['memoryMd'],
@@ -1349,9 +1390,16 @@ if (!function_exists('ccrm_marveen_get_connector_state')) {
             'artifacts' => $artifacts,
             'subagents' => $subagents,
             'tasks' => $tasks,
+            'triggers' => $triggers,
+            'allTriggers' => $allTriggers,
             'autonomousMode' => $autonomousMode,
             'chatHistory' => $chatHistory,
         ];
+        if ($cleanSub !== null) {
+            $subMem = ccrm_marveen_get_memory($pdo, $connector, $cleanSub);
+            $state['subagentMemoryMd'] = $subMem['memoryMd'];
+        }
+        return $state;
     }
 }
 
@@ -1790,7 +1838,7 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
             ],
             [
                 'name' => 'whatsapp_read_messages',
-                'description' => 'Read the message history of a WhatsApp contact or group chat by chat name (e.g. "Managment Cstudios", "Roland Vanyek"), phone number, or WhatsApp JID.',
+                'description' => 'Read the full conversation history of a WhatsApp contact or group chat by chat name (e.g. "Managment Cstudios", "Roland Vanyek"), phone number, or WhatsApp JID. Automatically includes at least the last 50 messages and at least the last 5 days of conversation (capped at 16,000 characters).',
                 'parameters' => [
                     'type' => 'OBJECT',
                     'properties' => (object)[
@@ -1800,7 +1848,7 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                         ],
                         'limit' => [
                             'type' => 'INTEGER',
-                            'description' => 'Number of most recent messages to return (default 30, max 100).',
+                            'description' => 'Minimum number of most recent messages to return (default 50, max 200; always includes at least the last 5 days up to 16,000 chars).',
                         ],
                         'connector_id' => [
                             'type' => 'STRING',
@@ -1849,34 +1897,114 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                     ],
                 ],
             ],
+            [
+                'name' => 'email_list_accounts',
+                'description' => 'List authorized SMTP/IMAP/Gmail email connectors alongside this agent.',
+            ],
+            [
+                'name' => 'email_list_messages',
+                'description' => 'List recent emails from a connected email account (or search by sender/subject).',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional email connector ID or name (defaults to the first authorized email connector).',
+                        ],
+                        'query' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional filter matching sender email/name or subject.',
+                        ],
+                        'limit' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Maximum number of recent messages to list (default 25, max 100).',
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'email_read_thread',
+                'description' => 'Read the full conversation thread and message body for an email by UID, sender address, or subject. Includes up to the last 50 messages / last 5 days in the thread (capped at 16,000 characters).',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'uid' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Optional IMAP UID of the email.',
+                        ],
+                        'sender' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional sender email address to load the conversation thread with.',
+                        ],
+                        'subject' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional subject line to match.',
+                        ],
+                        'connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional email connector ID.',
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'name' => 'email_send_reply',
+                'description' => 'Send an email or a threaded reply via a connected SMTP/Gmail email account.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'to' => [
+                            'type' => 'STRING',
+                            'description' => 'Recipient email address.',
+                        ],
+                        'subject' => [
+                            'type' => 'STRING',
+                            'description' => 'Email subject line (use "Re: ..." when replying).',
+                        ],
+                        'body' => [
+                            'type' => 'STRING',
+                            'description' => 'Email body text or HTML.',
+                        ],
+                        'reply_to_uid' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Optional UID of the incoming email being replied to (automatically threads In-Reply-To and References headers).',
+                        ],
+                        'connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional email connector ID to send from.',
+                        ],
+                    ],
+                    'required' => ['to', 'subject', 'body'],
+                ],
+            ],
         ];
 
         if (!$isSubagent) {
             $decls[] = [
                 'name' => 'create_subagent',
-                'description' => 'Create or update a specialized subagent with its own role, system prompt, and dedicated memory.md. Subagents have full access to all CCRM MCP tools.',
+                'description' => 'Create or update a specialized agent/subagent on this AI connection with its own role, system prompt, and dedicated memory.md.',
                 'parameters' => [
                     'type' => 'OBJECT',
                     'properties' => (object)[
                         'id' => [
                             'type' => 'STRING',
-                            'description' => 'Slug ID for the subagent (e.g. "lead-qualifier", "followup-writer").',
+                            'description' => 'Slug ID for the agent (e.g. "lead-qualifier", "haiku-responder").',
                         ],
                         'name' => [
                             'type' => 'STRING',
-                            'description' => 'Human-readable name of the subagent.',
+                            'description' => 'Human-readable name of the agent.',
                         ],
                         'role' => [
                             'type' => 'STRING',
-                            'description' => 'Short description of the subagent\'s specialty.',
+                            'description' => 'Short description of the agent\'s specialty.',
                         ],
                         'system_prompt' => [
                             'type' => 'STRING',
-                            'description' => 'Detailed instructions for how this subagent should operate.',
+                            'description' => 'Detailed instructions for how this agent should operate.',
                         ],
                         'memory_md' => [
                             'type' => 'STRING',
-                            'description' => 'Optional initial Markdown content for the subagent\'s memory.md.',
+                            'description' => 'Optional initial Markdown content for the agent\'s memory.md.',
                         ],
                     ],
                     'required' => ['name', 'role', 'system_prompt'],
@@ -1884,7 +2012,7 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
             ];
             $decls[] = [
                 'name' => 'list_subagents',
-                'description' => 'List all specialized subagents available on this connector.',
+                'description' => 'List all specialized agents/subagents available on this connector.',
             ];
             $decls[] = [
                 'name' => 'delete_subagent',
@@ -1919,8 +2047,77 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                 ],
             ];
             $decls[] = [
+                'name' => 'create_event_trigger',
+                'description' => 'Wire an event-driven trigger ($0 idle cost) so that when a new WhatsApp message, Email, or CRM event arrives, the specified agent is automatically triggered with the last 50 messages / last 5 days of conversation context.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'name' => [
+                            'type' => 'STRING',
+                            'description' => 'Human-readable name for the trigger (e.g. "Managment Cstudios Haiku Responder").',
+                        ],
+                        'source_type' => [
+                            'type' => 'STRING',
+                            'description' => 'Event source type: "whatsapp", "email", or "crm_event".',
+                            'enum' => ['whatsapp', 'email', 'crm_event'],
+                        ],
+                        'source_connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Source WhatsApp or Email connector ID (optional; defaults to first matching connector).',
+                        ],
+                        'whatsapp_chat' => [
+                            'type' => 'STRING',
+                            'description' => 'For whatsapp triggers: target chat name or JID (e.g. "Managment Cstudios"), "@g.us" for all groups, or "*" for all chats.',
+                        ],
+                        'email_sender_filter' => [
+                            'type' => 'STRING',
+                            'description' => 'For email triggers: optional sender email/domain substring filter.',
+                        ],
+                        'email_subject_filter' => [
+                            'type' => 'STRING',
+                            'description' => 'For email triggers: optional subject substring filter.',
+                        ],
+                        'crm_event_name' => [
+                            'type' => 'STRING',
+                            'description' => 'For crm_event triggers: e.g. "lead_created", "client_created", "task_created".',
+                        ],
+                        'target_agent_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Agent ID on this connection that should handle the trigger ("main" or a created subagent ID).',
+                        ],
+                        'instructions' => [
+                            'type' => 'STRING',
+                            'description' => 'Prompt instructions for the agent when the event fires.',
+                        ],
+                        'auto_reply' => [
+                            'type' => 'BOOLEAN',
+                            'description' => 'Whether the agent should automatically send its reply back to the WhatsApp chat or Email sender (default true).',
+                        ],
+                    ],
+                    'required' => ['name', 'source_type', 'instructions'],
+                ],
+            ];
+            $decls[] = [
+                'name' => 'list_event_triggers',
+                'description' => 'List all event-driven triggers wired to this AI connection.',
+            ];
+            $decls[] = [
+                'name' => 'delete_event_trigger',
+                'description' => 'Delete an event-driven trigger by ID.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'id' => [
+                            'type' => 'STRING',
+                            'description' => 'ID of the trigger to delete.',
+                        ],
+                    ],
+                    'required' => ['id'],
+                ],
+            ];
+            $decls[] = [
                 'name' => 'schedule_autonomous_task',
-                'description' => 'Schedule or update a recurring autonomous task that runs automatically in the background (e.g. every N minutes).',
+                'description' => 'Schedule or update a recurring heartbeat task that runs periodically in the background (e.g. every N minutes). Note: for reacting to incoming WhatsApp messages or emails, prefer create_event_trigger ($0 idle cost) over polling!',
                 'parameters' => [
                     'type' => 'OBJECT',
                     'properties' => (object)[
@@ -1969,6 +2166,149 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
         }
 
         return $decls;
+    }
+}
+
+if (!function_exists('ccrm_marveen_build_conversation_context')) {
+    /**
+     * Builds a comprehensive conversation context window for WhatsApp, Email threads, and future messaging channels:
+     *  - Always includes at least the last $minMessages (50) messages AND all messages from the last $minDays (5) days
+     *    (whichever set is larger, sorted chronologically oldest -> newest).
+     *  - Applies a rational character limit ($maxChars = 16000, ~4,000 tokens) with tail-preserving truncation:
+     *    older single messages > 1,000 chars are trimmed first, and if total chars still exceed $maxChars,
+     *    the oldest messages at the top are dropped so the most recent messages are 100% preserved.
+     */
+    function ccrm_marveen_build_conversation_context(
+        array $allMessages,
+        int $minMessages = 50,
+        int $minDays = 5,
+        int $maxChars = 16000
+    ): array {
+        $minMessages = max(1, $minMessages);
+        $minDays = max(1, $minDays);
+        $maxChars = max(2000, $maxChars);
+
+        $normalized = [];
+        foreach ($allMessages as $idx => $m) {
+            if (!is_array($m)) {
+                continue;
+            }
+            $tsMs = (int)($m['tsMs'] ?? 0);
+            if ($tsMs <= 0) {
+                $dateCandidate = (string)($m['createdAt'] ?? ($m['email_date'] ?? ($m['date'] ?? ($m['timestamp'] ?? ''))));
+                $parsed = $dateCandidate !== '' ? strtotime($dateCandidate) : false;
+                $tsMs = $parsed !== false ? ($parsed * 1000) : ($idx * 1000);
+            } elseif ($tsMs < 10000000000) {
+                $tsMs *= 1000;
+            }
+            $fromMe = !empty($m['fromMe']) || !empty($m['is_outgoing']);
+            $sender = $fromMe
+                ? 'Me (Outgoing)'
+                : trim((string)($m['senderName'] ?? ($m['from_name'] ?: ($m['from_address'] ?? 'Contact'))));
+            if ($sender === '') {
+                $sender = 'Contact';
+            }
+            $text = trim((string)($m['text'] ?? ($m['body'] ?? ($m['preview'] ?? ($m['subject'] ?? '')))));
+            if ($text === '' && !empty($m['mediaType'])) {
+                $text = '[' . strtoupper((string)$m['mediaType']) . ']';
+            }
+            if ($text === '') {
+                continue;
+            }
+            $timeLabel = $tsMs > 1000000000000
+                ? date('Y-m-d H:i', (int)round($tsMs / 1000))
+                : (string)($m['timestamp'] ?? '');
+
+            $normalized[] = [
+                'raw' => $m,
+                'id' => (string)($m['id'] ?? ($m['uid'] ?? ('msg-' . $idx))),
+                'tsMs' => $tsMs,
+                'timeLabel' => $timeLabel,
+                'fromMe' => $fromMe,
+                'senderName' => $sender,
+                'text' => $text,
+            ];
+        }
+
+        usort($normalized, static fn(array $a, array $b): int => $a['tsMs'] <=> $b['tsMs']);
+
+        $totalCount = count($normalized);
+        if ($totalCount === 0) {
+            return [
+                'messages' => [],
+                'transcript' => '(No messages in conversation history)',
+                'includedCount' => 0,
+                'totalAvailable' => 0,
+                'daysCovered' => $minDays,
+                'charCount' => 0,
+                'maxChars' => $maxChars,
+                'truncatedByCharCap' => false,
+            ];
+        }
+
+        // Union of last $minMessages (50) AND all messages from the last $minDays (5 days)
+        $cutoffMs = (time() - ($minDays * 86400)) * 1000;
+        $firstRecentIdx = $totalCount;
+        for ($i = 0; $i < $totalCount; $i++) {
+            if ($normalized[$i]['tsMs'] >= $cutoffMs) {
+                $firstRecentIdx = $i;
+                break;
+            }
+        }
+        $startIndexByCount = max(0, $totalCount - $minMessages);
+        $startIndex = min($startIndexByCount, $firstRecentIdx);
+        $window = array_slice($normalized, $startIndex);
+        $windowCount = count($window);
+
+        // Build formatted lines from newest to oldest so we never drop the newest messages if $maxChars is reached
+        $selectedReversed = [];
+        $selectedRawReversed = [];
+        $usedChars = 0;
+        $truncatedByCap = false;
+
+        for ($i = $windowCount - 1; $i >= 0; $i--) {
+            $item = $window[$i];
+            $isVeryRecent = ($windowCount - 1 - $i) < 5;
+            $perMsgCap = $isVeryRecent ? 4000 : 1000;
+            $msgText = $item['text'];
+            if (mb_strlen($msgText, 'UTF-8') > $perMsgCap) {
+                $msgText = mb_substr($msgText, 0, $perMsgCap, 'UTF-8') . ' … [truncated]';
+            }
+            $prefix = $item['timeLabel'] !== '' ? "[{$item['timeLabel']}] " : '';
+            $line = "{$prefix}{$item['senderName']}: {$msgText}";
+            $lineLen = mb_strlen($line, 'UTF-8') + 1;
+
+            if (!empty($selectedReversed) && ($usedChars + $lineLen) > $maxChars) {
+                $truncatedByCap = true;
+                break;
+            }
+            $selectedReversed[] = $line;
+            $selectedRawReversed[] = $item['raw'];
+            $usedChars += $lineLen;
+        }
+
+        $chronologicalLines = array_reverse($selectedReversed);
+        $chronologicalRaw = array_reverse($selectedRawReversed);
+
+        if ($truncatedByCap) {
+            array_unshift(
+                $chronologicalLines,
+                "[... Earlier messages omitted to stay within {$maxChars}-character conversation context cap ...]"
+            );
+        }
+
+        $transcript = implode("\n", $chronologicalLines);
+
+        return [
+            'messages' => array_values($chronologicalRaw),
+            'transcript' => $transcript,
+            'includedCount' => count($chronologicalRaw),
+            'totalAvailable' => $totalCount,
+            'daysCovered' => $minDays,
+            'charCount' => mb_strlen($transcript, 'UTF-8'),
+            'maxChars' => $maxChars,
+            'truncatedByCharCap' => $truncatedByCap,
+        ];
     }
 }
 
@@ -2229,7 +2569,7 @@ if (!function_exists('ccrm_marveen_execute_whatsapp_tool')) {
 
         if ($fnName === 'whatsapp_read_messages') {
             $chatTarget = trim((string)($fnArgs['chat'] ?? ($fnArgs['chat_id'] ?? ($fnArgs['query'] ?? ''))));
-            $limit = min(100, max(1, (int)($fnArgs['limit'] ?? 30)));
+            $limit = min(200, max(50, (int)($fnArgs['limit'] ?? 50)));
             $resolved = ccrm_marveen_resolve_whatsapp_chat($waState, $chatTarget);
 
             if ($resolved === null) {
@@ -2251,7 +2591,7 @@ if (!function_exists('ccrm_marveen_execute_whatsapp_tool')) {
 
             $cid = (string)$resolved['id'];
             $thread = is_array($messagesMap[$cid] ?? null) ? $messagesMap[$cid] : [];
-            $sliced = array_slice($thread, -$limit);
+            $ctxWindow = ccrm_marveen_build_conversation_context($thread, $limit, 5, 16000);
 
             return [
                 'toolText' => json_encode([
@@ -2263,14 +2603,18 @@ if (!function_exists('ccrm_marveen_execute_whatsapp_tool')) {
                         'isGroup' => !empty($resolved['isGroup']),
                         'participantsPreview' => $resolved['participantsPreview'] ?? null,
                         'totalMessagesInStore' => count($thread),
+                        'includedMessagesCount' => $ctxWindow['includedCount'],
+                        'contextCharCount' => $ctxWindow['charCount'],
+                        'contextWindowRule' => 'last 50 messages + at least last 5 days (capped at 16,000 chars)',
                     ],
-                    'messages' => array_values($sliced),
+                    'conversationTranscript' => $ctxWindow['transcript'],
+                    'messages' => $ctxWindow['messages'],
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'step' => [
                     'id' => uniqid('st_', false),
                     'kind' => 'whatsapp',
                     'tool' => 'whatsapp_read_messages',
-                    'label' => "Read WhatsApp: {$resolved['name']} (" . count($sliced) . ' msgs)',
+                    'label' => "Read WhatsApp: {$resolved['name']} (" . $ctxWindow['includedCount'] . ' msgs / 5d context)',
                     'detail' => $cid,
                 ],
             ];
@@ -2386,6 +2730,1254 @@ if (!function_exists('ccrm_marveen_execute_whatsapp_tool')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_list_sibling_email_connectors')) {
+    /**
+     * Finds all active Email (`gmail`, `smtp`, `exchange`) connectors in `company_mailboxes`.
+     */
+    function ccrm_marveen_list_sibling_email_connectors(
+        PDO $pdo,
+        ?array $agentConnector = null,
+        ?string $userId = null
+    ): array {
+        require_once dirname(__DIR__) . '/auth.php';
+        $stmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `id` ASC");
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+
+        $agentUsers = [];
+        if ($userId !== null && $userId !== '') {
+            $agentUsers[] = (string)$userId;
+        }
+        if (is_array($agentConnector)) {
+            if (!empty($agentConnector['owner_user_id'])) {
+                $agentUsers[] = (string)$agentConnector['owner_user_id'];
+            }
+            $aSettings = is_array($agentConnector['settings'] ?? null)
+                ? $agentConnector['settings']
+                : (json_decode((string)($agentConnector['settings_json'] ?? '{}'), true) ?: []);
+            if (is_array($aSettings['userIds'] ?? null)) {
+                foreach ($aSettings['userIds'] as $uid) {
+                    $agentUsers[] = (string)$uid;
+                }
+            }
+        }
+        $agentUsers = array_values(array_unique(array_filter($agentUsers)));
+
+        $preferred = [];
+        $others = [];
+        foreach ($rows as $row) {
+            $raw = json_decode((string)($row['settings_json'] ?? '{}'), true);
+            $settings = is_array($raw)
+                ? ccrm_decrypt_config_secrets($raw, ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'])
+                : [];
+            $cType = strtolower(trim((string)($settings['connectorType'] ?? '')));
+            if ($cType === '') {
+                $imapHost = strtolower((string)($settings['imapHost'] ?? ''));
+                $cType = str_contains($imapHost, 'gmail') ? 'gmail' : (($settings['provider'] ?? '') === 'exchange' ? 'exchange' : 'smtp');
+            }
+            if (!in_array($cType, ['gmail', 'smtp', 'exchange'], true)) {
+                continue;
+            }
+            $settings['connectorType'] = $cType;
+            $row['settings'] = $settings;
+            $eUsers = is_array($settings['userIds'] ?? null) ? array_map('strval', $settings['userIds']) : [];
+            if (!empty($row['owner_user_id'])) {
+                $eUsers[] = (string)$row['owner_user_id'];
+            }
+            $overlaps = empty($agentUsers) || empty($eUsers) || !empty(array_intersect($agentUsers, $eUsers));
+            if ($overlaps) {
+                $preferred[] = $row;
+            } else {
+                $others[] = $row;
+            }
+        }
+        return array_merge($preferred, $others);
+    }
+}
+
+if (!function_exists('ccrm_marveen_send_connector_email')) {
+    /**
+     * Sends an email or threaded reply directly through a CCRM Email Connector's SMTP settings
+     * and records the outgoing envelope in `mail_envelopes`.
+     */
+    function ccrm_marveen_send_connector_email(
+        PDO $pdo,
+        array $emailConnector,
+        string $to,
+        string $subject,
+        string $bodyTextOrHtml,
+        string $inReplyTo = '',
+        string $references = ''
+    ): array {
+        $to = trim($to);
+        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            return ['ok' => false, 'error' => 'Invalid recipient email address: ' . $to];
+        }
+        $settings = is_array($emailConnector['settings'] ?? null)
+            ? $emailConnector['settings']
+            : (json_decode((string)($emailConnector['settings_json'] ?? '{}'), true) ?: []);
+
+        $smtpHost = trim((string)($settings['smtpHost'] ?? ''));
+        $cType = strtolower((string)($settings['connectorType'] ?? 'smtp'));
+        if ($smtpHost === '' && $cType === 'gmail') {
+            $smtpHost = 'smtp.gmail.com';
+        } elseif ($smtpHost === '' && $cType === 'exchange') {
+            $smtpHost = 'smtp.office365.com';
+        }
+        $smtpPort = (int)($settings['smtpPort'] ?? 0);
+        if ($smtpPort <= 0) {
+            $smtpPort = ($cType === 'exchange') ? 587 : 465;
+        }
+        $smtpSecure = strtolower((string)($settings['smtpSecure'] ?? ($smtpPort === 587 ? 'tls' : 'ssl')));
+        $smtpUser = trim((string)($settings['smtpUsername'] ?? ($settings['imapUsername'] ?? ($emailConnector['address'] ?? ''))));
+        $smtpPass = (string)($settings['smtpPassword'] ?? ($settings['imapPassword'] ?? ''));
+
+        if ($smtpHost === '' || $smtpUser === '' || $smtpPass === '') {
+            return ['ok' => false, 'error' => 'Email connector is missing SMTP host, username, or password.'];
+        }
+
+        $prefix = ($smtpSecure === 'ssl' && $smtpPort !== 587) ? 'ssl://' : '';
+        $errno = 0;
+        $errstr = '';
+        $socket = @fsockopen($prefix . $smtpHost, $smtpPort, $errno, $errstr, 12);
+        if (!$socket) {
+            return ['ok' => false, 'error' => "SMTP connection failed ({$smtpHost}:{$smtpPort}): {$errstr}"];
+        }
+        stream_set_timeout($socket, 20);
+
+        $readReply = static function () use ($socket): string {
+            $out = '';
+            while (($line = fgets($socket, 1024)) !== false) {
+                $out .= $line;
+                if (strlen($line) < 4 || $line[3] === ' ') break;
+            }
+            return $out;
+        };
+        $expect = static function (string $reply, $codes, string $stage): ?string {
+            $head = ltrim($reply);
+            foreach ((array)$codes as $code) {
+                if (str_starts_with($head, (string)$code)) {
+                    return null;
+                }
+            }
+            return "SMTP {$stage} failed: " . trim($head ?: 'no reply');
+        };
+
+        $readReply();
+        $ehlo = "EHLO " . (!empty($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'localhost') . "\r\n";
+        fwrite($socket, $ehlo);
+        $readReply();
+
+        if ($smtpPort === 587 || $smtpSecure === 'tls') {
+            fwrite($socket, "STARTTLS\r\n");
+            if ($err = $expect($readReply(), '220', 'STARTTLS')) {
+                fclose($socket);
+                return ['ok' => false, 'error' => $err];
+            }
+            if (!@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                fclose($socket);
+                return ['ok' => false, 'error' => 'SMTP TLS handshake failed.'];
+            }
+            fwrite($socket, $ehlo);
+            $readReply();
+        }
+
+        fwrite($socket, "AUTH LOGIN\r\n");
+        if ($err = $expect($readReply(), '334', 'AUTH LOGIN')) {
+            fclose($socket);
+            return ['ok' => false, 'error' => $err];
+        }
+        fwrite($socket, base64_encode($smtpUser) . "\r\n");
+        if ($err = $expect($readReply(), '334', 'AUTH username')) {
+            fclose($socket);
+            return ['ok' => false, 'error' => $err];
+        }
+        fwrite($socket, base64_encode($smtpPass) . "\r\n");
+        if ($err = $expect($readReply(), '235', 'authentication')) {
+            fclose($socket);
+            return ['ok' => false, 'error' => $err];
+        }
+
+        fwrite($socket, "MAIL FROM: <{$smtpUser}>\r\n");
+        if ($err = $expect($readReply(), '250', 'MAIL FROM')) {
+            fclose($socket);
+            return ['ok' => false, 'error' => $err];
+        }
+        fwrite($socket, "RCPT TO: <{$to}>\r\n");
+        if ($err = $expect($readReply(), ['250', '251'], 'RCPT TO')) {
+            fclose($socket);
+            return ['ok' => false, 'error' => $err];
+        }
+        fwrite($socket, "DATA\r\n");
+        if ($err = $expect($readReply(), '354', 'DATA')) {
+            fclose($socket);
+            return ['ok' => false, 'error' => $err];
+        }
+
+        $domain = str_contains($smtpUser, '@') ? substr(strrchr($smtpUser, '@'), 1) : 'ccrm.local';
+        $messageId = '<' . bin2hex(random_bytes(12)) . '@' . $domain . '>';
+        $fromName = trim((string)($emailConnector['name'] ?? ''));
+
+        $isHtml = (bool)preg_match('/<(p|div|br|table|ul|ol|li|strong|em|h[1-6])\b/i', $bodyTextOrHtml);
+        $htmlBody = $isHtml ? $bodyTextOrHtml : nl2br(htmlspecialchars($bodyTextOrHtml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'));
+
+        $headers = "MIME-Version: 1.0\r\n";
+        $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
+        $headers .= $fromName !== ''
+            ? "From: =?UTF-8?B?" . base64_encode($fromName) . "?= <{$smtpUser}>\r\n"
+            : "From: <{$smtpUser}>\r\n";
+        $headers .= "To: <{$to}>\r\n";
+        $headers .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
+        $headers .= "Message-ID: {$messageId}\r\n";
+        if ($inReplyTo !== '') {
+            $headers .= "In-Reply-To: {$inReplyTo}\r\n";
+        }
+        if ($references !== '') {
+            $headers .= "References: {$references}\r\n";
+        } elseif ($inReplyTo !== '') {
+            $headers .= "References: {$inReplyTo}\r\n";
+        }
+        $headers .= "Date: " . date('r') . "\r\n\r\n";
+
+        $message = $headers . $htmlBody;
+        $wire = preg_replace('/\r\n|\r|\n/', "\r\n", $message);
+        $wire = preg_replace('/^\./m', '..', (string)$wire);
+
+        fwrite($socket, $wire . "\r\n.\r\n");
+        if ($err = $expect($readReply(), '250', 'message body')) {
+            fclose($socket);
+            return ['ok' => false, 'error' => $err];
+        }
+        fwrite($socket, "QUIT\r\n");
+        fclose($socket);
+
+        // Cache the outgoing message in mail_envelopes so it appears in thread context immediately
+        try {
+            $mailboxKey = 'c:' . $emailConnector['id'];
+            $fakeUid = (int)(time() * 10 + random_int(1, 9));
+            $plainPreview = mb_substr(trim(strip_tags($bodyTextOrHtml)), 0, 480, 'UTF-8');
+            $stmt = $pdo->prepare(
+                "INSERT IGNORE INTO `mail_envelopes` (
+                    `mailbox_key`, `folder`, `uid`, `event_id`, `subject`,
+                    `from_name`, `from_address`, `to_name`, `to_address`,
+                    `email_date`, `is_outgoing`, `seen`, `size`,
+                    `message_id`, `in_reply_to`, `references_hdr`, `preview`
+                ) VALUES (?, 'Sent', ?, ?, ?, ?, ?, '', ?, NOW(), 1, 1, ?, ?, ?, ?, ?)"
+            );
+            $stmt->execute([
+                $mailboxKey,
+                $fakeUid,
+                'email-agent-' . uniqid('', false),
+                mb_substr($subject, 0, 500, 'UTF-8'),
+                mb_substr($fromName, 0, 255, 'UTF-8'),
+                mb_substr($smtpUser, 0, 255, 'UTF-8'),
+                mb_substr($to, 0, 255, 'UTF-8'),
+                strlen($htmlBody),
+                $messageId,
+                $inReplyTo,
+                $references ?: $inReplyTo,
+                $plainPreview,
+            ]);
+        } catch (\Throwable $e) {
+            // Non-fatal if mail_envelopes table does not exist yet
+        }
+
+        return [
+            'ok' => true,
+            'messageId' => $messageId,
+            'from' => $smtpUser,
+            'to' => $to,
+            'subject' => $subject,
+        ];
+    }
+}
+
+if (!function_exists('ccrm_marveen_execute_email_tool')) {
+    /**
+     * Executes Email Connector tools (`email_list_accounts`, `email_list_messages`,
+     * `email_read_thread`, `email_send_reply`) for AI Agents.
+     */
+    function ccrm_marveen_execute_email_tool(
+        PDO $pdo,
+        ?array $agentConnector,
+        string $fnName,
+        array $fnArgs,
+        ?string $userId = null
+    ): array {
+        $emailConnectors = ccrm_marveen_list_sibling_email_connectors($pdo, $agentConnector, $userId);
+        if (empty($emailConnectors)) {
+            return [
+                'toolText' => json_encode([
+                    'ok' => false,
+                    'error' => 'No active Email connector (SMTP/IMAP/Gmail) is configured in CCRM.',
+                ], JSON_UNESCAPED_UNICODE),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'mcp',
+                    'tool' => $fnName,
+                    'label' => 'Email: No connector configured',
+                ],
+            ];
+        }
+
+        if ($fnName === 'email_list_accounts') {
+            $accounts = array_map(static fn(array $c) => [
+                'id' => $c['id'],
+                'name' => $c['name'],
+                'address' => $c['address'],
+                'connectorType' => $c['settings']['connectorType'] ?? 'smtp',
+            ], $emailConnectors);
+            return [
+                'toolText' => json_encode(['ok' => true, 'accounts' => $accounts], JSON_UNESCAPED_UNICODE),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'mcp',
+                    'tool' => 'email_list_accounts',
+                    'label' => 'Listed Email accounts (' . count($accounts) . ')',
+                ],
+            ];
+        }
+
+        $requestedId = trim((string)($fnArgs['connector_id'] ?? ''));
+        $emailConnector = $emailConnectors[0];
+        if ($requestedId !== '') {
+            foreach ($emailConnectors as $cand) {
+                if (
+                    (string)($cand['id'] ?? '') === $requestedId ||
+                    stripos((string)($cand['name'] ?? ''), $requestedId) !== false ||
+                    stripos((string)($cand['address'] ?? ''), $requestedId) !== false
+                ) {
+                    $emailConnector = $cand;
+                    break;
+                }
+            }
+        }
+        $mailboxKey = 'c:' . $emailConnector['id'];
+
+        if ($fnName === 'email_list_messages') {
+            $query = trim((string)($fnArgs['query'] ?? ''));
+            $limit = min(100, max(1, (int)($fnArgs['limit'] ?? 25)));
+            $rows = [];
+            try {
+                if ($query !== '') {
+                    $like = '%' . $query . '%';
+                    $stmt = $pdo->prepare(
+                        "SELECT `uid`, `folder`, `subject`, `from_name`, `from_address`, `to_address`, `email_date`, `is_outgoing`, `preview`, `message_id`
+                         FROM `mail_envelopes`
+                         WHERE `mailbox_key` = ? AND (`subject` LIKE ? OR `from_address` LIKE ? OR `from_name` LIKE ? OR `preview` LIKE ?)
+                         ORDER BY `email_date` DESC, `uid` DESC LIMIT {$limit}"
+                    );
+                    $stmt->execute([$mailboxKey, $like, $like, $like, $like]);
+                } else {
+                    $stmt = $pdo->prepare(
+                        "SELECT `uid`, `folder`, `subject`, `from_name`, `from_address`, `to_address`, `email_date`, `is_outgoing`, `preview`, `message_id`
+                         FROM `mail_envelopes`
+                         WHERE `mailbox_key` = ?
+                         ORDER BY `email_date` DESC, `uid` DESC LIMIT {$limit}"
+                    );
+                    $stmt->execute([$mailboxKey]);
+                }
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            } catch (\Throwable $e) {
+                $rows = [];
+            }
+
+            return [
+                'toolText' => json_encode([
+                    'ok' => true,
+                    'connector' => [
+                        'id' => $emailConnector['id'],
+                        'name' => $emailConnector['name'],
+                        'address' => $emailConnector['address'],
+                    ],
+                    'messages' => $rows,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'mcp',
+                    'tool' => 'email_list_messages',
+                    'label' => "Listed Emails: {$emailConnector['name']} (" . count($rows) . ')',
+                ],
+            ];
+        }
+
+        if ($fnName === 'email_read_thread') {
+            $uid = (int)($fnArgs['uid'] ?? 0);
+            $sender = trim((string)($fnArgs['sender'] ?? ''));
+            $subject = trim((string)($fnArgs['subject'] ?? ''));
+
+            $threadRows = [];
+            try {
+                if ($uid > 0 && $sender === '') {
+                    $st = $pdo->prepare("SELECT * FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `uid` = ? LIMIT 1");
+                    $st->execute([$mailboxKey, $uid]);
+                    $targetRow = $st->fetch(PDO::FETCH_ASSOC);
+                    if ($targetRow) {
+                        $sender = (string)($targetRow['is_outgoing'] ? $targetRow['to_address'] : $targetRow['from_address']);
+                        $subject = (string)($targetRow['subject'] ?? '');
+                    }
+                }
+                if ($sender !== '') {
+                    $likeSender = '%' . $sender . '%';
+                    $st = $pdo->prepare(
+                        "SELECT * FROM `mail_envelopes`
+                         WHERE `mailbox_key` = ? AND (`from_address` LIKE ? OR `to_address` LIKE ?)
+                         ORDER BY `email_date` ASC, `uid` ASC LIMIT 120"
+                    );
+                    $st->execute([$mailboxKey, $likeSender, $likeSender]);
+                    $threadRows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                } elseif ($subject !== '') {
+                    $cleanSubj = trim((string)preg_replace('/^(re|fwd|fw|odp|válasz):\s*/i', '', $subject));
+                    $likeSubj = '%' . ($cleanSubj ?: $subject) . '%';
+                    $st = $pdo->prepare(
+                        "SELECT * FROM `mail_envelopes`
+                         WHERE `mailbox_key` = ? AND `subject` LIKE ?
+                         ORDER BY `email_date` ASC, `uid` ASC LIMIT 120"
+                    );
+                    $st->execute([$mailboxKey, $likeSubj]);
+                    $threadRows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                }
+            } catch (\Throwable $e) {
+                $threadRows = [];
+            }
+
+            $mappedForCtx = array_map(static fn(array $r) => [
+                'id' => 'uid-' . ($r['uid'] ?? ''),
+                'uid' => (int)($r['uid'] ?? 0),
+                'fromMe' => !empty($r['is_outgoing']),
+                'senderName' => !empty($r['is_outgoing'])
+                    ? 'Me (' . ($emailConnector['address'] ?? 'Outgoing') . ')'
+                    : (($r['from_name'] ? $r['from_name'] . ' <' . $r['from_address'] . '>' : $r['from_address']) ?: 'Sender'),
+                'text' => "[Subject: " . ($r['subject'] ?? '') . "] " . ($r['preview'] ?? ''),
+                'createdAt' => $r['email_date'] ?? '',
+            ], $threadRows);
+
+            $ctxWindow = ccrm_marveen_build_conversation_context($mappedForCtx, 50, 5, 16000);
+
+            return [
+                'toolText' => json_encode([
+                    'ok' => true,
+                    'connector' => [
+                        'id' => $emailConnector['id'],
+                        'name' => $emailConnector['name'],
+                        'address' => $emailConnector['address'],
+                    ],
+                    'includedMessagesCount' => $ctxWindow['includedCount'],
+                    'conversationTranscript' => $ctxWindow['transcript'],
+                    'messages' => $ctxWindow['messages'],
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'mcp',
+                    'tool' => 'email_read_thread',
+                    'label' => "Read Email Thread (" . $ctxWindow['includedCount'] . ' msgs / 5d context)',
+                    'detail' => $sender ?: $subject,
+                ],
+            ];
+        }
+
+        if ($fnName === 'email_send_reply') {
+            $to = trim((string)($fnArgs['to'] ?? ''));
+            $subject = trim((string)($fnArgs['subject'] ?? ''));
+            $body = trim((string)($fnArgs['body'] ?? ($fnArgs['message'] ?? '')));
+            $replyToUid = (int)($fnArgs['reply_to_uid'] ?? 0);
+
+            $inReplyTo = '';
+            $references = '';
+            if ($replyToUid > 0) {
+                try {
+                    $st = $pdo->prepare("SELECT `message_id`, `references_hdr`, `subject`, `from_address` FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `uid` = ? LIMIT 1");
+                    $st->execute([$mailboxKey, $replyToUid]);
+                    $orig = $st->fetch(PDO::FETCH_ASSOC);
+                    if ($orig) {
+                        $inReplyTo = (string)($orig['message_id'] ?? '');
+                        $references = trim(((string)($orig['references_hdr'] ?? '')) . ' ' . $inReplyTo);
+                        if ($to === '' && !empty($orig['from_address'])) {
+                            $to = (string)$orig['from_address'];
+                        }
+                        if ($subject === '' && !empty($orig['subject'])) {
+                            $origSubj = (string)$orig['subject'];
+                            $subject = preg_match('/^re:/i', $origSubj) ? $origSubj : ('Re: ' . $origSubj);
+                        }
+                    }
+                } catch (\Throwable $e) {}
+            }
+
+            $sendRes = ccrm_marveen_send_connector_email($pdo, $emailConnector, $to, $subject, $body, $inReplyTo, $references);
+            $sentOk = !empty($sendRes['ok']);
+            return [
+                'toolText' => json_encode($sendRes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'step' => [
+                    'id' => uniqid('st_', false),
+                    'kind' => 'mcp',
+                    'tool' => 'email_send_reply',
+                    'label' => $sentOk ? "Sent Email → {$to}" : "Failed Email → {$to}",
+                    'detail' => $subject,
+                ],
+            ];
+        }
+
+        return [
+            'toolText' => json_encode(['ok' => false, 'error' => "Unknown Email tool: {$fnName}"]),
+            'step' => [
+                'id' => uniqid('st_', false),
+                'kind' => 'mcp',
+                'tool' => $fnName,
+                'label' => "Email: {$fnName}",
+            ],
+        ];
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Visual Event Triggers ($0 Idle Cost Event-Driven Agent Execution)
+// -----------------------------------------------------------------------------
+
+if (!function_exists('ccrm_marveen_list_triggers')) {
+    function ccrm_marveen_list_triggers(PDO $pdo, array $connector): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $trigFile = $dir . '/triggers.json';
+        if (is_file($trigFile)) {
+            $decoded = json_decode((string)@file_get_contents($trigFile), true);
+            if (is_array($decoded)) {
+                return array_values($decoded);
+            }
+        }
+        if (!empty($settings['triggers']) && is_array($settings['triggers'])) {
+            @file_put_contents($trigFile, json_encode(array_values($settings['triggers']), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+            return array_values($settings['triggers']);
+        }
+        return [];
+    }
+}
+
+if (!function_exists('ccrm_marveen_list_all_triggers')) {
+    function ccrm_marveen_list_all_triggers(PDO $pdo): array {
+        $all = [];
+        try {
+            $stmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `id` ASC");
+            $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+            foreach ($rows as $r) {
+                $raw = json_decode((string)($r['settings_json'] ?? '{}'), true);
+                $cType = strtolower((string)($raw['connectorType'] ?? ''));
+                if (!in_array($cType, ['claude', 'antigravity', 'chatgpt'], true)) {
+                    continue;
+                }
+                $r['settings'] = is_array($raw) ? $raw : [];
+                foreach (ccrm_marveen_list_triggers($pdo, $r) as $t) {
+                    $t['targetConnectorId'] = (string)$r['id'];
+                    $t['targetConnectorName'] = (string)$r['name'];
+                    $all[] = $t;
+                }
+            }
+        } catch (\Throwable $e) {}
+        return $all;
+    }
+}
+
+if (!function_exists('ccrm_marveen_save_trigger')) {
+    function ccrm_marveen_save_trigger(PDO $pdo, string $targetConnectorId, array $input): array {
+        $dir = ccrm_marveen_connector_dir($targetConnectorId);
+        $trigFile = $dir . '/triggers.json';
+        $triggers = is_file($trigFile) ? (json_decode((string)@file_get_contents($trigFile), true) ?: []) : [];
+
+        $sourceType = strtolower(trim((string)($input['sourceType'] ?? ($input['source_type'] ?? 'whatsapp'))));
+        if (!in_array($sourceType, ['whatsapp', 'email', 'crm_event'], true)) {
+            $sourceType = 'whatsapp';
+        }
+
+        $sourceConnectorId = trim((string)($input['sourceConnectorId'] ?? ($input['source_connector_id'] ?? '')));
+        if ($sourceConnectorId === '' && $sourceType !== 'crm_event') {
+            if ($sourceType === 'whatsapp') {
+                $waList = ccrm_marveen_list_sibling_whatsapp_connectors($pdo);
+                $sourceConnectorId = (string)($waList[0]['id'] ?? '');
+            } elseif ($sourceType === 'email') {
+                $emList = ccrm_marveen_list_sibling_email_connectors($pdo);
+                $sourceConnectorId = (string)($emList[0]['id'] ?? '');
+            }
+        }
+
+        $name = trim((string)($input['name'] ?? 'Event Trigger'));
+        $rawId = trim((string)($input['id'] ?? ''));
+        $id = $rawId !== ''
+            ? (preg_replace('/[^a-zA-Z0-9_-]/', '-', $rawId) ?: ('trig-' . substr(bin2hex(random_bytes(4)), 0, 8)))
+            : ('trig-' . substr(bin2hex(random_bytes(4)), 0, 8));
+
+        $existingIdx = null;
+        foreach ($triggers as $idx => $t) {
+            if (($t['id'] ?? '') === $id) {
+                $existingIdx = $idx;
+                break;
+            }
+        }
+        $prev = $existingIdx !== null ? $triggers[$existingIdx] : [];
+        $nowIso = gmdate('c');
+        $nowMs = (int)round(microtime(true) * 1000);
+
+        $whatsappChat = trim((string)($input['whatsappChatJid'] ?? ($input['whatsapp_chat'] ?? ($prev['whatsappChatJid'] ?? '*'))));
+        $whatsappChatName = trim((string)($input['whatsappChatName'] ?? ($prev['whatsappChatName'] ?? ($whatsappChat === '*' ? 'All Chats' : $whatsappChat))));
+
+        $targetAgentId = trim((string)($input['targetAgentId'] ?? ($input['target_agent_id'] ?? ($prev['targetAgentId'] ?? 'main'))));
+        if ($targetAgentId === '') {
+            $targetAgentId = 'main';
+        }
+
+        $record = [
+            'id' => $id,
+            'name' => $name,
+            'enabled' => array_key_exists('enabled', $input) ? (bool)$input['enabled'] : (bool)($prev['enabled'] ?? true),
+            'sourceType' => $sourceType,
+            'sourceConnectorId' => $sourceConnectorId,
+            'whatsappChatJid' => $whatsappChat !== '' ? $whatsappChat : '*',
+            'whatsappChatName' => $whatsappChatName !== '' ? $whatsappChatName : 'All Chats',
+            'emailSenderFilter' => trim((string)($input['emailSenderFilter'] ?? ($input['email_sender_filter'] ?? ($prev['emailSenderFilter'] ?? '')))),
+            'emailSubjectFilter' => trim((string)($input['emailSubjectFilter'] ?? ($input['email_subject_filter'] ?? ($prev['emailSubjectFilter'] ?? '')))),
+            'crmEventName' => trim((string)($input['crmEventName'] ?? ($input['crm_event_name'] ?? ($prev['crmEventName'] ?? 'lead_created')))),
+            'keywordFilter' => trim((string)($input['keywordFilter'] ?? ($input['keyword_filter'] ?? ($prev['keywordFilter'] ?? '')))),
+            'targetConnectorId' => $targetConnectorId,
+            'targetAgentId' => $targetAgentId,
+            'instructions' => trim((string)($input['instructions'] ?? ($prev['instructions'] ?? 'Read the full conversation context and reply helpfully.'))),
+            'autoReply' => array_key_exists('autoReply', $input)
+                ? (bool)$input['autoReply']
+                : (array_key_exists('auto_reply', $input) ? (bool)$input['auto_reply'] : (bool)($prev['autoReply'] ?? true)),
+            'cooldownSeconds' => max(2, (int)($input['cooldownSeconds'] ?? ($prev['cooldownSeconds'] ?? 10))),
+            'minContextMessages' => max(10, (int)($input['minContextMessages'] ?? ($prev['minContextMessages'] ?? 50))),
+            'minContextDays' => max(1, (int)($input['minContextDays'] ?? ($prev['minContextDays'] ?? 5))),
+            'maxContextChars' => max(2000, (int)($input['maxContextChars'] ?? ($prev['maxContextChars'] ?? 16000))),
+            'watermarkTsMs' => isset($prev['watermarkTsMs']) ? (int)$prev['watermarkTsMs'] : $nowMs,
+            'lastEmailUid' => isset($prev['lastEmailUid']) ? (int)$prev['lastEmailUid'] : 0,
+            'processedIds' => is_array($prev['processedIds'] ?? null) ? array_slice($prev['processedIds'], -200) : [],
+            'triggerCount' => (int)($prev['triggerCount'] ?? 0),
+            'lastTriggeredAt' => $prev['lastTriggeredAt'] ?? null,
+            'lastTriggerSummary' => $prev['lastTriggerSummary'] ?? null,
+            'lastTriggerStatus' => $prev['lastTriggerStatus'] ?? null,
+            'createdAt' => (string)($prev['createdAt'] ?? $nowIso),
+            'updatedAt' => $nowIso,
+        ];
+
+        // If this is a newly created Email trigger and lastEmailUid is 0, initialize lastEmailUid to current max UID in INBOX
+        if ($sourceType === 'email' && $record['lastEmailUid'] <= 0 && $sourceConnectorId !== '') {
+            try {
+                $st = $pdo->prepare("SELECT MAX(`uid`) FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `folder` = 'INBOX'");
+                $st->execute(['c:' . $sourceConnectorId]);
+                $record['lastEmailUid'] = (int)$st->fetchColumn();
+            } catch (\Throwable $e) {}
+        }
+
+        if ($existingIdx !== null) {
+            $triggers[$existingIdx] = $record;
+        } else {
+            $triggers[] = $record;
+        }
+
+        @file_put_contents($trigFile, json_encode(array_values($triggers), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        @chmod($trigFile, 0600);
+        ccrm_marveen_update_connector_settings_mirror($pdo, $targetConnectorId, static function (array $s) use ($triggers): array {
+            $s['triggers'] = array_values($triggers);
+            return $s;
+        });
+
+        return $record;
+    }
+}
+
+if (!function_exists('ccrm_marveen_delete_trigger')) {
+    function ccrm_marveen_delete_trigger(PDO $pdo, string $targetConnectorId, string $triggerId): bool {
+        $dir = ccrm_marveen_connector_dir($targetConnectorId);
+        $trigFile = $dir . '/triggers.json';
+        $triggers = is_file($trigFile) ? (json_decode((string)@file_get_contents($trigFile), true) ?: []) : [];
+        $filtered = array_values(array_filter($triggers, static fn($t) => ($t['id'] ?? '') !== $triggerId));
+        @file_put_contents($trigFile, json_encode($filtered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $targetConnectorId, static function (array $s) use ($filtered): array {
+            $s['triggers'] = $filtered;
+            return $s;
+        });
+        return count($filtered) !== count($triggers);
+    }
+}
+
+if (!function_exists('ccrm_marveen_execute_single_trigger_event')) {
+    /**
+     * Executes a single matched event trigger on its Target Agent with full 50-message / 5-day / 16k-char context.
+     */
+    function ccrm_marveen_execute_single_trigger_event(
+        PDO $pdo,
+        array $aiConnector,
+        array &$trigger,
+        array $eventContext
+    ): array {
+        $cid = (string)$aiConnector['id'];
+        $settings = is_array($aiConnector['settings'] ?? null) ? $aiConnector['settings'] : [];
+        $userIds = is_array($settings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $settings['userIds']))) : [];
+        $runAsUser = $userIds[0] ?? (string)($aiConnector['owner_user_id'] ?? '');
+        if ($runAsUser === '') {
+            $uStmt = $pdo->query("SELECT `id` FROM `users` ORDER BY `role` = 'admin' DESC, `id` ASC LIMIT 1");
+            $runAsUser = (string)($uStmt ? $uStmt->fetchColumn() : '');
+        }
+
+        $targetAgentId = trim((string)($trigger['targetAgentId'] ?? 'main'));
+        $subIdForRun = ($targetAgentId !== '' && $targetAgentId !== 'main') ? $targetAgentId : null;
+
+        $sourceType = (string)($trigger['sourceType'] ?? 'whatsapp');
+        $autoReply = !empty($trigger['autoReply']);
+        $instructions = trim((string)($trigger['instructions'] ?? ''));
+
+        $promptLines = [
+            "⚡ [REACTIVE EVENT TRIGGER FIRED: {$trigger['name']}]",
+            "- Source Type: " . strtoupper($sourceType),
+            "- Source Channel: " . ($eventContext['sourceLabel'] ?? ''),
+            "- Trigger Summary: " . ($eventContext['summary'] ?? ''),
+        ];
+        if (!empty($eventContext['sender'])) {
+            $promptLines[] = "- Incoming From: " . $eventContext['sender'];
+        }
+        if (!empty($eventContext['subject'])) {
+            $promptLines[] = "- Subject: " . $eventContext['subject'];
+        }
+        if (!empty($eventContext['latestMessageText'])) {
+            $promptLines[] = "\n## Latest Incoming Message That Triggered This Run\n" . $eventContext['latestMessageText'];
+        }
+        if (!empty($eventContext['conversationTranscript'])) {
+            $promptLines[] = "\n## Full Conversation Context (Last 50 Messages & Last 5 Days, Capped at 16,000 Chars)\n```text\n"
+                . $eventContext['conversationTranscript']
+                . "\n```";
+        }
+        $promptLines[] = "\n## Your Trigger Instructions\n" . ($instructions !== '' ? $instructions : 'Respond appropriately to the incoming message based on your memory.md and the conversation context.');
+
+        if ($autoReply) {
+            if ($sourceType === 'whatsapp' && !empty($eventContext['chatId'])) {
+                $promptLines[] = "\nIMPORTANT: Auto-Reply is ENABLED for this trigger. You MUST send your reply directly to this WhatsApp chat using `whatsapp_send_message` with `chat: \"{$eventContext['chatId']}\"` (and `connector_id: \"{$trigger['sourceConnectorId']}\"`). Do not reply to your own messages or repeat an already-sent answer.";
+            } elseif ($sourceType === 'email' && !empty($eventContext['replyToAddress'])) {
+                $uidParam = !empty($eventContext['emailUid']) ? ", `reply_to_uid: {$eventContext['emailUid']}`" : '';
+                $promptLines[] = "\nIMPORTANT: Auto-Reply is ENABLED for this trigger. You MUST send your email reply using `email_send_reply` with `to: \"{$eventContext['replyToAddress']}\"`, `subject: \"{$eventContext['replySubject']}\"`{$uidParam}, and `connector_id: \"{$trigger['sourceConnectorId']}\"`.";
+            }
+        } else {
+            $promptLines[] = "\nNote: Auto-Reply is OFF for this trigger. Analyze the event and draft/log your response here in the agent chat without sending an external message unless explicitly instructed.";
+        }
+
+        $fullPrompt = implode("\n", $promptLines);
+        $res = ccrm_marveen_run_agent($pdo, $aiConnector, $runAsUser, $fullPrompt, '', $subIdForRun);
+
+        $trigger['lastTriggeredAt'] = gmdate('c');
+        $trigger['triggerCount'] = ((int)($trigger['triggerCount'] ?? 0)) + 1;
+        $trigger['lastTriggerSummary'] = (string)($eventContext['summary'] ?? 'Triggered');
+        $trigger['lastTriggerStatus'] = !empty($res['ok']) ? 'ok' : ('error: ' . ($res['error'] ?? 'failed'));
+
+        $botMsg = [
+            'id' => 'trig-' . uniqid('', false),
+            'role' => 'assistant',
+            'autonomous' => true,
+            'triggerId' => $trigger['id'],
+            'taskTitle' => '⚡ ' . ($trigger['name'] ?? 'Event Trigger') . ' · ' . ($eventContext['summary'] ?? ''),
+            'subagentId' => $subIdForRun,
+            'text' => !empty($res['ok'])
+                ? (string)($res['text'] ?? 'Trigger executed.')
+                : ('⚠️ Trigger error: ' . (string)($res['error'] ?? 'failed')),
+            'steps' => $res['steps'] ?? [],
+            'timestamp' => date('H:i'),
+            'createdAt' => gmdate('c'),
+        ];
+        ccrm_marveen_append_chat_message($cid, $botMsg, $subIdForRun);
+
+        return [
+            'ok' => !empty($res['ok']),
+            'triggerId' => $trigger['id'],
+            'agentId' => $targetAgentId,
+            'summary' => $eventContext['summary'] ?? '',
+            'message' => $botMsg,
+            'result' => $res,
+        ];
+    }
+}
+
+if (!function_exists('ccrm_marveen_process_event_triggers')) {
+    /**
+     * Zero-LLM-cost event detector for WhatsApp and Email triggers.
+     * Inspects local WhatsApp `store.json` and `mail_envelopes` watermarks; ONLY invokes the LLM
+     * when a genuine new incoming (!fromMe) message matches an active trigger rule.
+     */
+    function ccrm_marveen_process_event_triggers(PDO $pdo, ?string $onlySourceFilter = null): array {
+        require_once dirname(__DIR__) . '/auth.php';
+        $stmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `id` ASC");
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        $secretKeys = ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'];
+
+        $aiConnectors = [];
+        $waConnectorsById = [];
+        $emailConnectorsById = [];
+
+        foreach ($rows as $row) {
+            $raw = json_decode((string)($row['settings_json'] ?? '{}'), true);
+            $settings = is_array($raw) ? ccrm_decrypt_config_secrets($raw, $secretKeys) : [];
+            $cType = strtolower((string)($settings['connectorType'] ?? ''));
+            if ($cType === '') {
+                $imapHost = strtolower((string)($settings['imapHost'] ?? ''));
+                $cType = str_contains($imapHost, 'gmail') ? 'gmail' : (($settings['provider'] ?? '') === 'exchange' ? 'exchange' : 'smtp');
+            }
+            $settings['connectorType'] = $cType;
+            $row['settings'] = $settings;
+
+            if (in_array($cType, ['claude', 'antigravity', 'chatgpt'], true)) {
+                $aiConnectors[(string)$row['id']] = $row;
+            } elseif ($cType === 'whatsapp') {
+                $waConnectorsById[(string)$row['id']] = $row;
+            } elseif (in_array($cType, ['gmail', 'smtp', 'exchange'], true)) {
+                $emailConnectorsById[(string)$row['id']] = $row;
+            }
+        }
+
+        if (empty($aiConnectors)) {
+            return ['ok' => true, 'fired' => []];
+        }
+
+        $fired = [];
+        $nowSec = time();
+
+        foreach ($aiConnectors as $aiId => $aiRow) {
+            $dir = ccrm_marveen_connector_dir($aiId);
+            $trigFile = $dir . '/triggers.json';
+            $triggers = ccrm_marveen_list_triggers($pdo, $aiRow);
+            if (empty($triggers)) {
+                continue;
+            }
+
+            $lockFp = @fopen($dir . '/.triggers.lock', 'c');
+            if ($lockFp && !@flock($lockFp, LOCK_EX | LOCK_NB)) {
+                @fclose($lockFp);
+                continue;
+            }
+
+            $dirty = false;
+            try {
+                foreach ($triggers as &$trig) {
+                    if (empty($trig['enabled'])) {
+                        continue;
+                    }
+                    $sType = (string)($trig['sourceType'] ?? 'whatsapp');
+                    $sConnId = (string)($trig['sourceConnectorId'] ?? '');
+
+                    // Cooldown check
+                    $cooldownSec = max(2, (int)($trig['cooldownSeconds'] ?? 10));
+                    $lastTrigTs = !empty($trig['lastTriggeredAt']) ? strtotime((string)$trig['lastTriggeredAt']) : 0;
+                    if ($lastTrigTs > 0 && ($nowSec - $lastTrigTs) < $cooldownSec) {
+                        continue;
+                    }
+
+                    $minMsgs = max(10, (int)($trig['minContextMessages'] ?? 50));
+                    $minDays = max(1, (int)($trig['minContextDays'] ?? 5));
+                    $maxChars = max(2000, (int)($trig['maxContextChars'] ?? 16000));
+                    $processedIds = is_array($trig['processedIds'] ?? null) ? $trig['processedIds'] : [];
+                    $kwFilter = mb_strtolower(trim((string)($trig['keywordFilter'] ?? '')), 'UTF-8');
+
+                    if ($sType === 'whatsapp') {
+                        $waRow = ($sConnId !== '' && isset($waConnectorsById[$sConnId]))
+                            ? $waConnectorsById[$sConnId]
+                            : (reset($waConnectorsById) ?: null);
+                        if (!$waRow) {
+                            continue;
+                        }
+                        $waAccountId = ccrm_waai_resolve_account_id($waRow);
+                        if ($onlySourceFilter !== null && $onlySourceFilter !== '' && $onlySourceFilter !== (string)$waRow['id'] && $onlySourceFilter !== $waAccountId) {
+                            continue;
+                        }
+
+                        // Read store.json directly from disk at $0 cost (no worker spawn needed if already synced)
+                        $storeFile = ccrm_waai_storage_root() . '/accounts/' . $waAccountId . '/store.json';
+                        if (!is_file($storeFile)) {
+                            continue;
+                        }
+                        $store = json_decode((string)@file_get_contents($storeFile), true);
+                        if (!is_array($store)) {
+                            continue;
+                        }
+                        $chats = is_array($store['chats'] ?? null) ? $store['chats'] : [];
+                        $messagesMap = is_array($store['messages'] ?? null) ? $store['messages'] : [];
+                        $chatFilter = trim((string)($trig['whatsappChatJid'] ?? '*'));
+                        $chatFilterLower = mb_strtolower($chatFilter, 'UTF-8');
+                        $watermarkMs = (int)($trig['watermarkTsMs'] ?? 0);
+                        $newMaxWatermarkMs = $watermarkMs;
+
+                        foreach ($chats as $chatMeta) {
+                            $chatId = (string)($chatMeta['id'] ?? '');
+                            $chatName = (string)($chatMeta['name'] ?? $chatId);
+                            if ($chatId === '' || $chatId === 'status@broadcast') {
+                                continue;
+                            }
+                            // Check chat filter
+                            if ($chatFilter !== '' && $chatFilter !== '*') {
+                                if ($chatFilter === '@g.us' && empty($chatMeta['isGroup'])) {
+                                    continue;
+                                } elseif ($chatFilter === '@s.whatsapp.net' && !empty($chatMeta['isGroup'])) {
+                                    continue;
+                                } elseif ($chatFilter !== '@g.us' && $chatFilter !== '@s.whatsapp.net') {
+                                    $matchId = strtolower($chatId) === strtolower($chatFilter);
+                                    $matchName = mb_strpos(mb_strtolower($chatName, 'UTF-8'), $chatFilterLower) !== false;
+                                    $matchTargetName = !empty($trig['whatsappChatName']) && $trig['whatsappChatName'] !== 'All Chats'
+                                        && mb_strpos(mb_strtolower($chatName, 'UTF-8'), mb_strtolower((string)$trig['whatsappChatName'], 'UTF-8')) !== false;
+                                    if (!$matchId && !$matchName && !$matchTargetName) {
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            $thread = is_array($messagesMap[$chatId] ?? null) ? $messagesMap[$chatId] : [];
+                            if (empty($thread)) {
+                                continue;
+                            }
+
+                            // Find new incoming (!fromMe) messages after watermarkMs not yet in processedIds
+                            $newIncoming = [];
+                            foreach ($thread as $m) {
+                                $mId = (string)($m['id'] ?? '');
+                                $mTs = (int)($m['tsMs'] ?? 0);
+                                if ($mTs <= $watermarkMs) {
+                                    continue;
+                                }
+                                if (!empty($m['fromMe'])) {
+                                    // Never trigger on our own outgoing messages! Advance watermark so we skip them.
+                                    if ($mTs > $newMaxWatermarkMs) {
+                                        $newMaxWatermarkMs = $mTs;
+                                    }
+                                    continue;
+                                }
+                                if ($mId !== '' && in_array($mId, $processedIds, true)) {
+                                    continue;
+                                }
+                                $mText = trim((string)($m['text'] ?? ''));
+                                if ($mText === '') {
+                                    continue;
+                                }
+                                if ($kwFilter !== '' && mb_strpos(mb_strtolower($mText, 'UTF-8'), $kwFilter) === false) {
+                                    continue;
+                                }
+                                $newIncoming[] = $m;
+                                if ($mTs > $newMaxWatermarkMs) {
+                                    $newMaxWatermarkMs = $mTs;
+                                }
+                            }
+
+                            if (!empty($newIncoming)) {
+                                foreach ($newIncoming as $nm) {
+                                    if (!empty($nm['id'])) {
+                                        $processedIds[] = (string)$nm['id'];
+                                    }
+                                }
+                                $trig['processedIds'] = array_values(array_slice(array_unique($processedIds), -200));
+                                $trig['watermarkTsMs'] = max($newMaxWatermarkMs, (int)round(microtime(true) * 1000));
+                                $dirty = true;
+
+                                $ctxWindow = ccrm_marveen_build_conversation_context($thread, $minMsgs, $minDays, $maxChars);
+                                $latestTexts = array_map(
+                                    static fn(array $nm) => ($nm['senderName'] ?? 'Sender') . ': ' . ($nm['text'] ?? ''),
+                                    $newIncoming
+                                );
+                                $lastSender = (string)($newIncoming[count($newIncoming) - 1]['senderName'] ?? $chatName);
+
+                                $eventCtx = [
+                                    'sourceLabel' => ($waRow['name'] ?? 'WhatsApp') . ' · ' . $chatName,
+                                    'summary' => "WhatsApp ({$chatName}) from {$lastSender}",
+                                    'sender' => $lastSender,
+                                    'chatId' => $chatId,
+                                    'chatName' => $chatName,
+                                    'latestMessageText' => implode("\n", $latestTexts),
+                                    'conversationTranscript' => $ctxWindow['transcript'],
+                                ];
+
+                                $execRes = ccrm_marveen_execute_single_trigger_event($pdo, $aiRow, $trig, $eventCtx);
+                                $fired[] = $execRes;
+                                break; // One trigger run per tick per rule
+                            }
+                        }
+                    } elseif ($sType === 'email') {
+                        $emRow = ($sConnId !== '' && isset($emailConnectorsById[$sConnId]))
+                            ? $emailConnectorsById[$sConnId]
+                            : (reset($emailConnectorsById) ?: null);
+                        if (!$emRow) {
+                            continue;
+                        }
+                        if ($onlySourceFilter !== null && $onlySourceFilter !== '' && $onlySourceFilter !== (string)$emRow['id']) {
+                            continue;
+                        }
+
+                        $mailboxKey = 'c:' . $emRow['id'];
+                        $ownAddress = strtolower(trim((string)($emRow['address'] ?? '')));
+                        $lastUid = (int)($trig['lastEmailUid'] ?? 0);
+
+                        try {
+                            $st = $pdo->prepare(
+                                "SELECT * FROM `mail_envelopes`
+                                 WHERE `mailbox_key` = ? AND `folder` = 'INBOX' AND `uid` > ? AND `is_outgoing` = 0
+                                 ORDER BY `uid` ASC LIMIT 10"
+                            );
+                            $st->execute([$mailboxKey, $lastUid]);
+                            $newEmails = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                        } catch (\Throwable $e) {
+                            $newEmails = [];
+                        }
+
+                        foreach ($newEmails as $em) {
+                            $eUid = (int)($em['uid'] ?? 0);
+                            if ($eUid > $trig['lastEmailUid']) {
+                                $trig['lastEmailUid'] = $eUid;
+                                $dirty = true;
+                            }
+                            $fromAddr = strtolower(trim((string)($em['from_address'] ?? '')));
+                            $subj = (string)($em['subject'] ?? '');
+                            $preview = (string)($em['preview'] ?? '');
+
+                            // Loop prevention: ignore our own address or automated bounces/no-reply
+                            if (
+                                $fromAddr === '' ||
+                                ($ownAddress !== '' && $fromAddr === $ownAddress) ||
+                                preg_match('/^(no-reply|noreply|mailer-daemon|postmaster|bounce)@/i', $fromAddr)
+                            ) {
+                                continue;
+                            }
+
+                            $senderFilter = mb_strtolower(trim((string)($trig['emailSenderFilter'] ?? '')), 'UTF-8');
+                            if ($senderFilter !== '' && mb_strpos(mb_strtolower($fromAddr . ' ' . ($em['from_name'] ?? ''), 'UTF-8'), $senderFilter) === false) {
+                                continue;
+                            }
+                            $subjFilter = mb_strtolower(trim((string)($trig['emailSubjectFilter'] ?? '')), 'UTF-8');
+                            if ($subjFilter !== '' && mb_strpos(mb_strtolower($subj, 'UTF-8'), $subjFilter) === false) {
+                                continue;
+                            }
+                            if ($kwFilter !== '' && mb_strpos(mb_strtolower($subj . ' ' . $preview, 'UTF-8'), $kwFilter) === false) {
+                                continue;
+                            }
+
+                            // Build 50-message / 5-day email thread context with this sender
+                            $threadRows = [];
+                            try {
+                                $tSt = $pdo->prepare(
+                                    "SELECT * FROM `mail_envelopes`
+                                     WHERE `mailbox_key` = ? AND (`from_address` = ? OR `to_address` LIKE ?)
+                                     ORDER BY `email_date` ASC, `uid` ASC LIMIT 120"
+                                );
+                                $tSt->execute([$mailboxKey, $fromAddr, '%' . $fromAddr . '%']);
+                                $threadRows = $tSt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                            } catch (\Throwable $e) {}
+
+                            $mappedForCtx = array_map(static fn(array $r) => [
+                                'id' => 'uid-' . ($r['uid'] ?? ''),
+                                'fromMe' => !empty($r['is_outgoing']),
+                                'senderName' => !empty($r['is_outgoing']) ? 'Me' : (($r['from_name'] ?: $r['from_address']) ?: 'Sender'),
+                                'text' => "[Subject: " . ($r['subject'] ?? '') . "] " . ($r['preview'] ?? ''),
+                                'createdAt' => $r['email_date'] ?? '',
+                            ], $threadRows);
+                            $ctxWindow = ccrm_marveen_build_conversation_context($mappedForCtx, $minMsgs, $minDays, $maxChars);
+
+                            $replySubj = preg_match('/^re:/i', $subj) ? $subj : ('Re: ' . $subj);
+                            $eventCtx = [
+                                'sourceLabel' => ($emRow['name'] ?? 'Email') . ' (' . ($emRow['address'] ?? '') . ')',
+                                'summary' => "Email from {$fromAddr}: {$subj}",
+                                'sender' => ($em['from_name'] ? "{$em['from_name']} <{$fromAddr}>" : $fromAddr),
+                                'subject' => $subj,
+                                'emailUid' => $eUid,
+                                'replyToAddress' => $fromAddr,
+                                'replySubject' => $replySubj,
+                                'latestMessageText' => "Subject: {$subj}\nFrom: {$fromAddr}\n\n{$preview}",
+                                'conversationTranscript' => $ctxWindow['transcript'],
+                            ];
+
+                            $execRes = ccrm_marveen_execute_single_trigger_event($pdo, $aiRow, $trig, $eventCtx);
+                            $fired[] = $execRes;
+                            break;
+                        }
+                    }
+                }
+                unset($trig);
+
+                if ($dirty) {
+                    @file_put_contents($trigFile, json_encode(array_values($triggers), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+                    ccrm_marveen_update_connector_settings_mirror($pdo, $aiId, static function (array $s) use ($triggers): array {
+                        $s['triggers'] = array_values($triggers);
+                        return $s;
+                    });
+                }
+            } finally {
+                if ($lockFp) {
+                    @flock($lockFp, LOCK_UN);
+                    @fclose($lockFp);
+                }
+            }
+        }
+
+        return ['ok' => true, 'fired' => $fired];
+    }
+}
+
+if (!function_exists('ccrm_marveen_test_trigger')) {
+    /**
+     * Runs a manual test of a specific trigger using the latest conversation context from its source connection.
+     */
+    function ccrm_marveen_test_trigger(PDO $pdo, array $aiConnector, string $triggerId): array {
+        $cid = (string)$aiConnector['id'];
+        $dir = ccrm_marveen_connector_dir($cid);
+        $trigFile = $dir . '/triggers.json';
+        $triggers = ccrm_marveen_list_triggers($pdo, $aiConnector);
+
+        $foundIdx = null;
+        foreach ($triggers as $idx => $t) {
+            if (($t['id'] ?? '') === $triggerId) {
+                $foundIdx = $idx;
+                break;
+            }
+        }
+        if ($foundIdx === null) {
+            return ['ok' => false, 'error' => 'Trigger not found: ' . $triggerId];
+        }
+
+        $trig = &$triggers[$foundIdx];
+        $sType = (string)($trig['sourceType'] ?? 'whatsapp');
+        $sConnId = (string)($trig['sourceConnectorId'] ?? '');
+        $minMsgs = max(10, (int)($trig['minContextMessages'] ?? 50));
+        $minDays = max(1, (int)($trig['minContextDays'] ?? 5));
+        $maxChars = max(2000, (int)($trig['maxContextChars'] ?? 16000));
+
+        $eventCtx = [
+            'sourceLabel' => strtoupper($sType),
+            'summary' => "Manual Trigger Test ({$trig['name']})",
+            'sender' => 'Test Contact',
+            'latestMessageText' => '(Manual trigger test)',
+            'conversationTranscript' => '',
+        ];
+
+        if ($sType === 'whatsapp') {
+            $waConnectors = ccrm_marveen_list_sibling_whatsapp_connectors($pdo, $aiConnector);
+            $waRow = $waConnectors[0] ?? null;
+            foreach ($waConnectors as $cand) {
+                if ((string)$cand['id'] === $sConnId) {
+                    $waRow = $cand;
+                    break;
+                }
+            }
+            if ($waRow) {
+                $waState = ccrm_waai_get_chats($waRow);
+                $chatTarget = trim((string)($trig['whatsappChatJid'] ?? '*'));
+                if ($chatTarget === '*' || $chatTarget === '@g.us' || $chatTarget === '@s.whatsapp.net') {
+                    $chatTarget = (string)($trig['whatsappChatName'] !== 'All Chats' ? $trig['whatsappChatName'] : '');
+                }
+                $resolved = ccrm_marveen_resolve_whatsapp_chat($waState, $chatTarget);
+                if ($resolved) {
+                    $chatId = (string)$resolved['id'];
+                    $chatName = (string)($resolved['name'] ?? $chatId);
+                    $thread = is_array($waState['messages'][$chatId] ?? null) ? $waState['messages'][$chatId] : [];
+                    $ctxWindow = ccrm_marveen_build_conversation_context($thread, $minMsgs, $minDays, $maxChars);
+                    $lastMsg = !empty($thread) ? $thread[count($thread) - 1] : null;
+                    $eventCtx = [
+                        'sourceLabel' => ($waRow['name'] ?? 'WhatsApp') . ' · ' . $chatName,
+                        'summary' => "WhatsApp ({$chatName})",
+                        'sender' => (string)($lastMsg['senderName'] ?? $chatName),
+                        'chatId' => $chatId,
+                        'chatName' => $chatName,
+                        'latestMessageText' => (string)($lastMsg['text'] ?? '(Latest conversation check)'),
+                        'conversationTranscript' => $ctxWindow['transcript'],
+                    ];
+                }
+            }
+        } elseif ($sType === 'email') {
+            $emConnectors = ccrm_marveen_list_sibling_email_connectors($pdo, $aiConnector);
+            $emRow = $emConnectors[0] ?? null;
+            foreach ($emConnectors as $cand) {
+                if ((string)$cand['id'] === $sConnId) {
+                    $emRow = $cand;
+                    break;
+                }
+            }
+            if ($emRow) {
+                $mailboxKey = 'c:' . $emRow['id'];
+                try {
+                    $st = $pdo->prepare("SELECT * FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `is_outgoing` = 0 ORDER BY `email_date` DESC, `uid` DESC LIMIT 50");
+                    $st->execute([$mailboxKey]);
+                    $rows = array_reverse($st->fetchAll(PDO::FETCH_ASSOC) ?: []);
+                    if (!empty($rows)) {
+                        $lastEm = $rows[count($rows) - 1];
+                        $mapped = array_map(static fn(array $r) => [
+                            'id' => 'uid-' . ($r['uid'] ?? ''),
+                            'fromMe' => !empty($r['is_outgoing']),
+                            'senderName' => $r['from_name'] ?: $r['from_address'],
+                            'text' => "[Subject: " . ($r['subject'] ?? '') . "] " . ($r['preview'] ?? ''),
+                            'createdAt' => $r['email_date'] ?? '',
+                        ], $rows);
+                        $ctxWindow = ccrm_marveen_build_conversation_context($mapped, $minMsgs, $minDays, $maxChars);
+                        $fromAddr = (string)($lastEm['from_address'] ?? '');
+                        $subj = (string)($lastEm['subject'] ?? '');
+                        $eventCtx = [
+                            'sourceLabel' => ($emRow['name'] ?? 'Email') . ' (' . ($emRow['address'] ?? '') . ')',
+                            'summary' => "Email from {$fromAddr}: {$subj}",
+                            'sender' => $fromAddr,
+                            'subject' => $subj,
+                            'emailUid' => (int)($lastEm['uid'] ?? 0),
+                            'replyToAddress' => $fromAddr,
+                            'replySubject' => preg_match('/^re:/i', $subj) ? $subj : ('Re: ' . $subj),
+                            'latestMessageText' => "Subject: {$subj}\nFrom: {$fromAddr}\n\n" . ($lastEm['preview'] ?? ''),
+                            'conversationTranscript' => $ctxWindow['transcript'],
+                        ];
+                    }
+                } catch (\Throwable $e) {}
+            }
+        }
+
+        $res = ccrm_marveen_execute_single_trigger_event($pdo, $aiConnector, $trig, $eventCtx);
+        @file_put_contents($trigFile, json_encode(array_values($triggers), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        return $res;
+    }
+}
+
+if (!function_exists('ccrm_marveen_process_crm_event_triggers')) {
+    /**
+     * Fires any active `crm_event` triggers matching $eventType (e.g. `lead_created`, `client_created`, `task_created`).
+     */
+    function ccrm_marveen_process_crm_event_triggers(PDO $pdo, string $eventType, array $payload): array {
+        require_once dirname(__DIR__) . '/auth.php';
+        $stmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `id` ASC");
+        $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        $secretKeys = ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'];
+        $fired = [];
+
+        foreach ($rows as $row) {
+            $raw = json_decode((string)($row['settings_json'] ?? '{}'), true);
+            $settings = is_array($raw) ? ccrm_decrypt_config_secrets($raw, $secretKeys) : [];
+            $cType = strtolower((string)($settings['connectorType'] ?? ''));
+            if (!in_array($cType, ['claude', 'antigravity', 'chatgpt'], true)) {
+                continue;
+            }
+            $row['settings'] = $settings;
+            $aiId = (string)$row['id'];
+            $dir = ccrm_marveen_connector_dir($aiId);
+            $trigFile = $dir . '/triggers.json';
+            $triggers = ccrm_marveen_list_triggers($pdo, $row);
+            $dirty = false;
+
+            foreach ($triggers as &$trig) {
+                if (empty($trig['enabled']) || ($trig['sourceType'] ?? '') !== 'crm_event') {
+                    continue;
+                }
+                $wantEvent = strtolower(trim((string)($trig['crmEventName'] ?? 'lead_created')));
+                if ($wantEvent !== '*' && $wantEvent !== strtolower($eventType)) {
+                    continue;
+                }
+                $dirty = true;
+                $eventCtx = [
+                    'sourceLabel' => 'CCRM Event · ' . $eventType,
+                    'summary' => "CRM Event: {$eventType}",
+                    'latestMessageText' => json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+                    'conversationTranscript' => '',
+                ];
+                $fired[] = ccrm_marveen_execute_single_trigger_event($pdo, $row, $trig, $eventCtx);
+            }
+            unset($trig);
+
+            if ($dirty) {
+                @file_put_contents($trigFile, json_encode(array_values($triggers), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+            }
+        }
+        return $fired;
+    }
+}
+
 if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
     function ccrm_marveen_build_agent_system_prompt(
         PDO $pdo,
@@ -2397,10 +3989,12 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
         $mem = ccrm_marveen_get_memory($pdo, $connector, $subagentId);
         $subs = ccrm_marveen_list_subagents($pdo, $connector);
         $tasks = ccrm_marveen_list_tasks($pdo, $connector);
+        $triggers = ccrm_marveen_list_triggers($pdo, $connector);
         $waConnectors = ccrm_marveen_list_sibling_whatsapp_connectors($pdo, $connector);
+        $emailConnectors = ccrm_marveen_list_sibling_email_connectors($pdo, $connector);
 
         $parts = [];
-        if ($subagentId !== null && $subagentId !== '') {
+        if ($subagentId !== null && $subagentId !== '' && $subagentId !== 'main') {
             $subRecord = null;
             foreach ($subs as $s) {
                 if (($s['id'] ?? '') === $subagentId) {
@@ -2409,24 +4003,33 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                 }
             }
             $subName = (string)($subRecord['name'] ?? $subagentId);
-            $subRole = (string)($subRecord['role'] ?? 'Subagent');
+            $subRole = (string)($subRecord['role'] ?? 'Specialized Agent');
             $subPrompt = (string)($subRecord['systemPrompt'] ?? '');
-            $parts[] = "You are Subagent \"{$subName}\" ({$subRole}) working for parent CCRM agent \"{$name}\".";
+            $parts[] = "You are Agent \"{$subName}\" ({$subRole}) running on CCRM AI Connection \"{$name}\".";
             if ($subPrompt !== '') {
-                $parts[] = "## Subagent Instructions\n" . $subPrompt;
+                $parts[] = "## Agent Persona & Instructions\n" . $subPrompt;
             }
-            $parts[] = "## Your Subagent `memory.md`\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
-            $parts[] = "You can update your own memory using `memory_write` or `memory_append` (pass `subagent_id: \"{$subagentId}\"`), read/reply to WhatsApp messages via `whatsapp_list_chats`, `whatsapp_read_messages`, and `whatsapp_send_message`, and execute any CCRM MCP tools needed to complete your assigned task.";
+            $parts[] = "## Your Persistent `memory.md`\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
+            $parts[] = "You can update your own memory using `memory_write` or `memory_append` (pass `subagent_id: \"{$subagentId}\"`), read/reply to WhatsApp messages (`whatsapp_list_chats`, `whatsapp_read_messages`, `whatsapp_send_message`), read/reply to Emails (`email_list_accounts`, `email_list_messages`, `email_read_thread`, `email_send_reply`), and execute any CCRM MCP tools.";
         } else {
-            $parts[] = "You are \"{$name}\", an autonomous AI agent connected directly to CCRM's MCP server and sibling communication channels.";
-            $parts[] = "You operate autonomously: when the user instructs you in chat, execute all necessary MCP and WhatsApp tools, update your persistent `memory.md` (`memory_write` / `memory_append`) when asked to remember rules or notes, create/delegate to subagents (`create_subagent`, `delegate_to_subagent`) when specialized workflows are helpful, and schedule recurring jobs (`schedule_autonomous_task`) when asked to perform ongoing autonomous monitoring (such as watching WhatsApp chats and replying automatically).";
+            $parts[] = "You are \"{$name}\", an autonomous AI agent connected directly to CCRM's MCP server and sibling communication channels (WhatsApp & Email).";
+            $parts[] = "You support two execution modes:\n1. **Reactive Mode (Event-Driven Triggers — \$0 Idle Cost)**: Use `create_event_trigger` (or the Visual Trigger Studio) to wake up automatically when a new WhatsApp message, Email, or CRM event arrives, receiving the last 50 messages and last 5 days of conversation context.\n2. **Heartbeat Mode (`schedule_autonomous_task` / Autonomous Cron)**: For periodic background checks.";
             $parts[] = "## Your Persistent `memory.md` (Also visible and editable by the user under the chat)\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
             if (!empty($subs)) {
                 $subLines = [];
                 foreach ($subs as $s) {
-                    $subLines[] = "- `{$s['id']}` (**{$s['name']}** — {$s['role']})";
+                    $hbTag = !empty($s['heartbeatEnabled']) ? " [Heartbeat: every {$s['heartbeatIntervalMinutes']}m]" : " [Reactive]";
+                    $subLines[] = "- `{$s['id']}` (**{$s['name']}** — {$s['role']}){$hbTag}";
                 }
-                $parts[] = "## Existing Subagents\n" . implode("\n", $subLines);
+                $parts[] = "## Agents Created on This Connection\n" . implode("\n", $subLines);
+            }
+            if (!empty($triggers)) {
+                $trigLines = [];
+                foreach ($triggers as $tr) {
+                    $st = !empty($tr['enabled']) ? 'active' : 'paused';
+                    $trigLines[] = "- `{$tr['id']}`: **{$tr['name']}** ({$tr['sourceType']} → agent `{$tr['targetAgentId']}`, {$st})";
+                }
+                $parts[] = "## Active Event Triggers (\$0 Idle Cost)\n" . implode("\n", $trigLines);
             }
             if (!empty($tasks)) {
                 $taskLines = [];
@@ -2434,14 +4037,14 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                     $status = !empty($t['enabled']) ? 'active' : 'paused';
                     $taskLines[] = "- `{$t['id']}`: **{$t['title']}** (every {$t['intervalMinutes']}m, {$status})";
                 }
-                $parts[] = "## Scheduled Autonomous Tasks\n" . implode("\n", $taskLines);
+                $parts[] = "## Scheduled Heartbeat Tasks\n" . implode("\n", $taskLines);
             }
         }
 
         if (!empty($waConnectors)) {
             $waSection = [
                 "## Connected Sibling WhatsApp (WAAI) Channel(s)",
-                "You have direct live access to the following WhatsApp account(s) authorized next to you in the Communication sidebar. Use `whatsapp_list_chats`, `whatsapp_read_messages`, `whatsapp_send_message`, and `whatsapp_sync_chat` to inspect conversations and send replies:",
+                "Use `whatsapp_list_chats`, `whatsapp_read_messages` (includes last 50 msgs / 5 days), `whatsapp_send_message`, and `whatsapp_sync_chat`:",
             ];
             foreach ($waConnectors as $wRow) {
                 $wState = ccrm_waai_get_chats($wRow);
@@ -2459,6 +4062,17 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                 }
             }
             $parts[] = implode("\n", $waSection);
+        }
+
+        if (!empty($emailConnectors)) {
+            $emSection = [
+                "## Connected Sibling Email Channel(s)",
+                "Use `email_list_accounts`, `email_list_messages`, `email_read_thread` (includes last 50 msgs / 5 days), and `email_send_reply`:",
+            ];
+            foreach ($emailConnectors as $eRow) {
+                $emSection[] = "- **{$eRow['name']}** (ID: `{$eRow['id']}`, Address: `{$eRow['address']}`)";
+            }
+            $parts[] = implode("\n", $emSection);
         }
 
         if ($customSystemPrompt !== '') {
@@ -2718,6 +4332,17 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     if (!empty($waExec['step'])) {
                         $steps[] = $waExec['step'];
                     }
+                } elseif ($pdo !== null && in_array($fnName, [
+                    'email_list_accounts',
+                    'email_list_messages',
+                    'email_read_thread',
+                    'email_send_reply',
+                ], true)) {
+                    $emExec = ccrm_marveen_execute_email_tool($pdo, $connector, $fnName, $fnArgs);
+                    $toolText = (string)($emExec['toolText'] ?? '');
+                    if (!empty($emExec['step'])) {
+                        $steps[] = $emExec['step'];
+                    }
                 } elseif ($pdo !== null && $connector !== null && in_array($fnName, [
                     'memory_read',
                     'memory_write',
@@ -2733,6 +4358,9 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     'schedule_autonomous_task',
                     'list_autonomous_tasks',
                     'cancel_autonomous_task',
+                    'create_event_trigger',
+                    'list_event_triggers',
+                    'delete_event_trigger',
                 ], true)) {
                     $targetSubId = !empty($fnArgs['subagent_id']) ? (string)$fnArgs['subagent_id'] : $subagentId;
                     if ($fnName === 'memory_read') {
@@ -2918,6 +4546,52 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                             'kind' => 'schedule',
                             'tool' => 'cancel_autonomous_task',
                             'label' => "Cancelled autonomous task: {$cancelId}",
+                        ];
+                    } elseif ($fnName === 'create_event_trigger') {
+                        $trigPayload = [
+                            'id' => (string)($fnArgs['id'] ?? ''),
+                            'name' => (string)($fnArgs['name'] ?? 'Reactive Trigger'),
+                            'sourceType' => (string)($fnArgs['source_type'] ?? 'whatsapp'),
+                            'sourceConnectorId' => (string)($fnArgs['source_connector_id'] ?? ''),
+                            'targetSubagentId' => (string)($fnArgs['target_subagent_id'] ?? ($subagentId ?? '')),
+                            'filter' => [
+                                'chatMatch' => (string)($fnArgs['chat_match'] ?? ''),
+                                'onlyGroup' => !empty($fnArgs['only_group']),
+                                'onlyDirect' => !empty($fnArgs['only_direct']),
+                                'subjectContains' => (string)($fnArgs['subject_contains'] ?? ''),
+                                'fromContains' => (string)($fnArgs['from_contains'] ?? ''),
+                                'keywordContains' => (string)($fnArgs['keyword_contains'] ?? ''),
+                            ],
+                            'instructions' => (string)($fnArgs['instructions'] ?? ''),
+                            'autoReply' => array_key_exists('auto_reply', $fnArgs) ? (bool)$fnArgs['auto_reply'] : true,
+                            'enabled' => true,
+                        ];
+                        $savedTrig = ccrm_marveen_save_trigger($pdo, $connectorId, $trigPayload);
+                        $toolText = json_encode(['ok' => true, 'trigger' => $savedTrig], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'create_event_trigger',
+                            'label' => "Created reactive trigger: {$savedTrig['name']} (⚡ {$savedTrig['sourceType']})",
+                        ];
+                    } elseif ($fnName === 'list_event_triggers') {
+                        $trigs = ccrm_marveen_list_triggers($pdo, $connector);
+                        $toolText = json_encode(['triggers' => $trigs], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'list_event_triggers',
+                            'label' => 'Listed reactive triggers (' . count($trigs) . ')',
+                        ];
+                    } elseif ($fnName === 'delete_event_trigger') {
+                        $delTrigId = (string)($fnArgs['id'] ?? '');
+                        $removedTrig = ccrm_marveen_delete_trigger($pdo, $connectorId, $delTrigId);
+                        $toolText = json_encode(['ok' => $removedTrig, 'id' => $delTrigId]);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'delete_event_trigger',
+                            'label' => "Deleted reactive trigger: {$delTrigId}",
                         ];
                     }
                 } else {
@@ -3212,7 +4886,7 @@ if (!function_exists('ccrm_marveen_run_autonomous_ticks')) {
                         'timestamp' => date('H:i'),
                         'createdAt' => gmdate('c'),
                     ];
-                    ccrm_marveen_append_chat_message($cid, $botMsg);
+                    ccrm_marveen_append_chat_message($cid, $botMsg, $subId);
                     $executed[] = [
                         'connectorId' => $cid,
                         'taskId' => $tid,
@@ -3268,7 +4942,7 @@ if (!function_exists('ccrm_marveen_run_autonomous_ticks')) {
                             'timestamp' => date('H:i'),
                             'createdAt' => gmdate('c'),
                         ];
-                        ccrm_marveen_append_chat_message($cid, $botMsg);
+                        ccrm_marveen_append_chat_message($cid, $botMsg, null);
                     }
 
                     $executed[] = [
@@ -3278,10 +4952,82 @@ if (!function_exists('ccrm_marveen_run_autonomous_ticks')) {
                         'status' => $autoCfg['lastStatus'],
                     ];
                 }
+
+                // C) Execute Per-Agent Heartbeat Loops (`subagents.json` -> `heartbeatEnabled`)
+                $subs = ccrm_marveen_list_subagents($pdo, $row);
+                foreach ($subs as $sub) {
+                    $subId = (string)($sub['id'] ?? '');
+                    if ($subId === '') {
+                        continue;
+                    }
+                    $isManualSubHb = ($forceTaskId === 'subagent:' . $subId);
+                    $shouldRunSubHb = false;
+                    if ($isManualSubHb) {
+                        $shouldRunSubHb = true;
+                    } elseif ($forceTaskId === null || $forceTaskId === '') {
+                        if (!empty($sub['heartbeatEnabled'])) {
+                            $subIntervalSec = max(60, ((int)($sub['heartbeatIntervalMinutes'] ?? 15)) * 60);
+                            $lastSubTs = !empty($sub['lastHeartbeatAt']) ? strtotime((string)$sub['lastHeartbeatAt']) : 0;
+                            if ($lastSubTs === 0 || ($now - $lastSubTs) >= $subIntervalSec) {
+                                $shouldRunSubHb = true;
+                            }
+                        }
+                    }
+                    if (!$shouldRunSubHb) {
+                        continue;
+                    }
+                    $subHbPrompt = "[Agent Heartbeat Tick — {$sub['name']}]\n"
+                        . (string)($sub['heartbeatInstructions'] ?: "Review your memory.md and CCRM state via MCP. Execute any pending goals recorded in your memory.md. If no actions are needed right now, reply with [IDLE].");
+                    $res = ccrm_marveen_run_agent($pdo, $row, $runAsUser, $subHbPrompt, '', $subId);
+                    $replyText = trim((string)($res['text'] ?? ''));
+                    $steps = is_array($res['steps'] ?? null) ? $res['steps'] : [];
+                    $isIdle = !empty($res['ok']) && (stripos($replyText, '[IDLE]') !== false || stripos($replyText, 'HEARTBEAT_OK') !== false) && empty($steps);
+
+                    $sub['lastHeartbeatAt'] = gmdate('c');
+                    $sub['lastHeartbeatStatus'] = !empty($res['ok'])
+                        ? ($isIdle ? 'idle' : 'ok')
+                        : ('error: ' . ($res['error'] ?? 'failed'));
+                    ccrm_marveen_save_subagent($pdo, $cid, $sub);
+
+                    if (!$isIdle || $isManualSubHb) {
+                        $botMsg = [
+                            'id' => 'hb-' . uniqid('', false),
+                            'role' => 'assistant',
+                            'autonomous' => true,
+                            'taskTitle' => '💓 Heartbeat (' . ($sub['name'] ?? $subId) . ')',
+                            'subagentId' => $subId,
+                            'text' => !empty($res['ok'])
+                                ? ($isIdle ? '✓ Agent heartbeat completed (idle).' : ($replyText ?: 'Agent heartbeat completed.'))
+                                : ('⚠️ Agent heartbeat error: ' . (string)($res['error'] ?? 'failed')),
+                            'steps' => $steps,
+                            'timestamp' => date('H:i'),
+                            'createdAt' => gmdate('c'),
+                        ];
+                        ccrm_marveen_append_chat_message($cid, $botMsg, $subId);
+                        ccrm_marveen_append_chat_message($cid, $botMsg, null);
+                    }
+
+                    $executed[] = [
+                        'connectorId' => $cid,
+                        'taskId' => 'subagent:' . $subId,
+                        'ok' => !empty($res['ok']),
+                        'status' => $sub['lastHeartbeatStatus'],
+                    ];
+                }
             } finally {
                 if ($lockFp) {
                     @flock($lockFp, LOCK_UN);
                     @fclose($lockFp);
+                }
+            }
+        }
+
+        // D) Evaluate Reactive Event Triggers (Zero-cost idle check; only calls LLM if new messages/emails arrived)
+        if ($forceTaskId === null || $forceTaskId === '') {
+            $trigRes = ccrm_marveen_process_event_triggers($pdo);
+            if (!empty($trigRes['executed'])) {
+                foreach ($trigRes['executed'] as $ex) {
+                    $executed[] = $ex;
                 }
             }
         }

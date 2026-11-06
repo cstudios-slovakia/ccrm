@@ -80,6 +80,8 @@ export interface CompanyMailbox {
   lastSuccessAt: string | null;
   lastError: string | null;
   folders: MailboxFolderState[];
+  subagents?: AgentSubagent[];
+  triggers?: AgentEventTrigger[];
 }
 
 export interface MailboxDraft {
@@ -337,7 +339,7 @@ export const installAgentCli = (connectorType: ConnectorType) =>
 
 export interface AgentStepTrace {
   id: string;
-  kind: "memory" | "subagent" | "schedule" | "whatsapp" | "mcp";
+  kind: "memory" | "subagent" | "schedule" | "whatsapp" | "email" | "mcp";
   tool: string;
   label: string;
   detail?: string;
@@ -350,7 +352,42 @@ export interface AgentSubagent {
   role: string;
   systemPrompt: string;
   memoryMd: string;
+  avatarColor?: string;
+  heartbeatEnabled?: boolean;
+  heartbeatIntervalMinutes?: number;
+  heartbeatInstructions?: string;
+  lastHeartbeatAt?: string | null;
+  lastHeartbeatStatus?: string | null;
+  reactiveEnabled?: boolean;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AgentEventTriggerFilter {
+  chatMatch?: string;
+  onlyGroup?: boolean;
+  onlyDirect?: boolean;
+  subjectContains?: string;
+  fromContains?: string;
+  keywordContains?: string;
+  eventType?: string;
+}
+
+export interface AgentEventTrigger {
+  id: string;
+  name: string;
+  sourceType: "whatsapp" | "email" | "crm_event";
+  sourceConnectorId: string;
+  targetConnectorId: string;
+  targetSubagentId?: string | null;
+  filter: AgentEventTriggerFilter;
+  instructions: string;
+  autoReply: boolean;
+  enabled: boolean;
+  lastWatermark?: string;
+  triggerCount?: number;
+  lastTriggeredAt?: string | null;
+  lastStatus?: string | null;
   updatedAt?: string;
 }
 
@@ -372,6 +409,8 @@ export interface AgentChatMessage {
   author?: string;
   subagentId?: string | null;
   autonomous?: boolean;
+  reactive?: boolean;
+  triggerId?: string;
   taskTitle?: string;
   text: string;
   steps?: AgentStepTrace[];
@@ -399,6 +438,7 @@ export interface AgentAutonomousConfig {
 
 export interface AgentConnectorState {
   connectorId: string;
+  activeAgentId?: string;
   mcpConnected: boolean;
   mcpEndpoint?: string;
   memoryMd: string;
@@ -407,6 +447,8 @@ export interface AgentConnectorState {
   artifacts?: AgentArtifact[];
   subagents: AgentSubagent[];
   tasks: AgentAutonomousTask[];
+  triggers?: AgentEventTrigger[];
+  allTriggers?: AgentEventTrigger[];
   autonomousMode?: AgentAutonomousConfig;
   chatHistory: AgentChatMessage[];
 }
@@ -450,13 +492,24 @@ export const saveAgentSubagent = (params: {
   role: string;
   systemPrompt: string;
   memoryMd?: string;
+  avatarColor?: string;
+  heartbeatEnabled?: boolean;
+  heartbeatIntervalMinutes?: number;
+  heartbeatInstructions?: string;
+  reactiveEnabled?: boolean;
 }) =>
-  call<AgentConnectorState>("agent_subagent_save", {
+  call<AgentConnectorState & { subagent?: AgentSubagent }>("agent_subagent_save", {
     id: params.id,
+    subagentId: params.subagentId,
     name: params.name,
     role: params.role,
     systemPrompt: params.systemPrompt,
     memoryMd: params.memoryMd,
+    avatarColor: params.avatarColor,
+    heartbeatEnabled: params.heartbeatEnabled,
+    heartbeatIntervalMinutes: params.heartbeatIntervalMinutes,
+    heartbeatInstructions: params.heartbeatInstructions,
+    reactiveEnabled: params.reactiveEnabled,
   });
 
 export const deleteAgentSubagent = (id: string, subagentId: string) =>
@@ -493,11 +546,45 @@ export const saveAgentAutonomousConfig = (params: {
   instructions?: string;
 }) => call<AgentConnectorState>("agent_autonomous_save", params);
 
+export const saveAgentTrigger = (params: {
+  id: string;
+  triggerId?: string;
+  name: string;
+  sourceType: "whatsapp" | "email" | "crm_event";
+  sourceConnectorId: string;
+  targetSubagentId?: string | null;
+  filter?: AgentEventTriggerFilter;
+  instructions?: string;
+  autoReply?: boolean;
+  enabled?: boolean;
+}) =>
+  call<AgentConnectorState & { trigger?: AgentEventTrigger }>("agent_trigger_save", {
+    id: params.id,
+    triggerId: params.triggerId,
+    name: params.name,
+    sourceType: params.sourceType,
+    sourceConnectorId: params.sourceConnectorId,
+    targetSubagentId: params.targetSubagentId,
+    filter: params.filter,
+    instructions: params.instructions,
+    autoReply: params.autoReply,
+    enabled: params.enabled,
+  });
+
+export const deleteAgentTrigger = (id: string, triggerId: string) =>
+  call<AgentConnectorState>("agent_trigger_delete", { id, triggerId });
+
+export const testAgentTrigger = (id: string, triggerId: string) =>
+  call<AgentConnectorState & { testResult?: { ok: boolean; error?: string; result?: unknown } }>(
+    "agent_trigger_test",
+    { id, triggerId },
+  );
+
 export const runAgentHeartbeat = (id: string) =>
   call<AgentConnectorState>("agent_heartbeat", { id });
 
-export const clearAgentChatHistory = (id: string) =>
-  call<AgentConnectorState>("agent_chat_clear", { id });
+export const clearAgentChatHistory = (id: string, subagentId?: string) =>
+  call<AgentConnectorState>("agent_chat_clear", { id, subagentId });
 
 export interface WhatsAppDirectQrState {
   ok: boolean;

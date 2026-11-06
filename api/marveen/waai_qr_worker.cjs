@@ -12,6 +12,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawn } = require("node:child_process");
 
 const MODULE_ROOTS = [
   "/opt/ccrm-waai/node_modules",
@@ -237,7 +238,7 @@ function loadStoreFromDisk() {
             }
           }
           existing.sort((a, b) => (a.tsMs || 0) - (b.tsMs || 0));
-          messagesMap.set(cid, existing.slice(-120));
+          messagesMap.set(cid, existing.slice(-300));
         }
       }
     }
@@ -248,6 +249,28 @@ function loadStoreFromDisk() {
 loadStoreFromDisk();
 
 let storeSaveTimer = null;
+let reactiveTriggerTimer = null;
+
+function scheduleReactiveTrigger() {
+  if (reactiveTriggerTimer) return;
+  reactiveTriggerTimer = setTimeout(() => {
+    reactiveTriggerTimer = null;
+    flushStoreToDisk();
+    try {
+      const cronScript = path.resolve(__dirname, "../cron.php");
+      if (fs.existsSync(cronScript)) {
+        const child = spawn("php", [cronScript, `--trigger-wa=${accountId}`], {
+          detached: true,
+          stdio: "ignore",
+        });
+        child.unref();
+      }
+    } catch {
+      // ignore spawn errors
+    }
+  }, 1500);
+}
+
 function scheduleSaveStore() {
   if (storeSaveTimer) return;
   storeSaveTimer = setTimeout(() => {
@@ -330,7 +353,7 @@ function flushStoreToDisk() {
     for (const [jid, list] of messagesMap.entries()) {
       const cjid = normalizeJid(jid);
       if (!cjid) continue;
-      messagesObj[cjid] = list.slice(-120);
+      messagesObj[cjid] = list.slice(-300);
     }
 
     const payload = {
@@ -613,7 +636,7 @@ function upsertMessage(rawMsg) {
     };
     list.push(item);
     list.sort((a, b) => a.tsMs - b.tsMs);
-    messagesMap.set(chatId, list.slice(-120));
+    messagesMap.set(chatId, list.slice(-300));
   } else {
     if (details.mediaPreviewUrl && !item.mediaPreviewUrl) item.mediaPreviewUrl = details.mediaPreviewUrl;
     if (senderName && (!item.senderName || item.senderName.startsWith("+") || item.senderName.startsWith("WhatsApp"))) {
@@ -880,9 +903,22 @@ async function startSocket() {
       scheduleSaveStore();
     });
 
-    sock.ev.on("messages.upsert", ({ messages = [] }) => {
-      for (const m of messages) upsertMessage(m);
+    sock.ev.on("messages.upsert", ({ messages = [], type }) => {
+      let hasNewInbound = false;
+      const nowSec = Math.floor(Date.now() / 1000);
+      for (const m of messages) {
+        upsertMessage(m);
+        if (!m?.key?.fromMe) {
+          const tsSec = Number(m?.messageTimestamp || 0);
+          if (type === "notify" || (tsSec > 0 && nowSec - tsSec < 180)) {
+            hasNewInbound = true;
+          }
+        }
+      }
       scheduleSaveStore();
+      if (hasNewInbound) {
+        scheduleReactiveTrigger();
+      }
     });
 
     sock.ev.on("messages.update", (updates = []) => {

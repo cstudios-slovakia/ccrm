@@ -26,6 +26,23 @@ try {
 // are already local to the server and do not require an HTTP token.
 $isCli = (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg');
 
+if ($isCli && !empty($argv) && is_array($argv)) {
+    foreach ($argv as $arg) {
+        if (str_starts_with((string)$arg, '--trigger-wa=')) {
+            $waAcc = trim(substr((string)$arg, strlen('--trigger-wa=')));
+            try {
+                require_once __DIR__ . '/marveen/marveen_lib.php';
+                $res = ccrm_marveen_process_event_triggers($pdo, $waAcc !== '' ? $waAcc : null);
+                echo json_encode(array_merge(['success' => true, 'mode' => 'wa_reactive_trigger'], $res));
+            } catch (Throwable $e) {
+                if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+                echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            }
+            exit;
+        }
+    }
+}
+
 if (!$isCli) {
     // The token may arrive in a header (preferred: `curl -H "X-Cron-Token: ..."`, or
     // Authorization: Bearer) or, for existing crontabs, as ?token= (VULN-07: URLs end up

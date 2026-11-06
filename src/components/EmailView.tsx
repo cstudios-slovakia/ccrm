@@ -7,7 +7,8 @@ import {
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
   CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock, MailOpen,
   Type, MessagesSquare, Inbox, Paperclip, UserPlus, ExternalLink, History, Download, FolderPlus,
-  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft, Bot, MessageCircle, QrCode, Settings, Sparkles, Terminal, Users
+  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft, Bot, MessageCircle, QrCode, Settings, Sparkles, Terminal, Users,
+  Zap, Activity, GitBranch, Play
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import type { ModuleAccess } from "../utils/permissions";
@@ -31,6 +32,7 @@ import {
   deleteAgentArtifact,
   deleteAgentSubagent,
   deleteAgentTask,
+  deleteAgentTrigger,
   getAgentConnectorState,
   getWhatsAppChats,
   inferConnectorType,
@@ -46,10 +48,14 @@ import {
   saveAgentMemory,
   saveAgentSubagent,
   saveAgentTask,
+  saveAgentTrigger,
   sendWhatsAppChatMessage,
   startWhatsAppDirectQr,
+  testAgentTrigger,
   type AgentChatMessage,
   type AgentConnectorState,
+  type AgentEventTrigger,
+  type AgentSubagent,
   type CompanyMailbox,
   type ConnectorType,
   type WhatsAppChatSummary,
@@ -447,6 +453,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
       connectorType: ConnectorType;
       isPersonal?: boolean;
       settings?: CompanyMailbox["settings"];
+      subagents?: AgentSubagent[];
+      triggers?: AgentEventTrigger[];
     }>
   >([]);
   const [selectedMailboxId, setSelectedMailboxId] = useState<string>("");
@@ -480,11 +488,37 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [newSubName, setNewSubName] = useState<string>("");
   const [newSubRole, setNewSubRole] = useState<string>("");
   const [newSubPrompt, setNewSubPrompt] = useState<string>("");
+  const [newSubHeartbeat, setNewSubHeartbeat] = useState<boolean>(false);
   const [newTaskOpen, setNewTaskOpen] = useState<boolean>(false);
   const [newTaskTitle, setNewTaskTitle] = useState<string>("");
   const [newTaskPrompt, setNewTaskPrompt] = useState<string>("");
   const [newTaskInterval, setNewTaskInterval] = useState<string>("60");
   const [newTaskSubagentId, setNewTaskSubagentId] = useState<string>("");
+
+  // Visual Trigger Studio & Event-Driven Routing State
+  const [visualTriggersOpen, setVisualTriggersOpen] = useState<boolean>(false);
+  const [wiringSource, setWiringSource] = useState<{
+    sourceType: "whatsapp" | "email" | "crm_event";
+    sourceConnectorId: string;
+    label: string;
+  } | null>(null);
+  const [triggerModalOpen, setTriggerModalOpen] = useState<boolean>(false);
+  const [triggerDraftId, setTriggerDraftId] = useState<string>("");
+  const [triggerDraftName, setTriggerDraftName] = useState<string>("");
+  const [triggerDraftSourceType, setTriggerDraftSourceType] = useState<"whatsapp" | "email" | "crm_event">("whatsapp");
+  const [triggerDraftSourceConnectorId, setTriggerDraftSourceConnectorId] = useState<string>("");
+  const [triggerDraftTargetSubagentId, setTriggerDraftTargetSubagentId] = useState<string>("");
+  const [triggerDraftChatMatch, setTriggerDraftChatMatch] = useState<string>("");
+  const [triggerDraftOnlyGroup, setTriggerDraftOnlyGroup] = useState<boolean>(false);
+  const [triggerDraftOnlyDirect, setTriggerDraftOnlyDirect] = useState<boolean>(false);
+  const [triggerDraftSubjectContains, setTriggerDraftSubjectContains] = useState<string>("");
+  const [triggerDraftFromContains, setTriggerDraftFromContains] = useState<string>("");
+  const [triggerDraftKeywordContains, setTriggerDraftKeywordContains] = useState<string>("");
+  const [triggerDraftEventType, setTriggerDraftEventType] = useState<string>("lead_created");
+  const [triggerDraftInstructions, setTriggerDraftInstructions] = useState<string>("");
+  const [triggerDraftAutoReply, setTriggerDraftAutoReply] = useState<boolean>(true);
+  const [triggerDraftEnabled, setTriggerDraftEnabled] = useState<boolean>(true);
+  const [isTestingTriggerId, setIsTestingTriggerId] = useState<string | null>(null);
 
   const loadAuthorizedAccounts = useCallback(async () => {
     const mergedMap = new Map<
@@ -496,6 +530,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
         connectorType: ConnectorType;
         isPersonal?: boolean;
         settings?: CompanyMailbox["settings"];
+        subagents?: AgentSubagent[];
+        triggers?: AgentEventTrigger[];
       }
     >();
 
@@ -522,6 +558,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
           connectorType: cType,
           isPersonal: box.id === "personal",
           settings: box.settings,
+          subagents: box.subagents,
+          triggers: box.triggers,
         });
       }
     } catch {
@@ -874,47 +912,76 @@ export const EmailView: React.FC<EmailViewProps> = ({
   );
 
   const applyAgentState = useCallback(
-    (accId: string, state: AgentConnectorState, overrideKey?: string | null) => {
+    (accId: string, state: AgentConnectorState, overrideKey?: string | null, subIdOverride?: string) => {
       setAgentStates((prev) => ({ ...prev, [accId]: state }));
+      const effectiveSubId = subIdOverride !== undefined ? subIdOverride : (state.activeAgentId && state.activeAgentId !== "main" ? state.activeAgentId : activeChatSubagentId);
+      const chatKey = effectiveSubId ? `${accId}:${effectiveSubId}` : accId;
       if (Array.isArray(state.chatHistory)) {
-        setAgentChats((prev) => ({ ...prev, [accId]: state.chatHistory }));
+        setAgentChats((prev) => ({ ...prev, [chatKey]: state.chatHistory }));
       }
+      // Keep sidebar subagents & triggers in sync
+      setAvailableAccounts((prev) =>
+        prev.map((a) =>
+          a.id === accId
+            ? {
+                ...a,
+                subagents: state.subagents ?? a.subagents,
+                triggers: state.triggers ?? a.triggers,
+              }
+            : a,
+        ),
+      );
       const keyToUse = overrideKey !== undefined ? overrideKey : selectedArtifactKey;
       if (!isMemoryDirty && keyToUse) {
         syncSelectedArtifactDraft(state, keyToUse);
       }
     },
-    [isMemoryDirty, selectedArtifactKey, syncSelectedArtifactDraft],
+    [activeChatSubagentId, isMemoryDirty, selectedArtifactKey, syncSelectedArtifactDraft],
   );
 
-  // Load persistent agent state (memory.md, artifacts, subagents, autonomous tasks, chat history)
-  // & poll read-only state every 15s to display work executed by the server cronjob (`cron.php` / `agent_cron.php`).
+  // Load persistent agent state (memory.md, artifacts, subagents, triggers, autonomous tasks, scoped chat history)
+  // & poll read-only state every 15s to display work executed by the server cronjob (`cron.php`) or reactive triggers.
   useEffect(() => {
     if (!selectedAccount || !isAgentConnector(selectedChannelType)) return;
     const accId = selectedAccount.id;
+    const subId = activeChatSubagentId || undefined;
+    const chatKey = subId ? `${accId}:${subId}` : accId;
     let cancelled = false;
 
-    setActiveChatSubagentId("");
-    setSelectedArtifactKey(null);
     setIsMemoryDirty(false);
 
-    void getAgentConnectorState(accId)
+    void getAgentConnectorState(accId, subId)
       .then((st) => {
         if (cancelled) return;
         setAgentStates((prev) => ({ ...prev, [accId]: st }));
         if (Array.isArray(st.chatHistory)) {
-          setAgentChats((prev) => ({ ...prev, [accId]: st.chatHistory }));
+          setAgentChats((prev) => ({ ...prev, [chatKey]: st.chatHistory }));
         }
-        setMemoryDraft(st.memoryMd ?? "");
+        setAvailableAccounts((prev) =>
+          prev.map((a) =>
+            a.id === accId
+              ? {
+                  ...a,
+                  subagents: st.subagents ?? a.subagents,
+                  triggers: st.triggers ?? a.triggers,
+                }
+              : a,
+          ),
+        );
+        if (!selectedArtifactKey) {
+          setMemoryDraft(subId ? (st.subagentMemoryMd ?? "") : (st.memoryMd ?? ""));
+        } else {
+          syncSelectedArtifactDraft(st, selectedArtifactKey);
+        }
       })
       .catch(() => {
         /* ignore offline/mock */
       });
 
     const syncInterval = setInterval(() => {
-      void getAgentConnectorState(accId)
+      void getAgentConnectorState(accId, subId)
         .then((st) => {
-          if (!cancelled) applyAgentState(accId, st);
+          if (!cancelled) applyAgentState(accId, st, undefined, subId || "");
         })
         .catch(() => {
           /* ignore */
@@ -925,7 +992,19 @@ export const EmailView: React.FC<EmailViewProps> = ({
       cancelled = true;
       clearInterval(syncInterval);
     };
-  }, [selectedAccount?.id, selectedChannelType]);
+  }, [selectedAccount?.id, selectedChannelType, activeChatSubagentId]);
+
+  // Preload sibling WhatsApp chats when in Agent Workspace so the Trigger Studio dropdown has live WhatsApp groups/chats
+  useEffect(() => {
+    if (!isAgentConnector(selectedChannelType)) return;
+    const waAcc = availableAccounts.find((a) => a.connectorType === "whatsapp");
+    if (!waAcc || waState) return;
+    void getWhatsAppChats(waAcc.id)
+      .then((st) => setWaState(st))
+      .catch(() => {
+        /* ignore */
+      });
+  }, [selectedChannelType, availableAccounts, waState]);
 
   const handleSelectArtifact = (key: string | null) => {
     if (!selectedAccount) return;
@@ -956,7 +1035,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
         st = await saveAgentAutonomousConfig({
           id: selectedAccount.id,
-          enabled: autoCfg?.enabled ?? true,
+          enabled: autoCfg?.enabled ?? false,
           intervalMinutes: autoCfg?.intervalMinutes ?? 15,
           instructions: memoryDraft,
         });
@@ -973,10 +1052,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
         const existingSub = (agentStates[selectedAccount.id]?.subagents ?? []).find((s) => s.id === subId);
         st = await saveAgentSubagent({
           id: selectedAccount.id,
+          subagentId: subId,
           name: existingSub?.name || subId,
           role: existingSub?.role || "Subagent",
           systemPrompt: subPromptDraft || existingSub?.systemPrompt || "",
           memoryMd: memoryDraft,
+          heartbeatEnabled: existingSub?.heartbeatEnabled ?? false,
+          heartbeatIntervalMinutes: existingSub?.heartbeatIntervalMinutes ?? 15,
+          heartbeatInstructions: existingSub?.heartbeatInstructions ?? "",
+          reactiveEnabled: existingSub?.reactiveEnabled ?? true,
         });
       } else if (selectedArtifactKey.startsWith("task:")) {
         const taskId = selectedArtifactKey.slice("task:".length);
@@ -1014,9 +1098,30 @@ export const EmailView: React.FC<EmailViewProps> = ({
       const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
       const st = await saveAgentAutonomousConfig({
         id: selectedAccount.id,
-        enabled: patch.enabled ?? autoCfg?.enabled ?? true,
+        enabled: patch.enabled ?? autoCfg?.enabled ?? false,
         intervalMinutes: patch.intervalMinutes ?? autoCfg?.intervalMinutes ?? 15,
         instructions: selectedArtifactKey === "cron:main" ? memoryDraft : autoCfg?.instructions,
+      });
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleSubagentHeartbeat = async (sub: AgentSubagent, patch: { heartbeatEnabled?: boolean; heartbeatIntervalMinutes?: number }) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentSubagent({
+        id: selectedAccount.id,
+        subagentId: sub.id,
+        name: sub.name,
+        role: sub.role,
+        systemPrompt: sub.systemPrompt,
+        memoryMd: sub.memoryMd,
+        heartbeatEnabled: patch.heartbeatEnabled ?? !(sub.heartbeatEnabled ?? false),
+        heartbeatIntervalMinutes: patch.heartbeatIntervalMinutes ?? (sub.heartbeatIntervalMinutes ?? 15),
+        heartbeatInstructions: sub.heartbeatInstructions,
+        reactiveEnabled: sub.reactiveEnabled ?? true,
       });
       applyAgentState(selectedAccount.id, st, selectedArtifactKey);
     } catch (e: unknown) {
@@ -1069,17 +1174,24 @@ export const EmailView: React.FC<EmailViewProps> = ({
         role: newSubRole.trim(),
         systemPrompt:
           newSubPrompt.trim() ||
-          `You are ${newSubName.trim()} (${newSubRole.trim()}), a specialized CCRM subagent.`,
+          `You are ${newSubName.trim()} (${newSubRole.trim()}), a specialized CCRM agent.`,
+        heartbeatEnabled: newSubHeartbeat,
+        heartbeatIntervalMinutes: 15,
+        reactiveEnabled: true,
       });
-      const createdSub = (st.subagents ?? [])[st.subagents.length - 1];
+      const createdSub = st.subagent ?? (st.subagents ?? [])[st.subagents.length - 1];
+      if (createdSub) {
+        setActiveChatSubagentId(createdSub.id);
+      }
       const nextKey = createdSub ? `subagent:${createdSub.id}` : selectedArtifactKey;
       setSelectedArtifactKey(nextKey);
-      applyAgentState(selectedAccount.id, st, nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey, createdSub?.id || "");
       setNewSubName("");
       setNewSubRole("");
       setNewSubPrompt("");
+      setNewSubHeartbeat(false);
       setNewSubagentOpen(false);
-      notify(t("Subagent created!", "Subagent vytvorený!", "Alügynök létrehozva!"));
+      notify(t("Agent created!", "Agent vytvorený!", "Ügynök létrehozva!"));
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : String(e), "error");
     }
@@ -1092,9 +1204,159 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (activeChatSubagentId === subagentId) setActiveChatSubagentId("");
       const nextKey = selectedArtifactKey === `subagent:${subagentId}` ? null : selectedArtifactKey;
       setSelectedArtifactKey(nextKey);
-      applyAgentState(selectedAccount.id, st, nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey, "");
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const openNewTriggerModal = (opts?: {
+    sourceType?: "whatsapp" | "email" | "crm_event";
+    sourceConnectorId?: string;
+    targetSubagentId?: string;
+  }) => {
+    const defaultWa = availableAccounts.find((a) => a.connectorType === "whatsapp");
+    const defaultEmail = availableAccounts.find((a) => isEmailConnector(a.connectorType));
+    const sType = opts?.sourceType ?? (defaultWa ? "whatsapp" : defaultEmail ? "email" : "crm_event");
+    const sConnId =
+      opts?.sourceConnectorId ??
+      (sType === "whatsapp" ? defaultWa?.id || "" : sType === "email" ? defaultEmail?.id || "" : "");
+
+    setTriggerDraftId("");
+    setTriggerDraftName("");
+    setTriggerDraftSourceType(sType);
+    setTriggerDraftSourceConnectorId(sConnId);
+    setTriggerDraftTargetSubagentId(opts?.targetSubagentId ?? activeChatSubagentId ?? "");
+    setTriggerDraftChatMatch("");
+    setTriggerDraftOnlyGroup(false);
+    setTriggerDraftOnlyDirect(false);
+    setTriggerDraftSubjectContains("");
+    setTriggerDraftFromContains("");
+    setTriggerDraftKeywordContains("");
+    setTriggerDraftEventType("lead_created");
+    setTriggerDraftInstructions("");
+    setTriggerDraftAutoReply(true);
+    setTriggerDraftEnabled(true);
+    setTriggerModalOpen(true);
+  };
+
+  const openEditTriggerModal = (trig: AgentEventTrigger) => {
+    setTriggerDraftId(trig.id);
+    setTriggerDraftName(trig.name || "");
+    setTriggerDraftSourceType(trig.sourceType || "whatsapp");
+    setTriggerDraftSourceConnectorId(trig.sourceConnectorId || "");
+    setTriggerDraftTargetSubagentId(trig.targetSubagentId || "");
+    setTriggerDraftChatMatch(trig.filter?.chatMatch || "");
+    setTriggerDraftOnlyGroup(Boolean(trig.filter?.onlyGroup));
+    setTriggerDraftOnlyDirect(Boolean(trig.filter?.onlyDirect));
+    setTriggerDraftSubjectContains(trig.filter?.subjectContains || "");
+    setTriggerDraftFromContains(trig.filter?.fromContains || "");
+    setTriggerDraftKeywordContains(trig.filter?.keywordContains || "");
+    setTriggerDraftEventType(trig.filter?.eventType || "lead_created");
+    setTriggerDraftInstructions(trig.instructions || "");
+    setTriggerDraftAutoReply(trig.autoReply ?? true);
+    setTriggerDraftEnabled(trig.enabled ?? true);
+    setTriggerModalOpen(true);
+  };
+
+  const handleSaveTriggerDraft = async () => {
+    if (!selectedAccount) return;
+    const autoName =
+      triggerDraftName.trim() ||
+      (triggerDraftSourceType === "whatsapp"
+        ? `WhatsApp ${triggerDraftChatMatch ? `(${triggerDraftChatMatch})` : "Auto-Responder"}`
+        : triggerDraftSourceType === "email"
+          ? `Email ${triggerDraftSubjectContains || triggerDraftFromContains || "Auto-Responder"}`
+          : `CRM Event (${triggerDraftEventType})`);
+    try {
+      const st = await saveAgentTrigger({
+        id: selectedAccount.id,
+        triggerId: triggerDraftId || undefined,
+        name: autoName,
+        sourceType: triggerDraftSourceType,
+        sourceConnectorId: triggerDraftSourceConnectorId,
+        targetSubagentId: triggerDraftTargetSubagentId || null,
+        filter: {
+          chatMatch: triggerDraftChatMatch.trim(),
+          onlyGroup: triggerDraftOnlyGroup,
+          onlyDirect: triggerDraftOnlyDirect,
+          subjectContains: triggerDraftSubjectContains.trim(),
+          fromContains: triggerDraftFromContains.trim(),
+          keywordContains: triggerDraftKeywordContains.trim(),
+          eventType: triggerDraftEventType,
+        },
+        instructions: triggerDraftInstructions.trim(),
+        autoReply: triggerDraftAutoReply,
+        enabled: triggerDraftEnabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+      setTriggerModalOpen(false);
+      setWiringSource(null);
+      notify(
+        t(
+          "Reactive event trigger saved! Zero-cost idle mode is active.",
+          "Reaktívny spúšťač uložený! Režim nulových nákladov v nečinnosti je aktívny.",
+          "Reaktív eseményindító mentve! Nulla költségű üresjárati mód aktív.",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleTriggerEnabled = async (trig: AgentEventTrigger) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentTrigger({
+        id: selectedAccount.id,
+        triggerId: trig.id,
+        name: trig.name,
+        sourceType: trig.sourceType,
+        sourceConnectorId: trig.sourceConnectorId,
+        targetSubagentId: trig.targetSubagentId,
+        filter: trig.filter,
+        instructions: trig.instructions,
+        autoReply: trig.autoReply,
+        enabled: !trig.enabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteTrigger = async (triggerId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentTrigger(selectedAccount.id, triggerId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Trigger removed.", "Spúšťač odstránený.", "Indító eltávolítva."));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleTestTrigger = async (triggerId: string) => {
+    if (!selectedAccount || isTestingTriggerId) return;
+    setIsTestingTriggerId(triggerId);
+    try {
+      const res = await testAgentTrigger(selectedAccount.id, triggerId);
+      applyAgentState(selectedAccount.id, res);
+      if (res.testResult?.ok) {
+        notify(
+          t(
+            "Trigger test executed with 50-msg / 5-day context!",
+            "Test spúšťača vykonaný s kontextom 50 správ / 5 dní!",
+            "Indító teszt végrehajtva 50 üzenet / 5 nap kontextussal!",
+          ),
+        );
+      } else {
+        notify(res.testResult?.error || t("Trigger test failed.", "Test spúšťača zlyhal.", "Indító teszt sikertelen."), "error");
+      }
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setIsTestingTriggerId(null);
     }
   };
 
@@ -1177,7 +1439,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const handleClearAgentChat = async () => {
     if (!selectedAccount) return;
     try {
-      const st = await clearAgentChatHistory(selectedAccount.id);
+      const st = await clearAgentChatHistory(selectedAccount.id, activeChatSubagentId || undefined);
       applyAgentState(selectedAccount.id, st);
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : String(e), "error");
@@ -1188,16 +1450,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
     const text = (promptText ?? agentPrompt).trim();
     if (!text || !selectedAccount || isAgentRunning) return;
     const accId = selectedAccount.id;
+    const subId = activeChatSubagentId || "";
+    const chatKey = subId ? `${accId}:${subId}` : accId;
     const userMsg: AgentChatMessage = {
       id: `u-${Date.now()}`,
       role: "user",
-      subagentId: activeChatSubagentId || null,
+      subagentId: subId || null,
       text,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
     setAgentChats((prev) => ({
       ...prev,
-      [accId]: [...(prev[accId] ?? []), userMsg],
+      [chatKey]: [...(prev[chatKey] ?? []), userMsg],
     }));
     if (!promptText) setAgentPrompt("");
     setIsAgentRunning(true);
@@ -1205,22 +1469,22 @@ export const EmailView: React.FC<EmailViewProps> = ({
       const res = await runSubscriptionAgent({
         id: accId,
         prompt: text,
-        subagentId: activeChatSubagentId || undefined,
+        subagentId: subId || undefined,
       });
       if (res.memoryMd !== undefined) {
-        applyAgentState(accId, res);
+        applyAgentState(accId, res, undefined, subId);
       } else {
         const botMsg: AgentChatMessage = {
           id: `a-${Date.now()}`,
           role: "assistant",
-          subagentId: activeChatSubagentId || null,
+          subagentId: subId || null,
           text: res.text || "Completed via CCRM MCP.",
           steps: res.steps ?? [],
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         };
         setAgentChats((prev) => ({
           ...prev,
-          [accId]: [...(prev[accId] ?? []), botMsg],
+          [chatKey]: [...(prev[chatKey] ?? []), botMsg],
         }));
       }
     } catch (e: unknown) {
@@ -1232,7 +1496,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       };
       setAgentChats((prev) => ({
         ...prev,
-        [accId]: [...(prev[accId] ?? []), errMsg],
+        [chatKey]: [...(prev[chatKey] ?? []), errMsg],
       }));
     } finally {
       setIsAgentRunning(false);
@@ -2332,40 +2596,187 @@ export const EmailView: React.FC<EmailViewProps> = ({
             availableAccounts.map((acc) => {
               const meta = PROVIDERS[acc.connectorType] ?? PROVIDERS.smtp;
               const isSelected = (selectedAccount?.id ?? "") === acc.id;
+              const isAiConn = isAgentConnector(acc.connectorType);
+              const connSubagents = agentStates[acc.id]?.subagents ?? acc.subagents ?? [];
+              const connTriggers = agentStates[acc.id]?.triggers ?? acc.triggers ?? [];
+              const connHeartbeatOn = Boolean(agentStates[acc.id]?.autonomousMode?.enabled);
+
               return (
-                <button
-                  key={acc.id}
-                  type="button"
-                  data-testid={`comm-account-${acc.id}`}
-                  onClick={() => {
-                    setSelectedMailboxId(acc.id);
-                    setSelectedEmail(null);
-                    setSelectedThreadId(null);
-                  }}
-                  className={`w-full p-2.5 rounded-2xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${meta.rowBorder} ${
-                    isSelected
-                      ? `${meta.rowBg} ${meta.accentRing} border-slate-300 shadow-xs`
-                      : "bg-white hover:bg-slate-50/90 border-slate-200/70"
-                  }`}
-                >
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
-                    <ProviderLogo type={acc.connectorType} className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className={`px-1.5 py-0.5 rounded text-micro font-bold uppercase ${meta.badgeClass}`}>
-                        {meta.label.split(" ")[0]}
-                      </span>
-                      {acc.isPersonal && (
-                        <span className="text-micro font-semibold text-slate-400">
-                          {t("Personal", "Osobný", "Személyes")}
-                        </span>
-                      )}
+                <div key={acc.id} className="space-y-1">
+                  <button
+                    type="button"
+                    data-testid={`comm-account-${acc.id}`}
+                    onClick={() => {
+                      setSelectedMailboxId(acc.id);
+                      if (isAiConn) {
+                        setActiveChatSubagentId("");
+                      } else {
+                        setSelectedEmail(null);
+                        setSelectedThreadId(null);
+                      }
+                    }}
+                    className={`w-full p-2.5 rounded-2xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${meta.rowBorder} ${
+                      isSelected
+                        ? `${meta.rowBg} ${meta.accentRing} border-slate-300 shadow-xs`
+                        : "bg-white hover:bg-slate-50/90 border-slate-200/70"
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                      <ProviderLogo type={acc.connectorType} className="w-4 h-4" />
                     </div>
-                    <div className="text-ui font-bold text-slate-900 truncate mt-0.5">{acc.name}</div>
-                    <div className="text-micro text-slate-500 font-mono truncate">{acc.address}</div>
-                  </div>
-                </button>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className={`px-1.5 py-0.5 rounded text-micro font-bold uppercase ${meta.badgeClass}`}>
+                          {meta.label.split(" ")[0]}
+                        </span>
+                        {isAiConn ? (
+                          <div className="flex items-center gap-1">
+                            {connTriggers.filter((tr) => tr.enabled).length > 0 && (
+                              <span
+                                title={t("Active reactive triggers", "Aktívne reaktívne spúšťače", "Aktív reaktív indítók")}
+                                className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-micro font-bold"
+                              >
+                                ⚡ {connTriggers.filter((tr) => tr.enabled).length}
+                              </span>
+                            )}
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedMailboxId(acc.id);
+                                setNewSubagentOpen(true);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.stopPropagation();
+                                  setSelectedMailboxId(acc.id);
+                                  setNewSubagentOpen(true);
+                                }
+                              }}
+                              title={t("Create new agent from this connection", "Vytvoriť nového agenta z tohto pripojenia", "Új ügynök létrehozása ebből a kapcsolatból")}
+                              className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-micro font-bold"
+                            >
+                              + {t("Agent", "Agent", "Ügynök")}
+                            </span>
+                          </div>
+                        ) : (
+                          acc.isPersonal && (
+                            <span className="text-micro font-semibold text-slate-400">
+                              {t("Personal", "Osobný", "Személyes")}
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <div className="text-ui font-bold text-slate-900 truncate mt-0.5">{acc.name}</div>
+                      <div className="text-micro text-slate-500 font-mono truncate">{acc.address}</div>
+                    </div>
+                  </button>
+
+                  {/* Multi-Agent Tree under AI Connection */}
+                  {isAiConn && (isSelected || connSubagents.length > 0) && (
+                    <div className="pl-3.5 pr-1 py-0.5 space-y-1 border-l-2 border-indigo-100 ml-4">
+                      {/* Main Agent */}
+                      <button
+                        type="button"
+                        data-testid={`comm-agent-${acc.id}-main`}
+                        onClick={() => {
+                          setSelectedMailboxId(acc.id);
+                          setActiveChatSubagentId("");
+                          setVisualTriggersOpen(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                          isSelected && activeChatSubagentId === "" && !visualTriggersOpen
+                            ? "bg-indigo-50/90 border-indigo-300 text-indigo-950 font-bold shadow-2xs"
+                            : "bg-slate-50/70 hover:bg-slate-100/80 border-slate-200/60 text-slate-700"
+                        }`}
+                      >
+                        <span className="text-micro truncate flex items-center gap-1.5">
+                          <Sparkles size={11} className="text-indigo-600 shrink-0" />
+                          <span className="truncate">{t("Main Agent", "Hlavný agent", "Fő ügynök")}</span>
+                        </span>
+                        <span className="flex items-center gap-1 shrink-0">
+                          {connTriggers.some((tr) => tr.enabled && (!tr.targetSubagentId || tr.targetSubagentId === "main")) && (
+                            <span title={t("Reactive trigger active", "Reaktívny spúšťač aktívny", "Reaktív indító aktív")} className="text-micro">
+                              ⚡
+                            </span>
+                          )}
+                          {connHeartbeatOn && (
+                            <span title={t("Heartbeat active", "Heartbeat aktívny", "Heartbeat aktív")} className="text-micro">
+                              💓
+                            </span>
+                          )}
+                        </span>
+                      </button>
+
+                      {/* Created Independent Agents from this Connection */}
+                      {connSubagents.map((sub) => {
+                        const subActive = isSelected && activeChatSubagentId === sub.id && !visualTriggersOpen;
+                        const subHasTrig = connTriggers.some((tr) => tr.enabled && tr.targetSubagentId === sub.id);
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            data-testid={`comm-agent-${acc.id}-${sub.id}`}
+                            onClick={() => {
+                              setSelectedMailboxId(acc.id);
+                              setActiveChatSubagentId(sub.id);
+                              setVisualTriggersOpen(false);
+                            }}
+                            className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                              subActive
+                                ? "bg-amber-50/95 border-amber-300 text-amber-950 font-bold shadow-2xs"
+                                : "bg-white hover:bg-amber-50/40 border-slate-200/70 text-slate-700"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-micro font-bold truncate flex items-center gap-1">
+                                <Bot size={11} className="text-amber-600 shrink-0" />
+                                <span className="truncate">{sub.name}</span>
+                              </div>
+                              <div className="text-micro text-slate-400 truncate pl-4">{sub.role}</div>
+                            </div>
+                            <span className="flex items-center gap-1 shrink-0">
+                              {subHasTrig && (
+                                <span title={t("Reactive trigger active", "Reaktívny spúšťač aktívny", "Reaktív indító aktív")} className="text-micro">
+                                  ⚡
+                                </span>
+                              )}
+                              {sub.heartbeatEnabled && (
+                                <span title={t("Heartbeat active", "Heartbeat aktívny", "Heartbeat aktív")} className="text-micro">
+                                  💓
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Quick Visual Triggers Studio launcher under connection */}
+                      <button
+                        type="button"
+                        data-testid={`comm-agent-triggers-${acc.id}`}
+                        onClick={() => {
+                          setSelectedMailboxId(acc.id);
+                          setVisualTriggersOpen(true);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                          isSelected && visualTriggersOpen
+                            ? "bg-amber-500 text-white border-amber-600 font-bold shadow-2xs"
+                            : "bg-amber-50/60 hover:bg-amber-100/70 border-amber-200/80 text-amber-900 font-semibold"
+                        }`}
+                      >
+                        <span className="text-micro truncate flex items-center gap-1.5">
+                          <Zap size={11} className="shrink-0" />
+                          <span className="truncate">{t("Visual Triggers", "Vizuálne spúšťače", "Vizuális indítók")}</span>
+                        </span>
+                        <span className="text-micro px-1.5 py-0.2 rounded-full bg-black/10 font-bold">
+                          {connTriggers.length}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })
           )}
@@ -2814,14 +3225,17 @@ export const EmailView: React.FC<EmailViewProps> = ({
           {(() => {
             const meta = PROVIDERS[selectedChannelType] ?? PROVIDERS.claude;
             const accId = selectedAccount?.id || "";
-            const history = agentChats[accId] ?? [];
+            const chatKey = activeChatSubagentId ? `${accId}:${activeChatSubagentId}` : accId;
+            const history = agentChats[chatKey] ?? [];
             const st = agentStates[accId];
             const artifactsList = st?.artifacts ?? [];
-            const subagents = st?.subagents ?? [];
+            const subagents = st?.subagents ?? selectedAccount?.subagents ?? [];
+            const triggersList = st?.triggers ?? selectedAccount?.triggers ?? [];
             const autonomousTasks = st?.tasks ?? [];
             const activeSubagentObj = subagents.find((s) => s.id === activeChatSubagentId) ?? null;
             const siblingWaAccount =
               availableAccounts.find((a) => a.connectorType === "whatsapp") ?? null;
+            const siblingEmailAccounts = availableAccounts.filter((a) => isEmailConnector(a.connectorType));
 
             const isArtSelected = Boolean(selectedArtifactKey);
             const selectedSubObj =
@@ -2837,16 +3251,616 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 ? artifactsList.find((a) => `artifact:${a.id}` === selectedArtifactKey) ?? null
                 : null;
 
+            const activeHeartbeatEnabled = activeSubagentObj
+              ? Boolean(activeSubagentObj.heartbeatEnabled)
+              : Boolean(st?.autonomousMode?.enabled);
+            const activeHeartbeatInterval = activeSubagentObj
+              ? (activeSubagentObj.heartbeatIntervalMinutes ?? 15)
+              : (st?.autonomousMode?.intervalMinutes ?? 15);
+            const activeTriggersForCurrentAgent = triggersList.filter((tr) =>
+              activeSubagentObj
+                ? tr.targetSubagentId === activeSubagentObj.id
+                : !tr.targetSubagentId || tr.targetSubagentId === "main",
+            );
+
             return (
               <>
-                {/* CENTER AREA: 100% CHAT WHEN NO ARTIFACT SELECTED, 50/50 SPLIT WHEN ARTIFACT SELECTED */}
+                {/* CENTER AREA: VISUAL TRIGGER STUDIO OR (100% CHAT / 50-50 SPLIT WITH ARTIFACT EDITOR) */}
                 <div
                   data-testid="agent-center-split-container"
                   className={`flex-1 min-w-0 grid grid-cols-1 ${
-                    isArtSelected ? "ws-lg:grid-cols-2" : "ws-lg:grid-cols-1"
+                    !visualTriggersOpen && isArtSelected ? "ws-lg:grid-cols-2" : "ws-lg:grid-cols-1"
                   } gap-4 h-full max-h-full overflow-hidden`}
                 >
-                  {/* LEFT HALF (OR FULL WIDTH): AGENT CHAT CARD */}
+                  {visualTriggersOpen ? (
+                    /* VISUAL TRIGGER STUDIO (REACTIVE EVENT-DRIVEN WIRING CANVAS) */
+                    <div
+                      data-testid="visual-trigger-studio"
+                      className="glass-panel rounded-3xl border border-amber-300/80 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                    >
+                      {/* Studio Header */}
+                      <div className="px-5 py-3.5 border-b border-amber-200/70 bg-gradient-to-r from-amber-500/10 via-indigo-500/5 to-emerald-500/10 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                            <Zap size={18} />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-900 border border-amber-300/70 text-micro font-bold uppercase">
+                                {t("Visual Trigger Studio", "Štúdio vizuálnych spúšťačov", "Vizuális Indító Stúdió")}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-800 border border-emerald-300/60 text-micro font-bold">
+                                💰 {t("$0 Idle Cost (Event-Driven)", "$0 v nečinnosti (Riadené udalosťami)", "$0 üresjárati költség (Eseményvezérelt)")}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-800 border border-indigo-300/60 text-micro font-bold">
+                                📚 {t("Context: Last 50 msgs ∪ 5 days (16k cap)", "Kontext: Posledných 50 správ ∪ 5 dní (16k limit)", "Kontextus: Utolsó 50 üzenet ∪ 5 nap (16k limit)")}
+                              </span>
+                            </div>
+                            <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
+                              {t(
+                                "Connect WhatsApp, Email & CRM Events to your AI Agents",
+                                "Prepojte WhatsApp, E-mail a CRM udalosti s vašimi AI agentmi",
+                                "Kösse össze a WhatsApp, E-mail és CRM eseményeket AI ügynökeivel",
+                              )}
+                            </h3>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            data-testid="new-visual-trigger-btn"
+                            onClick={() => openNewTriggerModal()}
+                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          >
+                            <Plus size={13} /> {t("New Trigger Wire", "Nové prepojenie", "Új indító kapcsolat")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVisualTriggersOpen(false);
+                              setWiringSource(null);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                          >
+                            ← {t("Back to Chat", "Späť na chat", "Vissza a csevegéshez")}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Interactive Wiring Banner when a Source is selected */}
+                      {wiringSource && (
+                        <div className="px-5 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-2 text-caption text-amber-900 font-semibold shrink-0">
+                          <span className="flex items-center gap-2">
+                            <Zap size={14} className="text-amber-600 animate-pulse" />
+                            {t("Source selected:", "Vybraný zdroj:", "Kiválasztott forrás:")}{" "}
+                            <strong className="px-2 py-0.5 rounded bg-white border border-amber-300">
+                              {wiringSource.label}
+                            </strong>{" "}
+                            ➔{" "}
+                            {t(
+                              "Now click any Target Agent on the right to connect them!",
+                              "Teraz kliknite na ľubovoľného cieľového agenta vpravo pre ich prepojenie!",
+                              "Most kattintson bármelyik cél ügynökre jobb oldalon az összekötéshez!",
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setWiringSource(null)}
+                            className="text-micro font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                          >
+                            {t("Cancel", "Zrušiť", "Mégse")}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 3-Column Visual Wiring Canvas */}
+                      <div className="flex-1 min-h-0 overflow-y-auto p-5 grid grid-cols-1 ws-lg:grid-cols-12 gap-5 items-start">
+                        {/* COLUMN 1 (4 cols): SOURCE CONNECTIONS */}
+                        <div className="ws-lg:col-span-4 space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-micro font-bold uppercase tracking-wider text-slate-500">
+                              1. {t("Source Connections (Triggers)", "Zdrojové pripojenia (Spúšťače)", "Forrás kapcsolatok (Indítók)")}
+                            </span>
+                            <span className="text-micro text-slate-400">
+                              {t("Click to wire ➔", "Kliknite pre prepojenie ➔", "Kattintson a bekötéshez ➔")}
+                            </span>
+                          </div>
+
+                          {/* WhatsApp Sources */}
+                          {availableAccounts
+                            .filter((a) => a.connectorType === "whatsapp")
+                            .map((waAcc) => {
+                              const isWiring =
+                                wiringSource?.sourceType === "whatsapp" && wiringSource.sourceConnectorId === waAcc.id;
+                              const linkedCount = triggersList.filter(
+                                (tr) => tr.sourceType === "whatsapp" && (!tr.sourceConnectorId || tr.sourceConnectorId === waAcc.id),
+                              ).length;
+                              return (
+                                <button
+                                  key={waAcc.id}
+                                  type="button"
+                                  data-testid={`trigger-source-whatsapp-${waAcc.id}`}
+                                  onClick={() =>
+                                    setWiringSource(
+                                      isWiring
+                                        ? null
+                                        : {
+                                            sourceType: "whatsapp",
+                                            sourceConnectorId: waAcc.id,
+                                            label: `WhatsApp · ${waAcc.name}`,
+                                          },
+                                    )
+                                  }
+                                  className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                    isWiring
+                                      ? "bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400/40 shadow-sm"
+                                      : "bg-white hover:bg-emerald-50/40 border-emerald-200/80 shadow-2xs"
+                                  }`}
+                                >
+                                  <span className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <MessageCircle size={18} />
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-micro font-bold uppercase">
+                                        WhatsApp
+                                      </span>
+                                      {linkedCount > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-micro font-bold">
+                                          {linkedCount} {t("wired", "prepojené", "bekötve")}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-caption font-bold text-slate-900 truncate mt-1">{waAcc.name}</div>
+                                    <div className="text-micro text-slate-500 font-mono truncate">{waAcc.address}</div>
+                                    <div className="mt-1.5 text-micro text-emerald-700 font-semibold">
+                                      ⚡ {t("Fires on new group or direct message", "Spustí sa pri novej skupinovej alebo priamej správe", "Új csoportos vagy közvetlen üzenetkor indul")}
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+
+                          {/* Email Sources */}
+                          {siblingEmailAccounts.map((emAcc) => {
+                            const isWiring =
+                              wiringSource?.sourceType === "email" && wiringSource.sourceConnectorId === emAcc.id;
+                            const linkedCount = triggersList.filter(
+                              (tr) => tr.sourceType === "email" && tr.sourceConnectorId === emAcc.id,
+                            ).length;
+                            return (
+                              <button
+                                key={emAcc.id}
+                                type="button"
+                                data-testid={`trigger-source-email-${emAcc.id}`}
+                                onClick={() =>
+                                  setWiringSource(
+                                    isWiring
+                                      ? null
+                                      : {
+                                          sourceType: "email",
+                                          sourceConnectorId: emAcc.id,
+                                          label: `Email · ${emAcc.name}`,
+                                        },
+                                  )
+                                }
+                                className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                  isWiring
+                                    ? "bg-pink-50 border-pink-500 ring-2 ring-pink-400/40 shadow-sm"
+                                    : "bg-white hover:bg-pink-50/40 border-slate-200/90 shadow-2xs"
+                                }`}
+                              >
+                                <span className="w-9 h-9 rounded-xl bg-pink-500/15 text-pink-700 flex items-center justify-center shrink-0">
+                                  <Mail size={18} />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="px-1.5 py-0.5 rounded bg-pink-100 text-pink-800 text-micro font-bold uppercase">
+                                      {emAcc.connectorType.toUpperCase()}
+                                    </span>
+                                    {linkedCount > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-pink-600 text-white text-micro font-bold">
+                                        {linkedCount} {t("wired", "prepojené", "bekötve")}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-caption font-bold text-slate-900 truncate mt-1">{emAcc.name}</div>
+                                  <div className="text-micro text-slate-500 font-mono truncate">{emAcc.address}</div>
+                                  <div className="mt-1.5 text-micro text-pink-700 font-semibold">
+                                    ⚡ {t("Fires when a new email arrives in INBOX", "Spustí sa pri príchode nového e-mailu do INBOXu", "Új beérkező e-mail esetén indul")}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+
+                          {/* CRM System Events Source */}
+                          <button
+                            type="button"
+                            data-testid="trigger-source-crm-event"
+                            onClick={() =>
+                              setWiringSource(
+                                wiringSource?.sourceType === "crm_event"
+                                  ? null
+                                  : {
+                                      sourceType: "crm_event",
+                                      sourceConnectorId: "crm",
+                                      label: t("CRM System Event", "Systémová udalosť CRM", "CRM Rendszeresemény"),
+                                    },
+                              )
+                            }
+                            className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                              wiringSource?.sourceType === "crm_event"
+                                ? "bg-indigo-50 border-indigo-500 ring-2 ring-indigo-400/40 shadow-sm"
+                                : "bg-white hover:bg-indigo-50/40 border-slate-200/90 shadow-2xs"
+                            }`}
+                          >
+                            <span className="w-9 h-9 rounded-xl bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
+                              <Activity size={18} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-micro font-bold uppercase">
+                                  CRM EVENT
+                                </span>
+                              </div>
+                              <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                {t("Leads, Projects & Tickets", "Príležitosti, Projekty a Tikety", "Érdeklődők, Projektek és Jegyek")}
+                              </div>
+                              <div className="mt-1 text-micro text-indigo-700 font-semibold">
+                                ⚡ {t("Fires when a CRM record is created", "Spustí sa pri vytvorení CRM záznamu", "CRM rekord létrehozásakor indul")}
+                              </div>
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* COLUMN 2 (4 cols): ACTIVE VISUAL WIRES & EVENT ROUTING */}
+                        <div className="ws-lg:col-span-4 space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-micro font-bold uppercase tracking-wider text-slate-500">
+                              2. {t("Active Trigger Wires", "Aktívne prepojenia", "Aktív indító kapcsolatok")} ({triggersList.length})
+                            </span>
+                          </div>
+
+                          {triggersList.length === 0 ? (
+                            <div className="p-6 rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50/30 text-center space-y-2.5">
+                              <GitBranch size={24} className="mx-auto text-amber-500" />
+                              <div className="text-caption font-bold text-slate-800">
+                                {t("No reactive triggers wired yet", "Zatiaľ žiadne reaktívne spúšťače", "Még nincs bekötött reaktív indító")}
+                              </div>
+                              <p className="text-micro text-slate-500 leading-relaxed">
+                                {t(
+                                  "Click a Source Connection on the left and a Target Agent on the right (or click + New Trigger Wire) so your agent wakes up automatically only when a message arrives.",
+                                  "Kliknite na zdroj vľavo a cieľového agenta vpravo (alebo na + Nové prepojenie), aby sa váš agent prebudil iba pri príchode správy.",
+                                  "Kattintson egy forrásra bal oldalon és egy cél ügynökre jobb oldalon, hogy az ügynök csak üzenet érkezésekor ébredjen fel ($0 üresjárati költség).",
+                                )}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => openNewTriggerModal()}
+                                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold cursor-pointer"
+                              >
+                                + {t("Create First Trigger", "Vytvoriť prvý spúšťač", "Első indító létrehozása")}
+                              </button>
+                            </div>
+                          ) : (
+                            triggersList.map((trig) => {
+                              const targetSub = subagents.find((s) => s.id === trig.targetSubagentId);
+                              const sourceAcc = availableAccounts.find((a) => a.id === trig.sourceConnectorId);
+                              const filterSummary =
+                                trig.sourceType === "whatsapp"
+                                  ? trig.filter?.chatMatch
+                                    ? `Chat: ${trig.filter.chatMatch}`
+                                    : trig.filter?.onlyGroup
+                                      ? t("All Groups", "Všetky skupiny", "Minden csoport")
+                                      : trig.filter?.onlyDirect
+                                        ? t("Direct Chats", "Priame chaty", "Közvetlen csevegések")
+                                        : t("Any WhatsApp Chat", "Akýkoľvek WhatsApp chat", "Bármely WhatsApp csevegés")
+                                  : trig.sourceType === "email"
+                                    ? trig.filter?.subjectContains || trig.filter?.fromContains || t("All New Emails", "Všetky nové e-maily", "Minden új e-mail")
+                                    : trig.filter?.eventType || "lead_created";
+
+                              return (
+                                <div
+                                  key={trig.id}
+                                  data-testid={`trigger-wire-card-${trig.id}`}
+                                  className={`p-3.5 rounded-2xl border transition-all space-y-2.5 ${
+                                    trig.enabled
+                                      ? "bg-white border-amber-300/90 shadow-xs"
+                                      : "bg-slate-50/80 border-slate-200 opacity-75"
+                                  }`}
+                                >
+                                  {/* Top Row: Source ➔ Bezier Wire SVG ➔ Target Agent */}
+                                  <div className="flex items-center justify-between gap-1.5">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-lg text-micro font-bold truncate max-w-[40%] ${
+                                        trig.sourceType === "whatsapp"
+                                          ? "bg-emerald-100 text-emerald-900"
+                                          : trig.sourceType === "email"
+                                            ? "bg-pink-100 text-pink-900"
+                                            : "bg-indigo-100 text-indigo-900"
+                                      }`}
+                                    >
+                                      {trig.sourceType === "whatsapp"
+                                        ? `💬 ${sourceAcc?.name || "WhatsApp"}`
+                                        : trig.sourceType === "email"
+                                          ? `✉️ ${sourceAcc?.name || "Email"}`
+                                          : "⚡ CRM"}
+                                    </span>
+
+                                    {/* Animated Bezier Wire SVG */}
+                                    <svg width="46" height="16" viewBox="0 0 46 16" className="shrink-0 overflow-visible">
+                                      <path
+                                        d="M 2 8 C 16 1, 30 15, 44 8"
+                                        fill="none"
+                                        stroke={trig.enabled ? "#f59e0b" : "#94a3b8"}
+                                        strokeWidth="2"
+                                        strokeDasharray={trig.enabled ? "4 2" : undefined}
+                                      />
+                                      <circle cx="44" cy="8" r="3" fill={trig.enabled ? "#f59e0b" : "#94a3b8"} />
+                                    </svg>
+
+                                    <span className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-950 border border-amber-300 text-micro font-bold truncate max-w-[42%]">
+                                      🤖 {targetSub ? targetSub.name : t("Main Agent", "Hlavný agent", "Fő ügynök")}
+                                    </span>
+                                  </div>
+
+                                  {/* Trigger Title & Filter Pill */}
+                                  <div>
+                                    <div className="text-caption font-bold text-slate-900">{trig.name}</div>
+                                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-micro font-mono">
+                                        {filterSummary}
+                                      </span>
+                                      {trig.autoReply && (
+                                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold">
+                                          ↩ Auto-Reply
+                                        </span>
+                                      )}
+                                      <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-micro font-semibold">
+                                        50 msgs / 5d
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {trig.instructions && (
+                                    <div className="text-micro text-slate-600 line-clamp-2 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100">
+                                      {trig.instructions}
+                                    </div>
+                                  )}
+
+                                  {/* Footer Actions */}
+                                  <div className="pt-1 border-t border-slate-100 flex items-center justify-between gap-2">
+                                    <span className="text-micro text-slate-400 font-mono">
+                                      ⚡ {trig.triggerCount ?? 0}×
+                                      {trig.lastStatus ? ` · ${trig.lastStatus}` : ""}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleTestTrigger(trig.id)}
+                                        disabled={isTestingTriggerId === trig.id}
+                                        title={t("Test trigger now with real 50-msg / 5-day conversation context", "Otestovať spúšťač teraz", "Indító tesztelése most")}
+                                        className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-micro font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                                      >
+                                        {isTestingTriggerId === trig.id ? (
+                                          <Loader2 size={11} className="animate-spin" />
+                                        ) : (
+                                          <Play size={11} />
+                                        )}
+                                        {t("Test", "Test", "Teszt")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditTriggerModal(trig)}
+                                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                                      >
+                                        {t("Edit", "Upraviť", "Szerk.")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleToggleTriggerEnabled(trig)}
+                                        className={`px-2 py-1 rounded-lg text-micro font-bold cursor-pointer ${
+                                          trig.enabled
+                                            ? "bg-emerald-600 text-white"
+                                            : "bg-slate-200 text-slate-600"
+                                        }`}
+                                      >
+                                        {trig.enabled ? t("On", "Zap.", "Be") : t("Off", "Vyp.", "Ki")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleDeleteTrigger(trig.id)}
+                                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* COLUMN 3 (4 cols): TARGET AI AGENTS (MULTIPLE AGENTS PER AI CONNECTION) */}
+                        <div className="ws-lg:col-span-4 space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-micro font-bold uppercase tracking-wider text-slate-500">
+                              3. {t("Target AI Agents", "Cieľoví AI agenti", "Cél AI Ügynökök")} ({subagents.length + 1})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setNewSubagentOpen(true)}
+                              className="text-micro font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                            >
+                              + {t("Create Agent", "Vytvoriť agenta", "Ügynök létrehozása")}
+                            </button>
+                          </div>
+
+                          {/* Main Agent Target Card */}
+                          <div
+                            data-testid="trigger-target-main-agent"
+                            onClick={() => {
+                              if (wiringSource) {
+                                openNewTriggerModal({
+                                  sourceType: wiringSource.sourceType,
+                                  sourceConnectorId: wiringSource.sourceConnectorId,
+                                  targetSubagentId: "",
+                                });
+                              }
+                            }}
+                            className={`p-3.5 rounded-2xl border transition-all space-y-2 ${
+                              wiringSource
+                                ? "bg-indigo-50/70 hover:bg-indigo-100/80 border-indigo-400 cursor-pointer shadow-xs"
+                                : "bg-white border-slate-200 shadow-2xs"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
+                                  <Sparkles size={16} />
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="text-caption font-bold text-slate-900 truncate">
+                                    ✦ {selectedAccount?.name} ({t("Main Agent", "Hlavný agent", "Fő ügynök")})
+                                  </div>
+                                  <div className="text-micro text-slate-500 truncate">{meta.label}</div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openNewTriggerModal({
+                                    sourceType: wiringSource?.sourceType,
+                                    sourceConnectorId: wiringSource?.sourceConnectorId,
+                                    targetSubagentId: "",
+                                  });
+                                }}
+                                className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold shrink-0 cursor-pointer"
+                              >
+                                ⚡ {t("Wire Trigger", "Prepojiť", "Bekötés")}
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-micro">
+                              <span className="text-slate-500">
+                                ⚡ {triggersList.filter((tr) => !tr.targetSubagentId || tr.targetSubagentId === "main").length}{" "}
+                                {t("reactive triggers", "reaktívnych spúšťačov", "reaktív indító")}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleUpdateAutonomousCron({
+                                    enabled: !(st?.autonomousMode?.enabled ?? false),
+                                  });
+                                }}
+                                className={`px-2 py-0.5 rounded-lg font-bold cursor-pointer ${
+                                  st?.autonomousMode?.enabled
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-slate-100 text-slate-500"
+                                }`}
+                              >
+                                💓 {t("Heartbeat:", "Heartbeat:", "Heartbeat:")}{" "}
+                                {st?.autonomousMode?.enabled ? `${st.autonomousMode.intervalMinutes ?? 15}m` : t("Off ($0)", "Vyp. ($0)", "Ki ($0)")}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Independent Agents Created Under This Connection */}
+                          {subagents.map((sub) => {
+                            const subTrigs = triggersList.filter((tr) => tr.targetSubagentId === sub.id);
+                            return (
+                              <div
+                                key={sub.id}
+                                data-testid={`trigger-target-agent-${sub.id}`}
+                                onClick={() => {
+                                  if (wiringSource) {
+                                    openNewTriggerModal({
+                                      sourceType: wiringSource.sourceType,
+                                      sourceConnectorId: wiringSource.sourceConnectorId,
+                                      targetSubagentId: sub.id,
+                                    });
+                                  }
+                                }}
+                                className={`p-3.5 rounded-2xl border transition-all space-y-2 ${
+                                  wiringSource
+                                    ? "bg-amber-50/80 hover:bg-amber-100/80 border-amber-400 cursor-pointer shadow-xs"
+                                    : "bg-white border-slate-200 shadow-2xs"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
+                                      <Bot size={16} />
+                                    </span>
+                                    <div className="min-w-0">
+                                      <div className="text-caption font-bold text-slate-900 truncate">{sub.name}</div>
+                                      <div className="text-micro text-amber-700 truncate">{sub.role}</div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openNewTriggerModal({
+                                          sourceType: wiringSource?.sourceType,
+                                          sourceConnectorId: wiringSource?.sourceConnectorId,
+                                          targetSubagentId: sub.id,
+                                        });
+                                      }}
+                                      className="px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold cursor-pointer"
+                                    >
+                                      ⚡ {t("Wire", "Prepojiť", "Bekötés")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveChatSubagentId(sub.id);
+                                        setVisualTriggersOpen(false);
+                                      }}
+                                      title={t("Open Agent Chat", "Otvoriť chat agenta", "Ügynök csevegés megnyitása")}
+                                      className="px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                                    >
+                                      💬
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-micro">
+                                  <span className="text-slate-500">
+                                    ⚡ {subTrigs.length} {t("reactive triggers", "reaktívnych spúšťačov", "reaktív indító")}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handleToggleSubagentHeartbeat(sub, {
+                                        heartbeatEnabled: !sub.heartbeatEnabled,
+                                      });
+                                    }}
+                                    className={`px-2 py-0.5 rounded-lg font-bold cursor-pointer ${
+                                      sub.heartbeatEnabled
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-slate-100 text-slate-500"
+                                    }`}
+                                  >
+                                    💓 {t("Heartbeat:", "Heartbeat:", "Heartbeat:")}{" "}
+                                    {sub.heartbeatEnabled ? `${sub.heartbeatIntervalMinutes ?? 15}m` : t("Off ($0)", "Vyp. ($0)", "Ki ($0)")}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                  /* LEFT HALF (OR FULL WIDTH): AGENT CHAT CARD */
                   <div
                     data-testid="agent-chat-pane"
                     className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
@@ -2879,27 +3893,64 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 <MessageCircle size={11} /> {siblingWaAccount.name}
                               </button>
                             )}
+                            {/* Dual Mode Indicator & Toggle: Reactive Triggers + Heartbeat */}
+                            <button
+                              type="button"
+                              data-testid="toggle-visual-triggers-btn"
+                              onClick={() => setVisualTriggersOpen((v) => !v)}
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold shadow-2xs transition-colors cursor-pointer"
+                            >
+                              <Zap size={11} />
+                              {t("Visual Triggers", "Vizuálne spúšťače", "Vizuális Indítók")} ({triggersList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activeSubagentObj) {
+                                  void handleToggleSubagentHeartbeat(activeSubagentObj, {
+                                    heartbeatEnabled: !activeSubagentObj.heartbeatEnabled,
+                                  });
+                                } else {
+                                  handleSelectArtifact("cron:main");
+                                }
+                              }}
+                              title={t(
+                                "Heartbeat Mode (periodic cron vs $0 idle reactive mode)",
+                                "Režim Heartbeat (periodický cron vs $0 nečinný reaktívny režim)",
+                                "Heartbeat mód (időszakos cron vs $0 üresjárati reaktív mód)",
+                              )}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold border transition-colors cursor-pointer ${
+                                activeHeartbeatEnabled
+                                  ? "bg-emerald-500/15 text-emerald-800 border-emerald-300"
+                                  : "bg-white/80 text-slate-600 border-slate-200 hover:bg-slate-100"
+                              }`}
+                            >
+                              💓 {activeHeartbeatEnabled ? `${activeHeartbeatInterval}m` : t("Heartbeat Off ($0)", "Heartbeat Vyp. ($0)", "Heartbeat Ki ($0)")}
+                            </button>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate">
-                              {selectedAccount?.name}
+                              {activeSubagentObj ? `🤖 ${activeSubagentObj.name}` : selectedAccount?.name}
                             </h3>
-                            {subagents.length > 0 && (
-                              <select
-                                value={activeChatSubagentId}
-                                onChange={(e) => setActiveChatSubagentId(e.target.value)}
-                                aria-label={t("Active agent or subagent", "Aktívny agent alebo subagent", "Aktív ügynök vagy alügynök")}
-                                className="px-2 py-0.5 rounded-lg bg-white/90 border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
-                              >
-                                <option value="">
-                                  {t("Main Agent", "Hlavný agent", "Fő ügynök")}
+                            <select
+                              value={activeChatSubagentId}
+                              onChange={(e) => setActiveChatSubagentId(e.target.value)}
+                              aria-label={t("Active agent or subagent", "Aktívny agent alebo subagent", "Aktív ügynök vagy alügynök")}
+                              className="px-2 py-0.5 rounded-lg bg-white/90 border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
+                            >
+                              <option value="">
+                                ✦ {t("Main Agent", "Hlavný agent", "Fő ügynök")} ({selectedAccount?.name})
+                              </option>
+                              {subagents.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  🤖 {s.name} ({s.role})
                                 </option>
-                                {subagents.map((s) => (
-                                  <option key={s.id} value={s.id}>
-                                    🤖 {s.name}
-                                  </option>
-                                ))}
-                              </select>
+                              ))}
+                            </select>
+                            {activeTriggersForCurrentAgent.length > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-micro font-bold">
+                                ⚡ {activeTriggersForCurrentAgent.length} {t("trigger(s)", "spúšťač(e)", "indító")}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -3105,6 +4156,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       </button>
                     </div>
                   </div>
+                  )}
 
                   {/* RIGHT HALF OF CENTER (50% WIDTH): ARTIFACT CONTENT EDITOR (SHOWN WHEN AN ARTIFACT IS SELECTED) */}
                   {isArtSelected && (
@@ -3191,16 +4243,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 type="button"
                                 onClick={() =>
                                   void handleUpdateAutonomousCron({
-                                    enabled: !(st?.autonomousMode?.enabled ?? true),
+                                    enabled: !Boolean(st?.autonomousMode?.enabled),
                                   })
                                 }
                                 className={`px-2.5 py-1.5 rounded-xl text-micro font-bold cursor-pointer ${
-                                  (st?.autonomousMode?.enabled ?? true)
+                                  Boolean(st?.autonomousMode?.enabled)
                                     ? "bg-emerald-600 text-white"
                                     : "bg-amber-50 text-amber-700"
                                 }`}
                               >
-                                {(st?.autonomousMode?.enabled ?? true)
+                                {Boolean(st?.autonomousMode?.enabled)
                                   ? t("Cron Active", "Cron aktívny", "Cron aktív")
                                   : t("Paused", "Pozastavené", "Szünetel")}
                               </button>
@@ -3568,11 +4620,77 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       )}
                     </div>
 
+                    {/* Section 2b: Reactive Event Triggers */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <div className="px-1 flex items-center justify-between">
+                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                          ⚡ {t("Reactive Triggers", "Reaktívne spúšťače", "Reaktív triggerek")} ({(st?.triggers || []).length})
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setVisualTriggersOpen(true)}
+                            className="text-micro font-bold text-indigo-700 hover:text-indigo-800 cursor-pointer"
+                          >
+                            {t("Studio", "Štúdio", "Stúdió")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openNewTriggerModal("whatsapp", undefined, activeChatSubagentId)}
+                            className="text-micro font-bold text-violet-700 hover:text-violet-800 cursor-pointer"
+                          >
+                            + {t("Add", "Pridať", "Hozzáadás")}
+                          </button>
+                        </div>
+                      </div>
+
+                      {(st?.triggers || []).length === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => openNewTriggerModal("whatsapp", undefined, activeChatSubagentId)}
+                          className="w-full px-3 py-2 rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 hover:bg-violet-50/70 text-left text-micro text-violet-700 font-semibold cursor-pointer transition-all"
+                        >
+                          ⚡ {t("Connect WhatsApp, Email or CRM event ($0 idle cost)", "Prepojiť WhatsApp, e-mail alebo CRM udalosť ($0 nečinné náklady)", "WhatsApp, e-mail vagy CRM esemény bekötése ($0 üresjárati költség)")}
+                        </button>
+                      ) : (
+                        (st?.triggers || []).map((tr) => (
+                          <button
+                            key={tr.id}
+                            type="button"
+                            onClick={() => openEditTriggerModal(tr)}
+                            className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                              tr.enabled
+                                ? "bg-violet-50/70 hover:bg-violet-50 border-violet-200 text-slate-800"
+                                : "bg-slate-50 border-slate-100 text-slate-400"
+                            }`}
+                          >
+                            <span className="w-7 h-7 rounded-xl bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
+                              <Zap size={13} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-caption font-bold truncate">{tr.name}</div>
+                              <div className="text-micro text-violet-700 truncate">
+                                {tr.sourceType === "whatsapp"
+                                  ? `WhatsApp${tr.filter?.chatMatch ? ` · ${tr.filter.chatMatch}` : ""}`
+                                  : tr.sourceType === "email"
+                                    ? "Email"
+                                    : `CRM · ${tr.filter?.eventType || "event"}`}
+                                {" → "}
+                                {tr.targetAgentId === "main"
+                                  ? "Main"
+                                  : subagents.find((s) => s.id === tr.targetAgentId)?.name || tr.targetAgentId}
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
                     {/* Section 3: Autonomous Loop (Cronjob) */}
                     <div className="space-y-1.5 pt-2 border-t border-slate-100">
                       <div className="px-1 flex items-center justify-between">
                         <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
-                          {t("Autonomous Cron", "Autonómny Cron", "Autonóm Cron")}
+                          💓 {t("Heartbeat Cron", "Heartbeat Cron", "Heartbeat Cron")}
                         </span>
                         <button
                           type="button"
@@ -3603,9 +4721,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </div>
                           <div className="text-micro text-emerald-700 truncate">
                             {t("Every", "Každých", "Minden")} {st?.autonomousMode?.intervalMinutes ?? 15}m ·{" "}
-                            {(st?.autonomousMode?.enabled ?? true)
+                            {Boolean(st?.autonomousMode?.enabled)
                               ? t("Cron Active", "Cron aktívny", "Cron aktív")
-                              : t("Paused", "Pozastavené", "Szünetel")}
+                              : t("Paused ($0 idle)", "Pozastavené ($0)", "Szünetel ($0)")}
                           </div>
                         </div>
                       </button>
@@ -3689,6 +4807,363 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* REACTIVE TRIGGER CONFIGURATION MODAL */}
+                {triggerModalOpen && (
+                  <div
+                    data-testid="agent-trigger-modal"
+                    className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-xs flex items-center justify-center p-4"
+                    onClick={() => setTriggerModalOpen(false)}
+                  >
+                    <div
+                      className="w-full max-w-xl rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-violet-50/80 via-indigo-50/50 to-white flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-2xl bg-violet-600 text-white flex items-center justify-center shadow-xs">
+                            <Zap size={17} />
+                          </span>
+                          <div>
+                            <div className="text-title-sm font-heading font-bold text-slate-900">
+                              {editingTriggerId
+                                ? t("Edit Reactive Event Trigger", "Upraviť reaktívny spúšťač", "Reaktív trigger szerkesztése")
+                                : t("New Reactive Event Trigger", "Nový reaktívny spúšťač", "Új reaktív esemény trigger")}
+                            </div>
+                            <div className="text-micro text-slate-500">
+                              {t(
+                                "Runs the agent immediately when an event matches ($0 idle cost)",
+                                "Spustí agenta okamžite pri zhode udalosti ($0 pri nečinnosti)",
+                                "Azonnal futtatja az ügynököt esemény egyezésekor ($0 üresjárati költség)",
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setTriggerModalOpen(false)}
+                          className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+
+                      <div className="p-6 overflow-y-auto space-y-4">
+                        {/* Trigger Name */}
+                        <div>
+                          <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            {t("Trigger Name", "Názov spúšťača", "Trigger neve")}
+                          </label>
+                          <input
+                            type="text"
+                            data-testid="trigger-name-input"
+                            value={triggerDraftName}
+                            onChange={(e) => setTriggerDraftName(e.target.value)}
+                            placeholder={t(
+                              "e.g. Managment Cstudios Haiku Auto-Reply",
+                              "napr. Automatická odpoveď WhatsApp",
+                              "pl. Managment Cstudios Haiku válaszoló",
+                            )}
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 text-body text-slate-800 focus:outline-none focus:border-violet-500"
+                          />
+                        </div>
+
+                        {/* Source Type & Target Agent */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                              1. {t("Event Source", "Zdroj udalosti", "Esemény forrása")}
+                            </label>
+                            <select
+                              data-testid="trigger-source-type-select"
+                              value={triggerDraftSourceType}
+                              onChange={(e) => {
+                                const nextType = e.target.value as "whatsapp" | "email" | "crm_event";
+                                setTriggerDraftSourceType(nextType);
+                                if (nextType === "whatsapp") {
+                                  const waAcc = accounts.find((a) => getChannelKind(a) === "whatsapp");
+                                  setTriggerDraftSourceAccountId(waAcc?.id || "");
+                                } else if (nextType === "email") {
+                                  const emAcc = accounts.find((a) => getChannelKind(a) === "email");
+                                  setTriggerDraftSourceAccountId(emAcc?.id || "");
+                                } else {
+                                  setTriggerDraftSourceAccountId("");
+                                }
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-body font-semibold text-slate-800"
+                            >
+                              <option value="whatsapp">💬 WhatsApp Message</option>
+                              <option value="email">✉️ Incoming Email</option>
+                              <option value="crm_event">🔔 CRM Event (Lead / Project / Task)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                              2. {t("Target Agent", "Cieľový agent", "Cél ügynök")}
+                            </label>
+                            <select
+                              data-testid="trigger-target-agent-select"
+                              value={triggerDraftTargetAgentId}
+                              onChange={(e) => setTriggerDraftTargetAgentId(e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl bg-violet-50/70 border border-violet-200 text-body font-bold text-violet-950"
+                            >
+                              <option value="main">✦ {selectedAccount?.name} (Main Agent)</option>
+                              {subagents.map((sub) => (
+                                <option key={sub.id} value={sub.id}>
+                                  🤖 {sub.name} ({sub.role})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Source Account Picker (for WhatsApp or Email) */}
+                        {triggerDraftSourceType !== "crm_event" && (
+                          <div>
+                            <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                              {triggerDraftSourceType === "whatsapp"
+                                ? t("WhatsApp Connection", "WhatsApp spojenie", "WhatsApp kapcsolat")
+                                : t("Email Mailbox", "E-mailová schránka", "E-mail postafiók")}
+                            </label>
+                            <select
+                              value={triggerDraftSourceAccountId}
+                              onChange={(e) => setTriggerDraftSourceAccountId(e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-caption font-semibold text-slate-800"
+                            >
+                              <option value="">
+                                {t("Any connected channel", "Akýkoľvek pripojený kanál", "Bármely csatlakoztatott csatorna")}
+                              </option>
+                              {accounts
+                                .filter((a) => getChannelKind(a) === triggerDraftSourceType)
+                                .map((acc) => (
+                                  <option key={acc.id} value={acc.id}>
+                                    {acc.name} ({acc.email})
+                                  </option>
+                                ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Source-Specific Filters */}
+                        {triggerDraftSourceType === "whatsapp" && (
+                          <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200/80 space-y-3">
+                            <div className="text-micro font-bold uppercase tracking-wider text-emerald-800">
+                              💬 {t("WhatsApp Conversation Filter", "Filter konverzácie WhatsApp", "WhatsApp beszélgetés szűrő")}
+                            </div>
+
+                            {waState?.chats && waState.chats.length > 0 && (
+                              <div>
+                                <label className="block text-micro font-semibold text-emerald-900 mb-1">
+                                  {t("Quick-pick synced WhatsApp chat / group:", "Rýchly výber chatu / skupiny:", "Szinkronizált csoport / chat gyorsválasztó:")}
+                                </label>
+                                <select
+                                  value=""
+                                  onChange={(e) => {
+                                    if (e.target.value) setTriggerDraftChatMatch(e.target.value);
+                                  }}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                >
+                                  <option value="">
+                                    {t("— Select a WhatsApp chat or group —", "— Vyberte chat alebo skupinu —", "— Válassz WhatsApp chatet vagy csoportot —")}
+                                  </option>
+                                  {waState.chats.map((c) => (
+                                    <option key={c.id} value={c.name || c.id}>
+                                      {c.isGroup ? "👥 " : "👤 "}
+                                      {c.name} ({c.id})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-micro font-semibold text-emerald-900 mb-1">
+                                  {t("Chat / Group Name or JID contains", "Názov chatu / skupiny obsahuje", "Chat / Csoport neve vagy JID tartalmazza")}
+                                </label>
+                                <input
+                                  type="text"
+                                  data-testid="trigger-chat-match-input"
+                                  value={triggerDraftChatMatch}
+                                  onChange={(e) => setTriggerDraftChatMatch(e.target.value)}
+                                  placeholder={t("e.g. Managment Cstudios (blank = all)", "napr. Managment Cstudios", "pl. Managment Cstudios (üres = mind)")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-micro font-semibold text-emerald-900 mb-1">
+                                  {t("Message Keyword Filter (optional)", "Kľúčové slovo v správe", "Üzenet kulcsszó szűrő (opcionális)")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={triggerDraftKeyword}
+                                  onChange={(e) => setTriggerDraftKeyword(e.target.value)}
+                                  placeholder={t("Any message if blank", "Akákoľvek správa ak prázdne", "Üresen minden üzenet")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-4 pt-1">
+                              <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-emerald-900 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={triggerDraftOnlyGroup}
+                                  onChange={(e) => {
+                                    setTriggerDraftOnlyGroup(e.target.checked);
+                                    if (e.target.checked) setTriggerDraftOnlyDirect(false);
+                                  }}
+                                />
+                                {t("Only Group Chats (@g.us)", "Iba skupinové chaty", "Csak csoportos chatek (@g.us)")}
+                              </label>
+                              <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-emerald-900 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={triggerDraftOnlyDirect}
+                                  onChange={(e) => {
+                                    setTriggerDraftOnlyDirect(e.target.checked);
+                                    if (e.target.checked) setTriggerDraftOnlyGroup(false);
+                                  }}
+                                />
+                                {t("Only Direct 1-on-1 Chats", "Iba priame 1-na-1 správy", "Csak privát 1-1 beszélgetések")}
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        {triggerDraftSourceType === "email" && (
+                          <div className="p-3.5 rounded-2xl bg-sky-50/60 border border-sky-200/80 space-y-2.5">
+                            <div className="text-micro font-bold uppercase tracking-wider text-sky-800">
+                              ✉️ {t("Incoming Email Filter", "Filter prichádzajúcich e-mailov", "Bejövő e-mail szűrő")}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-micro font-semibold text-sky-900 mb-1">
+                                  {t("Sender (From) contains", "Odosielateľ obsahuje", "Feladó tartalmazza")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={triggerDraftFromContains}
+                                  onChange={(e) => setTriggerDraftFromContains(e.target.value)}
+                                  placeholder={t("e.g. @client.com (blank = all)", "napr. @klient.sk", "pl. @ugyfel.hu (üres = mind)")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-caption text-slate-800"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-micro font-semibold text-sky-900 mb-1">
+                                  {t("Subject contains", "Predmet obsahuje", "Tárgy tartalmazza")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={triggerDraftSubjectContains}
+                                  onChange={(e) => setTriggerDraftSubjectContains(e.target.value)}
+                                  placeholder={t("e.g. Quote / Urgent (blank = all)", "napr. Dopyt", "pl. Árajánlat (üres = mind)")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-caption text-slate-800"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {triggerDraftSourceType === "crm_event" && (
+                          <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2">
+                            <label className="block text-micro font-bold uppercase tracking-wider text-amber-800">
+                              🔔 {t("CRM Event Type", "Typ CRM udalosti", "CRM esemény típusa")}
+                            </label>
+                            <select
+                              value={triggerDraftEventType}
+                              onChange={(e) => setTriggerDraftEventType(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-xl bg-white border border-amber-200 text-caption font-semibold text-slate-800"
+                            >
+                              <option value="lead_created">✨ New Lead Created (lead_created)</option>
+                              <option value="project_created">🚀 New Project Created (project_created)</option>
+                              <option value="ticket_created">🎫 New Support Ticket Created (ticket_created)</option>
+                              <option value="task_created">✅ New Task Created (task_created)</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Full Conversation Context Window Badge */}
+                        <div className="px-3.5 py-2.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 flex items-center justify-between gap-2 text-micro text-indigo-950">
+                          <span className="font-semibold">
+                            📚 {t(
+                              "Full Conversation History: Agent automatically receives the last 50 messages AND at least the last 5 days of history (capped at 16,000 chars).",
+                              "Plná história konverzácie: Agent automaticky dostane posledných 50 správ A aspoň posledných 5 dní histórie (limit 16 000 znakov).",
+                              "Teljes beszélgetési előzmény: Az ügynök automatikusan megkapja az utolsó 50 üzenetet ÉS legalább az elmúlt 5 nap üzeneteit (16 000 karakteres limittel).",
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Agent Instructions when Triggered */}
+                        <div>
+                          <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            3. {t("Instructions for the Agent when Triggered", "Pokyny pre agenta pri spustení", "Utasítások az ügynök számára aktiváláskor")}
+                          </label>
+                          <textarea
+                            rows={3}
+                            data-testid="trigger-instructions-textarea"
+                            value={triggerDraftInstructions}
+                            onChange={(e) => setTriggerDraftInstructions(e.target.value)}
+                            placeholder={t(
+                              "e.g. Read the full conversation context and reply in a Hungarian haiku (5-7-5) to the latest message.",
+                              "napr. Prečítaj si celú konverzáciu a odpovedz na najnovšiu správu.",
+                              "pl. Olvasd el a teljes beszélgetést, és válaszolj magyar haikuban (5-7-5) a legújabb üzenetre.",
+                            )}
+                            className="w-full p-3 rounded-2xl bg-slate-50 focus:bg-white border border-slate-200 text-caption text-slate-800 focus:outline-none focus:border-violet-500"
+                          />
+                        </div>
+
+                        {/* Auto-Reply Toggle */}
+                        <label className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-violet-50/50 border border-violet-200/70 cursor-pointer">
+                          <div>
+                            <div className="text-caption font-bold text-slate-900">
+                              {t(
+                                "Authorize Automatic Reply Tools (send_whatsapp_message / send_email_reply)",
+                                "Povoliť nástroje automatickej odpovede",
+                                "Automatikus válasz eszközök engedélyezése (send_whatsapp_message / send_email_reply)",
+                              )}
+                            </div>
+                            <div className="text-micro text-slate-500">
+                              {t(
+                                "Includes loop-protection so the agent never replies to its own messages.",
+                                "Zahŕňa ochranu proti slučkám, aby agent nikdy neodpovedal na vlastné správy.",
+                                "Végtelen ciklus elleni védelemmel (az ügynök sosem válaszol a saját üzenetére).",
+                              )}
+                            </div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={triggerDraftAutoReply}
+                            onChange={(e) => setTriggerDraftAutoReply(e.target.checked)}
+                            className="w-4 h-4 accent-violet-600"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setTriggerModalOpen(false)}
+                          className="px-4 py-2 rounded-xl text-caption font-semibold text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+                        >
+                          {t("Cancel", "Zrušiť", "Mégse")}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="save-agent-trigger-btn"
+                          onClick={() => void handleSaveTriggerDraft()}
+                          className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-caption font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Zap size={13} />
+                          {editingTriggerId
+                            ? t("Save Trigger", "Uložiť spúšťač", "Trigger mentése")
+                            : t("Connect Trigger", "Prepojiť spúšťač", "Trigger bekötése")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             );
           })()}
