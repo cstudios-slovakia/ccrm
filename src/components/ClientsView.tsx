@@ -2277,7 +2277,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       recorder.onstop = async () => {
         setIsUploadingAudio(true);
-        const ext = mimeType.split("/")[1] || "webm";
+        const ext = mimeType.split(";")[0].split("/")[1] || "webm";
         const blob = new Blob(chunks, { type: mimeType });
         const localUrl = URL.createObjectURL(blob);
         localAudioUrlRef.current = localUrl;

@@ -93,7 +93,11 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
     try {
         if ($db !== null) {
             if ($meetingExists) {
-                $stmt = $db->prepare("UPDATE `meeting_notes` SET `audio_file` = ? WHERE `id` = ?");
+                // `updated_at = updated_at` keeps the row's stamp: sync.php treats a row
+                // newer than the client's last sync as someone else's edit and refuses
+                // the client's next push of that note ("changes were not saved").
+                // The client re-sends this same audio path itself, so nothing is lost.
+                $stmt = $db->prepare("UPDATE `meeting_notes` SET `audio_file` = ?, `updated_at` = `updated_at` WHERE `id` = ?");
                 $stmt->execute([$filePath, $meetingId]);
             } elseif (strpos($meetingId, 'note_event_') === 0) {
                 // A voice note recorded onto a lead/client timeline entry. The
@@ -102,7 +106,11 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
                 // there is no meeting to file it under, and creating a stub row
                 // here left a phantom "Untitled Note" meeting after every recording.
             } else {
-                $stmt = $db->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `duration`, `notes`, `audio_file`) VALUES (?, ?, ?, ?, ?, ?)");
+                // The stub is stamped long ago on purpose: with a fresh stamp it would
+                // be "newer than the client's last sync", and the client's first real
+                // push of this note (title, notes) would be refused as a conflict,
+                // leaving the empty "Untitled Note" as the stored version.
+                $stmt = $db->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `duration`, `notes`, `audio_file`, `updated_at`) VALUES (?, ?, ?, ?, ?, ?, '2000-01-01 00:00:00')");
                 $stmt->execute([
                     $meetingId,
                     'Untitled Note',
