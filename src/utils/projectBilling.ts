@@ -1,6 +1,6 @@
 import type { FinancialRecord, Lead, Project, ProjectType } from "../types";
 import { isMoneyValueEmpty, parseMoneyValue } from "./currency.ts";
-import { splitRecordAmounts } from "./financialOverviewTable.ts";
+import { movementAmounts } from "./financialOverviewTable.ts";
 
 const cents = (n: number) => Math.round(n * 100) / 100;
 const positive = (raw: unknown): number => {
@@ -68,15 +68,16 @@ export interface ProjectBilling {
  * (cancelled = 0/0, partially paid = paid part + unpaid rest), so this page can
  * never disagree with the Finance module.
  *
- * A recurring income rule counts as one row, as it does on the project's
- * invoice table.
+ * A recurring income rule adds nothing of its own: its payments are stored as
+ * movements (`recurringRuleDeletion.ts`), and the rule row counts only when it
+ * holds a legacy payment the schedule does not account for (`movementAmounts`).
  */
 export function projectBilling(value: number, records: FinancialRecord[], projectId: string): ProjectBilling {
   let received = 0;
   let invoicedOpen = 0;
   for (const r of records) {
     if (r.projectId !== projectId || r.type !== "income") continue;
-    const { real, estimated } = splitRecordAmounts(r);
+    const { real, estimated } = movementAmounts(r);
     received += real;
     invoicedOpen += estimated;
   }

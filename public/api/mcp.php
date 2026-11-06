@@ -977,7 +977,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'list_expenses',
-            'description' => 'Query recorded business expenses.',
+            'description' => 'Query recorded business expenses (stored movements; recurring rules are listed by list_recurring_movements).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -2205,7 +2205,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return mcp_do_update_invoice_status($pdo, $user, $args);
 
         case 'list_expenses':
-            $where = ["type = 'expense'"];
+            // A recurring rule is not an expense of its own: its payments are stored rows.
+            $where = ["type = 'expense'", "is_recurring = 0"];
             $params = [];
 
             if (!empty($args['category_id'])) {

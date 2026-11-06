@@ -152,6 +152,27 @@ export function recurringOwnRowCharge(
   return { date, real, estimated };
 }
 
+/**
+ * Whether a stored record is a movement of money in its own right. A recurring
+ * rule is not: its payments are stored as movements of their own
+ * (`recurringRuleDeletion.ts`), and only its future is calculated. The finance
+ * counterpart of `ccrm_sql_real_tasks()`; in SQL it is `is_recurring = 0`.
+ */
+export const isRealMovement = (rec: Pick<FinancialRecord, "isRecurring">): boolean => !rec.isRecurring;
+
+/**
+ * What a stored record adds when movements are summed outside Finance's own
+ * tables (project billing, client and project pages): a one-off split by its
+ * status, a recurring rule only through `recurringOwnRowCharge` (a legacy
+ * payment on its own row), never as one more charge next to the payments it
+ * has stored.
+ */
+export function movementAmounts(rec: FinancialRecord): { real: number; estimated: number } {
+  if (isRealMovement(rec)) return splitRecordAmounts(rec);
+  const own = recurringOwnRowCharge(rec);
+  return own ? { real: own.real, estimated: own.estimated } : { real: 0, estimated: 0 };
+}
+
 export interface OverviewTableAggregate {
   /** `cells[rowId][columnId]`, with every category holding its own and its descendants' movements. */
   cells: Record<string, Record<string, OverviewCell>>;

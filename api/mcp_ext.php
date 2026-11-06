@@ -411,6 +411,18 @@ function mcp_fin_recurring_own_row(array $rec): ?array {
     return ['date' => $date, 'real' => $real, 'estimated' => $est];
 }
 
+/**
+ * movementAmounts: what a stored record adds when movements are summed outside the
+ * finance tables. A one-off is split by its status; a recurring rule only through
+ * its own row (a legacy payment the schedule does not account for), never as one
+ * more charge next to the payments it has stored. Real movements in SQL: is_recurring = 0.
+ */
+function mcp_fin_movement_split(array $rec): array {
+    if (empty($rec['isRecurring'])) return mcp_fin_split($rec);
+    $own = mcp_fin_recurring_own_row($rec);
+    return $own ? [(float)$own['real'], (float)$own['estimated']] : [0.0, 0.0];
+}
+
 function mcp_fin_categories(\PDO $pdo): array {
     $rows = $pdo->query("SELECT id, type, name, parent_id, level, sort_order, color FROM financial_categories ORDER BY sort_order ASC, name ASC")->fetchAll(\PDO::FETCH_ASSOC);
     $by = [];
@@ -649,7 +661,7 @@ function mcp_project_value(\PDO $pdo, array $p, array &$ctx): float {
 function mcp_project_billing(float $value, array $incomeRecords): array {
     $received = 0.0; $open = 0.0;
     foreach ($incomeRecords as $r) {
-        [$real, $est] = mcp_fin_split($r);
+        [$real, $est] = mcp_fin_movement_split($r);
         $received += $real;
         $open += $est;
     }
@@ -982,7 +994,8 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
             $recs = mcp_fin_load($pdo, implode(' AND ', $where), $params, "$dateExpr DESC, id DESC", $limit + $offset);
             $recs = array_slice($recs, $offset);
             return array_map(function ($r) {
-                [$real, $est] = mcp_fin_split($r);
+                // A recurring rule is listed, but it is not money of its own: its payments are stored rows.
+                [$real, $est] = mcp_fin_movement_split($r);
                 return [
                     'id' => $r['id'], 'type' => $r['type'], 'subtype' => $r['subtype'], 'title' => $r['title'],
                     'status' => $r['status'], 'category_id' => $r['categoryId'], 'project_id' => $r['projectId'], 'client_id' => $r['clientId'],

@@ -888,6 +888,8 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $expenseByCat = [];
 
                 foreach ($finRecords as $fr) {
+                    // A recurring rule is not money of its own: its payments are stored rows.
+                    if ((int)($fr['is_recurring'] ?? 0) === 1) continue;
                     $amtReal = (float)($fr['amount_real'] ?? 0);
                     $amtPlan = (float)($fr['amount_planned'] ?? 0);
                     $type = $fr['type'];
