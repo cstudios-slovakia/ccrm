@@ -53,10 +53,10 @@ silently auditing another branch. Set `QA_REUSE_SERVER=1` to reuse a server
 already on the QA port.
 
 **One run per machine.** The runner takes a machine-wide lock
-(`%TEMP%\ccrm-qa-run.lock`), waits for 1.5 GB of free RAM and for its port, sizes
+(`%TEMP%\ccrm-qa-run.lock`), needs 1.5 GB of free RAM and its port, sizes
 its workers to what is free (1, or 2 above 4 GB), and caps the whole run at 15
-minutes scoped / 45 full. A second run prints `Waiting: …` and starts when the
-first ends. Never kill the other run, sweep by port, or take another `QA_PORT`
+minutes scoped / 45 full. If any of that is missing the run is skipped at once
+with exit 2 (`QA run skipped: …`) - it never waits. Never kill the other run, sweep by port, or take another `QA_PORT`
 to run beside it — several concurrent runs on one 16 GB machine is exactly what
 produced hung runs and phantom findings. In a shared worktree prefer
 `--files <your files>` or `--module`, since the automatic diff scopes to every
@@ -81,8 +81,8 @@ Environment switches:
 
 - `QA_FAIL_ON=CRITICAL|HIGH|MEDIUM|LOW|NEVER` - severity that fails the run (default `HIGH`).
 - `QA_WORKERS=n` - parallel workers (default 1, or 2 when at least 4 GB of RAM is free).
-- `QA_MIN_FREE_MB=n` - free RAM a run waits for before starting (default 1536; 0 in CI).
-- `QA_WAIT_MIN=n` - how long to queue behind another run, low memory or a busy port (default 30).
+- `QA_MIN_FREE_MB=n` - free RAM a run needs to start, else it is skipped (default 1536; 0 in CI).
+- `QA_WAIT_MIN=n` - minutes to queue behind another run, low memory or a busy port (default 0: skip at once).
 - `QA_GLOBAL_TIMEOUT_MS=n` - ceiling on the whole run (default 15 min scoped, 45 min full).
 - `QA_MAX_CORES=n` - hard CPU ceiling; browsers are pinned to `n` cores (default: half the machine, `0` disables).
 - `QA_VIDEO=1` - record video. Off by default: playwright records *every* test to
@@ -253,7 +253,7 @@ When asked to test the app, audit buttons, or check for UI errors:
    start one unprompted after every change. If you think a full run is
    warranted and the user did not ask for one, say so and let them decide.
 
-1. Run `QA_WAIT_MIN=10 node scripts/qa/run-qa.mjs --files <files you changed>`
+1. Run `node scripts/qa/run-qa.mjs --files <files you changed>`
    (add `npm run test:qa:setup` first if Chromium is missing). Exit 2 (not
    admitted) means commit with a `QA: pending` line instead of waiting; exit 3
    means you forgot `--files`. See `.agents/rules/qa-before-ship.md`.

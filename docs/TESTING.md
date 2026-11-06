@@ -92,7 +92,7 @@ prints why (the forcing files and the base) and exits with code 3 without
 starting a browser. This covers `npm test` too. Agents pass `--files`.
 
 **Exit codes:** `0` passed or nothing to test, `1` defects or failed tests,
-`2` not admitted (lock, RAM or port wait timed out), `3` refused a full run.
+`2` not admitted (lock held, low RAM or port busy; skipped at once by default), `3` refused a full run.
 
 **`QA: pending`.** A session that cannot get a verdict (exit 2, a cut-off call,
 or "skip QA") commits with a `QA: pending` line in the message body.
@@ -123,20 +123,23 @@ vanished on a quiet machine. So `scripts/qa/run-qa.mjs` now admits one run at a
 time:
 
 - It takes a **machine-wide lock** (`%TEMP%\ccrm-qa-run.lock`, shared by every
-  worktree and every session). A second run prints `Waiting: another QA run is
-  live: PID …` and starts when the first one ends - usually within minutes.
-- It waits until at least **1.5 GB of RAM is free** (`QA_MIN_FREE_MB`), and until
-  its port is not held by a server it did not start.
+  worktree and every session). A second run is **skipped at once** (exit 2,
+  `QA run skipped: another QA run is live: PID …`) instead of queueing.
+- It needs at least **1.5 GB of RAM free** (`QA_MIN_FREE_MB`) and its port not
+  held by a server it did not start; otherwise it is skipped the same way.
 - It runs **1 worker** unless at least 4 GB is free, then 2. `QA_WORKERS`
   overrides.
 - The whole run is capped: **15 minutes scoped, 45 full** (or when the scope
   includes the per-module crawler or dark-mode sweep)
   (`QA_GLOBAL_TIMEOUT_MS`). A run that needs longer is starved, not thorough.
-- It gives up after `QA_WAIT_MIN` minutes (default 30) with exit code 2 and
-  runs nothing, rather than start a run whose findings would be noise. Agents
-  set `QA_WAIT_MIN=10` and commit with `QA: pending` instead of waiting longer.
+- It checks once and never waits by default (`QA_WAIT_MIN=0`): with several
+  agent sessions on the machine, queueing only meant each of them idled for the
+  whole wait and then usually gave up anyway. A skipped run is committed with
+  `QA: pending` and covered later by `npm run test:qa:pending`. A human who wants
+  to queue sets `QA_WAIT_MIN=n`, and the runner then prints `Waiting: …` and
+  retries for up to n minutes.
 
-When you see `Waiting:`, wait. Do not kill the other run, do not sweep
+When a run is skipped, do not retry in a loop, kill the other run, sweep
 processes by port, and do not take a different `QA_PORT` to squeeze in beside
 it - that is the overload the lock exists to prevent. On exit or Ctrl+C the
 runner kills its own process tree, so nothing is left behind to sweep.
@@ -147,8 +150,8 @@ runner kills its own process tree, so nothing is left behind to sweep.
 |---|---|---|
 | `QA_FAIL_ON` | `HIGH` | Severity that fails the run. `CRITICAL`/`HIGH`/`MEDIUM`/`LOW`/`NEVER`. |
 | `QA_WORKERS` | `1`, or `2` when ≥ 4 GB RAM is free | Parallel workers; one is one Chromium. Never more than 2 by default. |
-| `QA_MIN_FREE_MB` | `1536` (`0` in CI) | Free RAM a run waits for before starting. |
-| `QA_WAIT_MIN` | `30` | How long to queue behind another run, low memory or a busy port before giving up. |
+| `QA_MIN_FREE_MB` | `1536` (`0` in CI) | Free RAM a run needs to start; below it the run is skipped (exit 2). |
+| `QA_WAIT_MIN` | `0` | Minutes to queue behind another run, low memory or a busy port. `0` skips at once. |
 | `QA_GLOBAL_TIMEOUT_MS` | 15 min scoped, 45 min full | Ceiling on the whole run. |
 | `QA_MAX_CORES` | half the machine | Hard CPU ceiling; browsers are pinned to that many cores. `0` disables. |
 | `QA_VIDEO` | off | `QA_VIDEO=1` records video (one `ffmpeg` per worker). Traces already show failures. |
@@ -514,9 +517,9 @@ icon card for any module whose image is missing.
 | Touched how `sync.php`/`api/*.php` stores or reads back a field | `npm run test:persistence` — GET-after-POST against the local Docker backend (see 5c) |
 | Touched the MCP gateway (`public/api/mcp*.php`) or a formula it ports | `npm run test:mcp` — roles, field stripping, TS↔PHP parity and write paths on a scratch database (see 5d) |
 | Touched permissions, `read_scope.php`, or who may read or write what on the server | `npm run test:rbac` - per-role read and write checks against a scratch database (see 5e) |
-| **Finished a feature or a fix** | **`QA_WAIT_MIN=10 node scripts/qa/run-qa.mjs --files <your files>`** — agents always pass `--files`; the automatic diff scopes to everyone's changes |
+| **Finished a feature or a fix** | **`node scripts/qa/run-qa.mjs --files <your files>`** — agents always pass `--files`; the automatic diff scopes to everyone's changes |
 | QA could not run (exit 2, cut off, told to skip) | commit with a `QA: pending` line; the batch is `npm run test:qa:pending` |
-| Another run is live (`Waiting:` printed) | nothing — it queues and starts when the other run ends |
+| Another run is live, or RAM is low (`QA run skipped:`) | exit 2: commit with `QA: pending`; do not retry in a loop |
 | Changed only pure logic in `src/utils` | `npm run test:unit` is enough; the scoped run adds only the shell tests |
 | You want everything run, on purpose | `npm run test:qa:full` — **ask the user first; don't default to this** |
 | About to deploy | automatic — `npm run deploy` gates on it (may run the full suite) |

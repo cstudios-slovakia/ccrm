@@ -29,7 +29,7 @@
  * tests. Agents pass `--files`.
  *
  * Exit codes: 0 passed or nothing to test, 1 defects or failed tests,
- * 2 not admitted (lock/RAM/port wait timed out), 3 refused a full run.
+ * 2 not admitted (lock held, low RAM or port busy; skipped at once unless QA_WAIT_MIN is set), 3 refused a full run.
  *
  * Only one run per machine. Several editor sessions share this machine and
  * each of them follows the same "test when finished" rule, so runs used to
