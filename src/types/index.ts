@@ -249,6 +249,25 @@ export interface ClientCategory {
   updatedAt?: string;
 }
 
+/**
+ * A price-offer category — the same tree as ClientCategory (up to three levels,
+ * a colour, a hand-set position among siblings), kept as its own list so offers
+ * are filed independently of the finance and customer trees. Offers carry one
+ * through InvoiceOffer.categoryId.
+ */
+export interface OfferCategory {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  level: 1 | 2 | 3;
+  /** Position among the siblings under the same parent, lowest first. */
+  sortOrder?: number;
+  color?: string | null;
+  icon?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Appointment {
   id: string;
   clientName: string;
@@ -1179,6 +1198,8 @@ export interface InvoiceOffer {
   dueDate?: string | null; // YYYY-MM-DD
   fileName?: string | null;
   filePath?: string | null;
+  /** offer_categories.id a price offer is filed under; null = no category. */
+  categoryId?: string | null;
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string | null;

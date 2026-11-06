@@ -562,6 +562,18 @@ Individual line items attached to a movement document.
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
+### `offer_categories`
+3-level price-offer category tree: the same shape as the customer category tree (`client_categories`) without a type split, kept as its own list so offers are filed independently of the finance and customer trees. Synced as `offerCategories`, gated by the `invoices` permission. Edited in Settings → Offers & invoicing → Offer categories; an offer carries one in `invoices_offers.category_id`.
+* `id` VARCHAR(50) [PK] (e.g. `oc-1731000000000-ab3de`)
+* `name` VARCHAR(150)
+* `parent_id` VARCHAR(50) [NULLable, `offer_categories.id` of the parent; NULL = main category. Not a foreign key]
+* `level` INT (1 = Root/Main category, 2 = Subcategory, 3 = Sub-subcategory)
+* `sort_order` INT (Position among the siblings under the same parent, lowest first; set by drag & drop)
+* `color` VARCHAR(30) [NULLable] (Hex code; a subcategory without one inherits its parent's)
+* `icon` VARCHAR(50) [NULLable] (Lucide icon name)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
 ### `financial_records`
 Core financial movement records representing current and planned/future incomes, invoices, and expenses (single and recurring).
 * `id` VARCHAR(50) [PK] (e.g. `fr-2026-0001`)
@@ -600,6 +612,7 @@ Price offers, proformas and invoices in one table (`type`), with their line item
 * `type` ENUM('price_offer', 'proforma', 'invoice')
 * `status` VARCHAR(50) (was an ENUM until 1.12.70). For a **price offer** it is a key of the configurable `OFFER_STATUSES` setting (Price offers → Settings → Offer statuses); code reasons about the status's *group* (`draft`, `open`, `won`, `lost`, `cancelled`), never the key. Proformas and invoices keep the fixed built-ins `draft`, `sent`, `approved`, `rejected`, `invoiced`, `cancelled`. An unknown key must still render (raw, neutral badge).
 * `status_changed_at` DATE [NULLable] (Day the status last changed, client-stamped)
+* `category_id` VARCHAR(50) [NULLable] (References `offer_categories.id`; the category a price offer is filed under, NULL = none. Not a foreign key: deleting a category (with its subtree) makes the app set `category_id` to NULL on its offers and push them alongside. A client that sends no `categoryId` leaves the stored value untouched)
 
 The `OFFER_STATUSES` setting (in `system_settings`) is a JSON list of `{key, label?, color, group, legacy?}`, normalized by `ccrm_normalize_offer_statuses()` (PHP) and `normalizeOfferStatusDefs()` (`src/utils/offerStatuses.ts`). Unset means the six built-ins; `invoiced` is built in as a `legacy` status (won, kept for offers that carry it, not offered in a picker).
 

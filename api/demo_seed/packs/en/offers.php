@@ -34,9 +34,19 @@ return [
         'desk' => ['name' => 'Reception desk in quartz, made to measure', 'unit' => 'pcs'],
         'counter' => ['name' => 'Outdoor kitchen counter, sintered stone', 'unit' => 'pcs'],
     ],
+    // Price-offer categories (a 2-level tree); a price offer names its category by key.
+    'categories' => [
+        'worktops' => ['name' => 'Worktops & kitchens', 'parent' => null, 'level' => 1, 'color' => '#10b981', 'icon' => 'Home'],
+        'cladding' => ['name' => 'Cladding & floors', 'parent' => null, 'level' => 1, 'color' => '#3b82f6', 'icon' => 'Layers'],
+        'lobbies' => ['name' => 'Hotels & lobbies', 'parent' => 'cladding', 'level' => 2, 'color' => '#0ea5e9', 'icon' => 'Coffee'],
+        'bathrooms' => ['name' => 'Bathrooms', 'parent' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Droplets'],
+        'outdoor' => ['name' => 'Outdoor & terraces', 'parent' => null, 'level' => 1, 'color' => '#f59e0b', 'icon' => 'Sun'],
+        'framework' => ['name' => 'Framework agreements', 'parent' => null, 'level' => 1, 'color' => '#64748b', 'icon' => 'FileText'],
+    ],
     'docs' => [
         'O1' => [
             'type' => 'price_offer',
+            'category' => 'cladding',
             'client' => 'C1',
             'project' => 'P1',
             'issued' => -140,
@@ -58,6 +68,7 @@ return [
         ],
         'O2' => [
             'type' => 'price_offer',
+            'category' => 'worktops',
             'client' => 'C2',
             'project' => 'P2',
             'issued' => -100,
@@ -81,6 +92,7 @@ return [
         ],
         'O3' => [
             'type' => 'price_offer',
+            'category' => 'lobbies',
             'client' => 'C6',
             'project' => 'P3',
             'issued' => -75,
@@ -104,6 +116,7 @@ return [
         ],
         'O4' => [
             'type' => 'price_offer',
+            'category' => 'framework',
             'client' => 'C3',
             'project' => 'P4',
             'issued' => -170,
@@ -123,6 +136,7 @@ return [
         ],
         'O5' => [
             'type' => 'price_offer',
+            'category' => 'bathrooms',
             'client' => 'C5',
             'project' => 'P5',
             'issued' => -12,
@@ -144,6 +158,7 @@ return [
         ],
         'O6' => [
             'type' => 'price_offer',
+            'category' => 'worktops',
             'client' => 'L9',
             'issued' => -6,
             'validDays' => 30,
@@ -168,6 +183,7 @@ return [
         ],
         'O7' => [
             'type' => 'price_offer',
+            'category' => 'framework',
             'client' => 'L10',
             'issued' => -20,
             'validDays' => 45,
@@ -187,6 +203,7 @@ return [
         ],
         'O8' => [
             'type' => 'price_offer',
+            'category' => 'outdoor',
             'client' => 'L8',
             'issued' => -1,
             'validDays' => 30,
@@ -205,6 +222,7 @@ return [
         ],
         'O9' => [
             'type' => 'price_offer',
+            'category' => 'bathrooms',
             'client' => 'L11',
             'issued' => -30,
             'validDays' => 30,

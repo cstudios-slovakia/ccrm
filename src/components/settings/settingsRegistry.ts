@@ -150,6 +150,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
       S("defaults", Percent, "general_config"),
       S("prices", BadgePercent, "general_config"),
       S("payments", CreditCard, "general_config"),
+      S("categories", FolderTree, "invoices"),
       S("templates", LayoutTemplate, "invoices", { linkOnly: true }),
       S("offerstatuses", BadgeCheck, "invoices", { linkOnly: true }),
     ],

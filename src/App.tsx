@@ -12,7 +12,7 @@ import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDi
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { clearedSecretKeys } from "./utils/secretClears";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
@@ -283,7 +283,7 @@ const computePushSig = (p: {
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
   financialMode?: unknown; financialSimplifiedTable?: unknown;
-  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
+  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown; offerCategories?: unknown;
   employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
   orders?: unknown;
   tickets?: unknown; supportContracts?: unknown;
@@ -294,7 +294,7 @@ const computePushSig = (p: {
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
   p.financialMode, p.financialSimplifiedTable,
-  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
+  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories, p.offerCategories,
   p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
   p.orders,
   p.tickets, p.supportContracts,
@@ -351,6 +351,7 @@ function App() {
   const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
   const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
   const clientCategoriesRef = useRef<ClientCategory[]>([]);
+  const offerCategoriesRef = useRef<OfferCategory[]>([]);
   const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const financialModeRef = useRef<FinancialOperatingMode>("connected");
   const financialSimplifiedTableRef = useRef<FinancialSimplifiedTable>({});
@@ -778,6 +779,7 @@ function App() {
   const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
   const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
   const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
+  const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
   /**
    * Manual weekly bank-balance anchors behind the finance trend chart. Shared
    * workspace data (stored in `system_settings.FINANCIAL_TREND`), not a browser
@@ -1331,6 +1333,7 @@ ${log.payload || ''}
   invoicesOffersRef.current = invoicesOffers;
   aiCustomTemplatesRef.current = aiCustomTemplates;
   clientCategoriesRef.current = clientCategories;
+  offerCategoriesRef.current = offerCategories;
   financialTrendRef.current = financialTrend;
   financialModeRef.current = financialMode;
   financialSimplifiedTableRef.current = financialSimplifiedTable;
@@ -1370,6 +1373,7 @@ ${log.payload || ''}
     nextAiCustomTemplates?: AiCustomTemplate[],
     nextClientCategories?: ClientCategory[],
     nextOrders?: Order[],
+    nextOfferCategories?: OfferCategory[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -1411,6 +1415,7 @@ ${log.payload || ''}
     const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
     const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
     const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
+    const liveOfferCategories = nextOfferCategories ?? offerCategoriesRef.current;
     const liveEmployees = employeesRef.current;
     const liveEmployeeSalaries = employeeSalariesRef.current;
     const liveEmployeeVacations = employeeVacationsRef.current;
@@ -1443,6 +1448,7 @@ ${log.payload || ''}
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
       clientCategories: liveClientCategories,
+      offerCategories: liveOfferCategories,
       employees: liveEmployees,
       employeeSalaries: liveEmployeeSalaries,
       employeeVacations: liveEmployeeVacations,
@@ -1542,6 +1548,7 @@ ${log.payload || ''}
       narrow("invoicesOffers", liveInvoicesOffers);
       narrow("aiCustomTemplates", liveAiCustomTemplates);
       narrow("clientCategories", liveClientCategories);
+      narrow("offerCategories", liveOfferCategories);
       narrow("employees", liveEmployees);
       narrow("employeeSalaries", liveEmployeeSalaries);
       narrow("employeeVacations", liveEmployeeVacations);
@@ -1656,7 +1663,7 @@ ${log.payload || ''}
               custom_dashboards: "customDashboards", warehouses: "warehouses",
               suppliers: "suppliers", warehouse_items: "warehouseItems",
               warehouse_batches: "warehouseBatches", warehouse_movements: "warehouseMovements",
-              financial_categories: "financialCategories", client_categories: "clientCategories",
+              financial_categories: "financialCategories", client_categories: "clientCategories", offer_categories: "offerCategories",
               financial_records: "financialRecords", invoices_offers: "invoicesOffers",
               ai_custom_templates: "aiCustomTemplates",
               employees: "employees", employee_salaries: "employeeSalaries",
@@ -2078,6 +2085,15 @@ ${log.payload || ''}
       const next = typeof newCats === "function" ? newCats(prev) : newCats;
       clientCategoriesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateOfferCategoriesAndSync = (newCats: OfferCategory[] | ((prev: OfferCategory[]) => OfferCategory[])) => {
+    setOfferCategories(prev => {
+      const next = typeof newCats === "function" ? newCats(prev) : newCats;
+      offerCategoriesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
       return next;
     });
   };
@@ -2966,6 +2982,9 @@ ${log.payload || ''}
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
         setClientCategories(sameOr(data.clientCategories));
       }
+      if (data.offerCategories && Array.isArray(data.offerCategories)) {
+        setOfferCategories(sameOr(data.offerCategories));
+      }
       if (data.employees && Array.isArray(data.employees)) {
         setEmployees(sameOr(data.employees));
       }
@@ -3129,6 +3148,7 @@ ${log.payload || ''}
         invoicesOffers: baselineOf(rawData.invoicesOffers ?? invoicesOffersRef.current),
         aiCustomTemplates: baselineOf(rawData.aiCustomTemplates ?? aiCustomTemplatesRef.current),
         clientCategories: baselineOf(rawData.clientCategories ?? clientCategoriesRef.current),
+        offerCategories: baselineOf(rawData.offerCategories ?? offerCategoriesRef.current),
         employees: baselineOf(rawData.employees ?? employeesRef.current),
         employeeSalaries: baselineOf(rawData.employeeSalaries ?? employeeSalariesRef.current),
         employeeVacations: baselineOf(rawData.employeeVacations ?? employeeVacationsRef.current),
@@ -3169,6 +3189,7 @@ ${log.payload || ''}
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         clientCategories: data.clientCategories ?? clientCategoriesRef.current,
+        offerCategories: data.offerCategories ?? offerCategoriesRef.current,
         employees: data.employees ?? employeesRef.current,
         employeeSalaries: data.employeeSalaries ?? employeeSalariesRef.current,
         employeeVacations: data.employeeVacations ?? employeeVacationsRef.current,
@@ -3835,6 +3856,10 @@ ${log.payload || ''}
           financialCategories={financialCategories}
           setFinancialCategories={updateFinancialCategoriesAndSync}
           setFinancialRecords={updateFinancialRecordsAndSync}
+          offerCategories={offerCategories}
+          setOfferCategories={updateOfferCategoriesAndSync}
+          invoicesOffers={invoicesOffers}
+          setInvoicesOffers={updateInvoicesOffersAndSync}
           financialMode={financialMode}
           setFinancialMode={updateFinancialModeAndSync}
           companyBillingSettings={companyBillingSettings}
@@ -4073,6 +4098,7 @@ ${log.payload || ''}
             openOnSettings={activeRoute.split("?")[0].split("/")[1] === "settings"}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
+            offerCategories={offerCategories}
             leads={leads}
             setLeads={updateLeadsAndSync}
             warehouseItems={warehouseItems}
@@ -4555,14 +4581,14 @@ ${log.payload || ''}
             pendingPushRef.current = false;
             setTimeout(() => {
               pushStateToServer(
-                // 23 positional "next…" slots precede the options object. Keep this
+                // 24 positional "next…" slots precede the options object. Keep this
                 // padding in step with the pushStateToServer signature: when the
                 // invoices/AI-template/orders slots were added the options object silently
                 // slid into payload arguments, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);

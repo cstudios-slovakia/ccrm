@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import type {
   AiCustomTemplate, CompanyBillingSettings, ExternalInvoiceProvider, ExternalInvoicingConfig,
-  InvoiceOffer, InvoiceOfferItem, InvoiceOfferMode, Lead, UserProfile, WarehouseItem
+  InvoiceOffer, InvoiceOfferItem, InvoiceOfferMode, Lead, OfferCategory, UserProfile, WarehouseItem
 } from "../../types";
 import type { Language } from "../../utils/translations";
 import { DefaultOfferTemplate } from "../pdf/DefaultOfferTemplate";
@@ -15,6 +15,7 @@ import { normalizeOfferDocument } from "../../utils/offerDocument";
 import type { OfferEditing, OfferSectionAlert } from "../pdf/offerEditing";
 import { ClientSelect } from "../ui/ClientSelect";
 import { CustomSelect } from "../ui/CustomSelect";
+import { ClientCategorySelect } from "../ClientCategories";
 import { ClientRegistryCompletion } from "./ClientRegistryCompletion";
 import { ExternalOfferForm } from "./ExternalOfferForm";
 import { NewClientModal } from "./NewClientModal";
@@ -52,6 +53,8 @@ interface OfferEditorProps {
   availableVatRates: number[];
   /** The configured price levels: a product is priced on the customer's level. */
   priceLevels?: PriceLevel[];
+  /** The price-offer category tree (Settings → Offer categories). The picker is hidden while there is none. */
+  offerCategories?: OfferCategory[];
   currency: string;
   currentUser: UserProfile | null;
   canEdit: boolean;
@@ -100,6 +103,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
   invoicingIntegrations,
   availableVatRates,
   priceLevels = [],
+  offerCategories = [],
   currency,
   currentUser,
   canEdit,
@@ -567,6 +571,19 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
                 value: tpl.id,
                 label: `${tpl.name} (${formatDateLocalized(tpl.createdAt, lang)})`
               }))}
+            />
+          </div>
+        )}
+
+        {(offerCategories.length > 0 || draft.categoryId) && (
+          <div className="w-56 max-w-full" data-offer-category-picker>
+            <ClientCategorySelect
+              size="sm"
+              t={t}
+              categories={offerCategories}
+              value={draft.categoryId && offerCategories.some(c => c.id === draft.categoryId) ? draft.categoryId : ""}
+              onChange={id => patchDraft({ categoryId: id || null })}
+              className={canEdit ? undefined : "pointer-events-none opacity-60"}
             />
           </div>
         )}

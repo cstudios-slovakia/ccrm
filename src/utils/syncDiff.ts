@@ -90,7 +90,7 @@ const KNOWN_SKIP_COLLECTIONS = new Set([
   "leads", "tasks", "users", "roles", "meetingNotes", "customDashboards",
   "projectTypes", "projects", "warehouses", "suppliers", "warehouseItems",
   "warehouseStock", "warehouseBatches", "warehouseMovements", "financialCategories",
-  "financialRecords", "invoicesOffers", "aiCustomTemplates", "clientCategories",
+  "financialRecords", "invoicesOffers", "aiCustomTemplates", "clientCategories", "offerCategories",
   "employees", "employeeSalaries", "employeeVacations", "orders", "tickets",
   "supportContracts", "settings", "unifiedEntries", "unifiedEntriesData",
 ]);

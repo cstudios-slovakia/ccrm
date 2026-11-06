@@ -712,6 +712,21 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_cc_level (`level`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Offer Categories (3-level price-offer category tree, the customer tree's shape; offers carry one in invoices_offers.category_id)
+            "CREATE TABLE IF NOT EXISTS `offer_categories` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `parent_id` VARCHAR(50) NULL,
+              `level` INT NOT NULL DEFAULT 1,
+              `sort_order` INT NOT NULL DEFAULT 0,
+              `color` VARCHAR(30) NULL,
+              `icon` VARCHAR(50) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_oc_parent (`parent_id`),
+              INDEX idx_oc_level (`level`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Financial Records (Incomes, Invoices, Expenses, Recurring and Single movements)
             "CREATE TABLE IF NOT EXISTS `financial_records` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -799,6 +814,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `sign_off_team` VARCHAR(150) NULL,
               `custom_template_id` VARCHAR(50) NULL,
               `custom_template_style_json` TEXT NULL,
+              `category_id` VARCHAR(50) NULL COMMENT 'offer_categories.id - not a foreign key, the app clears it when a category is deleted',
               `status` VARCHAR(50) NOT NULL DEFAULT 'draft' COMMENT 'Price offers: a key of OFFER_STATUSES. Proformas and invoices: a key of INVOICE_STATUSES (built-ins: draft, sent, invoiced, approved, rejected, cancelled)',
               `status_changed_at` DATE NULL COMMENT 'Day the status last changed (client-stamped)',
               `issued_at` DATE NOT NULL,
@@ -1542,6 +1558,11 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (ccrm_table_exists($pdo, 'invoices_offers') && !ccrm_column_exists($pdo, 'invoices_offers', 'custom_fields_json')) {
             $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `custom_fields_json` TEXT NULL AFTER `usp_cards_json`");
+        }
+        // The price-offer category an offer is filed under (offer_categories.id). The
+        // table itself comes from the CREATE TABLE list above; NULL = no category.
+        if (ccrm_table_exists($pdo, 'invoices_offers') && !ccrm_column_exists($pdo, 'invoices_offers', 'category_id')) {
+            $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `category_id` VARCHAR(50) NULL COMMENT 'offer_categories.id - not a foreign key, the app clears it when a category is deleted' AFTER `custom_template_style_json`");
         }
         // Sessions established before this timestamp are rejected, so a password
         // change can retire every session the old password could reach. NULL means

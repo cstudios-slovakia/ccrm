@@ -21,6 +21,7 @@ import {
   type ClientCategoryDropTarget,
 } from "../utils/clientCategoryTree";
 import { HoldToConfirmButton, readUiLanguage } from "./ui/HoldToConfirm";
+import { SectionCard } from "./settings/SectionCard";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { singleMessage } from "../utils/undoMessages";
 
@@ -132,6 +133,19 @@ const ROW_STYLES = {
   },
 } as const;
 
+/** The words the manager prints. Defaults to the customer tree's; the offer tree passes its own. */
+export interface CategoryManagerCopy {
+  title: string;
+  description: string;
+  namePlaceholder: string;
+  /** Empty tree, when the user may add the first category. */
+  emptyEditable: string;
+  /** Empty tree, read-only. */
+  empty: string;
+  /** Tooltip of the badge counting what is filed directly under a category. */
+  countTitle: (count: number) => string;
+}
+
 export const ClientCategoryManager: React.FC<{
   categories: ClientCategory[];
   setCategories: (updater: (prev: ClientCategory[]) => ClientCategory[]) => void;
@@ -148,7 +162,43 @@ export const ClientCategoryManager: React.FC<{
   readOnly?: boolean;
   /** `false` hides the delete buttons while everything else stays editable. */
   canDelete?: boolean;
-}> = ({ categories, setCategories, onCategoriesDeleted, clientCounts, t, readOnly = false, canDelete = true }) => {
+  /** Sync collection a delete is held under for Undo. */
+  collection?: string;
+  /** Prefix of the ids of new categories. */
+  idPrefix?: string;
+  /** `section` draws the Settings block (SectionCard header) instead of the module's own card. */
+  variant?: "card" | "section";
+  copy?: Partial<CategoryManagerCopy>;
+}> = ({
+  categories,
+  setCategories,
+  onCategoriesDeleted,
+  clientCounts,
+  t,
+  readOnly = false,
+  canDelete = true,
+  collection = "clientCategories",
+  idPrefix = "cc",
+  variant = "card",
+  copy,
+}) => {
+  const words: CategoryManagerCopy = {
+    title: t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák"),
+    description: t(
+      "Organize your clients across Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3).",
+      "Organizácia klientov v 3 úrovniach: Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3).",
+      "Ügyfelek 3 szintű rendszerezése: Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3)."
+    ),
+    namePlaceholder: t("e.g. Retail, Architects, Key accounts...", "napr. Maloobchod, Architekti, Kľúčoví klienti...", "pl. Kiskereskedelem, Építészek..."),
+    emptyEditable: t(
+      "No client categories yet — add the first one above.",
+      "Zatiaľ žiadne kategórie klientov — pridajte prvú vyššie.",
+      "Még nincsenek ügyfélkategóriák — adja hozzá az elsőt fent."
+    ),
+    empty: t("No client categories yet.", "Zatiaľ žiadne kategórie klientov.", "Még nincsenek ügyfélkategóriák."),
+    countTitle: (count) => t(`${count} client(s) in this category`, `${count} klient(ov) v tejto kategórii`, `${count} ügyfél ebben a kategóriában`),
+    ...copy,
+  };
   const toast = (msg: string) => (window as any).showToast?.(msg);
   const editable = !readOnly;
   const deletable = editable && canDelete;
@@ -199,7 +249,7 @@ export const ClientCategoryManager: React.FC<{
     }
     const parentId = parent?.id ?? null;
     const category: ClientCategory = {
-      id: `cc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: `${idPrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name,
       parentId,
       level: level as ClientCategory["level"],
@@ -223,7 +273,7 @@ export const ClientCategoryManager: React.FC<{
     // category are left without one now and are filed back by Undo; the server
     // delete of the categories waits for the undo window.
     deleteRecordsWithUndo({
-      collection: "clientCategories",
+      collection,
       allRecords: categories,
       targets: categories.filter((c) => ids.has(c.id)),
       setRecords: setCategories,
@@ -426,7 +476,7 @@ export const ClientCategoryManager: React.FC<{
           {count > 0 && (
             <span
               className="shrink-0 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-micro font-bold text-emerald-700 tabular-nums"
-              title={t(`${count} client(s) in this category`, `${count} klient(ov) v tejto kategórii`, `${count} ügyfél ebben a kategóriában`)}
+              title={words.countTitle(count)}
             >
               {count}
             </span>
@@ -465,22 +515,8 @@ export const ClientCategoryManager: React.FC<{
 
   const roots = clientCategoryChildren(categories, null);
 
-  return (
-    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
-      <div className="border-b border-slate-100 pb-4">
-        <h3 className="text-body font-bold text-slate-900 flex items-center gap-2">
-          <Layers className="h-4 w-4 text-emerald-500" />
-          {t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák")}
-        </h3>
-        <p className="text-ui text-slate-400 mt-0.5">
-          {t(
-            "Organize your clients across Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3).",
-            "Organizácia klientov v 3 úrovniach: Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3).",
-            "Ügyfelek 3 szintű rendszerezése: Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3)."
-          )}
-        </p>
-      </div>
-
+  const body = (
+    <>
       {/* Quick add */}
       {editable && (
       <form onSubmit={handleCreate} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-end gap-3">
@@ -492,7 +528,7 @@ export const ClientCategoryManager: React.FC<{
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder={t("e.g. Retail, Architects, Key accounts...", "napr. Maloobchod, Architekti, Kľúčoví klienti...", "pl. Kiskereskedelem, Építészek...")}
+            placeholder={words.namePlaceholder}
             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
         </div>
@@ -535,13 +571,7 @@ export const ClientCategoryManager: React.FC<{
 
       {roots.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-slate-200 px-6 py-10 text-center text-ui font-semibold text-slate-400">
-          {editable
-            ? t(
-                "No client categories yet — add the first one above.",
-                "Zatiaľ žiadne kategórie klientov — pridajte prvú vyššie.",
-                "Még nincsenek ügyfélkategóriák — adja hozzá az elsőt fent."
-              )
-            : t("No client categories yet.", "Zatiaľ žiadne kategórie klientov.", "Még nincsenek ügyfélkategóriák.")}
+          {editable ? words.emptyEditable : words.empty}
         </div>
       ) : (
         <>
@@ -607,6 +637,27 @@ export const ClientCategoryManager: React.FC<{
           </div>
         </>
       )}
+    </>
+  );
+
+  if (variant === "section") {
+    return (
+      <SectionCard title={words.title} description={words.description}>
+        {body}
+      </SectionCard>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
+      <div className="border-b border-slate-100 pb-4">
+        <h3 className="text-body font-bold text-slate-900 flex items-center gap-2">
+          <Layers className="h-4 w-4 text-emerald-500" />
+          {words.title}
+        </h3>
+        <p className="text-ui text-slate-400 mt-0.5">{words.description}</p>
+      </div>
+      {body}
     </div>
   );
 };

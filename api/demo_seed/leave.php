@@ -95,7 +95,7 @@ if (!function_exists('demo_leave_demo_mode')) {
             }
             if (!$keepConfigs) {
                 $pdo->exec("DELETE FROM `financial_categories`");
-                foreach (['client_categories', 'project_types'] as $table) {
+                foreach (['client_categories', 'offer_categories', 'project_types'] as $table) {
                     if ($tableExists($table)) {
                         $pdo->exec("DELETE FROM `{$table}`");
                     }

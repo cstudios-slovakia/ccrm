@@ -9,7 +9,7 @@ import {
 import type {
   InvoiceOffer, InvoiceOfferMode, ExternalInvoiceProvider,
   Lead, WarehouseItem, CompanyBillingSettings,
-  AiCustomTemplate, ExternalInvoicingConfig, TimelineEvent, UserProfile
+  AiCustomTemplate, ExternalInvoicingConfig, TimelineEvent, UserProfile, OfferCategory
 } from "../types";
 import type { Language } from "../utils/translations";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
@@ -47,6 +47,17 @@ import {
 } from "../utils/offerStatuses";
 import { useListFilter } from "../hooks/useListFilter";
 import { getBrandName } from "../utils/brand";
+import { ListViewMenu } from "./common/ListViewMenu";
+import { flattenOfferCategories, offerCategoryColor, offerCategoryPath } from "../utils/offerCategories";
+import {
+  OFFER_CATEGORY_ALL, OFFER_CATEGORY_NONE, isValidOfferCategoryFilter,
+  matchesOfferCategoryFilter, offerCategoryPathLabel,
+} from "../utils/offerCategoryFilter";
+import {
+  LOCKED_OFFER_COLUMN, OFFER_COLUMN_LABELS, moveOfferColumn, resolveOfferColumns, toStoredOfferColumns,
+  type OfferColumnKey, type ResolvedOfferColumn, type StoredOfferColumn,
+} from "../utils/offerColumns";
+import { DEFAULT_OFFER_SORT, normalizeOfferSort, sortOffers, type OfferSort, type OfferSortKey } from "../utils/offerSort";
 
 interface PriceOffersViewProps {
   /**
@@ -56,6 +67,8 @@ interface PriceOffersViewProps {
    */
   invoicesOffers: InvoiceOffer[];
   setInvoicesOffers: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  /** The price-offer category tree (Settings → Offers & invoicing → Offer categories). */
+  offerCategories?: OfferCategory[];
   /** The configurable price-offer statuses (Settings → Offer statuses). Defaults to the six built-ins. */
   offerStatuses?: OfferStatusDef[];
   /** The configured price levels, so a product is priced on the customer's level. */
@@ -115,6 +128,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   setInvoicesOffers,
   offerStatuses = DEFAULT_OFFER_STATUS_DEFS as OfferStatusDef[],
   priceLevels = [],
+  offerCategories = [],
   setOfferStatuses,
   invoiceStatuses = DEFAULT_INVOICE_STATUS_DEFS as OfferStatusDef[],
   setInvoiceStatuses,
@@ -169,6 +183,18 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useListFilter<string>("priceOffers.status", "all");
   const [modeFilter, setModeFilter] = useListFilter<string>("priceOffers.mode", "all");
+  // A stored category that has since been deleted reads as "all" rather than an empty list.
+  const [categoryFilter, setCategoryFilter] = useListFilter<string>(
+    "priceOffers.category",
+    OFFER_CATEGORY_ALL,
+    value => isValidOfferCategoryFilter(value, offerCategories)
+  );
+  // The View menu: sort and column layout, kept per user in their preferences (like the filters).
+  const [storedSort, setStoredSort] = useListFilter<OfferSort>("priceOffers.sort", DEFAULT_OFFER_SORT);
+  const [storedColumns, setStoredColumns] = useListFilter<StoredOfferColumn[] | null>("priceOffers.columns", null);
+  const sort = useMemo(() => normalizeOfferSort(storedSort), [storedSort]);
+  const allColumns = useMemo(() => resolveOfferColumns(storedColumns), [storedColumns]);
+  const columns = useMemo(() => allColumns.filter(c => c.visible), [allColumns]);
 
   // -------------------------------------------------------------- editor state
   const [editorSession, setEditorSession] = useState<EditorSession | null>(null);
@@ -229,10 +255,43 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
       return (
         matchesSearch &&
         (statusFilter === "all" || io.status === statusFilter) &&
-        (modeFilter === "all" || io.mode === modeFilter)
+        (modeFilter === "all" || io.mode === modeFilter) &&
+        matchesOfferCategoryFilter(io.categoryId, categoryFilter, offerCategories)
       );
     });
-  }, [invoicesOffers, searchQuery, statusFilter, modeFilter]);
+  }, [invoicesOffers, searchQuery, statusFilter, modeFilter, categoryFilter, offerCategories]);
+
+  const statusRank = useMemo(() => new Map(offerStatuses.map((s, i) => [s.key, i])), [offerStatuses]);
+  const sortedOffers = useMemo(
+    () =>
+      sortOffers(filteredOffers, sort, o => ({
+        number: o.documentNumber || "",
+        client: o.clientName || "",
+        amount: Number.isFinite(num(o.totalPrice)) && o.totalPrice != null ? num(o.totalPrice) : null,
+        statusRank: statusRank.get(o.status) ?? offerStatuses.length,
+        category: offerCategoryPathLabel(offerCategories, o.categoryId),
+        validUntil: o.validUntil || null,
+      })),
+    [filteredOffers, sort, statusRank, offerStatuses.length, offerCategories]
+  );
+
+  const categoryOptions = useMemo(
+    () => [
+      { value: OFFER_CATEGORY_ALL, label: t("All categories", "Všetky kategórie", "Minden kategória") },
+      { value: OFFER_CATEGORY_NONE, label: t("Without category", "Bez kategórie", "Kategória nélkül") },
+      ...flattenOfferCategories(offerCategories).map(({ category, depth }) => {
+        const color = offerCategoryColor(offerCategories, category.id);
+        return {
+          value: category.id,
+          searchText: category.name,
+          icon: color ? <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} /> : undefined,
+          label: <span style={{ paddingLeft: `${(depth - 1) * 0.75}rem` }}>{category.name}</span>,
+        };
+      }),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [offerCategories, lang]
+  );
 
   const metrics = useMemo(() => {
     const offers = invoicesOffers;
@@ -272,6 +331,118 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
   /** The picker's options, plus this very offer's own status when it is legacy or no longer in the list. */
   const statusOptionsFor = (status: string) => offerStatusOptions(t, offerStatuses, status);
+
+  // ------------------------------------------------------------ table cells
+  const renderCell = (offer: InvoiceOffer, key: OfferColumnKey): React.ReactNode => {
+    switch (key) {
+      case "number":
+        return (
+          <td key={key} className="p-4 align-top font-mono font-bold text-slate-900 whitespace-nowrap">
+            {offer.documentNumber}
+            {offer.externalId && (
+              <span className="block text-micro text-slate-400 font-sans font-medium">
+                {offer.externalProvider === "idoklad" ? "iDoklad" : "SuperFaktúra"} #{offer.externalId}
+              </span>
+            )}
+          </td>
+        );
+      case "title":
+        return (
+          <td key={key} className="p-4 align-top">
+            <div className="font-bold text-slate-800">{offer.title}</div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span
+                className={cn(
+                  "px-2 py-0.5 rounded-full type-overline border",
+                  offer.mode === "custom"
+                    ? "bg-purple-50 text-purple-700 border-purple-200"
+                    : offer.mode === "external"
+                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                      : "bg-slate-50 text-slate-500 border-slate-200"
+                )}
+              >
+                {modeLabel(offer)}
+              </span>
+            </div>
+          </td>
+        );
+      case "client":
+        return (
+          <td key={key} className="p-4 align-top">
+            <div className="font-bold text-slate-900">{offer.clientName}</div>
+            {offer.location && <div className="text-caption text-slate-400">{offer.location}</div>}
+          </td>
+        );
+      case "category": {
+        const path = offerCategoryPath(offerCategories, offer.categoryId);
+        const leaf = path[path.length - 1];
+        const color = leaf ? offerCategoryColor(offerCategories, leaf.id) : null;
+        return (
+          <td key={key} className="p-4 align-top">
+            {leaf ? (
+              <span
+                className="inline-flex items-center gap-1.5 max-w-full text-ui font-medium text-slate-700"
+                title={path.length > 1 ? path.map(c => c.name).join(" / ") : undefined}
+              >
+                <span className="h-2 w-2 rounded-full shrink-0 bg-slate-300" style={color ? { backgroundColor: color } : undefined} />
+                <span className="truncate">{leaf.name}</span>
+              </span>
+            ) : (
+              <span className="text-slate-300">—</span>
+            )}
+          </td>
+        );
+      }
+      case "issued":
+        return <td key={key} className="p-4 align-top text-slate-600 whitespace-nowrap">{formatDateLocalized(offer.issuedAt, lang)}</td>;
+      case "validUntil":
+        return (
+          <td key={key} className="p-4 align-top text-slate-600 whitespace-nowrap">
+            {offer.validUntil ? formatDateLocalized(offer.validUntil, lang) : <span className="text-slate-300">—</span>}
+          </td>
+        );
+      case "amount":
+        return (
+          <td key={key} className="p-4 align-top text-right font-bold text-slate-900 whitespace-nowrap">
+            {money(offer.totalPrice)}
+          </td>
+        );
+      case "status":
+        return (
+          <td key={key} className="p-4 align-top text-center">
+            {canEdit ? (
+              <CustomSelect
+                size="sm"
+                align="right"
+                value={offer.status}
+                onChange={next => handleChangeStatus(offer.id, next)}
+                options={statusOptionsFor(offer.status)}
+                unstyled
+                className="gap-1.5 px-2.5 py-1 rounded-full type-overline border cursor-pointer transition-all hover:brightness-95"
+                style={statusBadgeStyle(offer.status)}
+              />
+            ) : (
+              <span
+                className="inline-flex items-center px-2.5 py-1 rounded-full type-overline border"
+                style={statusBadgeStyle(offer.status)}
+              >
+                {statusLabel(offer.status)}
+              </span>
+            )}
+          </td>
+        );
+    }
+  };
+
+  const sortOptions: { value: OfferSortKey; label: string }[] = [
+    { value: "default", label: t("Newest first", "Najnovšie ako prvé", "Legújabb elöl") },
+    { value: "number", label: t("Offer no.", "Číslo ponuky", "Ajánlatszám") },
+    { value: "client", label: t("Client", "Klient", "Ügyfél") },
+    { value: "amount", label: t("Amount", "Suma", "Összeg") },
+    { value: "status", label: t("Status", "Stav", "Állapot") },
+    { value: "category", label: t("Category", "Kategória", "Kategória") },
+    { value: "validUntil", label: t("Valid until", "Platné do", "Érvényes eddig") },
+  ];
 
   // ------------------------------------------------------------ editor opening
   /** A pristine editor goes away silently; one with changes asks first. */
@@ -569,6 +740,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           invoicingIntegrations={invoicingIntegrations}
           availableVatRates={availableVatRates}
           priceLevels={priceLevels}
+          offerCategories={offerCategories}
           currency={currency}
           currentUser={currentUser}
           canEdit={canEdit}
@@ -711,7 +883,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           />
         </div>
 
-        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2 w-full ws-xl:w-auto">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-2 w-full ws-xl:w-auto">
+         <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2 flex-1 ws-xl:flex-none">
           <CustomSelect
             size="sm"
             value={modeFilter}
@@ -734,6 +907,33 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
               ...filterStatusOptions
             ]}
           />
+          <CustomSelect
+            size="sm"
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            className="w-full"
+            options={categoryOptions}
+          />
+         </div>
+          <ListViewMenu<OfferSortKey, ResolvedOfferColumn>
+            t={t}
+            sort={sort}
+            sortOptions={sortOptions}
+            onSortChange={setStoredSort}
+            directionlessKeys={["default"]}
+            columns={allColumns}
+            onColumnsChange={next => setStoredColumns(toStoredOfferColumns(next))}
+            columnLabel={col => t(...OFFER_COLUMN_LABELS[col.key])}
+            lockedColumnKey={LOCKED_OFFER_COLUMN}
+            lockedTitle={t("The offer number always leads the row.", "Číslo ponuky je vždy prvé v riadku.", "Az ajánlatszám mindig a sor élén áll.")}
+            moveColumn={moveOfferColumn}
+            canEditColumns
+            columnsScope={t("Your personal layout. It does not change the table for anyone else.", "Vaše osobné rozloženie. Ostatným sa tabuľka nezmení.", "Az Ön személyes elrendezése. Másoknak nem változik a táblázat.")}
+            onReset={() => {
+              setStoredSort(DEFAULT_OFFER_SORT);
+              setStoredColumns(null);
+            }}
+          />
         </div>
       </div>
 
@@ -743,18 +943,24 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           <table className="w-full text-left text-ui border-collapse min-w-195">
             <thead className="table-page-sticky-head">
               <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Offer no.", "Číslo ponuky", "Ajánlatszám")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Title & template", "Názov a šablóna", "Cím és sablon")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Client / lead", "Klient / Lead", "Ügyfél / Lead")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4">{t("Issued", "Vystavené", "Kiállítva")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4 text-right">{t("Amount", "Suma", "Összeg")}</th>
-                <th className="sticky z-10 bg-slate-50 p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                {columns.map(col => (
+                  <th
+                    key={col.key}
+                    className={cn(
+                      "sticky z-10 bg-slate-50 p-4",
+                      col.key === "amount" && "text-right",
+                      col.key === "status" && "text-center"
+                    )}
+                  >
+                    {t(...OFFER_COLUMN_LABELS[col.key])}
+                  </th>
+                ))}
                 <th className="sticky right-0 z-30 bg-slate-50 p-4 text-right border-l border-slate-200/60">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredOffers.length > 0 ? (
-                filteredOffers.map(offer => (
+              {sortedOffers.length > 0 ? (
+                sortedOffers.map(offer => (
                   <tr
                     key={offer.id}
                     onClick={e => {
@@ -765,60 +971,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                     }}
                     className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
                   >
-                    <td className="p-4 align-top font-mono font-bold text-slate-900 whitespace-nowrap">
-                      {offer.documentNumber}
-                      {offer.externalId && (
-                        <span className="block text-micro text-slate-400 font-sans font-medium">
-                          {offer.externalProvider === "idoklad" ? "iDoklad" : "SuperFaktúra"} #{offer.externalId}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 align-top">
-                      <div className="font-bold text-slate-800">{offer.title}</div>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span
-                          className={cn(
-                            "px-2 py-0.5 rounded-full type-overline border",
-                            offer.mode === "custom"
-                              ? "bg-purple-50 text-purple-700 border-purple-200"
-                              : offer.mode === "external"
-                                ? "bg-blue-50 text-blue-700 border-blue-200"
-                                : "bg-slate-50 text-slate-500 border-slate-200"
-                          )}
-                        >
-                          {modeLabel(offer)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-4 align-top">
-                      <div className="font-bold text-slate-900">{offer.clientName}</div>
-                      {offer.location && <div className="text-caption text-slate-400">{offer.location}</div>}
-                    </td>
-                    <td className="p-4 align-top text-slate-600 whitespace-nowrap">{formatDateLocalized(offer.issuedAt, lang)}</td>
-                    <td className="p-4 align-top text-right font-bold text-slate-900 whitespace-nowrap">
-                      {money(offer.totalPrice)}
-                    </td>
-                    <td className="p-4 align-top text-center">
-                      {canEdit ? (
-                        <CustomSelect
-                          size="sm"
-                          align="right"
-                          value={offer.status}
-                          onChange={next => handleChangeStatus(offer.id, next)}
-                          options={statusOptionsFor(offer.status)}
-                          unstyled
-                          className="gap-1.5 px-2.5 py-1 rounded-full type-overline border cursor-pointer transition-all hover:brightness-95"
-                          style={statusBadgeStyle(offer.status)}
-                        />
-                      ) : (
-                        <span
-                          className="inline-flex items-center px-2.5 py-1 rounded-full type-overline border"
-                          style={statusBadgeStyle(offer.status)}
-                        >
-                          {statusLabel(offer.status)}
-                        </span>
-                      )}
-                    </td>
+                    {columns.map(col => renderCell(offer, col.key))}
                     <td className="p-4 align-top text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 transition-colors group-hover:bg-slate-50">
                       <div className="flex items-center justify-end gap-1">
                         <button
@@ -864,7 +1017,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center">
+                  <td colSpan={columns.length + 1} className="p-12 text-center">
                     <div className="max-w-sm mx-auto space-y-2.5">
                       <div className="h-12 w-12 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
                         <SectionIcon id="invoices" className="h-6 w-6" />

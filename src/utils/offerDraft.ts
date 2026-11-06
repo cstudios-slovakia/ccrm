@@ -297,6 +297,7 @@ function finalizeOffer(draft: InvoiceOffer, o: AssembleOptions, sampleClientName
     signOffTeam: orNull(draft.signOffTeam),
     customFields: Object.keys(customFields).length ? customFields : null,
     customTemplateId: draft.mode === "custom" ? draft.customTemplateId || o.activeTemplateId || null : null,
+    categoryId: draft.categoryId || null,
     status: existing?.status || draft.status || "draft",
     // The issue date is editable on an existing offer too. Valid-until moves
     // with it by the same number of days, keeping the offer's own terms. An

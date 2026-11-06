@@ -380,7 +380,7 @@ function ccrm_decode_attr_value($stored) {
 }
 
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries', 'whatsapp_links', 'whatsapp_numbers'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'offer_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries', 'whatsapp_links', 'whatsapp_numbers'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -2036,6 +2036,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
     $financialCategories = [];
     $clientCategories = [];
+    $offerCategories = [];
     $financialRecords = [];
     $invoicesOffers = [];
     $aiCustomTemplates = [];
@@ -2064,6 +2065,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $ccStmt = $pdo->query("SELECT * FROM `client_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
             while ($row = $ccStmt->fetch()) {
                 $clientCategories[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'parentId' => $row['parent_id'],
+                    'level' => (int)($row['level'] ?? 1),
+                    'sortOrder' => (int)($row['sort_order'] ?? 0),
+                    'color' => $row['color'],
+                    'icon' => $row['icon'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        // Price-offer categories (Settings → Offers & invoicing): the same shape as
+        // the customer tree, gated like the offers they file.
+        if (ccrm_can($scope, 'invoices') && $pdo->query("SHOW TABLES LIKE 'offer_categories'")->rowCount() > 0) {
+            $ocStmt = $pdo->query("SELECT * FROM `offer_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
+            while ($row = $ocStmt->fetch()) {
+                $offerCategories[] = [
                     'id' => $row['id'],
                     'name' => $row['name'],
                     'parentId' => $row['parent_id'],
@@ -2191,6 +2211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'signOffTeam' => $row['sign_off_team'],
                     'customTemplateId' => $row['custom_template_id'],
                     'customTemplateStyle' => !empty($row['custom_template_style_json']) ? json_decode($row['custom_template_style_json'], true) : null,
+                    'categoryId' => $row['category_id'] ?? null,
                     'status' => $row['status'],
                     'statusChangedAt' => $row['status_changed_at'] ?? null,
                     'issuedAt' => $row['issued_at'],
@@ -2649,6 +2670,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     if (!ccrm_can($scope, 'invoices')) {
         $restricted[] = 'invoicesOffers';
+        $restricted[] = 'offerCategories';
     }
 
     if (!ccrm_can($scope, 'invoices') && !ccrm_can($scope, 'general_config')) {
@@ -2867,6 +2889,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseMovements' => $warehouseMovements,
         'financialCategories' => $financialCategories,
         'clientCategories' => $clientCategories,
+        'offerCategories' => $offerCategories,
         'financialRecords' => $financialRecords,
         'invoicesOffers' => $invoicesOffers,
         'aiCustomTemplates' => $aiCustomTemplates,
@@ -3099,7 +3122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes',
             'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
             'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
-            'aiCustomTemplates', 'clientCategories', 'employees', 'employeeSalaries', 'employeeVacations',
+            'aiCustomTemplates', 'clientCategories', 'offerCategories', 'employees', 'employeeSalaries', 'employeeVacations',
             'orders', 'supportContracts', 'tickets', 'recurringTasks',
         ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
@@ -3306,6 +3329,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (ccrm_table_exists($pdo, 'employee_salaries') && !ccrm_column_exists($pdo, 'employee_salaries', 'net_pay')) {
                 $pdo->exec("ALTER TABLE `employee_salaries` ADD COLUMN `net_pay` DECIMAL(12, 2) NULL COMMENT 'Na výplatu from the payslip, typed by hand; employees only' AFTER `labor_cost`");
+            }
+        }
+
+        // Offer categories: the table, and the column that files an offer under one.
+        // A worker still holding the previous release's schema.php can stamp the
+        // schema fingerprint without having created either (see the 4-place rule).
+        if (isset($payload['offerCategories']) && is_array($payload['offerCategories']) && !$ccrm_skip_writes('invoices', 'offerCategories')) {
+            if (!ccrm_table_exists($pdo, 'offer_categories')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `offer_categories` (
+                  `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `name` VARCHAR(150) NOT NULL,
+                  `parent_id` VARCHAR(50) NULL,
+                  `level` INT NOT NULL DEFAULT 1,
+                  `sort_order` INT NOT NULL DEFAULT 0,
+                  `color` VARCHAR(30) NULL,
+                  `icon` VARCHAR(50) NULL,
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_oc_parent (`parent_id`),
+                  INDEX idx_oc_level (`level`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+        }
+        if (isset($payload['invoicesOffers']) && is_array($payload['invoicesOffers']) && !$ccrm_skip_writes('invoices', 'invoicesOffers')) {
+            if (!ccrm_column_exists($pdo, 'invoices_offers', 'category_id')) {
+                $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `category_id` VARCHAR(50) NULL COMMENT 'offer_categories.id - not a foreign key, the app clears it when a category is deleted' AFTER `custom_template_style_json`");
             }
         }
 
@@ -5900,6 +5949,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // 4.13c. Synchronize Offer Categories — the same rules again, gated like the
+        // offers they file (`invoices`). Deleting a category does not touch the offers
+        // filed under it here: the app clears their categoryId itself and pushes those
+        // offers alongside.
+        if (isset($payload['offerCategories']) && is_array($payload['offerCategories']) && !$ccrm_skip_writes('invoices', 'offerCategories')) {
+            $stmt = $pdo->query("SELECT `id` FROM `offer_categories`");
+            $existingOcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedOcIds = [];
+
+            $insOc = $pdo->prepare("INSERT INTO `offer_categories` (`id`, `name`, `parent_id`, `level`, `sort_order`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `sort_order` = VALUES(`sort_order`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
+
+            foreach ($payload['offerCategories'] as $oc) {
+                if (!is_array($oc) || empty($oc['id'])) {
+                    continue;
+                }
+                $insOc->execute([
+                    (string)$oc['id'],
+                    $oc['name'] ?? '',
+                    !empty($oc['parentId']) ? $oc['parentId'] : null,
+                    max(1, min(3, (int)($oc['level'] ?? 1))),
+                    (int)($oc['sortOrder'] ?? 0),
+                    $oc['color'] ?? null,
+                    $oc['icon'] ?? null
+                ]);
+                $processedOcIds[] = (string)$oc['id'];
+            }
+
+            $ocToDelete = $isDeltaSync ? $deletionsFor('offerCategories', $existingOcIds) : array_diff($existingOcIds, $processedOcIds);
+            if (!empty($ocToDelete) && !$ccrm_skip_deletes('invoices', 'offerCategories')) {
+                ccrm_delete_omitted($pdo, 'offer_categories', $ocToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
         // 4.14. Synchronize Financial Records
         if (isset($payload['financialRecords']) && is_array($payload['financialRecords']) && !$ccrm_skip_writes('financial', 'financialRecords')) {
             $storedFr = [];
@@ -6032,8 +6114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `subtotal`, `vat_amount`, `total_price`, `price_range_min`, `price_range_max`, `currency`,
                 `duration_text`, `start_date_text`, `warranty_text`, `next_steps_note`, `closing_note`, `sign_off_team`,
                 `custom_template_id`, `custom_template_style_json`, `status`, `status_changed_at`, `issued_at`, `valid_until`, `due_date`,
-                `file_name`, `file_path`, `created_by`, `custom_fields_json`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `file_name`, `file_path`, `created_by`, `custom_fields_json`, `category_id`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `document_number` = VALUES(`document_number`), `type` = VALUES(`type`), `mode` = VALUES(`mode`),
                 `external_provider` = VALUES(`external_provider`), `external_id` = VALUES(`external_id`), `external_pdf_url` = VALUES(`external_pdf_url`),
@@ -6050,7 +6132,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `custom_template_id` = VALUES(`custom_template_id`), `custom_template_style_json` = VALUES(`custom_template_style_json`),
                 `status` = VALUES(`status`), `status_changed_at` = VALUES(`status_changed_at`), `issued_at` = VALUES(`issued_at`), `valid_until` = VALUES(`valid_until`), `due_date` = VALUES(`due_date`),
                 `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`),
-                `custom_fields_json` = VALUES(`custom_fields_json`)");
+                `custom_fields_json` = VALUES(`custom_fields_json`),
+                `category_id` = IF(? = 1, `category_id`, VALUES(`category_id`))");
 
             $delIoItems = $pdo->prepare("DELETE FROM `invoice_offer_items` WHERE `invoice_offer_id` = ?");
             $insIoItem = $pdo->prepare("INSERT INTO `invoice_offer_items` (
@@ -6111,7 +6194,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $io['createdBy'] ?? $sessionEmail,
                     ($cf = ccrm_offer_custom_field_values($io['customFields'] ?? null))
                         ? json_encode($cf, JSON_UNESCAPED_UNICODE)
-                        : null
+                        : null,
+                    !empty($io['categoryId']) ? (string)$io['categoryId'] : null,
+                    // A client that predates categories sends no categoryId at all: keep the stored one.
+                    array_key_exists('categoryId', $io) ? 0 : 1
                 ]);
                 $processedIoIds[] = $ioId;
 

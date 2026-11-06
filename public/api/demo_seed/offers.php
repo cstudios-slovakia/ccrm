@@ -20,7 +20,7 @@
  * demo_offers_project_value() lets the projects module (which runs earlier) give each project
  * the total of its accepted offer. The finance module reads the proforma/invoice rows back.
  *
- * Id plan: 1-16 documents, 101+ lines, 2001+ timeline events. Returns rows inserted.
+ * Id plan: 1-16 documents, 101+ lines, 201+ offer categories, 2001+ timeline events. Returns rows inserted.
  */
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/lookup.php';
@@ -107,6 +107,32 @@ function demo_seed_offers(PDO $pdo): int {
     $pdo->exec("DELETE FROM `invoice_offer_items` WHERE `id` LIKE 'demo-offers-%' OR `invoice_offer_id` LIKE 'demo-offers-%'");
     $pdo->exec("DELETE FROM `invoices_offers` WHERE `id` LIKE 'demo-offers-%'");
     $pdo->exec("DELETE FROM `timeline_events` WHERE `id` LIKE 'demo-offers-%'");
+    $hasCategories = demo_table_exists($pdo, 'offer_categories');
+    if ($hasCategories) {
+        $pdo->exec("DELETE FROM `offer_categories` WHERE `id` LIKE 'demo-offers-%'");
+    }
+
+    // --- Offer categories (a 2-level tree); ids 201+ ----------------------------------------------------
+    $catIds = [];
+    $catSeq = 200;
+    foreach (($pack['categories'] ?? []) as $catKey => $c) {
+        $catIds[$catKey] = demo_id('offers', ++$catSeq);
+    }
+    if ($hasCategories && $catIds) {
+        $insCat = $pdo->prepare(
+            "INSERT INTO `offer_categories` (`id`, `name`, `parent_id`, `level`, `sort_order`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        );
+        $catOrder = 0;
+        foreach ($pack['categories'] as $catKey => $c) {
+            $catOrder++;
+            $insCat->execute([
+                $catIds[$catKey], demo_text($c['name']), $c['parent'] === null ? null : $catIds[$c['parent']],
+                (int)$c['level'], $catOrder, $c['color'], $c['icon'],
+            ]);
+            $inserted++;
+        }
+    }
+    $setCategory = $hasCategories ? $pdo->prepare("UPDATE `invoices_offers` SET `category_id` = ? WHERE `id` = ?") : null;
 
     // Document numbers: per prefix and year, in issue order (ties keep pack order).
     $order = array_keys($pack['docs']);
@@ -170,6 +196,9 @@ function demo_seed_offers(PDO $pdo): int {
             $isOffer ? demo_d($d['issued'] + $d['validDays']) : null, $isOffer ? null : demo_d($d['issued'] + $d['validDays']), $author,
         ]);
         $inserted++;
+        if ($setCategory !== null && isset($d['category'], $catIds[$d['category']])) {
+            $setCategory->execute([$catIds[$d['category']], $docId]);
+        }
         foreach ($calc['rows'] as [$name, $unit, $qty, $unitPrice, $disc, $net, $itemRef, $sku]) {
             $lineSeq++;
             $insItem->execute([

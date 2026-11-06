@@ -29,7 +29,9 @@ import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
-import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig } from "../types";
+import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig, OfferCategory, InvoiceOffer } from "../types";
+import { ClientCategoryManager } from "./ClientCategories";
+import { offerCountsByCategory, refileOffers, unfileOffers } from "../utils/offerCategories";
 import { VisibleModulesSettings } from "./VisibleModulesSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -591,6 +593,11 @@ interface SettingsViewProps {
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  /** Offers & invoicing tab: the price-offer category tree, and the offers a deleted category un-files. */
+  offerCategories?: OfferCategory[];
+  setOfferCategories?: (updater: OfferCategory[] | ((prev: OfferCategory[]) => OfferCategory[])) => void;
+  invoicesOffers?: InvoiceOffer[];
+  setInvoicesOffers?: (updater: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
   financialMode?: FinancialOperatingMode;
   setFinancialMode?: (mode: FinancialOperatingMode) => void;
 
@@ -703,6 +710,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   financialCategories,
   setFinancialCategories,
   setFinancialRecords,
+  offerCategories = [],
+  setOfferCategories,
+  invoicesOffers = [],
+  setInvoicesOffers,
   financialMode,
   setFinancialMode,
   companyBillingSettings,
@@ -5251,6 +5262,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           />
         ) : null
         );
+      case "offers/categories":
+        return setOfferCategories ? (
+        <ClientCategoryManager
+          variant="section"
+          collection="offerCategories"
+          idPrefix="oc"
+          categories={offerCategories}
+          setCategories={setOfferCategories}
+          // Deleted categories leave their offers in place, uncategorised; Undo files them back.
+          onCategoriesDeleted={(ids) => {
+            const stamp = new Date().toISOString();
+            const { filed } = unfileOffers(invoicesOffers, ids, stamp);
+            if (filed.size === 0) return;
+            setInvoicesOffers?.((prev) => unfileOffers(prev, ids, stamp).offers);
+            return () => setInvoicesOffers?.((prev) => refileOffers(prev, filed));
+          }}
+          clientCounts={offerCountsByCategory(invoicesOffers)}
+          t={t}
+          readOnly={getPermission("invoices") !== "edit"}
+          canDelete={getPermission("invoices.delete") === "edit"}
+          copy={{
+            title: navT(sectionKey("offers", "categories", "title")),
+            description: t(
+              "File price offers under Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3), each with its own colour.",
+              "Cenové ponuky zaraďte do úrovní Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3), každú s vlastnou farbou.",
+              "Az árajánlatokat Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3) szerint rendezheti, mindegyik saját színnel."
+            ),
+            namePlaceholder: t("e.g. Roofs, Facades, Interiors...", "napr. Strechy, Fasády, Interiéry...", "pl. Tetők, Homlokzatok, Belső terek..."),
+            emptyEditable: t(
+              "No offer categories yet — add the first one above.",
+              "Zatiaľ žiadne kategórie ponúk — pridajte prvú vyššie.",
+              "Még nincsenek ajánlatkategóriák — adja hozzá az elsőt fent."
+            ),
+            empty: t("No offer categories yet.", "Zatiaľ žiadne kategórie ponúk.", "Még nincsenek ajánlatkategóriák."),
+            countTitle: (count) => t(`${count} offer(s) in this category`, `${count} ponúk v tejto kategórii`, `${count} ajánlat ebben a kategóriában`),
+          }}
+        />
+        ) : null;
       case "offers/templates":
         return (
         <ModuleLinkCard
