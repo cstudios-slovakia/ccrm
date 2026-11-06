@@ -264,3 +264,5 @@ test.describe('Hold to confirm — leads, projects, clients', () => {
     await expect(inMain(page, name).first()).toBeVisible();
   });
 });
+
+// hold-flake check: touched so CI scopes only this spec (temporary)
