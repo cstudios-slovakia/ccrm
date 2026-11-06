@@ -38,6 +38,11 @@ interface Props {
   onRenameSpeaker: (speakerId: string, name: string) => void;
   /** Per-user suffix for the remembered Document | Transcript choice. */
   userKey: string;
+  /**
+   * A text model is available (OpenAI key). Without it the live transcript still runs (on a
+   * Soniox key) but there is no formatted document and no "Catch me up".
+   */
+  aiText?: boolean;
 }
 
 type View = "document" | "transcript";
@@ -66,13 +71,15 @@ export const MeetingFocusPanel: React.FC<Props> = ({
   speakerNames,
   onRenameSpeaker,
   userKey,
+  aiText = true,
 }) => {
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
 
   const viewKey = `ccrm_focus_view:${userKey}`;
-  const [view, setViewState] = useState<View>(() => {
+  const [storedView, setViewState] = useState<View>(() => {
     try { return localStorage.getItem(viewKey) === "transcript" ? "transcript" : "document"; } catch { return "document"; }
   });
+  const view: View = aiText ? storedView : "transcript";
   const setView = (v: View) => {
     setViewState(v);
     try { localStorage.setItem(viewKey, v); } catch { /* private mode */ }
@@ -221,6 +228,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
             className={cn("size-4 text-slate-400 shrink-0 ml-auto transition-transform duration-200", collapsed && "-rotate-90")}
           />
         </button>
+        {aiText && (<>
         <div
           role="group"
           aria-label={t("View", "Zobrazenie", "Nézet")}
@@ -250,6 +258,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
           {recap?.loading ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
           {t("Catch me up", "Zhrň mi to", "Foglald össze")}
         </button>
+        </>)}
       </div>
 
       {/* Collapsed: just the newest line, so a glance still works */}

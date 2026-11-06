@@ -4372,15 +4372,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                       <div className="space-y-2 pt-4 border-t border-slate-100">
                         <label className="type-overline text-slate-500 block">
-                          {t("Live meeting transcription (Soniox)", "Živý prepis stretnutí (Soniox)", "Élő megbeszélés-átirat (Soniox)")}
+                          {t("Meeting transcription with speakers (Soniox)", "Prepis stretnutí s rozlíšením hovoriacich (Soniox)", "Megbeszélés-átirat beszélőkkel (Soniox)")}
                         </label>
-                        <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
-                          {t(
-                            "Optional. With a key, Meeting Room's Focus helper tells speakers apart (Participant 1, 2, …) and transcribes live for about $0.12 per hour. Without it, the Focus helper uses OpenAI without speakers. Create a key at soniox.com.",
-                            "Voliteľné. S kľúčom Pomocník sústredenia v Zasadačke rozlišuje hovoriacich (Účastník 1, 2, …) a prepisuje naživo za približne 0,12 $ za hodinu. Bez neho používa OpenAI bez rozlíšenia hovoriacich. Kľúč vytvoríte na soniox.com.",
-                            "Opcionális. Kulccsal a Tárgyaló Fókuszsegédje megkülönbözteti a beszélőket (1., 2. résztvevő, …), és élőben átír kb. 0,12 $/óra áron. Nélküle a Fókuszsegéd az OpenAI-t használja, beszélők nélkül. Kulcsot a soniox.com oldalon hozhat létre."
+                        {/* Permanent: recording works with either key, this says what the Soniox key adds. */}
+                        <div
+                          className={cn(
+                            "max-w-2xl flex items-start gap-2.5 px-3.5 py-3 rounded-xl border text-ui",
+                            sonioxApiKey.trim() !== ""
+                              ? "border-emerald-200 bg-emerald-50/60 text-emerald-800"
+                              : "border-indigo-100 bg-indigo-50/60 text-slate-600",
                           )}
-                        </p>
+                        >
+                          {sonioxApiKey.trim() !== ""
+                            ? <Icons.Users className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600" />
+                            : <Icons.Info className="h-4 w-4 mt-0.5 shrink-0 text-indigo-500" />}
+                          <p className="leading-relaxed">
+                            {sonioxApiKey.trim() !== ""
+                              ? t(
+                                  "Speakers are told apart. Meeting Room transcribes recordings through Soniox, live and after you stop, and labels who spoke (Participant 1, 2, …). OpenAI still writes the AI summary.",
+                                  "Hovoriaci sa rozlišujú. Zasadačka prepisuje nahrávky cez Soniox, naživo aj po zastavení, a označí, kto hovoril (Účastník 1, 2, …). AI zhrnutie naďalej píše OpenAI.",
+                                  "A beszélők megkülönböztetve. A Tárgyaló a Sonioxon keresztül írja át a felvételeket, élőben és leállítás után is, és jelöli, ki beszélt (1., 2. résztvevő, …). Az AI-összefoglalót továbbra is az OpenAI írja."
+                                )
+                              : t(
+                                  "Speaker recognition needs a Soniox API key. Meetings are recorded and transcribed the same way without it, through OpenAI, but the transcript does not say who spoke. Soniox costs about $0.12 per hour live and $0.10 per hour after you stop. Create a key at soniox.com.",
+                                  "Rozlíšenie hovoriacich vyžaduje API kľúč Soniox. Bez neho sa stretnutia nahrávajú a prepisujú rovnako, cez OpenAI, ale v prepise nebude, kto hovoril. Soniox stojí približne 0,12 $ za hodinu naživo a 0,10 $ za hodinu po zastavení. Kľúč vytvoríte na soniox.com.",
+                                  "A beszélők felismeréséhez Soniox API-kulcs kell. Nélküle a megbeszélések ugyanúgy rögzülnek és átíródnak, az OpenAI-on keresztül, de az átirat nem jelzi, ki beszélt. A Soniox élőben kb. 0,12 $/óra, leállítás után 0,10 $/óra. Kulcsot a soniox.com oldalon hozhat létre."
+                                )}
+                          </p>
+                        </div>
                         <label className="type-overline text-slate-500 block">
                           {t("Soniox API key", "API kľúč Soniox", "Soniox API-kulcs")}
                         </label>

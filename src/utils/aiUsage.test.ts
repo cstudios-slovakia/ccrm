@@ -67,5 +67,9 @@ test("Soniox real-time is priced by the minute, also for later versions", () => 
   assert.ok(Math.abs((priceAiUsage("stt-rt-v6", a, "2026-11") ?? 0) - 0.12) < 1e-9);
   assert.ok(Math.abs((priceAiUsage("stt-rt-v7", a, "2026-11") ?? 0) - 0.12) < 1e-9);
   assert.equal(aiModelLabel("stt-rt-v6"), "Soniox real-time");
+  // Soniox async (official meeting transcript): $0.10 per hour, later versions by prefix.
+  assert.ok(Math.abs((priceAiUsage("stt-async-v6", a, "2026-11") ?? 0) - 0.1) < 1e-9);
+  assert.ok(Math.abs((priceAiUsage("stt-async-v7", a, "2026-11") ?? 0) - 0.1) < 1e-9);
+  assert.equal(aiModelLabel("stt-async-v6"), "Soniox");
   assert.equal(aiFeatureLabel("meeting_live_document", "sk"), "Živý dokument stretnutia");
 });

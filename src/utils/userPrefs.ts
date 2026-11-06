@@ -181,6 +181,11 @@ export interface UserPrefs {
    * cannot administer the key should not be nagged on every device.
    */
   aiKeyBannerDismissed: boolean;
+  /**
+   * Meeting Room: the one-time notice that speakers are told apart only with a Soniox key.
+   * Dismissed once, per user, so it does not come back on another device.
+   */
+  sonioxNoticeDismissed: boolean;
   /** Customised built-in RAG agent, or null while it is still the stock one. */
   ragDefaultAgent: any | null;
   /** Sidebar persistent pinned state on the left. If true, stays expanded and renders a right inner shadow. */
@@ -283,6 +288,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
+  sonioxNoticeDismissed: false,
   ragDefaultAgent: null,
   sidebarPinned: false,
   sidebarPinnedCollapsed: false,

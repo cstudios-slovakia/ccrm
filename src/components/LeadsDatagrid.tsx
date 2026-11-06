@@ -5,6 +5,7 @@ import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
+import { hasTranscriptionKey } from "../utils/aiConfig";
 import { useUserPref } from "../utils/userPrefs";
 import { useListFilter, useListDateFilter } from "../hooks/useListFilter";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
@@ -1626,6 +1627,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     // recording up by, so say which stored file to transcribe.
                     audioFile: uploadedAudioFile || undefined,
                     durationSeconds: Number.isFinite(audioDuration) && audioDuration > 0 ? audioDuration : undefined,
+                    language: systemLanguage,
                 }),
             });
             const data = await res.json();
@@ -1671,11 +1673,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const renderCompactAudioRecorder = () => {
-        const isOpenAiConfigured = !!(
-            integrationsConfig?.openAiKey &&
-            integrationsConfig.openAiKey.trim() !== ""
-        );
-
         return (
             <VoiceRecorderCard
                 systemLanguage={systemLanguage}
@@ -1697,7 +1694,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 onResume={resumeRecording}
                 onStop={stopRecording}
                 onRemove={removeAudioFile}
-                canTranscribe={isOpenAiConfigured}
+                canTranscribe={hasTranscriptionKey(integrationsConfig)}
                 isTranscribing={isTranscribing}
                 isUploadingAudio={isUploadingAudio}
                 hasUploadedAudio={!!uploadedAudioFile}

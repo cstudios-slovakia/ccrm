@@ -71,6 +71,8 @@ const MODEL_NAMES: Record<string, string> = {
   "gpt-live-transcribe": "GPT Live Transcribe",
   "stt-rt-v6": "Soniox real-time",
   "stt-rt": "Soniox real-time",
+  "stt-async-v6": "Soniox",
+  "stt-async": "Soniox",
 };
 
 const modelNameKeys = Object.keys(MODEL_NAMES).sort((a, b) => b.length - a.length);

@@ -2,8 +2,8 @@
 /**
  * Meeting Room "Focus helper": live transcript while a meeting is recorded.
  *
- * The recording itself and the official transcript (gpt-transcribe over the whole
- * file, transcribe_meeting.php) are untouched. This endpoint only serves the live layer:
+ * The recording itself and the official transcript (Soniox async or gpt-transcribe over the
+ * whole file, transcribe_meeting.php) are separate. This endpoint only serves the live layer:
  *
  *   create_session  with a Soniox key configured: mint a Soniox TEMPORARY key for a real-time
  *                   WebSocket (model stt-rt-v6 and URL pinned here, speaker diarization on the
@@ -15,7 +15,8 @@
  *                   The master key never leaves the server and is never used as a fallback.
  *   catch_up        2-3 bullet recap of the last minutes of the live transcript (cheap text model).
  *
- * The OpenAI key stays required for both providers: the document and "catch me up" use it.
+ * Either key starts a live session. The document and "catch me up" need the OpenAI key (text
+ * model); with only a Soniox key the browser shows the transcript without them.
  * The Soniox master key never reaches the browser, only a temporary key (60 s to connect).
  *
  * Deliberately NOT realtime_session.php: that one carries the voice-assistant prompt and
@@ -82,10 +83,15 @@ $integrationsConfig = is_array($integrationsConfig)
     ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys())
     : [];
 $openAiKey = trim((string)($integrationsConfig['openAiKey'] ?? ''));
-if ($openAiKey === '') {
+// The live transcript runs on either key (Soniox when set, else OpenAI). The SDP exchange is
+// OpenAI's own transport, and "catch me up" needs OpenAI's text model.
+$hasSonioxKey = trim((string)($integrationsConfig['sonioxApiKey'] ?? '')) !== '';
+if ($openAiKey === '' && ($action !== 'create_session' || !$hasSonioxKey)) {
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API key is missing. Please configure your OpenAI API Key in CRM Settings > Integrations.',
+        'message' => $action === 'create_session'
+            ? 'No transcription key is configured. Add an OpenAI or Soniox API key in Settings > AI.'
+            : 'OpenAI API key is missing. Please configure your OpenAI API Key in Settings > AI.',
     ]);
     exit;
 }
