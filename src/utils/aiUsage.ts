@@ -40,6 +40,7 @@ const FEATURES: Record<string, { en: string; sk: string; hu: string }> = {
   workflow: { en: "Workflow agent", sk: "Agent workflowu", hu: "Munkafolyamat-ügynök" },
   voice_call: { en: "Live voice call", sk: "Živý hlasový hovor", hu: "Élő hanghívás" },
   live_transcription: { en: "Live transcription", sk: "Živý prepis", hu: "Élő átirat" },
+  meeting_catch_up: { en: "Meeting catch-up", sk: "Rýchle zhrnutie stretnutia", hu: "Megbeszélés gyors összefoglalója" },
 };
 
 export const aiFeatureLabel = (feature: string, lang: Language): string => {
@@ -157,6 +158,18 @@ export const reportVoiceUsage = (event: { type?: string; response?: any; usage?:
     if (seconds <= 0) return;
     postUsage({ feature: "live_transcription", model: "gpt-live-transcribe", audioSeconds: seconds });
   }
+};
+
+/**
+ * Meeting Room focus helper: a transcription session is billed by the minute of audio streamed,
+ * and its `completed` events carry no usage block, so the hook reports the seconds it streamed
+ * (in checkpoints, so a closed tab loses at most a minute). Goes through the same ledger row as
+ * `reportVoiceUsage` uses for `live_transcription`.
+ */
+export const reportLiveTranscriptionSeconds = (seconds: number): void => {
+  const s = num(seconds);
+  if (s < 1) return;
+  postUsage({ feature: "live_transcription", model: "gpt-live-transcribe", audioSeconds: Math.round(s * 100) / 100 });
 };
 
 const postUsage = (body: Record<string, unknown>): void => {

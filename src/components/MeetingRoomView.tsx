@@ -20,6 +20,9 @@ import { archiveRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
+import { useLiveTranscription } from "../hooks/useLiveTranscription";
+import { MeetingFocusPanel } from "./meeting/MeetingFocusPanel";
+import { liveTranscriptToText } from "../utils/liveTranscript";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -220,6 +223,55 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
   const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
   const transcriptionAvailable = viewState === "new" ? !!newTranscription : !!selectedMeeting?.transcription;
+
+  // Focus helper: a live transcript beside the recording (new-note flow only). Opt-in because it
+  // costs money, remembered per user on this device, and only offered when OpenAI is configured.
+  const focusHelperKey = `ccrm_focus_helper:${currentUser?.id || currentUser?.email || "me"}`;
+  const [focusHelperOn, setFocusHelperOn] = useState<boolean>(() => {
+    try { return localStorage.getItem(focusHelperKey) === "1"; } catch { return false; }
+  });
+  const toggleFocusHelper = () => {
+    setFocusHelperOn((on) => {
+      try { localStorage.setItem(focusHelperKey, on ? "0" : "1"); } catch { /* private mode */ }
+      return !on;
+    });
+  };
+  const focusHelperAvailable = isOpenAiConfigured && canEdit && viewState === "new";
+  const recordDurationRef = React.useRef(0);
+  recordDurationRef.current = recordDuration;
+  const liveTranscript = useLiveTranscription({
+    enabled: focusHelperAvailable && focusHelperOn,
+    running: recordingState === "recording",
+    stream: microphoneStream,
+    getElapsed: () => recordDurationRef.current,
+    languages: systemLanguage === "en" ? ["en"] : [systemLanguage, "en"],
+  });
+  const clearLiveTranscript = liveTranscript.clear;
+  // The official transcription of the saved file failed: the panel then offers the live text.
+  const [officialTranscriptFailed, setOfficialTranscriptFailed] = useState(false);
+  // The transcription field currently holds the live draft, so the official Transcribe stays on offer.
+  const [transcriptIsLiveDraft, setTranscriptIsLiveDraft] = useState(false);
+  // Recording cancelled or note left: the live text goes with it.
+  useEffect(() => {
+    if (recordingState === "none") {
+      clearLiveTranscript();
+      setOfficialTranscriptFailed(false);
+      setTranscriptIsLiveDraft(false);
+    }
+  }, [recordingState, clearLiveTranscript]);
+  const useLiveTranscriptAsNote = () => {
+    const text = liveTranscriptToText(liveTranscript.segments, true);
+    if (!text) return;
+    const marker = t(
+      "[Live transcript – draft, not the official transcription]",
+      "[Živý prepis – koncept, nie oficiálny prepis]",
+      "[Élő átirat – piszkozat, nem a hivatalos átírás]"
+    );
+    setNewTranscription(`${marker}\n${text}`);
+    setActiveTab("transcription");
+    setOfficialTranscriptFailed(false);
+    setTranscriptIsLiveDraft(true);
+  };
 
   // Visualizer height updater
   useEffect(() => {
@@ -563,6 +615,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
   const handleTranscribeMeeting = async () => {
     setIsTranscribing(true);
+    setOfficialTranscriptFailed(false);
     const manualNotesText = viewState === "new" 
       ? serializeBlocksToPlainText(newBlocks)
       : serializeBlocksToPlainText(parseNotesToBlocks(selectedMeeting?.notes || ""));
@@ -598,6 +651,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             actionItems: data.actionItems
           };
           setNewTranscription(data.transcription);
+          // The official transcript is here and replaces any live draft.
+          clearLiveTranscript();
+          setTranscriptIsLiveDraft(false);
           setNewAutomatedNotes(data.automatedNotes);
           setNewSummaryGenerated(true);
           setNewAiSummary(aiSum);
@@ -671,6 +727,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         throw new Error(data.message || t("Transcription failed", "Prepis zlyhal", "Az átírás sikertelen"));
       }
     } catch (err: any) {
+      if (viewState === "new") setOfficialTranscriptFailed(true);
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t("Transcription failed: ", "Prepis zlyhal: ", "Az átírás sikertelen: ") + err.message, "error");
       }
@@ -841,6 +898,25 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
         {/* Buttons Controls */}
         <div className="flex items-center gap-2 shrink-0">
+          {focusHelperAvailable && (recordingState === "idle" || recordingState === "recording" || recordingState === "paused") && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={focusHelperOn}
+              onClick={toggleFocusHelper}
+              title={t(
+                "Live transcript to catch up when you lose focus. Uses OpenAI audio billed per minute.",
+                "Živý prepis, keď stratíte pozornosť. Využíva zvuk OpenAI účtovaný za minútu.",
+                "Élő átirat, ha elveszíti a fonalat. Az OpenAI percenként számlázott hangszolgáltatását használja."
+              )}
+              className="flex items-center gap-2 px-2 h-9 rounded-xl text-ui font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+            >
+              <span className={cn("relative inline-flex h-4.5 w-8 rounded-full transition-colors duration-200", focusHelperOn ? "bg-indigo-600" : "bg-slate-300")}>
+                <span className={cn("absolute top-0.5 left-0.5 size-3.5 rounded-full bg-white shadow transition-transform duration-200", focusHelperOn && "translate-x-3.5")} />
+              </span>
+              {t("Focus helper", "Pomocník sústredenia", "Fókuszsegéd")}
+            </button>
+          )}
           {recordingState === "idle" && (
             <>
               <button
@@ -917,7 +993,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </>
           )}
 
-          {recordingState === "stopped" && isOpenAiConfigured && !transcriptionAvailable && (
+          {recordingState === "stopped" && isOpenAiConfigured && (!transcriptionAvailable || transcriptIsLiveDraft) && (
             <button
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
@@ -2529,6 +2605,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
           {/* Recording Bar */}
           {renderRecordingBar()}
+
+          {/* Focus helper: live transcript while recording; kept after Stop until the official transcript arrives */}
+          {focusHelperAvailable && focusHelperOn && recordingState !== "none" && !newTranscription && (
+            <MeetingFocusPanel
+              lang={systemLanguage}
+              status={liveTranscript.status}
+              error={liveTranscript.error}
+              segments={liveTranscript.segments}
+              recordingState={recordingState}
+              elapsedSec={recordDuration}
+              onRetry={liveTranscript.retry}
+              officialFailed={officialTranscriptFailed}
+              onUseLive={useLiveTranscriptAsNote}
+            />
+          )}
 
           {newSummaryGenerated ? (
             <div className="grid grid-cols-1 ws-lg:grid-cols-3 gap-6 items-start w-full max-w-7xl">
