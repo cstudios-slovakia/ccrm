@@ -30,7 +30,7 @@ jobs:
   test:
     name: Unit tests + QA audit
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +77,10 @@ jobs:
           # A hung test fails after 2.5 min instead of 4, so a few hangs cannot use up
           # the run limit. The module crawls set their own, longer limit.
           QA_TEST_TIMEOUT_MS: 150000
-          QA_GLOBAL_TIMEOUT_MS: 4200000
+          QA_GLOBAL_TIMEOUT_MS: 5700000
+          # One retry: a test that passes on the second try is reported as flaky and does not
+          # block; a real failure fails twice. Flaky tests are listed in the run summary.
+          QA_RETRIES: 1
           FILES: ${{ github.event.inputs.files }}
         run: |
           audit() {

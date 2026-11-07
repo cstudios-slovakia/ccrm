@@ -74,6 +74,12 @@ if (nowPassing.length) {
   lines.push('These entries now PASS. Remove them from scripts/qa/known-failing.json:');
   for (const e of nowPassing) lines.push(`- ${e.file} › ${e.title}`);
 }
+const flaky = tests.filter((t) => t.status === 'flaky');
+if (flaky.length) {
+  lines.push('');
+  lines.push(`${flaky.length} test(s) failed once and passed on retry (flaky, not blocking):`);
+  for (const t of flaky) lines.push(`- ${t.file} › ${t.title}`);
+}
 if (newFailures.length) {
   lines.push('');
   lines.push(`**${newFailures.length} failure(s) NOT on the list (these fail the run):**`);
