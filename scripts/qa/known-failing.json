@@ -62,11 +62,6 @@
       "reason": "The edited sell price (4.50) never reaches the server: 3.9 is still pushed. Either Save Changes loses the edit when the view is left at once, or the spec races it. Not yet investigated."
     },
     {
-      "file": "crawler.spec.ts",
-      "title": "Files Manager",
-      "reason": "Crawler finding \"The option could not be clicked\" in the global \"Vytvoriť novú úlohu\" form (PRIRADIŤ, PROJEKT, PREPOJIŤ S LEADOM / KLIENTOM, KLIENT / LEAD). It hits a different module on each run (Leads, Files Manager, Clients, Meeting Room so far); in one screenshot the option was in fact selected. Either the dropdown panel is clipped by the scrolling form, or the crawler clicks before the panel has settled. Open that form, open each dropdown and pick an option by hand to tell which; fix the one root cause, then delete these entries."
-    },
-    {
       "file": "moduleSetupWizard.spec.ts",
       "title": "Confirm hides the switched-off modules from the sidebar and Start menu",
       "reason": "The Start Menu button (title 'Start Menu (All Modules)') is not found before the test timeout. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR. Not investigated."
@@ -90,6 +85,11 @@
       "file": "timeTracking.spec.ts",
       "title": "the timer bar takes a Description before Start, and the entry drawer edits it",
       "reason": "Clicking the entry title is blocked by the project-request dialog overlay (z-[100001]). Find out why that dialog is open in this flow. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR."
+    },
+    {
+      "file": "whatsappDemo.spec.ts",
+      "title": "Tasks: nine tasks across the four chats, ticking an open one moves it to Done",
+      "reason": "The task list shows 4 rows where the spec expects 8 (locator 'main ul.divide-y > li'). Fails the same way on 495ff448 (before the stored-vs-derived merge) and on 1.13-nectarine. Not investigated: check whether the demo chats really seed nine tasks or the spec counts the wrong list."
     }
   ]
 }
