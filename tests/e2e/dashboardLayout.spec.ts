@@ -265,8 +265,30 @@ test.describe('Dashboard layout editing', () => {
 
   test('cards glide rather than jump when the board rearranges', async ({ page }) => {
     // Widening a card displaces every card after it; each one should travel.
+    // Track FLIP animation in DOM so that even under heavy runner load where click()
+    // returns after the 320ms animation finishes, the glide is reliably detected.
+    await page.evaluate(() => {
+      (window as any).__flipAnimationObserved = 0;
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.type === 'attributes' && m.attributeName === 'data-flip-animating') {
+            if ((m.target as HTMLElement).hasAttribute('data-flip-animating')) {
+              (window as any).__flipAnimationObserved++;
+            }
+          }
+        }
+      });
+      observer.observe(document.body, { attributes: true, subtree: true });
+    });
+
     await page.locator(`[data-flip="${LEAD_BREAKDOWN}"] button[aria-label="Zmeniť veľkosť"]`).click();
-    await expect.poll(() => page.locator('[data-flip-animating]').count(), { timeout: 2000 }).toBeGreaterThan(0);
+    await expect
+      .poll(async () => {
+        const live = await page.locator('[data-flip-animating]').count();
+        const observed = await page.evaluate(() => (window as any).__flipAnimationObserved || 0);
+        return live > 0 || observed > 0;
+      }, { timeout: 3000 })
+      .toBe(true);
     // ...and settle again, leaving no inline transform behind.
     await expect.poll(() => page.locator('[data-flip-animating]').count(), { timeout: 3000 }).toBe(0);
   });

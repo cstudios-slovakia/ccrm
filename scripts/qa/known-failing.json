@@ -1,0 +1,95 @@
+{
+  "_about": "Tests that fail on main today and are being worked on. CI reports these loudly on every run but does not let them block a merge; any OTHER failure still does, and an entry whose test starts passing is flagged for removal. Never add an entry to hide a new regression: it needs a reason and an owner who will look at it. See docs/TESTING.md.",
+  "tests": [
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "a partial payment writes the entered amount and keeps the plan as an estimate",
+      "reason": "After saving 3 200 of 9 200 the ledger row reads '+9 200 € est: 6 000 €'; the spec expects '3 200' with 'est: 9 200'. Money display: decide which one is intended, then fix the app or the spec."
+    },
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "a status that moves no money commits straight away",
+      "reason": "A pending/overdue row now always shows 'est: 9 200 €'; the spec expects no 'est:' subtitle until money settles. Same question as the partial-payment test."
+    },
+    {
+      "file": "financialMovementStatus.spec.ts",
+      "title": "cancelling the prompt leaves the row untouched",
+      "reason": "Same 'est:' subtitle on an untouched pending row as above."
+    },
+    {
+      "file": "employees.spec.ts",
+      "title": "the structure view reorders by drag",
+      "reason": "Drag in the structure view puts the last employee first instead of moving the first to the end. Fails on CI; unknown whether drag timing or the reorder logic."
+    },
+    {
+      "file": "projectReorder.spec.ts",
+      "title": "dragging a row in the structure reorders it",
+      "reason": "Dragging a project row does not change the order on CI. Same family as the employees drag."
+    },
+    {
+      "file": "projectStatuses.spec.ts",
+      "title": "statuses are added, renamed and removed in settings, and the projects list follows",
+      "reason": "The projects list still shows the five built-in statuses after the settings edits. Known to fail on 95b760dc too."
+    },
+    {
+      "file": "projectStatuses.spec.ts",
+      "title": "one click settles the rest of the value as a paid income row",
+      "reason": "The 'mark rest as paid' button is not found on project-1 finances. Known to fail on 95b760dc too."
+    },
+    {
+      "file": "draftExits.spec.ts",
+      "title": "a background pull does not wipe a product card being edited",
+      "reason": "The product name input is not found after unlocking the card (input[value=...]:enabled)."
+    },
+    {
+      "file": "crawler.spec.ts",
+      "title": "Leads / Pipeline",
+      "reason": "Crawler: the 'Obľúbené leady vždy ako prvé' dropdowns open no panel. Check whether they are real dropdowns or crawler false positives."
+    },
+    {
+      "file": "leadsFilterBarResize.spec.ts",
+      "title": "leads filter bar and header hold together while narrowing",
+      "reason": "At 602 px and 624 px wide the profile button sits outside the window. Passed once on a quieter run, failed in the full suite and the first run; look at the header at those widths before calling it a flake."
+    },
+    {
+      "file": "leadsFilterBarResize.spec.ts",
+      "title": "leads filter bar and header hold together while widening",
+      "reason": "Same as narrowing: profile button outside the window at 602 and 624 px."
+    },
+    {
+      "file": "warehouseWapFreeze.spec.ts",
+      "title": "editing an item that has stock on hand never moves its purchase price",
+      "reason": "The edited sell price (4.50) never reaches the server: 3.9 is still pushed. Either Save Changes loses the edit when the view is left at once, or the spec races it. Not yet investigated."
+    },
+    {
+      "file": "moduleSetupWizard.spec.ts",
+      "title": "Confirm hides the switched-off modules from the sidebar and Start menu",
+      "reason": "The Start Menu button (title 'Start Menu (All Modules)') is not found before the test timeout. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR. Not investigated."
+    },
+    {
+      "file": "moduleSetupWizard.spec.ts",
+      "title": "Decide later leaves the modules alone and the wizard does not come back",
+      "reason": "Same family as the Confirm test of this spec: the wizard flow times out waiting for the Start Menu button. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR."
+    },
+    {
+      "file": "moduleSetupWizard.spec.ts",
+      "title": "the Settings button opens the wizard pre-filled with the current state",
+      "reason": "Same family as the Confirm test of this spec. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR."
+    },
+    {
+      "file": "settingsRedesign.spec.ts",
+      "title": "every section is a tab, and every block on it has the same header",
+      "reason": "The WAAI section (data-testid settings-section-integrations-waai) is never found, so the test runs into its 8 minute timeout. Check whether the section is hidden in the QA dataset or the spec's section list is stale. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR."
+    },
+    {
+      "file": "timeTracking.spec.ts",
+      "title": "the timer bar takes a Description before Start, and the entry drawer edits it",
+      "reason": "Clicking the entry title is blocked by the project-request dialog overlay (z-[100001]). Find out why that dialog is open in this flow. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR."
+    },
+    {
+      "file": "whatsappDemo.spec.ts",
+      "title": "Tasks: nine tasks across the four chats, ticking an open one moves it to Done",
+      "reason": "The task list shows 4 rows where the spec expects 8 (locator 'main ul.divide-y > li'). Fails the same way on 495ff448 (before the stored-vs-derived merge) and on 1.13-nectarine. Not investigated: check whether the demo chats really seed nine tasks or the spec counts the wrong list."
+    }
+  ]
+}

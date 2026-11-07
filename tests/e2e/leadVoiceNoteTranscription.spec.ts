@@ -104,7 +104,8 @@ test.describe('Lead timeline — transcribing a voice note', () => {
     await gotoView(page, LEAD_HASH);
     await page.getByText('Výber typu udalosti').locator('xpath=..').getByRole('button', { name: 'Poznámka', exact: true }).click();
 
-    await page.getByRole('button', { name: /Nahrať/ }).click();
+    // The voice-task bar has a record button too; its name is longer.
+    await page.getByRole('button', { name: 'Nahrať', exact: true }).click();
     await page.waitForTimeout(1200);
     await page.getByRole('button', { name: /Zastaviť/ }).click();
 

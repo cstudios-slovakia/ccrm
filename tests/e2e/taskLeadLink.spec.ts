@@ -17,8 +17,9 @@ async function openTaskDay(page: Page) {
   await page.getByText(TASK_TITLE).first().click();
 }
 
+// A task is a list row now; its checkbox is named for it.
 const taskCard = (page: Page) =>
-  page.locator('div.rounded-2xl').filter({ has: page.getByRole('heading', { name: TASK_TITLE }) }).last();
+  page.locator('div.group').filter({ has: page.getByLabel(`Select ${TASK_TITLE}`) }).last();
 
 async function expectLeadOpened(page: Page) {
   await expect.poll(() => new URL(page.url()).hash).toBe(LEAD_HASH);
@@ -45,7 +46,7 @@ test.describe('Task → lead link', () => {
     await startSession(page);
     await openTaskDay(page);
 
-    await taskCard(page).getByTitle(/^(Edit Task|Upraviť úlohu|Feladat szerkesztése|View Task|Zobraziť úlohu|Feladat megtekintése)$/).click();
+    await taskCard(page).getByTitle(/^(Edit Task|Upraviť úlohu|Feladat szerkesztése|View Task|Zobraziť úlohu|Feladat megtekintése)$/).filter({ visible: true }).click();
     const drawer = page.locator('div.fixed.inset-0').filter({ hasText: /Edit Task|Upraviť úlohu|Feladat szerkesztése/ });
     const link = drawer.getByTestId('task-drawer-lead-link');
     await expect(link).toBeVisible();
