@@ -802,44 +802,74 @@ export const BOTMAN_DRIVER_SPECS: Record<BotManConnectorType, BotManDriverSpec> 
     supportsLocalPolling: true,
     usesMetaFallback: true,
     summary: {
-      en: "Connect a Facebook Page via Meta Messenger API. Automatically falls back to your Meta credentials from Settings -> Integrations if left blank.",
-      sk: "Pripojte Facebook stránku cez Meta Messenger API. Ak polia necháte prázdne, automaticky sa použijú Meta údaje z Nastavenia -> Integrácie.",
-      hu: "Facebook oldal csatlakoztatása Meta Messenger API-val. Üresen hagyva automatikusan a Beállítások -> Integrációk Meta adatait használja.",
+      en: "Connect a Facebook Page via Meta Messenger API. Works on localhost via Graph API polling and on public HTTPS domains via real-time Webhooks.",
+      sk: "Pripojte Facebook stránku cez Meta Messenger API. Na localhoste funguje cez Graph API polling a na verejnej HTTPS doméne cez real-time Webhooky.",
+      hu: "Facebook oldal csatlakoztatása Meta Messenger API-val. Localhoston Graph API lekérdezéssel, nyilvános HTTPS-en valós idejű Webhookkal működik.",
     },
     setupSteps: {
       en: [
-        "Open Meta for Developers -> Your Business App -> Add the Messenger product (or leave blank to reuse your existing Meta token from Settings -> Integrations).",
-        "Generate a Page Access Token for your Facebook Page and copy your App Secret.",
-        "Copy the CCRM Webhook URL and Verify Token below into Meta's Messenger Webhook settings and subscribe to 'messages' & 'messaging_postbacks'.",
+        "1. Add Messenger to your Meta App: Click 'Meta for Developers' (top right) -> Create App (type: Other -> Business) or open your existing app. In the left sidebar click 'Use cases' (or 'Dashboard -> Add Product'), find 'Messenger', and click 'Set up'.",
+        "2. Copy Meta App Secret: In the left sidebar go to 'App settings -> Basic', click 'Show' next to 'App secret', and paste that 32-character secret into 'Meta App Secret' below. (Do NOT add a 'Website -> Site URL' on that page — that is only for Facebook Login.)",
+        "3. Generate Page Access Token (EAA...): In the left sidebar open 'Messenger -> Messenger API Settings' (or 'Use cases -> Engage with customers on Messenger -> Customize'). Under '2. Generate access tokens', click 'Add or remove Pages' to link your Facebook Page, click 'Generate token', and paste the long token (starts with EAA...) into 'Page Access Token' below.",
+        "4. Test & Save (Webhook is optional on localhost): Click 'Test connection' and 'Save Connector' below. On localhost, CCRM automatically polls your Page conversations via Graph API without needing a webhook! On a public HTTPS server (or ngrok tunnel), go to 'Messenger -> Messenger API Settings -> 1. Configure webhooks', click 'Add Callback URL', paste the CCRM Webhook URL & Verify Token below, and subscribe to 'messages' & 'messaging_postbacks'.",
       ],
       sk: [
-        "Otvorte Meta for Developers -> Vaša aplikácia -> Pridajte produkt Messenger (alebo nechajte prázdne pre použitie Meta tokenu z Nastavenia -> Integrácie).",
-        "Vygenerujte Page Access Token pre vašu Facebook stránku a skopírujte App Secret.",
-        "Vložte CCRM Webhook URL a Verify Token nižšie do sekcie Webhooks v Meta panely a povoľte 'messages' a 'messaging_postbacks'.",
+        "1. Pridajte Messenger do Meta aplikácie: Kliknite na 'Meta for Developers' (vpravo hore) -> Create App (Other -> Business) alebo otvorte existujúcu aplikáciu. V ľavom menu kliknite na 'Use cases' (alebo 'Dashboard -> Add Product'), nájdite 'Messenger' a kliknite na 'Set up'.",
+        "2. Skopírujte Meta App Secret: V ľavom menu prejdite na 'App settings -> Basic', kliknite na 'Show' pri 'App secret' a vložte 32-znakový kód do poľa 'Meta App Secret' nižšie. (Nevkladajte Webhook URL do 'Website -> Site URL' — to slúži len pre Facebook Login.)",
+        "3. Vygenerujte Page Access Token (EAA...): V ľavom menu otvorte 'Messenger -> Messenger API Settings' (alebo 'Use cases -> Engage with customers on Messenger -> Customize'). V časti '2. Generate access tokens' kliknite na 'Add or remove Pages', pripojte vašu Facebook stránku, kliknite na 'Generate token' a vložte dlhý token (začína na EAA...) do poľa 'Page Access Token' nižšie.",
+        "4. Otestujte a uložte (Webhook je na localhoste voliteľný): Kliknite na 'Otestovať pripojenie' a 'Uložiť konektor'. Na localhoste CCRM automaticky sťahuje konverzácie cez Graph API bez potreby webhooku! Na verejnom HTTPS serveri (alebo cez ngrok) v časti '1. Configure webhooks' kliknite na 'Add Callback URL', vložte CCRM Webhook URL a Verify Token nižšie a zapnite 'messages' a 'messaging_postbacks'.",
       ],
       hu: [
-        "Nyissa meg a Meta for Developers felületet -> Alkalmazás -> Messenger hozzáadása (vagy hagyja üresen a Beállítások -> Integrációk Meta token használatához).",
-        "Generáljon Page Access Tokent az oldalhoz, és másolja ki az App Secret értéket.",
-        "Másolja be a lenti CCRM Webhook URL-t és Verify Tokent a Meta Webhooks beállításaiba ('messages' és 'messaging_postbacks').",
+        "1. Messenger hozzáadása a Meta alkalmazáshoz: Kattintson a 'Meta for Developers' gombra (jobbra fent) -> Create App (Other -> Business). A bal oldali menüben kattintson a 'Use cases' (vagy 'Dashboard -> Add Product') menüpontra, keresse meg a 'Messenger' elemet, és kattintson a 'Set up' gombra.",
+        "2. Meta App Secret másolása: A bal menüben lépjen az 'App settings -> Basic' oldalra, kattintson a 'Show' gombra az 'App secret' mellett, és illessze be a 32 karakteres kódot alább. (NE illessze be a Webhook URL-t a 'Website -> Site URL' mezőbe!)",
+        "3. Page Access Token (EAA...) generálása: A bal menüben nyissa meg a 'Messenger -> Messenger API Settings' oldalt. A '2. Generate access tokens' részben kattintson az 'Add or remove Pages' gombra, válassza ki a Facebook oldalt, kattintson a 'Generate token' gombra, és illessze be a hosszú tokent (EAA...-val kezdődik) a 'Page Access Token' mezőbe.",
+        "4. Tesztelés és mentés (Localhoston nem szükséges webhook): Kattintson a 'Kapcsolat tesztelése' és 'Mentés' gombokra. Localhoston a CCRM automatikusan lekérdezi az üzeneteket a Graph API-n keresztül! Nyilvános HTTPS szerveren (vagy ngrok-kal) az '1. Configure webhooks' részben adja meg a lenti Webhook URL-t és Verify Tokent, majd kapcsolja be a 'messages' és 'messaging_postbacks' eseményeket.",
       ],
     },
     fields: [
       {
         key: "botmanToken",
-        label: { en: "Page Access Token (optional if set in Integrations)", sk: "Page Access Token (voliteľné ak je v Integráciách)", hu: "Page Access Token (opcionális)" },
+        label: {
+          en: "Facebook Page Access Token (starts with EAA...)",
+          sk: "Facebook Page Access Token (začína na EAA...)",
+          hu: "Facebook Page Access Token (EAA...-val kezdődik)",
+        },
         placeholder: "EAAGm0PX4ZBQBO...",
         secret: true,
+        hint: {
+          en: "Found in Meta for Developers -> Messenger -> Messenger API Settings -> 2. Generate access tokens -> Generate token.",
+          sk: "Nájdete v Meta for Developers -> Messenger -> Messenger API Settings -> 2. Generate access tokens -> Generate token.",
+          hu: "Meta for Developers -> Messenger -> Messenger API Settings -> 2. Generate access tokens -> Generate token alatt található.",
+        },
       },
       {
         key: "botmanAppSecret",
-        label: { en: "Meta App Secret", sk: "Meta App Secret", hu: "Meta App Secret" },
-        placeholder: "a1b2c3d4e5f6...",
+        label: {
+          en: "Meta App Secret (32-char hex)",
+          sk: "Meta App Secret (32-znakový kód)",
+          hu: "Meta App Secret (32 karakteres kód)",
+        },
+        placeholder: "774f28f3e82f125e3db26c933c78c80e",
         secret: true,
+        hint: {
+          en: "Found in Meta for Developers -> App settings -> Basic -> App secret.",
+          sk: "Nájdete v Meta for Developers -> App settings -> Basic -> App secret.",
+          hu: "Meta for Developers -> App settings -> Basic -> App secret alatt található.",
+        },
       },
       {
         key: "botmanVerifyToken",
-        label: { en: "Webhook Verify Token", sk: "Webhook Verify Token", hu: "Webhook Verify Token" },
+        label: {
+          en: "Webhook Verify Token (any secret string you choose)",
+          sk: "Webhook Verify Token (ľubovoľný overovací reťazec)",
+          hu: "Webhook Verify Token (tetszőleges ellenőrző kulcs)",
+        },
         placeholder: "ccrm_messenger_verify",
+        hint: {
+          en: "Paste this exact same string into Meta's 'Verify Token' field when adding the Webhook Callback URL.",
+          sk: "Tento istý reťazec vložte do poľa 'Verify Token' v Meta pri nastavovaní Webhook URL.",
+          hu: "Ugyanezt az értéket adja meg a Meta 'Verify Token' mezőjében a Webhook beállításakor.",
+        },
       },
     ],
   },
@@ -1136,8 +1166,11 @@ export const BOTMAN_DRIVER_SPECS: Record<BotManConnectorType, BotManDriverSpec> 
 
 export const getBotManWebhookUrl = (id: string, driver: BotManConnectorType): string => {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const cid = encodeURIComponent(id || "YOUR_CONNECTOR_ID");
-  return `${origin}/api/botman_webhook.php?connector_id=${cid}&driver=${encodeURIComponent(driver)}`;
+  const cleanId = id && id !== "NEW_ID" && id !== "YOUR_CONNECTOR_ID" ? id : "";
+  if (!cleanId) {
+    return `${origin}/api/botman_webhook.php?driver=${encodeURIComponent(driver)}`;
+  }
+  return `${origin}/api/botman_webhook.php?connector_id=${encodeURIComponent(cleanId)}&driver=${encodeURIComponent(driver)}`;
 };
 
 export const getBotManWidgetSnippet = (id: string): string => {

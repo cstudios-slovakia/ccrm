@@ -2457,10 +2457,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             ? "Beállítás lépésről lépésre"
                             : "How to Set Up (Step-by-Step Guide)"}
                       </div>
-                      <ol className="list-decimal list-inside space-y-1.5 text-caption text-slate-700 dark:text-slate-200">
+                      <ol className="list-decimal list-inside space-y-2 text-caption text-slate-700 dark:text-slate-200">
                         {(bmSpec.setupSteps[lang] ?? bmSpec.setupSteps.en).map((stepText, idx) => (
                           <li key={idx} className="leading-relaxed">
-                            {stepText}
+                            {stepText.replace(/^\d+\.\s*/, "")}
                           </li>
                         ))}
                       </ol>
@@ -2482,6 +2482,11 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                               required={Boolean(f.required && !editing.id)}
                             />
                           </label>
+                          {f.hint && (
+                            <p className="mt-1 text-micro text-slate-500 dark:text-slate-400 leading-snug">
+                              {f.hint[lang] ?? f.hint.en}
+                            </p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2527,6 +2532,13 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           )}
                         </div>
                       </div>
+                      {!widgetSnippet && (
+                        <p className="text-micro text-slate-500 dark:text-slate-400 leading-snug">
+                          {bmSpec.supportsLocalPolling
+                            ? "Localhost Ready: Even without a public HTTPS webhook, CCRM automatically syncs messages via API polling once your token is saved. For instant push webhooks on localhost, expose port 8085 via ngrok/Cloudflare Tunnel."
+                            : "Note: External cloud webhooks require a public HTTPS URL (e.g. your production domain or an ngrok tunnel to localhost:8085)."}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
