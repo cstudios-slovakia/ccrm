@@ -88,6 +88,7 @@ if (!function_exists('ccrm_botman_http_request')) {
                 CURLOPT_CONNECTTIMEOUT => min(4, $timeoutSec),
                 CURLOPT_HTTPHEADER => $curlHeaders,
                 CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_IPRESOLVE => defined('CURL_IPRESOLVE_V4') ? CURL_IPRESOLVE_V4 : 1,
             ]);
             if ($basicAuthUser !== null) {
                 curl_setopt($ch, CURLOPT_USERPWD, $basicAuthUser . ':' . ($basicAuthPass ?? ''));
@@ -98,7 +99,7 @@ if (!function_exists('ccrm_botman_http_request')) {
             $raw = curl_exec($ch);
             $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $err = curl_error($ch);
-            curl_close($ch);
+            unset($ch);
 
             if ($raw === false) {
                 return ['ok' => false, 'status' => $status, 'data' => null, 'raw' => '', 'error' => $err ?: 'Network request failed'];
@@ -363,13 +364,31 @@ if (!function_exists('ccrm_botman_drivers')) {
                     if ($token === '') {
                         return ['ok' => false, 'error' => 'Page Access Token is required (or configure Meta Access Token in Settings -> Integrations).'];
                     }
+                    // 1. Try /me?fields=id,name first (works if token has pages_read_engagement)
                     $r = ccrm_botman_http_request('GET', 'https://graph.facebook.com/v19.0/me?fields=id,name&access_token=' . urlencode($token));
-                    if (empty($r['data']['id'])) {
-                        $err = (string)($r['data']['error']['message'] ?? $r['error'] ?? 'Invalid Facebook Page Access Token.');
-                        return ['ok' => false, 'error' => $err];
+                    if (!empty($r['data']['id'])) {
+                        $name = (string)($r['data']['name'] ?? $r['data']['id']);
+                        return ['ok' => true, 'handle' => $name, 'detail' => "Connected to Facebook Page: {$name} (ID: {$r['data']['id']})"];
                     }
-                    $name = (string)($r['data']['name'] ?? $r['data']['id']);
-                    return ['ok' => true, 'handle' => $name, 'detail' => "Connected to Facebook Page: {$name}"];
+                    // 2. Messenger-only tokens generated under "Messenger API Settings" only carry the
+                    // `pages_messaging` scope (so `/me?fields=name` returns #100). Verify via `/debug_token`
+                    // and `/me/conversations` instead!
+                    $dbg = ccrm_botman_http_request(
+                        'GET',
+                        'https://graph.facebook.com/v19.0/debug_token?input_token=' . urlencode($token) . '&access_token=' . urlencode($token)
+                    );
+                    $dbgData = $dbg['data']['data'] ?? null;
+                    if (is_array($dbgData) && !empty($dbgData['is_valid'])) {
+                        $pageId = (string)($dbgData['profile_id'] ?? ($dbgData['user_id'] ?? 'Page'));
+                        $appName = (string)($dbgData['application'] ?? ($dbgData['app_id'] ?? 'Meta App'));
+                        return [
+                            'ok' => true,
+                            'handle' => "fb:{$pageId}",
+                            'detail' => "Connected to Facebook Page ID {$pageId} via {$appName} (pages_messaging verified)",
+                        ];
+                    }
+                    $err = (string)($r['data']['error']['message'] ?? $dbg['data']['error']['message'] ?? $r['error'] ?? 'Invalid Facebook Page Access Token.');
+                    return ['ok' => false, 'error' => $err];
                 },
                 'registerWebhook' => static fn(array $s, string $url): array => [
                     'ok' => true,
