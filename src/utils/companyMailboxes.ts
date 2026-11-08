@@ -728,6 +728,16 @@ export interface WhatsAppMessageItem {
   tsMs: number;
 }
 
+export interface WhatsAppChatTakeoverState {
+  chatId: string;
+  chatName?: string;
+  mode: "active" | "paused";
+  agentConnectorId?: string;
+  subagentId?: string | null;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 export interface WhatsAppConnectorState {
   ok: boolean;
   accountId: string;
@@ -739,6 +749,7 @@ export interface WhatsAppConnectorState {
   lastHistorySyncAt?: string | null;
   chats: WhatsAppChatSummary[];
   messages: Record<string, WhatsAppMessageItem[]>;
+  agentTakeover?: Record<string, WhatsAppChatTakeoverState>;
   updatedAt?: string | null;
   error?: string | null;
 }
@@ -751,6 +762,16 @@ export const sendWhatsAppChatMessage = (params: { id: string; chatId: string; te
 
 export const resyncWhatsAppChats = (id: string, chatId?: string) =>
   call<WhatsAppConnectorState>("wa_resync", { id, chatId });
+
+export const setWhatsAppChatAgentTakeover = (params: {
+  id: string;
+  chatId: string;
+  chatName?: string;
+  mode: "active" | "paused";
+  agentConnectorId?: string;
+  subagentId?: string | null;
+}) =>
+  call<WhatsAppConnectorState & { takeover?: WhatsAppChatTakeoverState }>("wa_agent_takeover", params);
 
 // -----------------------------------------------------------------------------
 // Declarative BotMan Driver Registry (`botman/botman`) & Step-by-Step Setup Guides

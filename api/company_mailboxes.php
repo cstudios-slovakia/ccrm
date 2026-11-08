@@ -62,6 +62,7 @@ $sessionUser = in_array($action, [
     'wa_chats',
     'wa_send',
     'wa_resync',
+    'wa_agent_takeover',
 ], true)
     ? ccrm_require_auth()
     : ccrm_require_admin();
@@ -429,7 +430,7 @@ try {
         exit;
     }
 
-    if (in_array($action, ['wa_chats', 'wa_send', 'wa_resync'], true)) {
+    if (in_array($action, ['wa_chats', 'wa_send', 'wa_resync', 'wa_agent_takeover'], true)) {
         if (!$stored) throw new \InvalidArgumentException('WhatsApp connector not found.');
         $settings = ccrm_company_mailbox_settings($stored);
         $userIds = ccrm_normalize_user_ids($settings['userIds'] ?? null, $stored['owner_user_id'] ?? null);
@@ -444,6 +445,43 @@ try {
 
         if ($action === 'wa_chats') {
             $res = ccrm_waai_get_chats($stored);
+            $pollStampFile = ccrm_marveen_storage_root() . '/.last_trigger_poll';
+            $lastPollTs = is_file($pollStampFile) ? (int)@filemtime($pollStampFile) : 0;
+            if ((time() - $lastPollTs) >= 15) {
+                @file_put_contents($pollStampFile, (string)time());
+                try {
+                    $trigRes = ccrm_marveen_process_event_triggers($pdo);
+                    if (!empty($trigRes['fired'])) {
+                        $res = ccrm_waai_get_chats($stored);
+                    }
+                } catch (\Throwable $e) {
+                    // Non-fatal background trigger check
+                }
+            }
+            echo json_encode(array_merge(['success' => true], $res));
+            exit;
+        }
+
+        if ($action === 'wa_agent_takeover') {
+            $chatId = trim((string)($input['chatId'] ?? ''));
+            $chatName = trim((string)($input['chatName'] ?? $chatId));
+            $mode = trim((string)($input['mode'] ?? 'active'));
+            $agentConnectorId = trim((string)($input['agentConnectorId'] ?? ''));
+            $subagentId = trim((string)($input['subagentId'] ?? '')) ?: null;
+            if ($chatId === '') {
+                throw new \InvalidArgumentException('chatId is required.');
+            }
+            $author = (string)($sessionUser['name'] ?? 'User');
+            $res = ccrm_waai_set_chat_agent_takeover(
+                $pdo,
+                $stored,
+                $chatId,
+                $chatName,
+                $mode,
+                $agentConnectorId,
+                $subagentId,
+                $author
+            );
             echo json_encode(array_merge(['success' => true], $res));
             exit;
         }

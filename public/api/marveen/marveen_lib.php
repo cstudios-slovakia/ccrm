@@ -3917,6 +3917,7 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                         }
                         $chats = is_array($store['chats'] ?? null) ? $store['chats'] : [];
                         $messagesMap = is_array($store['messages'] ?? null) ? $store['messages'] : [];
+                        $takeoverMap = ccrm_waai_get_takeover_map($waAccountId);
                         $chatFilter = trim((string)($trig['whatsappChatJid'] ?? '*'));
                         $chatFilterLower = mb_strtolower($chatFilter, 'UTF-8');
                         $watermarkMs = (int)($trig['watermarkTsMs'] ?? 0);
@@ -3926,6 +3927,10 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                             $chatId = (string)($chatMeta['id'] ?? '');
                             $chatName = (string)($chatMeta['name'] ?? $chatId);
                             if ($chatId === '' || $chatId === 'status@broadcast') {
+                                continue;
+                            }
+                            // Skip if Agent Takeover was explicitly turned OFF (paused) for this conversation session
+                            if (((string)($takeoverMap[$chatId]['mode'] ?? '')) === 'paused') {
                                 continue;
                             }
                             // Check chat filter
@@ -4168,6 +4173,119 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                     @flock($lockFp, LOCK_UN);
                     @fclose($lockFp);
                 }
+            }
+        }
+
+        // Evaluate per-conversation Agent Takeover sessions (`takeover.json` -> `mode === 'active'`)
+        foreach ($waConnectorsById as $waId => $waRow) {
+            $waAccountId = ccrm_waai_resolve_account_id($waRow);
+            if ($onlySourceFilter !== null && $onlySourceFilter !== '' && $onlySourceFilter !== (string)$waRow['id'] && $onlySourceFilter !== $waAccountId) {
+                continue;
+            }
+            $takeoverMap = ccrm_waai_get_takeover_map($waAccountId);
+            if (empty($takeoverMap)) {
+                continue;
+            }
+            $storeFile = ccrm_waai_storage_root() . '/accounts/' . $waAccountId . '/store.json';
+            if (!is_file($storeFile)) {
+                continue;
+            }
+            $store = json_decode((string)@file_get_contents($storeFile), true);
+            if (!is_array($store)) {
+                continue;
+            }
+            $messagesMap = is_array($store['messages'] ?? null) ? $store['messages'] : [];
+            $tkDirty = false;
+
+            foreach ($takeoverMap as $tkChatId => &$tkEntry) {
+                if (!is_array($tkEntry) || (($tkEntry['mode'] ?? '') !== 'active')) {
+                    continue;
+                }
+                $thread = is_array($messagesMap[$tkChatId] ?? null) ? $messagesMap[$tkChatId] : [];
+                if (empty($thread)) {
+                    continue;
+                }
+                $lastThreadMsg = $thread[count($thread) - 1];
+                if (!empty($lastThreadMsg['fromMe'])) {
+                    continue;
+                }
+                $tkWatermark = (int)($tkEntry['watermarkTsMs'] ?? 0);
+                $tkProcessed = is_array($tkEntry['processedIds'] ?? null) ? $tkEntry['processedIds'] : [];
+                $newIncoming = [];
+                $newMaxWm = $tkWatermark;
+                foreach ($thread as $m) {
+                    $mId = (string)($m['id'] ?? '');
+                    $mTs = (int)($m['tsMs'] ?? 0);
+                    if ($mTs <= $tkWatermark) {
+                        continue;
+                    }
+                    if (!empty($m['fromMe'])) {
+                        if ($mTs > $newMaxWm) $newMaxWm = $mTs;
+                        continue;
+                    }
+                    if ($mId !== '' && (in_array($mId, $tkProcessed, true) || in_array('wa:' . $mId, $tkProcessed, true))) {
+                        continue;
+                    }
+                    $mText = trim((string)($m['text'] ?? ''));
+                    if ($mText === '') {
+                        continue;
+                    }
+                    $newIncoming[] = $m;
+                    if ($mTs > $newMaxWm) {
+                        $newMaxWm = $mTs;
+                    }
+                }
+                if (empty($newIncoming)) {
+                    continue;
+                }
+                $targetAiId = (string)($tkEntry['agentConnectorId'] ?? '');
+                $targetAiRow = ($targetAiId !== '' && isset($aiConnectors[$targetAiId]))
+                    ? $aiConnectors[$targetAiId]
+                    : (reset($aiConnectors) ?: null);
+                if (!$targetAiRow) {
+                    continue;
+                }
+                foreach ($newIncoming as $nm) {
+                    if (!empty($nm['id'])) {
+                        $tkProcessed[] = (string)$nm['id'];
+                        $tkProcessed[] = 'wa:' . (string)$nm['id'];
+                    }
+                }
+                $tkEntry['processedIds'] = array_values(array_slice(array_unique($tkProcessed), -200));
+                $tkEntry['watermarkTsMs'] = max($newMaxWm, (int)round(microtime(true) * 1000));
+                $tkDirty = true;
+
+                $chatName = (string)($tkEntry['chatName'] ?? $tkChatId);
+                $ctxWindow = ccrm_marveen_build_conversation_context($thread, 50, 5, 16000);
+                $latestTexts = array_map(
+                    static fn(array $nm) => ($nm['senderName'] ?? 'Sender') . ': ' . ($nm['text'] ?? ''),
+                    $newIncoming
+                );
+                $lastSender = (string)($newIncoming[count($newIncoming) - 1]['senderName'] ?? $chatName);
+                $syntheticTrig = [
+                    'id' => 'takeover-' . md5($tkChatId),
+                    'name' => 'Session Agent Takeover (' . $chatName . ')',
+                    'sourceType' => 'whatsapp',
+                    'sourceConnectorId' => (string)$waRow['id'],
+                    'targetAgentId' => (string)($tkEntry['subagentId'] ?: 'main'),
+                    'instructions' => (string)($tkEntry['instructions'] ?? 'You have taken over this conversation session. Read the conversation history and reply helpfully to the latest message.'),
+                    'autoReply' => true,
+                ];
+                $eventCtx = [
+                    'sourceLabel' => ($waRow['name'] ?? 'Messaging') . ' · ' . $chatName,
+                    'summary' => "Agent Takeover ({$chatName}) from {$lastSender}",
+                    'sender' => $lastSender,
+                    'chatId' => (string)$tkChatId,
+                    'chatName' => $chatName,
+                    'latestMessageText' => implode("\n", $latestTexts),
+                    'conversationTranscript' => $ctxWindow['transcript'],
+                ];
+                $fired[] = ccrm_marveen_execute_single_trigger_event($pdo, $targetAiRow, $syntheticTrig, $eventCtx);
+                break;
+            }
+            unset($tkEntry);
+            if ($tkDirty) {
+                ccrm_waai_save_takeover_map($waAccountId, $takeoverMap);
             }
         }
 
@@ -4433,6 +4551,7 @@ if (!function_exists('ccrm_marveen_process_proactive_followups')) {
                 }
                 $chats = is_array($store['chats'] ?? null) ? $store['chats'] : [];
                 $messagesMap = is_array($store['messages'] ?? null) ? $store['messages'] : [];
+                $takeoverMap = ccrm_waai_get_takeover_map($waAccountId);
                 $chatFilter = trim((string)($trig['whatsappChatJid'] ?? '*'));
                 $chatFilterLower = mb_strtolower($chatFilter, 'UTF-8');
 
@@ -4446,6 +4565,9 @@ if (!function_exists('ccrm_marveen_process_proactive_followups')) {
                     $chatId = (string)($chatMeta['id'] ?? '');
                     $chatName = (string)($chatMeta['name'] ?? $chatId);
                     if ($chatId === '' || $chatId === 'status@broadcast') {
+                        continue;
+                    }
+                    if (((string)($takeoverMap[$chatId]['mode'] ?? '')) === 'paused') {
                         continue;
                     }
                     if ($chatFilter !== '' && $chatFilter !== '*') {
@@ -6384,15 +6506,166 @@ if (!function_exists('ccrm_waai_storage_root')) {
         }
     }
 
+    function ccrm_waai_get_takeover_map(string $accountId): array {
+        $safeId = ccrm_waai_sanitize_account_id($accountId);
+        $file = ccrm_waai_storage_root() . '/accounts/' . $safeId . '/takeover.json';
+        if (!is_file($file)) {
+            return [];
+        }
+        $decoded = json_decode((string)@file_get_contents($file), true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    function ccrm_waai_save_takeover_map(string $accountId, array $map): void {
+        $safeId = ccrm_waai_sanitize_account_id($accountId);
+        $dir = ccrm_waai_storage_root() . '/accounts/' . $safeId;
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        @file_put_contents($dir . '/takeover.json', json_encode($map, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+    }
+
+    function ccrm_waai_set_chat_agent_takeover(
+        PDO $pdo,
+        array $mailboxRow,
+        string $chatId,
+        string $chatName,
+        string $mode,
+        string $agentConnectorId = '',
+        ?string $subagentId = null,
+        string $author = ''
+    ): array {
+        $accountId = ccrm_waai_resolve_account_id($mailboxRow);
+        $map = ccrm_waai_get_takeover_map($accountId);
+        $normalizedMode = ($mode === 'paused' || $mode === 'off') ? 'paused' : 'active';
+        $prev = is_array($map[$chatId] ?? null) ? $map[$chatId] : [];
+
+        // Resolve target AI Agent connector
+        $rows = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `name`")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $secretKeys = function_exists('ccrm_email_secret_keys')
+            ? ccrm_email_secret_keys()
+            : ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret', 'botmanToken', 'botmanAppSecret', 'botmanSigningSecret', 'botmanVerifyToken'];
+        $aiConnectors = [];
+        foreach ($rows as $r) {
+            $raw = json_decode((string)($r['settings_json'] ?? '{}'), true);
+            $s = is_array($raw) ? ccrm_decrypt_config_secrets($raw, $secretKeys) : [];
+            $cType = strtolower((string)($s['connectorType'] ?? ''));
+            if (in_array($cType, ['claude', 'antigravity', 'chatgpt'], true)) {
+                $r['settings'] = $s;
+                $aiConnectors[(string)$r['id']] = $r;
+            }
+        }
+
+        $resolvedAgentRow = null;
+        if ($agentConnectorId !== '' && isset($aiConnectors[$agentConnectorId])) {
+            $resolvedAgentRow = $aiConnectors[$agentConnectorId];
+        } else {
+            // Check if any AI Agent has a trigger targeting this messaging connector
+            foreach ($aiConnectors as $aiId => $aiRow) {
+                foreach (ccrm_marveen_list_triggers($pdo, $aiRow) as $t) {
+                    if (($t['sourceConnectorId'] ?? '') === (string)($mailboxRow['id'] ?? '')) {
+                        $resolvedAgentRow = $aiRow;
+                        if ($subagentId === null && !empty($t['targetSubagentId'])) {
+                            $subagentId = (string)$t['targetSubagentId'];
+                        }
+                        break 2;
+                    }
+                }
+            }
+            if (!$resolvedAgentRow && !empty($aiConnectors)) {
+                $resolvedAgentRow = reset($aiConnectors);
+            }
+        }
+
+        $resolvedAgentId = $resolvedAgentRow ? (string)$resolvedAgentRow['id'] : $agentConnectorId;
+
+        $map[$chatId] = [
+            'chatId' => $chatId,
+            'chatName' => $chatName !== '' ? $chatName : ($prev['chatName'] ?? $chatId),
+            'mode' => $normalizedMode,
+            'agentConnectorId' => $resolvedAgentId,
+            'subagentId' => $subagentId,
+            'watermarkTsMs' => (int)($prev['watermarkTsMs'] ?? 0),
+            'processedIds' => is_array($prev['processedIds'] ?? null) ? $prev['processedIds'] : [],
+            'updatedAt' => gmdate('c'),
+            'updatedBy' => $author,
+        ];
+        ccrm_waai_save_takeover_map($accountId, $map);
+
+        if ($normalizedMode === 'paused') {
+            // Cancel any pending scheduled follow-ups targeting this chat session
+            foreach ($aiConnectors as $aiId => $aiRow) {
+                $fups = ccrm_marveen_list_followups($pdo, $aiRow);
+                foreach ($fups as $f) {
+                    if (($f['status'] ?? '') === 'pending' && ($f['targetChat'] ?? '') === $chatId) {
+                        ccrm_marveen_cancel_followup($pdo, (string)$aiId, (string)$f['id']);
+                    }
+                }
+            }
+        }
+
+        $immediateExec = null;
+        if ($normalizedMode === 'active' && $resolvedAgentRow) {
+            $storeFile = ccrm_waai_storage_root() . '/accounts/' . $accountId . '/store.json';
+            $store = is_file($storeFile) ? (json_decode((string)@file_get_contents($storeFile), true) ?: []) : [];
+            $thread = is_array($store['messages'][$chatId] ?? null) ? $store['messages'][$chatId] : [];
+            if (!empty($thread)) {
+                $lastMsg = $thread[count($thread) - 1];
+                if (empty($lastMsg['fromMe'])) {
+                    $mId = (string)($lastMsg['id'] ?? '');
+                    $mTs = (int)($lastMsg['tsMs'] ?? 0);
+                    $proc = $map[$chatId]['processedIds'];
+                    if ($mId !== '') {
+                        $proc[] = $mId;
+                        $proc[] = 'wa:' . $mId;
+                    }
+                    $map[$chatId]['processedIds'] = array_values(array_slice(array_unique($proc), -200));
+                    $map[$chatId]['watermarkTsMs'] = max($mTs, (int)round(microtime(true) * 1000));
+                    ccrm_waai_save_takeover_map($accountId, $map);
+
+                    $ctxWindow = ccrm_marveen_build_conversation_context($thread, 50, 5, 16000);
+                    $lastSender = (string)($lastMsg['senderName'] ?? ($chatName ?: $chatId));
+                    $syntheticTrig = [
+                        'id' => 'takeover-' . md5($chatId),
+                        'name' => 'Session Agent Takeover (' . ($chatName ?: $chatId) . ')',
+                        'sourceType' => 'whatsapp',
+                        'sourceConnectorId' => (string)($mailboxRow['id'] ?? ''),
+                        'targetAgentId' => $subagentId ?: 'main',
+                        'instructions' => 'You have been asked to take over this conversation session. Read the conversation history and reply helpfully to the latest message.',
+                        'autoReply' => true,
+                    ];
+                    $eventCtx = [
+                        'sourceLabel' => ($mailboxRow['name'] ?? 'Messaging') . ' · ' . ($chatName ?: $chatId),
+                        'summary' => "Agent Takeover ({$chatName}) from {$lastSender}",
+                        'sender' => $lastSender,
+                        'chatId' => $chatId,
+                        'chatName' => $chatName ?: $chatId,
+                        'latestMessageText' => $lastSender . ': ' . ($lastMsg['text'] ?? ''),
+                        'conversationTranscript' => $ctxWindow['transcript'],
+                    ];
+                    $immediateExec = ccrm_marveen_execute_single_trigger_event($pdo, $resolvedAgentRow, $syntheticTrig, $eventCtx);
+                }
+            }
+        }
+
+        $chatsState = ccrm_waai_get_chats($mailboxRow);
+        $chatsState['takeover'] = $map[$chatId];
+        $chatsState['immediateExec'] = $immediateExec;
+        return $chatsState;
+    }
+
     function ccrm_waai_get_chats(array $mailboxRow): array {
         $settings = is_array($mailboxRow['settings'] ?? null)
             ? $mailboxRow['settings']
             : (json_decode((string)($mailboxRow['settings_json'] ?? '{}'), true) ?: []);
         $cType = strtolower((string)($settings['connectorType'] ?? ($mailboxRow['connectorType'] ?? '')));
-        if (ccrm_is_botman_connector($cType)) {
-            return ccrm_botman_get_chats($mailboxRow, true);
-        }
         $accountId = ccrm_waai_resolve_account_id($mailboxRow);
+        $takeoverMap = ccrm_waai_get_takeover_map($accountId);
+        if (ccrm_is_botman_connector($cType)) {
+            $bm = ccrm_botman_get_chats($mailboxRow, true);
+            $bm['agentTakeover'] = !empty($takeoverMap) ? $takeoverMap : new \stdClass();
+            return $bm;
+        }
         ccrm_waai_ensure_worker_running($accountId);
 
         $accountDir = ccrm_waai_storage_root() . '/accounts/' . $accountId;
@@ -6413,6 +6686,7 @@ if (!function_exists('ccrm_waai_storage_root')) {
             'lastHistorySyncAt' => $status['lastHistorySyncAt'] ?? null,
             'chats' => is_array($store['chats'] ?? null) ? $store['chats'] : [],
             'messages' => is_array($store['messages'] ?? null) ? $store['messages'] : new \stdClass(),
+            'agentTakeover' => !empty($takeoverMap) ? $takeoverMap : new \stdClass(),
             'updatedAt' => $store['updatedAt'] ?? ($status['updatedAt'] ?? null),
         ];
     }
