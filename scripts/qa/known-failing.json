@@ -85,11 +85,6 @@
       "file": "timeTracking.spec.ts",
       "title": "the timer bar takes a Description before Start, and the entry drawer edits it",
       "reason": "Clicking the entry title is blocked by the project-request dialog overlay (z-[100001]). Find out why that dialog is open in this flow. Fails on 495ff448 (before the audit merge) and on 1.13-nectarine, so it is not from the stored-vs-derived PR."
-    },
-    {
-      "file": "whatsappDemo.spec.ts",
-      "title": "Tasks: nine tasks across the four chats, ticking an open one moves it to Done",
-      "reason": "The task list shows 4 rows where the spec expects 8 (locator 'main ul.divide-y > li'). Fails the same way on 495ff448 (before the stored-vs-derived merge) and on 1.13-nectarine. Not investigated: check whether the demo chats really seed nine tasks or the spec counts the wrong list."
     }
   ]
 }
