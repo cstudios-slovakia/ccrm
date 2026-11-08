@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  BOTMAN_CONNECTOR_TYPES,
+  BOTMAN_DRIVER_SPECS,
   SECRET_MASK,
   backlogSummary,
   draftFromMailbox,
   emptyMailboxDraft,
+  getBotManWebhookUrl,
+  getBotManWidgetSnippet,
   inferConnectorType,
+  isBotManConnector,
+  isMessagingConnector,
   mailboxPayload,
   type CompanyMailbox,
 } from "./companyMailboxes.ts";
@@ -83,7 +89,7 @@ test("gmail preset fills imap.gmail.com and smtp.gmail.com automatically and syn
   assert.equal(payload.ownerUserId, "u-erik");
 });
 
-test("inferConnectorType identifies all 7 external connector types accurately", () => {
+test("inferConnectorType identifies all external connector types including BotMan drivers accurately", () => {
   assert.equal(inferConnectorType({ imapHost: "imap.gmail.com" }), "gmail");
   assert.equal(inferConnectorType({ provider: "exchange" }), "exchange");
   assert.equal(inferConnectorType({ connectorType: "whatsapp" }), "whatsapp");
@@ -91,4 +97,40 @@ test("inferConnectorType identifies all 7 external connector types accurately", 
   assert.equal(inferConnectorType({}, "antigravity:workspace"), "antigravity");
   assert.equal(inferConnectorType({}, "chatgpt:plus"), "chatgpt");
   assert.equal(inferConnectorType({ imapHost: "imap.websupport.sk" }), "smtp");
+
+  for (const bm of BOTMAN_CONNECTOR_TYPES) {
+    assert.equal(inferConnectorType({ connectorType: bm }), bm);
+    assert.equal(inferConnectorType({}, `${bm}:bot-handle`), bm);
+    assert.equal(isBotManConnector(bm), true);
+    assert.equal(isMessagingConnector(bm), true);
+  }
+  assert.equal(isMessagingConnector("whatsapp"), true);
+  assert.equal(isMessagingConnector("gmail"), false);
+  assert.equal(isBotManConnector("whatsapp"), false);
+});
+
+test("every BotMan connector spec has localized EN/SK/HU setup guides, fields, and secret stripping", () => {
+  for (const bm of BOTMAN_CONNECTOR_TYPES) {
+    const spec = BOTMAN_DRIVER_SPECS[bm];
+    assert.ok(spec, `Missing BOTMAN_DRIVER_SPECS entry for ${bm}`);
+    assert.ok(spec.driverClass.startsWith("BotMan\\Drivers\\"));
+    assert.ok(spec.portalUrl.startsWith("https://"));
+    assert.ok(spec.setupSteps.en.length >= 3);
+    assert.ok(spec.setupSteps.sk.length >= 3);
+    assert.ok(spec.setupSteps.hu.length >= 3);
+    assert.ok(spec.fields.length >= 1);
+
+    const draft = emptyMailboxDraft(bm);
+    draft.name = `${bm} Bot`;
+    draft.settings.botmanToken = "";
+    const payloadEmpty = mailboxPayload(draft);
+    assert.equal("botmanToken" in payloadEmpty.settings, false, "blank botmanToken is stripped");
+
+    draft.settings.botmanToken = SECRET_MASK;
+    const payloadMasked = mailboxPayload(draft);
+    assert.equal(payloadMasked.settings.botmanToken, SECRET_MASK, "masked botmanToken is preserved");
+  }
+
+  assert.match(getBotManWebhookUrl("cmb-42", "telegram"), /botman_webhook\.php\?connector_id=cmb-42&driver=telegram$/);
+  assert.match(getBotManWidgetSnippet("cmb-99"), /botman_webhook\.php\?widget=js&connector_id=cmb-99/);
 });

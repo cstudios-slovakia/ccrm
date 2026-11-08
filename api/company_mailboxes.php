@@ -22,6 +22,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/mail_filing.php';
+require_once __DIR__ . '/botman/botman_lib.php';
 require_once __DIR__ . '/marveen/marveen_lib.php';
 
 header('Content-Type: application/json');
@@ -77,7 +78,11 @@ try {
 }
 ccrm_migrate_mail_filing($pdo);
 
-const CCRM_CONNECTOR_TYPES = ['gmail', 'smtp', 'exchange', 'whatsapp', 'claude', 'antigravity', 'chatgpt'];
+const CCRM_CONNECTOR_TYPES = [
+    'gmail', 'smtp', 'exchange', 'whatsapp',
+    'telegram', 'messenger', 'slack', 'discord', 'teams', 'viber', 'twilio', 'webchat',
+    'claude', 'antigravity', 'chatgpt',
+];
 const CCRM_EMAIL_CONNECTOR_TYPES = ['gmail', 'smtp', 'exchange'];
 const CCRM_AGENT_CONNECTOR_TYPES = ['claude', 'antigravity', 'chatgpt'];
 
@@ -93,10 +98,11 @@ function ccrm_infer_connector_type(array $s, string $address = ''): string {
     if (str_contains($imapHost, 'gmail.com') || str_contains($imapHost, 'googlemail.com')) {
         return 'gmail';
     }
-    if (str_starts_with($address, 'whatsapp:')) return 'whatsapp';
-    if (str_starts_with($address, 'claude:')) return 'claude';
-    if (str_starts_with($address, 'antigravity:')) return 'antigravity';
-    if (str_starts_with($address, 'chatgpt:')) return 'chatgpt';
+    foreach (CCRM_CONNECTOR_TYPES as $t) {
+        if (str_starts_with($address, $t . ':')) {
+            return $t;
+        }
+    }
     return 'smtp';
 }
 
@@ -157,6 +163,17 @@ function ccrm_company_mailbox_clean(array $in, string $address = '', ?string $fa
         'subscriptionPlan' => $str('subscriptionPlan', 80),
         'agentModel' => $str('agentModel', 120),
         'agentEndpoint' => $str('agentEndpoint', 500),
+        // BotMan Multi-Channel Driver fields
+        'botmanToken' => (string)($in['botmanToken'] ?? ''),
+        'botmanAppId' => $str('botmanAppId', 160),
+        'botmanAppSecret' => (string)($in['botmanAppSecret'] ?? ''),
+        'botmanSigningSecret' => (string)($in['botmanSigningSecret'] ?? ''),
+        'botmanVerifyToken' => (string)($in['botmanVerifyToken'] ?? ''),
+        'botmanChannelId' => $str('botmanChannelId', 500),
+        'botmanFromNumber' => $str('botmanFromNumber', 80),
+        'botmanSenderName' => $str('botmanSenderName', 120),
+        'botmanServiceUrl' => $str('botmanServiceUrl', 500),
+        'botmanWebhookRegistered' => !empty($in['botmanWebhookRegistered']),
     ];
 
     if ($connectorType === 'gmail') {
@@ -316,7 +333,9 @@ try {
             if (!$allowed) {
                 continue;
             }
-            unset($pub['settings']['imapPassword'], $pub['settings']['smtpPassword'], $pub['settings']['subscriptionToken'], $pub['settings']['graphClientSecret']);
+            foreach (ccrm_email_secret_keys() as $sk) {
+                unset($pub['settings'][$sk]);
+            }
             $connectors[] = $pub;
         }
         echo json_encode(['success' => true, 'connectors' => $connectors, 'mailboxes' => $connectors]);
@@ -706,6 +725,31 @@ try {
         exit;
     }
 
+    if ($action === 'botman_register_webhook') {
+        $rawAddress = strtolower(trim((string)($input['address'] ?? '')));
+        $rawOwner = trim((string)($input['ownerUserId'] ?? ''));
+        $rawSettings = is_array($input['settings'] ?? null) ? $input['settings'] : $input;
+        if (isset($input['connectorType'])) {
+            $rawSettings['connectorType'] = $input['connectorType'];
+        }
+        $settings = ccrm_company_mailbox_clean($rawSettings, $rawAddress, $rawOwner);
+        if ($stored) {
+            $old = ccrm_company_mailbox_settings($stored);
+            $settings = ccrm_merge_secrets($settings, $old, ccrm_email_secret_keys());
+        }
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost:8085';
+        $webhookUrl = trim((string)($input['webhookUrl'] ?? ''));
+        if ($webhookUrl === '') {
+            $webhookUrl = $scheme . '://' . $host . '/api/botman_webhook.php?connector_id=' . urlencode($id ?: 'draft') . '&driver=' . urlencode((string)$settings['connectorType']);
+        }
+        $rowForReg = $stored ?: ['id' => $id ?: 'draft', 'connectorType' => $settings['connectorType']];
+        $rowForReg['settings'] = $settings;
+        $reg = ccrm_botman_register_webhook($rowForReg, $webhookUrl, $pdo);
+        echo json_encode(array_merge(['success' => !empty($reg['ok']), 'webhookUrl' => $webhookUrl], $reg));
+        exit;
+    }
+
     if ($action === 'save' || $action === 'test') {
         $rawAddress = strtolower(trim((string)($input['address'] ?? '')));
         $rawOwner = trim((string)($input['ownerUserId'] ?? ''));
@@ -768,6 +812,19 @@ try {
                     'imap' => ['ok' => $waOk, 'error' => $waOk ? null : 'Scan the WhatsApp QR code first to link the session.'],
                     'smtp' => ['ok' => $waOk, 'error' => null],
                     'error' => $waOk ? null : 'Scan the WhatsApp QR code first to link the session.',
+                ]);
+                exit;
+            }
+            if (ccrm_is_botman_connector($connectorType)) {
+                $bmTest = ccrm_botman_test_connection($settings, $pdo);
+                $bmOk = !empty($bmTest['ok']);
+                echo json_encode([
+                    'success' => $bmOk,
+                    'imap' => ['ok' => $bmOk, 'error' => $bmTest['error'] ?? null],
+                    'smtp' => ['ok' => $bmOk, 'error' => null],
+                    'handle' => $bmTest['handle'] ?? null,
+                    'detail' => $bmTest['detail'] ?? null,
+                    'error' => $bmTest['error'] ?? null,
                 ]);
                 exit;
             }

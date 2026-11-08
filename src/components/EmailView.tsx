@@ -38,6 +38,7 @@ import {
   inferConnectorType,
   isAgentConnector,
   isEmailConnector,
+  isMessagingConnector,
   listMyConnectors,
   pollWhatsAppDirectQr,
   resyncWhatsAppChats,
@@ -991,10 +992,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
   }, [selectedAccount?.id, selectedChannelType, activeChatSubagentId]);
 
-  // Preload sibling WhatsApp chats when in Agent Workspace so the Trigger Studio dropdown has live WhatsApp groups/chats
+  // Preload sibling WhatsApp / BotMan chats when in Agent Workspace so the Trigger Studio dropdown has live groups/chats
   useEffect(() => {
     if (!isAgentConnector(selectedChannelType)) return;
-    const waAcc = availableAccounts.find((a) => a.connectorType === "whatsapp");
+    const waAcc = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
     if (!waAcc || waState) return;
     void getWhatsAppChats(waAcc.id)
       .then((st) => setWaState(st))
@@ -1212,7 +1213,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     sourceConnectorId?: string;
     targetSubagentId?: string;
   }) => {
-    const defaultWa = availableAccounts.find((a) => a.connectorType === "whatsapp");
+    const defaultWa = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
     const defaultEmail = availableAccounts.find((a) => isEmailConnector(a.connectorType));
     const sType = opts?.sourceType ?? (defaultWa ? "whatsapp" : defaultEmail ? "email" : "crm_event");
     const sConnId =
@@ -1503,9 +1504,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
-  // Load & poll live WhatsApp chats/groups/messages when a WhatsApp connector is active
+  // Load & poll live WhatsApp / BotMan chats/groups/messages when a Messaging connector is active
   useEffect(() => {
-    if (!selectedAccount || selectedChannelType !== "whatsapp") return;
+    if (!selectedAccount || !isMessagingConnector(selectedChannelType)) return;
     let cancelled = false;
     setWaLoading(true);
 
@@ -1538,11 +1539,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
   }, [selectedAccount?.id, selectedChannelType]);
 
-  // Auto-scroll WhatsApp conversation pane to the newest message at the bottom
+  // Auto-scroll WhatsApp / BotMan conversation pane to the newest message at the bottom
   const activeWaChatId = waSelectedLeadId || waState?.chats?.[0]?.id || "";
   const activeWaMsgCount = activeWaChatId ? (waState?.messages?.[activeWaChatId]?.length ?? 0) : 0;
   useEffect(() => {
-    if (selectedChannelType !== "whatsapp") return;
+    if (!isMessagingConnector(selectedChannelType)) return;
     const scrollToBottom = () => {
       const el = waMessagesScrollRef.current;
       if (el) el.scrollTop = el.scrollHeight;
@@ -2862,37 +2863,40 @@ export const EmailView: React.FC<EmailViewProps> = ({
       </aside>
 
       {/* RIGHT WORKSPACE: Dynamic Layout Depending on Selected Communication Channel */}
-      {selectedChannelType === "whatsapp" ? (
-        /* WHATSAPP COMMUNICATION LAYOUT */
+      {isMessagingConnector(selectedChannelType) ? (
+        /* WHATSAPP & BOTMAN MESSAGING LAYOUT */
         <div
           data-testid="communication-whatsapp-layout"
           className="flex-1 min-w-0 grid grid-cols-1 ws-lg:grid-cols-12 gap-4 h-full max-h-full overflow-hidden"
         >
           {(() => {
-            // Merge live WAAI WhatsApp chats/groups/contacts with CRM leads
+            // Merge live WAAI WhatsApp / BotMan chats with CRM leads (phone fallback only for WhatsApp / Twilio SMS)
             const liveChats: WhatsAppChatSummary[] = Array.isArray(waState?.chats) ? waState!.chats : [];
             const seenPhones = new Set(
               liveChats
                 .map((c) => (c.phone || "").replace(/\D/g, ""))
                 .filter(Boolean),
             );
-            const crmFallbackChats: WhatsAppChatSummary[] = leads
-              .filter((l) => {
-                const digits = (l.phone || "").replace(/\D/g, "");
-                return !digits || !seenPhones.has(digits);
-              })
-              .map((l) => {
-                const digits = (l.phone || "").replace(/\D/g, "");
-                return {
-                  id: digits ? `${digits}@s.whatsapp.net` : `lead-${l.id}`,
-                  name: l.name || l.phone || "Contact",
-                  phone: l.phone || "",
-                  isGroup: false,
-                  unreadCount: 0,
-                  lastMessageText: "",
-                  lastMessageTs: 0,
-                };
-              });
+            const crmFallbackChats: WhatsAppChatSummary[] =
+              selectedChannelType === "whatsapp" || selectedChannelType === "twilio"
+                ? leads
+                    .filter((l) => {
+                      const digits = (l.phone || "").replace(/\D/g, "");
+                      return !digits || !seenPhones.has(digits);
+                    })
+                    .map((l) => {
+                      const digits = (l.phone || "").replace(/\D/g, "");
+                      return {
+                        id: digits ? `${digits}@s.whatsapp.net` : `lead-${l.id}`,
+                        name: l.name || l.phone || "Contact",
+                        phone: l.phone || "",
+                        isGroup: false,
+                        unreadCount: 0,
+                        lastMessageText: "",
+                        lastMessageTs: 0,
+                      };
+                    })
+                : [];
 
             const allWaChats = [...liveChats, ...crmFallbackChats];
             const filteredWaChats = allWaChats.filter((ch) => {
@@ -2939,7 +2943,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
-                          <MessageCircle size={16} />
+                          <ProviderLogo type={selectedChannelType} className="w-4 h-4" />
                         </span>
                         <div className="min-w-0">
                           <div className="text-ui font-bold text-slate-900 truncate">{selectedAccount?.name}</div>
@@ -2978,13 +2982,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           <RefreshCw size={11} className={waLoading ? "animate-spin" : ""} />
                           {t("Sync", "Sync", "Szinkron")}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleStartInlineWaQr()}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-micro font-bold cursor-pointer"
-                        >
-                          <QrCode size={12} /> QR
-                        </button>
+                        {selectedChannelType === "whatsapp" && (
+                          <button
+                            type="button"
+                            onClick={() => void handleStartInlineWaQr()}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-micro font-bold cursor-pointer"
+                          >
+                            <QrCode size={12} /> QR
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -3312,7 +3318,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
             const autonomousTasks = st?.tasks ?? [];
             const activeSubagentObj = subagents.find((s) => s.id === activeChatSubagentId) ?? null;
             const siblingWaAccount =
-              availableAccounts.find((a) => a.connectorType === "whatsapp") ?? null;
+              availableAccounts.find((a) => isMessagingConnector(a.connectorType)) ?? null;
 
             const isArtSelected = Boolean(selectedArtifactKey);
             const selectedSubObj =
@@ -3504,7 +3510,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                         }`}
                                       >
                                         {trig.sourceType === "whatsapp"
-                                          ? "WHATSAPP"
+                                          ? (sourceAcc?.connectorType || "WHATSAPP").toUpperCase()
                                           : trig.sourceType === "email"
                                             ? (sourceAcc?.connectorType || "SMTP").toUpperCase()
                                             : "CRM EVENT"}
@@ -4692,7 +4698,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 const nextType = e.target.value as "whatsapp" | "email" | "crm_event";
                                 setTriggerDraftSourceType(nextType);
                                 if (nextType === "whatsapp") {
-                                  const waAcc = availableAccounts.find((a) => a.connectorType === "whatsapp");
+                                  const waAcc = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
                                   setTriggerDraftSourceConnectorId(waAcc?.id || "");
                                 } else if (nextType === "email") {
                                   const emAcc = availableAccounts.find((a) => isEmailConnector(a.connectorType));
@@ -4703,7 +4709,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               }}
                               className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-body font-semibold text-slate-800"
                             >
-                              <option value="whatsapp">💬 WhatsApp Message</option>
+                              <option value="whatsapp">💬 WhatsApp &amp; BotMan Messaging</option>
                               <option value="email">✉️ Incoming Email</option>
                               <option value="crm_event">🔔 CRM Event (Lead / Project / Task)</option>
                             </select>
@@ -4729,12 +4735,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Source Account Picker (for WhatsApp or Email) */}
+                        {/* Source Account Picker (for WhatsApp / BotMan or Email) */}
                         {triggerDraftSourceType !== "crm_event" && (
                           <div>
                             <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
                               {triggerDraftSourceType === "whatsapp"
-                                ? t("WhatsApp Connection", "WhatsApp spojenie", "WhatsApp kapcsolat")
+                                ? t("Messaging / BotMan Connection", "Messaging / BotMan spojenie", "Messaging / BotMan kapcsolat")
                                 : t("Email Mailbox", "E-mailová schránka", "E-mail postafiók")}
                             </label>
                             <select
@@ -4748,7 +4754,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               {availableAccounts
                                 .filter((a) =>
                                   triggerDraftSourceType === "whatsapp"
-                                    ? a.connectorType === "whatsapp"
+                                    ? isMessagingConnector(a.connectorType)
                                     : isEmailConnector(a.connectorType),
                                 )
                                 .map((acc) => (

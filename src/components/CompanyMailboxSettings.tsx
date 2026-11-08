@@ -23,15 +23,20 @@ import {
   X,
 } from "lucide-react";
 import {
-   backlogSummary,
+  BOTMAN_DRIVER_SPECS,
+  backlogSummary,
   deleteMailbox,
   draftFromMailbox,
   emptyMailboxDraft,
+  getBotManWebhookUrl,
+  getBotManWidgetSnippet,
   inferConnectorType,
   installAgentCli,
   isAgentConnector,
+  isBotManConnector,
   isEmailConnector,
   listMailboxes,
+  registerBotManWebhook,
   runMailbox,
   runSubscriptionAgent,
   saveMailbox,
@@ -420,6 +425,126 @@ export const PROVIDERS: Record<ConnectorType, ProviderMeta> = {
     accentBtn: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20",
     accentRing: "ring-2 ring-emerald-500/50",
   },
+  telegram: {
+    type: "telegram",
+    label: "Telegram Bot",
+    shortDesc: "BotMan TelegramDriver (@BotFather)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-sky-500",
+    rowBg: "bg-gradient-to-r from-sky-500/[0.07] via-white/80 to-white/80 dark:from-sky-500/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-sky-500/[0.13]",
+    badgeClass: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30",
+    iconBg: "bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-sky-500",
+    modalHeaderBg: "bg-gradient-to-r from-sky-500/15 via-sky-500/5 to-transparent border-b border-sky-500/20",
+    accentBtn: "bg-sky-600 hover:bg-sky-500 text-white shadow-sky-500/20",
+    accentRing: "ring-2 ring-sky-500/50",
+  },
+  messenger: {
+    type: "messenger",
+    label: "FB Messenger",
+    shortDesc: "BotMan FacebookDriver (Meta Graph)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-blue-600",
+    rowBg: "bg-gradient-to-r from-blue-600/[0.07] via-white/80 to-white/80 dark:from-blue-600/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-blue-600/[0.13]",
+    badgeClass: "bg-blue-600/15 text-blue-700 dark:text-blue-300 border border-blue-600/30",
+    iconBg: "bg-blue-600/15 text-blue-600 dark:text-blue-400 border border-blue-600/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-blue-600",
+    modalHeaderBg: "bg-gradient-to-r from-blue-600/15 via-blue-600/5 to-transparent border-b border-blue-600/20",
+    accentBtn: "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20",
+    accentRing: "ring-2 ring-blue-600/50",
+  },
+  slack: {
+    type: "slack",
+    label: "Slack Bot",
+    shortDesc: "BotMan SlackDriver (Workspace App)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-fuchsia-600",
+    rowBg: "bg-gradient-to-r from-fuchsia-600/[0.07] via-white/80 to-white/80 dark:from-fuchsia-600/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-fuchsia-600/[0.13]",
+    badgeClass: "bg-fuchsia-600/15 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-600/30",
+    iconBg: "bg-fuchsia-600/15 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-600/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-fuchsia-600",
+    modalHeaderBg: "bg-gradient-to-r from-fuchsia-600/15 via-fuchsia-600/5 to-transparent border-b border-fuchsia-600/20",
+    accentBtn: "bg-fuchsia-600 hover:bg-fuchsia-500 text-white shadow-fuchsia-600/20",
+    accentRing: "ring-2 ring-fuchsia-600/50",
+  },
+  discord: {
+    type: "discord",
+    label: "Discord Bot",
+    shortDesc: "BotMan DiscordDriver (Server Channels)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-indigo-500",
+    rowBg: "bg-gradient-to-r from-indigo-500/[0.07] via-white/80 to-white/80 dark:from-indigo-500/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-indigo-500/[0.13]",
+    badgeClass: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30",
+    iconBg: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-indigo-500",
+    modalHeaderBg: "bg-gradient-to-r from-indigo-500/15 via-indigo-500/5 to-transparent border-b border-indigo-500/20",
+    accentBtn: "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20",
+    accentRing: "ring-2 ring-indigo-500/50",
+  },
+  teams: {
+    type: "teams",
+    label: "MS Teams",
+    shortDesc: "BotMan BotFrameworkDriver (Azure Bot)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-violet-600",
+    rowBg: "bg-gradient-to-r from-violet-600/[0.07] via-white/80 to-white/80 dark:from-violet-600/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-violet-600/[0.13]",
+    badgeClass: "bg-violet-600/15 text-violet-700 dark:text-violet-300 border border-violet-600/30",
+    iconBg: "bg-violet-600/15 text-violet-600 dark:text-violet-400 border border-violet-600/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-violet-600",
+    modalHeaderBg: "bg-gradient-to-r from-violet-600/15 via-violet-600/5 to-transparent border-b border-violet-600/20",
+    accentBtn: "bg-violet-600 hover:bg-violet-500 text-white shadow-violet-600/20",
+    accentRing: "ring-2 ring-violet-600/50",
+  },
+  viber: {
+    type: "viber",
+    label: "Viber Bot",
+    shortDesc: "BotMan ViberDriver (Public Account)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-purple-600",
+    rowBg: "bg-gradient-to-r from-purple-600/[0.07] via-white/80 to-white/80 dark:from-purple-600/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-purple-600/[0.13]",
+    badgeClass: "bg-purple-600/15 text-purple-700 dark:text-purple-300 border border-purple-600/30",
+    iconBg: "bg-purple-600/15 text-purple-600 dark:text-purple-400 border border-purple-600/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-purple-600",
+    modalHeaderBg: "bg-gradient-to-r from-purple-600/15 via-purple-600/5 to-transparent border-b border-purple-600/20",
+    accentBtn: "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/20",
+    accentRing: "ring-2 ring-purple-600/50",
+  },
+  twilio: {
+    type: "twilio",
+    label: "Twilio SMS",
+    shortDesc: "BotMan TwilioMessageDriver (2-Way SMS)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-red-600",
+    rowBg: "bg-gradient-to-r from-red-600/[0.07] via-white/80 to-white/80 dark:from-red-600/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-red-600/[0.13]",
+    badgeClass: "bg-red-600/15 text-red-700 dark:text-red-300 border border-red-600/30",
+    iconBg: "bg-red-600/15 text-red-600 dark:text-red-400 border border-red-600/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-red-600",
+    modalHeaderBg: "bg-gradient-to-r from-red-600/15 via-red-600/5 to-transparent border-b border-red-600/20",
+    accentBtn: "bg-red-600 hover:bg-red-500 text-white shadow-red-600/20",
+    accentRing: "ring-2 ring-red-600/50",
+  },
+  webchat: {
+    type: "webchat",
+    label: "Web Chat Widget",
+    shortDesc: "BotMan WebDriver (Embeddable Live Chat)",
+    category: "whatsapp",
+    rowBorder: "border-l-4 border-l-cyan-500",
+    rowBg: "bg-gradient-to-r from-cyan-500/[0.07] via-white/80 to-white/80 dark:from-cyan-500/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-cyan-500/[0.13]",
+    badgeClass: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30",
+    iconBg: "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-cyan-500",
+    modalHeaderBg: "bg-gradient-to-r from-cyan-500/15 via-cyan-500/5 to-transparent border-b border-cyan-500/20",
+    accentBtn: "bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-500/20",
+    accentRing: "ring-2 ring-cyan-500/50",
+  },
   claude: {
     type: "claude",
     label: "Claude (Subscription)",
@@ -472,6 +597,14 @@ export const ALL_PROVIDER_TYPES: ConnectorType[] = [
   "smtp",
   "exchange",
   "whatsapp",
+  "telegram",
+  "messenger",
+  "slack",
+  "discord",
+  "teams",
+  "viber",
+  "twilio",
+  "webchat",
   "claude",
   "antigravity",
   "chatgpt",
@@ -561,6 +694,50 @@ export const ProviderLogo: React.FC<{ type: ConnectorType; className?: string }>
           />
         </svg>
       );
+    case "telegram":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+          <path
+            d="M21 4 3.5 11.2c-.8.3-.8 1.4 0 1.7l4.5 1.5 1.8 5.3c.2.7 1.1.8 1.5.3l2.7-3.1 4.6 3.4c.6.4 1.5.1 1.7-.7L22.3 5.2c.2-.9-.6-1.6-1.3-1.2Z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "messenger":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+          <path
+            d="M12 3C6.8 3 3 6.6 3 11.4c0 2.6 1.3 4.9 3.4 6.4V21l3.1-1.7c.8.2 1.6.3 2.5.3 5.2 0 9-3.6 9-8.2S17.2 3 12 3Z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path d="m7.5 13.2 3.2-3.4 2.4 2 3.4-3.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "slack":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+          <path d="M9 4v16M15 4v16M4 9h16M4 15h16" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+        </svg>
+      );
+    case "discord":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+          <path
+            d="M7.5 6.5c2.8-1 6.2-1 9 0 1.8 2.4 2.5 5.6 2.2 9.2-1.5 1.4-3.2 2.2-5 2.5l-.8-1.6c-1.2.2-2.4.2-3.6 0L8.5 18.2c-1.8-.3-3.5-1.1-5-2.5-.3-3.6.4-6.8 2.2-9.2Z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <circle cx="9.5" cy="12" r="1.2" fill="currentColor" />
+          <circle cx="14.5" cy="12" r="1.2" fill="currentColor" />
+        </svg>
+      );
+    default:
+      return <MessageCircle className={className} />;
   }
 };
 
@@ -969,8 +1146,24 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
     setBusy("test");
     setFormMsg(null);
     try {
-      await testMailbox(editing);
-      setFormMsg({ kind: "ok", text: t.testOk });
+      const res = await testMailbox(editing);
+      setFormMsg({ kind: "ok", text: res.detail || t.testOk });
+    } catch (e: unknown) {
+      setFormMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onRegisterBotManWebhook = async () => {
+    if (!editing || !isBotManConnector(editing.connectorType)) return;
+    setBusy("webhook");
+    setFormMsg(null);
+    try {
+      const webhookUrl = getBotManWebhookUrl(editing.id || "draft", editing.connectorType);
+      const res = await registerBotManWebhook(editing, webhookUrl);
+      setSetting("botmanWebhookRegistered", true);
+      setFormMsg({ kind: "ok", text: res.detail || `Webhook registered: ${webhookUrl}` });
     } catch (e: unknown) {
       setFormMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -1079,6 +1272,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
     if (box.connectorType === "whatsapp") {
       return `WAAI QR Session · ${box.settings?.waAccountId || "Ready to pair"}`;
     }
+    if (isBotManConnector(box.connectorType)) {
+      const spec = BOTMAN_DRIVER_SPECS[box.connectorType];
+      return `${spec.driverClass.replace("BotMan\\Drivers\\", "BotMan · ")} · ${spec.supportsLocalPolling ? "Webhook + Poll" : "Webhook"}`;
+    }
     return `Subscription OAuth · CCRM MCP${box.settings?.agentModel ? ` · ${box.settings.agentModel}` : ""}`;
   };
 
@@ -1108,6 +1305,22 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
       ) : (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-micro font-semibold text-amber-700 dark:text-amber-300">
           <QrCode className="w-3.5 h-3.5" /> {t.waQrRequiredBadge}
+        </span>
+      );
+    }
+
+    if (isBotManConnector(box.connectorType)) {
+      const ready =
+        box.connectorType === "webchat" ||
+        box.connectorType === "messenger" ||
+        Boolean(box.settings?.botmanToken || box.settings?.botmanAppId);
+      return ready ? (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-micro font-semibold text-emerald-700 dark:text-emerald-300">
+          <CheckCircle2 className="w-3.5 h-3.5" /> BotMan Active
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-micro font-semibold text-amber-700 dark:text-amber-300">
+          <KeyRound className="w-3.5 h-3.5" /> Token Needed
         </span>
       );
     }
@@ -2076,6 +2289,124 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                   </div>
                 </div>
               )}
+
+              {/* 4b. BOTMAN MULTI-CHANNEL DRIVERS (TELEGRAM / MESSENGER / SLACK / DISCORD / TEAMS / VIBER / TWILIO / WEBCHAT) */}
+              {isBotManConnector(editing.connectorType) && (() => {
+                const bmSpec = BOTMAN_DRIVER_SPECS[editing.connectorType];
+                const webhookUrl = getBotManWebhookUrl(editing.id || "NEW_ID", editing.connectorType);
+                const widgetSnippet = bmSpec.isWebWidget ? getBotManWidgetSnippet(editing.id || "NEW_ID") : null;
+                return (
+                  <div
+                    data-testid={`botman-setup-${editing.connectorType}`}
+                    className={`p-4 rounded-2xl border space-y-4 ${activeMeta.badgeClass}`}
+                  >
+                    {/* Header + Official Developer Portal Link */}
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="type-label text-slate-900 dark:text-white flex items-center gap-2">
+                          <MessageCircle className="w-4 h-4" />
+                          <span>{activeMeta.label} — BotMan Setup Guide</span>
+                          <span className="px-2 py-0.5 rounded bg-slate-900/10 dark:bg-white/10 font-mono text-micro">
+                            {bmSpec.driverClass}
+                          </span>
+                        </div>
+                        <p className="text-micro text-slate-600 dark:text-slate-300 mt-1">
+                          {bmSpec.summary[lang] ?? bmSpec.summary.en}
+                        </p>
+                      </div>
+                      <a
+                        href={bmSpec.portalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-micro font-bold shadow-2xs ${activeMeta.accentBtn}`}
+                      >
+                        <span>{bmSpec.portalLabel}</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+
+                    {/* User-Friendly Step-by-Step Setup Instructions */}
+                    <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 space-y-2">
+                      <div className="type-overline text-slate-700 dark:text-slate-200">
+                        {lang === "sk"
+                          ? "Ako nastaviť tento konektor (Krok za krokom)"
+                          : lang === "hu"
+                            ? "Beállítás lépésről lépésre"
+                            : "How to Set Up (Step-by-Step Guide)"}
+                      </div>
+                      <ol className="list-decimal list-inside space-y-1.5 text-caption text-slate-700 dark:text-slate-200">
+                        {(bmSpec.setupSteps[lang] ?? bmSpec.setupSteps.en).map((stepText, idx) => (
+                          <li key={idx} className="leading-relaxed">
+                            {stepText}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+
+                    {/* Dynamic BotMan Driver Credential Fields */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {bmSpec.fields.map((f) => (
+                        <div key={f.key} className={bmSpec.fields.length === 1 ? "sm:col-span-2" : ""}>
+                          <label className={lbl}>
+                            {f.label[lang] ?? f.label.en}
+                            <input
+                              className={inp}
+                              type={f.secret ? "password" : "text"}
+                              value={(editing.settings[f.key] as string) || ""}
+                              onChange={(e) => setSetting(f.key, e.target.value)}
+                              placeholder={editing.id && f.secret ? t.passwordKeep : f.placeholder}
+                              required={Boolean(f.required && !editing.id)}
+                            />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Copyable Webhook URL / Web Widget Embed Snippet + 1-Click Webhook Registration */}
+                    <div className="p-3 rounded-xl bg-slate-900/5 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="type-overline text-slate-500 dark:text-slate-400">
+                            {widgetSnippet ? "Embeddable Website <script> Snippet" : "CCRM BotMan Webhook Callback URL"}
+                          </div>
+                          <code className="block font-mono text-micro text-slate-800 dark:text-slate-200 truncate mt-0.5">
+                            {widgetSnippet || webhookUrl}
+                          </code>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(widgetSnippet || webhookUrl);
+                              setCopiedKey(true);
+                              setTimeout(() => setCopiedKey(false), 1800);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-micro font-semibold"
+                          >
+                            {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                            <span>{widgetSnippet ? "Copy <script>" : "Copy Webhook URL"}</span>
+                          </button>
+                          {bmSpec.supportsAutoWebhook && (
+                            <button
+                              type="button"
+                              onClick={() => void onRegisterBotManWebhook()}
+                              disabled={busy !== null}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-micro font-bold disabled:opacity-40 ${activeMeta.accentBtn}`}
+                            >
+                              {busy === "webhook" ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3.5 h-3.5" />
+                              )}
+                              <span>Register Webhook</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* 5, 6, 7. SUBSCRIPTION AI AGENTS (CLAUDE / ANTIGRAVITY / CHATGPT via MARVEEN + CCRM MCP) */}
               {isAgentConnector(editing.connectorType) && (

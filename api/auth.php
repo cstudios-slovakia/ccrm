@@ -2047,9 +2047,12 @@ HTACCESS;
         ];
     }
 
-    /** Per-user email secrets (users.metadata_json -> emailSettings). */
+    /** Per-user email & connector secrets (users.metadata_json -> emailSettings, company_mailboxes.settings_json). */
     function ccrm_email_secret_keys(): array {
-        return ['imapPassword', 'smtpPassword', 'password', 'subscriptionToken', 'graphClientSecret'];
+        return [
+            'imapPassword', 'smtpPassword', 'password', 'subscriptionToken', 'graphClientSecret',
+            'botmanToken', 'botmanAppSecret', 'botmanSigningSecret', 'botmanVerifyToken',
+        ];
     }
 
     /**

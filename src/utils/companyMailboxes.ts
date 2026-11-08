@@ -8,23 +8,50 @@
 
 export const SECRET_MASK = "********";
 
+export type BotManConnectorType =
+  | "telegram"
+  | "messenger"
+  | "slack"
+  | "discord"
+  | "teams"
+  | "viber"
+  | "twilio"
+  | "webchat";
+
 export type ConnectorType =
   | "gmail"
   | "smtp"
   | "exchange"
   | "whatsapp"
+  | BotManConnectorType
   | "claude"
   | "antigravity"
   | "chatgpt";
 
 export const EMAIL_CONNECTOR_TYPES: readonly ConnectorType[] = ["gmail", "smtp", "exchange"];
+export const BOTMAN_CONNECTOR_TYPES: readonly BotManConnectorType[] = [
+  "telegram",
+  "messenger",
+  "slack",
+  "discord",
+  "teams",
+  "viber",
+  "twilio",
+  "webchat",
+];
 export const AGENT_CONNECTOR_TYPES: readonly ConnectorType[] = ["claude", "antigravity", "chatgpt"];
 
-export const isEmailConnector = (type: ConnectorType): boolean =>
-  EMAIL_CONNECTOR_TYPES.includes(type);
+export const isEmailConnector = (type?: string | null): boolean =>
+  Boolean(type && (EMAIL_CONNECTOR_TYPES as readonly string[]).includes(type));
 
-export const isAgentConnector = (type: ConnectorType): boolean =>
-  AGENT_CONNECTOR_TYPES.includes(type);
+export const isBotManConnector = (type?: string | null): type is BotManConnectorType =>
+  Boolean(type && (BOTMAN_CONNECTOR_TYPES as readonly string[]).includes(type));
+
+export const isMessagingConnector = (type?: string | null): boolean =>
+  type === "whatsapp" || isBotManConnector(type);
+
+export const isAgentConnector = (type?: string | null): boolean =>
+  Boolean(type && (AGENT_CONNECTOR_TYPES as readonly string[]).includes(type));
 
 export interface MailboxFolderState {
   folder: string;
@@ -64,6 +91,17 @@ export interface MailboxSettings {
   subscriptionPlan?: string;
   agentModel?: string;
   agentEndpoint?: string;
+  // BotMan Multi-Channel Driver fields
+  botmanToken?: string;
+  botmanAppId?: string;
+  botmanAppSecret?: string;
+  botmanSigningSecret?: string;
+  botmanVerifyToken?: string;
+  botmanChannelId?: string;
+  botmanFromNumber?: string;
+  botmanSenderName?: string;
+  botmanServiceUrl?: string;
+  botmanWebhookRegistered?: boolean;
 }
 
 export interface CompanyMailbox {
@@ -123,7 +161,8 @@ export const inferConnectorType = (
     explicit === "whatsapp" ||
     explicit === "claude" ||
     explicit === "antigravity" ||
-    explicit === "chatgpt"
+    explicit === "chatgpt" ||
+    isBotManConnector(explicit)
   ) {
     return explicit;
   }
@@ -132,6 +171,9 @@ export const inferConnectorType = (
   if (host.includes("gmail.com") || host.includes("googlemail.com")) return "gmail";
   const addr = address.toLowerCase();
   if (addr.startsWith("whatsapp:")) return "whatsapp";
+  for (const bm of BOTMAN_CONNECTOR_TYPES) {
+    if (addr.startsWith(`${bm}:`)) return bm;
+  }
   if (addr.startsWith("claude:")) return "claude";
   if (addr.startsWith("antigravity:")) return "antigravity";
   if (addr.startsWith("chatgpt:")) return "chatgpt";
@@ -174,6 +216,16 @@ export const emptyMailboxDraft = (connectorType: ConnectorType = "smtp"): Mailbo
     subscriptionPlan: "pro",
     agentModel: "",
     agentEndpoint: "",
+    botmanToken: "",
+    botmanAppId: "",
+    botmanAppSecret: "",
+    botmanSigningSecret: "",
+    botmanVerifyToken: isBotManConnector(connectorType) ? `ccrm_${connectorType}_verify` : "",
+    botmanChannelId: "",
+    botmanFromNumber: "",
+    botmanSenderName: connectorType === "webchat" ? "CCRM Live Support" : "",
+    botmanServiceUrl: "",
+    botmanWebhookRegistered: false,
   },
 });
 
@@ -244,6 +296,10 @@ export const mailboxPayload = (draft: MailboxDraft) => {
   if (!s.smtpPassword) delete settings.smtpPassword;
   if (!s.subscriptionToken) delete settings.subscriptionToken;
   if (!s.graphClientSecret) delete settings.graphClientSecret;
+  if (!s.botmanToken) delete settings.botmanToken;
+  if (!s.botmanAppSecret) delete settings.botmanAppSecret;
+  if (!s.botmanSigningSecret) delete settings.botmanSigningSecret;
+  if (!s.botmanVerifyToken) delete settings.botmanVerifyToken;
 
   const ownerUserId = draft.ownerUserId || userIds[0] || "";
 
@@ -659,3 +715,439 @@ export const sendWhatsAppChatMessage = (params: { id: string; chatId: string; te
 
 export const resyncWhatsAppChats = (id: string, chatId?: string) =>
   call<WhatsAppConnectorState>("wa_resync", { id, chatId });
+
+// -----------------------------------------------------------------------------
+// Declarative BotMan Driver Registry (`botman/botman`) & Step-by-Step Setup Guides
+// -----------------------------------------------------------------------------
+
+export interface BotManDriverFieldSpec {
+  key:
+    | "botmanToken"
+    | "botmanAppId"
+    | "botmanAppSecret"
+    | "botmanSigningSecret"
+    | "botmanVerifyToken"
+    | "botmanChannelId"
+    | "botmanFromNumber"
+    | "botmanSenderName"
+    | "botmanServiceUrl";
+  label: { en: string; sk: string; hu: string };
+  placeholder: string;
+  secret?: boolean;
+  required?: boolean;
+  hint?: { en: string; sk: string; hu: string };
+}
+
+export interface BotManDriverSpec {
+  type: BotManConnectorType;
+  driverClass: string;
+  portalUrl: string;
+  portalLabel: string;
+  supportsAutoWebhook: boolean;
+  supportsLocalPolling: boolean;
+  isWebWidget?: boolean;
+  usesMetaFallback?: boolean;
+  summary: { en: string; sk: string; hu: string };
+  setupSteps: { en: string[]; sk: string[]; hu: string[] };
+  fields: BotManDriverFieldSpec[];
+}
+
+export const BOTMAN_DRIVER_SPECS: Record<BotManConnectorType, BotManDriverSpec> = {
+  telegram: {
+    type: "telegram",
+    driverClass: "BotMan\\Drivers\\Telegram\\TelegramDriver",
+    portalUrl: "https://t.me/BotFather",
+    portalLabel: "Open @BotFather",
+    supportsAutoWebhook: true,
+    supportsLocalPolling: true,
+    summary: {
+      en: "Connect a Telegram Bot via BotFather HTTP API token (supports instant webhooks + local getUpdates polling).",
+      sk: "Pripojte Telegram bota cez @BotFather HTTP API token (okamžité webhooky + lokálny getUpdates polling).",
+      hu: "Telegram bot csatlakoztatása @BotFather HTTP API tokennel (azonnali webhook + helyi getUpdates lekérdezés).",
+    },
+    setupSteps: {
+      en: [
+        "Open Telegram, search for @BotFather, and send /newbot to create your bot.",
+        "Copy the HTTP API Token (e.g. 123456789:ABC-DEF...) and paste it into Bot Token below.",
+        "Click 'Test Connection' to verify via getMe. On public HTTPS servers click 'Register Webhook', or leave as-is for automatic local polling!",
+      ],
+      sk: [
+        "Otvorte Telegram, vyhľadajte @BotFather a pošlite príkaz /newbot.",
+        "Skopírujte vygenerovaný HTTP API Token (napr. 123456789:ABC-DEF...) a vložte ho nižšie.",
+        "Kliknite na 'Otestovať' pre overenie cez getMe. Na verejnom HTTPS serveri kliknite na 'Registrovať Webhook' (na localhoste funguje automatický polling).",
+      ],
+      hu: [
+        "Nyissa meg a Telegramot, keresse meg a @BotFather fiókot, és küldje el a /newbot parancsot.",
+        "Másolja ki a kapott HTTP API Tokent (pl. 123456789:ABC-DEF...), és illessze be alább.",
+        "Kattintson a 'Kapcsolat tesztelése' gombra (getMe), vagy nyilvános HTTPS szerveren a 'Webhook regisztrálása' gombra.",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanToken",
+        label: { en: "Telegram Bot Token (@BotFather)", sk: "Telegram Bot Token (@BotFather)", hu: "Telegram Bot Token (@BotFather)" },
+        placeholder: "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
+        secret: true,
+        required: true,
+      },
+    ],
+  },
+
+  messenger: {
+    type: "messenger",
+    driverClass: "BotMan\\Drivers\\Facebook\\FacebookDriver",
+    portalUrl: "https://developers.facebook.com/apps/",
+    portalLabel: "Meta for Developers",
+    supportsAutoWebhook: false,
+    supportsLocalPolling: true,
+    usesMetaFallback: true,
+    summary: {
+      en: "Connect a Facebook Page via Meta Messenger API. Automatically falls back to your Meta credentials from Settings -> Integrations if left blank.",
+      sk: "Pripojte Facebook stránku cez Meta Messenger API. Ak polia necháte prázdne, automaticky sa použijú Meta údaje z Nastavenia -> Integrácie.",
+      hu: "Facebook oldal csatlakoztatása Meta Messenger API-val. Üresen hagyva automatikusan a Beállítások -> Integrációk Meta adatait használja.",
+    },
+    setupSteps: {
+      en: [
+        "Open Meta for Developers -> Your Business App -> Add the Messenger product (or leave blank to reuse your existing Meta token from Settings -> Integrations).",
+        "Generate a Page Access Token for your Facebook Page and copy your App Secret.",
+        "Copy the CCRM Webhook URL and Verify Token below into Meta's Messenger Webhook settings and subscribe to 'messages' & 'messaging_postbacks'.",
+      ],
+      sk: [
+        "Otvorte Meta for Developers -> Vaša aplikácia -> Pridajte produkt Messenger (alebo nechajte prázdne pre použitie Meta tokenu z Nastavenia -> Integrácie).",
+        "Vygenerujte Page Access Token pre vašu Facebook stránku a skopírujte App Secret.",
+        "Vložte CCRM Webhook URL a Verify Token nižšie do sekcie Webhooks v Meta panely a povoľte 'messages' a 'messaging_postbacks'.",
+      ],
+      hu: [
+        "Nyissa meg a Meta for Developers felületet -> Alkalmazás -> Messenger hozzáadása (vagy hagyja üresen a Beállítások -> Integrációk Meta token használatához).",
+        "Generáljon Page Access Tokent az oldalhoz, és másolja ki az App Secret értéket.",
+        "Másolja be a lenti CCRM Webhook URL-t és Verify Tokent a Meta Webhooks beállításaiba ('messages' és 'messaging_postbacks').",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanToken",
+        label: { en: "Page Access Token (optional if set in Integrations)", sk: "Page Access Token (voliteľné ak je v Integráciách)", hu: "Page Access Token (opcionális)" },
+        placeholder: "EAAGm0PX4ZBQBO...",
+        secret: true,
+      },
+      {
+        key: "botmanAppSecret",
+        label: { en: "Meta App Secret", sk: "Meta App Secret", hu: "Meta App Secret" },
+        placeholder: "a1b2c3d4e5f6...",
+        secret: true,
+      },
+      {
+        key: "botmanVerifyToken",
+        label: { en: "Webhook Verify Token", sk: "Webhook Verify Token", hu: "Webhook Verify Token" },
+        placeholder: "ccrm_messenger_verify",
+      },
+    ],
+  },
+
+  slack: {
+    type: "slack",
+    driverClass: "BotMan\\Drivers\\Slack\\SlackDriver",
+    portalUrl: "https://api.slack.com/apps",
+    portalLabel: "Slack API Apps",
+    supportsAutoWebhook: false,
+    supportsLocalPolling: true,
+    summary: {
+      en: "Connect a Slack Workspace Bot via Events API webhook or channel history polling.",
+      sk: "Pripojte Slack bota cez Events API webhook alebo automatickú synchronizáciu kanálov.",
+      hu: "Slack munkaterület bot csatlakoztatása Events API webhookon vagy csatorna lekérdezésen keresztül.",
+    },
+    setupSteps: {
+      en: [
+        "Go to api.slack.com/apps -> Create New App -> OAuth & Permissions.",
+        "Add Bot Token Scopes: chat:write, channels:history, groups:history, im:history, users:read. Install to Workspace and copy the xoxb-... token.",
+        "Paste the CCRM Webhook URL into Event Subscriptions (subscribe to message.channels & message.im) or enter Channel IDs below for local polling.",
+      ],
+      sk: [
+        "Prejdite na api.slack.com/apps -> Create New App -> OAuth & Permissions.",
+        "Pridajte oprávnenia: chat:write, channels:history, groups:history, im:history, users:read. Nainštalujte do Workspace a skopírujte xoxb-... token.",
+        "Vložte CCRM Webhook URL do Event Subscriptions (message.channels, message.im) alebo zadajte ID kanálov pre lokálny polling.",
+      ],
+      hu: [
+        "Lépjen az api.slack.com/apps oldalra -> Create New App -> OAuth & Permissions.",
+        "Adja hozzá a chat:write, channels:history, groups:history, im:history, users:read jogosultságokat, telepítse a munkaterületre, és másolja ki az xoxb-... tokent.",
+        "Illessze be a CCRM Webhook URL-t az Event Subscriptions részbe, vagy adja meg a csatorna ID-kat alább.",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanToken",
+        label: { en: "Bot User OAuth Token (xoxb-...)", sk: "Bot User OAuth Token (xoxb-...)", hu: "Bot User OAuth Token (xoxb-...)" },
+        placeholder: "xoxb-1234567890-...",
+        secret: true,
+        required: true,
+      },
+      {
+        key: "botmanSigningSecret",
+        label: { en: "Slack Signing Secret", sk: "Slack Signing Secret", hu: "Slack Signing Secret" },
+        placeholder: "8f742231b10e8888abcd...",
+        secret: true,
+      },
+      {
+        key: "botmanChannelId",
+        label: { en: "Monitored Channel IDs (comma-separated)", sk: "Sledované ID kanálov (oddelené čiarkou)", hu: "Figyelt csatorna ID-k (vesszővel elválasztva)" },
+        placeholder: "C012AB3CD, C098ZY7XW",
+      },
+    ],
+  },
+
+  discord: {
+    type: "discord",
+    driverClass: "BotMan\\Drivers\\Discord\\DiscordDriver",
+    portalUrl: "https://discord.com/developers/applications",
+    portalLabel: "Discord Developer Portal",
+    supportsAutoWebhook: false,
+    supportsLocalPolling: true,
+    summary: {
+      en: "Monitor and reply in Discord server channels via BotMan Discord REST & Webhook driver.",
+      sk: "Sledujte a odpovedajte v Discord kanáloch cez BotMan Discord REST a Webhook driver.",
+      hu: "Discord szerver csatornák figyelése és megválaszolása a BotMan Discord driverrel.",
+    },
+    setupSteps: {
+      en: [
+        "Open Discord Developer Portal -> New Application -> Bot tab -> Reset Token and copy the Bot Token.",
+        "Enable 'Message Content Intent' under Privileged Gateway Intents, then invite the bot to your server (OAuth2 -> URL Generator -> bot -> Send Messages & Read Message History).",
+        "Right-click the Discord channel(s) you want CCRM to monitor, click 'Copy Channel ID', and paste below.",
+      ],
+      sk: [
+        "Otvorte Discord Developer Portal -> New Application -> sekcia Bot -> Reset Token a skopírujte Bot Token.",
+        "Zapnite 'Message Content Intent' a pozvite bota na váš server (OAuth2 -> URL Generator -> bot -> Send Messages & Read Message History).",
+        "Kliknite pravým tlačidlom na Discord kanál, zvoľte 'Copy Channel ID' a vložte ho nižšie.",
+      ],
+      hu: [
+        "Nyissa meg a Discord Developer Portalt -> New Application -> Bot fül -> Reset Token, és másolja ki a Bot Tokent.",
+        "Kapcsolja be a 'Message Content Intent' opciót, majd hívja meg a botot a szerverre (Send Messages & Read Message History).",
+        "Másolja ki a figyelni kívánt Discord csatorna ID-ját (Copy Channel ID), és illessze be alább.",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanToken",
+        label: { en: "Discord Bot Token", sk: "Discord Bot Token", hu: "Discord Bot Token" },
+        placeholder: "MTIzNDU2Nzg5MDEyMzQ1Njc4.G1a2b3...",
+        secret: true,
+        required: true,
+      },
+      {
+        key: "botmanChannelId",
+        label: { en: "Discord Channel ID(s)", sk: "ID Discord kanálov", hu: "Discord csatorna ID-k" },
+        placeholder: "109283746510293847",
+        required: true,
+      },
+    ],
+  },
+
+  teams: {
+    type: "teams",
+    driverClass: "BotMan\\Drivers\\BotFramework\\BotFrameworkDriver",
+    portalUrl: "https://dev.teams.microsoft.com/bots",
+    portalLabel: "Teams Developer Portal",
+    supportsAutoWebhook: false,
+    supportsLocalPolling: false,
+    summary: {
+      en: "Connect Microsoft Teams via Azure Bot Framework (App ID + Client Secret).",
+      sk: "Pripojte Microsoft Teams cez Azure Bot Framework (App ID + Client Secret).",
+      hu: "Microsoft Teams csatlakoztatása Azure Bot Framework segítségével (App ID + Client Secret).",
+    },
+    setupSteps: {
+      en: [
+        "Open Microsoft Teams Developer Portal (or Azure Bot Services) and create/select a Bot.",
+        "Copy the Microsoft App ID (Client ID) and generate a Client Secret (App Password).",
+        "Paste the CCRM Webhook URL below as the Bot's Endpoint Address and enable the Microsoft Teams channel.",
+      ],
+      sk: [
+        "Otvorte Microsoft Teams Developer Portal (alebo Azure Bot Services) a vytvorte bota.",
+        "Skopírujte Microsoft App ID a vygenerujte Client Secret (heslo aplikácie).",
+        "Nastavte CCRM Webhook URL nižšie ako Messaging Endpoint bota.",
+      ],
+      hu: [
+        "Nyissa meg a Microsoft Teams Developer Portalt (vagy Azure Bot Services-t), és hozzon létre egy botot.",
+        "Másolja ki a Microsoft App ID-t, és generáljon egy Client Secret kulcsot.",
+        "Állítsa be a lenti CCRM Webhook URL-t a bot végpontjaként (Messaging Endpoint).",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanAppId",
+        label: { en: "Microsoft App ID", sk: "Microsoft App ID", hu: "Microsoft App ID" },
+        placeholder: "00000000-0000-0000-0000-000000000000",
+        required: true,
+      },
+      {
+        key: "botmanAppSecret",
+        label: { en: "Microsoft App Password / Client Secret", sk: "Microsoft Client Secret", hu: "Microsoft Client Secret" },
+        placeholder: "Client secret value",
+        secret: true,
+        required: true,
+      },
+      {
+        key: "botmanServiceUrl",
+        label: { en: "Bot Framework Service URL (optional)", sk: "Service URL (voliteľné)", hu: "Service URL (opcionális)" },
+        placeholder: "https://smba.trafficmanager.net/teams",
+      },
+    ],
+  },
+
+  viber: {
+    type: "viber",
+    driverClass: "BotMan\\Drivers\\Viber\\ViberDriver",
+    portalUrl: "https://partners.viber.com/",
+    portalLabel: "Viber Admin Panel",
+    supportsAutoWebhook: true,
+    supportsLocalPolling: false,
+    summary: {
+      en: "Connect a Viber Public / Bot Account with 1-click webhook registration.",
+      sk: "Pripojte Viber Bot účet s registráciou webhooku na 1 kliknutie.",
+      hu: "Viber Bot fiók csatlakoztatása 1-kattintásos webhook regisztrációval.",
+    },
+    setupSteps: {
+      en: [
+        "Log in to partners.viber.com and create or select your Viber Bot Account.",
+        "Copy the Auth Token and paste it below, along with your Bot Sender Name.",
+        "Click 'Test Connection' and 'Register Webhook' to activate live Viber messaging.",
+      ],
+      sk: [
+        "Prihláste sa na partners.viber.com a vytvorte alebo vyberte Viber Bot účet.",
+        "Skopírujte Auth Token a vložte ho nižšie spolu s menom odosielateľa.",
+        "Kliknite na 'Otestovať' a 'Registrovať Webhook' pre aktiváciu Viber správ.",
+      ],
+      hu: [
+        "Jelentkezzen be a partners.viber.com oldalon, és válassza ki a Viber Bot fiókot.",
+        "Másolja be az Auth Tokent és a küldő nevét alább.",
+        "Kattintson a 'Kapcsolat tesztelése' és 'Webhook regisztrálása' gombokra.",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanToken",
+        label: { en: "Viber Auth Token", sk: "Viber Auth Token", hu: "Viber Auth Token" },
+        placeholder: "445da6az1s345z78-d1234567890abcdef-...",
+        secret: true,
+        required: true,
+      },
+      {
+        key: "botmanSenderName",
+        label: { en: "Bot Sender Name", sk: "Meno odosielateľa (Bot)", hu: "Bot megjelenített neve" },
+        placeholder: "CCRM Support",
+      },
+    ],
+  },
+
+  twilio: {
+    type: "twilio",
+    driverClass: "BotMan\\Drivers\\Twilio\\TwilioMessageDriver",
+    portalUrl: "https://console.twilio.com/",
+    portalLabel: "Twilio Console",
+    supportsAutoWebhook: false,
+    supportsLocalPolling: true,
+    summary: {
+      en: "2-way SMS messaging via Twilio Programmable Messaging (for WhatsApp, use the native WAAI QR connector).",
+      sk: "Obojsmerné SMS správy cez Twilio Programmable Messaging (pre WhatsApp použite natívny WAAI QR konektor).",
+      hu: "Kétirányú SMS üzenetküldés Twilio Programmable Messaging segítségével (WhatsApphoz használja a WAAI QR-t).",
+    },
+    setupSteps: {
+      en: [
+        "Open Twilio Console (console.twilio.com) and copy your Account SID (AC...) and Auth Token.",
+        "Enter your active Twilio SMS phone number in E.164 format (e.g. +14155552671).",
+        "Under Phone Numbers -> Manage -> Active Numbers, paste the CCRM Webhook URL into 'A message comes in (Webhook POST)'.",
+      ],
+      sk: [
+        "Otvorte Twilio Console (console.twilio.com) a skopírujte Account SID (AC...) a Auth Token.",
+        "Zadajte vaše Twilio SMS telefónne číslo vo formáte E.164 (napr. +421900123456).",
+        "V sekcii Phone Numbers -> Active Numbers vložte CCRM Webhook URL do poľa 'A message comes in (Webhook POST)'.",
+      ],
+      hu: [
+        "Nyissa meg a Twilio Console-t (console.twilio.com), és másolja ki az Account SID (AC...) és Auth Token értékeket.",
+        "Adja meg az aktív Twilio SMS telefonszámát E.164 formátumban (pl. +36301234567).",
+        "A Phone Numbers -> Active Numbers alatt illessze be a CCRM Webhook URL-t az 'A message comes in' mezőbe.",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanAppId",
+        label: { en: "Twilio Account SID", sk: "Twilio Account SID", hu: "Twilio Account SID" },
+        placeholder: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        required: true,
+      },
+      {
+        key: "botmanToken",
+        label: { en: "Twilio Auth Token", sk: "Twilio Auth Token", hu: "Twilio Auth Token" },
+        placeholder: "your_auth_token",
+        secret: true,
+        required: true,
+      },
+      {
+        key: "botmanFromNumber",
+        label: { en: "Twilio SMS Phone Number", sk: "Twilio SMS číslo", hu: "Twilio SMS telefonszám" },
+        placeholder: "+14155552671",
+        required: true,
+      },
+    ],
+  },
+
+  webchat: {
+    type: "webchat",
+    driverClass: "BotMan\\Drivers\\Web\\WebDriver",
+    portalUrl: "https://botman.io/2.0/driver-web",
+    portalLabel: "BotMan WebDriver Docs",
+    supportsAutoWebhook: false,
+    supportsLocalPolling: false,
+    isWebWidget: true,
+    summary: {
+      en: "Embeddable Live Chat Widget powered by BotMan WebDriver — paste 1 <script> tag on your website to chat with visitors & trigger AI Agents.",
+      sk: "Vložiteľný Live Chat Widget (BotMan WebDriver) — vložte 1 <script> tag na váš web a komunikujte s návštevníkmi alebo AI agentmi.",
+      hu: "Beágyazható Élő Chat Widget (BotMan WebDriver) — illesszen be 1 <script> kódot a weboldalába az élő ügyfélszolgálathoz.",
+    },
+    setupSteps: {
+      en: [
+        "Customize your chat widget header title below and click Save.",
+        "Copy the generated <script> embed snippet below and paste it right before </body> on your website.",
+        "Messages sent by website visitors appear instantly in CCRM's Communication Hub and can trigger any wired AI Agent!",
+      ],
+      sk: [
+        "Upravte názov hlavičky chat widgetu nižšie a kliknite na Uložiť.",
+        "Skopírujte vygenerovaný <script> kód a vložte ho pred značku </body> na vašej webstránke.",
+        "Správy od návštevníkov webu sa okamžite zobrazia v CCRM a môžu spúšťať pripojených AI agentov!",
+      ],
+      hu: [
+        "Adja meg a chat widget fejléc címét alább, majd kattintson a Mentés gombra.",
+        "Másolja ki a generált <script> beágyazó kódot, és illessze be a weboldala </body> címkéje elé.",
+        "A látogatók üzenetei azonnal megjelennek a CCRM-ben, és aktiválhatják a bekötött AI ügynököket!",
+      ],
+    },
+    fields: [
+      {
+        key: "botmanSenderName",
+        label: { en: "Widget Header Title", sk: "Názov hlavičky widgetu", hu: "Widget fejléc címe" },
+        placeholder: "CCRM Live Support",
+      },
+      {
+        key: "botmanVerifyToken",
+        label: { en: "Widget Site Key", sk: "Kľúč widgetu (Site Key)", hu: "Widget oldalkulcs" },
+        placeholder: "ccrm_webchat_verify",
+      },
+    ],
+  },
+};
+
+export const getBotManWebhookUrl = (id: string, driver: BotManConnectorType): string => {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const cid = encodeURIComponent(id || "YOUR_CONNECTOR_ID");
+  return `${origin}/api/botman_webhook.php?connector_id=${cid}&driver=${encodeURIComponent(driver)}`;
+};
+
+export const getBotManWidgetSnippet = (id: string): string => {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const cid = encodeURIComponent(id || "YOUR_CONNECTOR_ID");
+  return `<script src="${origin}/api/botman_webhook.php?widget=js&connector_id=${cid}" async></script>`;
+};
+
+export const registerBotManWebhook = (draft: MailboxDraft, webhookUrl?: string) =>
+  call<{ ok: boolean; detail?: string; error?: string; webhookUrl?: string }>("botman_register_webhook", {
+    ...mailboxPayload(draft),
+    webhookUrl,
+  });

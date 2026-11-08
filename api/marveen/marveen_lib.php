@@ -16,6 +16,8 @@
  *  - Tier 3 (cloud_mcp): Pure-PHP direct OAuth/HTTPS execution + CCRM MCP (/api/mcp.php) provisioning.
  */
 
+require_once dirname(__DIR__) . '/botman/botman_lib.php';
+
 if (!function_exists('ccrm_marveen_storage_root')) {
     function ccrm_marveen_storage_root(): string {
         $uploadsDir = dirname(__DIR__, 2) . '/uploads';
@@ -2349,10 +2351,14 @@ if (!function_exists('ccrm_marveen_list_sibling_whatsapp_connectors')) {
         $others = [];
         foreach ($rows as $row) {
             $raw = json_decode((string)($row['settings_json'] ?? '{}'), true);
+            $secretKeys = function_exists('ccrm_email_secret_keys')
+                ? ccrm_email_secret_keys()
+                : ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret', 'botmanToken', 'botmanAppSecret', 'botmanSigningSecret', 'botmanVerifyToken'];
             $settings = is_array($raw)
-                ? ccrm_decrypt_config_secrets($raw, ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'])
+                ? ccrm_decrypt_config_secrets($raw, $secretKeys)
                 : [];
-            if (($settings['connectorType'] ?? '') !== 'whatsapp') {
+            $cType = strtolower((string)($settings['connectorType'] ?? ''));
+            if ($cType !== 'whatsapp' && !ccrm_is_botman_connector($cType)) {
                 continue;
             }
             $row['settings'] = $settings;
@@ -3527,7 +3533,9 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
         require_once dirname(__DIR__) . '/auth.php';
         $stmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `id` ASC");
         $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
-        $secretKeys = ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret'];
+        $secretKeys = function_exists('ccrm_email_secret_keys')
+            ? ccrm_email_secret_keys()
+            : ['imapPassword', 'smtpPassword', 'subscriptionToken', 'graphClientSecret', 'botmanToken', 'botmanAppSecret', 'botmanSigningSecret', 'botmanVerifyToken'];
 
         $aiConnectors = [];
         $waConnectorsById = [];
@@ -3546,7 +3554,7 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
 
             if (in_array($cType, ['claude', 'antigravity', 'chatgpt'], true)) {
                 $aiConnectors[(string)$row['id']] = $row;
-            } elseif ($cType === 'whatsapp') {
+            } elseif ($cType === 'whatsapp' || ccrm_is_botman_connector($cType)) {
                 $waConnectorsById[(string)$row['id']] = $row;
             } elseif (in_array($cType, ['gmail', 'smtp', 'exchange'], true)) {
                 $emailConnectorsById[(string)$row['id']] = $row;
@@ -3606,6 +3614,9 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                         $waAccountId = ccrm_waai_resolve_account_id($waRow);
                         if ($onlySourceFilter !== null && $onlySourceFilter !== '' && $onlySourceFilter !== (string)$waRow['id'] && $onlySourceFilter !== $waAccountId) {
                             continue;
+                        }
+                        if (ccrm_is_botman_connector((string)($waRow['settings']['connectorType'] ?? ''))) {
+                            ccrm_botman_get_chats($waRow, $onlySourceFilter === null);
                         }
 
                         // Read store.json directly from disk at $0 cost (no worker spawn needed if already synced)
@@ -5486,6 +5497,10 @@ if (!function_exists('ccrm_waai_storage_root')) {
         $settings = is_array($mailboxRow['settings'] ?? null)
             ? $mailboxRow['settings']
             : (json_decode((string)($mailboxRow['settings_json'] ?? '{}'), true) ?: []);
+        $cType = strtolower((string)($settings['connectorType'] ?? ($mailboxRow['connectorType'] ?? '')));
+        if (ccrm_is_botman_connector($cType)) {
+            return 'botman-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', (string)($mailboxRow['id'] ?? 'default'));
+        }
         $explicit = trim((string)($settings['waAccountId'] ?? ''));
         $accountsRoot = ccrm_waai_storage_root() . '/accounts';
         if ($explicit !== '') {
@@ -5576,6 +5591,13 @@ if (!function_exists('ccrm_waai_storage_root')) {
     }
 
     function ccrm_waai_get_chats(array $mailboxRow): array {
+        $settings = is_array($mailboxRow['settings'] ?? null)
+            ? $mailboxRow['settings']
+            : (json_decode((string)($mailboxRow['settings_json'] ?? '{}'), true) ?: []);
+        $cType = strtolower((string)($settings['connectorType'] ?? ($mailboxRow['connectorType'] ?? '')));
+        if (ccrm_is_botman_connector($cType)) {
+            return ccrm_botman_get_chats($mailboxRow, true);
+        }
         $accountId = ccrm_waai_resolve_account_id($mailboxRow);
         ccrm_waai_ensure_worker_running($accountId);
 
@@ -5602,6 +5624,13 @@ if (!function_exists('ccrm_waai_storage_root')) {
     }
 
     function ccrm_waai_send_message(array $mailboxRow, string $chatId, string $text, string $author = ''): array {
+        $settings = is_array($mailboxRow['settings'] ?? null)
+            ? $mailboxRow['settings']
+            : (json_decode((string)($mailboxRow['settings_json'] ?? '{}'), true) ?: []);
+        $cType = strtolower((string)($settings['connectorType'] ?? ($mailboxRow['connectorType'] ?? '')));
+        if (ccrm_is_botman_connector($cType)) {
+            return ccrm_botman_send_message($mailboxRow, $chatId, $text, $author);
+        }
         $accountId = ccrm_waai_resolve_account_id($mailboxRow);
         ccrm_waai_ensure_worker_running($accountId);
 
@@ -5643,6 +5672,13 @@ if (!function_exists('ccrm_waai_storage_root')) {
     }
 
     function ccrm_waai_resync_chats(array $mailboxRow, string $chatId = ''): array {
+        $settings = is_array($mailboxRow['settings'] ?? null)
+            ? $mailboxRow['settings']
+            : (json_decode((string)($mailboxRow['settings_json'] ?? '{}'), true) ?: []);
+        $cType = strtolower((string)($settings['connectorType'] ?? ($mailboxRow['connectorType'] ?? '')));
+        if (ccrm_is_botman_connector($cType)) {
+            return ccrm_botman_resync_chats($mailboxRow, $chatId);
+        }
         $accountId = ccrm_waai_resolve_account_id($mailboxRow);
         ccrm_waai_ensure_worker_running($accountId);
 
