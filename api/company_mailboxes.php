@@ -524,6 +524,8 @@ try {
         'agent_trigger_save',
         'agent_trigger_delete',
         'agent_trigger_test',
+        'agent_followup_save',
+        'agent_followup_cancel',
         'agent_heartbeat',
         'agent_chat_clear',
         'agent_run',
@@ -560,6 +562,16 @@ try {
         $scopedSubId = ($activeSubId !== '' && $activeSubId !== 'main') ? $activeSubId : null;
 
         if ($action === 'agent_state') {
+            $pollStampFile = ccrm_marveen_storage_root() . '/.last_trigger_poll';
+            $lastPollTs = is_file($pollStampFile) ? (int)@filemtime($pollStampFile) : 0;
+            if ((time() - $lastPollTs) >= 15) {
+                @file_put_contents($pollStampFile, (string)time());
+                try {
+                    ccrm_marveen_process_event_triggers($pdo);
+                } catch (\Throwable $e) {
+                    // Non-fatal background trigger check
+                }
+            }
             $state = ccrm_marveen_get_connector_state($pdo, $stored, $scopedSubId);
             echo json_encode(array_merge(['success' => true], $state));
             exit;
@@ -645,6 +657,21 @@ try {
             $testRes = ccrm_marveen_test_trigger($pdo, $stored, $trigId, $callerId);
             $state = ccrm_marveen_get_connector_state($pdo, $stored, $scopedSubId);
             echo json_encode(array_merge(['success' => !empty($testRes['ok']), 'testResult' => $testRes], $state));
+            exit;
+        }
+
+        if ($action === 'agent_followup_save') {
+            $fup = ccrm_marveen_save_followup($pdo, $id, $input);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored, $scopedSubId);
+            echo json_encode(array_merge(['success' => true, 'followup' => $fup], $state));
+            exit;
+        }
+
+        if ($action === 'agent_followup_cancel') {
+            $fupId = trim((string)($input['followupId'] ?? ($input['id'] ?? '')));
+            ccrm_marveen_cancel_followup($pdo, $id, $fupId);
+            $state = ccrm_marveen_get_connector_state($pdo, $stored, $scopedSubId);
+            echo json_encode(array_merge(['success' => true], $state));
             exit;
         }
 

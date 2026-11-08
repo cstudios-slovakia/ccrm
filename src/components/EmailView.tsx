@@ -28,6 +28,7 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
 import { PROVIDERS, ProviderLogo } from "./CompanyMailboxSettings";
 import {
+  cancelAgentFollowup,
   clearAgentChatHistory,
   deleteAgentArtifact,
   deleteAgentSubagent,
@@ -515,6 +516,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [triggerDraftEventType, setTriggerDraftEventType] = useState<string>("lead_created");
   const [triggerDraftInstructions, setTriggerDraftInstructions] = useState<string>("");
   const [triggerDraftAutoReply, setTriggerDraftAutoReply] = useState<boolean>(true);
+  const [triggerDraftProactiveEnabled, setTriggerDraftProactiveEnabled] = useState<boolean>(false);
+  const [triggerDraftProactiveAfterMinutes, setTriggerDraftProactiveAfterMinutes] = useState<number>(120);
+  const [triggerDraftProactiveMaxAttempts, setTriggerDraftProactiveMaxAttempts] = useState<number>(1);
+  const [triggerDraftProactiveInstructions, setTriggerDraftProactiveInstructions] = useState<string>("");
   const [triggerDraftEnabled, setTriggerDraftEnabled] = useState<boolean>(true);
   const [isTestingTriggerId, setIsTestingTriggerId] = useState<string | null>(null);
 
@@ -1234,6 +1239,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setTriggerDraftEventType("lead_created");
     setTriggerDraftInstructions("");
     setTriggerDraftAutoReply(true);
+    setTriggerDraftProactiveEnabled(false);
+    setTriggerDraftProactiveAfterMinutes(120);
+    setTriggerDraftProactiveMaxAttempts(1);
+    setTriggerDraftProactiveInstructions("");
     setTriggerDraftEnabled(true);
     setTriggerModalOpen(true);
   };
@@ -1253,6 +1262,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setTriggerDraftEventType(trig.filter?.eventType || "lead_created");
     setTriggerDraftInstructions(trig.instructions || "");
     setTriggerDraftAutoReply(trig.autoReply ?? true);
+    setTriggerDraftProactiveEnabled(Boolean(trig.proactiveEnabled));
+    setTriggerDraftProactiveAfterMinutes(trig.proactiveAfterMinutes ?? 120);
+    setTriggerDraftProactiveMaxAttempts(trig.proactiveMaxAttempts ?? 1);
+    setTriggerDraftProactiveInstructions(trig.proactiveInstructions || "");
     setTriggerDraftEnabled(trig.enabled ?? true);
     setTriggerModalOpen(true);
   };
@@ -1289,6 +1302,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
         },
         instructions: triggerDraftInstructions.trim(),
         autoReply: triggerDraftAutoReply,
+        proactiveEnabled: triggerDraftProactiveEnabled,
+        proactiveAfterMinutes: triggerDraftProactiveAfterMinutes,
+        proactiveMaxAttempts: triggerDraftProactiveMaxAttempts,
+        proactiveInstructions: triggerDraftProactiveInstructions.trim(),
         enabled: triggerDraftEnabled,
       });
       applyAgentState(selectedAccount.id, st);
@@ -1318,9 +1335,24 @@ export const EmailView: React.FC<EmailViewProps> = ({
         filter: trig.filter,
         instructions: trig.instructions,
         autoReply: trig.autoReply,
+        proactiveEnabled: trig.proactiveEnabled,
+        proactiveAfterMinutes: trig.proactiveAfterMinutes,
+        proactiveMaxAttempts: trig.proactiveMaxAttempts,
+        proactiveInstructions: trig.proactiveInstructions,
         enabled: !trig.enabled,
       });
       applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleCancelFollowup = async (followupId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await cancelAgentFollowup(selectedAccount.id, followupId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Scheduled follow-up cancelled.", "Naplánovaný follow-up zrušený.", "Ütemezett utánkövetés törölve."));
     } catch (e: unknown) {
       notify(e instanceof Error ? e.message : String(e), "error");
     }
@@ -3555,11 +3587,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
                                     {/* MIDDLE (4 cols): SQUIGGLY LINE & WIRE CONTROLS */}
                                     <div className="ws-lg:col-span-4 flex flex-col items-center justify-center gap-2 px-2">
-                                      <div className="flex items-center gap-1.5 text-micro font-bold text-slate-700">
+                                      <div className="flex items-center flex-wrap justify-center gap-1.5 text-micro font-bold text-slate-700">
                                         <span>{trig.name}</span>
                                         {trig.autoReply && (
                                           <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold">
                                             ↩ Auto-Reply
+                                          </span>
+                                        )}
+                                        {trig.proactiveEnabled && (
+                                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-micro font-bold">
+                                            🔄 Proactive ({trig.proactiveAfterMinutes ?? 120}m)
                                           </span>
                                         )}
                                       </div>
@@ -3926,6 +3963,54 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                       </div>
                                     </div>
                                   )}
+                                </div>
+                              )}
+
+                              {/* PENDING PROACTIVE FOLLOW-UPS (Self-scheduled via schedule_conversation_followup) */}
+                              {(st?.followups ?? []).filter((f) => f.status === "pending").length > 0 && (
+                                <div className="pt-2 space-y-2">
+                                  <div className="flex items-center justify-between px-1">
+                                    <span className="text-micro font-bold uppercase tracking-wider text-indigo-700">
+                                      🔄{" "}
+                                      {t(
+                                        "Pending Proactive Follow-Ups ($0 Idle until Due)",
+                                        "Čakajúce proaktívne follow-upy ($0 v nečinnosti)",
+                                        "Ütemezett proaktív utánkövetések ($0 üresjárati költség)",
+                                      )}
+                                    </span>
+                                  </div>
+                                  {(st?.followups ?? [])
+                                    .filter((f) => f.status === "pending")
+                                    .map((fu) => (
+                                      <div
+                                        key={fu.id}
+                                        className="p-3 rounded-2xl border border-indigo-200 bg-indigo-50/40 flex flex-wrap items-center justify-between gap-3"
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 text-caption font-bold text-slate-900">
+                                            <span>{fu.targetName || fu.targetChat}</span>
+                                            <span className="px-2 py-0.5 rounded-md bg-white border border-indigo-200 text-indigo-800 text-micro font-mono">
+                                              {t("Due:", "Termín:", "Esedékes:")} {fu.dueAt}
+                                            </span>
+                                            {fu.cancelIfReplied && (
+                                              <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-micro font-semibold">
+                                                {t("Auto-cancels on reply", "Zruší sa pri odpovedi", "Válasznál automatikusan törlődik")}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-micro text-slate-600 truncate mt-0.5">
+                                            {fu.instructions}
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleCancelFollowup(fu.id)}
+                                          className="px-2.5 py-1 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 text-micro font-bold cursor-pointer"
+                                        >
+                                          {t("Cancel", "Zrušiť", "Törlés")}
+                                        </button>
+                                      </div>
+                                    ))}
                                 </div>
                               )}
                             </>
@@ -5264,6 +5349,104 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             className="w-4 h-4 accent-violet-600"
                           />
                         </label>
+
+                        {/* Proactive Conversation Re-Initiation ($0 Idle Cost) */}
+                        {triggerDraftSourceType !== "crm_event" && (
+                          <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-3">
+                            <label className="flex items-center justify-between gap-3 cursor-pointer">
+                              <div>
+                                <div className="text-caption font-bold text-indigo-950 flex items-center gap-1.5">
+                                  🔄{" "}
+                                  {t(
+                                    "Proactive Conversation Re-Initiation ($0 Idle Cost)",
+                                    "Proaktívne znovuotvorenie konverzácie ($0 v nečinnosti)",
+                                    "Proaktív beszélgetés-újraindítás ($0 üresjárati költség)",
+                                  )}
+                                </div>
+                                <div className="text-micro text-slate-600">
+                                  {t(
+                                    "Automatically re-initiate conversation if the contact stops replying after an agent message, or when the agent calls schedule_conversation_followup.",
+                                    "Automaticky nadviaže kontakt, ak klient prestane odpovedať, alebo keď agent naplánuje follow-up.",
+                                    "Automatikusan újraindítja a beszélgetést, ha az ügyfél nem válaszol az ügynök üzenetére, vagy ha az ügynök follow-upot ütemez.",
+                                  )}
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                data-testid="trigger-proactive-toggle"
+                                checked={triggerDraftProactiveEnabled}
+                                onChange={(e) => setTriggerDraftProactiveEnabled(e.target.checked)}
+                                className="w-4 h-4 accent-indigo-600"
+                              />
+                            </label>
+
+                            {triggerDraftProactiveEnabled && (
+                              <div className="space-y-2.5 pt-2 border-t border-indigo-200/60">
+                                <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-2.5">
+                                  <div>
+                                    <label className="block text-micro font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                                      {t(
+                                        "Follow up after silence (minutes)",
+                                        "Ozvanie po tichu (minúty)",
+                                        "Utánkövetés csend után (perc)",
+                                      )}
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={5}
+                                      max={10080}
+                                      value={triggerDraftProactiveAfterMinutes}
+                                      onChange={(e) =>
+                                        setTriggerDraftProactiveAfterMinutes(
+                                          Math.max(5, Math.min(10080, Number(e.target.value) || 120)),
+                                        )
+                                      }
+                                      className="w-full px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-caption font-semibold text-slate-800"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-micro font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                                      {t(
+                                        "Max unprompted follow-ups",
+                                        "Max. počet pripomenutí",
+                                        "Max. proaktív üzenet",
+                                      )}
+                                    </label>
+                                    <select
+                                      value={triggerDraftProactiveMaxAttempts}
+                                      onChange={(e) => setTriggerDraftProactiveMaxAttempts(Number(e.target.value) || 1)}
+                                      className="w-full px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-caption font-semibold text-slate-800"
+                                    >
+                                      <option value={1}>1 {t("attempt (Recommended)", "pokus (Odporúčané)", "alkalom (Ajánlott)")}</option>
+                                      <option value={2}>2 {t("attempts", "pokusy", "alkalom")}</option>
+                                      <option value={3}>3 {t("attempts", "pokusy", "alkalom")}</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-micro font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                                    {t(
+                                      "Proactive Follow-Up Instructions",
+                                      "Pokyny pre proaktívne oslovenie",
+                                      "Proaktív utánkövetési utasítások",
+                                    )}
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={triggerDraftProactiveInstructions}
+                                    onChange={(e) => setTriggerDraftProactiveInstructions(e.target.value)}
+                                    placeholder={t(
+                                      "e.g. Check if they still need help with their quote or have any questions. If the conversation ended naturally, reply with [SKIP_FOLLOWUP].",
+                                      "napr. Spýtaj sa, či ešte potrebujú pomoc s ponukou. Ak sa rozhovor prirodzene skončil, odpovedz [SKIP_FOLLOWUP].",
+                                      "pl. Kérdezd meg udvariasan, tudunk-e még segíteni az ajánlattal kapcsolatban. Ha a beszélgetés természetesen lezárult, válaszolj [SKIP_FOLLOWUP]-pal.",
+                                    )}
+                                    className="w-full p-2.5 rounded-xl bg-white border border-indigo-200 text-caption text-slate-800 focus:outline-none focus:border-indigo-500"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2">

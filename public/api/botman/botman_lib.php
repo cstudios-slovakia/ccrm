@@ -477,9 +477,10 @@ if (!function_exists('ccrm_botman_drivers')) {
                     if ($token === '') {
                         return ['ok' => false, 'error' => 'Missing Facebook Page Access Token.'];
                     }
+                    $endpoint = 'https://graph.facebook.com/v19.0/me/messages?access_token=' . urlencode($token);
                     $r = ccrm_botman_http_request(
                         'POST',
-                        'https://graph.facebook.com/v19.0/me/messages?access_token=' . urlencode($token),
+                        $endpoint,
                         [],
                         [
                             'recipient' => ['id' => $chatId],
@@ -488,6 +489,27 @@ if (!function_exists('ccrm_botman_drivers')) {
                         ]
                     );
                     if (empty($r['data']['message_id'])) {
+                        $errCode = (int)($r['data']['error']['code'] ?? 0);
+                        $errMsg = (string)($r['data']['error']['message'] ?? $r['error'] ?? '');
+                        // Meta 24-Hour Messaging Window fallback: if outside standard 24h window (#10),
+                        // retry automatically with messaging_type=MESSAGE_TAG and tag=HUMAN_AGENT (7-day window).
+                        if ($errCode === 10 || stripos($errMsg, 'outside of allowed window') !== false || stripos($errMsg, '24 hour') !== false) {
+                            $r2 = ccrm_botman_http_request(
+                                'POST',
+                                $endpoint,
+                                [],
+                                [
+                                    'recipient' => ['id' => $chatId],
+                                    'message' => ['text' => $text],
+                                    'messaging_type' => 'MESSAGE_TAG',
+                                    'tag' => 'HUMAN_AGENT',
+                                ]
+                            );
+                            if (!empty($r2['data']['message_id'])) {
+                                return ['ok' => true, 'msgId' => (string)$r2['data']['message_id'], 'usedHumanAgentTag' => true];
+                            }
+                            $r = $r2;
+                        }
                         return ['ok' => false, 'error' => (string)($r['data']['error']['message'] ?? $r['error'] ?? 'Messenger send failed.')];
                     }
                     return ['ok' => true, 'msgId' => (string)$r['data']['message_id']];

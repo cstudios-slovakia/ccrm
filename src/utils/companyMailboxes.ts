@@ -439,12 +439,35 @@ export interface AgentEventTrigger {
   filter: AgentEventTriggerFilter;
   instructions: string;
   autoReply: boolean;
+  proactiveEnabled?: boolean;
+  proactiveAfterMinutes?: number;
+  proactiveMaxAttempts?: number;
+  proactiveInstructions?: string;
   enabled: boolean;
   lastWatermark?: string;
   triggerCount?: number;
   lastTriggeredAt?: string | null;
   lastStatus?: string | null;
   updatedAt?: string;
+}
+
+export interface AgentProactiveFollowup {
+  id: string;
+  sourceType: "whatsapp" | "email";
+  sourceConnectorId: string;
+  targetChat: string;
+  targetName?: string;
+  targetConnectorId: string;
+  subagentId?: string | null;
+  delayMinutes: number;
+  dueAt: string;
+  cancelIfReplied: boolean;
+  maxAttempts: number;
+  attempts: number;
+  instructions: string;
+  status: "pending" | "executed" | "cancelled_replied" | "cancelled_manual" | "failed";
+  createdAt?: string;
+  executedAt?: string | null;
 }
 
 export interface AgentAutonomousTask {
@@ -505,6 +528,8 @@ export interface AgentConnectorState {
   tasks: AgentAutonomousTask[];
   triggers?: AgentEventTrigger[];
   allTriggers?: AgentEventTrigger[];
+  followups?: AgentProactiveFollowup[];
+  allFollowups?: AgentProactiveFollowup[];
   autonomousMode?: AgentAutonomousConfig;
   chatHistory: AgentChatMessage[];
 }
@@ -612,6 +637,10 @@ export const saveAgentTrigger = (params: {
   filter?: AgentEventTriggerFilter;
   instructions?: string;
   autoReply?: boolean;
+  proactiveEnabled?: boolean;
+  proactiveAfterMinutes?: number;
+  proactiveMaxAttempts?: number;
+  proactiveInstructions?: string;
   enabled?: boolean;
 }) =>
   call<AgentConnectorState & { trigger?: AgentEventTrigger }>("agent_trigger_save", {
@@ -624,8 +653,15 @@ export const saveAgentTrigger = (params: {
     filter: params.filter,
     instructions: params.instructions,
     autoReply: params.autoReply,
+    proactiveEnabled: params.proactiveEnabled,
+    proactiveAfterMinutes: params.proactiveAfterMinutes,
+    proactiveMaxAttempts: params.proactiveMaxAttempts,
+    proactiveInstructions: params.proactiveInstructions,
     enabled: params.enabled,
   });
+
+export const cancelAgentFollowup = (id: string, followupId: string) =>
+  call<AgentConnectorState>("agent_followup_cancel", { id, followupId });
 
 export const deleteAgentTrigger = (id: string, triggerId: string) =>
   call<AgentConnectorState>("agent_trigger_delete", { id, triggerId });

@@ -1369,6 +1369,151 @@ if (!function_exists('ccrm_marveen_save_autonomous_config')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_list_followups')) {
+    function ccrm_marveen_list_followups(PDO $pdo, array $connector): array {
+        $connectorId = (string)($connector['id'] ?? 'default');
+        $settings = is_array($connector['settings'] ?? null) ? $connector['settings'] : [];
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $file = $dir . '/followups.json';
+        if (is_file($file)) {
+            $decoded = json_decode((string)@file_get_contents($file), true);
+            if (is_array($decoded)) {
+                return array_values($decoded);
+            }
+        }
+        if (!empty($settings['followups']) && is_array($settings['followups'])) {
+            @file_put_contents($file, json_encode(array_values($settings['followups']), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+            return array_values($settings['followups']);
+        }
+        return [];
+    }
+}
+
+if (!function_exists('ccrm_marveen_list_all_followups')) {
+    function ccrm_marveen_list_all_followups(PDO $pdo): array {
+        $all = [];
+        try {
+            $stmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `id` ASC");
+            $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+            foreach ($rows as $r) {
+                $raw = json_decode((string)($r['settings_json'] ?? '{}'), true);
+                $cType = strtolower((string)($raw['connectorType'] ?? ''));
+                if (!in_array($cType, ['claude', 'antigravity', 'chatgpt'], true)) {
+                    continue;
+                }
+                $r['settings'] = is_array($raw) ? $raw : [];
+                foreach (ccrm_marveen_list_followups($pdo, $r) as $f) {
+                    $f['agentConnectorId'] = (string)$r['id'];
+                    $f['agentConnectorName'] = (string)$r['name'];
+                    $all[] = $f;
+                }
+            }
+        } catch (\Throwable $e) {}
+        return $all;
+    }
+}
+
+if (!function_exists('ccrm_marveen_save_followup')) {
+    function ccrm_marveen_save_followup(PDO $pdo, string $connectorId, array $input): array {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $file = $dir . '/followups.json';
+        $items = is_file($file) ? (json_decode((string)@file_get_contents($file), true) ?: []) : [];
+
+        $rawId = trim((string)($input['id'] ?? ($input['followupId'] ?? '')));
+        $id = $rawId !== ''
+            ? (preg_replace('/[^a-zA-Z0-9_-]/', '-', $rawId) ?: ('fup-' . substr(bin2hex(random_bytes(4)), 0, 8)))
+            : ('fup-' . substr(bin2hex(random_bytes(4)), 0, 8));
+
+        $sourceType = strtolower(trim((string)($input['sourceType'] ?? ($input['source_type'] ?? 'whatsapp'))));
+        if (!in_array($sourceType, ['whatsapp', 'email'], true)) {
+            $sourceType = 'whatsapp';
+        }
+        $sourceConnectorId = trim((string)($input['sourceConnectorId'] ?? ($input['source_connector_id'] ?? '')));
+        if ($sourceConnectorId === '') {
+            if ($sourceType === 'whatsapp') {
+                $waList = ccrm_marveen_list_sibling_whatsapp_connectors($pdo);
+                $sourceConnectorId = (string)($waList[0]['id'] ?? '');
+            } else {
+                $emList = ccrm_marveen_list_sibling_email_connectors($pdo);
+                $sourceConnectorId = (string)($emList[0]['id'] ?? '');
+            }
+        }
+
+        $targetChat = trim((string)($input['targetChat'] ?? ($input['target_chat'] ?? ($input['chat'] ?? ($input['to'] ?? '')))));
+        $targetName = trim((string)($input['targetName'] ?? ($input['target_name'] ?? $targetChat)));
+        $delayMinutes = max(1, (int)($input['delayMinutes'] ?? ($input['delay_minutes'] ?? 60)));
+        $nowSec = time();
+        $nowIso = gmdate('c', $nowSec);
+        $dueAt = !empty($input['dueAt']) ? (string)$input['dueAt'] : gmdate('c', $nowSec + ($delayMinutes * 60));
+
+        $existingIdx = null;
+        foreach ($items as $idx => $it) {
+            if (($it['id'] ?? '') === $id) {
+                $existingIdx = $idx;
+                break;
+            }
+        }
+        $prev = $existingIdx !== null ? $items[$existingIdx] : [];
+
+        $record = [
+            'id' => $id,
+            'sourceType' => $sourceType,
+            'sourceConnectorId' => $sourceConnectorId,
+            'targetChat' => $targetChat,
+            'targetName' => $targetName !== '' ? $targetName : $targetChat,
+            'subagentId' => !empty($input['subagentId']) ? (string)$input['subagentId'] : ($prev['subagentId'] ?? null),
+            'delayMinutes' => $delayMinutes,
+            'dueAt' => $dueAt,
+            'cancelIfReplied' => array_key_exists('cancelIfReplied', $input)
+                ? (bool)$input['cancelIfReplied']
+                : (array_key_exists('cancel_if_replied', $input) ? (bool)$input['cancel_if_replied'] : (bool)($prev['cancelIfReplied'] ?? true)),
+            'maxAttempts' => max(1, min(5, (int)($input['maxAttempts'] ?? ($input['max_attempts'] ?? ($prev['maxAttempts'] ?? 1))))),
+            'attempts' => (int)($input['attempts'] ?? ($prev['attempts'] ?? 0)),
+            'instructions' => trim((string)($input['instructions'] ?? ($prev['instructions'] ?? 'Follow up politely on our previous conversation if the contact has not replied yet.'))),
+            'status' => (string)($input['status'] ?? ($prev['status'] ?? 'pending')),
+            'createdAt' => (string)($prev['createdAt'] ?? $nowIso),
+            'updatedAt' => $nowIso,
+            'executedAt' => $input['executedAt'] ?? ($prev['executedAt'] ?? null),
+        ];
+
+        if ($existingIdx !== null) {
+            $items[$existingIdx] = $record;
+        } else {
+            $items[] = $record;
+        }
+
+        // Keep most recent 100 follow-ups
+        if (count($items) > 100) {
+            $items = array_slice($items, -100);
+        }
+
+        @file_put_contents($file, json_encode(array_values($items), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        @chmod($file, 0600);
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($items): array {
+            $s['followups'] = array_values($items);
+            return $s;
+        });
+
+        return $record;
+    }
+}
+
+if (!function_exists('ccrm_marveen_cancel_followup')) {
+    function ccrm_marveen_cancel_followup(PDO $pdo, string $connectorId, string $followupId): bool {
+        $dir = ccrm_marveen_connector_dir($connectorId);
+        $file = $dir . '/followups.json';
+        $items = is_file($file) ? (json_decode((string)@file_get_contents($file), true) ?: []) : [];
+        $before = count($items);
+        $filtered = array_values(array_filter($items, static fn($it) => ($it['id'] ?? '') !== $followupId));
+        @file_put_contents($file, json_encode($filtered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+        ccrm_marveen_update_connector_settings_mirror($pdo, $connectorId, static function (array $s) use ($filtered): array {
+            $s['followups'] = $filtered;
+            return $s;
+        });
+        return count($filtered) !== $before;
+    }
+}
+
 if (!function_exists('ccrm_marveen_get_connector_state')) {
     function ccrm_marveen_get_connector_state(PDO $pdo, array $connector, ?string $subagentId = null): array {
         $connectorId = (string)($connector['id'] ?? 'default');
@@ -1381,6 +1526,8 @@ if (!function_exists('ccrm_marveen_get_connector_state')) {
         $chatHistory = ccrm_marveen_get_chat_history($connectorId, $cleanSub);
         $triggers = function_exists('ccrm_marveen_list_triggers') ? ccrm_marveen_list_triggers($pdo, $connector) : [];
         $allTriggers = function_exists('ccrm_marveen_list_all_triggers') ? ccrm_marveen_list_all_triggers($pdo) : $triggers;
+        $followups = function_exists('ccrm_marveen_list_followups') ? ccrm_marveen_list_followups($pdo, $connector) : [];
+        $allFollowups = function_exists('ccrm_marveen_list_all_followups') ? ccrm_marveen_list_all_followups($pdo) : $followups;
 
         $state = [
             'connectorId' => $connectorId,
@@ -1394,6 +1541,8 @@ if (!function_exists('ccrm_marveen_get_connector_state')) {
             'tasks' => $tasks,
             'triggers' => $triggers,
             'allTriggers' => $allTriggers,
+            'followups' => $followups,
+            'allFollowups' => $allFollowups,
             'autonomousMode' => $autonomousMode,
             'chatHistory' => $chatHistory,
         ];
@@ -1979,6 +2128,63 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                     'required' => ['to', 'subject', 'body'],
                 ],
             ],
+            [
+                'name' => 'schedule_conversation_followup',
+                'description' => 'Schedule a proactive one-shot follow-up message on a WhatsApp/Messenger/Telegram/Slack/Viber/SMS chat or Email thread after delay_minutes ($0 idle cost). If cancel_if_replied is true (default) and the contact replies before dueAt, it auto-cancels without calling the LLM.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'source_type' => [
+                            'type' => 'STRING',
+                            'description' => 'Channel type: "whatsapp" (covers WhatsApp and all BotMan messaging channels like Messenger, Telegram, Slack, Discord, Teams, Viber, SMS, WebChat) or "email".',
+                            'enum' => ['whatsapp', 'email'],
+                        ],
+                        'source_connector_id' => [
+                            'type' => 'STRING',
+                            'description' => 'Optional messaging or email connector ID.',
+                        ],
+                        'target_chat' => [
+                            'type' => 'STRING',
+                            'description' => 'Target chat ID, contact name, phone number, or email address to re-initiate conversation with.',
+                        ],
+                        'delay_minutes' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Minutes to wait before checking and sending the proactive follow-up (e.g. 60 for 1 hour, 1440 for 24 hours).',
+                        ],
+                        'instructions' => [
+                            'type' => 'STRING',
+                            'description' => 'Instructions for what the agent should check or say when re-initiating the conversation.',
+                        ],
+                        'cancel_if_replied' => [
+                            'type' => 'BOOLEAN',
+                            'description' => 'Whether to automatically cancel this follow-up if the contact replies before the timer expires (default true).',
+                        ],
+                        'max_attempts' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Maximum follow-up attempts (default 1, max 3).',
+                        ],
+                    ],
+                    'required' => ['target_chat', 'delay_minutes', 'instructions'],
+                ],
+            ],
+            [
+                'name' => 'list_conversation_followups',
+                'description' => 'List all scheduled proactive conversation follow-ups on this AI connection.',
+            ],
+            [
+                'name' => 'cancel_conversation_followup',
+                'description' => 'Cancel and remove a scheduled proactive conversation follow-up by ID.',
+                'parameters' => [
+                    'type' => 'OBJECT',
+                    'properties' => (object)[
+                        'id' => [
+                            'type' => 'STRING',
+                            'description' => 'Follow-up ID to cancel (e.g. "fup-...").',
+                        ],
+                    ],
+                    'required' => ['id'],
+                ],
+            ],
         ];
 
         if (!$isSubagent) {
@@ -2050,7 +2256,7 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
             ];
             $decls[] = [
                 'name' => 'create_event_trigger',
-                'description' => 'Wire an event-driven trigger ($0 idle cost) so that when a new WhatsApp message, Email, or CRM event arrives, the specified agent is automatically triggered with the last 50 messages / last 5 days of conversation context.',
+                'description' => 'Wire an event-driven trigger ($0 idle cost) so that when a new WhatsApp/Messenger/Telegram message, Email, or CRM event arrives, the specified agent is automatically triggered with the last 50 messages / last 5 days of conversation context. Also supports proactive re-initiation when the contact goes silent.',
                 'parameters' => [
                     'type' => 'OBJECT',
                     'properties' => (object)[
@@ -2065,7 +2271,7 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                         ],
                         'source_connector_id' => [
                             'type' => 'STRING',
-                            'description' => 'Source WhatsApp or Email connector ID (optional; defaults to first matching connector).',
+                            'description' => 'Source WhatsApp/BotMan or Email connector ID (optional; defaults to first matching connector).',
                         ],
                         'whatsapp_chat' => [
                             'type' => 'STRING',
@@ -2094,6 +2300,22 @@ if (!function_exists('ccrm_marveen_meta_tool_declarations')) {
                         'auto_reply' => [
                             'type' => 'BOOLEAN',
                             'description' => 'Whether the agent should automatically send its reply back to the WhatsApp chat or Email sender (default true).',
+                        ],
+                        'proactive_enabled' => [
+                            'type' => 'BOOLEAN',
+                            'description' => 'Whether to proactively re-initiate the conversation if the contact does not reply after our last message.',
+                        ],
+                        'proactive_after_minutes' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Minutes of silence after our last outgoing message before re-initiating the conversation (default 120).',
+                        ],
+                        'proactive_max_attempts' => [
+                            'type' => 'INTEGER',
+                            'description' => 'Maximum proactive follow-up attempts per unanswered turn (1 to 3, default 1).',
+                        ],
+                        'proactive_instructions' => [
+                            'type' => 'STRING',
+                            'description' => 'Instructions for how to re-initiate the conversation when the contact has not replied.',
                         ],
                     ],
                     'required' => ['name', 'source_type', 'instructions'],
@@ -3288,6 +3510,10 @@ if (!function_exists('ccrm_marveen_normalize_trigger_record')) {
             $agentId = trim((string)($t['targetAgentId'] ?? 'main'));
             $t['targetSubagentId'] = ($agentId !== '' && $agentId !== 'main') ? $agentId : null;
         }
+        $t['proactiveEnabled'] = !empty($t['proactiveEnabled']);
+        $t['proactiveAfterMinutes'] = max(1, (int)($t['proactiveAfterMinutes'] ?? 120));
+        $t['proactiveMaxAttempts'] = max(1, min(5, (int)($t['proactiveMaxAttempts'] ?? 1)));
+        $t['proactiveInstructions'] = trim((string)($t['proactiveInstructions'] ?? 'Follow up politely on our last message if the conversation is still open. If the conversation ended naturally (e.g. thanks/goodbye/resolved), reply with [SKIP_FOLLOWUP] and do not send a message.'));
         return $t;
     }
 }
@@ -3427,6 +3653,13 @@ if (!function_exists('ccrm_marveen_save_trigger')) {
             'autoReply' => array_key_exists('autoReply', $input)
                 ? (bool)$input['autoReply']
                 : (array_key_exists('auto_reply', $input) ? (bool)$input['auto_reply'] : (bool)($prev['autoReply'] ?? true)),
+            'proactiveEnabled' => array_key_exists('proactiveEnabled', $input)
+                ? (bool)$input['proactiveEnabled']
+                : (array_key_exists('proactive_enabled', $input) ? (bool)$input['proactive_enabled'] : (bool)($prev['proactiveEnabled'] ?? false)),
+            'proactiveAfterMinutes' => max(1, (int)($input['proactiveAfterMinutes'] ?? ($input['proactive_after_minutes'] ?? ($prev['proactiveAfterMinutes'] ?? 120)))),
+            'proactiveMaxAttempts' => max(1, min(5, (int)($input['proactiveMaxAttempts'] ?? ($input['proactive_max_attempts'] ?? ($prev['proactiveMaxAttempts'] ?? 1))))),
+            'proactiveInstructions' => trim((string)($input['proactiveInstructions'] ?? ($input['proactive_instructions'] ?? ($prev['proactiveInstructions'] ?? 'Follow up politely on our last message if the conversation is still open. If the conversation ended naturally (e.g. thanks/goodbye/resolved), reply with [SKIP_FOLLOWUP] and do not send a message.')))),
+            'proactiveState' => is_array($prev['proactiveState'] ?? null) ? $prev['proactiveState'] : [],
             'cooldownSeconds' => max(2, (int)($input['cooldownSeconds'] ?? ($prev['cooldownSeconds'] ?? 10))),
             'minContextMessages' => max(10, (int)($input['minContextMessages'] ?? ($prev['minContextMessages'] ?? 50))),
             'minContextDays' => max(1, (int)($input['minContextDays'] ?? ($prev['minContextDays'] ?? 5))),
@@ -3938,7 +4171,413 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
             }
         }
 
+        if ($onlySourceFilter === null || $onlySourceFilter === '') {
+            $proactiveFired = ccrm_marveen_process_proactive_followups($pdo, $aiConnectors, $waConnectorsById, $emailConnectorsById);
+            foreach ($proactiveFired as $pf) {
+                $fired[] = $pf;
+            }
+        }
+
         return ['ok' => true, 'fired' => $fired];
+    }
+}
+
+if (!function_exists('ccrm_marveen_process_proactive_followups')) {
+    /**
+     * Zero-LLM-cost evaluator for:
+     *  1) Agent self-scheduled one-shot follow-ups (`followups.json` via `schedule_conversation_followup`)
+     *  2) Per-wire Proactive Re-Initiation (`triggers.json` where `proactiveEnabled === true`)
+     *
+     * Auto-cancels follow-ups at $0 LLM cost if the contact replied before `dueAt`.
+     * Supports `[SKIP_FOLLOWUP]` when the agent judges a conversation ended naturally.
+     */
+    function ccrm_marveen_process_proactive_followups(
+        PDO $pdo,
+        array $aiConnectors,
+        array $waConnectorsById,
+        array $emailConnectorsById
+    ): array {
+        $fired = [];
+        $nowSec = time();
+
+        foreach ($aiConnectors as $aiId => $aiRow) {
+            $dir = ccrm_marveen_connector_dir($aiId);
+            $settings = is_array($aiRow['settings'] ?? null) ? $aiRow['settings'] : [];
+            $userIds = is_array($settings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $settings['userIds']))) : [];
+            $runAsUser = $userIds[0] ?? (string)($aiRow['owner_user_id'] ?? '');
+            if ($runAsUser === '') {
+                $uStmt = $pdo->query("SELECT `id` FROM `users` ORDER BY `role` = 'admin' DESC, `id` ASC LIMIT 1");
+                $runAsUser = (string)($uStmt ? $uStmt->fetchColumn() : '');
+            }
+
+            // -----------------------------------------------------------------
+            // 1. Agent Self-Scheduled One-Shot Follow-Ups (`followups.json`)
+            // -----------------------------------------------------------------
+            $fupFile = $dir . '/followups.json';
+            $followups = ccrm_marveen_list_followups($pdo, $aiRow);
+            $fupDirty = false;
+
+            foreach ($followups as &$fup) {
+                if (($fup['status'] ?? 'pending') !== 'pending') {
+                    continue;
+                }
+                $dueTs = !empty($fup['dueAt']) ? strtotime((string)$fup['dueAt']) : 0;
+                if ($dueTs > $nowSec) {
+                    continue;
+                }
+                $createdTs = !empty($fup['createdAt']) ? strtotime((string)$fup['createdAt']) : ($nowSec - 3600);
+                $sType = strtolower((string)($fup['sourceType'] ?? 'whatsapp'));
+                $sConnId = (string)($fup['sourceConnectorId'] ?? '');
+                $targetChat = trim((string)($fup['targetChat'] ?? ''));
+                $cancelIfReplied = !array_key_exists('cancelIfReplied', $fup) || !empty($fup['cancelIfReplied']);
+                $subId = !empty($fup['subagentId']) ? (string)$fup['subagentId'] : null;
+
+                if ($sType === 'whatsapp') {
+                    $waRow = ($sConnId !== '' && isset($waConnectorsById[$sConnId]))
+                        ? $waConnectorsById[$sConnId]
+                        : (reset($waConnectorsById) ?: null);
+                    if (!$waRow) {
+                        continue;
+                    }
+                    $waState = ccrm_waai_get_chats($waRow);
+                    $resolved = ccrm_marveen_resolve_whatsapp_chat($waState, $targetChat);
+                    $chatId = (string)($resolved['id'] ?? $targetChat);
+                    $chatName = (string)($resolved['name'] ?? ($fup['targetName'] ?? $targetChat));
+                    $thread = is_array($waState['messages'][$chatId] ?? null) ? $waState['messages'][$chatId] : [];
+
+                    if ($cancelIfReplied && !empty($thread)) {
+                        $repliedAfterCreated = false;
+                        foreach ($thread as $m) {
+                            $mTsSec = (int)round(((int)($m['tsMs'] ?? 0)) / 1000);
+                            if (empty($m['fromMe']) && $mTsSec > $createdTs) {
+                                $repliedAfterCreated = true;
+                                break;
+                            }
+                        }
+                        if ($repliedAfterCreated) {
+                            $fup['status'] = 'cancelled_by_reply';
+                            $fup['updatedAt'] = gmdate('c');
+                            $fupDirty = true;
+                            continue;
+                        }
+                    }
+
+                    $ctxWindow = ccrm_marveen_build_conversation_context($thread, 50, 5, 16000);
+                    $prompt = implode("\n", [
+                        "🔄 [PROACTIVE SCHEDULED FOLLOW-UP DUE]",
+                        "- Channel: " . ($waRow['name'] ?? 'Messaging') . " (`{$waRow['id']}`)",
+                        "- Target Chat: {$chatName} (`{$chatId}`)",
+                        "- Follow-Up Instructions: " . ($fup['instructions'] ?? 'Follow up politely.'),
+                        "",
+                        "## Full Conversation Context (Last 50 Messages & Last 5 Days)",
+                        "```text",
+                        $ctxWindow['transcript'],
+                        "```",
+                        "",
+                        "IMPORTANT: If the conversation already concluded naturally or the user already answered the question, DO NOT send any message and reply with `[SKIP_FOLLOWUP]`. Otherwise, send your proactive follow-up message now using `whatsapp_send_message` with `chat: \"{$chatId}\"` and `connector_id: \"{$waRow['id']}\"`.",
+                    ]);
+
+                    $res = ccrm_marveen_run_agent($pdo, $aiRow, $runAsUser, $prompt, '', $subId);
+                    $replyText = (string)($res['text'] ?? '');
+                    $skipped = stripos($replyText, '[SKIP_FOLLOWUP]') !== false;
+
+                    $fup['attempts'] = ((int)($fup['attempts'] ?? 0)) + 1;
+                    $fup['status'] = $skipped ? 'skipped_natural_end' : (!empty($res['ok']) ? 'sent' : 'error');
+                    $fup['executedAt'] = gmdate('c');
+                    $fup['updatedAt'] = gmdate('c');
+                    $fupDirty = true;
+
+                    $botMsg = [
+                        'id' => 'fup-' . uniqid('', false),
+                        'role' => 'assistant',
+                        'autonomous' => true,
+                        'taskTitle' => "🔄 Proactive Follow-Up · {$chatName}",
+                        'subagentId' => $subId,
+                        'text' => $skipped
+                            ? "✓ Skipped proactive follow-up for {$chatName} (conversation ended naturally)."
+                            : (!empty($res['ok']) ? ($replyText ?: "Sent proactive follow-up to {$chatName}.") : ('⚠️ Follow-up error: ' . ($res['error'] ?? 'failed'))),
+                        'steps' => $res['steps'] ?? [],
+                        'timestamp' => date('H:i'),
+                        'createdAt' => gmdate('c'),
+                    ];
+                    ccrm_marveen_append_chat_message($aiId, $botMsg, $subId);
+                    $fired[] = ['ok' => !empty($res['ok']), 'followupId' => $fup['id'], 'summary' => $chatName];
+                } elseif ($sType === 'email') {
+                    $emRow = ($sConnId !== '' && isset($emailConnectorsById[$sConnId]))
+                        ? $emailConnectorsById[$sConnId]
+                        : (reset($emailConnectorsById) ?: null);
+                    if (!$emRow) {
+                        continue;
+                    }
+                    $mailboxKey = 'c:' . $emRow['id'];
+                    $threadRows = [];
+                    try {
+                        $tSt = $pdo->prepare(
+                            "SELECT * FROM `mail_envelopes`
+                             WHERE `mailbox_key` = ? AND (`from_address` LIKE ? OR `to_address` LIKE ?)
+                             ORDER BY `email_date` ASC, `uid` ASC LIMIT 120"
+                        );
+                        $tSt->execute([$mailboxKey, '%' . $targetChat . '%', '%' . $targetChat . '%']);
+                        $threadRows = $tSt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                    } catch (\Throwable $e) {}
+
+                    if ($cancelIfReplied && !empty($threadRows)) {
+                        $repliedAfterCreated = false;
+                        foreach ($threadRows as $r) {
+                            $emTs = !empty($r['email_date']) ? strtotime((string)$r['email_date']) : 0;
+                            if (empty($r['is_outgoing']) && $emTs > $createdTs) {
+                                $repliedAfterCreated = true;
+                                break;
+                            }
+                        }
+                        if ($repliedAfterCreated) {
+                            $fup['status'] = 'cancelled_by_reply';
+                            $fup['updatedAt'] = gmdate('c');
+                            $fupDirty = true;
+                            continue;
+                        }
+                    }
+
+                    $mapped = array_map(static fn(array $r) => [
+                        'id' => 'uid-' . ($r['uid'] ?? ''),
+                        'fromMe' => !empty($r['is_outgoing']),
+                        'senderName' => !empty($r['is_outgoing']) ? 'Me' : (($r['from_name'] ?: $r['from_address']) ?: 'Sender'),
+                        'text' => "[Subject: " . ($r['subject'] ?? '') . "] " . ($r['preview'] ?? ''),
+                        'createdAt' => $r['email_date'] ?? '',
+                    ], $threadRows);
+                    $ctxWindow = ccrm_marveen_build_conversation_context($mapped, 50, 5, 16000);
+                    $lastSubj = !empty($threadRows) ? (string)($threadRows[count($threadRows) - 1]['subject'] ?? 'Follow-up') : 'Follow-up';
+                    $replySubj = preg_match('/^re:/i', $lastSubj) ? $lastSubj : ('Re: ' . $lastSubj);
+
+                    $prompt = implode("\n", [
+                        "🔄 [PROACTIVE SCHEDULED EMAIL FOLLOW-UP DUE]",
+                        "- Email Account: {$emRow['name']} ({$emRow['address']}, ID: `{$emRow['id']}`)",
+                        "- Recipient: {$targetChat}",
+                        "- Follow-Up Instructions: " . ($fup['instructions'] ?? 'Follow up politely.'),
+                        "",
+                        "## Full Email Thread Context",
+                        "```text",
+                        $ctxWindow['transcript'],
+                        "```",
+                        "",
+                        "IMPORTANT: If the thread already concluded naturally, reply with `[SKIP_FOLLOWUP]` and do not send an email. Otherwise, send your follow-up email using `email_send_reply` with `to: \"{$targetChat}\"`, `subject: \"{$replySubj}\"`, and `connector_id: \"{$emRow['id']}\"`.",
+                    ]);
+
+                    $res = ccrm_marveen_run_agent($pdo, $aiRow, $runAsUser, $prompt, '', $subId);
+                    $replyText = (string)($res['text'] ?? '');
+                    $skipped = stripos($replyText, '[SKIP_FOLLOWUP]') !== false;
+
+                    $fup['attempts'] = ((int)($fup['attempts'] ?? 0)) + 1;
+                    $fup['status'] = $skipped ? 'skipped_natural_end' : (!empty($res['ok']) ? 'sent' : 'error');
+                    $fup['executedAt'] = gmdate('c');
+                    $fup['updatedAt'] = gmdate('c');
+                    $fupDirty = true;
+
+                    $botMsg = [
+                        'id' => 'fup-' . uniqid('', false),
+                        'role' => 'assistant',
+                        'autonomous' => true,
+                        'taskTitle' => "🔄 Proactive Email Follow-Up · {$targetChat}",
+                        'subagentId' => $subId,
+                        'text' => $skipped
+                            ? "✓ Skipped proactive email follow-up to {$targetChat}."
+                            : (!empty($res['ok']) ? ($replyText ?: "Sent proactive email follow-up to {$targetChat}.") : ('⚠️ Follow-up error: ' . ($res['error'] ?? 'failed'))),
+                        'steps' => $res['steps'] ?? [],
+                        'timestamp' => date('H:i'),
+                        'createdAt' => gmdate('c'),
+                    ];
+                    ccrm_marveen_append_chat_message($aiId, $botMsg, $subId);
+                    $fired[] = ['ok' => !empty($res['ok']), 'followupId' => $fup['id'], 'summary' => $targetChat];
+                }
+            }
+            unset($fup);
+
+            if ($fupDirty) {
+                @file_put_contents($fupFile, json_encode(array_values($followups), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+                ccrm_marveen_update_connector_settings_mirror($pdo, $aiId, static function (array $s) use ($followups): array {
+                    $s['followups'] = array_values($followups);
+                    return $s;
+                });
+            }
+
+            // -----------------------------------------------------------------
+            // 2. Per-Wire Proactive Re-Initiation (`triggers.json` -> `proactiveEnabled`)
+            // -----------------------------------------------------------------
+            $trigFile = $dir . '/triggers.json';
+            $triggers = ccrm_marveen_list_triggers($pdo, $aiRow);
+            $trigDirty = false;
+
+            foreach ($triggers as &$trig) {
+                if (empty($trig['enabled']) || empty($trig['proactiveEnabled'])) {
+                    continue;
+                }
+                $sType = (string)($trig['sourceType'] ?? 'whatsapp');
+                if ($sType !== 'whatsapp') {
+                    continue;
+                }
+                $sConnId = (string)($trig['sourceConnectorId'] ?? '');
+                $waRow = ($sConnId !== '' && isset($waConnectorsById[$sConnId]))
+                    ? $waConnectorsById[$sConnId]
+                    : (reset($waConnectorsById) ?: null);
+                if (!$waRow) {
+                    continue;
+                }
+                $waAccountId = ccrm_waai_resolve_account_id($waRow);
+                $storeFile = ccrm_waai_storage_root() . '/accounts/' . $waAccountId . '/store.json';
+                if (!is_file($storeFile)) {
+                    continue;
+                }
+                $store = json_decode((string)@file_get_contents($storeFile), true);
+                if (!is_array($store)) {
+                    continue;
+                }
+                $chats = is_array($store['chats'] ?? null) ? $store['chats'] : [];
+                $messagesMap = is_array($store['messages'] ?? null) ? $store['messages'] : [];
+                $chatFilter = trim((string)($trig['whatsappChatJid'] ?? '*'));
+                $chatFilterLower = mb_strtolower($chatFilter, 'UTF-8');
+
+                $afterSec = max(60, ((int)($trig['proactiveAfterMinutes'] ?? 120)) * 60);
+                $maxAttempts = max(1, min(5, (int)($trig['proactiveMaxAttempts'] ?? 1)));
+                $pState = is_array($trig['proactiveState'] ?? null) ? $trig['proactiveState'] : [];
+                $targetAgentId = trim((string)($trig['targetAgentId'] ?? ($trig['targetSubagentId'] ?? 'main')));
+                $subIdForRun = ($targetAgentId !== '' && $targetAgentId !== 'main') ? $targetAgentId : null;
+
+                foreach ($chats as $chatMeta) {
+                    $chatId = (string)($chatMeta['id'] ?? '');
+                    $chatName = (string)($chatMeta['name'] ?? $chatId);
+                    if ($chatId === '' || $chatId === 'status@broadcast') {
+                        continue;
+                    }
+                    if ($chatFilter !== '' && $chatFilter !== '*') {
+                        if ($chatFilter === '@g.us' && empty($chatMeta['isGroup'])) continue;
+                        if ($chatFilter === '@s.whatsapp.net' && !empty($chatMeta['isGroup'])) continue;
+                        if ($chatFilter !== '@g.us' && $chatFilter !== '@s.whatsapp.net') {
+                            $matchId = strtolower($chatId) === strtolower($chatFilter);
+                            $matchName = mb_strpos(mb_strtolower($chatName, 'UTF-8'), $chatFilterLower) !== false;
+                            if (!$matchId && !$matchName) continue;
+                        }
+                    }
+
+                    $thread = is_array($messagesMap[$chatId] ?? null) ? $messagesMap[$chatId] : [];
+                    if (count($thread) < 2) {
+                        continue;
+                    }
+                    $lastMsg = $thread[count($thread) - 1];
+                    // Proactive re-initiation only applies when OUR message is the last one in the thread and the contact hasn't replied
+                    if (empty($lastMsg['fromMe'])) {
+                        continue;
+                    }
+                    $lastTsSec = (int)round(((int)($lastMsg['tsMs'] ?? 0)) / 1000);
+                    if ($lastTsSec <= 0 || ($nowSec - $lastTsSec) < $afterSec || ($nowSec - $lastTsSec) > (7 * 86400)) {
+                        continue;
+                    }
+
+                    // Find the latest incoming (!fromMe) message ID as the conversation turn anchor
+                    $lastIncomingId = '';
+                    for ($i = count($thread) - 1; $i >= 0; $i--) {
+                        if (empty($thread[$i]['fromMe'])) {
+                            $lastIncomingId = (string)($thread[$i]['id'] ?? ('idx-' . $i));
+                            break;
+                        }
+                    }
+                    if ($lastIncomingId === '') {
+                        continue;
+                    }
+
+                    $cState = is_array($pState[$chatId] ?? null) ? $pState[$chatId] : [
+                        'anchorIncomingId' => '',
+                        'attempts' => 0,
+                        'lastFollowupAt' => 0,
+                        'done' => false,
+                    ];
+                    if (($cState['anchorIncomingId'] ?? '') !== $lastIncomingId) {
+                        $cState = [
+                            'anchorIncomingId' => $lastIncomingId,
+                            'attempts' => 0,
+                            'lastFollowupAt' => 0,
+                            'done' => false,
+                        ];
+                    }
+                    if (!empty($cState['done']) || (int)($cState['attempts'] ?? 0) >= $maxAttempts) {
+                        continue;
+                    }
+                    if (!empty($cState['lastFollowupAt']) && ($nowSec - (int)$cState['lastFollowupAt']) < $afterSec) {
+                        continue;
+                    }
+
+                    $ctxWindow = ccrm_marveen_build_conversation_context($thread, 50, 5, 16000);
+                    $attemptNum = ((int)($cState['attempts'] ?? 0)) + 1;
+                    $proactivePrompt = implode("\n", [
+                        "🔄 [PROACTIVE CONVERSATION RE-INITIATION — {$trig['name']} (Attempt {$attemptNum}/{$maxAttempts})]",
+                        "- Source Channel: " . ($waRow['name'] ?? 'Messaging') . " (`{$waRow['id']}`)",
+                        "- Chat / Contact: {$chatName} (`{$chatId}`)",
+                        "- Silence Duration: " . round(($nowSec - $lastTsSec) / 60) . " minutes since our last message",
+                        "",
+                        "## Full Conversation Context (Last 50 Messages & Last 5 Days)",
+                        "```text",
+                        $ctxWindow['transcript'],
+                        "```",
+                        "",
+                        "## Proactive Re-Initiation Instructions",
+                        (string)($trig['proactiveInstructions'] ?: 'Follow up politely on our last message if the conversation is still open.'),
+                        "",
+                        "IMPORTANT: If the conversation ended naturally (e.g. 'thanks, bye', 'ok köszönöm', or no reply was expected), DO NOT send a message and reply ONLY with `[SKIP_FOLLOWUP]`. Otherwise, send your proactive follow-up message using `whatsapp_send_message` with `chat: \"{$chatId}\"` and `connector_id: \"{$waRow['id']}\"`.",
+                    ]);
+
+                    $res = ccrm_marveen_run_agent($pdo, $aiRow, $runAsUser, $proactivePrompt, '', $subIdForRun);
+                    $replyText = (string)($res['text'] ?? '');
+                    $skipped = stripos($replyText, '[SKIP_FOLLOWUP]') !== false;
+
+                    $cState['attempts'] = $attemptNum;
+                    $cState['lastFollowupAt'] = $nowSec;
+                    if ($skipped || $attemptNum >= $maxAttempts) {
+                        $cState['done'] = true;
+                    }
+                    $pState[$chatId] = $cState;
+                    $trig['proactiveState'] = $pState;
+                    $trig['lastTriggeredAt'] = gmdate('c');
+                    $trig['lastTriggerSummary'] = $skipped
+                        ? "Proactive check ({$chatName}): skipped (natural end)"
+                        : "Proactive follow-up ({$chatName}) #{$attemptNum}";
+                    $trig['lastTriggerStatus'] = !empty($res['ok']) ? 'ok' : ('error: ' . ($res['error'] ?? 'failed'));
+                    $trigDirty = true;
+
+                    $botMsg = [
+                        'id' => 'pro-' . uniqid('', false),
+                        'role' => 'assistant',
+                        'autonomous' => true,
+                        'triggerId' => $trig['id'],
+                        'taskTitle' => "🔄 Proactive Re-Initiation · {$chatName} (#{$attemptNum}/{$maxAttempts})",
+                        'subagentId' => $subIdForRun,
+                        'text' => $skipped
+                            ? "✓ Proactive check on {$chatName}: conversation ended naturally (`[SKIP_FOLLOWUP]`)."
+                            : (!empty($res['ok']) ? ($replyText ?: "Sent proactive follow-up to {$chatName}.") : ('⚠️ Proactive error: ' . ($res['error'] ?? 'failed'))),
+                        'steps' => $res['steps'] ?? [],
+                        'timestamp' => date('H:i'),
+                        'createdAt' => gmdate('c'),
+                    ];
+                    ccrm_marveen_append_chat_message($aiId, $botMsg, $subIdForRun);
+                    $fired[] = [
+                        'ok' => !empty($res['ok']),
+                        'triggerId' => $trig['id'],
+                        'proactive' => true,
+                        'summary' => $trig['lastTriggerSummary'],
+                    ];
+                    break;
+                }
+            }
+            unset($trig);
+
+            if ($trigDirty) {
+                @file_put_contents($trigFile, json_encode(array_values($triggers), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+                ccrm_marveen_update_connector_settings_mirror($pdo, $aiId, static function (array $s) use ($triggers): array {
+                    $s['triggers'] = array_values($triggers);
+                    return $s;
+                });
+            }
+        }
+
+        return $fired;
     }
 }
 
@@ -4172,6 +4811,55 @@ if (!function_exists('ccrm_marveen_process_crm_event_triggers')) {
     }
 }
 
+if (!function_exists('ccrm_marveen_build_crm_snapshot_section')) {
+    /**
+     * Builds a live, $0-LLM-cost CCRM database & MCP tools overview section injected into the agent's system prompt
+     * so the agent always knows its connected CCRM database state, sample client records, and custom registries.
+     */
+    function ccrm_marveen_build_crm_snapshot_section(PDO $pdo): string {
+        $lines = [
+            "## Connected CCRM Database & MCP Tools Snapshot (Live)",
+            "You have full read/write access to this CCRM workspace via MCP tools (`list_clients`, `get_client`, `create_client`, `update_client`, `list_leads`, `get_lead`, `create_lead`, `list_projects`, `list_tasks`, `create_task`, `list_invoices`, `search_entities`, `list_unified_entries`, `get_unified_entry_rows`).",
+        ];
+        try {
+            $clientCount = (int)$pdo->query("SELECT COUNT(*) FROM `leads` WHERE `status` = 'Client'")->fetchColumn();
+            $leadCount = (int)$pdo->query("SELECT COUNT(*) FROM `leads` WHERE `status` <> 'Client'")->fetchColumn();
+            $projCount = (int)$pdo->query("SELECT COUNT(*) FROM `projects`")->fetchColumn();
+            $realTasksSql = function_exists('ccrm_sql_real_tasks')
+                ? ccrm_sql_real_tasks('tasks')
+                : '/* recurring-template: exclude */ (`tasks`.`is_recurring_template` = 0 OR `tasks`.`is_recurring_template` IS NULL)';
+            $taskCount = (int)$pdo->query("SELECT COUNT(*) FROM `tasks` WHERE {$realTasksSql} AND `completed` = 0")->fetchColumn();
+            $invCount = (int)$pdo->query("SELECT COUNT(*) FROM `financial_records` WHERE `type` = 'Invoice'")->fetchColumn();
+
+            $sampleStmt = $pdo->query("SELECT `name` FROM `leads` WHERE `status` = 'Client' ORDER BY `name` ASC LIMIT 8");
+            $samples = $sampleStmt ? ($sampleStmt->fetchAll(PDO::FETCH_COLUMN) ?: []) : [];
+            $sampleStr = !empty($samples) ? (' (e.g. ' . implode(', ', array_map(static fn($s) => '"' . $s . '"', $samples)) . ', …)') : '';
+
+            $lines[] = "- **Clients (`list_clients` / `get_client`)**: **{$clientCount}** active clients{$sampleStr}";
+            $lines[] = "- **Pipeline Leads (`list_leads` / `get_lead`)**: **{$leadCount}** leads";
+            $lines[] = "- **Projects (`list_projects` / `get_project`)**: **{$projCount}** projects";
+            $lines[] = "- **Open Tasks (`list_tasks` / `create_task`)**: **{$taskCount}** open tasks";
+            $lines[] = "- **Invoices (`list_invoices`)**: **{$invCount}** invoices";
+
+            $regStmt = $pdo->query("SELECT `id`, `title`, `type`, `rows_json` FROM `unified_entries` ORDER BY `title` ASC LIMIT 12");
+            $regs = $regStmt ? ($regStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+            if (!empty($regs)) {
+                $regParts = [];
+                foreach ($regs as $rg) {
+                    $rRows = json_decode((string)($rg['rows_json'] ?? '[]'), true);
+                    $rCount = is_array($rRows) ? count($rRows) : 0;
+                    $regParts[] = "**{$rg['title']}** (`id: \"{$rg['id']}\"`, {$rCount} rows)";
+                }
+                $lines[] = "- **Custom Registries (`list_unified_entries` / `get_unified_entry_rows`)**: " . implode(', ', $regParts);
+            }
+        } catch (\Throwable $e) {
+            // Non-fatal if any table is unavailable
+        }
+        $lines[] = "- **Proactive Follow-Ups (`schedule_conversation_followup`, `list_conversation_followups`, `cancel_conversation_followup`)**: Whenever a contact asks you to follow up later, or you send a proposal/question that warrants a check-in if unanswered, call `schedule_conversation_followup` to schedule a `$0`-idle-cost proactive follow-up (auto-cancels if they reply first).";
+        return implode("\n", $lines);
+    }
+}
+
 if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
     function ccrm_marveen_build_agent_system_prompt(
         PDO $pdo,
@@ -4184,6 +4872,7 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
         $subs = ccrm_marveen_list_subagents($pdo, $connector);
         $tasks = ccrm_marveen_list_tasks($pdo, $connector);
         $triggers = ccrm_marveen_list_triggers($pdo, $connector);
+        $followups = ccrm_marveen_list_followups($pdo, $connector);
         $waConnectors = ccrm_marveen_list_sibling_whatsapp_connectors($pdo, $connector);
         $emailConnectors = ccrm_marveen_list_sibling_email_connectors($pdo, $connector);
 
@@ -4204,10 +4893,10 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                 $parts[] = "## Agent Persona & Instructions\n" . $subPrompt;
             }
             $parts[] = "## Your Persistent `memory.md`\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
-            $parts[] = "You can update your own memory using `memory_write` or `memory_append` (pass `subagent_id: \"{$subagentId}\"`), read/reply to WhatsApp messages (`whatsapp_list_chats`, `whatsapp_read_messages`, `whatsapp_send_message`), read/reply to Emails (`email_list_accounts`, `email_list_messages`, `email_read_thread`, `email_send_reply`), and execute any CCRM MCP tools.";
+            $parts[] = "You can update your own memory using `memory_write` or `memory_append` (pass `subagent_id: \"{$subagentId}\"`), read/reply to WhatsApp & BotMan channels (`whatsapp_list_chats`, `whatsapp_read_messages`, `whatsapp_send_message`), read/reply to Emails (`email_list_accounts`, `email_list_messages`, `email_read_thread`, `email_send_reply`), schedule proactive conversation follow-ups (`schedule_conversation_followup`), and execute any CCRM MCP tools.";
         } else {
-            $parts[] = "You are \"{$name}\", an autonomous AI agent connected directly to CCRM's MCP server and sibling communication channels (WhatsApp & Email).";
-            $parts[] = "You support two execution modes:\n1. **Reactive Mode (Event-Driven Triggers — \$0 Idle Cost)**: Use `create_event_trigger` (or the Visual Trigger Studio) to wake up automatically when a new WhatsApp message, Email, or CRM event arrives, receiving the last 50 messages and last 5 days of conversation context.\n2. **Heartbeat Mode (`schedule_autonomous_task` / Autonomous Cron)**: For periodic background checks.";
+            $parts[] = "You are \"{$name}\", an autonomous AI agent connected directly to CCRM's MCP server and sibling communication channels (WhatsApp, Messenger, Telegram, Slack, Discord, Teams, Viber, SMS, WebChat & Email).";
+            $parts[] = "You support three autonomous execution modes:\n1. **Reactive Mode (Event-Driven Triggers — \$0 Idle Cost)**: Use `create_event_trigger` (or the Visual Trigger Studio) to wake up automatically when a new message, Email, or CRM event arrives, receiving the last 50 messages and last 5 days of conversation context.\n2. **Proactive Re-Initiation Mode (`schedule_conversation_followup` & Trigger Proactive Follow-Up — \$0 Idle Cost)**: Re-initiate conversations automatically if a contact hasn't replied after N minutes, or when a scheduled follow-up comes due (auto-cancels at \$0 cost if they reply first).\n3. **Heartbeat Mode (`schedule_autonomous_task` / Autonomous Cron)**: For periodic background checks.";
             $parts[] = "## Your Persistent `memory.md` (Also visible and editable by the user under the chat)\n```markdown\n" . trim($mem['memoryMd']) . "\n```";
             if (!empty($subs)) {
                 $subLines = [];
@@ -4221,9 +4910,18 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                 $trigLines = [];
                 foreach ($triggers as $tr) {
                     $st = !empty($tr['enabled']) ? 'active' : 'paused';
-                    $trigLines[] = "- `{$tr['id']}`: **{$tr['name']}** ({$tr['sourceType']} → agent `{$tr['targetAgentId']}`, {$st})";
+                    $proTag = !empty($tr['proactiveEnabled']) ? " [🔄 Proactive after {$tr['proactiveAfterMinutes']}m]" : '';
+                    $trigLines[] = "- `{$tr['id']}`: **{$tr['name']}** ({$tr['sourceType']} → agent `{$tr['targetAgentId']}`, {$st}){$proTag}";
                 }
                 $parts[] = "## Active Event Triggers (\$0 Idle Cost)\n" . implode("\n", $trigLines);
+            }
+            $pendingFups = array_values(array_filter($followups, static fn($f) => ($f['status'] ?? '') === 'pending'));
+            if (!empty($pendingFups)) {
+                $fupLines = [];
+                foreach ($pendingFups as $pf) {
+                    $fupLines[] = "- `{$pf['id']}`: **{$pf['targetName']}** ({$pf['sourceType']}, due `{$pf['dueAt']}`) — {$pf['instructions']}";
+                }
+                $parts[] = "## Pending Proactive Follow-Ups\n" . implode("\n", $fupLines);
             }
             if (!empty($tasks)) {
                 $taskLines = [];
@@ -4234,6 +4932,8 @@ if (!function_exists('ccrm_marveen_build_agent_system_prompt')) {
                 $parts[] = "## Scheduled Heartbeat Tasks\n" . implode("\n", $taskLines);
             }
         }
+
+        $parts[] = ccrm_marveen_build_crm_snapshot_section($pdo);
 
         if (!empty($waConnectors)) {
             $waSection = [
@@ -4584,6 +5284,9 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                     'create_event_trigger',
                     'list_event_triggers',
                     'delete_event_trigger',
+                    'schedule_conversation_followup',
+                    'list_conversation_followups',
+                    'cancel_conversation_followup',
                 ], true)) {
                     $targetSubId = !empty($fnArgs['subagent_id']) ? (string)$fnArgs['subagent_id'] : $subagentId;
                     if ($fnName === 'memory_read') {
@@ -4776,17 +5479,22 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                             'name' => (string)($fnArgs['name'] ?? 'Reactive Trigger'),
                             'sourceType' => (string)($fnArgs['source_type'] ?? 'whatsapp'),
                             'sourceConnectorId' => (string)($fnArgs['source_connector_id'] ?? ''),
-                            'targetSubagentId' => (string)($fnArgs['target_subagent_id'] ?? ($subagentId ?? '')),
+                            'targetSubagentId' => (string)($fnArgs['target_subagent_id'] ?? ($fnArgs['target_agent_id'] ?? ($subagentId ?? ''))),
                             'filter' => [
-                                'chatMatch' => (string)($fnArgs['chat_match'] ?? ''),
+                                'chatMatch' => (string)($fnArgs['chat_match'] ?? ($fnArgs['whatsapp_chat'] ?? '')),
                                 'onlyGroup' => !empty($fnArgs['only_group']),
                                 'onlyDirect' => !empty($fnArgs['only_direct']),
-                                'subjectContains' => (string)($fnArgs['subject_contains'] ?? ''),
-                                'fromContains' => (string)($fnArgs['from_contains'] ?? ''),
+                                'subjectContains' => (string)($fnArgs['subject_contains'] ?? ($fnArgs['email_subject_filter'] ?? '')),
+                                'fromContains' => (string)($fnArgs['from_contains'] ?? ($fnArgs['email_sender_filter'] ?? '')),
                                 'keywordContains' => (string)($fnArgs['keyword_contains'] ?? ''),
+                                'eventType' => (string)($fnArgs['crm_event_name'] ?? 'lead_created'),
                             ],
                             'instructions' => (string)($fnArgs['instructions'] ?? ''),
                             'autoReply' => array_key_exists('auto_reply', $fnArgs) ? (bool)$fnArgs['auto_reply'] : true,
+                            'proactiveEnabled' => !empty($fnArgs['proactive_enabled']),
+                            'proactiveAfterMinutes' => max(1, (int)($fnArgs['proactive_after_minutes'] ?? 120)),
+                            'proactiveMaxAttempts' => max(1, min(5, (int)($fnArgs['proactive_max_attempts'] ?? 1))),
+                            'proactiveInstructions' => (string)($fnArgs['proactive_instructions'] ?? ''),
                             'enabled' => true,
                         ];
                         $savedTrig = ccrm_marveen_save_trigger($pdo, $connectorId, $trigPayload);
@@ -4815,6 +5523,38 @@ if (!function_exists('ccrm_marveen_run_gemini_mcp_agent')) {
                             'kind' => 'schedule',
                             'tool' => 'delete_event_trigger',
                             'label' => "Deleted reactive trigger: {$delTrigId}",
+                        ];
+                    } elseif ($fnName === 'schedule_conversation_followup') {
+                        $fupInput = array_merge($fnArgs, [
+                            'subagentId' => $subagentId,
+                        ]);
+                        $savedFup = ccrm_marveen_save_followup($pdo, $connectorId, $fupInput);
+                        $toolText = json_encode(['ok' => true, 'followup' => $savedFup], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'schedule_conversation_followup',
+                            'label' => "Scheduled proactive follow-up: {$savedFup['targetName']} (in {$savedFup['delayMinutes']}m)",
+                            'detail' => $savedFup['instructions'],
+                        ];
+                    } elseif ($fnName === 'list_conversation_followups') {
+                        $fups = ccrm_marveen_list_followups($pdo, $connector);
+                        $toolText = json_encode(['followups' => $fups], JSON_UNESCAPED_UNICODE);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'list_conversation_followups',
+                            'label' => 'Listed proactive follow-ups (' . count($fups) . ')',
+                        ];
+                    } elseif ($fnName === 'cancel_conversation_followup') {
+                        $delFupId = (string)($fnArgs['id'] ?? '');
+                        $removedFup = ccrm_marveen_cancel_followup($pdo, $connectorId, $delFupId);
+                        $toolText = json_encode(['ok' => $removedFup, 'id' => $delFupId]);
+                        $steps[] = [
+                            'id' => uniqid('st_', false),
+                            'kind' => 'schedule',
+                            'tool' => 'cancel_conversation_followup',
+                            'label' => "Cancelled proactive follow-up: {$delFupId}",
                         ];
                     }
                 } else {
