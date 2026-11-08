@@ -198,7 +198,8 @@ jobs:
         with:
           name: qa-blob-${{ matrix.label }}-${{ matrix.shard }}
           path: blob-report/
-          retention-days: 3
+          # Only the Verdict job of this same run reads them (~380 MB per full run).
+          retention-days: 1
           if-no-files-found: warn
 
   report:
@@ -276,13 +277,15 @@ jobs:
           set -e
           if [ "$code" -ne 0 ]; then echo "failed=1" >> "$GITHUB_ENV"; fi
 
+      # Only when the verdict is red: the merged HTML report carries every failure's trace and
+      # measured 385 MB on a full run, mostly for failures the register already accepts.
       - name: Upload merged Playwright report
-        if: always() && needs.plan.outputs.count != '0'
+        if: always() && needs.plan.outputs.count != '0' && env.failed == '1'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ matrix.ref && matrix.ref || 'run' }}
           path: playwright-report/
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: ignore
 
       # Puts every shard's verdict on the workflow summary page, so the result is readable
