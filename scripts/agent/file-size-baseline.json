@@ -1,0 +1,27 @@
+{
+  "_comment": "File-size ratchet baseline (line counts as `wc -l`). Lower a number when a file shrinks; never raise it. See .agents/rules/large-files.md",
+  "threshold": 2500,
+  "slack": 150,
+  "files": {
+    "src/components/LeadsDatagrid.tsx": 13406,
+    "src/components/FinancialManagementView.tsx": 9077,
+    "src/components/SettingsView.tsx": 7779,
+    "public/sync.php": 7480,
+    "src/components/ClientsView.tsx": 7139,
+    "src/components/WarehouseView.tsx": 7017,
+    "src/components/TaskDashboardView.tsx": 6306,
+    "src/App.tsx": 5376,
+    "src/components/TicketsView.tsx": 5199,
+    "src/components/ProjectDetailsView.tsx": 4979,
+    "src/components/AutomationView.tsx": 3944,
+    "public/api/schema.php": 3643,
+    "src/components/ProjectsView.tsx": 3001,
+    "src/components/MeetingRoomView.tsx": 2990,
+    "public/api/auth.php": 2903,
+    "src/components/DynamicDashboardView.tsx": 2841,
+    "public/api/mcp.php": 2794,
+    "src/components/Dashboard.tsx": 2626,
+    "src/utils/translations.ts": 2591,
+    "src/components/SocialMediaView.tsx": 2524
+  }
+}
