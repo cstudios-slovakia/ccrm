@@ -4,6 +4,7 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronDown,
   Copy,
   ExternalLink,
   KeyRound,
@@ -766,6 +767,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
   const [oauthCode, setOauthCode] = useState("");
   const [agentTestOutput, setAgentTestOutput] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [modalTypeMenuOpen, setModalTypeMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const modalTypeMenuRef = useRef<HTMLDivElement | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -791,16 +796,39 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
   // Close slide-up modal on Escape
   useEffect(() => {
-    if (!editing) return;
+    if (!editing && !addMenuOpen) return;
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === "Escape") {
+        if (modalTypeMenuOpen) {
+          setModalTypeMenuOpen(false);
+          return;
+        }
+        if (addMenuOpen) {
+          setAddMenuOpen(false);
+          return;
+        }
         setEditing(null);
         setWaQrModalOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing]);
+  }, [editing, addMenuOpen, modalTypeMenuOpen]);
+
+  useEffect(() => {
+    if (!addMenuOpen && !modalTypeMenuOpen) return;
+    const onDocClick = (ev: MouseEvent) => {
+      const target = ev.target as Node;
+      if (addMenuOpen && addMenuRef.current && !addMenuRef.current.contains(target)) {
+        setAddMenuOpen(false);
+      }
+      if (modalTypeMenuOpen && modalTypeMenuRef.current && !modalTypeMenuRef.current.contains(target)) {
+        setModalTypeMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [addMenuOpen, modalTypeMenuOpen]);
 
   const userMap = useMemo(() => {
     const m = new Map<string, { id: string; name: string; email?: string; role?: string }>();
@@ -1412,7 +1440,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
           </div>
         )}
 
-        {/* Filter Bar & Quick-Add Provider Pills */}
+        {/* Filter Bar & Add Connection Dropdown */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-800">
           <div className="flex flex-wrap items-center gap-1.5">
             {(
@@ -1438,25 +1466,70 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
             ))}
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            {ALL_PROVIDER_TYPES.map((pType) => {
-              const meta = PROVIDERS[pType];
-              return (
-                <button
-                  key={pType}
-                  type="button"
-                  onClick={() => {
-                    setFormMsg(null);
-                    setEditing(emptyMailboxDraft(pType));
-                  }}
-                  title={`${t.add}: ${meta.label}`}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-micro font-semibold transition-all hover:scale-[1.02] ${meta.badgeClass}`}
-                >
-                  <ProviderLogo type={pType} className="w-3.5 h-3.5" />
-                  <span>+ {meta.label.split(" ")[0]}</span>
-                </button>
-              );
-            })}
+          <div className="relative" ref={addMenuRef}>
+            <button
+              type="button"
+              data-testid="add-connector-dropdown-btn"
+              onClick={() => setAddMenuOpen((v) => !v)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 text-caption font-semibold text-slate-800 dark:text-slate-100 shadow-2xs transition-all"
+            >
+              <Plus className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>{t.add}</span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 transition-transform ${addMenuOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {addMenuOpen && (
+              <div
+                data-testid="add-connector-dropdown-menu"
+                className="absolute right-0 mt-1.5 w-72 max-h-96 overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-xl z-50 p-1.5 space-y-1.5"
+              >
+                {(
+                  [
+                    { cat: "email" as const, title: t.filterEmail },
+                    { cat: "whatsapp" as const, title: `${t.filterWhatsapp} & BotMan` },
+                    { cat: "agents" as const, title: t.filterAgents },
+                  ]
+                ).map((group) => {
+                  const items = ALL_PROVIDER_TYPES.filter((p) => PROVIDERS[p].category === group.cat);
+                  return (
+                    <div key={group.cat}>
+                      <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        {group.title}
+                      </div>
+                      <div className="space-y-0.5">
+                        {items.map((pType) => {
+                          const meta = PROVIDERS[pType];
+                          return (
+                            <button
+                              key={pType}
+                              type="button"
+                              data-testid={`quick-add-${pType}`}
+                              onClick={() => {
+                                setAddMenuOpen(false);
+                                setFormMsg(null);
+                                setEditing(emptyMailboxDraft(pType));
+                              }}
+                              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors"
+                            >
+                              <div
+                                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${meta.iconBg}`}
+                              >
+                                <ProviderLogo type={pType} className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="text-caption font-semibold text-slate-800 dark:text-slate-100 truncate">
+                                {meta.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1699,38 +1772,86 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
             {/* Scrollable Modal Body */}
             <div className="p-6 min-h-0 overflow-y-auto space-y-5 flex-1">
-              {/* 7-Provider Color-Coded Selector Grid */}
-              <div>
+              {/* Connector Type Dropdown Selector */}
+              <div className="relative" ref={modalTypeMenuRef}>
                 <span className={lbl}>{t.connectorTypeLabel}</span>
-                <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-                  {ALL_PROVIDER_TYPES.map((pType) => {
-                    const meta = PROVIDERS[pType];
-                    const selected = editing.connectorType === pType;
-                    return (
-                      <button
-                        key={pType}
-                        type="button"
-                        data-testid={`connector-type-${pType}`}
-                        onClick={() => switchConnectorType(pType)}
-                        className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-1.5 ${
-                          selected
-                            ? `${meta.badgeClass} ${meta.accentRing} shadow-xs`
-                            : "bg-slate-50/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${meta.iconBg}`}>
-                            <ProviderLogo type={pType} className="w-4 h-4" />
+                <button
+                  type="button"
+                  data-testid="modal-connector-type-dropdown"
+                  onClick={() => setModalTypeMenuOpen((v) => !v)}
+                  className="mt-1.5 w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 text-left transition-all shadow-2xs"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${activeMeta.iconBg}`}>
+                      <ProviderLogo type={editing.connectorType} className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex flex-wrap items-center gap-2">
+                      <span className="text-ui font-bold text-slate-900 dark:text-white truncate">
+                        {activeMeta.label}
+                      </span>
+                      {renderCategoryPill(activeMeta.category)}
+                    </div>
+                  </div>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${modalTypeMenuOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {modalTypeMenuOpen && (
+                  <div
+                    data-testid="modal-connector-type-menu"
+                    className="absolute left-0 right-0 mt-1.5 max-h-80 overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-2xl z-50 p-2 space-y-2"
+                  >
+                    {(
+                      [
+                        { cat: "email" as const, title: t.filterEmail },
+                        { cat: "whatsapp" as const, title: `${t.filterWhatsapp} & BotMan` },
+                        { cat: "agents" as const, title: t.filterAgents },
+                      ]
+                    ).map((group) => {
+                      const items = ALL_PROVIDER_TYPES.filter((p) => PROVIDERS[p].category === group.cat);
+                      return (
+                        <div key={group.cat}>
+                          <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            {group.title}
                           </div>
-                          {selected && <Check className="w-3.5 h-3.5" />}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                            {items.map((pType) => {
+                              const meta = PROVIDERS[pType];
+                              const selected = editing.connectorType === pType;
+                              return (
+                                <button
+                                  key={pType}
+                                  type="button"
+                                  data-testid={`connector-type-${pType}`}
+                                  onClick={() => {
+                                    setModalTypeMenuOpen(false);
+                                    switchConnectorType(pType);
+                                  }}
+                                  className={`flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-left transition-all ${
+                                    selected
+                                      ? `${meta.badgeClass} ${meta.accentRing}`
+                                      : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-800 dark:text-slate-100"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div
+                                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${meta.iconBg}`}
+                                    >
+                                      <ProviderLogo type={pType} className="w-4 h-4" />
+                                    </div>
+                                    <span className="text-caption font-semibold truncate">{meta.label}</span>
+                                  </div>
+                                  {selected && <Check className="w-4 h-4 shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="text-micro font-bold text-slate-900 dark:text-white leading-tight">
-                          {meta.label}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Common Identity Row */}
@@ -1740,6 +1861,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     {t.name}
                     <input
                       className={inp}
+                      autoComplete="off"
                       value={editing.name}
                       onChange={(e) => setField("name", e.target.value)}
                       placeholder={t.namePlaceholder}
@@ -1752,6 +1874,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     {t.address}
                     <input
                       className={inp}
+                      autoComplete="off"
                       type={isEmailConnector(editing.connectorType) ? "email" : "text"}
                       value={editing.address}
                       onChange={(e) => {
@@ -2352,6 +2475,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             <input
                               className={inp}
                               type={f.secret ? "password" : "text"}
+                              autoComplete={f.secret ? "new-password" : "off"}
                               value={(editing.settings[f.key] as string) || ""}
                               onChange={(e) => setSetting(f.key, e.target.value)}
                               placeholder={editing.id && f.secret ? t.passwordKeep : f.placeholder}
