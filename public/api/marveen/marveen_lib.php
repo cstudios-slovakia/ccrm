@@ -3264,6 +3264,34 @@ if (!function_exists('ccrm_marveen_execute_email_tool')) {
 // Visual Event Triggers ($0 Idle Cost Event-Driven Agent Execution)
 // -----------------------------------------------------------------------------
 
+if (!function_exists('ccrm_marveen_normalize_trigger_record')) {
+    function ccrm_marveen_normalize_trigger_record(array $t): array {
+        $f = is_array($t['filter'] ?? null) ? $t['filter'] : [];
+        $chatMatch = trim((string)($f['chatMatch'] ?? (($t['whatsappChatJid'] ?? '*') !== '*' ? ($t['whatsappChatJid'] ?? '') : '')));
+        $subjectContains = trim((string)($f['subjectContains'] ?? ($t['emailSubjectFilter'] ?? '')));
+        $fromContains = trim((string)($f['fromContains'] ?? ($t['emailSenderFilter'] ?? '')));
+        $keywordContains = trim((string)($f['keywordContains'] ?? ($t['keywordFilter'] ?? '')));
+        $eventType = trim((string)($f['eventType'] ?? ($t['crmEventName'] ?? 'lead_created')));
+        $onlyGroup = !empty($f['onlyGroup']);
+        $onlyDirect = !empty($f['onlyDirect']);
+
+        $t['filter'] = [
+            'chatMatch' => $chatMatch,
+            'onlyGroup' => $onlyGroup,
+            'onlyDirect' => $onlyDirect,
+            'subjectContains' => $subjectContains,
+            'fromContains' => $fromContains,
+            'keywordContains' => $keywordContains,
+            'eventType' => $eventType !== '' ? $eventType : 'lead_created',
+        ];
+        if (!array_key_exists('targetSubagentId', $t)) {
+            $agentId = trim((string)($t['targetAgentId'] ?? 'main'));
+            $t['targetSubagentId'] = ($agentId !== '' && $agentId !== 'main') ? $agentId : null;
+        }
+        return $t;
+    }
+}
+
 if (!function_exists('ccrm_marveen_list_triggers')) {
     function ccrm_marveen_list_triggers(PDO $pdo, array $connector): array {
         $connectorId = (string)($connector['id'] ?? 'default');
@@ -3273,12 +3301,13 @@ if (!function_exists('ccrm_marveen_list_triggers')) {
         if (is_file($trigFile)) {
             $decoded = json_decode((string)@file_get_contents($trigFile), true);
             if (is_array($decoded)) {
-                return array_values($decoded);
+                return array_values(array_map('ccrm_marveen_normalize_trigger_record', $decoded));
             }
         }
         if (!empty($settings['triggers']) && is_array($settings['triggers'])) {
-            @file_put_contents($trigFile, json_encode(array_values($settings['triggers']), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
-            return array_values($settings['triggers']);
+            $norm = array_values(array_map('ccrm_marveen_normalize_trigger_record', $settings['triggers']));
+            @file_put_contents($trigFile, json_encode($norm, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+            return $norm;
         }
         return [];
     }
@@ -3331,9 +3360,12 @@ if (!function_exists('ccrm_marveen_save_trigger')) {
         }
 
         $name = trim((string)($input['name'] ?? 'Event Trigger'));
-        $rawId = trim((string)($input['id'] ?? ''));
-        $id = $rawId !== ''
-            ? (preg_replace('/[^a-zA-Z0-9_-]/', '-', $rawId) ?: ('trig-' . substr(bin2hex(random_bytes(4)), 0, 8)))
+        $rawTrigId = trim((string)($input['triggerId'] ?? ($input['trigger_id'] ?? '')));
+        if ($rawTrigId === '' && !empty($input['id']) && (string)$input['id'] !== $targetConnectorId) {
+            $rawTrigId = trim((string)$input['id']);
+        }
+        $id = $rawTrigId !== ''
+            ? (preg_replace('/[^a-zA-Z0-9_-]/', '-', $rawTrigId) ?: ('trig-' . substr(bin2hex(random_bytes(4)), 0, 8)))
             : ('trig-' . substr(bin2hex(random_bytes(4)), 0, 8));
 
         $existingIdx = null;
@@ -3347,13 +3379,25 @@ if (!function_exists('ccrm_marveen_save_trigger')) {
         $nowIso = gmdate('c');
         $nowMs = (int)round(microtime(true) * 1000);
 
-        $whatsappChat = trim((string)($input['whatsappChatJid'] ?? ($input['whatsapp_chat'] ?? ($prev['whatsappChatJid'] ?? '*'))));
-        $whatsappChatName = trim((string)($input['whatsappChatName'] ?? ($prev['whatsappChatName'] ?? ($whatsappChat === '*' ? 'All Chats' : $whatsappChat))));
+        $inFilter = is_array($input['filter'] ?? null) ? $input['filter'] : [];
+        $chatMatchIn = trim((string)($inFilter['chatMatch'] ?? ($input['whatsappChatJid'] ?? ($input['whatsapp_chat'] ?? ''))));
+        $whatsappChat = $chatMatchIn !== ''
+            ? $chatMatchIn
+            : (isset($inFilter['chatMatch']) ? '*' : trim((string)($prev['whatsappChatJid'] ?? '*')));
+        $whatsappChatName = trim((string)($input['whatsappChatName'] ?? ($whatsappChat === '*' ? 'All Chats' : $whatsappChat)));
 
-        $targetAgentId = trim((string)($input['targetAgentId'] ?? ($input['target_agent_id'] ?? ($prev['targetAgentId'] ?? 'main'))));
-        if ($targetAgentId === '') {
-            $targetAgentId = 'main';
-        }
+        $rawSubId = array_key_exists('targetSubagentId', $input)
+            ? trim((string)($input['targetSubagentId'] ?? ''))
+            : trim((string)($input['targetAgentId'] ?? ($input['target_agent_id'] ?? ($prev['targetSubagentId'] ?? ($prev['targetAgentId'] ?? '')))));
+        $targetAgentId = ($rawSubId !== '' && $rawSubId !== 'main') ? $rawSubId : 'main';
+        $targetSubagentId = $targetAgentId === 'main' ? null : $targetAgentId;
+
+        $emailSenderFilter = trim((string)($inFilter['fromContains'] ?? ($input['emailSenderFilter'] ?? ($input['email_sender_filter'] ?? ($prev['emailSenderFilter'] ?? '')))));
+        $emailSubjectFilter = trim((string)($inFilter['subjectContains'] ?? ($input['emailSubjectFilter'] ?? ($input['email_subject_filter'] ?? ($prev['emailSubjectFilter'] ?? '')))));
+        $crmEventName = trim((string)($inFilter['eventType'] ?? ($input['crmEventName'] ?? ($input['crm_event_name'] ?? ($prev['crmEventName'] ?? 'lead_created')))));
+        $keywordFilter = trim((string)($inFilter['keywordContains'] ?? ($input['keywordFilter'] ?? ($input['keyword_filter'] ?? ($prev['keywordFilter'] ?? '')))));
+        $onlyGroup = array_key_exists('onlyGroup', $inFilter) ? (bool)$inFilter['onlyGroup'] : (bool)($prev['filter']['onlyGroup'] ?? false);
+        $onlyDirect = array_key_exists('onlyDirect', $inFilter) ? (bool)$inFilter['onlyDirect'] : (bool)($prev['filter']['onlyDirect'] ?? false);
 
         $record = [
             'id' => $id,
@@ -3363,12 +3407,22 @@ if (!function_exists('ccrm_marveen_save_trigger')) {
             'sourceConnectorId' => $sourceConnectorId,
             'whatsappChatJid' => $whatsappChat !== '' ? $whatsappChat : '*',
             'whatsappChatName' => $whatsappChatName !== '' ? $whatsappChatName : 'All Chats',
-            'emailSenderFilter' => trim((string)($input['emailSenderFilter'] ?? ($input['email_sender_filter'] ?? ($prev['emailSenderFilter'] ?? '')))),
-            'emailSubjectFilter' => trim((string)($input['emailSubjectFilter'] ?? ($input['email_subject_filter'] ?? ($prev['emailSubjectFilter'] ?? '')))),
-            'crmEventName' => trim((string)($input['crmEventName'] ?? ($input['crm_event_name'] ?? ($prev['crmEventName'] ?? 'lead_created')))),
-            'keywordFilter' => trim((string)($input['keywordFilter'] ?? ($input['keyword_filter'] ?? ($prev['keywordFilter'] ?? '')))),
+            'emailSenderFilter' => $emailSenderFilter,
+            'emailSubjectFilter' => $emailSubjectFilter,
+            'crmEventName' => $crmEventName !== '' ? $crmEventName : 'lead_created',
+            'keywordFilter' => $keywordFilter,
+            'filter' => [
+                'chatMatch' => $whatsappChat !== '*' ? $whatsappChat : '',
+                'onlyGroup' => $onlyGroup,
+                'onlyDirect' => $onlyDirect,
+                'subjectContains' => $emailSubjectFilter,
+                'fromContains' => $emailSenderFilter,
+                'keywordContains' => $keywordFilter,
+                'eventType' => $crmEventName !== '' ? $crmEventName : 'lead_created',
+            ],
             'targetConnectorId' => $targetConnectorId,
             'targetAgentId' => $targetAgentId,
+            'targetSubagentId' => $targetSubagentId,
             'instructions' => trim((string)($input['instructions'] ?? ($prev['instructions'] ?? 'Read the full conversation context and reply helpfully.'))),
             'autoReply' => array_key_exists('autoReply', $input)
                 ? (bool)$input['autoReply']
@@ -3448,7 +3502,7 @@ if (!function_exists('ccrm_marveen_execute_single_trigger_event')) {
             $runAsUser = (string)($uStmt ? $uStmt->fetchColumn() : '');
         }
 
-        $targetAgentId = trim((string)($trigger['targetAgentId'] ?? 'main'));
+        $targetAgentId = trim((string)($trigger['targetAgentId'] ?? ($trigger['targetSubagentId'] ?? 'main')));
         $subIdForRun = ($targetAgentId !== '' && $targetAgentId !== 'main') ? $targetAgentId : null;
 
         $sourceType = (string)($trigger['sourceType'] ?? 'whatsapp');
