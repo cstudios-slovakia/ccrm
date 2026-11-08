@@ -276,30 +276,39 @@ function ccrm_maybe_process_task_reminders(PDO $pdo): void {
 }
 
 /**
- * Mail headers that make a client flag a message as important. Outlook, Apple
- * Mail and Thunderbird read them; Gmail ignores them, which is why the
- * assignment e-mail also names the priority in its subject and body.
+ * Mail headers that set the message's own importance. Outlook, Apple Mail and
+ * Thunderbird read them (Outlook shows a red "!" for high, a blue down arrow
+ * for low); Gmail ignores them, so the body also shows the priority as a badge.
  *
- * Mail has only high / normal / low, so only a high-priority task raises the
- * flag: medium is the task default and maps to "normal", which is what a
- * message without these headers already is.
+ * Mail has high / normal / low, which maps one to one onto the task levels.
+ * Medium is "normal", which is what a message without these headers already
+ * is, so it sends none.
  */
 function ccrm_task_priority_mail_headers(?string $priority): array {
-    if ($priority !== 'high') return [];
-    return [
-        'X-Priority' => '1 (Highest)',
-        'X-MSMail-Priority' => 'High',
-        'Importance' => 'High',
-    ];
+    if ($priority === 'high') {
+        return [
+            'X-Priority' => '1 (Highest)',
+            'X-MSMail-Priority' => 'High',
+            'Importance' => 'High',
+        ];
+    }
+    if ($priority === 'low') {
+        return [
+            'X-Priority' => '5 (Lowest)',
+            'X-MSMail-Priority' => 'Low',
+            'Importance' => 'Low',
+        ];
+    }
+    return [];
 }
 
 /**
  * Send an email notification when a task is assigned to a user.
  * Silently skipped if outgoing mail is not configured.
  *
- * Medium and high priority tasks carry the priority in the subject
- * ("[High priority] New Task Assigned: …") and as a coloured badge in the body;
- * high ones are also flagged as important through the mail headers.
+ * The priority is shown as a coloured badge in the body and set as the
+ * message's importance through the mail headers, never written into the
+ * subject.
  */
 function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?string $actorName = null): bool {
     try {
@@ -367,11 +376,7 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
 
             $priorityKey = (string)($task['priority'] ?? 'medium');
-            $subjectTag = [
-                'high' => '[' . $t('High priority', 'Vysoká priorita', 'Magas prioritás') . '] ',
-                'medium' => '[' . $t('Medium priority', 'Stredná priorita', 'Közepes prioritás') . '] ',
-            ][$priorityKey] ?? '';
-            $subject = $subjectTag . $t('New Task Assigned', 'Priradená nová úloha', 'Új feladat kijelölve') . ': ' . $task['title'];
+            $subject = $t('New Task Assigned', 'Priradená nová úloha', 'Új feladat kijelölve') . ': ' . $task['title'];
 
             $deadlineStr = !empty($task['deadline']) ? $task['deadline'] : $t('No deadline', 'Bez termínu', 'Nincs határidő');
             if (!empty($task['deadlineTime'])) $deadlineStr .= ' ' . $task['deadlineTime'];
