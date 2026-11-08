@@ -410,11 +410,33 @@ export class ViewCrawler {
 
     if ((await this.robustClick(trigger, target, action, expected, 3000)) === 'failed') return;
 
+    // A loaded CI runner can swallow the opening click (the form re-renders under
+    // it) or stretch the 150 ms enter animation past the wait. Such a miss is not
+    // yet a finding: close, let the page settle and open it once more. A dropdown
+    // that is really broken fails both attempts and is still reported.
     const panel = this.page.locator('[role="listbox"]').last();
-    const mounted = await panel.waitFor({ state: 'attached', timeout: 2000 }).then(
-      () => true,
-      () => false,
-    );
+    let mounted = false;
+    let analysis!: Awaited<ReturnType<typeof analyzePanel>>;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await this.closeDropdown(trigger);
+        await waitForNoPopover(this.page);
+        await this.page.waitForTimeout(SETTLE.content);
+        if ((await this.robustClick(trigger, target, action, expected, 3000)) === 'failed') return;
+      }
+      mounted = await panel.waitFor({ state: 'attached', timeout: attempt === 0 ? 2000 : 4000 }).then(
+        () => true,
+        () => false,
+      );
+      if (!mounted) continue;
+      // Let the enter animation finish before measuring anything: reading
+      // geometry or opacity mid-flight is what made the old crawler misreport
+      // both the visibility and the occluding layer.
+      await waitForStableRect(panel, attempt === 0 ? 1500 : 3000);
+      await waitForOpaque(panel, attempt === 0 ? 1200 : 3000);
+      analysis = await analyzePanel(panel);
+      if (analysis.paintable && !analysis.outsideViewport) break;
+    }
 
     if (!mounted) {
       const expanded = await trigger.getAttribute('aria-expanded').catch(() => null);
@@ -438,12 +460,6 @@ export class ViewCrawler {
       return;
     }
 
-    // Let the enter animation finish before measuring anything: reading
-    // geometry or opacity mid-flight is what made the old crawler misreport
-    // both the visibility and the occluding layer.
-    await waitForStableRect(panel, 1500);
-    await waitForOpaque(panel, 1200);
-    const analysis = await analyzePanel(panel);
     const evidence = formatEvidence(analysis);
 
     if (!analysis.paintable || analysis.outsideViewport) {
