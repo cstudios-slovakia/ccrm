@@ -8,10 +8,15 @@ React + TypeScript + Vite SPA with a PHP/MySQL backend. Start with
 **[`docs/TESTING.md`](docs/TESTING.md) is the single source of truth.**
 
 ```bash
-npm run test:unit     # fast: node --test over src/**/*.test.ts
-npm run test:qa       # the QA audit: drives the real app in Chromium
-npm test              # both
+npm run check         # THE verification: app + QA type-check, unit tests, backend mirror,
+                      # undefined-symbol audit (~15 s warm; --fast skips unit tests)
+npm run test:unit     # node --test over src/**/*.test.ts and scripts/**/*.test.mjs
+node scripts/qa/run-qa.mjs --files <files>   # scoped browser QA (see below)
 ```
+
+A `Stop` hook runs `npm run check` when you finish with changed source and sends you back on
+failure (`CCRM_STOP_CHECK=0` disables it). The audit's known findings are baselined in
+`scripts/agent/undefined-symbols-baseline.json`; a new one fails.
 
 First time on a machine: `npm run test:qa:setup` (downloads Chromium).
 
@@ -38,8 +43,8 @@ Deep detail on coverage, categories and severity lives in
 
 When the user says "make a build" (or "do a build", "build it"), follow
 [`.agents/rules/make-a-build.md`](.agents/rules/make-a-build.md) **completely**: look at the
-working tree, commit all pending source work in logical groups, test, bump, changelog,
-build, commit, verify, and end with the per-step report. **No step is skipped unless the
+working tree, commit all pending source work in logical groups, test, collect the changelog
+fragments (one version bump), build, commit, verify, and end with the per-step report. **No step is skipped unless the
 user names it in the same message.** A build made from source that git does not hold is
 broken, and "I only ran typecheck" is a skipped step.
 
@@ -47,16 +52,27 @@ broken, and "I only ran typecheck" is a skipped step.
 
 These live in `.agents/rules/` and apply to every change:
 
+- [`agent-worktrees.md`](.agents/rules/agent-worktrees.md) — **any task that changes repo
+  files runs in its own worktree**: call `EnterWorktree` first, commit there, `ExitWorktree`
+  (keep), then `node scripts/agent/finish-worktree.mjs <name>` from the main checkout. Read-only
+  tasks stay in the main checkout.
+- [`parallel-agents.md`](.agents/rules/parallel-agents.md) — default to one agent; delegate
+  broad searches to `ccrm-explorer`, disjoint edits to `ccrm-implementer` (max 3), reviews to
+  `ccrm-reviewer`; no browser QA in subagents; don't babysit CI.
+- [`large-files.md`](.agents/rules/large-files.md) — files in
+  `scripts/agent/file-size-baseline.json` must not grow; put new pieces in a new module.
+
 - [`make-a-build.md`](.agents/rules/make-a-build.md) — the full "make a build" checklist;
   nothing in it is skippable without the user saying so.
 - [`qa-before-ship.md`](.agents/rules/qa-before-ship.md) — run the audit when a
   feature or fix is finished, before the build commit.
 - [`commit-and-versioning.md`](.agents/rules/commit-and-versioning.md) — commit
-  after every significant change; one build = one version bump in
-  `src/utils/version.ts` plus a changelog entry; suffix the commit message with
-  the version tag.
-- [`post-build-cleanup.md`](.agents/rules/post-build-cleanup.md) — prefer
-  `npx tsc --noEmit` for verification; if you ran `npm run build`, restore
+  after every significant change; each commit adds a changelog fragment in `changelog.d/`
+  and **never** bumps `src/utils/version.ts`. Only a build runs
+  `node scripts/release/collect-changelog.mjs` (one bump, one changelog section) and only the
+  build commit carries the version tag.
+- [`post-build-cleanup.md`](.agents/rules/post-build-cleanup.md) — verify with
+  `npm run check`, not `npm run build`; if you ran `npm run build`, restore
   `dist/` unless you are deliberately committing a deployment bundle.
 - [`news-craft-cms.md`](.agents/rules/news-craft-cms.md) — news and update notes
   come from Craft CMS only, never hardcoded or in the local database.
@@ -76,7 +92,14 @@ These live in `.agents/rules/` and apply to every change:
 
 The order when finishing a change:
 
-> **tree check → commit pending work → test → bump version → changelog → build → commit → verify**
+> **tree check → commit pending work (with fragments) → test (`npm run check` + scoped QA) → collect changelog (bumps version) → build → commit → verify**
+
+## Tasks
+
+`/task <ClickUp link or pasted text>` runs one bounded task end to end
+([`.agents/skills/ccrm-task`](.agents/skills/ccrm-task/SKILL.md)). Handoff prompts for other agents
+start from [`docs/prompts/_TEMPLATE.md`](docs/prompts/_TEMPLATE.md): every one has a Definition of
+done and says to list pre-existing failures, not fix them.
 
 `npm run deploy` re-runs the tests and refuses to ship if they fail
 (`DEPLOY_SKIP_QA=1` overrides, and means shipping unverified).
@@ -100,15 +123,20 @@ follow its Part A.
 
 ## Things that will bite you
 
-- `npm run build` rewrites `dist/`, which is committed. Use `npx tsc --noEmit`
-  to type-check without touching it.
+- `npm run build` rewrites `dist/`, which is committed. Use `npm run check`
+  to verify without touching it.
 - **`npm run dev` does not type-check.** Vite only strips types, so a missing variable or
   import (`ReferenceError: brand is not defined`) stays silent until that component renders,
   often only in one flow such as switching users. After any edit that touches many files
-  (a rename, a rebrand, a mechanical find-and-replace) run `npm run typecheck` before
+  (a rename, a rebrand, a mechanical find-and-replace) run `npm run check` before
   telling the user it works; it reports an unused import and an undefined name alike.
-- The root `tsconfig.json` checks nothing on its own — `npm run build` (`tsc -b`)
-  is what actually type-checks `src/`.
+- The root `tsconfig.json` checks nothing on its own — `npm run check` (or `tsc -b` in
+  `npm run build`) is what actually type-checks `src/` and the QA suite.
+- **Worktrees on this machine:** symlinks need admin rights (no Developer Mode), so a
+  worktree's `node_modules` is a junction made by `scripts/agent/link-deps.mjs` (a hook runs it
+  after `EnterWorktree`). Never `npm install` in a worktree, and never
+  `git worktree remove --force` while the junction exists: it once wiped the real
+  `node_modules`. `finish-worktree.mjs` unlinks first and verifies.
 - Clients and leads are **one table**: a client is a `leads` row with a `client-*`
   id (or `adjustment > 0`). `leads.client_id` is the link from a lead to its
   client; where it is empty the app still falls back to matching by name. Use

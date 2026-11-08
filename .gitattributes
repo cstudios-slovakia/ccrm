@@ -22,5 +22,10 @@
 *.zip binary
 *.pdf binary
 
+# Stored with CRLF in the index. Without -text they would show as modified forever once
+# touched. Convert each in a dedicated commit when no session is editing it, then drop the line.
+/src/components/TaskDashboardView.tsx -text
+/scrapbook/koperniq-ticket-spec.html -text
+
 # Built frontend bundle: ship byte-for-byte, never normalize line endings.
 /dist/assets/** -text

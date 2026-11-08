@@ -8,8 +8,8 @@ Full guide: [`docs/TESTING.md`](../../docs/TESTING.md).
 
 ## 1. The rule
 
-When a feature, fix or UI change is **finished**, before the version bump and
-the build commit:
+When a feature, fix or UI change is **finished**, before its commit is merged
+and before the build commit:
 
 1. Run the standard verification:
    ```bash
@@ -43,7 +43,7 @@ the build commit:
 This slots into [`commit-and-versioning.md`](./commit-and-versioning.md) as the
 step before it:
 
-> test -> bump `src/utils/version.ts` -> changelog entry -> build -> commit
+> test (`npm run check` + scoped QA) -> collect changelog (bumps the version) -> build -> commit
 
 Nothing here needs Docker, PHP or a database. The suite mocks `/sync.php`,
 `/api/*` and `/upload.php` and seeds its own data, so it never touches a real
