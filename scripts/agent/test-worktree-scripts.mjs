@@ -90,6 +90,19 @@ try {
   const we = mkWt('echo'); script(we, 'link-deps.mjs');
   r = script(repo, 'finish-worktree.mjs', 'echo', '--no-merge');
   assert.equal(r.status, 0, r.stdout + r.stderr); assert.ok(!fs.existsSync(we)); ok('--no-merge cleans a merged/empty worktree');
+  console.log('F: worktrees outside .claude/worktrees belong to someone else');
+  const wx = path.join(tmp, 'foreign-pr');
+  git(repo, 'worktree', 'add', '-b', 'fix/someone-elses-pr', wx, 'integ');
+  commit(wx, 'x.txt', 'x', 'their work');
+  r = script(repo, 'finish-worktree.mjs', 'foreign-pr');
+  assert.notEqual(r.status, 0); assert.match(r.stderr, /outside \.claude\/worktrees/);
+  assert.ok(fs.existsSync(wx)); assert.equal(git(repo, 'rev-list', '--count', 'integ..fix/someone-elses-pr'), '1');
+  ok('refused without --external, nothing merged or removed');
+  r = script(repo, 'list-worktrees.mjs');
+  assert.match(r.stdout, /foreign-pr: outside \.claude\/worktrees/); assert.doesNotMatch(r.stdout, /finish-worktree\.mjs foreign-pr/);
+  ok('list-worktrees does not suggest finishing it');
+  git(repo, 'worktree', 'remove', '--force', wx);
+
   assert.equal(fs.readFileSync(path.join(nm, 'MARKER'), 'utf8'), 'keep me'); ok('marker still intact at the end');
 
   console.log(`\nAll ${n} checks passed.`);

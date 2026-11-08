@@ -47,5 +47,10 @@ fine inside a worktree.
 `node scripts/agent/list-worktrees.mjs` lists every worktree with ahead/behind, dirty count and age.
 For a merged or abandoned one: `node scripts/agent/finish-worktree.mjs <name> --no-merge`
 (refuses with unmerged commits; `--discard` throws them away on purpose).
+Worktrees outside `.claude/worktrees/` (for example another session's PR worktree in a temp dir)
+are not yours: the scripts refuse them, and you never pass `--external` unless the user says so.
+
+The first `npm run check` in a new worktree is cold (~45 s; the tsc cache is per checkout and
+can't be copied across the `node_modules` junction), then ~3 s warm.
 
 `node scripts/agent/test-worktree-scripts.mjs` tests all of this in a throwaway repo.

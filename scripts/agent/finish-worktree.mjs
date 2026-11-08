@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 // Merge an agent worktree back into the integration branch and remove it. Run from the MAIN checkout
 // after ExitWorktree(keep).
-//   node scripts/agent/finish-worktree.mjs <name|path> [--dry-run] [--no-merge [--discard]]
+//   node scripts/agent/finish-worktree.mjs <name|path> [--dry-run] [--no-merge [--discard]] [--external]
+// Refuses worktrees outside .claude/worktrees/ (another session's, or hand-made) unless --external.
 // Steps: validate clean -> rebase onto integration branch if needed -> ff-only merge -> unlink
 // node_modules junction (never followed) -> git worktree remove -> git branch -d -> verify main node_modules.
 import fs from 'node:fs';
 import path from 'node:path';
-import { exists, git, isLink, listWorktrees, norm, removeLinks, samePath, toplevel } from './lib.mjs';
+import { exists, git, isLink, isManaged, listWorktrees, norm, removeLinks, samePath, toplevel } from './lib.mjs';
 
 const args = process.argv.slice(2);
 const flag = (f) => args.includes(f);
-const dry = flag('--dry-run'), noMerge = flag('--no-merge'), discard = flag('--discard');
+const dry = flag('--dry-run'), noMerge = flag('--no-merge'), discard = flag('--discard'), external = flag('--external');
 const query = args.find((a) => !a.startsWith('--'));
 const die = (m, code = 1) => { console.error(`\nABORT: ${m}`); process.exit(code); };
 const log = (m) => console.log(`${dry ? '[dry-run] ' : ''}${m}`);
@@ -33,6 +34,9 @@ const wt = all.slice(1).find((w) =>
   samePath(w.path, query) || path.basename(w.path).toLowerCase() === query.toLowerCase() ||
   w.branch === query || w.branch === `worktree-${query}` || norm(w.path) === q);
 if (!wt) die(`no linked worktree matches "${query}". Known:\n${all.slice(1).map((w) => `  ${w.path} (${w.branch})`).join('\n') || '  (none)'}`);
+if (!isManaged(main.path, wt.path) && !external) {
+  die(`${wt.path} is outside .claude/worktrees/, so it is not an agent worktree: most likely another session's (e.g. a PR branch it is still working on) or one made by hand. Leave it alone. If you are sure it is yours, re-run with --external.`);
+}
 if (!wt.branch) die(`${wt.path} is on a detached HEAD; handle it by hand.`);
 if (wt.branch === integ) die('that worktree is on the integration branch itself.');
 if (!fs.existsSync(wt.path)) die(`${wt.path} is missing on disk; run "git worktree prune", then delete the branch ${wt.branch} by hand.`);

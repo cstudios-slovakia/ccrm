@@ -4,7 +4,7 @@
 //   node scripts/agent/list-worktrees.mjs
 import fs from 'node:fs';
 import path from 'node:path';
-import { git, listWorktrees } from './lib.mjs';
+import { git, isManaged, listWorktrees } from './lib.mjs';
 
 const all = listWorktrees(process.cwd());
 if (!all.length) { console.error('not inside a git repository.'); process.exit(1); }
@@ -21,12 +21,14 @@ const rows = all.slice(1).map((w) => {
     age = git(main.path, ['log', '-1', '--format=%cr', w.branch]).out;
   }
   if (!missing) dirty = String(git(w.path, ['status', '--porcelain']).out.split(/\r?\n/).filter(Boolean).length);
-  return { name: path.basename(w.path) + (missing ? ' (MISSING)' : ''), branch: w.branch ?? '(detached)', ahead, behind, dirty, age };
+  const managed = isManaged(main.path, w.path);
+  return { name: path.basename(w.path) + (missing ? ' (MISSING)' : ''), managed: managed ? 'yes' : 'NO', branch: w.branch ?? '(detached)', ahead, behind, dirty, age };
 });
 
 if (!rows.length) console.log('no linked worktrees.');
 else console.table(rows);
 for (const r of rows) {
-  if (r.ahead === '0' && r.dirty === '0') console.log(`  ${r.name}: fully merged and clean -> node scripts/agent/finish-worktree.mjs ${r.name} --no-merge`);
+  if (r.managed === 'NO') console.log(`  ${r.name}: outside .claude/worktrees - another session's or made by hand. Leave it alone unless you know it is yours.`);
+  else if (r.ahead === '0' && r.dirty === '0') console.log(`  ${r.name}: fully merged and clean -> node scripts/agent/finish-worktree.mjs ${r.name} --no-merge`);
   else if (Number(r.ahead) > 0) console.log(`  ${r.name}: ${r.ahead} unmerged commit(s) -> node scripts/agent/finish-worktree.mjs ${r.name}`);
 }

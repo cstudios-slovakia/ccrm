@@ -29,6 +29,16 @@ export function toplevel(dir) {
   return r.ok ? path.resolve(r.out) : null;
 }
 
+/**
+ * True when a worktree lives under <main>/.claude/worktrees/, where Claude Code's EnterWorktree and
+ * subagent isolation create them. Anything else (a temp-dir worktree another session made for a PR,
+ * one made by hand) belongs to someone else: these scripts must not merge or delete it by default.
+ */
+export function isManaged(mainPath, wtPath) {
+  const root = norm(path.join(mainPath, '.claude', 'worktrees')) + path.sep;
+  return (norm(wtPath) + path.sep).startsWith(root);
+}
+
 /** All worktrees: [{ path, branch|null, head, main:boolean }]. The first entry is the main checkout. */
 export function listWorktrees(cwd) {
   const r = git(cwd, ['worktree', 'list', '--porcelain']);
