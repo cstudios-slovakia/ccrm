@@ -3929,8 +3929,8 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                             if ($chatId === '' || $chatId === 'status@broadcast') {
                                 continue;
                             }
-                            // Skip if Agent Takeover was explicitly turned OFF (paused) for this conversation session
-                            if (((string)($takeoverMap[$chatId]['mode'] ?? '')) === 'paused') {
+                            // Skip if Agent Takeover was explicitly overridden (paused or assigned to a specific agent/subagent) for this session
+                            if (in_array((string)($takeoverMap[$chatId]['mode'] ?? ''), ['paused', 'active'], true)) {
                                 continue;
                             }
                             // Check chat filter

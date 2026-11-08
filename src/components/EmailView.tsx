@@ -3057,23 +3057,30 @@ export const EmailView: React.FC<EmailViewProps> = ({
               const isAgentActive =
                 sessionOverride?.mode === "active" || (isAutoTakenOver && !isPausedForSession);
 
-              const targetSubId = sessionOverride?.subagentId ?? matchedTrig?.targetSubagentId ?? null;
+              const effectiveAgentAcc =
+                (sessionOverride?.agentConnectorId
+                  ? aiAccounts.find((a) => a.id === sessionOverride.agentConnectorId)
+                  : null) ?? matchedAgentAcc;
+              const targetSubId =
+                sessionOverride?.mode === "active"
+                  ? (sessionOverride.subagentId ?? null)
+                  : (matchedTrig?.targetSubagentId ?? null);
               const targetSub =
-                targetSubId && matchedAgentAcc
-                  ? (agentStates[matchedAgentAcc.id]?.subagents ?? matchedAgentAcc.subagents ?? []).find(
+                targetSubId && effectiveAgentAcc
+                  ? (agentStates[effectiveAgentAcc.id]?.subagents ?? effectiveAgentAcc.subagents ?? []).find(
                       (s) => s.id === targetSubId,
                     )
                   : null;
               const agentName = targetSub
                 ? targetSub.name
-                : matchedAgentAcc?.name || t("AI Agent", "AI Agent", "AI Ügynök");
+                : effectiveAgentAcc?.name || t("AI Agent", "AI Agent", "AI Ügynök");
 
               return {
                 isAgentActive,
                 isAutoTakenOver,
                 isPausedForSession,
                 agentName,
-                agentConnectorId: sessionOverride?.agentConnectorId || matchedAgentAcc?.id || "",
+                agentConnectorId: effectiveAgentAcc?.id || "",
                 subagentId: targetSubId,
               };
             };
@@ -3265,9 +3272,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                         `Obsluhuje ${chatTk.agentName}`,
                                         `Kezeli: ${chatTk.agentName}`,
                                       )}
-                                      className="px-1.5 py-0.2 rounded-md bg-violet-100 text-violet-800 border border-violet-200 text-micro font-bold shrink-0"
+                                      className="px-1.5 py-0.2 rounded-md bg-violet-100 text-violet-800 border border-violet-200 text-micro font-bold shrink-0 max-w-28 truncate"
                                     >
-                                      🤖 AI
+                                      🤖 {chatTk.agentName}
                                     </span>
                                   )}
                                   {!chatTk.isAgentActive && chatTk.isPausedForSession && (
@@ -3342,67 +3349,91 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                          <button
-                            type="button"
-                            data-testid="wa-agent-takeover-btn"
-                            disabled={waTakeoverBusyChatId === activeChat.id}
-                            onClick={() =>
-                              void handleToggleWaChatAgentTakeover(
-                                activeChat,
-                                activeChatTakeover.isAgentActive ? "paused" : "active",
-                                activeChatTakeover.agentConnectorId,
-                                activeChatTakeover.subagentId,
-                              )
-                            }
-                            title={
+                          <div
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all ${
                               activeChatTakeover.isAgentActive
-                                ? t(
-                                    `${activeChatTakeover.agentName} is currently handling this conversation (${activeChatTakeover.isAutoTakenOver ? "auto-taken over" : "session takeover"}). Click to turn off the agent for this session.`,
-                                    `${activeChatTakeover.agentName} momentálne obsluhuje túto konverzáciu. Kliknutím vypnete agenta pre túto reláciu.`,
-                                    `Jelenleg ${activeChatTakeover.agentName} kezeli ezt a beszélgetést. Kattintson az ügynök kikapcsolásához erre a munkamenetre.`,
-                                  )
-                                : t(
-                                    `Let ${activeChatTakeover.agentName} take over and automatically reply in this conversation.`,
-                                    `Nechajte ${activeChatTakeover.agentName} prevziať túto konverzáciu a automaticky odpovedať.`,
-                                    `Vegye át a beszélgetést ${activeChatTakeover.agentName}, és válaszoljon automatikusan.`,
-                                  )
-                            }
-                            className={`px-3 py-1.5 rounded-xl text-caption font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 ${
-                              activeChatTakeover.isAgentActive
-                                ? "bg-violet-600 hover:bg-rose-600 text-white shadow-xs border border-violet-700"
+                                ? "bg-violet-600 text-white border-violet-700 shadow-xs"
                                 : activeChatTakeover.isPausedForSession
-                                  ? "bg-amber-50 hover:bg-violet-50 text-amber-900 hover:text-violet-800 border border-amber-300"
-                                  : "bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200"
+                                  ? "bg-amber-50 text-amber-900 border-amber-300"
+                                  : "bg-violet-50/80 text-violet-900 border-violet-200"
                             }`}
                           >
                             {waTakeoverBusyChatId === activeChat.id ? (
-                              <Loader2 size={13} className="animate-spin" />
+                              <Loader2 size={13} className="animate-spin shrink-0" />
                             ) : (
-                              <Bot size={14} />
+                              <Bot size={14} className="shrink-0" />
                             )}
-                            {activeChatTakeover.isAgentActive ? (
-                              <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                                {t(
-                                  "Agent Active · Turn Off",
-                                  "Agent aktívny · Vypnúť",
-                                  "Ügynök aktív · Kikapcsolás",
-                                )}
-                              </>
-                            ) : activeChatTakeover.isPausedForSession ? (
-                              t(
-                                "Agent Off (Session) · Take Over",
-                                "Agent vypnutý · Prevziať",
-                                "Ügynök kikapcsolva · Átvétel",
-                              )
-                            ) : (
-                              t(
-                                "Agent Takeover",
-                                "Prevziať agentom",
-                                "Ügynök átveszi",
-                              )
+                            {activeChatTakeover.isAgentActive && (
+                              <span
+                                title={
+                                  activeChatTakeover.isAutoTakenOver
+                                    ? t("Auto-assigned by trigger", "Automaticky priradené spúšťačom", "Trigger által automatikusan hozzárendelve")
+                                    : t("Active for this session", "Aktívne pre túto reláciu", "Aktív ebben a munkamenetben")
+                                }
+                                className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse shrink-0"
+                              />
                             )}
-                          </button>
+                            <select
+                              data-testid="wa-agent-takeover-btn"
+                              disabled={waTakeoverBusyChatId === activeChat.id || aiAccounts.length === 0}
+                              value={
+                                activeChatTakeover.isAgentActive && activeChatTakeover.agentConnectorId
+                                  ? `${activeChatTakeover.agentConnectorId}:${activeChatTakeover.subagentId || "main"}`
+                                  : "off"
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "off") {
+                                  void handleToggleWaChatAgentTakeover(activeChat, "paused");
+                                } else {
+                                  const [agId, subRaw] = val.split(":");
+                                  void handleToggleWaChatAgentTakeover(
+                                    activeChat,
+                                    "active",
+                                    agId,
+                                    subRaw && subRaw !== "main" ? subRaw : null,
+                                  );
+                                }
+                              }}
+                              className={`bg-transparent text-caption font-bold focus:outline-none cursor-pointer pr-1 ${
+                                activeChatTakeover.isAgentActive ? "text-white" : "text-slate-800"
+                              }`}
+                            >
+                              <option value="off" className="text-slate-900 bg-white">
+                                🚫{" "}
+                                {activeChatTakeover.isPausedForSession
+                                  ? t(
+                                      "Not handled by AI (Turned off for session)",
+                                      "Neobsluhované AI (Vypnuté pre reláciu)",
+                                      "AI nem kezeli (Munkamenetre kikapcsolva)",
+                                    )
+                                  : t(
+                                      "Not handled by AI",
+                                      "Neobsluhované AI",
+                                      "AI nem kezeli",
+                                    )}
+                              </option>
+                              {aiAccounts.map((agAcc) => {
+                                const subs = agentStates[agAcc.id]?.subagents ?? agAcc.subagents ?? [];
+                                return (
+                                  <optgroup
+                                    key={agAcc.id}
+                                    label={`${agAcc.name} (${(agAcc.connectorType || "AI").toUpperCase()})`}
+                                    className="text-slate-900 bg-white"
+                                  >
+                                    <option value={`${agAcc.id}:main`} className="text-slate-900 bg-white">
+                                      ✦ {agAcc.name} — {t("Main Agent", "Hlavný agent", "Fő ügynök")}
+                                    </option>
+                                    {subs.map((sub) => (
+                                      <option key={sub.id} value={`${agAcc.id}:${sub.id}`} className="text-slate-900 bg-white">
+                                        🤖 {sub.name} ({sub.role})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                );
+                              })}
+                            </select>
+                          </div>
                           <button
                             type="button"
                             onClick={() => void handleResyncWhatsApp(activeChat.id)}
