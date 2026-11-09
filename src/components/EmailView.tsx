@@ -222,6 +222,28 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [clientFormCity, setClientFormCity] = useState("");
   const [clientFormPhone, setClientFormPhone] = useState("");
   const [clientFormType, setClientFormType] = useState<"person" | "business" | "partner">("person");
+  const [pendingChatLinkKey, setPendingChatLinkKey] = useState("");
+  const [chatClientLinks, setChatClientLinks] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ccrm_chat_client_links") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const saveChatClientLink = (chatKey: string, leadId: string) => {
+    setChatClientLinks((prev) => {
+      const next = { ...prev };
+      if (leadId) next[chatKey] = leadId;
+      else delete next[chatKey];
+      try {
+        localStorage.setItem("ccrm_chat_client_links", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // formatBytes is imported from ../utils/formatBytes
 
@@ -399,17 +421,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const handleCreateClientSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit) return;
-    if (!clientFormName.trim() || !clientFormEmail.trim() || !clientFormCity.trim()) return;
+    if (!clientFormName.trim()) return;
     
+    const newLeadId = `client-${Date.now()}`;
     const newLead: Lead = {
-      id: `client-${Date.now()}`,
-      name: clientFormName,
-      email: clientFormEmail,
-      phone: clientFormPhone,
-      city: clientFormCity,
+      id: newLeadId,
+      name: clientFormName.trim(),
+      email: clientFormEmail.trim(),
+      phone: clientFormPhone.trim(),
+      city: clientFormCity.trim(),
       clientType: clientFormType,
       status: "accepted",
-      source: "email",
+      source: isMessagingConnector(selectedChannelType) ? selectedChannelType : "email",
       owner: currentUser?.name || "",
       value: 0,
       createdAt: new Date().toISOString().split("T")[0],
@@ -417,6 +440,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
     
     setLeads((prev: any) => [...prev, newLead]);
+    if (pendingChatLinkKey) {
+      saveChatClientLink(pendingChatLinkKey, newLeadId);
+      setPendingChatLinkKey("");
+    }
     closeClientSlideout();
     
     if (typeof (window as any).showToast === "function") {
@@ -598,7 +625,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
     const list = Array.from(mergedMap.values());
     setAvailableAccounts(list);
+    const hashParams = new URLSearchParams((window.location.hash.split("?")[1] || ""));
+    const reqChannel = hashParams.get("channel") || "";
+    const reqChat = hashParams.get("chat") || "";
+    if (reqChat) {
+      setWaSelectedLeadId(reqChat);
+    }
     setSelectedMailboxId((prev) => {
+      if (reqChannel && list.some((a) => a.id === reqChannel)) return reqChannel;
       if (prev && list.some((a) => a.id === prev)) return prev;
       return list[0]?.id || "";
     });
@@ -2998,12 +3032,17 @@ export const EmailView: React.FC<EmailViewProps> = ({
               null;
 
             const activeDigits = (activeChat?.phone || "").replace(/\D/g, "");
+            const activeChatLinkKey =
+              activeChat && selectedAccount ? `${selectedAccount.id}::${activeChat.id}` : "";
+            const explicitLeadId = activeChatLinkKey ? chatClientLinks[activeChatLinkKey] : "";
             const matchedLead = activeChat
-              ? (leads.find((l) => {
+              ? ((explicitLeadId ? leads.find((l) => l.id === explicitLeadId) : null) ??
+                leads.find((l) => {
                   const lDigits = (l.phone || "").replace(/\D/g, "");
                   if (activeDigits && lDigits && activeDigits === lDigits) return true;
                   return (l.name || "").toLowerCase() === (activeChat.name || "").toLowerCase();
-                }) ?? null)
+                }) ??
+                null)
               : null;
 
             const liveMessages = activeChat ? (waState?.messages?.[activeChat.id] ?? []) : [];
@@ -3086,15 +3125,194 @@ export const EmailView: React.FC<EmailViewProps> = ({
             };
 
             const activeChatTakeover = getChatTakeoverInfo(activeChat);
+            const adapterMeta = PROVIDERS[selectedChannelType] ?? PROVIDERS.whatsapp;
+            const channelDisplayName = selectedAccount?.name || adapterMeta.label || "WhatsApp";
+            const adapterLabel = adapterMeta.label || "WhatsApp";
+
+            const adapterPalette = (() => {
+              switch (selectedChannelType) {
+                case "messenger":
+                  return {
+                    panelBorder: "border-blue-500/30",
+                    headerGrad: "border-blue-500/20 bg-gradient-to-r from-blue-600/12 to-transparent",
+                    liveDot: "bg-blue-600",
+                    liveText: "text-blue-700",
+                    softBtn: "bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200",
+                    pillActive: "bg-blue-600 text-white",
+                    pillInactiveHover: "hover:bg-blue-50",
+                    activeRowBg: "bg-blue-50/85",
+                    avatarBg: "bg-blue-600/15 text-blue-700",
+                    groupAvatarBg: "bg-indigo-500/15 text-indigo-700",
+                    groupBadge: "bg-indigo-50 text-indigo-700 border-indigo-200",
+                    bubbleOut: "bg-blue-600 text-white",
+                    bubbleOutMeta: "text-blue-100",
+                    canvasTint: "bg-blue-500/[0.02]",
+                    inputFocus: "focus:border-blue-500",
+                    sendBtn: "bg-blue-600 hover:bg-blue-500 text-white",
+                  };
+                case "telegram":
+                  return {
+                    panelBorder: "border-sky-500/30",
+                    headerGrad: "border-sky-500/20 bg-gradient-to-r from-sky-500/12 to-transparent",
+                    liveDot: "bg-sky-500",
+                    liveText: "text-sky-700",
+                    softBtn: "bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-200",
+                    pillActive: "bg-sky-600 text-white",
+                    pillInactiveHover: "hover:bg-sky-50",
+                    activeRowBg: "bg-sky-50/85",
+                    avatarBg: "bg-sky-500/15 text-sky-700",
+                    groupAvatarBg: "bg-cyan-500/15 text-cyan-700",
+                    groupBadge: "bg-cyan-50 text-cyan-700 border-cyan-200",
+                    bubbleOut: "bg-sky-600 text-white",
+                    bubbleOutMeta: "text-sky-100",
+                    canvasTint: "bg-sky-500/[0.02]",
+                    inputFocus: "focus:border-sky-500",
+                    sendBtn: "bg-sky-600 hover:bg-sky-500 text-white",
+                  };
+                case "viber":
+                  return {
+                    panelBorder: "border-purple-500/30",
+                    headerGrad: "border-purple-500/20 bg-gradient-to-r from-purple-600/12 to-transparent",
+                    liveDot: "bg-purple-600",
+                    liveText: "text-purple-700",
+                    softBtn: "bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200",
+                    pillActive: "bg-purple-600 text-white",
+                    pillInactiveHover: "hover:bg-purple-50",
+                    activeRowBg: "bg-purple-50/85",
+                    avatarBg: "bg-purple-600/15 text-purple-700",
+                    groupAvatarBg: "bg-fuchsia-500/15 text-fuchsia-700",
+                    groupBadge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+                    bubbleOut: "bg-purple-600 text-white",
+                    bubbleOutMeta: "text-purple-100",
+                    canvasTint: "bg-purple-500/[0.02]",
+                    inputFocus: "focus:border-purple-500",
+                    sendBtn: "bg-purple-600 hover:bg-purple-500 text-white",
+                  };
+                case "slack":
+                  return {
+                    panelBorder: "border-fuchsia-500/30",
+                    headerGrad: "border-fuchsia-500/20 bg-gradient-to-r from-fuchsia-600/12 to-transparent",
+                    liveDot: "bg-fuchsia-600",
+                    liveText: "text-fuchsia-700",
+                    softBtn: "bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200",
+                    pillActive: "bg-fuchsia-600 text-white",
+                    pillInactiveHover: "hover:bg-fuchsia-50",
+                    activeRowBg: "bg-fuchsia-50/85",
+                    avatarBg: "bg-fuchsia-600/15 text-fuchsia-700",
+                    groupAvatarBg: "bg-purple-500/15 text-purple-700",
+                    groupBadge: "bg-purple-50 text-purple-700 border-purple-200",
+                    bubbleOut: "bg-fuchsia-600 text-white",
+                    bubbleOutMeta: "text-fuchsia-100",
+                    canvasTint: "bg-fuchsia-500/[0.02]",
+                    inputFocus: "focus:border-fuchsia-500",
+                    sendBtn: "bg-fuchsia-600 hover:bg-fuchsia-500 text-white",
+                  };
+                case "discord":
+                  return {
+                    panelBorder: "border-indigo-500/30",
+                    headerGrad: "border-indigo-500/20 bg-gradient-to-r from-indigo-500/12 to-transparent",
+                    liveDot: "bg-indigo-600",
+                    liveText: "text-indigo-700",
+                    softBtn: "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200",
+                    pillActive: "bg-indigo-600 text-white",
+                    pillInactiveHover: "hover:bg-indigo-50",
+                    activeRowBg: "bg-indigo-50/85",
+                    avatarBg: "bg-indigo-500/15 text-indigo-700",
+                    groupAvatarBg: "bg-violet-500/15 text-violet-700",
+                    groupBadge: "bg-violet-50 text-violet-700 border-violet-200",
+                    bubbleOut: "bg-indigo-600 text-white",
+                    bubbleOutMeta: "text-indigo-100",
+                    canvasTint: "bg-indigo-500/[0.02]",
+                    inputFocus: "focus:border-indigo-500",
+                    sendBtn: "bg-indigo-600 hover:bg-indigo-500 text-white",
+                  };
+                case "teams":
+                  return {
+                    panelBorder: "border-violet-500/30",
+                    headerGrad: "border-violet-500/20 bg-gradient-to-r from-violet-600/12 to-transparent",
+                    liveDot: "bg-violet-600",
+                    liveText: "text-violet-700",
+                    softBtn: "bg-violet-50 hover:bg-violet-100 text-violet-800 border-violet-200",
+                    pillActive: "bg-violet-600 text-white",
+                    pillInactiveHover: "hover:bg-violet-50",
+                    activeRowBg: "bg-violet-50/85",
+                    avatarBg: "bg-violet-600/15 text-violet-700",
+                    groupAvatarBg: "bg-indigo-500/15 text-indigo-700",
+                    groupBadge: "bg-indigo-50 text-indigo-700 border-indigo-200",
+                    bubbleOut: "bg-violet-600 text-white",
+                    bubbleOutMeta: "text-violet-100",
+                    canvasTint: "bg-violet-500/[0.02]",
+                    inputFocus: "focus:border-violet-500",
+                    sendBtn: "bg-violet-600 hover:bg-violet-500 text-white",
+                  };
+                case "twilio":
+                  return {
+                    panelBorder: "border-red-500/30",
+                    headerGrad: "border-red-500/20 bg-gradient-to-r from-red-600/12 to-transparent",
+                    liveDot: "bg-red-600",
+                    liveText: "text-red-700",
+                    softBtn: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+                    pillActive: "bg-red-600 text-white",
+                    pillInactiveHover: "hover:bg-red-50",
+                    activeRowBg: "bg-red-50/85",
+                    avatarBg: "bg-red-600/15 text-red-700",
+                    groupAvatarBg: "bg-rose-500/15 text-rose-700",
+                    groupBadge: "bg-rose-50 text-rose-700 border-rose-200",
+                    bubbleOut: "bg-red-600 text-white",
+                    bubbleOutMeta: "text-red-100",
+                    canvasTint: "bg-red-500/[0.02]",
+                    inputFocus: "focus:border-red-500",
+                    sendBtn: "bg-red-600 hover:bg-red-500 text-white",
+                  };
+                case "webchat":
+                  return {
+                    panelBorder: "border-cyan-500/30",
+                    headerGrad: "border-cyan-500/20 bg-gradient-to-r from-cyan-500/12 to-transparent",
+                    liveDot: "bg-cyan-600",
+                    liveText: "text-cyan-700",
+                    softBtn: "bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200",
+                    pillActive: "bg-cyan-600 text-white",
+                    pillInactiveHover: "hover:bg-cyan-50",
+                    activeRowBg: "bg-cyan-50/85",
+                    avatarBg: "bg-cyan-500/15 text-cyan-700",
+                    groupAvatarBg: "bg-teal-500/15 text-teal-700",
+                    groupBadge: "bg-teal-50 text-teal-700 border-teal-200",
+                    bubbleOut: "bg-cyan-600 text-white",
+                    bubbleOutMeta: "text-cyan-100",
+                    canvasTint: "bg-cyan-500/[0.02]",
+                    inputFocus: "focus:border-cyan-500",
+                    sendBtn: "bg-cyan-600 hover:bg-cyan-500 text-white",
+                  };
+                default:
+                  return {
+                    panelBorder: "border-emerald-500/30",
+                    headerGrad: "border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent",
+                    liveDot: "bg-emerald-500",
+                    liveText: "text-emerald-700",
+                    softBtn: "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200",
+                    pillActive: "bg-emerald-600 text-white",
+                    pillInactiveHover: "hover:bg-emerald-50",
+                    activeRowBg: "bg-emerald-50/80",
+                    avatarBg: "bg-emerald-500/15 text-emerald-700",
+                    groupAvatarBg: "bg-teal-500/15 text-teal-700",
+                    groupBadge: "bg-teal-50 text-teal-700 border-teal-200",
+                    bubbleOut: "bg-emerald-600 text-white",
+                    bubbleOutMeta: "text-emerald-100",
+                    canvasTint: "bg-emerald-500/[0.02]",
+                    inputFocus: "focus:border-emerald-500",
+                    sendBtn: "bg-emerald-600 hover:bg-emerald-500 text-white",
+                  };
+              }
+            })();
 
             return (
               <>
-                {/* WhatsApp Chats, Groups & Contacts Column */}
-                <div className="ws-lg:col-span-4 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
-                  <div className="p-4 border-b border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent space-y-3 shrink-0">
+                {/* Messaging Chats, Groups & Contacts Column */}
+                <div className={`ws-lg:col-span-4 glass-panel rounded-3xl border ${adapterPalette.panelBorder} bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left`}>
+                  <div className={`p-4 border-b ${adapterPalette.headerGrad} space-y-3 shrink-0`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+                        <span className={`w-8 h-8 rounded-xl ${adapterMeta.iconBg} flex items-center justify-center shrink-0`}>
                           <ProviderLogo type={selectedChannelType} className="w-4 h-4" />
                         </span>
                         <div className="min-w-0">
@@ -3102,8 +3320,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           <div className="text-micro font-mono truncate flex items-center gap-1.5">
                             {waState?.status === "connected" ? (
                               <>
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                                <span className="text-emerald-700 truncate">
+                                <span className={`w-1.5 h-1.5 rounded-full ${adapterPalette.liveDot} shrink-0`} />
+                                <span className={`${adapterPalette.liveText} truncate`}>
                                   {t("Live", "Naživo", "Élő")} · {waState?.phone || selectedAccount?.address}
                                   {waState?.historySyncChunks ? ` · ${waState.historySyncChunks} sync` : ""}
                                 </span>
@@ -3128,8 +3346,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           type="button"
                           onClick={() => void handleResyncWhatsApp(activeChat?.id)}
                           disabled={waLoading}
-                          title={t("Sync WhatsApp chats & groups", "Synchronizovať WhatsApp konverzácie", "WhatsApp beszélgetések szinkronizálása")}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold cursor-pointer disabled:opacity-50"
+                          title={t(
+                            `Sync ${channelDisplayName} chats & groups`,
+                            `Synchronizovať ${channelDisplayName} konverzácie`,
+                            `${channelDisplayName} beszélgetések szinkronizálása`,
+                          )}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-micro font-bold cursor-pointer disabled:opacity-50 ${adapterPalette.softBtn}`}
                         >
                           <RefreshCw size={11} className={waLoading ? "animate-spin" : ""} />
                           {t("Sync", "Sync", "Szinkron")}
@@ -3190,8 +3412,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
                         type="text"
                         value={waSearchQuery}
                         onChange={(e) => setWaSearchQuery(e.target.value)}
-                        placeholder={t("Search WhatsApp chats & groups...", "Hľadať WhatsApp chaty a skupiny...", "WhatsApp beszélgetések és csoportok keresése...")}
-                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-caption text-slate-700 focus:outline-none focus:border-emerald-400"
+                        placeholder={t(
+                          `Search ${channelDisplayName} chats & groups...`,
+                          `Hľadať ${channelDisplayName} chaty a skupiny...`,
+                          `${channelDisplayName} beszélgetések és csoportok keresése...`,
+                        )}
+                        className={`w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-caption text-slate-700 focus:outline-none ${adapterPalette.inputFocus}`}
                       />
                     </div>
 
@@ -3219,8 +3445,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             onClick={() => setWaFilterType(tab.id)}
                             className={`px-2.5 py-1 rounded-lg text-micro font-bold transition-colors cursor-pointer ${
                               waFilterType === tab.id
-                                ? "bg-emerald-600 text-white"
-                                : "bg-white/80 text-slate-600 hover:bg-emerald-50 border border-slate-200/80"
+                                ? adapterPalette.pillActive
+                                : `bg-white/80 text-slate-600 ${adapterPalette.pillInactiveHover} border border-slate-200/80`
                             }`}
                           >
                             {tab.label} ({tab.count})
@@ -3235,8 +3461,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       <div className="p-6 text-center text-caption text-slate-400 space-y-2">
                         <div>
                           {waLoading
-                            ? t("Syncing WhatsApp chats…", "Synchronizujem WhatsApp konverzácie…", "WhatsApp beszélgetések szinkronizálása…")
-                            : t("No WhatsApp chats match your filter.", "Žiadne WhatsApp konverzácie nezodpovedajú filtru.", "Nincs a szűrőnek megfelelő WhatsApp beszélgetés.")}
+                            ? t(
+                                `Syncing ${channelDisplayName} chats…`,
+                                `Synchronizujem ${channelDisplayName} konverzácie…`,
+                                `${channelDisplayName} beszélgetések szinkronizálása…`,
+                              )
+                            : t(
+                                `No ${channelDisplayName} chats match your filter.`,
+                                `Žiadne ${channelDisplayName} konverzácie nezodpovedajú filtru.`,
+                                `Nincs a szűrőnek megfelelő ${channelDisplayName} beszélgetés.`,
+                              )}
                         </div>
                       </div>
                     ) : (
@@ -3249,14 +3483,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             type="button"
                             onClick={() => setWaSelectedLeadId(chat.id)}
                             className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors cursor-pointer ${
-                              active ? "bg-emerald-50/80" : "hover:bg-slate-50"
+                              active ? adapterPalette.activeRowBg : "hover:bg-slate-50"
                             }`}
                           >
                             <span
                               className={`h-9 w-9 rounded-xl text-caption font-bold flex items-center justify-center shrink-0 ${
                                 chat.isGroup
-                                  ? "bg-teal-500/15 text-teal-700"
-                                  : "bg-emerald-500/15 text-emerald-700"
+                                  ? adapterPalette.groupAvatarBg
+                                  : adapterPalette.avatarBg
                               }`}
                             >
                               {chat.isGroup ? <Users size={15} /> : initialsOf(chat.name)}
@@ -3300,10 +3534,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 {chat.lastMessageText ? (
                                   chat.lastMessageText
                                 ) : chat.isGroup ? (
-                                  t("WhatsApp Group", "WhatsApp skupina", "WhatsApp csoport")
+                                  t(`${adapterLabel} Group`, `${adapterLabel} skupina`, `${adapterLabel} csoport`)
                                 ) : (
                                   <span className="font-mono">
-                                    {chat.phone || t("WhatsApp Contact", "WhatsApp kontakt", "WhatsApp kapcsolat")}
+                                    {chat.phone || t(`${adapterLabel} Contact`, `${adapterLabel} kontakt`, `${adapterLabel} kapcsolat`)}
                                   </span>
                                 )}
                               </div>
@@ -3315,14 +3549,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   </div>
                 </div>
 
-                {/* WhatsApp Conversation & Composer Column */}
-                <div className="ws-lg:col-span-8 glass-panel rounded-3xl border border-emerald-500/30 bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left">
+                {/* Messaging Conversation & Composer Column */}
+                <div className={`ws-lg:col-span-8 glass-panel rounded-3xl border ${adapterPalette.panelBorder} bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left`}>
                   {!activeChat ? (
                     emptyPane(
                       t(
-                        "Select a WhatsApp chat or group",
-                        "Vyberte WhatsApp konverzáciu alebo skupinu",
-                        "Válasszon egy WhatsApp beszélgetést vagy csoportot",
+                        `Select a ${channelDisplayName} chat or group`,
+                        `Vyberte ${channelDisplayName} konverzáciu alebo skupinu`,
+                        `Válasszon egy ${channelDisplayName} beszélgetést vagy csoportot`,
                       ),
                     )
                   ) : (
@@ -3334,16 +3568,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               {activeChat.name}
                             </h3>
                             {activeChat.isGroup && (
-                              <span className="px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200 text-micro font-bold uppercase shrink-0">
+                              <span className={`px-2 py-0.5 rounded-md border text-micro font-bold uppercase shrink-0 ${adapterPalette.groupBadge}`}>
                                 {t("Group", "Skupina", "Csoport")}
                               </span>
                             )}
                           </div>
-                          <div className="text-caption text-emerald-700 font-mono truncate">
+                          <div className={`text-caption ${adapterPalette.liveText} font-mono truncate`}>
                             {activeChat.participantsPreview ||
                               activeChat.phone ||
                               (activeChat.isGroup
-                                ? t("WhatsApp Group Chat", "Skupinová konverzácia WhatsApp", "WhatsApp csoportos csevegés")
+                                ? t(`${adapterLabel} Group Chat`, `Skupinová konverzácia ${adapterLabel}`, `${adapterLabel} csoportos csevegés`)
                                 : activeChat.id)}{" "}
                             · {selectedAccount?.name}
                           </div>
@@ -3438,29 +3672,86 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             type="button"
                             onClick={() => void handleResyncWhatsApp(activeChat.id)}
                             disabled={waLoading}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-caption font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className={`px-3 py-1.5 rounded-xl border text-caption font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${adapterPalette.softBtn}`}
                           >
                             <RefreshCw size={13} className={waLoading ? "animate-spin" : ""} />
                             {t("Sync latest", "Synchronizovať najnovšie", "Legfrissebbek szinkronizálása")}
                           </button>
-                          {matchedLead &&
+                          {canEdit && (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-slate-200 bg-white shadow-2xs">
+                              <Users size={13} className="text-slate-500 shrink-0" />
+                              <select
+                                data-testid="wa-client-select"
+                                value={matchedLead?.id || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === "__new__") {
+                                    setPendingChatLinkKey(activeChatLinkKey);
+                                    setClientFormName(activeChat.name || "");
+                                    setClientFormPhone(activeDigits ? activeChat.phone || "" : "");
+                                    setClientFormEmail("");
+                                    setClientFormCity("");
+                                    setClientFormType("person");
+                                    setIsClientSlideoutOpen(true);
+                                  } else {
+                                    saveChatClientLink(activeChatLinkKey, val);
+                                  }
+                                }}
+                                className="bg-transparent text-caption font-bold text-slate-800 focus:outline-none cursor-pointer max-w-44 truncate"
+                              >
+                                <option value="">
+                                  {t("🔗 Select or create client...", "🔗 Vybrať alebo vytvoriť klienta...", "🔗 Ügyfél kiválasztása vagy létrehozása...")}
+                                </option>
+                                <option value="__new__">
+                                  ➕ {t("+ Create New Client", "+ Vytvoriť nového klienta", "+ Új ügyfél létrehozása")}
+                                </option>
+                                {leads
+                                  .filter((l) => !l.archived)
+                                  .map((l) => (
+                                    <option key={l.id} value={l.id}>
+                                      {l.id.startsWith("client-") ? "🏢" : "👤"} {l.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
+                          {matchedLead ? (
                             renderCrmActions(matchedLead, {
                               name: matchedLead.name,
                               address: matchedLead.email || "",
-                            })}
+                            })
+                          ) : canEdit ? (
+                            <button
+                              type="button"
+                              data-testid="wa-create-client-btn"
+                              onClick={() => {
+                                setPendingChatLinkKey(activeChatLinkKey);
+                                setClientFormName(activeChat.name || "");
+                                setClientFormPhone(activeDigits ? activeChat.phone || "" : "");
+                                setClientFormEmail("");
+                                setClientFormCity("");
+                                setClientFormType("person");
+                                setIsClientSlideoutOpen(true);
+                              }}
+                              className={`px-3 py-1.5 rounded-xl border text-caption font-bold flex items-center gap-1.5 cursor-pointer ${adapterPalette.softBtn}`}
+                            >
+                              <UserPlus size={13} />
+                              {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
+                            </button>
+                          ) : null}
                         </div>
                       </div>
 
                       <div
                         ref={waMessagesScrollRef}
-                        className="flex-1 overflow-y-auto p-6 space-y-3 bg-emerald-500/[0.02]"
+                        className={`flex-1 overflow-y-auto p-6 space-y-3 ${adapterPalette.canvasTint}`}
                       >
                         {liveMessages.length === 0 && crmWaEvents.length === 0 ? (
                           <div className="text-center py-12 text-slate-400 text-body">
                             {t(
-                              "No messages in this WhatsApp conversation yet. Write a message below.",
-                              "V tejto WhatsApp konverzácii zatiaľ nie sú žiadne správy. Napíšte správu nižšie.",
-                              "Ebben a WhatsApp beszélgetésben még nincs üzenet. Írjon üzenetet alább.",
+                              `No messages in this ${activeChat.name} (${channelDisplayName}) conversation yet. Write a message below.`,
+                              `V tejto konverzácii ${activeChat.name} (${channelDisplayName}) zatiaľ nie sú žiadne správy. Napíšte správu nižšie.`,
+                              `Ebben a(z) ${activeChat.name} (${channelDisplayName}) beszélgetésben még nincs üzenet. Írjon üzenetet alább.`,
                             )}
                           </div>
                         ) : (
@@ -3475,18 +3766,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                   key={msg.id}
                                   className={`max-w-xl p-3.5 rounded-2xl shadow-xs space-y-1.5 ${
                                     msg.fromMe
-                                      ? "ml-auto bg-emerald-600 text-white"
+                                      ? `ml-auto ${adapterPalette.bubbleOut}`
                                       : "mr-auto bg-white border border-slate-200 text-slate-800"
                                   }`}
                                 >
                                   <div
                                     className={`text-micro flex items-center justify-between gap-3 ${
-                                      msg.fromMe ? "text-emerald-100" : "text-slate-400"
+                                      msg.fromMe ? adapterPalette.bubbleOutMeta : "text-slate-400"
                                     }`}
                                   >
                                     <span
                                       className={`font-bold ${
-                                        msg.fromMe ? "text-white" : "text-rose-600"
+                                        msg.fromMe ? "text-white" : adapterPalette.liveText
                                       }`}
                                     >
                                       {msg.fromMe ? currentUser?.name || "Me" : msg.senderName || activeChat.name}
@@ -3502,7 +3793,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                     >
                                       <img
                                         src={imgSrc}
-                                        alt={msg.text || "WhatsApp media"}
+                                        alt={msg.text || `${adapterLabel} media`}
                                         className="max-h-72 w-full object-cover rounded-xl"
                                       />
                                     </a>
@@ -3517,7 +3808,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               crmWaEvents.map((ev: any) => (
                                 <div
                                   key={ev.id}
-                                  className="max-w-xl ml-auto p-3.5 rounded-2xl bg-emerald-600 text-white shadow-xs space-y-1"
+                                  className={`max-w-xl ml-auto p-3.5 rounded-2xl ${adapterPalette.bubbleOut} shadow-xs space-y-1`}
                                 >
                                   <div className="text-micro opacity-80 flex items-center justify-between gap-2">
                                     <span>{ev.author || currentUser?.name}</span>
@@ -3542,17 +3833,17 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             }
                           }}
                           placeholder={t(
-                            "Write a WhatsApp message...",
-                            "Napíšte WhatsApp správu...",
-                            "Írjon WhatsApp üzenetet...",
+                            `Write a ${channelDisplayName} message to ${activeChat.name}...`,
+                            `Napíšte ${channelDisplayName} správu pre ${activeChat.name}...`,
+                            `Írjon ${channelDisplayName} üzenetet neki: ${activeChat.name}...`,
                           )}
-                          className="flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
+                          className={`flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white ${adapterPalette.inputFocus}`}
                         />
                         <button
                           type="button"
                           onClick={() => void handleSendWhatsAppMessage(activeChat, matchedLead)}
                           disabled={!waDraftMessage.trim() || !canEdit || waSending}
-                          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer"
+                          className={`px-4 py-2.5 rounded-xl ${adapterPalette.sendBtn} text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer`}
                         >
                           <Send size={15} /> {t("Send", "Odoslať", "Küldés")}
                         </button>
@@ -6281,7 +6572,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
                 <span className="type-overline text-pink-500">{t("CRM Client Registration", "Registrácia klienta CRM", "CRM ügyfél regisztráció")}</span>
-                <h3 className="text-body font-heading font-bold">{t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}</h3>
+                <h3 className="text-body font-heading font-bold">
+                  {pendingChatLinkKey
+                    ? t("Create New Client from Chat", "Vytvoriť nového klienta z chatu", "Új ügyfél létrehozása csevegésből")
+                    : t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}
+                </h3>
               </div>
               <button
                 onClick={closeClientSlideout}
@@ -6308,7 +6603,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <label className="type-overline text-slate-500">{t("Email Address", "E-mailová adresa", "E-mail cím")}</label>
                     <input
                       type="email"
-                      required
+                      required={!pendingChatLinkKey}
                       value={clientFormEmail}
                       onChange={(e) => setClientFormEmail(e.target.value)}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"
@@ -6330,7 +6625,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <label className="type-overline text-slate-500">{t("City", "Mesto", "Város")}</label>
                     <input
                       type="text"
-                      required
+                      required={!pendingChatLinkKey}
                       value={clientFormCity}
                       onChange={(e) => setClientFormCity(e.target.value)}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"
