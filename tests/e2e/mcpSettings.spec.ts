@@ -83,7 +83,8 @@ const webModes = (page: Page) =>
 const openManual = (page: Page) => webModes(page).nth(1).click();
 
 async function generate(page: Page) {
-  await page.getByRole('button', { name: /Generate key|Vygenerovať kľúč|Kulcs létrehozása/ }).click();
+  // Scoped to step 1: the setup prompt has its own "Generate a key and fill it in" button.
+  await page.getByTestId('mcp-step-key').getByRole('button', { name: /Generate key|Vygenerovať kľúč|Kulcs létrehozása/ }).click();
   await expect(field(page, 'mcp-full-key')).toBeVisible();
 }
 
@@ -276,7 +277,9 @@ test.describe('AI Assistant (MCP) settings', () => {
     expect(store.deletes).toBe(0);
 
     await holdToConfirm(revoke);
-    await expect(page.getByRole('button', { name: /Generate key|Vygenerovať kľúč|Kulcs létrehozása/ })).toBeVisible();
+    await expect(
+      page.getByTestId('mcp-step-key').getByRole('button', { name: /Generate key|Vygenerovať kľúč|Kulcs létrehozása/ }),
+    ).toBeVisible();
     expect(store.deletes).toBe(1);
   });
 
