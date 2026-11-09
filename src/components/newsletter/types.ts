@@ -129,6 +129,8 @@ export type AudiencePreview = {
   bySource: { client: number; lead: number; employee: number; extra: number };
   skipped: { unsubscribed: number; invalid: number };
   withoutEmail: number;
+  /** Queued addresses whose `first_name` merge value is empty (the contact has no first name stored). */
+  withoutFirstName: number;
   sample: { email: string; name: string; source: string; merge: Record<string, string> }[];
 };
 

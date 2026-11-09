@@ -334,6 +334,8 @@ export const AudienceEditor = ({
               {t(`${preview.total} recipients`, `${preview.total} príjemcov`, `${preview.total} címzett`)}
               {preview.withoutEmail > 0 &&
                 ` · ${t(`${preview.withoutEmail} without e-mail`, `${preview.withoutEmail} bez e-mailu`, `${preview.withoutEmail} e-mail nélkül`)}`}
+              {preview.withoutFirstName > 0 &&
+                ` · ${t(`${preview.withoutFirstName} without a first name`, `${preview.withoutFirstName} bez krstného mena`, `${preview.withoutFirstName} keresztnév nélkül`)}`}
               {preview.skipped.unsubscribed > 0 &&
                 ` · ${t(`${preview.skipped.unsubscribed} unsubscribed`, `${preview.skipped.unsubscribed} odhlásených`, `${preview.skipped.unsubscribed} leiratkozott`)}`}
               {preview.skipped.invalid > 0 &&

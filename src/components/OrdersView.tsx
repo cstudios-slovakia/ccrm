@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { contactPartsOfPerson } from "../utils/contactName";
 import { SectionIcon } from "./icons/SectionIcon";
 import { applyOrderFulfillment, buildOrderFulfillmentMovement, planOrderFulfillment } from "../utils/orderFulfillment";
 import type { PriceLevel } from "../utils/priceLevels";
@@ -218,6 +219,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             id: data.client_id,
             name: order.billing?.name || order.guest?.company || order.guest?.name || t("New Client", "Nový klient", "Új ügyfél"),
             contactPerson: order.guest?.name || "",
+            ...contactPartsOfPerson(order.guest?.name),
             email: order.guest?.email || "",
             phone: order.guest?.phone || "",
             clientType: "business",

@@ -16,6 +16,8 @@ export interface LeadLike {
   phone?: string;
   email?: string;
   contactPerson?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
 }
 
 const nameKey = (name?: string): string => (name || "").trim().toLowerCase();
@@ -76,7 +78,7 @@ export const profileRoleFor = <T extends LeadLike>(lead: T, all: T[], clientName
   return isLinkedById(lead, all) ? "other" : "sibling";
 };
 
-const CONTACT_FIELDS = ["phone", "email", "contactPerson"] as const;
+const CONTACT_FIELDS = ["phone", "email", "contactPerson", "contactFirstName", "contactLastName"] as const;
 
 /**
  * Applies a client profile to the records it belongs to (see `profileRoleFor`).

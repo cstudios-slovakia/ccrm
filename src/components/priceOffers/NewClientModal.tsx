@@ -9,6 +9,8 @@ import { applyCompanyDetailsToLead, registryCountryOf, EUROPEAN_COUNTRIES } from
 import type { CompanyBackedRecord, CompanyLookupField, CompanySuggestion } from "../../utils/companyRegistry";
 import { todayLocal, nowLocalStamp } from "../../utils/localTime";
 import { cn } from "../../utils/cn";
+import { ContactNameFields } from "../ui/ContactNameFields";
+import { composeContactName, contactNameFieldsOf } from "../../utils/contactName";
 import { inputClass, labelClass } from "./styles";
 
 /**
@@ -169,6 +171,8 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
       taxId: orUndefined(newClient.taxId),
       vatId: orUndefined(newClient.vatId),
       contactPerson: orUndefined(newClient.contactPerson),
+      contactFirstName: (newClient.contactFirstName || "").trim(),
+      contactLastName: (newClient.contactLastName || "").trim(),
       establishmentDate: orUndefined(newClient.establishmentDate),
       legalForm: orUndefined(newClient.legalForm),
       skNace: orUndefined(newClient.skNace),
@@ -339,12 +343,12 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
 
           {newClient.clientType !== "person" && (
             <div>
-              <label className={labelClass}>{t("Contact person", "Kontaktná osoba", "Kapcsolattartó")}</label>
-              <input
-                type="text"
-                value={newClient.contactPerson || ""}
-                onChange={e => patchNewClient({ contactPerson: e.target.value })}
-                className={inputClass}
+              <ContactNameFields
+                lang={lang}
+                value={contactNameFieldsOf(newClient)}
+                onChange={v => patchNewClient({ contactFirstName: v.firstName, contactLastName: v.lastName, contactPerson: composeContactName(v.firstName, v.lastName) })}
+                inputClassName={inputClass}
+                labelClassName={labelClass}
               />
             </div>
           )}

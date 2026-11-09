@@ -160,6 +160,9 @@ export interface Lead {
   taxId?: string;
   vatId?: string;
   contactPerson?: string;
+  /** The contact person's first and last name as typed; `contactPerson` is composed from them (docs/NEWSLETTER.md C18). */
+  contactFirstName?: string;
+  contactLastName?: string;
   website?: string;
   establishmentDate?: string;
   legalForm?: string;

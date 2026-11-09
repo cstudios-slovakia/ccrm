@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
 import { applyOrderFulfillment, buildOrderFulfillmentMovement, planOrderFulfillment } from "../utils/orderFulfillment";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
+import { ContactNameFields } from "./ui/ContactNameFields";
+import { contactNameFieldsOf, contactNameFromRegistry, contactNamePatch, type ContactNameParts } from "../utils/contactName";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
@@ -608,7 +610,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientCompanyId, setNewClientCompanyId] = useState("");
   const [newClientTaxId, setNewClientTaxId] = useState("");
   const [newClientVatId, setNewClientVatId] = useState("");
-  const [newClientContactPerson, setNewClientContactPerson] = useState("");
+  const [newClientContact, setNewClientContact] = useState<ContactNameParts>({ firstName: "", lastName: "" });
   const [newClientWebsite, setNewClientWebsite] = useState("");
   const [newClientEstablishmentDate, setNewClientEstablishmentDate] = useState("");
   const [newClientLegalForm, setNewClientLegalForm] = useState("");
@@ -824,7 +826,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (details.country) setNewClientCountry(details.country);
     // The statutory body doubles as a contact person, but never over one the
     // user has already written down.
-    if (details.contactPerson && !newClientContactPerson.trim()) setNewClientContactPerson(details.contactPerson);
+    if (details.contactPerson && !newClientContact.firstName.trim() && !newClientContact.lastName.trim()) {
+      setNewClientContact(contactNameFromRegistry(details.contactPerson) ?? { firstName: details.contactPerson, lastName: "" });
+    }
 
     setNewClientEstablishmentDate(details.establishmentDate || "");
     setNewClientLegalForm(details.legalForm || "");
@@ -939,7 +943,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: newClientType !== "person" ? newClientTaxId.trim() : undefined,
       vatId: newClientType !== "person" ? newClientVatId.trim() : undefined,
       vatValidationResult: newClientType !== "person" ? newClientVatResult : null,
-      contactPerson: newClientType !== "person" ? newClientContactPerson.trim() : undefined,
+      ...(newClientType !== "person" ? contactNamePatch(null, newClientContact) : {}),
       website: newClientType !== "person" ? newClientWebsite.trim() : undefined,
       establishmentDate: newClientType !== "person" ? newClientEstablishmentDate.trim() : undefined,
       legalForm: newClientType !== "person" ? newClientLegalForm.trim() : undefined,
@@ -981,7 +985,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientCompanyId("");
     setNewClientTaxId("");
     setNewClientVatId("");
-    setNewClientContactPerson("");
+    setNewClientContact({ firstName: "", lastName: "" });
     setNewClientWebsite("");
     setNewClientEstablishmentDate("");
     setNewClientLegalForm("");
@@ -1033,6 +1037,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: string;
       vatId: string;
       contactPerson: string;
+      contactFirstName: string;
+      contactLastName: string;
       website: string;
       establishmentDate: string;
       legalForm: string;
@@ -1098,6 +1104,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           taxId: anchor.taxId || "",
           vatId: anchor.vatId || "",
           contactPerson: anchor.contactPerson || "",
+          contactFirstName: anchor.contactFirstName || "",
+          contactLastName: anchor.contactLastName || "",
           website: anchor.website || "",
           establishmentDate: anchor.establishmentDate || "",
           legalForm: anchor.legalForm || "",
@@ -1462,7 +1470,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileCompanyId, setProfileCompanyId] = useState("");
   const [profileTaxId, setProfileTaxId] = useState("");
   const [profileVatId, setProfileVatId] = useState("");
-  const [profileContactPerson, setProfileContactPerson] = useState("");
+  const [profileContact, setProfileContact] = useState<ContactNameParts>({ firstName: "", lastName: "" });
   const [profileWebsite, setProfileWebsite] = useState("");
   const [profileEstablishmentDate, setProfileEstablishmentDate] = useState("");
   const [profileLegalForm, setProfileLegalForm] = useState("");
@@ -1491,7 +1499,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (details.city) setProfileCity(details.city);
     if (details.postalCode) setProfilePostalCode(details.postalCode);
     if (details.country) setProfileCountry(details.country);
-    if (details.contactPerson && !profileContactPerson.trim()) setProfileContactPerson(details.contactPerson);
+    if (details.contactPerson && !profileContact.firstName.trim() && !profileContact.lastName.trim()) {
+      setProfileContact(contactNameFromRegistry(details.contactPerson) ?? { firstName: details.contactPerson, lastName: "" });
+    }
 
     setProfileEstablishmentDate(details.establishmentDate || "");
     setProfileLegalForm(details.legalForm || "");
@@ -2740,7 +2750,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           setProfileVatResult(null);
           autoCheckedVatRef.current = null;
         }
-        setProfileContactPerson(activeClient.contactPerson);
+        setProfileContact(contactNameFieldsOf(activeClient));
         setProfileWebsite(activeClient.website);
         setProfileEstablishmentDate(activeClient.establishmentDate || "");
         setProfileLegalForm(activeClient.legalForm || "");
@@ -2841,7 +2851,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: profileType !== "person" ? profileTaxId.trim() : undefined,
       vatId: profileType !== "person" ? profileVatId.trim() : undefined,
       vatValidationResult: profileType !== "person" ? profileVatResult : null,
-      contactPerson: profileType !== "person" ? profileContactPerson.trim() : undefined,
+      ...(profileType !== "person"
+        ? contactNamePatch(activeClient, profileContact)
+        : { contactPerson: undefined, contactFirstName: "", contactLastName: "" }),
       website: profileType !== "person" ? profileWebsite.trim() : undefined,
       establishmentDate: profileType !== "person" ? profileEstablishmentDate.trim() : undefined,
       legalForm: profileType !== "person" ? profileLegalForm.trim() : undefined,
@@ -3604,7 +3616,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       setProfileVatResult(null);
                       autoCheckedVatRef.current = null;
                     }
-                    setProfileContactPerson(activeClient.contactPerson);
+                    setProfileContact(contactNameFieldsOf(activeClient));
                     setProfileWebsite(activeClient.website);
                     setProfileEstablishmentDate(activeClient.establishmentDate || "");
                     setProfileLegalForm(activeClient.legalForm || "");
@@ -3927,20 +3939,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.contact_person")}</label>
-                        <input
-                          type="text"
-                          readOnly={!isEditingProfile}
-                          value={profileContactPerson}
-                          onChange={(e) => setProfileContactPerson(e.target.value)}
-                          className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
-                            isEditingProfile 
-                              ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
-                          }`}
-                        />
-                      </div>
+                      <ContactNameFields
+                        className="contents"
+                        lang={systemLanguage}
+                        value={profileContact}
+                        onChange={setProfileContact}
+                        disabled={!isEditingProfile}
+                        labelClassName="type-overline text-slate-400"
+                        inputClassName={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
+                          isEditingProfile
+                            ? "bg-white border-2 border-slate-200 text-slate-800"
+                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
+                        }`}
+                      />
                       <div className="space-y-1">
                         <label className="type-overline text-slate-400 flex items-center gap-1"><Globe className="h-3 w-3" /> {getTranslation(systemLanguage, "profile.website")}</label>
                         <input
@@ -7085,18 +7096,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="type-overline text-slate-400 block">
-                        {systemLanguage === "sk" ? "Kontaktná osoba" : systemLanguage === "hu" ? "Kapcsolattartó személy" : "Contact Person"}
-                      </label>
-                      <input
-                        type="text"
-                        value={newClientContactPerson}
-                        onChange={(e) => setNewClientContactPerson(e.target.value)}
-                        placeholder={systemLanguage === "sk" ? "napr. Ing. Ján Novák" : systemLanguage === "hu" ? "pl. Kiss János" : "e.g. Ing. Ján Novák"}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
-                      />
-                    </div>
+                    <ContactNameFields
+                      className="contents"
+                      lang={systemLanguage}
+                      value={newClientContact}
+                      onChange={setNewClientContact}
+                      inputClassName="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
                     
                     <div className="space-y-1">
                       <label className="type-overline text-slate-400 block">

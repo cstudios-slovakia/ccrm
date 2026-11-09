@@ -1,4 +1,6 @@
 import { PRODUCT_NAME } from "../utils/brand";
+import { ContactNameFields } from "./ui/ContactNameFields";
+import { contactNameFieldsOf, contactNamePatch, type ContactNameParts } from "../utils/contactName";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
@@ -2360,7 +2362,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [leadCity, setLeadCity] = useState("");
     const [leadPhone, setLeadPhone] = useState("");
     const [leadEmail, setLeadEmail] = useState("");
-    const [leadContactPerson, setLeadContactPerson] = useState("");
+    const [leadContact, setLeadContact] = useState<ContactNameParts>({ firstName: "", lastName: "" });
     const [leadClientType, setLeadClientType] = useState<
         "person" | "business" | "partner"
     >("person");
@@ -2522,7 +2524,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             setLeadCity(activeLead.city || "");
             setLeadPhone(activeLead.phone || "");
             setLeadEmail(activeLead.email || "");
-            setLeadContactPerson(activeLead.contactPerson || "");
+            setLeadContact(contactNameFieldsOf(activeLead));
             setLeadClientType(activeLead.clientType || "person");
             setLeadSelectedCategories(activeLead.categories || []);
             setLeadReferralId(activeLead.referralLeadId || "");
@@ -2620,6 +2622,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 taxId: lead.taxId || undefined,
                 vatId: lead.vatId || undefined,
                 contactPerson: lead.contactPerson || undefined,
+                contactFirstName: lead.contactFirstName || undefined,
+                contactLastName: lead.contactLastName || undefined,
                 website: lead.website || undefined,
                 interestNote: lead.interestNote || undefined,
             };
@@ -3425,7 +3429,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         city: leadCity.trim(),
                         phone: leadPhone.trim() || undefined,
                         email: leadEmail.trim() || undefined,
-                        contactPerson: leadContactPerson.trim() || undefined,
+                        ...contactNamePatch(l, leadContact),
                         clientType: leadClientType,
                         value: valNum,
                         owner: leadOwner,
@@ -5907,9 +5911,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             setLeadCity(activeLead.city || "");
                                             setLeadPhone(activeLead.phone || "");
                                             setLeadEmail(activeLead.email || "");
-                                            setLeadContactPerson(
-                                                activeLead.contactPerson || "",
-                                            );
+                                            setLeadContact(contactNameFieldsOf(activeLead));
                                             setLeadClientType(
                                                 activeLead.clientType ||
                                                     "person",
@@ -6207,28 +6209,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         )}
                                     </div>
                                 </div>
-                                {(leadClientType !== "person" || leadContactPerson) && (
-                                    <div className="space-y-1">
-                                        <label className="type-overline text-slate-500">
-                                            {getTranslation(
-                                                systemLanguage,
-                                                "profile.contact_person",
-                                            )}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            disabled={!isEditingLead}
-                                            value={leadContactPerson}
-                                            onChange={(e) =>
-                                                setLeadContactPerson(e.target.value)
-                                            }
-                                            className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
-                                                isEditingLead
-                                                    ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
-                                                    : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
-                                            }`}
-                                        />
-                                    </div>
+                                {(leadClientType !== "person" || leadContact.firstName || leadContact.lastName) && (
+                                    <ContactNameFields
+                                        lang={systemLanguage}
+                                        value={leadContact}
+                                        onChange={setLeadContact}
+                                        disabled={!isEditingLead}
+                                        labelClassName="type-overline text-slate-500"
+                                        inputClassName={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                                            isEditingLead
+                                                ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
+                                                : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
+                                        }`}
+                                    />
                                 )}
 
                                 {/* Valuation */}
