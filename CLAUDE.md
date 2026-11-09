@@ -125,6 +125,13 @@ Planned in phases in ONE file, [`docs/WHATSAPP-DEMO-MODULE.md`](docs/WHATSAPP-DE
 chats in the browser without WAAI, plus the chat-row summary card. When asked to "make wa-demo phase N",
 follow its Part A.
 
+## Newsletter module
+
+Planned in phases in ONE file, [`docs/NEWSLETTER.md`](docs/NEWSLETTER.md): campaigns sent to clients
+(required) plus optional leads, employees and extra addresses, our own drag-and-drop e-mail builder, a global
+header/footer, a throttled send queue and the unsubscribe page. Phases are split into parallel work packages.
+When asked to "make newsletter phase N", follow its Part A.
+
 ## Things that will bite you
 
 - `npm run build` rewrites `dist/`, which is committed. Use `npm run check`

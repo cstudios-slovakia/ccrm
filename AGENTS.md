@@ -9,3 +9,6 @@ report, stop).
 
 **Demo mode rebuild:** one file, [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). When asked to
 "make demo phase N", follow Part A of that file.
+
+**Newsletter module:** one file, [`docs/NEWSLETTER.md`](docs/NEWSLETTER.md). When asked to
+"make newsletter phase N", follow Part A of that file (parallel work packages, one worktree each).
