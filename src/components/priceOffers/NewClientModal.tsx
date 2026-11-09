@@ -10,7 +10,7 @@ import type { CompanyBackedRecord, CompanyLookupField, CompanySuggestion } from 
 import { todayLocal, nowLocalStamp } from "../../utils/localTime";
 import { cn } from "../../utils/cn";
 import { ContactNameFields } from "../ui/ContactNameFields";
-import { composeContactName, contactNameFieldsOf } from "../../utils/contactName";
+import { composeContactName, contactNameFieldsOf, contactNameShown } from "../../utils/contactName";
 import { inputClass, labelClass } from "./styles";
 
 /**
@@ -143,6 +143,8 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
     const isCompany = newClient.clientType !== "person";
     const city = (newClient.city || newClient.address?.city || "").trim();
     const orUndefined = (value?: string) => (isCompany && value?.trim() ? value.trim() : undefined);
+    // A private person's greeting name: what the form shows (typed, or the split of the name).
+    const contactParts = contactNameShown({ firstName: newClient.contactFirstName ?? "", lastName: newClient.contactLastName ?? "" }, name, !isCompany);
 
     const client: Lead = {
       id: `client-${Date.now()}`,
@@ -171,8 +173,8 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
       taxId: orUndefined(newClient.taxId),
       vatId: orUndefined(newClient.vatId),
       contactPerson: orUndefined(newClient.contactPerson),
-      contactFirstName: (newClient.contactFirstName || "").trim(),
-      contactLastName: (newClient.contactLastName || "").trim(),
+      contactFirstName: contactParts.firstName.trim(),
+      contactLastName: contactParts.lastName.trim(),
       establishmentDate: orUndefined(newClient.establishmentDate),
       legalForm: orUndefined(newClient.legalForm),
       skNace: orUndefined(newClient.skNace),
@@ -247,7 +249,8 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                   key={opt.id}
                   type="button"
                   onClick={() => {
-                    patchNewClient({ clientType: opt.id });
+                    // The typed name parts belong to the old meaning (a contact person / the person), so they start over.
+                    patchNewClient({ clientType: opt.id, contactFirstName: undefined, contactLastName: undefined, contactPerson: "" });
                     if (opt.id === "person") newClientLookup.close();
                   }}
                   className={cn(
@@ -339,6 +342,17 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                 "Kezdje el gépelni a nevet vagy az adószámot — a cégjegyzék kitölti a címet és az azonosítókat."
               )}
             </p>
+          )}
+
+          {newClient.clientType === "person" && (
+            <ContactNameFields
+              forPerson
+              lang={lang}
+              value={contactNameShown({ firstName: newClient.contactFirstName ?? "", lastName: newClient.contactLastName ?? "" }, newClient.name, true)}
+              onChange={v => patchNewClient({ contactFirstName: v.firstName, contactLastName: v.lastName })}
+              inputClassName={inputClass}
+              labelClassName={labelClass}
+            />
           )}
 
           {newClient.clientType !== "person" && (

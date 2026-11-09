@@ -3,7 +3,7 @@ import { SectionIcon } from "./icons/SectionIcon";
 import { applyOrderFulfillment, buildOrderFulfillmentMovement, planOrderFulfillment } from "../utils/orderFulfillment";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { ContactNameFields } from "./ui/ContactNameFields";
-import { contactNameFieldsOf, contactNameFromRegistry, contactNamePatch, type ContactNameParts } from "../utils/contactName";
+import { contactNameFieldsOf, contactNameFromRegistry, contactNamePatch, contactNameShown, type ContactNameParts } from "../utils/contactName";
 import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
@@ -946,7 +946,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: newClientType !== "person" ? newClientTaxId.trim() : undefined,
       vatId: newClientType !== "person" ? newClientVatId.trim() : undefined,
       vatValidationResult: newClientType !== "person" ? newClientVatResult : null,
-      ...(newClientType !== "person" ? contactNamePatch(null, newClientContact) : {}),
+      ...contactNamePatch(null, contactNameShown(newClientContact, newClientName, newClientType === "person"), newClientType === "person"),
       website: newClientType !== "person" ? newClientWebsite.trim() : undefined,
       establishmentDate: newClientType !== "person" ? newClientEstablishmentDate.trim() : undefined,
       legalForm: newClientType !== "person" ? newClientLegalForm.trim() : undefined,
@@ -2854,9 +2854,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       taxId: profileType !== "person" ? profileTaxId.trim() : undefined,
       vatId: profileType !== "person" ? profileVatId.trim() : undefined,
       vatValidationResult: profileType !== "person" ? profileVatResult : null,
-      ...(profileType !== "person"
-        ? contactNamePatch(activeClient, profileContact)
-        : { contactPerson: undefined, contactFirstName: "", contactLastName: "" }),
+      ...contactNamePatch(activeClient, profileContact, profileType === "person", profileName),
       website: profileType !== "person" ? profileWebsite.trim() : undefined,
       establishmentDate: profileType !== "person" ? profileEstablishmentDate.trim() : undefined,
       legalForm: profileType !== "person" ? profileLegalForm.trim() : undefined,
@@ -3678,7 +3676,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {isEditingProfile ? (
                     <CustomSelect
                       value={profileType}
-                      onChange={(v) => setProfileType(v as any)}
+                      onChange={(v) => { setProfileType(v as any); setProfileContact(contactNameFieldsOf(activeClient, v === "person")); }}
                       options={[
                         { value: "person", label: systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person" },
                         { value: "business", label: systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business" },
@@ -3694,6 +3692,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   )}
                 </div>
               </div>
+
+              {profileType === "person" && (
+                <ContactNameFields
+                  forPerson
+                  lang={systemLanguage}
+                  value={profileContact}
+                  onChange={setProfileContact}
+                  disabled={!isEditingProfile}
+                  labelClassName="type-overline text-slate-500"
+                  inputClassName={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                    isEditingProfile
+                      ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800"
+                      : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default select-all"
+                  }`}
+                />
+              )}
 
               {/* Phone & Email */}
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
@@ -6808,7 +6822,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             name="newClientType"
                             value={opt.id}
                             checked={active}
-                            onChange={() => setNewClientType(opt.id as any)}
+                            onChange={() => { setNewClientType(opt.id as any); setNewClientContact({ firstName: "", lastName: "" }); }}
                             className="sr-only"
                           />
                           <span>{opt.label}</span>
@@ -6881,6 +6895,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     />
                   </div>
                 </div>
+
+                {newClientType === "person" && (
+                  <ContactNameFields
+                    forPerson
+                    lang={systemLanguage}
+                    value={contactNameShown(newClientContact, newClientName, true)}
+                    onChange={setNewClientContact}
+                    inputClassName="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                  />
+                )}
 
                 <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
                   <div className="space-y-1">

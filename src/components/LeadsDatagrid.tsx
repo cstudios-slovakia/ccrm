@@ -3429,7 +3429,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         city: leadCity.trim(),
                         phone: leadPhone.trim() || undefined,
                         email: leadEmail.trim() || undefined,
-                        ...contactNamePatch(l, leadContact),
+                        ...contactNamePatch(l, leadContact, leadClientType === "person", leadName),
                         clientType: leadClientType,
                         value: valNum,
                         owner: leadOwner,
@@ -5635,11 +5635,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     </label>
                                                     <CustomSelect
                                                         value={leadClientType}
-                                                        onChange={(v) =>
-                                                            setLeadClientType(
-                                                                v as any,
-                                                            )
-                                                        }
+                                                        onChange={(v) => {
+                                                            setLeadClientType(v as any);
+                                                            setLeadContact(contactNameFieldsOf(activeLead, v === "person"));
+                                                        }}
                                                         size="sm"
                                                         options={[
                                                             {
@@ -6209,20 +6208,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         )}
                                     </div>
                                 </div>
-                                {(leadClientType !== "person" || leadContact.firstName || leadContact.lastName) && (
-                                    <ContactNameFields
-                                        lang={systemLanguage}
-                                        value={leadContact}
-                                        onChange={setLeadContact}
-                                        disabled={!isEditingLead}
-                                        labelClassName="type-overline text-slate-500"
-                                        inputClassName={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
-                                            isEditingLead
-                                                ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
-                                                : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
-                                        }`}
-                                    />
-                                )}
+                                <ContactNameFields
+                                    forPerson={leadClientType === "person"}
+                                    lang={systemLanguage}
+                                    value={leadContact}
+                                    onChange={setLeadContact}
+                                    disabled={!isEditingLead}
+                                    labelClassName="type-overline text-slate-500"
+                                    inputClassName={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                                        isEditingLead
+                                            ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-blue-500 text-slate-800"
+                                            : "bg-transparent border-2 border-transparent text-slate-900 text-body font-bold cursor-default select-all"
+                                    }`}
+                                />
 
                                 {/* Valuation */}
                                 <div className="space-y-1">

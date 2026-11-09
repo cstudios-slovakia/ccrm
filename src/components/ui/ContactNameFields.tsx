@@ -8,9 +8,9 @@ import type { ContactNameParts } from "../../utils/contactName";
  * into the record, which composes the full `contactPerson` and carries both parts.
  */
 const LABELS = {
-  en: { first: "First name", last: "Last name" },
-  sk: { first: "Meno", last: "Priezvisko" },
-  hu: { first: "Keresztnév", last: "Vezetéknév" },
+  en: { first: "First name", last: "Last name", greeting: "Name for greetings" },
+  sk: { first: "Meno", last: "Priezvisko", greeting: "Meno na oslovenie" },
+  hu: { first: "Keresztnév", last: "Vezetéknév", greeting: "Név a megszólításhoz" },
 } as const;
 
 interface ContactNameFieldsProps {
@@ -25,6 +25,11 @@ interface ContactNameFieldsProps {
   labelClassName?: string;
   /** Wrapper classes; the two fields sit side by side by default. */
   className?: string;
+  /**
+   * A private person's own name (docs/NEWSLETTER.md B1.7): the two fields sit under a "Name for
+   * greetings" heading, and `className` wraps the fields only.
+   */
+  forPerson?: boolean;
 }
 
 export const ContactNameFields: React.FC<ContactNameFieldsProps> = ({
@@ -35,9 +40,10 @@ export const ContactNameFields: React.FC<ContactNameFieldsProps> = ({
   inputClassName = "w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-blue-500 transition-all font-semibold",
   labelClassName = "type-overline text-slate-400 block",
   className = "grid grid-cols-2 gap-3",
+  forPerson = false,
 }) => {
   const copy = lang === "sk" ? LABELS.sk : lang === "hu" ? LABELS.hu : LABELS.en;
-  return (
+  const fields = (
     <div className={className}>
       <div className="space-y-1">
         <label className={labelClassName}>{copy.first}</label>
@@ -61,6 +67,13 @@ export const ContactNameFields: React.FC<ContactNameFieldsProps> = ({
           className={inputClassName}
         />
       </div>
+    </div>
+  );
+  if (!forPerson) return fields;
+  return (
+    <div className="space-y-1.5">
+      <span className={`${labelClassName} font-bold`}>{copy.greeting}</span>
+      {fields}
     </div>
   );
 };
