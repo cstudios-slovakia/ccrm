@@ -179,6 +179,17 @@ try {
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
+
+    // 4. Newsletter queue: one batch (20 s budget) after the other jobs. A newsletter error must
+    // never break the cron run; the worker pauses its own campaign when SMTP fails (api/newsletter_send.php).
+    $newsletter = null;
+    try {
+        require_once __DIR__ . '/newsletter_send.php';
+        $newsletter = ccrm_newsletter_tick($pdo);
+    } catch (Throwable $e) {
+        if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+    }
+
     echo json_encode([
         'success' => true,
         'message' => 'Queue processed successfully.',
@@ -186,6 +197,7 @@ try {
         'ticketPoll' => $ticketPollResult,
         'holidayRefresh' => $holidayRefresh,
         'activityPurge' => $activityPurge,
+        'newsletter' => $newsletter,
         'mailFiling' => $mailFiling === null ? null : [
             'ran' => $mailFiling['ran'] ?? false,
             'seen' => $mailFiling['seen'] ?? 0,

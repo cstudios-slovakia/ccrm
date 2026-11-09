@@ -13,9 +13,9 @@
  * Permissions (C14): the `newsletter` access key (view | edit) plus the toggles
  * `newsletter_send` and `newsletter_settings`.
  *
- * Implemented here: every read, write and settings action. The send actions (send_test,
- * start_send, pause, resume, cancel, tick) are added to $routes by the sending package.
- * Audience logic is in newsletter_audience.php, settings / shapes / images in newsletter_lib.php.
+ * Implemented here: every read, write, settings and send action. Audience logic is in
+ * newsletter_audience.php, settings / shapes / images in newsletter_lib.php, the send engine
+ * (start_send, send_test, pause / resume / cancel, the queue worker) in newsletter_send.php.
  */
 
 require_once __DIR__ . '/auth.php';
@@ -23,6 +23,7 @@ require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/newsletter_audience.php';
 require_once __DIR__ . '/newsletter_lib.php';
+require_once __DIR__ . '/newsletter_send.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -168,12 +169,7 @@ function ccrm_nl_do_audience_preview(array $ctx, array $body): void {
 function ccrm_nl_do_settings_get(array $ctx, array $body): void {
     $pdo = $ctx['pdo'];
     $sender = ccrm_newsletter_sender_info(ccrm_load_integrations_config($pdo));
-    $demo = false;
-    try {
-        $demo = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'")->fetchColumn() === 'true';
-    } catch (\Throwable $e) {
-    }
-    ccrm_nl_respond(['config' => ccrm_newsletter_load_config($pdo)] + $sender + ['demo' => $demo]);
+    ccrm_nl_respond(['config' => ccrm_newsletter_load_config($pdo)] + $sender + ['demo' => ccrm_newsletter_is_demo($pdo)]);
 }
 
 function ccrm_nl_do_suppressions(array $ctx, array $body): void {
@@ -411,6 +407,45 @@ function ccrm_nl_do_settings_save(array $ctx, array $body): void {
     ccrm_nl_respond(['config' => $config]);
 }
 
+// Send actions (permission `send`, tick = view). The engine is in newsletter_send.php.
+
+function ccrm_nl_do_send_test(array $ctx, array $body): void {
+    ccrm_nl_respond(ccrm_newsletter_send_test($ctx['pdo'], $body, $ctx['userName'], $ctx['userEmail']));
+}
+
+function ccrm_nl_do_start_send(array $ctx, array $body): void {
+    $id = ccrm_newsletter_start_send($ctx['pdo'], $body, $ctx['userName']);
+    ccrm_nl_respond(ccrm_nl_campaign_response($ctx['pdo'], $id));
+}
+
+function ccrm_nl_do_pause(array $ctx, array $body): void {
+    ccrm_nl_respond(ccrm_nl_campaign_response($ctx['pdo'], ccrm_newsletter_transition($ctx['pdo'], 'pause', $body['id'] ?? '', $ctx['userName'])));
+}
+
+function ccrm_nl_do_resume(array $ctx, array $body): void {
+    ccrm_nl_respond(ccrm_nl_campaign_response($ctx['pdo'], ccrm_newsletter_transition($ctx['pdo'], 'resume', $body['id'] ?? '', $ctx['userName'])));
+}
+
+function ccrm_nl_do_cancel(array $ctx, array $body): void {
+    ccrm_nl_respond(ccrm_nl_campaign_response($ctx['pdo'], ccrm_newsletter_transition($ctx['pdo'], 'cancel', $body['id'] ?? '', $ctx['userName'])));
+}
+
+/** The browser's poll while a campaign is sending: a short worker run (8 s), then the progress. */
+function ccrm_nl_do_tick(array $ctx, array $body): void {
+    $pdo = $ctx['pdo'];
+    $id = is_string($body['id'] ?? null) ? trim($body['id']) : '';
+    if ($id !== '') {
+        ccrm_nl_row($pdo, $id); // 404 for an unknown or deleted campaign
+    }
+    $worker = ccrm_newsletter_tick($pdo, 8, ccrm_app_base_url($pdo));
+    $payload = ['worker' => $worker['worker']];
+    $progress = $id !== '' ? ccrm_newsletter_progress($pdo, $id) : null;
+    if ($progress !== null) {
+        $payload['campaign'] = $progress;
+    }
+    ccrm_nl_respond($payload);
+}
+
 // ---------------------------------------------------------------------------------------
 // Request
 // ---------------------------------------------------------------------------------------
@@ -460,7 +495,12 @@ $routes = [
     'suppression_add' => ['edit', 'ccrm_nl_do_suppression_add'],
     'suppression_remove' => ['edit', 'ccrm_nl_do_suppression_remove'],
     'settings_save' => ['settings', 'ccrm_nl_do_settings_save'],
-    // Sending package: send_test, start_send, pause, resume, cancel (permission 'send'), tick ('view').
+    'send_test' => ['send', 'ccrm_nl_do_send_test'],
+    'start_send' => ['send', 'ccrm_nl_do_start_send'],
+    'pause' => ['send', 'ccrm_nl_do_pause'],
+    'resume' => ['send', 'ccrm_nl_do_resume'],
+    'cancel' => ['send', 'ccrm_nl_do_cancel'],
+    'tick' => ['view', 'ccrm_nl_do_tick'],
 ];
 
 if (!isset($routes[$action])) {
@@ -481,7 +521,7 @@ $userName = trim((string)($scope['sessionUserName'] ?? ''));
 if ($userName === '') {
     $userName = (string)($sessionUser['id'] ?? '');
 }
-$ctx = ['pdo' => $pdo, 'scope' => $scope, 'userName' => $userName];
+$ctx = ['pdo' => $pdo, 'scope' => $scope, 'userName' => $userName, 'userEmail' => trim((string)($scope['sessionUserEmail'] ?? ''))];
 
 try {
     $handler($ctx, $body);

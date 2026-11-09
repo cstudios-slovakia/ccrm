@@ -3,7 +3,8 @@
  * Offline checks for the Newsletter backend core (api/newsletter_audience.php, api/newsletter_lib.php).
  * No database, no web server. Run:  php scripts/test-newsletter.php   (npm run test:newsletter)
  *
- * The send engine (2A) adds its own sections: merge-tag parity, MIME builder, unsubscribe idempotency.
+ * Package 2A adds the last part: merge-tag parity (44 shared fixtures), MIME builder, SMTP client against a scripted
+ * server, send validation and the pure parts of the public pages.
  */
 chdir(dirname(__DIR__));
 require_once __DIR__ . '/../public/api/newsletter_audience.php';
@@ -277,6 +278,225 @@ $same('images list: newest first, images only, absolute urls',
 $same('images list: limit', count(ccrm_newsletter_list_images($tmp, 'https://x/', 1)), 1);
 array_map('unlink', glob($tmp . '/newsletter/2027/03/*'));
 @rmdir($tmp . '/newsletter/2027/03'); @rmdir($tmp . '/newsletter/2027'); @rmdir($tmp . '/newsletter'); @rmdir($tmp);
+
+// =========================================================================================
+// Package 2A: merge tags, MIME builder, SMTP client, send validation, public pages (pure parts)
+// =========================================================================================
+require_once __DIR__ . '/../public/api/newsletter_merge.php';
+require_once __DIR__ . '/../public/api/newsletter_mailer.php';
+require_once __DIR__ . '/../public/api/newsletter_send.php';
+require_once __DIR__ . '/../public/api/newsletter_public.php';
+
+// ---- merge tags: every case of the shared fixture (the TypeScript test runs the same file) ----
+$fixtures = json_decode((string)file_get_contents(__DIR__ . '/../src/components/newsletter/builder/mergeTags.fixtures.json'), true);
+$check('merge fixtures: the file has 44 cases', is_array($fixtures) && count($fixtures) === 44);
+foreach (is_array($fixtures) ? $fixtures : [] as $f) {
+    $same('merge: ' . $f['name'], ccrm_newsletter_substitute($f['template'], $f['values'], $f['context'], $f['mode']), $f['expected']);
+}
+$same('merge: tag names in order of first use', ccrm_newsletter_tag_names('{{b}} {{a|x}} {{ b }} {{c}}'), ['b', 'a', 'c']);
+$v = ccrm_newsletter_values_for(['name' => 'Jana', 'first_name' => 'Jana', 'company' => 'Acme', 'email' => 'old@x.sk'], 'jana@x.sk', str_repeat('a', 32), 'https://crm.x.sk/', 'Acme s.r.o.', 2027);
+$same('merge values: eight tags with token URLs', [$v['unsubscribe_url'], $v['view_online_url'], $v['sender_company'], $v['current_year'], $v['email']], [
+    'https://crm.x.sk/api/newsletter_public.php?a=unsubscribe&t=' . str_repeat('a', 32),
+    'https://crm.x.sk/api/newsletter_public.php?a=view&t=' . str_repeat('a', 32), 'Acme s.r.o.', '2027', 'jana@x.sk']);
+
+// ---- quoted-printable ----------------------------------------------------------------------
+$long = str_repeat('Dlhý riadok s diakritikou čšž ', 30) . "\n.dot line\nspace at end \n=sign\n";
+$qp = ccrm_newsletter_qp_encode($long);
+$lines = explode("\r\n", $qp);
+$check('qp: every line is at most 76 characters', max(array_map('strlen', $lines)) <= 76);
+$check('qp: only CRLF line ends', strpos(str_replace("\r\n", '', $qp), "\n") === false && strpos(str_replace("\r\n", '', $qp), "\r") === false);
+$same('qp: decodes back to the original', str_replace("\r\n", "\n", quoted_printable_decode($qp)), $long);
+$same('qp: trailing space and = are encoded', [strpos($qp, "space at end=20") !== false, strpos($qp, '=3Dsign') !== false], [true, true]);
+$same('qp: ASCII stays readable', ccrm_newsletter_qp_encode("Hello, world!"), 'Hello, world!');
+$edge = str_repeat('a', 74) . 'č';
+$check('qp: an encoded octet is never split across lines', max(array_map('strlen', explode("\r\n", ccrm_newsletter_qp_encode($edge)))) <= 76
+    && quoted_printable_decode(ccrm_newsletter_qp_encode($edge)) === $edge);
+
+// ---- headers: RFC 2047 subject and display names ---------------------------------------------
+$same('subject: short ASCII is left alone', ccrm_newsletter_encode_header_text('Spring offer'), 'Spring offer');
+$subject = 'Jarná ponuka: žiarovky, čipy a ďalšie novinky pre našich skvelých zákazníkov 🎉';
+$enc = ccrm_newsletter_encode_header_text($subject);
+$check('subject: non-ASCII is B-encoded UTF-8', strpos($enc, '=?UTF-8?B?') === 0);
+$check('subject: every encoded word is at most 75 characters', max(array_map('strlen', explode("\r\n ", $enc))) <= 75);
+$same('subject: decodes back', iconv_mime_decode('Subject: ' . $enc, 0, 'UTF-8'), 'Subject: ' . $subject);
+$same('subject: line breaks cannot inject a header', strpos(ccrm_newsletter_encode_header_text("Hi\r\nBcc: x@y.sk"), "\n"), false);
+$same('address: quoted ASCII name', ccrm_newsletter_address_header('Acme "Best" s.r.o.', 'a@b.sk'), '"Acme \\"Best\\" s.r.o." <a@b.sk>');
+$check('address: non-ASCII name is encoded', strpos(ccrm_newsletter_address_header('Jožko Mrkvička', 'a@b.sk'), '=?UTF-8?B?') === 0);
+$same('address: no name', ccrm_newsletter_address_header('', 'a@b.sk'), '<a@b.sk>');
+$check('message id: shape', (bool)preg_match('/^<nl\.nlc-abc\.42\.[0-9a-f]{12}@example\.sk>$/', ccrm_newsletter_message_id('nlc-abc', '42', 'news@example.sk')));
+
+// ---- the whole message ----------------------------------------------------------------------------
+$html = "<html><body><p>Ahoj Jana, žiarovky!</p>\n<p>.</p>\n.leading dot\n<a href=\"https://crm.x.sk/api/newsletter_public.php?a=unsubscribe&amp;t=abc\">Odhlásiť</a></body></html>";
+$msg = ccrm_newsletter_build_message([
+    'fromEmail' => 'news@example.sk', 'fromName' => 'Acme s.r.o.', 'toEmail' => 'jana@x.sk', 'toName' => 'Jana Nováková', 'replyTo' => 'reply@example.sk',
+    'subject' => 'Jarná ponuka', 'text' => "Ahoj Jana\n.\nOdhlásiť: https://crm.x.sk/u", 'html' => $html,
+    'messageId' => '<nl.nlc-abc.42.0123456789ab@example.sk>', 'unsubscribeUrl' => 'https://crm.x.sk/api/newsletter_public.php?a=unsubscribe&t=abc',
+    'campaignId' => 'nlc-abc', 'date' => 'Mon, 09 Nov 2026 10:00:00 +0000', 'boundary' => 'BOUNDARY',
+]);
+[$head, $bodyPart] = explode("\r\n\r\n", $msg, 2);
+$headers = [];
+foreach (explode("\r\n", $head) as $line) {
+    $headers[strtolower(strstr($line, ':', true))] = ltrim(substr(strstr($line, ':'), 1));
+}
+$check('message: only CRLF line ends', strpos(str_replace("\r\n", '', $msg), "\n") === false);
+$same('message: From, To, Reply-To, Date', [$headers['from'], $headers['to'] !== '' && strpos($headers['to'], '<jana@x.sk>') !== false, $headers['reply-to'], $headers['date']],
+    ['"Acme s.r.o." <news@example.sk>', true, '<reply@example.sk>', 'Mon, 09 Nov 2026 10:00:00 +0000']);
+$same('message: List-Unsubscribe and one-click', [$headers['list-unsubscribe'], $headers['list-unsubscribe-post']],
+    ['<https://crm.x.sk/api/newsletter_public.php?a=unsubscribe&t=abc>', 'List-Unsubscribe=One-Click']);
+$same('message: Message-ID, MIME-Version, campaign', [$headers['message-id'], $headers['mime-version'], $headers['x-newsletter-campaign']],
+    ['<nl.nlc-abc.42.0123456789ab@example.sk>', '1.0', 'nlc-abc']);
+$same('message: the subject is RFC 2047 encoded', [strpos($headers['subject'], '=?UTF-8?B?') === 0, iconv_mime_decode('Subject: ' . $headers['subject'], 0, 'UTF-8')], [true, 'Subject: Jarná ponuka']);
+$check('message: multipart/alternative with the boundary', strpos($headers['content-type'], 'multipart/alternative; boundary="BOUNDARY"') === 0);
+$parts = explode('--BOUNDARY', $bodyPart);
+$check('message: text/plain first, then text/html, then the closing boundary', count($parts) === 4 && strpos($parts[1], 'text/plain') !== false
+    && strpos($parts[2], 'text/html') !== false && trim($parts[3]) === '--');
+$partBody = fn(string $p) => explode("\r\n\r\n", $p, 2)[1] ?? '';
+$same('message: the html part decodes to the html', rtrim(quoted_printable_decode($partBody($parts[2])), "\r\n"), str_replace("\n", "\r\n", $html));
+$check('message: both parts are quoted-printable UTF-8', substr_count($msg, "Content-Transfer-Encoding: quoted-printable") === 2 && substr_count($msg, 'charset=UTF-8') === 2);
+$check('message: every line is at most 998 characters (RFC 5322)', max(array_map('strlen', explode("\r\n", $msg))) <= 998);
+$stuffed = ccrm_newsletter_dot_stuff($msg);
+$check('dot-stuffing: no line starts with a single dot', !preg_match('/^\.(?!\.)/m', $stuffed) && strpos($stuffed, "\r\n..\r\n") !== false);
+$same('dot-stuffing: only the leading dot is doubled', ccrm_newsletter_dot_stuff(".a\n..b\nc.d\r\n."), "..a\r\n...b\r\nc.d\r\n..");
+$same('dot-stuffing: it can be undone', preg_replace('/^\.\./m', '.', $stuffed), $msg);
+
+// ---- SMTP: profile and a scripted session ------------------------------------------------------------
+$prof = fn(array $c) => ccrm_newsletter_smtp::profile($c, 'crm.example.sk');
+$ssl = $prof(['smtpHost' => 'smtp.x.sk', 'smtpPort' => 465, 'smtpUser' => 'u@x.sk', 'smtpPassword' => 'pw', 'smtpSecure' => 'ssl']);
+$same('smtp profile: port 465 is implicit SSL, sender falls back to the user', [$ssl['secure'], $ssl['from'], $ssl['auth']], ['ssl', 'u@x.sk', true]);
+$same('smtp profile: port 587 is STARTTLS', $prof(['smtpHost' => 'h', 'smtpPort' => 587, 'smtpUser' => 'u', 'smtpPassword' => 'p', 'smtpSecure' => 'ssl', 'senderEmail' => 'n@x.sk'])['secure'], 'starttls');
+$same('smtp profile: explicit tls is STARTTLS, explicit none is plain', [
+    $prof(['smtpHost' => 'h', 'smtpPort' => 25, 'smtpUser' => 'u', 'smtpPassword' => 'p', 'smtpSecure' => 'tls'])['secure'],
+    $prof(['smtpHost' => 'h', 'smtpPort' => 25, 'smtpSecure' => 'none', 'smtpAuth' => false])['secure'],
+], ['starttls', 'none']);
+$ex = $prof(['emailProvider' => 'exchange', 'exchMailbox' => 'me@corp.com', 'exchPassword' => 'pw']);
+$same('smtp profile: Exchange uses Office 365 on 587', [$ex['host'], $ex['port'], $ex['secure'], $ex['user'], $ex['from']], ['smtp.office365.com', 587, 'starttls', 'me@corp.com', 'me@corp.com']);
+$stageOf = function (callable $fn): ?string {
+    try { $fn(); } catch (ccrm_newsletter_smtp_error $e) { return $e->stage; }
+    return null;
+};
+$same('smtp profile: no host is refused', $stageOf(fn() => $prof(['smtpPort' => 25])), 'connect');
+$same('smtp profile: auth without a password is refused', $stageOf(fn() => $prof(['smtpHost' => 'h', 'smtpPort' => 25, 'smtpUser' => 'u'])), 'auth');
+
+if (!class_exists('NlScriptStream')) {
+    /**
+     * A stream wrapper that plays a server script, one whole reply per read, and records what the client wrote.
+     * (PHP drops a read/write stream's read buffer on every write, so replies must arrive one at a time, each
+     * one fully consumed by the client's fgets loop before it writes again, as a real server's replies do.)
+     */
+    class NlScriptStream {
+        public static $queue = [];
+        public static $written = '';
+        public $context;
+        public function stream_open($path, $mode, $options, &$opened) { return true; }
+        public function stream_read($count) { return (string)array_shift(self::$queue); }
+        public function stream_eof() { return !self::$queue; }
+        public function stream_write($d) { self::$written .= $d; return strlen($d); }
+        public function stream_set_option($o, $a, $b) { return false; }
+        public function stream_stat() { return []; }
+        public function stream_close() {}
+    }
+    stream_wrapper_register('nlscript', 'NlScriptStream');
+}
+/** Runs $fn(smtp) against a scripted server; returns what the client wrote. */
+$session = function (string $script, array $profile, callable $fn): string {
+    preg_match_all('/(?:\d{3}-[^\n]*\n)*\d{3} [^\n]*\n/', $script, $replies);   // "250-a" lines continue, "250 b" ends a reply
+    NlScriptStream::$queue = $replies[0];
+    NlScriptStream::$written = '';
+    $smtp = new ccrm_newsletter_smtp();
+    $smtp->attach(fopen('nlscript://s', 'r+'));
+    $smtp->handshake($profile);
+    $fn($smtp);
+    return NlScriptStream::$written;
+};
+$plain = ['host' => 'h', 'port' => 25, 'secure' => 'none', 'user' => '', 'pass' => '', 'auth' => false, 'from' => 'news@example.sk', 'serverName' => 'crm.example.sk'];
+$hello = "220 mail ready\r\n250-mail\r\n250-PIPELINING\r\n250 8BITMIME\r\n";
+$written = $session($hello . "250 ok\r\n250 ok\r\n354 go on\r\n250 queued\r\n", $plain, fn($s) => $s->send('news@example.sk', 'jana@x.sk', "Subject: x\r\n\r\n.dot\r\nbody"));
+$check('smtp: a normal message goes through MAIL, RCPT, DATA and ends with CRLF.CRLF',
+    strpos($written, "EHLO crm.example.sk\r\n") === 0 && strpos($written, "MAIL FROM:<news@example.sk>\r\n") !== false
+    && strpos($written, "RCPT TO:<jana@x.sk>\r\n") !== false && strpos($written, "\r\nDATA\r\n") !== false
+    && strpos($written, "\r\n..dot\r\n") !== false && substr($written, -5) === "\r\n.\r\n");
+$authProfile = ['auth' => true, 'user' => 'u@x.sk', 'pass' => 'secret-pw'] + $plain;
+$caught = null;
+try {
+    $session($hello . "334 VXNlcm5hbWU6\r\n334 UGFzc3dvcmQ6\r\n535 5.7.8 Authentication failed\r\n", $authProfile, fn($s) => null);
+} catch (ccrm_newsletter_smtp_error $e) { $caught = $e; }
+$same('smtp: a refused login is stage auth with the server reply and no password', [$caught->stage, $caught->smtpCode, $caught->getMessage()], ['auth', 535, '535 5.7.8 Authentication failed']);
+$caught = null;
+$written = '';
+try {
+    $session($hello . "250 ok\r\n550 5.1.1 No such user\r\n250 reset\r\n", $plain, fn($s) => $s->send('news@example.sk', 'gone@x.sk', 'Subject: x'));
+} catch (ccrm_newsletter_smtp_error $e) { $caught = $e; $written = NlScriptStream::$written; }
+$same('smtp: 550 on RCPT is a hard bounce, permanent, and the session is reset', [$caught->stage, $caught->smtpCode, $caught->isHardBounce(), $caught->isTransient(), strpos($written, "RSET\r\n") !== false], ['rcpt', 550, true, false, true]);
+$caught = null;
+try {
+    $session($hello . "250 ok\r\n450 4.2.1 Mailbox busy\r\n250 reset\r\n", $plain, fn($s) => $s->send('news@example.sk', 'busy@x.sk', 'Subject: x'));
+} catch (ccrm_newsletter_smtp_error $e) { $caught = $e; }
+$same('smtp: 450 on RCPT is transient, not a bounce', [$caught->isTransient(), $caught->isHardBounce(), $caught->dropped], [true, false, false]);
+$caught = null;
+try {
+    $session($hello . "250 ok\r\n250 ok\r\n354 go\r\n554 5.7.1 Rejected as spam\r\n250 reset\r\n", $plain, fn($s) => $s->send('news@example.sk', 'a@x.sk', 'Subject: x'));
+} catch (ccrm_newsletter_smtp_error $e) { $caught = $e; }
+$same('smtp: a rejected body is permanent but never a bounce', [$caught->stage, $caught->isTransient(), $caught->isHardBounce()], ['body', false, false]);
+$caught = null;
+try {
+    $session($hello . "250 ok\r\n", $plain, fn($s) => $s->send('news@example.sk', 'a@x.sk', 'Subject: x'));
+} catch (ccrm_newsletter_smtp_error $e) { $caught = $e; }
+$same('smtp: a dropped connection is transient and marked dropped', [$caught->dropped, $caught->isTransient()], [true, true]);
+$caught = null;
+try {
+    $session($hello . "421 4.3.2 Service shutting down\r\n", $plain, fn($s) => $s->send('news@example.sk', 'a@x.sk', 'Subject: x'));
+} catch (ccrm_newsletter_smtp_error $e) { $caught = $e; }
+$same('smtp: 421 closes the channel', [$caught->smtpCode, $caught->dropped], [421, true]);
+
+// ---- start_send validation (pure part) ---------------------------------------------------------------
+$goodHtml = '<html><body><p>Hi</p><a href="{{unsubscribe_url}}">Unsubscribe</a><a href="https://x.sk/?a=1&amp;b=2">x</a><a href="mailto:a@x.sk">m</a><img src="https://x.sk/a.png"></body></html>';
+$sendCode = fn(string $h, string $t = 'text') => $throws(fn() => ccrm_newsletter_check_send_html($h, $t));
+$same('send check: a good e-mail passes', $sendCode($goodHtml), null);
+$same('send check: the unsubscribe tag with a fallback or spaces counts', $sendCode('<a href="{{ unsubscribe_url | x }}">u</a>'), null);
+$same('send check: no unsubscribe link', $sendCode('<p>Hi</p>'), 'missing_unsubscribe');
+$same('send check: a different tag is not enough', $sendCode('<a href="{{view_online_url}}">v</a>'), 'missing_unsubscribe');
+$same('send check: data: image src', $sendCode($goodHtml . '<img src="data:image/png;base64,AAAA">'), 'data_url_image');
+$same('send check: data: image, upper case and spaces', $sendCode($goodHtml . "<IMG SRC = ' DATA:image/png;base64,AAAA'>"), 'data_url_image');
+$same('send check: css url(data:)', $sendCode($goodHtml . '<div style="background:url(data:image/png;base64,AA)">'), 'data_url_image');
+$same('send check: javascript: href', $sendCode($goodHtml . '<a href="javascript:alert(1)">x</a>'), 'dangerous_url');
+$same('send check: entity-obfuscated javascript:', $sendCode($goodHtml . '<a href="jav&#x61;script&colon;alert(1)">x</a>'), 'dangerous_url');
+$same('send check: tab inside the scheme', $sendCode($goodHtml . "<a href=\"java\tscript:alert(1)\">x</a>"), 'dangerous_url');
+$same('send check: vbscript: and data: href', [$sendCode($goodHtml . '<a href=vbscript:x>x</a>'), $sendCode($goodHtml . '<a href="data:text/html,hi">x</a>')], ['dangerous_url', 'dangerous_url']);
+$same('send check: text that merely mentions javascript: is fine', $sendCode($goodHtml . '<p>javascript: is a scheme</p>'), null);
+$same('send check: an html part over 1 MB', $sendCode($goodHtml . str_repeat('x', 1048577)), 'html_too_large');
+$same('send check: a text part over 1 MB', $sendCode($goodHtml, str_repeat('x', 1048577)), 'html_too_large');
+$same('text from html: tags, entities and styles', ccrm_newsletter_text_from_html('<style>p{}</style><p>A &amp; B</p><p>C<br>D</p>'), "A & B\nC\nD");
+$same('transitions: who may pause, resume, cancel', ccrm_newsletter_transitions(), ['pause' => ['sending'], 'resume' => ['paused'], 'cancel' => ['sending', 'paused']]);
+$cfg = ccrm_newsletter_default_config();
+$cfg['sender'] = ['fromName' => 'Settings Name', 'replyTo' => 'set@x.sk'];
+$same('sender fields: campaign beats settings beats company', [
+    ccrm_newsletter_sender_fields(['from_name' => 'Campaign', 'reply_to' => 'c@x.sk'], $cfg, 'Company'),
+    ccrm_newsletter_sender_fields(['from_name' => null, 'reply_to' => null], $cfg, 'Company'),
+    ccrm_newsletter_sender_fields(['from_name' => '', 'reply_to' => ''], ccrm_newsletter_default_config(), 'Company'),
+], [['fromName' => 'Campaign', 'replyTo' => 'c@x.sk'], ['fromName' => 'Settings Name', 'replyTo' => 'set@x.sk'], ['fromName' => 'Company', 'replyTo' => '']]);
+
+// ---- public pages (pure parts) ---------------------------------------------------------------------------
+$same('mask: first character and the domain', [ccrm_newsletter_mask_email('jana@example.com'), ccrm_newsletter_mask_email('Ľuboš@x.sk'), ccrm_newsletter_mask_email('nope')],
+    ['j•••@example.com', 'Ľ•••@x.sk', '•••']);
+$same('token kinds', [ccrm_newsletter_token_kind('test'), ccrm_newsletter_token_kind(str_repeat('a1', 16)), ccrm_newsletter_token_kind(str_repeat('A1', 16)),
+    ccrm_newsletter_token_kind('abc'), ccrm_newsletter_token_kind(null), ccrm_newsletter_token_kind(['x'])], ['test', 'token', 'invalid', 'invalid', 'invalid', 'invalid']);
+$same('one-click: form field or raw body', [
+    ccrm_newsletter_is_one_click(['List-Unsubscribe' => 'One-Click'], ''), ccrm_newsletter_is_one_click([], "List-Unsubscribe=One-Click\r\n"),
+    ccrm_newsletter_is_one_click([], ''), ccrm_newsletter_is_one_click(['List-Unsubscribe' => 'yes'], 'x=1'),
+], [true, true, false, false]);
+$same('language: anything else is the system default', [ccrm_newsletter_public_lang('en'), ccrm_newsletter_public_lang('hu'), ccrm_newsletter_public_lang('de'), ccrm_newsletter_public_lang(false)], ['en', 'hu', 'sk', 'sk']);
+$allLangs = true;
+foreach (ccrm_newsletter_public_strings() as $texts) {
+    foreach (['en', 'sk', 'hu'] as $l) {
+        $allLangs = $allLangs && isset($texts[$l]) && $texts[$l] !== '';
+    }
+}
+$check('public pages: every text exists in en, sk and hu', $allLangs);
+$page = ccrm_newsletter_public_page('en', 'Title <x>', '<p>' . ccrm_newsletter_public_text('ask', 'en', 'Acme <b>&</b> s.r.o.') . '</p>', 'Acme <b>&</b> s.r.o.');
+$check('public pages: the company name is escaped and shown', strpos($page, '<b>') === false && strpos($page, 'Acme &lt;b&gt;&amp;&lt;/b&gt; s.r.o.') !== false);
+$check('public pages: without a company the page says "this sender", never the product name',
+    strpos(ccrm_newsletter_public_text('ask', 'en'), 'this sender') !== false && stripos($page . ccrm_newsletter_public_text('ask', 'en'), KOPERNIQ_PRODUCT_NAME) === false);
+$same('public pages: the title is escaped once', strpos($page, '<title>Title &lt;x&gt;</title>') !== false, true);
 
 echo $fails === 0 ? "\nAll newsletter checks passed.\n" : "\n$fails newsletter check(s) FAILED.\n";
 exit($fails === 0 ? 0 : 1);

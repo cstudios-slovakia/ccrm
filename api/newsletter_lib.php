@@ -200,6 +200,15 @@ if (!function_exists('ccrm_newsletter_default_config')) {
         return $cfg;
     }
 
+    /** `system_settings.DEMO_MODE = 'true'`: the instance is a demo, so no newsletter e-mail leaves the server (C10). */
+    function ccrm_newsletter_is_demo(\PDO $pdo): bool {
+        try {
+            return $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'")->fetchColumn() === 'true';
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     function ccrm_newsletter_load_config(\PDO $pdo): array {
         try {
             $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'NEWSLETTER_CONFIG'");
