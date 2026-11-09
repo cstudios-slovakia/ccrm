@@ -1,37 +1,14 @@
-import React, { useEffect, useId, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  Bot,
-  Check,
-  CheckCircle2,
-  ChevronRight,
-  Copy,
-  Eye,
-  EyeOff,
-  Key,
-  LifeBuoy,
-  RefreshCw,
-  Terminal,
-  Trash2,
-} from "lucide-react";
+import React, { useEffect, useId, useState } from "react";
+import { AlertTriangle, Bot, CheckCircle2, Eye, EyeOff, Key, LifeBuoy, RefreshCw, Terminal, Trash2 } from "lucide-react";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { asLang } from "../utils/undoMessages";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { useConfirmDialog } from "./ui/ConfirmDialog";
-import {
-  MCP_KEY_PLACEHOLDER,
-  buildAgentPrompt,
-  buildCliCommand,
-  buildEditorConfig,
-  buildStdioConfig,
-  mcpBearerHeader,
-  mcpKeyHeader,
-  mcpServerUrl,
-} from "../utils/mcpConnect";
+import { MCP_KEY_PLACEHOLDER, buildAgentPrompt, buildCliCommand, buildEditorConfig, buildStdioConfig } from "../utils/mcpConnect";
 import { PRODUCT_NAME } from "../utils/brand";
-
-type T = (en: string, sk: string, hu: string) => string;
+import { CopyField, Disclosure, showToast, type T } from "./mcp/mcpUi";
+import { McpWebConnectPanel } from "./mcp/McpWebConnectPanel";
 
 interface McpKeyInfo {
   id: number;
@@ -45,165 +22,6 @@ interface McpKeyState {
   has_key: boolean;
   key?: McpKeyInfo;
 }
-
-const showToast = (message: string, variant?: "error" | "warning") =>
-  (window as any).showToast?.(message, variant);
-
-const COPIED_MS = 2500;
-
-/** One copy helper: copies, flips `copied` for 2.5 s, and tells the user when the browser refuses. */
-function useCopy(failMessage: string): [boolean, (text: string) => Promise<void>] {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-
-  const copy = async (text: string) => {
-    try {
-      // Throws when the Clipboard API is missing (plain HTTP) or permission is denied.
-      await navigator.clipboard.writeText(text);
-    } catch {
-      showToast(failMessage, "error");
-      return;
-    }
-    setCopied(true);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setCopied(false), COPIED_MS);
-  };
-  return [copied, copy];
-}
-
-const CopyButton: React.FC<{
-  value: string;
-  label: string;
-  t: T;
-  disabled?: boolean;
-  describedBy?: string;
-}> = ({ value, label, t, disabled, describedBy }) => {
-  const [copied, copy] = useCopy(
-    t(
-      "Could not copy. Select the text and copy it by hand.",
-      "Kopírovanie sa nepodarilo. Označte text a skopírujte ho ručne.",
-      "A másolás nem sikerült. Jelölje ki a szöveget, és másolja ki kézzel."
-    )
-  );
-  const copyWord = t("Copy", "Kopírovať", "Másolás");
-  const copiedWord = t("Copied!", "Skopírované!", "Másolva!");
-  return (
-    <>
-      <button
-        type="button"
-        disabled={disabled}
-        aria-label={`${copyWord}: ${label}`}
-        aria-describedby={describedBy}
-        onClick={() => copy(value)}
-        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-ui font-bold transition-all flex items-center gap-1.5 shadow border border-slate-700 cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-slate-800"
-      >
-        {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-slate-300" />}
-        <span className={copied ? "text-emerald-300" : ""}>{copied ? copiedWord : copyWord}</span>
-      </button>
-      <span className="sr-only" aria-live="polite">
-        {copied ? copiedWord : ""}
-      </span>
-    </>
-  );
-};
-
-interface CopyFieldProps {
-  label: string;
-  value: string;
-  t: T;
-  hint?: string;
-  monospace?: boolean;
-  /** Greys out Copy (the value cannot be copied right now) and explains why. */
-  disabled?: boolean;
-  disabledReason?: string;
-  /** What to show instead of `value` (a masked key); Copy still copies `value`. */
-  displayValue?: string;
-  /** The value still holds `<your key>`: copyable, but the user must replace it. */
-  placeholderWarning?: string;
-  /** Extra controls next to Copy (Show / Hide). */
-  actions?: React.ReactNode;
-  /** Long text (instructions): the value sits in a collapsed preview. */
-  previewLabel?: string;
-  testId?: string;
-}
-
-const CopyField: React.FC<CopyFieldProps> = ({
-  label,
-  value,
-  t,
-  hint,
-  monospace = true,
-  disabled,
-  disabledReason,
-  displayValue,
-  placeholderWarning,
-  actions,
-  previewLabel,
-  testId,
-}) => {
-  const reasonId = useId();
-  const shown = displayValue ?? value;
-  const body = (
-    <div className={`${monospace ? "font-mono text-caption" : "text-caption"} break-all whitespace-pre-wrap`}>{shown}</div>
-  );
-  return (
-    <div data-testid={testId} className="min-w-0 p-3 bg-slate-900 text-slate-100 rounded-2xl border border-slate-800">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="type-overline text-slate-400 min-w-0">{label}</div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {placeholderWarning && (
-            <span className="flex items-center gap-1 text-micro font-semibold text-amber-300">
-              <AlertTriangle className="h-3 w-3 shrink-0" />
-              {placeholderWarning}
-            </span>
-          )}
-          {actions}
-          <CopyButton
-            value={value}
-            label={label}
-            t={t}
-            disabled={disabled}
-            describedBy={disabled && disabledReason ? reasonId : undefined}
-          />
-        </div>
-      </div>
-      {previewLabel ? (
-        <details className="mt-2 group">
-          <summary className="flex items-center gap-1 cursor-pointer text-caption font-semibold text-slate-300 hover:text-white select-none">
-            <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-            {previewLabel}
-          </summary>
-          <div className="mt-2">{body}</div>
-        </details>
-      ) : (
-        <div className="mt-1.5">{body}</div>
-      )}
-      {hint && <p className="mt-1.5 text-micro text-slate-400">{hint}</p>}
-      {disabled && disabledReason && (
-        <p id={reasonId} className="mt-1.5 text-micro font-semibold text-amber-300">
-          {disabledReason}
-        </p>
-      )}
-    </div>
-  );
-};
-
-const Disclosure: React.FC<{ summary: React.ReactNode; children: React.ReactNode; className?: string }> = ({
-  summary,
-  children,
-  className = "",
-}) => (
-  <details className={`group rounded-2xl border border-slate-200 bg-slate-50/60 ${className}`}>
-    <summary className="flex items-center gap-2 px-4 py-3 cursor-pointer text-ui font-bold text-slate-700 hover:text-slate-900 select-none">
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
-      {summary}
-    </summary>
-    <div className="px-4 pb-4 space-y-3">{children}</div>
-  </details>
-);
 
 const StepHeader: React.FC<{ n: number; title: string; children?: React.ReactNode }> = ({ n, title, children }) => (
   <div className="flex items-start gap-3">
@@ -365,14 +183,6 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
   const origin = window.location.origin;
   const hasToken = !!newKey;
-  const serverUrl = mcpServerUrl(origin);
-  const keyHeader = mcpKeyHeader(newKey);
-  const bearerHeader = mcpBearerHeader(newKey);
-  const needGenerate = t(
-    "Generate a new key to copy it here",
-    "Vygenerujte nový kľúč, aby ste ho mohli skopírovať tu",
-    "Hozzon létre új kulcsot, hogy itt kimásolhassa"
-  );
   const replaceWarning = hasToken
     ? undefined
     : t(
@@ -647,86 +457,16 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
         <div id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-tab-${tab}`} className="space-y-3 min-w-0">
           {tab === "web" && (
-            <>
-              <p className="text-ui text-slate-600 font-medium">
-                {t(
-                  "claude.ai, ChatGPT, Le Chat and other AI apps that let you add a custom MCP server or connector.",
-                  "claude.ai, ChatGPT, Le Chat a ďalšie AI aplikácie, ktoré umožňujú pridať vlastný MCP server alebo konektor.",
-                  "claude.ai, ChatGPT, Le Chat és más MI alkalmazások, amelyek engedik egyéni MCP szerver vagy összekötő hozzáadását."
-                )}
-              </p>
-              <ol className="list-decimal pl-5 space-y-1.5 text-ui text-slate-700 font-medium marker:font-bold marker:text-emerald-600">
-                <li>
-                  {t(
-                    "In your AI app, open the settings and look for Connectors, Integrations, Tools or MCP servers.",
-                    "V AI aplikácii otvorte nastavenia a nájdite Konektory, Integrácie, Nástroje alebo MCP servery.",
-                    "Az MI alkalmazásban nyissa meg a beállításokat, és keresse az Összekötők, Integrációk, Eszközök vagy MCP szerverek menüpontot."
-                  )}
-                </li>
-                <li>
-                  {t(
-                    "Choose Add custom connector or Add MCP server and paste the Server URL.",
-                    "Zvoľte Pridať vlastný konektor alebo Pridať MCP server a vložte URL servera.",
-                    "Válassza az Egyéni összekötő hozzáadása vagy az MCP szerver hozzáadása lehetőséget, és illessze be a Szerver URL-t."
-                  )}
-                </li>
-                <li>
-                  {t(
-                    "If the app asks how to sign in, choose API key or Custom header, then paste the Header name and the Header value.",
-                    "Ak sa aplikácia opýta na prihlásenie, zvoľte API kľúč alebo Vlastná hlavička a vložte Názov hlavičky a Hodnotu hlavičky.",
-                    "Ha az alkalmazás rákérdez a bejelentkezésre, válassza az API-kulcs vagy az Egyéni fejléc lehetőséget, majd illessze be a Fejléc nevét és a Fejléc értékét."
-                  )}
-                </li>
-                <li>
-                  {t(
-                    `Save, then test it: ask the assistant “List my open tasks in ${brand}”.`,
-                    `Uložte a vyskúšajte: opýtajte sa asistenta „Zobraz moje otvorené úlohy v ${brand}“.`,
-                    `Mentse, majd próbálja ki: kérdezze meg az asszisztenst: „Listázd a nyitott feladataimat a ${brand}-ben”.`
-                  )}
-                </li>
-              </ol>
-              <CopyField testId="mcp-field-url" t={t} label={t("Server URL", "URL servera", "Szerver URL")} value={serverUrl} />
-              <CopyField testId="mcp-field-header-name" t={t} label={t("Header name", "Názov hlavičky", "Fejléc neve")} value={keyHeader.name} />
-              <CopyField
-                testId="mcp-field-header-value"
-                t={t}
-                label={t("Header value", "Hodnota hlavičky", "Fejléc értéke")}
-                value={keyHeader.value}
-                hint={t("Just the key – no “Bearer” in front.", "Iba kľúč – bez „Bearer“ pred ním.", "Csak a kulcs – elé nem kell a „Bearer”.")}
-                disabled={!hasToken}
-                disabledReason={needGenerate}
-              />
-              <Disclosure summary={t("My app only accepts a Bearer token", "Moja aplikácia prijíma iba Bearer token", "Az alkalmazásom csak Bearer tokent fogad")}>
-                <p className="text-caption text-slate-600 font-medium">
-                  {t(
-                    "If your app has a single “Bearer token” or “API key” field, paste only the key there – the app adds “Bearer ” itself. If you can set the header yourself, use:",
-                    "Ak má vaša aplikácia jediné pole „Bearer token“ alebo „API kľúč“, vložte tam iba kľúč – „Bearer “ pridá aplikácia sama. Ak si hlavičku nastavujete sami, použite:",
-                    "Ha az alkalmazásban egyetlen „Bearer token” vagy „API-kulcs” mező van, csak a kulcsot illessze be – a „Bearer ” előtagot az alkalmazás maga adja hozzá. Ha a fejlécet Ön állíthatja be, használja ezt:"
-                  )}
-                </p>
-                <CopyField
-                  testId="mcp-field-bearer-name"
-                  t={t}
-                  label={t("Header name", "Názov hlavičky", "Fejléc neve") + " (Bearer)"}
-                  value={bearerHeader.name}
-                />
-                <CopyField
-                  testId="mcp-field-bearer-value"
-                  t={t}
-                  label={t("Header value", "Hodnota hlavičky", "Fejléc értéke") + " (Bearer)"}
-                  value={bearerHeader.value}
-                  disabled={!hasToken}
-                  disabledReason={needGenerate}
-                />
-              </Disclosure>
-              <p className="text-caption text-slate-500 font-medium">
-                {t(
-                  "Apps that only offer sign-in (OAuth) and no custom header or API key cannot connect with a key yet.",
-                  "Aplikácie, ktoré ponúkajú iba prihlásenie (OAuth) a nemajú vlastnú hlavičku ani API kľúč, sa zatiaľ nedajú pripojiť kľúčom.",
-                  "Az olyan alkalmazások, amelyek csak bejelentkezést (OAuth) kínálnak, egyéni fejléc vagy API-kulcs nélkül, egyelőre nem csatlakoztathatók kulccsal."
-                )}
-              </p>
-            </>
+            <McpWebConnectPanel
+              t={t}
+              activeLang={activeLang}
+              origin={origin}
+              userName={currentUser.name}
+              newKey={newKey}
+              hasSavedKey={!!mcpData?.has_key}
+              isGenerating={isGenerating}
+              onGenerate={mcpData?.has_key ? regenerateKey : generateKey}
+            />
           )}
 
           {tab === "editor" && (

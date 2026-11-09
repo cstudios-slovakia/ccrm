@@ -75,7 +75,12 @@ async function copyField(page: Page, id: string): Promise<string> {
   return clipboard(page);
 }
 
-const tabs = (page: Page) => page.getByRole('tab');
+/** The four transport tabs. The web tab holds its own two-tab strip (setup prompt / manual), kept apart here. */
+const tabs = (page: Page) =>
+  page.getByRole('tablist', { name: /How your AI app connects|Ako sa AI aplikácia pripája|Az MI alkalmazás csatlakozási módja/ }).getByRole('tab');
+const webModes = (page: Page) =>
+  page.getByRole('tablist', { name: /Setup method|Spôsob nastavenia|Beállítás módja/ }).getByRole('tab');
+const openManual = (page: Page) => webModes(page).nth(1).click();
 
 async function generate(page: Page) {
   await page.getByRole('button', { name: /Generate key|Vygenerovať kľúč|Kulcs létrehozása/ }).click();
@@ -112,7 +117,13 @@ test.describe('AI Assistant (MCP) settings', () => {
     await expect(saved).toContainText(/one-way hash|jednosmerný hash|Egyirányú hash/);
     await expect(field(page, 'mcp-full-key')).toHaveCount(0);
 
-    // Web tab: URL and header name stay copyable, the header value (the key) does not.
+    // Web tab, setup prompt (the default): it would carry a placeholder, so it cannot be copied.
+    await expect(webModes(page).nth(0)).toHaveAttribute('aria-selected', 'true');
+    await expect(copyButton(field(page, 'mcp-field-setup-prompt'))).toBeDisabled();
+    await expect(page.getByTestId('mcp-setup-prompt-generate')).toBeVisible();
+
+    // Web tab, manual: URL and header name stay copyable, the header value (the key) does not.
+    await openManual(page);
     await expect(copyButton(field(page, 'mcp-field-url'))).toBeEnabled();
     await expect(copyButton(field(page, 'mcp-field-header-name'))).toBeEnabled();
     await expect(copyButton(field(page, 'mcp-field-header-value'))).toBeDisabled();
@@ -133,6 +144,18 @@ test.describe('AI Assistant (MCP) settings', () => {
     // 1. Web app / connector (the default)
     await expect(tabs(page)).toHaveCount(4);
     await expect(tabs(page).nth(0)).toHaveAttribute('aria-selected', 'true');
+    // 1a. Setup prompt (the default sub-tab): the whole message with the real key in it.
+    await expect(webModes(page)).toHaveCount(2);
+    await expect(webModes(page).nth(0)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('mcp-setup-prompt-warning')).toBeVisible();
+    const setup = await copyField(page, 'mcp-field-setup-prompt');
+    expect(setup).toContain(`Server URL: ${url}`);
+    expect(setup).toContain(`X-API-Key: ${FULL_KEY}`);
+    expect(setup).toContain(`claude mcp add --transport http --scope user ccrm ${url} --header "X-API-Key: ${FULL_KEY}"`);
+    expect(setup).not.toContain('<your key>');
+
+    // 1b. Manual setup
+    await openManual(page);
     expect(await copyField(page, 'mcp-field-url')).toBe(url);
     expect(await copyField(page, 'mcp-field-header-name')).toBe('X-API-Key');
     expect(await copyField(page, 'mcp-field-header-value')).toBe(FULL_KEY);
@@ -192,11 +215,18 @@ test.describe('AI Assistant (MCP) settings', () => {
     await generate(page);
 
     const section = page.getByTestId('mcp-step-connect');
-    for (let i = 0; i < 4; i++) {
-      await tabs(page).nth(i).click();
+    const check = async () => {
       for (const text of [await section.innerText(), await clipboardOfAllFields(page)]) {
         expect(text).not.toMatch(/x-ccrm-mcp-key/i);
         expect(text).not.toContain('token=');
+      }
+    };
+    for (let i = 0; i < 4; i++) {
+      await tabs(page).nth(i).click();
+      await check();
+      if (i === 0) {
+        await openManual(page);
+        await check();
       }
     }
   });
@@ -211,6 +241,7 @@ test.describe('AI Assistant (MCP) settings', () => {
       });
     });
     await openMcp(page);
+    await openManual(page);
 
     await copyButton(field(page, 'mcp-field-url')).click();
     await expect(page.getByText(/Could not copy|Kopírovanie sa nepodarilo|A másolás nem sikerült/)).toBeVisible();
@@ -249,6 +280,49 @@ test.describe('AI Assistant (MCP) settings', () => {
     expect(store.deletes).toBe(1);
   });
 
+  test('setup prompt: with no key, its button generates one and fills it in', async ({ page }) => {
+    await startSession(page);
+    const store = await mockKeys(page, { hasKey: false });
+    await openMcp(page);
+
+    await page.getByTestId('mcp-setup-prompt-generate').click();
+    await expect(field(page, 'mcp-full-key')).toBeVisible();
+    expect(store.posts).toBe(1);
+    await expect(page.getByTestId('mcp-setup-prompt-generate')).toHaveCount(0);
+    expect(await copyField(page, 'mcp-field-setup-prompt')).toContain(`X-API-Key: ${FULL_KEY}`);
+  });
+
+  test('setup prompt: with a saved key, filling it in asks first because the old key stops working', async ({ page }) => {
+    await startSession(page);
+    const store = await mockKeys(page, { hasKey: true });
+    await openMcp(page);
+
+    const fill = page.getByTestId('mcp-setup-prompt-generate');
+    await fill.click();
+    await page.getByTestId('confirm-dialog-cancel').click();
+    expect(store.posts).toBe(0);
+
+    store.nextToken = ROTATED_KEY;
+    await fill.click();
+    await page.getByTestId('confirm-dialog-confirm').click();
+    await expect(field(page, 'mcp-full-key')).toContainText(ROTATED_KEY);
+    expect(await copyField(page, 'mcp-field-setup-prompt')).toContain(`X-API-Key: ${ROTATED_KEY}`);
+  });
+
+  test('the setup method sub-tabs work from the keyboard', async ({ page }) => {
+    await startSession(page);
+    await mockKeys(page, { hasKey: false });
+    await openMcp(page);
+
+    await webModes(page).nth(0).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(webModes(page).nth(1)).toHaveAttribute('aria-selected', 'true');
+    await expect(webModes(page).nth(1)).toBeFocused();
+    await expect(field(page, 'mcp-field-url')).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect(webModes(page).nth(0)).toHaveAttribute('aria-selected', 'true');
+  });
+
   test('the chosen tab is remembered after a reload', async ({ page }) => {
     await startSession(page);
     await mockKeys(page, { hasKey: false });
@@ -284,8 +358,11 @@ test.describe('AI Assistant (MCP) settings', () => {
       await openMcp(page);
       await generate(page);
 
-      for (let i = 0; i < 4; i++) {
-        await tabs(page).nth(i).click();
+      for (let i = 0; i < 5; i++) {
+        // 0 = web tab, setup prompt with its preview open; 1 = web tab, manual; 2..4 = the other tabs.
+        if (i === 0) await page.getByText(/Preview what you are copying|Zobraziť, čo kopírujete|Előnézet a másolandó/).first().click();
+        else if (i === 1) await openManual(page);
+        else await tabs(page).nth(i - 1).click();
         const overflow = await page.evaluate(() => {
           const root = document.documentElement;
           const main = document.querySelector('main');
