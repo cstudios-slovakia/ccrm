@@ -88,7 +88,14 @@ scripts/verify_migration.php
 *.sln
 *.sw?
 
-/.claude/
+# Claude Code: only the shared project settings and subagent definitions are tracked;
+# worktrees, local settings and installed skill copies stay local.
+/.claude/*
+!/.claude/settings.json
+!/.claude/agents/
+
+# Per-checkout tool caches (incremental tsc build info, etc.)
+/.cache/
 
 # AI-assistant context and ephemeral dev scratch notes — must not ship to the
 # web docroot (repo root is the docroot on the production host).

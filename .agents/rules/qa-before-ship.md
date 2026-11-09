@@ -8,14 +8,19 @@ Full guide: [`docs/TESTING.md`](../../docs/TESTING.md).
 
 ## 1. The rule
 
-When a feature, fix or UI change is **finished**, before the version bump and
-the build commit:
+When a feature, fix or UI change is **finished**, before its commit is merged
+and before the build commit:
 
-1. Type-check and run the unit tests:
+1. Run the standard verification:
    ```bash
-   npx tsc -p tsconfig.app.json --noEmit
-   npm run test:unit
+   npm run check          # app + QA-suite type-check, unit tests, backend mirror, undefined-symbol audit
+   npm run check -- --fast  # same without the unit tests, while iterating
    ```
+   It is what CI runs, with incremental type-checks (warm: a few seconds). A Claude Code
+   Stop hook (`scripts/agent/stop-check.mjs`) runs it automatically when you finish with
+   changed source and blocks the stop on a failure, so do not claim "done" on a red check.
+   Audit findings are compared with `scripts/agent/undefined-symbols-baseline.json`:
+   fix a new finding, never add it to the baseline to get green.
 2. Run QA on **your own files only**, never plain `npm run test:qa`. Redirect the
    output to a log file and read it (no `tail`/`head` pipes):
    ```bash
@@ -38,7 +43,7 @@ the build commit:
 This slots into [`commit-and-versioning.md`](./commit-and-versioning.md) as the
 step before it:
 
-> test -> bump `src/utils/version.ts` -> changelog entry -> build -> commit
+> test (`npm run check` + scoped QA) -> collect changelog (bumps the version) -> build -> commit
 
 Nothing here needs Docker, PHP or a database. The suite mocks `/sync.php`,
 `/api/*` and `/upload.php` and seeds its own data, so it never touches a real
@@ -48,7 +53,7 @@ backend and is safe to run at any time.
 
 | You changed | Run |
 |---|---|
-| Pure logic in `src/utils` | `npm run test:unit` |
+| Pure logic in `src/utils` | `npm run check` (includes the unit tests) |
 | One module's UI | `npm run test:qa:crawler` |
 | Sidebar, header or routing | `npm run test:qa:nav` |
 | How `sync.php` or `api/*.php` stores or reads back a field | `npm run test:persistence` — the QA suite mocks the backend and cannot see a value saved under one key and read back under another (TESTING.md 5c) |
@@ -82,7 +87,7 @@ admits one run at a time. The rules that go with it:
 - **Name your files** (`--files`). Plain `npm run test:qa` diffs the whole
   working tree, so its scope is every session's changes, not yours.
 - **Pure logic needs no browser.** A change confined to `src/utils` is covered by
-  `npm run test:unit`; the scoped run would only add the shell tests.
+  `npm run check`; the scoped run would only add the shell tests.
 - **Do not pipe the runner through `tail` or `head`.** The output then only
   appears when the run ends, so you cannot see the scope line
   (`Scope: FULL SUITE` means stop and reconsider) or progress.

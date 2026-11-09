@@ -4,8 +4,8 @@
 
 ### 0. Test Before You Ship
 
-- **Run the QA audit when a feature or fix is finished**, before the version bump
-  and build commit: `npm run test:unit` then `npm run test:qa`.
+- **Run the QA audit when a feature or fix is finished**, before the build
+  commit: `npm run test:unit` then `npm run test:qa`.
 - Full guide: [`docs/TESTING.md`](docs/TESTING.md). Deep reference:
   [`.agents/skills/ccrm-qa-audit/SKILL.md`](.agents/skills/ccrm-qa-audit/SKILL.md).
 - No Docker, PHP or database needed - the suite mocks the backend and seeds its
@@ -15,7 +15,7 @@
 - `npm run deploy` re-runs the gate and aborts the deploy if it fails.
 - Never make a finding disappear by loosening the check.
 
-The order when finishing a change: **test -> bump version -> changelog -> build
+The order when finishing a change: **test -> collect changelog (bumps the version) -> build
 -> commit**.
 
 ### 0b. Time Tracking Module
@@ -29,10 +29,10 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 ### 1. Commit & Version Bumping Protocol
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
-- **One Build = One Version Bump**: Every significant change, new build, or release milestone requires bumping the application version.
-- **Version File**: Update `export const VERSION = "1.13.X-Nectarine";` in [`src/utils/version.ts`](file:///Users/erik/Documents/vibe%20coding/crm/src/utils/version.ts).
-- **Changelog**: Add a structured entry in [`1.13-nectarine-changelog.md`](file:///Users/erik/Documents/vibe%20coding/crm/1.13-nectarine-changelog.md) with date and clear breakdown.
-- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.13.X-Nectarine)` or `fix(...): description (v1.13.X-Nectarine)`).
+- **One Build = One Version Bump**: Only a build bumps the version, never an individual commit. Do not edit `src/utils/version.ts` or `1.13-nectarine-changelog.md` by hand.
+- **Changelog fragment**: Each feature or fix commit adds `changelog.d/<YYYY-MM-DD>-<slug>.md` with its changelog bullet(s) (format in `changelog.d/README.md`).
+- **Build**: "Make a build" runs `node scripts/release/collect-changelog.mjs`, which bumps the version, writes the changelog section and deletes the fragments.
+- **Commit Message Suffix**: Only the build commit carries the version tag (e.g. `build: ... (v1.13.X-Nectarine)`); feature and fix commits have none.
 
 ### 2. Verification & Build Cleanliness
 

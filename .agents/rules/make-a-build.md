@@ -26,20 +26,21 @@ improvise a substitute.
 ## The checklist
 
 1. **Look at the working tree first.** `git status --short` and `git diff --stat`, then
-   `git diff` per file. Sort every change into a group (one concern each). Other
-   sessions share this checkout: stage only your hunks, never `git stash`, never
-   `git checkout --`/`reset` over work you did not write
-   (see the shared-checkout notes in memory).
+   `git diff` per file. Sort every change into a group (one concern each). Agents work
+   in their own worktrees ([`agent-worktrees.md`](./agent-worktrees.md)); if you are in
+   the shared main checkout instead, stage only your hunks and never `git stash` or
+   `git checkout --`/`reset` over work you did not write.
 2. **Commit all pending source work, in logical groups, before the build commit.**
-   One commit per concern, each with its own version bump and changelog entry
+   One commit per concern, each carrying a changelog fragment in `changelog.d/` and
+   **no** version bump or version suffix
    ([`commit-and-versioning.md`](./commit-and-versioning.md)), unless the changes are
    not app code (docs, scripts), which get an unversioned `chore:` commit. A
    build is never made from source that git does not hold: `dist/` must be
    reproducible from the commits. If a change is not yours and not clearly
    anyone's, ask who owns it; do not leave it dirty and build over it silently.
 3. **Test** — in this order, each in the foreground, output to a log file, read:
-   - `npm run typecheck`
-   - `npm run test:unit`
+   - `npm run check` (app and QA type-check, unit tests, backend mirror check,
+     undefined-symbol audit)
    - `node scripts/qa/run-qa.mjs --files <files changed since the last build>`
      (never plain `npm run test:qa`, never `--full` on your own)
    - the focused suite from the table in `qa-before-ship.md` when the change touches
@@ -50,14 +51,18 @@ improvise a substitute.
 4. **Backend mirror.** If anything under `public/` changed: `npm run sync:backend`.
    If a DB column was added: the 4-place rule in
    [`database-schema-and-sync.md`](./database-schema-and-sync.md).
-5. **Bump the version and write the changelog entry** for the build commit, in the same
-   command as the commit (read `version.ts` from `git show HEAD:` and the highest
-   `### v` header in the changelog in that command, so a concurrent session cannot
-   collide with the number).
+5. **Collect the changelog and bump the version.** Run
+   `node scripts/release/collect-changelog.mjs` (`--dry-run` first if unsure) in the same
+   command as the build and the build commit, so nothing else can slip between the
+   number and the commit. It bumps `version.ts` once, writes one `### v<new>` section
+   from every fragment in `changelog.d/`, deletes the fragments and prints the new
+   version. No fragments is a failure, not something to bypass with `--allow-empty`
+   unless the user wants an empty rebuild.
 6. **Build.** `npm run build` (this is the one place `dist/` is meant to change; it
    overrides the restore rule in [`post-build-cleanup.md`](./post-build-cleanup.md)).
-7. **Commit the bundle** (`dist/` plus `version.ts` and the changelog), message suffixed
-   with the version tag and, if QA did not run, a `QA: pending` line.
+7. **Commit the bundle** (`dist/`, `version.ts`, the changelog and the deleted fragments),
+   message suffixed with the version tag the collector printed and, if QA did not run,
+   a `QA: pending` line.
 8. **Clean up — only if the user asked for it** ("and remove leftovers"). Then: delete
    only what is provably unreferenced, list what you left alone and why. Never delete
    ignored scratch folders, worktrees or files you cannot show are dead without asking.
