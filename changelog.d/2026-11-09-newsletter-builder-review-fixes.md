@@ -1,0 +1,7 @@
+- **Newsletter e-mail builder: review fixes** (`src/components/newsletter/builder/**`, not yet mounted in the app):
+  - Keyboard: after text editing ends (Escape, another block) the builder takes the focus back, so Delete, Escape and Ctrl+Z keep working; a field the user clicked into keeps its focus.
+  - Safe output: every colour from the document or theme goes through one `safeColor()` (hex, `rgb()/rgba()`, plain names; anything else falls back), enum values (`align`, `valign`, layout) are whitelisted, the font stack and content width are validated, and nothing from the document reaches the `<style>` block or an unescaped attribute. The canvas uses the same functions, so canvas and e-mail agree.
+  - Merge-tag fallbacks are no longer escaped twice (`{{first_name|Tom &amp; Jerry}}` stays `Tom &amp; Jerry`): in HTML a fallback is decoded with a fixed entity map and escaped once; values are only escaped.
+  - Merge-tag whitespace is ASCII only (`[ \t\r\n]`, no `\s`, no `trim()`), so the future PHP port behaves the same. The renderer outputs every tag in the canonical form (`{{&nbsp;first_name }}` becomes `{{first_name}}`) and the merge-tag picker inserts it.
+  - `javascript:`, `vbscript:` and `data:` links (also in a merge-tag fallback, any case, with hidden whitespace or entities) give the new error warning `dangerous_url` and the output link is `#`.
+  - Tests: hostile-value renderer test, `dangerous_url`, canonical tags, no double escaping, 18 more shared merge-tag fixtures, focus helper.

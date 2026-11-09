@@ -4,7 +4,7 @@
  * sanitiser: text and heading `html` is trusted to have been sanitised when edited.
  */
 import type { EmailDoc, EmailRow, NewsletterTheme, RenderInput, RenderResult, RenderWarning } from './types.ts';
-import { findUnknownMergeTags, htmlEscape } from './mergeTags.ts';
+import { findUnknownMergeTags, htmlEscape, normalizeMergeTags } from './mergeTags.ts';
 import { blockStrings, makeWarning, renderBlockHtml } from './renderBlocks.ts';
 import { renderText } from './renderText.ts';
 import {
@@ -12,20 +12,26 @@ import {
   columnPaddingX,
   columnWidths,
   cssText,
+  rowBackground,
   rowContentBackground,
   rowPaddingBottom,
   rowPaddingTop,
   rowStacks,
+  safeColor,
+  safeTheme,
   valign,
 } from './styles.ts';
 
 const TABLE = 'role="presentation" border="0" cellpadding="0" cellspacing="0"';
 const PREHEADER_PAD = '&zwnj;&nbsp;'.repeat(60);
 
-const bgAttr = (color: string | undefined): string =>
-  color && color !== 'transparent' ? attrs({ bgcolor: color }) : '';
-const bgStyle = (color: string | undefined): string =>
-  color && color !== 'transparent' ? `background-color:${color};` : '';
+/** A colour for `bgcolor` and `background-color`: validated again here, `transparent` and invalid ones give none. */
+const bgColor = (color: string | undefined): string => {
+  const c = safeColor(color, '');
+  return c && c.toLowerCase() !== 'transparent' ? c : '';
+};
+const bgAttr = (color: string | undefined): string => (bgColor(color) ? attrs({ bgcolor: bgColor(color) }) : '');
+const bgStyle = (color: string | undefined): string => (bgColor(color) ? `background-color:${bgColor(color)};` : '');
 
 type RowContext = { theme: NewsletterTheme; assetBaseUrl: string; warn: (w: RenderWarning) => void };
 
@@ -64,7 +70,7 @@ const renderRow = (row: EmailRow, ctx: RowContext): string => {
 
   const stackedStyle = rowStacks(row) ? 'font-size:0;text-align:center;' : '';
   return (
-    `<table ${TABLE} width="100%"${bgAttr(row.background)}${bgStyle(row.background) ? ` style="${bgStyle(row.background)}"` : ''}><tr><td align="center">` +
+    `<table ${TABLE} width="100%"${bgAttr(rowBackground(row))}${bgStyle(rowBackground(row)) ? ` style="${htmlEscape(bgStyle(rowBackground(row)))}"` : ''}><tr><td align="center">` +
     `<table ${TABLE} width="${W}"${bgAttr(content)} style="width:100%;max-width:${W}px;${bgStyle(content)}"><tr>` +
     `<td style="padding:${rowPaddingTop(row)}px 0 ${rowPaddingBottom(row)}px 0;${stackedStyle}">\n${inner}\n</td>` +
     `</tr></table></td></tr></table>`
@@ -73,10 +79,14 @@ const renderRow = (row: EmailRow, ctx: RowContext): string => {
 
 const hasBlocks = (doc: EmailDoc): boolean => doc.rows.some((r) => r.columns.some((c) => c.blocks.length > 0));
 
-const UNSUBSCRIBE_TAG = /\{\{\s*unsubscribe_url\s*(?:\|[^{}]*)?\}\}/;
+const UNSUBSCRIBE_TAG = /\{\{[ \t\r\n]*unsubscribe_url[ \t\r\n]*(?:\|[^{}]*)?\}\}/;
 
 export const renderEmail = (input: RenderInput): RenderResult => {
-  const { theme, subject, assetBaseUrl } = input;
+  // Every colour, the font stack and the width of the theme are validated once, here.
+  const theme = safeTheme(input.theme);
+  const { assetBaseUrl } = input;
+  // Merge tags are canonical before anything is escaped (the server only sees `{{tag}}` / `{{tag|fallback}}`).
+  const subject = normalizeMergeTags(input.subject);
   const lang = /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(input.lang) ? input.lang : 'en';
   const warnings: RenderWarning[] = [];
   const warn = (w: RenderWarning) => warnings.push(w);
@@ -95,14 +105,15 @@ export const renderEmail = (input: RenderInput): RenderResult => {
     for (const row of doc.rows) {
       for (const column of row.columns) {
         for (const block of column.blocks) {
-          for (const tag of findUnknownMergeTags(blockStrings(block).join('\n'))) warn(unknownTag(tag, block.id));
+          for (const tag of findUnknownMergeTags(normalizeMergeTags(blockStrings(block).join('\n')))) warn(unknownTag(tag, block.id));
         }
       }
     }
   }
-  for (const tag of findUnknownMergeTags(`${subject}\n${input.preheader ?? ''}`)) warn(unknownTag(tag));
+  const preheaderRaw = normalizeMergeTags(input.preheader ?? '');
+  for (const tag of findUnknownMergeTags(`${subject}\n${preheaderRaw}`)) warn(unknownTag(tag));
 
-  const bodyHtml = rowsHtml.join('\n');
+  const bodyHtml = normalizeMergeTags(rowsHtml.join('\n'));
   if (!UNSUBSCRIBE_TAG.test(bodyHtml)) {
     warn(
       makeWarning('error', 'missing_unsubscribe', {
@@ -113,7 +124,7 @@ export const renderEmail = (input: RenderInput): RenderResult => {
     );
   }
 
-  const preheader = (input.preheader ?? '').trim();
+  const preheader = preheaderRaw.trim();
   const preheaderHtml = preheader
     ? `<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">${htmlEscape(preheader)}${PREHEADER_PAD}</div>\n`
     : '';
@@ -146,7 +157,7 @@ export const renderEmail = (input: RenderInput): RenderResult => {
     `</td></tr></table>\n` +
     `</body>\n</html>\n`;
 
-  return { html, text: renderText(docs), warnings };
+  return { html: normalizeMergeTags(html), text: normalizeMergeTags(renderText(docs)), warnings };
 };
 
 const unknownTag = (tag: string, blockId?: string): RenderWarning =>

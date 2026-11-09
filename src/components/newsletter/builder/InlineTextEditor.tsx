@@ -3,7 +3,7 @@ import { Bold, Braces, Italic, Link2, List, ListOrdered, RemoveFormatting, Under
 import { ColorPicker } from '../../ui/ColorPicker';
 import type { HeadingBlock, TextBlock } from './types.ts';
 import { useBuilder } from './builderContext.ts';
-import { MERGE_TAGS, htmlEscape } from './mergeTags.ts';
+import { MERGE_TAGS, formatMergeTag, htmlEscape } from './mergeTags.ts';
 import { headingStyle, reactStyle, richEditorCss, textBlockStyle, STYLE_DEFAULTS } from './styles.ts';
 import { cleanEditedHtml, cleanPastedHtml, plainTextToRich } from './richText.ts';
 import { CHROME } from './canvasChrome.tsx';
@@ -140,7 +140,7 @@ export const InlineTextEditor: React.FC<{ block: TextBlock | HeadingBlock; onExi
 
   const insertTag = (tag: string) => {
     setPopover(null);
-    exec('insertText', `{{${tag}}}`);
+    exec('insertText', formatMergeTag(tag));
   };
 
   const applyColor = (hex: string) => {
@@ -255,8 +255,8 @@ export const InlineTextEditor: React.FC<{ block: TextBlock | HeadingBlock; onExi
             />
             <div className="flex flex-wrap gap-1">
               {linkTags.map((tag) => (
-                <button key={tag} type="button" onClick={() => setLinkUrl(`{{${tag}}}`)} className="cursor-pointer rounded-md px-1.5 py-0.5 text-caption" style={{ background: '#eef2ff', color: CHROME.accent }}>
-                  {`{{${tag}}}`}
+                <button key={tag} type="button" onClick={() => setLinkUrl(formatMergeTag(tag))} className="cursor-pointer rounded-md px-1.5 py-0.5 text-caption" style={{ background: '#eef2ff', color: CHROME.accent }}>
+                  {formatMergeTag(tag)}
                 </button>
               ))}
             </div>
@@ -275,7 +275,7 @@ export const InlineTextEditor: React.FC<{ block: TextBlock | HeadingBlock; onExi
             {tags.map((m) => (
               <button key={m.tag} type="button" onClick={() => insertTag(m.tag)} className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-ui hover:bg-[#f1f5f9]">
                 <span>{t(m.label.en, m.label.sk, m.label.hu)}</span>
-                <code className="text-caption" style={{ color: CHROME.muted }}>{`{{${m.tag}}}`}</code>
+                <code className="text-caption" style={{ color: CHROME.muted }}>{formatMergeTag(m.tag)}</code>
               </button>
             ))}
           </div>

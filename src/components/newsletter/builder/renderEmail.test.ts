@@ -4,7 +4,7 @@ import type { EmailBlock, EmailDoc, EmailRow, RenderInput } from './types.ts';
 import { renderEmail } from './renderEmail.ts';
 import { renderText, htmlToPlainText } from './renderText.ts';
 import { THEME_DEFAULTS, defaultFooter, defaultHeader } from './defaults.ts';
-import { cssText, columnWidths, decorateRichHtml, absoluteUrl, isValidLinkUrl } from './styles.ts';
+import { SOCIAL_BADGES, alignOf, cssText, columnWidths, decorateRichHtml, absoluteUrl, isDangerousUrl, isValidLinkUrl, safeColor, safeTheme } from './styles.ts';
 import { substituteMergeTags } from './mergeTags.ts';
 
 const row = (layout: EmailRow['layout'], columns: EmailBlock[][], extra: Partial<EmailRow> = {}): EmailRow => ({
@@ -209,7 +209,7 @@ test('merge-tag URLs stay as they are', () => {
   const r = renderEmail(input(doc(row('1', [blocks]))));
   assert.ok(r.html.includes('<a href="{{view_online_url}}" target="_blank"'));
   assert.ok(r.html.includes('src="{{company}}"'));
-  assert.ok(r.html.includes('href="{{ unsubscribe_url }}"'));
+  assert.ok(r.html.includes('href="{{unsubscribe_url}}"'), 'a tag with spaces is output in the canonical form');
   assert.ok(!r.warnings.some((w) => w.code === 'bad_url'));
   const sent = substituteMergeTags(r.html, { view_online_url: 'https://x.test/v?a=1&t=2' }, { context: 'html', mode: 'send' });
   assert.ok(sent.includes('<a href="https://x.test/v?a=1&amp;t=2" target="_blank"'));
@@ -276,9 +276,186 @@ test('warning bad_url: not http(s), mailto, tel or a merge tag', () => {
     { id: 'b5', type: 'button', label: 'x', href: 'https://ok.test' },
     text('t', '<p><a href="ftp://x.test">f</a> <a href="https://ok.test">ok</a></p>'),
   ]]))));
-  assert.deepEqual(r.warnings.filter((w) => w.code === 'bad_url').map((w) => w.blockId), ['b1', 'b2', 't']);
+  assert.deepEqual(r.warnings.filter((w) => w.code === 'bad_url').map((w) => w.blockId), ['b2', 't']);
+  assert.deepEqual(r.warnings.filter((w) => w.code === 'dangerous_url').map((w) => w.blockId), ['b1']);
   assert.equal(isValidLinkUrl('HTTP://x.test'), true);
   assert.equal(isValidLinkUrl('http://'), false);
+});
+
+// ---- dangerous URLs ---------------------------------------------------------------------
+
+const buttonHtml = (href: string) => {
+  const r = renderEmail(input(doc(row('1', [[{ id: 'b', type: 'button', label: 'x', href }]]))));
+  return { ...r, a: /<a href="([^"]*)" target="_blank"/.exec(r.html)?.[1] };
+};
+
+test('dangerous_url: javascript:, vbscript: and data: are an error and the output href is #', () => {
+  for (const href of [
+    'javascript:alert(1)',
+    '  JaVa\tScRiPt:alert(1)',
+    '\u0001\u0007javascript:alert(1)',
+    'java\nscript:alert(1)',
+    'vbscript:msgbox(1)',
+    'DATA:text/html,<script>alert(1)</script>',
+    '{{view_online_url|javascript:alert(1)}}',
+    '{{ view_online_url | \tJAVASCRIPT:alert(1) }}',
+    '{{view_online_url|data:text/html,x}}',
+    '{{view_online_url}}javascript:alert(1)',
+  ]) {
+    const r = buttonHtml(href);
+    const w = r.warnings.find((x) => x.code === 'dangerous_url');
+    assert.ok(w && w.level === 'error' && w.blockId === 'b' && w.message.en && w.message.sk && w.message.hu, href);
+    assert.ok(!r.warnings.some((x) => x.code === 'bad_url'), `${href}: only the error, not bad_url as well`);
+    assert.equal(r.a, '#', href);
+    assert.ok(!/javascript:|vbscript:|data:text/i.test(r.html.replace(/<!--[\s\S]*?-->/g, '')), href);
+  }
+});
+
+test('dangerous_url: image link, social link and links inside text and heading html', () => {
+  const r = renderEmail(input(doc(row('1', [[
+    { id: 'i', type: 'image', src: 'https://x.test/a.png', alt: 'a', href: 'javascript:alert(1)' },
+    { id: 'so', type: 'social', items: [{ network: 'facebook', url: 'vbscript:x' }] },
+    text('t1', '<p><a href="javascript:alert(1)">a</a> <a href=\'JavaScript:alert(2)\'>b</a> <a href=javascript:alert(3)>c</a></p>'),
+    text('t2', '<p><a href="&#106;avascript&colon;alert(1)">a</a></p>'),
+    text('t3', '<p><a title=">" href="data:text/html,x">a</a></p>'),
+    { id: 'h', type: 'heading', level: 2, html: '<a href="javascript:alert(1)">h</a>' },
+    text('ok', '<p><a href="https://ok.test/?a=1&amp;b=2">ok</a></p>'),
+  ]]))));
+  assert.deepEqual(r.warnings.filter((w) => w.code === 'dangerous_url').map((w) => w.blockId), ['i', 'so', 't1', 't1', 't1', 't2', 't3', 'h']);
+  assert.ok(!/javascript|vbscript|data:text/i.test(r.html), 'no dangerous scheme is left in the output');
+  assert.ok(r.html.includes('href="https://ok.test/?a=1&amp;b=2"'));
+  assert.equal((r.html.match(/href="#"/g) ?? []).length, 8);
+});
+
+test('dangerous_url: a harmless merge-tag fallback is fine; other bad fallbacks stay bad_url', () => {
+  const ok = buttonHtml('{{ view_online_url | https://ok.test/?a=1&b=2 }}');
+  assert.deepEqual(codes(ok), []);
+  assert.equal(ok.a, '{{view_online_url|https://ok.test/?a=1&amp;b=2}}');
+  assert.equal(buttonHtml('{{view_online_url|mailto:a@b.test}}').warnings.length, 0);
+  assert.equal(buttonHtml('{{view_online_url}}').warnings.length, 0);
+  for (const href of ['{{view_online_url|ftp://x.test}}', '{{view_online_url|www.example.com}}', 'ftp://x.test', 'www.example.com']) {
+    const r = buttonHtml(href);
+    assert.deepEqual(codes(r), ['bad_url'], href);
+    assert.notEqual(r.a, '#', href);
+  }
+  // A tag later in the URL has no say over the scheme.
+  assert.deepEqual(codes(buttonHtml('https://x.test/?n={{first_name|javascript}}')), []);
+});
+
+test('isDangerousUrl and isValidLinkUrl', () => {
+  assert.equal(isDangerousUrl('https://x.test'), false);
+  assert.equal(isDangerousUrl('mailto:a@b.test'), false);
+  assert.equal(isDangerousUrl('{{unsubscribe_url}}'), false);
+  assert.equal(isDangerousUrl('/data:foo'), false);
+  assert.equal(isDangerousUrl(' \tjavascript:1'), true);
+  assert.equal(isDangerousUrl('{{x|javascript:1}}'), true);
+  assert.equal(isValidLinkUrl('{{x|https://ok.test}}'), true);
+  assert.equal(isValidLinkUrl('{{x|javascript:1}}'), false);
+  assert.equal(isValidLinkUrl('{{x|ftp://a.test}}'), false);
+  assert.equal(isValidLinkUrl('{{x|}}'), true);
+});
+
+// ---- hostile values from the document ---------------------------------------------------
+
+test('hostile colours, enums and theme values never reach an attribute or the <style> block raw', () => {
+  const evil = 'red" onmouseover="x';
+  const theme = {
+    ...THEME_DEFAULTS,
+    linkColor: 'red}</style><script>alert(1)</script>',
+    pageBackground: evil,
+    contentBackground: 'red;background:url(//evil.test/x)',
+    textColor: 'expression(alert(1))',
+    buttonBackground: '"><script>',
+    buttonTextColor: 'rgb(1,2,3);x',
+    fontFamily: 'Arial;}</style><script>alert(1)</script>',
+    contentWidth: '600" onload="x' as unknown as number,
+  };
+  const blocks = [
+    { id: 't', type: 'text', html: '<p>x</p>', align: 'left" onclick="x', color: 'red;background:url(x)' },
+    { id: 'h', type: 'heading', level: 1, html: 'h', align: '"><script>', color: 'expression(alert(1))' },
+    { id: 'b', type: 'button', label: 'x', href: 'https://x.test', align: 'x" y="', background: evil, color: 'blue;}</style>' },
+    { id: 'd', type: 'divider', color: evil },
+    { id: 'so', type: 'social', align: '"><i>', items: [{ network: 'facebook', url: 'https://f.test' }, { network: 'constructor', url: 'https://c.test' }] },
+    { id: 'sp', type: 'spacer', height: '40" onclick="x' },
+  ] as unknown as EmailBlock[];
+  const hostileRow = row('1', [blocks], { background: evil, contentBackground: 'red}</style><script>', paddingTop: '1" onclick="x' as unknown as number });
+  hostileRow.columns[0].verticalAlign = '" onload="x' as never;
+  const badge = SOCIAL_BADGES.facebook;
+  const original = badge.color;
+  badge.color = evil;
+  let html: string;
+  try {
+    html = renderEmail(input(doc(hostileRow), { theme })).html;
+  } finally {
+    badge.color = original;
+  }
+  for (const needle of ['onmouseover', 'onclick', 'onload', '<script', 'url(', 'expression(', 'rgb(1,2,3);x', '</style><']) {
+    assert.ok(!html.includes(needle), `${needle} leaked`);
+  }
+  assert.equal((html.match(/<style>/g) ?? []).length, 1);
+  assert.equal((html.match(/<\/style>/g) ?? []).length, 1);
+  assert.ok(html.includes('a{color:#2563eb}'), 'an invalid link colour falls back to the default');
+  assert.ok(html.includes('bgcolor="#2563eb"'), 'an invalid button colour falls back to the theme / default');
+  assert.ok(html.includes('max-width:600px'), 'an invalid width falls back to the default');
+  assert.ok(html.includes('font-family:Arial, Helvetica, sans-serif'));
+  assert.ok(!html.includes('#1877f2'), 'the invalid badge colour is replaced by the neutral one');
+  assert.ok(html.includes('bgcolor="#64748b"'));
+});
+
+test('safeColor accepts hex, rgb(a) and plain names only', () => {
+  for (const ok of ['#fff', '#FFFFFF', '#ffffff80', 'rgb(1, 2, 3)', 'rgba(1,2,3,0.5)', 'red', 'Transparent', '  #abc  ']) {
+    assert.equal(safeColor(ok, 'X'), ok.trim(), ok);
+  }
+  for (const bad of ['', '#ff', '#fffff', '#ggg', 'rgb(1,2)', 'rgb(a,b,c)', 'rgb(1,2,3);x', 'red"', 'red;', 'red}', 'var(--x)', 'url(x)', 'expression(1)', 'a b', '#fff"', null, undefined, 5]) {
+    assert.equal(safeColor(bad, 'X'), 'X', String(bad));
+  }
+  assert.equal(alignOf('justify' as never), 'left');
+  assert.equal(alignOf('"' as never, 'center'), 'center');
+  assert.equal(alignOf('right'), 'right');
+  assert.equal(safeTheme({ ...THEME_DEFAULTS, contentWidth: 9999 }).contentWidth, 800);
+  assert.equal(safeTheme({ ...THEME_DEFAULTS, contentWidth: 100 }).contentWidth, 520);
+});
+
+// ---- merge tags in the output -----------------------------------------------------------
+
+test('the renderer outputs every merge tag in the canonical form', () => {
+  const r = renderEmail(input(doc(row('1', [[
+    text('a', '<p>Hi {{&nbsp;first_name }}, {{ first_name | there&nbsp;}}, {{ email }} and {{&nbsp;&nbsp;company | &nbsp;none }}</p>'),
+    { id: 'b', type: 'button', label: '{{ first_name }}', href: '{{ view_online_url | https://x.test/?a=1&b=2 }}' },
+  ]])), { subject: 'Hi {{ first_name | you }}', preheader: '{{&nbsp;first_name }} news' }));
+  assert.ok(r.html.includes('<p style="margin:0">Hi {{first_name}}, {{first_name|there}}, {{email}} and {{company|none}}</p>'), r.html);
+  assert.ok(!r.html.includes('&nbsp;first_name') && !r.html.includes(' '));
+  assert.ok(r.html.includes('href="{{view_online_url|https://x.test/?a=1&amp;b=2}}"'));
+  assert.ok(r.html.includes('>{{first_name}}</a>'));
+  assert.ok(r.html.includes('<title>Hi {{first_name|you}}</title>'));
+  assert.match(r.html, /\{\{first_name\}\} news(?:&zwnj;&nbsp;)+<\/div>/);
+  assert.ok(r.text.includes('Hi {{first_name}}, {{first_name|there}}, {{email}} and {{company|none}}'), r.text);
+});
+
+test('{{&nbsp;first_name }} in a text block is output as {{first_name}}', () => {
+  const r = renderEmail(input(doc(row('1', [[text('a', '<p>{{&nbsp;first_name }}</p>')]]))));
+  assert.ok(r.html.includes('<p style="margin:0">{{first_name}}</p>'));
+  assert.ok(r.text.startsWith('{{first_name}}\n'));
+});
+
+test('an unknown tag written with NBSP is still reported', () => {
+  const r = renderEmail(input(doc(row('1', [[text('a', '<p>{{&nbsp;coupon }}</p>')]]))));
+  assert.ok(r.warnings.some((w) => w.code === 'unknown_merge_tag' && w.blockId === 'a' && w.message.en.includes('{{coupon}}')));
+});
+
+test('fallbacks are not escaped twice: renderer output substituted for sending', () => {
+  const r = renderEmail(input(doc(row('1', [[
+    { id: 'b', type: 'button', label: 'Go', href: '{{view_online_url|https://x.test/p?a=1&b=2}}' },
+    text('t', '<p>Hello {{first_name|Tom &amp; Jerry}}</p>'),
+    { id: 'i', type: 'image', src: 'https://x.test/a.png', alt: 'For {{first_name|Tom & Jerry}}' },
+  ]])), { subject: 'Hi {{first_name|Tom & Jerry}}', preheader: 'About {{company|A & B}}' }));
+  const sent = substituteMergeTags(r.html, {}, { context: 'html', mode: 'send' });
+  assert.ok(sent.includes('<a href="https://x.test/p?a=1&amp;b=2" target="_blank"'), 'attribute fallback');
+  assert.ok(sent.includes('Hello Tom &amp; Jerry</p>'), 'sanitised text fallback');
+  assert.ok(sent.includes('alt="For Tom &amp; Jerry"'), 'alt attribute fallback');
+  assert.ok(sent.includes('<title>Hi Tom &amp; Jerry</title>'), 'title');
+  assert.ok(sent.includes('About A &amp; B'), 'preheader');
+  assert.ok(!sent.includes('&amp;amp;'), 'no double escaping anywhere');
 });
 
 test('absoluteUrl', () => {

@@ -9,6 +9,7 @@ import { BuilderContext, type BuilderCtx, type Device } from './builderContext.t
 import { useBuilderState } from './useBuilderState.ts';
 import { renderEmail } from './renderEmail.ts';
 import { sampleMergeValues } from './mergeTags.ts';
+import { safeTheme } from './styles.ts';
 import { blockLabel } from './labels.ts';
 import { Canvas } from './Canvas.tsx';
 import { EmailPreview, EmailPreviewModal } from './EmailPreview.tsx';
@@ -66,7 +67,7 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
   doc: docProp,
   onChange,
   mode,
-  theme,
+  theme: themeProp,
   language,
   lockedHeader,
   lockedFooter,
@@ -78,6 +79,8 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
   toolbarExtra,
 }) => {
   const t = useMemo(() => makeT(language), [language]);
+  // The canvas and the panels see the same validated theme the renderer uses.
+  const theme = useMemo(() => safeTheme(themeProp), [themeProp]);
   const rootRef = useRef<HTMLDivElement>(null);
   const [device, setDevice] = useState<Device>('desktop');
   const [tab, setTab] = useState<PaletteTab>('blocks');

@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   MERGE_TAGS,
+  asciiTrim,
+  decodeFallbackEntities,
   findUnknownMergeTags,
+  formatMergeTag,
   htmlEscape,
   isMergeTagUrl,
   listMergeTags,
+  normalizeMergeTags,
   parseMergeTags,
   sampleMergeValues,
   substituteMergeTags,
@@ -57,6 +61,46 @@ test('isMergeTagUrl', () => {
   assert.equal(isMergeTagUrl('{{unsubscribe_url}}'), true);
   assert.equal(isMergeTagUrl('  {{ view_online_url | https://x.test }}'), true);
   assert.equal(isMergeTagUrl('https://x.test/{{name}}'), false);
+});
+
+test('asciiTrim strips [ \\t\\r\\n] only', () => {
+  assert.equal(asciiTrim(' \t\r\n a b \n'), 'a b');
+  assert.equal(asciiTrim(' a '), ' a ');
+  assert.equal(asciiTrim('\u000ba\u000c'), '\u000ba\u000c');
+});
+
+test('decodeFallbackEntities: exactly the documented map, one pass', () => {
+  assert.equal(decodeFallbackEntities('&amp;&lt;&gt;&quot;&#039;&#39;&apos;&nbsp;'), `&<>"''' `);
+  assert.equal(decodeFallbackEntities('&amp;lt;'), '&lt;');
+  assert.equal(decodeFallbackEntities('&AMP; &#169; &copy; &#x26; &amp'), '&AMP; &#169; &copy; &#x26; &amp');
+});
+
+test('formatMergeTag is canonical', () => {
+  assert.equal(formatMergeTag('first_name'), '{{first_name}}');
+  assert.equal(formatMergeTag('first_name', ' there '), '{{first_name|there}}');
+  assert.equal(formatMergeTag('first_name', '  '), '{{first_name}}');
+});
+
+test('normalizeMergeTags removes ASCII spaces, NBSP and &nbsp; around the name and the pipe', () => {
+  assert.equal(normalizeMergeTags('{{ first_name }}'), '{{first_name}}');
+  assert.equal(normalizeMergeTags('{{&nbsp;first_name }}'), '{{first_name}}');
+  assert.equal(normalizeMergeTags('{{ first_name }}'), '{{first_name}}');
+  assert.equal(normalizeMergeTags('{{ \t&nbsp; first_name\r\n&nbsp;|&nbsp; there  &nbsp;}}'), '{{first_name|there}}');
+  assert.equal(normalizeMergeTags('{{x|a | b}}'), '{{x|a | b}}', 'only the edges of the fallback are trimmed');
+  assert.equal(normalizeMergeTags('{{x|&nbsp;}} {{y| }}'), '{{x}} {{y}}', 'an empty fallback is dropped');
+  assert.equal(normalizeMergeTags('a {{ first_name }} b {{email}} c'), 'a {{first_name}} b {{email}} c');
+  assert.equal(normalizeMergeTags('{{ first name }} {{}} {x}'), '{{ first name }} {{}} {x}', 'not a tag, not touched');
+  const once = normalizeMergeTags('{{&nbsp;a | b }}');
+  assert.equal(normalizeMergeTags(once), once, 'idempotent');
+});
+
+test('the substituted result of a normalised tag equals the one of the original (spaces only)', () => {
+  const values = { first_name: 'Jana' };
+  const tpl = '{{ first_name | x }}';
+  assert.equal(
+    substituteMergeTags(normalizeMergeTags(tpl), values, { context: 'html', mode: 'send' }),
+    substituteMergeTags(tpl, values, { context: 'html', mode: 'send' }),
+  );
 });
 
 test('MERGE_TAGS lists every C9 tag with en, sk and hu labels', () => {

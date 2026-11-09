@@ -26,6 +26,7 @@ import { canRedo, canUndo, createHistory, endCoalesce, pushHistory, redo, undo, 
 import type { DragInfo, DropTarget } from './dnd.ts';
 import type { BuilderActions, Selection } from './builderContext.ts';
 import type { TFn } from '../../../utils/timeTracking';
+import { shouldRefocusRoot } from './focus.ts';
 
 type Options = {
   doc: EmailDoc;
@@ -277,6 +278,19 @@ export const useBuilderState = (opts: Options) => {
       }
     }
   }, [selection, selectionAlive]);
+
+  // Text editing ended (Escape, another block, a delete): the removed editor took the focus
+  // with it, so the root takes it back and keeps getting Delete / Escape / Ctrl+Z. An input the
+  // user clicked into (a panel field) holds the focus and is left alone.
+  const isEditing = selectionAlive ? editingId !== null : false;
+  const wasEditingRef = useRef(false);
+  useEffect(() => {
+    const was = wasEditingRef.current;
+    wasEditingRef.current = isEditing;
+    if (shouldRefocusRoot(was, isEditing, document.activeElement, document.body, document.documentElement)) {
+      optsRef.current.focusRoot();
+    }
+  }, [isEditing]);
 
   const doUndo = useCallback(() => {
     if (!canUndo(histRef.current)) return;
