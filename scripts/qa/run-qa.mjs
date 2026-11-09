@@ -125,6 +125,9 @@ const RULES = [
   [/^src\/components\/SettingsView\./, ['System Settings', 'Time tracking']],
   /* The WhatsApp module: its view, the pure protocol helpers and the spec that stands in for WAAI. */
   [/^src\/components\/whatsapp\/|^tests\/e2e\/whatsapp(NativeModule|Links)\.spec\./, ['WhatsApp', 'Native WhatsApp module', 'WhatsApp links']],
+  /* The Newsletter module (list, builder, send, results, Settings > Newsletter), its API mock and spec. The
+     title word reaches the journey spec, the crawler's "Newsletter (#newsletter)" and the dark-mode audit. */
+  [/^src\/components\/newsletter\/|^tests\/e2e\/(newsletter\.spec\.ts|helpers\/newsletterMock\.ts)/, ['Newsletter']],
   [/^src\/components\/(SocialMediaView|RagAiView|UnifiedEntryView)\./, ['Shell navigation']],
 
   // --- the frame ---------------------------------------------------------

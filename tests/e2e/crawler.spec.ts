@@ -2,6 +2,7 @@ import { test } from '@playwright/test';
 import { QAReport } from './helpers/reportCollector';
 import { assertNoDefectsFound } from './helpers/gate';
 import { ViewCrawler } from './helpers/uiExplorer';
+import { installNewsletterMock } from './helpers/newsletterMock';
 import { dismissOverlays, gotoView, startSession, type ConsoleCapture } from './helpers/appDriver';
 
 /**
@@ -31,6 +32,7 @@ const MODULES: ModuleUnderTest[] = [
   { name: 'Tasks', hash: '#tasks' },
   { name: 'Time Tracking', hash: '#time-tracking' },
   { name: 'WhatsApp', hash: '#whatsapp' },
+  { name: 'Newsletter', hash: '#newsletter', drilldown: true },
   { name: 'Leads / Pipeline', hash: '#leads', drilldown: true },
   { name: 'Clients Register', hash: '#clients', drilldown: true },
   { name: 'Projects', hash: '#projects', drilldown: true },
@@ -50,6 +52,7 @@ test.describe('Deep UI audit', () => {
   test.beforeEach(async ({ page }) => {
     QAReport.beginScope();
     consoleCapture = await startSession(page);
+    await installNewsletterMock(page);
   });
 
   for (const mod of MODULES) {

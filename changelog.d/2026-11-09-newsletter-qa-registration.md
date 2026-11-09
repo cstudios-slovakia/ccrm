@@ -1,0 +1,1 @@
+- Newsletter: registered in the QA crawler and the dark-mode audit, and the scoped QA maps newsletter files to its specs.

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { installNewsletterMock } from './helpers/newsletterMock';
 import { DRILLDOWN_CLIENT } from './helpers/fixture';
 
 /**
@@ -34,6 +35,7 @@ const MODULES = [
   { name: 'Tasks', hash: '#tasks' },
   { name: 'Time Tracking', hash: '#time-tracking' },
   { name: 'WhatsApp', hash: '#whatsapp' },
+  { name: 'Newsletter', hash: '#newsletter' },
   { name: 'System Settings', hash: '#settings' },
   { name: 'Personal Settings', hash: '#personal-settings' },
 ];
@@ -276,6 +278,7 @@ test.describe('Dark mode', () => {
   test.beforeEach(async ({ page }) => {
     // The user's row says dark too: the app adopts the row's appearance over the browser's.
     await startSession(page, { themeMode: 'dark' });
+    await installNewsletterMock(page);
     // The appearance is read from localStorage before the first paint, exactly
     // as index.html does it, so the app boots dark rather than flipping later.
     await page.addInitScript(() => {
