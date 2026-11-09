@@ -191,10 +191,15 @@ $same('names, first names and company', [
 $none = ccrm_newsletter_group_client_profiles([$lead('client-9', 'Silent'), $lead('l-9', 'Silent', 'client-9', 0, ['archived' => 1, 'email' => 'x@y.sk'])])['profiles']['client-9'];
 $built = ccrm_newsletter_build_rows(ccrm_newsletter_profile_candidates($none), []);
 $same('a client with no usable address is counted, not sent', [$built['total'], $built['withoutEmail']], [0, 1]);
+// B1.7: a person's first name is the stored one, never guessed from `name`.
+$c = ccrm_newsletter_lead_candidate(['id' => 'x', 'name' => 'Kovács Péter', 'email' => 'p@x.sk', 'client_type' => 'person', 'contact_first_name' => 'Péter', 'contact_last_name' => 'Kovács'], 'client', 'Kovács Péter');
+$same('a person with parts Péter / Kovács and the name "Kovács Péter" greets "Péter"', [$c['merge']['first_name'], $c['name']], ['Péter', 'Kovács Péter']);
 $c = ccrm_newsletter_lead_candidate(['id' => 'x', 'name' => 'Ing. Jana Malá', 'email' => 'j@x.sk', 'client_type' => 'person'], 'client', 'Ing. Jana Malá');
-$same('a person client without a contact person gives its own first name', $c['merge']['first_name'], 'Jana');
+$same('a person without stored parts has an empty first name (the name is not guessed)', $c['merge']['first_name'], '');
+$pv = ccrm_newsletter_audience_preview(ccrm_newsletter_build_rows([$c], []));
+$same('... and is counted as without a first name', [$pv['total'], $pv['withoutFirstName']], [1, 1]);
 $c = ccrm_newsletter_lead_candidate(['id' => 'x', 'name' => 'Acme s.r.o.', 'email' => 'j@x.sk', 'client_type' => 'business'], 'client', 'Acme s.r.o.');
-$same('a company never does', $c['merge']['first_name'], '');
+$same('a company without a contact name gives none', $c['merge']['first_name'], '');
 
 // ---- contact first and last name (C18) ------------------------------------------------------
 // first_name is the stored first name with titles stripped, never guessed from contact_person.
@@ -221,14 +226,14 @@ $same('split: a title stays with the first name', ccrm_contact_parts_from_person
 $same('split: one word is not guessed', ccrm_contact_parts_from_person('Jana'), [null, null]);
 $same('split: a comma is not guessed', ccrm_contact_parts_from_person('Kováč, Michal'), [null, null]);
 $same('split: a trailing title is not guessed', ccrm_contact_parts_from_person('Michal Kováč PhD.'), [null, null]);
-$same('sync: parts present, the full name is composed from them', ccrm_contact_name_for_sync(['contactPerson' => 'stale', 'contactFirstName' => 'Péter', 'contactLastName' => 'Kovács'], null), ['Péter', 'Kovács', 'Péter Kovács']);
-$same('sync: parts present and empty keep the sent full name', ccrm_contact_name_for_sync(['contactPerson' => 'Jana', 'contactFirstName' => '', 'contactLastName' => ''], ['contact_person' => 'Jana']), [null, null, 'Jana']);
-$same('sync: an older bundle with a changed full name is split', ccrm_contact_name_for_sync(['contactPerson' => 'Eva Mináriková'], ['contact_person' => 'Eva']), ['Eva', 'Mináriková', 'Eva Mináriková']);
-$same('sync: an older bundle with an unchanged full name leaves the stored parts alone', ccrm_contact_name_for_sync(['contactPerson' => 'Eva Mináriková'], ['contact_person' => 'Eva Mináriková']), null);
+$same('sync: parts present, the full name is composed from them', ccrm_contact_name_for_sync(['clientType' => 'business', 'contactPerson' => 'stale', 'contactFirstName' => 'Péter', 'contactLastName' => 'Kovács'], null), ['Péter', 'Kovács', 'Péter Kovács']);
+$same('sync: parts present and empty keep the sent full name', ccrm_contact_name_for_sync(['clientType' => 'business', 'contactPerson' => 'Jana', 'contactFirstName' => '', 'contactLastName' => ''], ['contact_person' => 'Jana']), [null, null, 'Jana']);
+$same('sync: an older bundle with a changed full name is split', ccrm_contact_name_for_sync(['clientType' => 'business', 'contactPerson' => 'Eva Mináriková'], ['contact_person' => 'Eva']), ['Eva', 'Mináriková', 'Eva Mináriková']);
+$same('sync: an older bundle with an unchanged full name leaves the stored parts alone', ccrm_contact_name_for_sync(['clientType' => 'business', 'contactPerson' => 'Eva Mináriková'], ['contact_person' => 'Eva Mináriková']), null);
 
 // the one-time backfill, against the fake PDO that reads the real schema
 $db = new DemoFakePdo();
-$mk = fn($id, $person, $first = null, $last = null) => $db->seedRow('leads', ['id' => $id, 'name' => 'N ' . $id, 'owner' => 'o', 'created_at' => '2026-01-01', 'contact_person' => $person, 'contact_first_name' => $first, 'contact_last_name' => $last]);
+$mk = fn($id, $person, $first = null, $last = null) => $db->seedRow('leads', ['id' => $id, 'name' => 'N ' . $id, 'owner' => 'o', 'created_at' => '2026-01-01', 'client_type' => 'business', 'contact_person' => $person, 'contact_first_name' => $first, 'contact_last_name' => $last]);
 $mk('b1', 'Michal Kováč');
 $mk('b2', 'Ing. Michal Kováč');
 $mk('b3', 'Jana');
@@ -245,6 +250,57 @@ $mk('b9', 'Eva Malá');
 $same('backfill never runs twice', [ccrm_backfill_contact_names($db), $parts($db)['b9']], [0, [null, null]]);
 ccrm_set_contact_parts_from_person($db, 'b9');
 $same('a writer of contact_person only keeps the parts consistent', $parts($db)['b9'], ['Eva', 'Malá']);
+
+// ---- person records (B1.7): the parts are the person's own name, `contact_person` is left alone -----
+$same('compose: a person is never composed, the full name stays as it is', [
+    ccrm_compose_contact_name('Péter', 'Kovács', '', true), ccrm_compose_contact_name('Péter', 'Kovács', ' Old ', true), ccrm_compose_contact_name('', '', null, true),
+], ['', 'Old', '']);
+$same('sync: a person with parts keeps contact_person as sent (empty stays empty)',
+    ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Kovács Péter', 'contactFirstName' => 'Péter', 'contactLastName' => 'Kovács'], null), ['Péter', 'Kovács', null]);
+$same('sync: a person, parts present, the stored contact_person is not turned into the name',
+    ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Kovács Péter', 'contactPerson' => 'Assistant', 'contactFirstName' => 'Péter', 'contactLastName' => 'Kovács'], ['client_type' => 'person', 'name' => 'Kovács Péter']), ['Péter', 'Kovács', 'Assistant']);
+$same('sync: a business with parts is still composed',
+    ccrm_contact_name_for_sync(['clientType' => 'business', 'name' => 'Acme', 'contactFirstName' => 'Péter', 'contactLastName' => 'Kovács'], null), ['Péter', 'Kovács', 'Péter Kovács']);
+$same('sync: a type missing from the push falls back to the stored one',
+    ccrm_contact_name_for_sync(['name' => 'Acme', 'contactFirstName' => 'Péter', 'contactLastName' => 'Kovács'], ['client_type' => 'business']), ['Péter', 'Kovács', 'Péter Kovács']);
+$same('sync: a new person without parts is split from name', ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Jana Malá'], null), ['Jana', 'Malá', null]);
+$same('sync: a new person whose name cannot be split gets none', ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Jana'], null), [null, null, null]);
+$same('sync: an unchanged person name is "no opinion"', ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Jana Malá'], ['client_type' => 'person', 'name' => 'Jana Malá', 'contact_first_name' => null, 'contact_last_name' => null]), null);
+$same('sync: a renamed person whose parts still compose to the old name is split again',
+    ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Jana Nová'], ['client_type' => 'person', 'name' => 'Jana Malá', 'contact_first_name' => 'Jana', 'contact_last_name' => 'Malá']), ['Jana', 'Nová', null]);
+$same('sync: a renamed person with typed parts keeps them',
+    ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Kovács Péter Jr'], ['client_type' => 'person', 'name' => 'Kovács Péter', 'contact_first_name' => 'Péter', 'contact_last_name' => 'Kovács']), null);
+$same('sync: a renamed person with no stored parts is split',
+    ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Eva Malá'], ['client_type' => 'person', 'name' => 'Eva', 'contact_first_name' => null, 'contact_last_name' => null]), ['Eva', 'Malá', null]);
+$same('sync: a type switch by a bundle without parts is "no opinion"',
+    ccrm_contact_name_for_sync(['clientType' => 'person', 'name' => 'Jana Malá'], ['client_type' => 'business', 'name' => 'Jana Malá', 'contact_first_name' => 'Anna', 'contact_last_name' => 'Nová']), null);
+
+$db = new DemoFakePdo();
+$mkp = fn($id, $name, $type = 'person', $person = null, $first = null, $last = null) => $db->seedRow('leads', ['id' => $id, 'name' => $name, 'owner' => 'o', 'created_at' => '2026-01-01', 'client_type' => $type, 'contact_person' => $person, 'contact_first_name' => $first, 'contact_last_name' => $last]);
+$mkp('p1', 'Michal Kováč');
+$mkp('p2', 'Ing. Jana Malá', 'person', '');
+$mkp('p3', 'Jana');
+$mkp('p4', 'Kováč, Michal');
+$mkp('p5', 'Kovács Péter', 'person', null, 'Péter', 'Kovács');   // typed: never overwritten
+$mkp('p6', 'Eva Malá', 'person', 'Assistant Anna Nová');         // has a contact person: not a backfill row
+$mkp('p7', 'Acme s.r.o. Plus', 'business');                       // not a person
+$mkp('p8', 'Zoltán Nagy', 'person', null, 'Zoltán', null);        // one typed part: never overwritten
+$same('person backfill splits what it can and reports the count', ccrm_backfill_person_names($db), 2);
+$same('person backfill result',
+    $parts($db), ['p1' => ['Michal', 'Kováč'], 'p2' => ['Ing. Jana', 'Malá'], 'p3' => [null, null], 'p4' => [null, null], 'p5' => ['Péter', 'Kovács'], 'p6' => [null, null], 'p7' => [null, null], 'p8' => ['Zoltán', null]]);
+$same('person backfill sets its own marker (3C marker untouched)', [$db->settings()['PERSON_NAME_BACKFILL'] ?? null, isset($db->settings()['CONTACT_NAME_BACKFILL'])], ['2', false]);
+$mkp('p9', 'Eva Malá');
+$same('person backfill never runs twice', [ccrm_backfill_person_names($db), $parts($db)['p9']], [0, [null, null]]);
+ccrm_set_contact_parts_from_person($db, 'p9');
+$same('a writer without a form splits a new person from name, contact_person stays empty', [$parts($db)['p9'], array_values(array_filter($db->rows('leads'), fn($r) => $r['id'] === 'p9'))[0]['contact_person']], [['Eva', 'Malá'], null]);
+$db->prepare("UPDATE `leads` SET `name` = ? WHERE `id` = ?")->execute(['Eva Nová', 'p9']);
+ccrm_set_contact_parts_from_person($db, 'p9', 'Eva Malá');
+$same('a rename re-splits parts that composed to the old name', $parts($db)['p9'], ['Eva', 'Nová']);
+$db->prepare("UPDATE `leads` SET `name` = ? WHERE `id` = ?")->execute(['Kovács Péter II', 'p5']);
+ccrm_set_contact_parts_from_person($db, 'p5', 'Kovács Péter');
+$same('a rename keeps typed parts', $parts($db)['p5'], ['Péter', 'Kovács']);
+ccrm_set_contact_parts_from_person($db, 'p5');
+$same('without the previous name typed parts are kept as well', $parts($db)['p5'], ['Péter', 'Kovács']);
 
 // ---- audience shape --------------------------------------------------------------------
 $a = ccrm_newsletter_normalize_audience(null);

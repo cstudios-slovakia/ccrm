@@ -1580,9 +1580,12 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             }
 
             $params[] = $id;
+            $oldName = $pdo->prepare("SELECT name FROM leads WHERE id = ?");
+            $oldName->execute([$id]);
+            $previousName = $oldName->fetchColumn();
             $stmt = $pdo->prepare("UPDATE leads SET " . implode(', ', $updates) . " WHERE id = ?");
             $stmt->execute($params);
-            if (array_key_exists('contact_person', $args)) ccrm_set_contact_parts_from_person($pdo, (string)$id);
+            if (array_key_exists('contact_person', $args) || array_key_exists('name', $args)) ccrm_set_contact_parts_from_person($pdo, (string)$id, $previousName === false ? null : (string)$previousName);
 
             mcp_audit($pdo, $user, 'lead_update', "Updated lead $id");
 
@@ -1738,9 +1741,12 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             }
 
             $params[] = $id;
+            $oldName = $pdo->prepare("SELECT name FROM leads WHERE id = ?");
+            $oldName->execute([$id]);
+            $previousName = $oldName->fetchColumn();
             $stmt = $pdo->prepare("UPDATE leads SET " . implode(', ', $updates) . " WHERE id = ?");
             $stmt->execute($params);
-            if (array_key_exists('contact_person', $args)) ccrm_set_contact_parts_from_person($pdo, (string)$id);
+            if (array_key_exists('contact_person', $args) || array_key_exists('name', $args)) ccrm_set_contact_parts_from_person($pdo, (string)$id, $previousName === false ? null : (string)$previousName);
 
             mcp_audit($pdo, $user, 'client_update', "Updated client $id");
 

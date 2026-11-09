@@ -387,7 +387,7 @@ other the implementer finds), the PHP writers of `contact_person` that are not t
 - Left over: (1) a *person* client or lead with no contact name still gets `{{first_name}}` from the
   first word of its own name (`ccrm_newsletter_lead_candidate()` in `newsletter_audience.php`): the
   person forms have no fields to complete. **Decided (B1.7):** person records store their own first and
-  last name; follow-up task `docs/prompts/newsletter-person-first-name.md`, not started. (2) `QuickAddClient.tsx` has no contact field, so it got none.
+  last name; built in the follow-up `docs/prompts/newsletter-person-first-name.md` (see C18, "Person records"). (2) `QuickAddClient.tsx` has no contact field, so it got none.
   (3) `scripts/import/villatesta/load.php` (one-off loader) writes `contact_person` without the parts;
   rows it loads after the backfill marker is set stay without parts (no `{{first_name}}`) until edited.
   (4) The Hungarian packs' `{contact:L7}` texts still read "Kovács Péter", while `contact_person` is now
@@ -1181,8 +1181,30 @@ Decision B1.5. The model follows employees (`employees.first_name` / `last_name`
   gains `withoutFirstName` and the live count in `AudienceEditor` shows "N without a first name" (en /
   sk "N bez krstného mena" / hu "N keresztnév nélkül"), so they can be completed before sending.
   `ccrm_newsletter_first_name()` remains only for the title stripping.
+- **Person records (B1.7):** for `client_type = 'person'` (leads and clients) the two columns hold the
+  person's **own** first and last name; for a business they stay the contact person's. `name` is never
+  recomposed (client grouping and name matching depend on it), and the compose rule above does **not**
+  apply to a person: `contact_person` stays as it is, normally empty (`composeContactName(..., isPerson)`,
+  `ccrm_compose_contact_name(..., $isPerson)`, `contactNamePatch(..., asPerson)`,
+  `ccrm_contact_name_for_sync()`, `ccrm_set_contact_parts_from_person()`).
+  - *Forms* (client profile, new client, price offers' new client, lead form): `ContactNameFields
+    forPerson` under the name, heading "Name for greetings" (sk "Meno na oslovenie", hu "Név a
+    megszólításhoz"). While nothing is stored it shows the split of `name`, a suggestion that is saved
+    only when edited (a new record saves what its form shows). Saving keeps the parts. Switching the
+    type moves the parts with the meaning: to person, the old contact person's parts are dropped and
+    any others kept; to business, the old contact person is shown instead of the person's own name.
+  - *Writers without a form* (orders, pipeline, MCP, workflows, voice copilot, an older bundle through
+    sync) set the parts from `ccrm_split_person_name(name)` on create, and again when a rename leaves
+    stored parts that still compose to the old name; typed parts are kept. A missing key in sync is
+    "no opinion".
+  - *Backfill, once* (`ccrm_backfill_person_names()`, marker `PERSON_NAME_BACKFILL`): person records
+    with a name, both parts NULL and an empty `contact_person` get the split of `name`, `updated_at`
+    pinned. A surname-first name ("Kovács Péter") is split wrongly, as before, but is now correctable.
+  - *Newsletter:* `first_name` is the stored first name for every record; a person without one is
+    counted in "without a first name".
 - **Demo:** the packs give each contact both parts; the Hungarian pack puts the given name in
-  `first` (`Péter`) and the family name in `last` (`Kovács`).
+  `first` (`Péter`) and the family name in `last` (`Kovács`). Every person record of the packs already has both
+  parts; `demo_seed/clients.php` still stores `contact_person` for them (`test:demo-seed` asserts it).
 - **Demo wipe (B1.6):** `newsletter_recipients.lead_id` and `.employee_id` are skipped by
   `demo_wipe_by_prefix()` and `demo_count_by_prefix()` (one shared two-entry list with a comment);
   demo recipient rows still go through `campaign_id LIKE 'demo-%'`.

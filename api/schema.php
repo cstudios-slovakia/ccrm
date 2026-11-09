@@ -1919,6 +1919,7 @@ if (!function_exists('ccrm_schema_statements')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_last_name` VARCHAR(100) NULL AFTER `contact_first_name`");
         }
         ccrm_backfill_contact_names($pdo);
+        ccrm_backfill_person_names($pdo);
         // 1.9.26: where the visitor came from before they filled in the form
         // (facebook, instagram, google, direct...). Written by api/pipeline.php
         // only; the app shows it and never edits it.

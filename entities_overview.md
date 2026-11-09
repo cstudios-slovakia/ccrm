@@ -103,6 +103,7 @@ Main table representing potential deals, customers, and client accounts.
 * `contact_person` VARCHAR(100)
 * `contact_first_name` VARCHAR(100) [NULLable] (the contact person's first name as typed; synced as `contactFirstName`. `{{first_name}}` of the newsletter reads this, never `contact_person`. Rule shared by `composeContactName()` and `ccrm_compose_contact_name()`: when either part is filled, `contact_person` = first + ' ' + last; both empty keeps `contact_person`. Rows that predate the column were split once by `ccrm_backfill_contact_names()`, flag `CONTACT_NAME_BACKFILL` in `system_settings`)
 * `contact_last_name` VARCHAR(100) [NULLable] (the contact person's last name as typed; synced as `contactLastName`)
+  * **For `client_type = 'person'` both columns are the person's OWN first and last name** ("Name for greetings", `{{first_name}}`); `name` is not recomposed and `contact_person` is not composed from them (normally empty). Existing person records with an empty `contact_person` were split from `name` once by `ccrm_backfill_person_names()`, flag `PERSON_NAME_BACKFILL` in `system_settings`
 
 ### `client_adjustment_migration`
 Written only by `php kprnq adjustment-clients --apply` (created on first use, not by the schema). One row per client row that command created from an adjustment-only client; `--undo` reads it to put the adjustment back.

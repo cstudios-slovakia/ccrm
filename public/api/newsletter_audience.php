@@ -371,20 +371,16 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
     // -----------------------------------------------------------------------------------
 
     /**
-     * Name and merge values for one CRM row. A person client with no contact person is the person
-     * themselves, so their own name gives the first name; a company never does.
+     * Name and merge values for one CRM row. The first name is the stored `contact_first_name`
+     * (titles stripped) for every record (C18, B1.7): the contact person's for a business, the
+     * person's own for a private person. It is never guessed from `name`; a record without one
+     * leaves `{{first_name}}` empty and is counted as "without a first name".
      */
     function ccrm_newsletter_lead_candidate(array $row, string $source, string $company): array {
         $contact = trim((string)($row['contact_person'] ?? ''));
         $own = trim((string)($row['name'] ?? ''));
         $display = $contact !== '' ? $contact : $own;
-        // C18: the first name is the stored one (titles stripped), never guessed from the full name.
-        // A person client with no contact name at all is the person themselves: no field exists to
-        // complete, so their own name still gives the first word.
         $first = ccrm_newsletter_first_name($row['contact_first_name'] ?? '');
-        if ($first === '' && $contact === '' && (string)($row['client_type'] ?? '') === 'person') {
-            $first = ccrm_newsletter_first_name($own);
-        }
         return [
             'source' => $source,
             'email' => (string)($row['email'] ?? ''),
