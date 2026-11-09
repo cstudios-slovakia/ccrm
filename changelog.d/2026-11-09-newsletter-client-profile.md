@@ -1,0 +1,1 @@
+- **Newsletter on the client profile** (`ClientNewsletterStatus.tsx`, `newsletter.php` action `contact_status`): the client profile shows the last campaigns sent to the client's address and an "Unsubscribed on" badge; hidden without newsletter access or data.

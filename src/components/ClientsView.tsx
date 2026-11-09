@@ -17,6 +17,7 @@ import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTy
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, calculateOrderTotals } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
+import { ClientNewsletterStatus } from "./newsletter/ClientNewsletterStatus";
 import { isClientRecord } from "../utils/clientRecord";
 import { applyClientProfile, clientProfileGroups } from "../utils/leadClient";
 import { getDefaultVatRate } from "../utils/vat";
@@ -4204,6 +4205,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
             </form>
+            <ClientNewsletterStatus email={activeClient.email} language={systemLanguage} t={t} />
           </div>
 
           {/* RIGHT PANEL: Chronological Event Timeline & Interactive Logger (Combined) */}

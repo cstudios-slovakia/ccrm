@@ -206,6 +206,46 @@ function ccrm_nl_do_suppressions(array $ctx, array $body): void {
     ccrm_nl_respond(['rows' => $rows, 'total' => $total]);
 }
 
+/** Newsletter status of up to 50 addresses (client profile): unsubscribe entry and the last 5 campaigns sent. */
+function ccrm_nl_do_contact_status(array $ctx, array $body): void {
+    $pdo = $ctx['pdo'];
+    $raw = $body['emails'] ?? null;
+    if (!is_array($raw)) {
+        ccrm_nl_fail('invalid_input', 400, 'emails is required.');
+    }
+    $emails = [];
+    foreach ($raw as $e) {
+        $n = ccrm_newsletter_normalize_email(is_string($e) ? $e : '');
+        if (ccrm_newsletter_is_valid_email($n)) {
+            $emails[$n] = true;
+        }
+        if (count($emails) >= 50) {
+            break;
+        }
+    }
+    $emails = array_keys($emails);
+    $out = [];
+    foreach ($emails as $email) {
+        $entry = ['campaigns' => []];
+        $sup = $pdo->prepare("SELECT `created_at`, `campaign_id` FROM `newsletter_suppressions` WHERE `email` = ? LIMIT 1");
+        $sup->execute([$email]);
+        if ($row = $sup->fetch(\PDO::FETCH_ASSOC)) {
+            $entry['unsubscribed'] = ['at' => ccrm_newsletter_iso($row['created_at']), 'campaignId' => (string)($row['campaign_id'] ?? '')];
+        }
+        $st = $pdo->prepare(
+            "SELECT c.`id`, c.`name`, r.`sent_at` FROM `newsletter_recipients` r
+               JOIN `newsletter_campaigns` c ON c.`id` = r.`campaign_id` AND c.`deleted_at` IS NULL
+              WHERE r.`email` = ? AND r.`status` = 'sent' ORDER BY r.`sent_at` DESC LIMIT 5"
+        );
+        $st->execute([$email]);
+        foreach ($st->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $entry['campaigns'][] = ['id' => (string)$r['id'], 'name' => (string)$r['name'], 'sentAt' => ccrm_newsletter_iso($r['sent_at'])];
+        }
+        $out[$email] = $entry;
+    }
+    ccrm_nl_respond($out);
+}
+
 function ccrm_nl_do_images(array $ctx, array $body): void {
     $base = ccrm_app_base_url($ctx['pdo']);
     ccrm_nl_respond(['images' => ccrm_newsletter_list_images(ccrm_uploads_dir(), $base !== '' ? $base : '/', 200)]);
@@ -487,6 +527,7 @@ $routes = [
     'audience_preview' => ['view', 'ccrm_nl_do_audience_preview'],
     'settings_get' => ['view', 'ccrm_nl_do_settings_get'],
     'suppressions' => ['view', 'ccrm_nl_do_suppressions'],
+    'contact_status' => ['view', 'ccrm_nl_do_contact_status'],
     'images' => ['edit', 'ccrm_nl_do_images'],
     'create' => ['edit', 'ccrm_nl_do_create'],
     'update' => ['edit', 'ccrm_nl_do_update'],
