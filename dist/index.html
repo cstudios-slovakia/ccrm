@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./assets/favicon-D81-yVMc.svg" />
-    <link rel="apple-touch-icon" href="./assets/favicon-D81-yVMc.svg" />
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon-PcgQMRcC.svg" />
+    <link rel="apple-touch-icon" href="./assets/favicon-PcgQMRcC.svg" />
     <link rel="manifest" href="./manifest.json" id="app-manifest" />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -13,7 +13,7 @@
     <meta name="application-name" content="Koperniq" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Koperniq | Advanced Sales & Operations Control</title>
-    <meta name="description" content="Next-generation client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment." />
+    <meta name="description" content="Sales, projects, documents and operations in one workspace for the whole team." />
     <!-- Preconnect to Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -33,12 +33,17 @@
       (function () {
         try {
           var read = function (key) { try { return localStorage.getItem(key); } catch (e) { return null; } };
+          // Cached by updatePwaManifest(): the title alone for the home-screen label,
+          // title + product ("Lapidea (Koperniq)") for the application name.
           var sysName = read("crm_system_name");
+          var sysNameFull = read("crm_system_name_full") || sysName;
           if (sysName) {
             var metaApple = document.querySelector('meta[name="apple-mobile-web-app-title"]');
             if (metaApple) metaApple.setAttribute("content", sysName);
+          }
+          if (sysNameFull) {
             var metaApp = document.querySelector('meta[name="application-name"]');
-            if (metaApp) metaApp.setAttribute("content", sysName);
+            if (metaApp) metaApp.setAttribute("content", sysNameFull);
           }
           var mode = read("ccrm_theme_mode") || "system";
           var palette = read("crm_user_theme") || "basic";
@@ -68,14 +73,15 @@
     </script>
     <!-- Chart.js is bundled (src/utils/chartRuntime.ts), not loaded from a CDN: an
          unpinned third-party <script> without an integrity hash could run code in
-         every session. -->
-    <script type="module" crossorigin src="./assets/index-BhBLXBOX.js"></script>
+         every session. -->
+    <script type="module" crossorigin src="./assets/index-m45T1ZdS.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/jsx-runtime-DQ2sTfV8.js">
     <link rel="modulepreload" crossorigin href="./assets/plus-j1ryeeuK.js">
+    <link rel="modulepreload" crossorigin href="./assets/sparkles-CekKZ18r.js">
     <link rel="modulepreload" crossorigin href="./assets/archive--9YKw_wt.js">
     <link rel="modulepreload" crossorigin href="./assets/calendar-clock-lI-7hIYy.js">
-    <link rel="modulepreload" crossorigin href="./assets/brand-3RYHTCig.js">
-    <link rel="modulepreload" crossorigin href="./assets/layout-CEttnpfH.js">
+    <link rel="modulepreload" crossorigin href="./assets/chevron-right-Diwk7SLp.js">
+    <link rel="modulepreload" crossorigin href="./assets/layout-DzD3Cj7z.js">
     <link rel="modulepreload" crossorigin href="./assets/receipt-BNdbn_Zi.js">
     <link rel="modulepreload" crossorigin href="./assets/arrow-up-right-BKFdIq2C.js">
     <link rel="modulepreload" crossorigin href="./assets/award-B6SBN9TV.js">
@@ -110,7 +116,6 @@
     <link rel="modulepreload" crossorigin href="./assets/info-Dww9Q0am.js">
     <link rel="modulepreload" crossorigin href="./assets/key-round-DXv_JOEV.js">
     <link rel="modulepreload" crossorigin href="./assets/layers-DCPpkoTB.js">
-    <link rel="modulepreload" crossorigin href="./assets/sparkles-BEMkqkKw.js">
     <link rel="modulepreload" crossorigin href="./assets/lock-D1jrLKi_.js">
     <link rel="modulepreload" crossorigin href="./assets/map-pin-DcncPRV4.js">
     <link rel="modulepreload" crossorigin href="./assets/maximize-2-B9JgetQd.js">
@@ -130,17 +135,17 @@
     <link rel="modulepreload" crossorigin href="./assets/user-DDrUAfhR.js">
     <link rel="modulepreload" crossorigin href="./assets/x-DpUjLQoB.js">
     <link rel="modulepreload" crossorigin href="./assets/aiModels-DHKWP6OA.js">
-    <link rel="modulepreload" crossorigin href="./assets/translations-BQXzZUf9.js">
+    <link rel="modulepreload" crossorigin href="./assets/translations-a1PYgxr8.js">
     <link rel="modulepreload" crossorigin href="./assets/cn-DaNgAAP8.js">
     <link rel="modulepreload" crossorigin href="./assets/userPrefs-CttIlI1Q.js">
-    <link rel="modulepreload" crossorigin href="./assets/sectionVisuals-CTPyypQ5.js">
+    <link rel="modulepreload" crossorigin href="./assets/sectionVisuals-jVBGHHeC.js">
     <link rel="modulepreload" crossorigin href="./assets/undoable-qcOh3894.js">
     <link rel="modulepreload" crossorigin href="./assets/proxy-4sP-YhXG.js">
     <link rel="modulepreload" crossorigin href="./assets/AnimatePresence-wzbyerhS.js">
     <link rel="modulepreload" crossorigin href="./assets/timeTrackingApi-D5gteal4.js">
     <link rel="modulepreload" crossorigin href="./assets/useTimeTracking-BuD88RP8.js">
     <link rel="modulepreload" crossorigin href="./assets/viewSize-BH7cs1zM.js">
-    <link rel="modulepreload" crossorigin href="./assets/SectionIcon-D9ZwUb0s.js">
+    <link rel="modulepreload" crossorigin href="./assets/SectionIcon-BrUg5pPJ.js">
     <link rel="modulepreload" crossorigin href="./assets/offerStatuses-BQf7nMQ0.js">
     <link rel="modulepreload" crossorigin href="./assets/currency-Fd-vo4cJ.js">
     <link rel="modulepreload" crossorigin href="./assets/recurringExpenses-CcMUEcIe.js">
@@ -152,10 +157,10 @@
     <link rel="modulepreload" crossorigin href="./assets/leadSla-BwZGcVyI.js">
     <link rel="modulepreload" crossorigin href="./assets/projects-C3G6QWGQ.js">
     <link rel="modulepreload" crossorigin href="./assets/useProjectStatuses-DT5410xQ.js">
-    <link rel="modulepreload" crossorigin href="./assets/GroupedStatusValueEquationStats-B7eUNL5i.js">
-    <link rel="modulepreload" crossorigin href="./assets/CustomSelect-B2I_RDdQ.js">
+    <link rel="modulepreload" crossorigin href="./assets/GroupedStatusValueEquationStats-jNMTQehl.js">
+    <link rel="modulepreload" crossorigin href="./assets/CustomSelect-BHXId1Z0.js">
     <link rel="modulepreload" crossorigin href="./assets/clientRecord-DnNblB1P.js">
-    <link rel="modulepreload" crossorigin href="./assets/aiConfig-3Kw1lfW1.js">
+    <link rel="modulepreload" crossorigin href="./assets/aiConfig-B4s9kvWY.js">
     <link rel="modulepreload" crossorigin href="./assets/vat-CJR_mC1a.js">
     <link rel="modulepreload" crossorigin href="./assets/orders-DfAUnuzE.js">
     <link rel="stylesheet" crossorigin href="./assets/index-Cu0Szxae.css">
