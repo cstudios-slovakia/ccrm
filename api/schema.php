@@ -1330,6 +1330,68 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_te_employee_date` (`employee_id`, `entry_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Newsletter module (docs/NEWSLETTER.md C2). Written only by api/newsletter*.php, never by
+            // sync.php, so there is no column healing. No foreign keys, like the rest of the schema.
+            "CREATE TABLE IF NOT EXISTS `newsletter_campaigns` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY COMMENT 'nlc-<random>',
+              `name` VARCHAR(200) NOT NULL,
+              `subject` VARCHAR(255) NOT NULL DEFAULT '',
+              `preheader` VARCHAR(255) NULL,
+              `from_name` VARCHAR(150) NULL COMMENT 'NULL = settings default',
+              `reply_to` VARCHAR(190) NULL COMMENT 'NULL = settings default',
+              `audience_json` TEXT NOT NULL COMMENT 'C5 Audience',
+              `body_json` MEDIUMTEXT NULL COMMENT 'C6 EmailDoc',
+              `use_header` TINYINT(1) NOT NULL DEFAULT 1,
+              `use_footer` TINYINT(1) NOT NULL DEFAULT 1,
+              `html_snapshot` MEDIUMTEXT NULL COMMENT 'Rendered e-mail at start_send, merge tags unresolved',
+              `text_snapshot` MEDIUMTEXT NULL,
+              `status` VARCHAR(16) NOT NULL DEFAULT 'draft' COMMENT 'draft | sending | paused | sent | cancelled',
+              `last_error` VARCHAR(500) NULL,
+              `recipients_total` INT NOT NULL DEFAULT 0 COMMENT 'Queued rows at start_send',
+              `created_by` VARCHAR(50) NULL,
+              `updated_by` VARCHAR(50) NULL,
+              `created_at` DATETIME NOT NULL,
+              `updated_at` DATETIME NOT NULL,
+              `started_at` DATETIME NULL,
+              `finished_at` DATETIME NULL,
+              `deleted_at` DATETIME NULL,
+              KEY `idx_nlc_status` (`status`),
+              KEY `idx_nlc_list` (`deleted_at`, `updated_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `newsletter_recipients` (
+              `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+              `campaign_id` VARCHAR(64) NOT NULL,
+              `email` VARCHAR(190) NOT NULL COMMENT 'Lower-cased, trimmed',
+              `name` VARCHAR(255) NULL,
+              `source` VARCHAR(16) NOT NULL COMMENT 'client | lead | employee | extra',
+              `lead_id` VARCHAR(50) NULL,
+              `employee_id` VARCHAR(50) NULL,
+              `merge_json` TEXT NULL COMMENT 'Merge values frozen at start_send (C9)',
+              `token` CHAR(32) NOT NULL COMMENT 'bin2hex(random_bytes(16)); unsubscribe and view-online links',
+              `status` VARCHAR(16) NOT NULL DEFAULT 'queued' COMMENT 'queued | sent | failed | skipped | cancelled',
+              `skip_reason` VARCHAR(32) NULL COMMENT 'unsubscribed | invalid',
+              `attempts` TINYINT NOT NULL DEFAULT 0,
+              `next_attempt_at` DATETIME NULL,
+              `error` VARCHAR(500) NULL,
+              `sent_at` DATETIME NULL,
+              `unsubscribed_at` DATETIME NULL,
+              UNIQUE KEY `uq_nlr_campaign_email` (`campaign_id`, `email`),
+              UNIQUE KEY `uq_nlr_token` (`token`),
+              KEY `idx_nlr_queue` (`campaign_id`, `status`, `next_attempt_at`),
+              KEY `idx_nlr_sent_at` (`sent_at`),
+              KEY `idx_nlr_email` (`email`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `newsletter_suppressions` (
+              `email` VARCHAR(190) NOT NULL PRIMARY KEY COMMENT 'Lower-cased',
+              `reason` VARCHAR(16) NOT NULL COMMENT 'unsubscribed | bounced | manual',
+              `campaign_id` VARCHAR(64) NULL,
+              `note` VARCHAR(255) NULL,
+              `created_by` VARCHAR(50) NULL COMMENT 'NULL = the recipient (unsubscribe link) or the worker (bounce)',
+              `created_at` DATETIME NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             /* PHASE5-SCHEMA-START */
             "CREATE TABLE IF NOT EXISTS `time_tracker_pairing_codes` (
               `code_hash` CHAR(64) NOT NULL,

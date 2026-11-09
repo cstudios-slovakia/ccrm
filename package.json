@@ -32,6 +32,7 @@
     "test:vector": "php scripts/test-vector-index.php",
     "test:backfill": "php scripts/test-lead-client-backfill.php",
     "test:adjustment-clients": "php scripts/test-adjustment-clients.php",
+    "test:newsletter": "php scripts/test-newsletter.php",
     "test:qa": "node scripts/qa/run-qa.mjs",
     "test:persistence": "node scripts/probe-persistence.mjs",
     "test:persistence:projects": "node scripts/probe-project-tabs.mjs",

@@ -336,7 +336,7 @@ Saved AI-generated dashboard configurations.
 
 ### `system_settings`
 Global system configurations.
-* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE)
+* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG: see section 12)
 * `value` LONGTEXT
 * `updated_at` TIMESTAMP
 
@@ -797,3 +797,58 @@ Logged support hours (billable and non-billable) against a ticket.
 * `note` VARCHAR(500) [NULLable]
 * `logged_at` DATE
 * `created_at` TIMESTAMP
+
+---
+
+## 12. Newsletter
+
+Spec: `docs/NEWSLETTER.md`. These tables are written only by `api/newsletter*.php`, never by `sync.php` (so the `sync.php` column-healing rule does not apply) and they are not part of the sync blob. No foreign keys. Times are UTC `DATETIME`. A later `ALTER` goes into a `ccrm_migrate_newsletter()` migration.
+
+### `newsletter_campaigns`
+One e-mail campaign. Only a `draft` is editable. Deleted campaigns are soft-deleted (`deleted_at`).
+* `id` VARCHAR(64) [PK] (`nlc-<random hex>`)
+* `name` VARCHAR(200) (internal name)
+* `subject` VARCHAR(255)
+* `preheader` VARCHAR(255) [NULLable]
+* `from_name` VARCHAR(150) [NULLable] (NULL = `NEWSLETTER_CONFIG.sender.fromName`)
+* `reply_to` VARCHAR(190) [NULLable] (NULL = `NEWSLETTER_CONFIG.sender.replyTo`)
+* `audience_json` TEXT (the `Audience` of C5: clients required, leads / employees / extra optional)
+* `body_json` MEDIUMTEXT [NULLable] (the `EmailDoc` of C6)
+* `use_header` TINYINT(1) / `use_footer` TINYINT(1) (default 1: show the global header / footer)
+* `html_snapshot` MEDIUMTEXT [NULLable] / `text_snapshot` MEDIUMTEXT [NULLable] (rendered by the browser at `start_send`, merge tags unresolved)
+* `status` VARCHAR(16) (`draft` | `sending` | `paused` | `sent` | `cancelled`)
+* `last_error` VARCHAR(500) [NULLable]
+* `recipients_total` INT (queued rows at `start_send`)
+* `created_by` VARCHAR(50) [NULLable] / `updated_by` VARCHAR(50) [NULLable] (the user's display name)
+* `created_at`, `updated_at` DATETIME; `started_at`, `finished_at`, `deleted_at` DATETIME [NULLable]
+* Indexes: `idx_nlc_status` (`status`), `idx_nlc_list` (`deleted_at`, `updated_at`)
+
+### `newsletter_recipients`
+One row per address of one campaign, frozen when sending starts. Doubles as the send queue.
+* `id` BIGINT UNSIGNED [PK, AUTO_INCREMENT]
+* `campaign_id` VARCHAR(64) (References `newsletter_campaigns.id`, no foreign key)
+* `email` VARCHAR(190) (lower-cased, trimmed)
+* `name` VARCHAR(255) [NULLable]
+* `source` VARCHAR(16) (`client` | `lead` | `employee` | `extra`; on a duplicate address the first source wins: client > lead > employee > extra)
+* `lead_id` VARCHAR(50) [NULLable], `employee_id` VARCHAR(50) [NULLable]
+* `merge_json` TEXT [NULLable] (merge values `name`, `first_name`, `company`, `email` frozen at `start_send`)
+* `token` CHAR(32) (`bin2hex(random_bytes(16))`, used by the unsubscribe and view-online links)
+* `status` VARCHAR(16) (`queued` | `sent` | `failed` | `skipped` | `cancelled`)
+* `skip_reason` VARCHAR(32) [NULLable] (`unsubscribed` | `invalid`)
+* `attempts` TINYINT, `next_attempt_at` DATETIME [NULLable], `error` VARCHAR(500) [NULLable]
+* `sent_at` DATETIME [NULLable], `unsubscribed_at` DATETIME [NULLable] (set when the person used this campaign's unsubscribe link)
+* Unique: (`campaign_id`, `email`), `token`. Indexes: `idx_nlr_queue` (`campaign_id`, `status`, `next_attempt_at`), `idx_nlr_sent_at`, `idx_nlr_email`
+
+### `newsletter_suppressions`
+The one global opt-out list. Every send skips these addresses.
+* `email` VARCHAR(190) [PK] (lower-cased)
+* `reason` VARCHAR(16) (`unsubscribed` | `bounced` | `manual`)
+* `campaign_id` VARCHAR(64) [NULLable] (the campaign whose link was used)
+* `note` VARCHAR(255) [NULLable]
+* `created_by` VARCHAR(50) [NULLable] (NULL = the recipient via the unsubscribe link, or the worker)
+* `created_at` DATETIME
+
+### `system_settings` key `NEWSLETTER_CONFIG`
+JSON (C3), read and written only by `api/newsletter.php` (`settings_get` / `settings_save`); a missing key means the defaults.
+`{ version: 1, header: EmailDoc | null, footer: EmailDoc | null, theme: { contentWidth 520..800, pageBackground, contentBackground, fontFamily, textColor, linkColor, buttonBackground, buttonTextColor }, sender: { fromName, replyTo }, sending: { batchSize 10..200 (40), perHourLimit 10..10000 (400), testRecipients: string[] (max 5) } }`.
+`header` / `footer` `null` = the built-in default for the company and language. Uploaded images are plain files under `<uploads>/newsletter/YYYY/MM/<random hex>.<ext>` (no table).
