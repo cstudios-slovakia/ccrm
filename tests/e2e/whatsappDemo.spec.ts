@@ -196,12 +196,24 @@ test.describe('WhatsApp module in demo mode, without WAAI', () => {
 
     // Every window the chats are active in is offered; a wider one holds at least as many chats and says more about each.
     const seen: { label: string; chats: number; chars: number }[] = [];
-    for (const label of ['Dnes', '3 dni', '7 dní', '30 dní']) {
+    const expectedChats = [2, 4, 4, 4];
+    let previous = '';
+    for (const [i, label] of ['Dnes', '3 dni', '7 dní', '30 dní'].entries()) {
       await digest.getByRole('button', { name: label, exact: true }).click();
-      await expect(bullets.first()).toBeVisible({ timeout: 15_000 });
-      await expect.poll(async () => (await bullets.allTextContents()).join('').length, { timeout: 10_000 }).toBeGreaterThan(0);
+      // Switching a window empties the list while it loads, and until then it still holds the previous window's text,
+      // so a one-shot read can see nothing or the old window. Wait for this window's own chats and a text that is new.
+      await expect
+        .poll(
+          async () => {
+            const now = await bullets.allTextContents();
+            return now.length === expectedChats[i] && now.join('') !== previous;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(true);
       const texts = await bullets.allTextContents();
-      seen.push({ label, chats: texts.length, chars: texts.join('').length });
+      previous = texts.join('');
+      seen.push({ label, chats: texts.length, chars: previous.length });
     }
     // Today holds the two chats that wrote this morning; the other windows hold all four.
     expect(seen.map((w) => w.chats)).toEqual([2, 4, 4, 4]);
@@ -220,17 +232,26 @@ test.describe('WhatsApp module in demo mode, without WAAI', () => {
   test('Tasks: nine tasks across the four chats, ticking an open one moves it to Done', async ({ page }) => {
     const { leaks } = await openDemo(page, '#whatsapp/tasks');
     await expect(tab(page, 'Úlohy')).toHaveAttribute('aria-selected', 'true');
+    // The counts come from the seed, so the spec follows the dataset instead of repeating numbers.
+    const seeded: { status: string }[] = DATASET.chats.flatMap((c: { tasks?: { status: string }[] }) => c.tasks ?? []);
+    const total = seeded.length;
+    const openCount = seeded.filter((t) => t.status === 'open').length;
+    const completedCount = seeded.filter((t) => t.status === 'completed').length;
+    expect(total, 'the title says nine tasks').toBe(9);
+    expect(openCount).toBeGreaterThan(0);
+
     await page.getByRole('button', { name: 'Všetky', exact: true }).click();
     const items = page.locator('main ul.divide-y > li');
-    await expect(items).toHaveCount(9, { timeout: 15_000 });
+    await expect(items).toHaveCount(total, { timeout: 15_000 });
 
+    // Every count after a click is an auto-retrying assertion: a one-shot count() can read the list from before the filter applied.
     await page.getByRole('button', { name: 'Otvorené', exact: true }).click();
-    const open = await items.count();
-    expect(open).toBeGreaterThan(0);
+    await expect(items).toHaveCount(openCount);
     await items.first().getByRole('checkbox').click();
-    await expect(items).toHaveCount(open - 1);
+    await expect(items).toHaveCount(openCount - 1);
     // A done task stays linked to the CRM: it cannot be reopened.
     await page.getByRole('button', { name: 'Hotové', exact: true }).click();
+    await expect(items).toHaveCount(completedCount + 1);
     await expect(items.first().getByRole('checkbox')).toBeDisabled();
     expect(leaks).toEqual([]);
   });

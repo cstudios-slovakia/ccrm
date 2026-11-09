@@ -86,6 +86,12 @@ the suite-wide `crawler.spec.ts` / `darkmode.spec.ts` / `navigation.spec.ts` —
 scopes to that spec's own tests, so `--files tests/e2e/navigation.spec.ts`
 re-runs its 2 tests, not all 87.
 
+**The crawler is a separate tier.** `--files`, `--since`, `--pending` and the default diff
+leave out `crawler.spec.ts` ("Deep UI audit": slow, autonomous). Add `--with-audit`
+(or `QA_AUDIT=1`) to include it; `--full`, `--module`, a harness change and an edit to
+`crawler.spec.ts` include it on their own. `--plan-json` prints the test count and shard
+count as JSON without starting a browser.
+
 **A full run is never started by accident.** When the selection would be the
 full suite and neither `--full`, `QA_ALLOW_FULL=1` nor `CI` is set, the runner
 prints why (the forcing files and the base) and exits with code 3 without
@@ -523,7 +529,7 @@ icon card for any module whose image is missing.
 | Changed only pure logic in `src/utils` | `npm run test:unit` is enough; the scoped run adds only the shell tests |
 | You want everything run, on purpose | `npm run test:qa:full` — **ask the user first; don't default to this** |
 | About to deploy | automatic — `npm run deploy` gates on it (may run the full suite) |
-| Opened a PR / pushed to `main` | automatic — GitHub Actions runs it |
+| Opened a PR / pushed to `main` | automatic — GitHub Actions runs it (no crawler; the nightly has it) |
 
 ---
 
@@ -547,29 +553,51 @@ icon card for any module whose image is missing.
 
 ## 8. CI
 
-`.github/workflows/qa.yml` runs `npm run test:unit` and the QA audit on pull
-requests and on pushes to `main` (and by hand). It checks out full history and
-scopes the audit by event: a PR against `origin/<base branch>`, a push against
-the commit before it, and the full suite for a manual run or a push whose
-previous commit is unknown (first push, force-push). The full-run guard is off
-in CI, so a PR that touches the harness gets the full suite there. It needs no
-secrets and no database — the backend is mocked.
+`.github/workflows/qa.yml` runs on pull requests, pushes to `main`, by hand and
+nightly. Shape: **plan -> qa (matrix of shards) -> report**, with a parallel
+**checks** job (`npm audit`, `tsc -b`, QA type-check, `npm run test:unit`; once per
+ref, not once per shard).
 
-CI runs **the same npm scripts you run locally**, so a red build reproduces with
-one command on your machine. The workflow also uploads `test-results/runs/` and
-`playwright-report/` as downloadable artifacts, so you can read the report and
-its screenshots without cloning anything.
+- **plan** (`scripts/qa/ci-plan.mjs`) picks the scope by event - a PR against
+  `origin/<base>`, a push against the commit before it, the full suite for a manual
+  run with no files, a push with unknown history or the nightly - and asks
+  `run-qa.mjs --plan-json` how many tests that is. **More than 80 tests run as 4
+  parallel shards** (`--shard=i/4`); a smaller run stays one job. 0 tests skips the
+  browser jobs. `QA_SHARDS` / `QA_SHARD_THRESHOLD` change the 4 and the 80.
+- **qa** runs one shard per job (3 workers, no CPU cap, 2.5 min per test, 50 min run
+  limit, one retry). Shards write Playwright *blob* reports (`QA_BLOB=1`); a shard
+  fails only if the run could not happen (exit 2/3), not on failing tests.
+- **report** merges the blobs (`playwright merge-reports`) into one
+  `test-results/qa-results.json` and applies the known-failing register **once**, on
+  the merged result. New failures, or tests that never ran, fail the workflow. It also
+  prints every shard's verdict table on the run summary.
 
-**Running chosen specs on a runner.** *Actions → QA → Run workflow* takes a
-space-separated list of spec files (`tests/e2e/projectFiles.spec.ts …`); empty
-runs everything. Use it to confirm a fix without a free 1.5 GB of RAM locally.
+A full run is about 250 worker-minutes: 80+ min as one job, about 25 min as four shards.
+Per-shard reports (`test-results/runs/`, `qa-audit-report.md`) are the artifacts
+`qa-report-<label>-shard-<n>`; the merged HTML report is `playwright-report-*`.
 
-**Limits in CI.** A runner is dedicated, so the job runs 3 workers with no CPU
-cap, 2.5 min per test (`QA_TEST_TIMEOUT_MS`; the module crawls set their own
-4 min) and a 95 min run limit (a full run needs about 80). A hung test used to cost 4 min, and a handful of
-them used up the 45 min limit before most of the suite had started. CI retries a failed test once
-(`QA_RETRIES=1`): one that passes the second time is listed in the run summary as flaky and does not
-block, one that fails twice is a failure.
+**Two tiers.** The autonomous crawler (`crawler.spec.ts`, "Deep UI audit": 15 modules,
+1-4 min each, about 15% of a full run) is left out of scoped runs, CI PR runs included.
+Everything else - the deterministic journey specs, `Dark mode`, `Shell navigation`,
+recordings - still runs for the module you changed. The crawler runs for `--full`, the
+nightly, a harness change (which forces the full suite), an edit to `crawler.spec.ts`,
+`--module <name>`, and `--with-audit` (or `QA_AUDIT=1`) on any scoped run. If a scope
+would run nothing without the crawler, the shell smoke tests run instead.
+
+**Nightly.** A `schedule` (02:00 UTC) runs the full suite with the crawler, sharded, on
+`main` and `1.13-nectarine` (`NIGHTLY_REFS` in `ci-plan.mjs`; the job checks them out
+explicitly). GitHub fires schedules only from the default branch's copy of the workflow,
+so **the nightly starts once this workflow is on `main`**, and each listed branch must
+already contain the sharding changes (`QA_BLOB` in `playwright.config.ts`). Its
+concurrency group is per event, so pushes never cancel it. A red nightly is the signal
+that a change broke something only the crawler sees.
+
+**Running chosen specs on a runner.** *Actions -> QA -> Run workflow* takes a
+space-separated list of spec files (`tests/e2e/projectFiles.spec.ts ...`); empty
+runs everything (sharded). Use it to confirm a fix without a free 1.5 GB of RAM locally.
+
+The scripts are the ones you run locally, so a red build reproduces with
+`node scripts/qa/run-qa.mjs --files <files>` (add `--with-audit` to include the crawler).
 
 **Known failures.** `scripts/qa/known-failing.json` lists tests that fail on
 `main` today, each with a reason. After the audit, `apply-known-failing.mjs`

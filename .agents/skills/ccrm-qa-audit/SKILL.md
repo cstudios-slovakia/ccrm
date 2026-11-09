@@ -38,6 +38,11 @@ runner then refuses with exit code 3 unless `--full`, `QA_ALLOW_FULL=1` or `CI`
 is set. Changing only
 PHP or docs runs nothing and starts no browser at all.
 
+The slow autonomous crawler ("Deep UI audit") is a separate tier: scoped runs leave
+it out, so `--files src/components/EmailView.tsx` runs that module's deterministic
+specs only. Add `--with-audit` (or `QA_AUDIT=1`) to include it; `--full`, `--module`,
+a harness change and an edit to `crawler.spec.ts` include it by themselves.
+
 A scoped run is a filter, never a verdict on the rest of the app. Before a
 release, a deploy, or any "is everything still fine?" question, run
 `npm run test:qa:full`.
@@ -107,7 +112,9 @@ fixed. `assertKnownBugDetected()` in `tests/e2e/helpers/gate.ts` remains for
 the next one.
 
 It also runs without being asked: `npm run deploy` gates on it, and
-`.github/workflows/qa.yml` runs it on every push and pull request.
+`.github/workflows/qa.yml` runs it on every push and pull request (scoped, no crawler; runs
+over 80 tests are split in 4 shards and merged) and nightly in full with the crawler.
+Details: docs/TESTING.md section 8.
 
 ---
 
