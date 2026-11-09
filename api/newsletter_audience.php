@@ -586,7 +586,8 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
         if (!empty($audience['employees']['enabled'])) {
             $emps = $pdo->query(
                 "SELECT `id`, `name`, `first_name`, `last_name`, `email` FROM `employees`
-                  WHERE `kind` IN ('employee', 'contractor') AND `is_active` = 1 ORDER BY `id`"
+                  WHERE `kind` IN ('employee', 'contractor') AND `is_active` = 1
+                    AND TRIM(COALESCE(`email`, '')) <> '' ORDER BY `id`"
             )->fetchAll(\PDO::FETCH_ASSOC);
             foreach ($emps as $e) {
                 $full = trim(trim((string)$e['first_name']) . ' ' . trim((string)$e['last_name']));

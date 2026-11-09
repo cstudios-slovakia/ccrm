@@ -310,6 +310,10 @@ function ccrm_nl_do_delete(array $ctx, array $body): void {
 
 function ccrm_nl_do_upload_image(array $ctx, array $body): void {
     $file = $_FILES['file'] ?? null;
+    // A body over post_max_size arrives with $_FILES empty: report the size, not "no file".
+    if (!is_array($file) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        ccrm_nl_fail('file_too_large', 422, 'The image is too large.');
+    }
     if (!is_array($file) || !isset($file['tmp_name'])) {
         ccrm_nl_fail('no_file', 400, 'No file was uploaded.');
     }

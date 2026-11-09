@@ -364,6 +364,11 @@ if (!function_exists('ccrm_newsletter_default_config')) {
             $cols['reply_to'] = $r !== '' ? $r : null;
         }
         if (array_key_exists('audience', $patch)) {
+            // A malformed audience must never fall back to the default ("all clients"):
+            // a buggy client would otherwise widen a picked audience to everyone.
+            if (!is_array($patch['audience']) || !isset($patch['audience']['clients']) || !is_array($patch['audience']['clients'])) {
+                throw new ccrm_newsletter_error('invalid_audience', 'The audience is not valid.');
+            }
             $cols['audience_json'] = json_encode(ccrm_newsletter_normalize_audience($patch['audience']), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
         if (array_key_exists('body', $patch)) {
