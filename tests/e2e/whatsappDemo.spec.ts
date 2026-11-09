@@ -196,12 +196,24 @@ test.describe('WhatsApp module in demo mode, without WAAI', () => {
 
     // Every window the chats are active in is offered; a wider one holds at least as many chats and says more about each.
     const seen: { label: string; chats: number; chars: number }[] = [];
-    for (const label of ['Dnes', '3 dni', '7 dní', '30 dní']) {
+    const expectedChats = [2, 4, 4, 4];
+    let previous = '';
+    for (const [i, label] of ['Dnes', '3 dni', '7 dní', '30 dní'].entries()) {
       await digest.getByRole('button', { name: label, exact: true }).click();
-      await expect(bullets.first()).toBeVisible({ timeout: 15_000 });
-      await expect.poll(async () => (await bullets.allTextContents()).join('').length, { timeout: 10_000 }).toBeGreaterThan(0);
+      // Switching a window empties the list while it loads, and until then it still holds the previous window's text,
+      // so a one-shot read can see nothing or the old window. Wait for this window's own chats and a text that is new.
+      await expect
+        .poll(
+          async () => {
+            const now = await bullets.allTextContents();
+            return now.length === expectedChats[i] && now.join('') !== previous;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(true);
       const texts = await bullets.allTextContents();
-      seen.push({ label, chats: texts.length, chars: texts.join('').length });
+      previous = texts.join('');
+      seen.push({ label, chats: texts.length, chars: previous.length });
     }
     // Today holds the two chats that wrote this morning; the other windows hold all four.
     expect(seen.map((w) => w.chats)).toEqual([2, 4, 4, 4]);
