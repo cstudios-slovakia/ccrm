@@ -353,6 +353,43 @@ export function getNextDueDates(
 }
 
 /**
+ * Planned occurrences whose deadline falls in [rangeStart, rangeEnd] (calendar ghost pills).
+ * Walks from the series cursor with no occurrence cap, so an open-ended series is drawn
+ * for any month the user browses to; `maxSteps` only guards against a runaway loop.
+ */
+export function getPlannedOccurrencesInRange(
+  rec: TaskRecurrence,
+  rangeStart: string,
+  rangeEnd: string,
+  maxSteps: number = 20000
+): Array<{ scheduledDate: string; deadline: string; startDate: string }> {
+  const result: Array<{ scheduledDate: string; deadline: string; startDate: string }> = [];
+  if (rec.mode === "after_completion" || rec.paused) return result;
+
+  let cur: string | null = rec.lastOccurrence ?? null;
+  for (let i = 0; i < maxSteps; i++) {
+    const next = getNextOccurrence(rec, cur);
+    if (!next) break;
+    const deadline = applyWeekendRule(next, rec.weekendRule, rec.frequency);
+    if (next > rangeEnd && deadline > rangeEnd) break;
+    if (deadline >= rangeStart && deadline <= rangeEnd) {
+      result.push({ scheduledDate: next, deadline, startDate: getStartDate(deadline, rec.leadDays) });
+    }
+    cur = next;
+  }
+  return result;
+}
+
+/**
+ * "Show N days before due" means nothing for a series that repeats every single day
+ * (the next one is always due tomorrow). It does matter for weekdays-only daily series:
+ * Monday's task can appear over the weekend.
+ */
+export function leadDaysApplies(rec: Pick<TaskRecurrence, "frequency" | "interval" | "weekendRule">): boolean {
+  return !(rec.frequency === "daily" && Math.max(1, rec.interval || 1) === 1 && (rec.weekendRule || "keep") === "keep");
+}
+
+/**
  * Human-readable description of recurrence schedule.
  */
 export function describeRecurrence(

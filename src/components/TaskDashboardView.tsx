@@ -43,7 +43,7 @@ import {
     Ticket as TicketIcon,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project, Ticket, RecurringTaskTemplate } from "../types";
-import { describeRecurrence, getNextOccurrence, applyWeekendRule, getStartDate } from "../utils/recurringTasks";
+import { describeRecurrence, getPlannedOccurrencesInRange } from "../utils/recurringTasks";
 import { TaskRecurringMark } from "./TaskRecurringMark";
 import { deleteRecurringOccurrenceWithUndo, deleteRecurringSeriesWithUndo } from "../utils/recurringTaskActions";
 import { RecurringOccurrenceDeleteDialog } from "./RecurringOccurrenceDeleteDialog";
@@ -2239,30 +2239,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const rangeEnd = new Date(Date.UTC(y, m + 2, 0)).toISOString().slice(0, 10);
 
         for (const tpl of recurringTasks) {
-            if (tpl.recurrence.mode === "after_completion" || tpl.recurrence.paused) continue;
-            const endsOn = tpl.recurrence.endsOn;
-
-            let cur: string | null = tpl.recurrence.lastOccurrence ?? null;
-            for (let iter = 0; iter < 40; iter++) {
-                const next = getNextOccurrence(tpl.recurrence, cur);
-                if (!next) break;
-                if (endsOn && next > endsOn) break;
-                const deadline = applyWeekendRule(next, tpl.recurrence.weekendRule, tpl.recurrence.frequency);
-                const startDate = getStartDate(deadline, tpl.recurrence.leadDays);
-
-                if (next > rangeEnd && deadline > rangeEnd) {
-                    break;
-                }
-
-                if (deadline >= rangeStart && deadline <= rangeEnd) {
-                    const key = `${tpl.id}:${next}`;
-                    if (!existingKeys.has(key)) {
-                        const list = map.get(deadline) || [];
-                        list.push({ template: tpl, occ: { scheduledDate: next, deadline, startDate } });
-                        map.set(deadline, list);
-                    }
-                }
-                cur = next;
+            for (const occ of getPlannedOccurrencesInRange(tpl.recurrence, rangeStart, rangeEnd)) {
+                if (existingKeys.has(`${tpl.id}:${occ.scheduledDate}`)) continue;
+                const list = map.get(occ.deadline) || [];
+                list.push({ template: tpl, occ });
+                map.set(occ.deadline, list);
             }
         }
         return map;

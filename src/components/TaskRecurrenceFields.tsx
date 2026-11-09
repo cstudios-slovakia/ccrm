@@ -8,6 +8,7 @@ import type {
 import { CustomSelect } from "./ui/CustomSelect";
 import {
   getNextDueDates,
+  leadDaysApplies,
   getNextAfterCompletion,
 } from "../utils/recurringTasks";
 import { formatDateLocalized } from "../utils/localTime";
@@ -50,10 +51,14 @@ const defaultLeadDays = (freq: TaskRecurrenceFrequency): number =>
 
 export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
   recurrence,
-  onChange,
+  onChange: onChangeRaw,
   t,
   language,
 }) => {
+  // A series that repeats every single day has no use for lead days: the field is
+  // hidden and the value is cleared so a stale one never lingers in the summary.
+  const onChange = (next: TaskRecurrence) =>
+    onChangeRaw(leadDaysApplies(next) ? next : { ...next, leadDays: 0 });
   const today = new Date().toISOString().slice(0, 10);
   const fmt = (iso: string) => formatDateLocalized(iso, language);
 
@@ -384,6 +389,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
           />
         </div>
 
+        {leadDaysApplies(recurrence) && (
         <div>
           <label className="text-caption font-bold text-slate-700 block mb-1">
             {t("Show N days before due", "Zobraziť N dní vopred", "Megjelenítés N nappal előbb")}
@@ -397,6 +403,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
             className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           />
         </div>
+        )}
       </div>
 
       {/* 5. Starts On & Ends On */}

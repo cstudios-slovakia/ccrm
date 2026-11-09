@@ -10,6 +10,8 @@ import {
   shiftCursorOnResume,
   describeRecurrence,
   getNextDueDates,
+  getPlannedOccurrencesInRange,
+  leadDaysApplies,
 } from './recurringTasks.ts';
 import type { TaskRecurrence } from '../types/index.ts';
 
@@ -141,3 +143,38 @@ describe("Slovak cadence", () => it("inflects 2–4 and 5+ differently", () => {
   assert.ok(describeRecurrence({ ...base, frequency: "weekly", interval: 5, config: { dayOfWeek: 1 } } as any, "sk").startsWith("Každých 5 týždňov v pondelok"));
   assert.ok(describeRecurrence({ ...base, frequency: "yearly", interval: 2 } as any, "sk").startsWith("Každé 2 roky"));
 }));
+
+describe('calendar ghost occurrences (open-ended series)', () => {
+  const weekdaysDaily: TaskRecurrence = {
+    mode: 'schedule',
+    frequency: 'daily',
+    interval: 1,
+    config: {},
+    weekendRule: 'before',
+    leadDays: 3,
+    startsOn: '2026-11-09',
+    lastOccurrence: '2026-11-09',
+  };
+
+  it('draws a weekdays-only daily series far beyond 40 occurrences', () => {
+    const feb = getPlannedOccurrencesInRange(weekdaysDaily, '2027-02-01', '2027-02-28');
+    assert.equal(feb.length, 20);
+    assert.equal(feb[0].deadline, '2027-02-01');
+    assert.equal(feb[feb.length - 1].deadline, '2027-02-26');
+    assert.ok(getPlannedOccurrencesInRange(weekdaysDaily, '2029-06-01', '2029-06-30').length > 0);
+  });
+
+  it('starts after the cursor and respects endsOn and pause', () => {
+    const nov = getPlannedOccurrencesInRange(weekdaysDaily, '2026-11-01', '2026-11-30');
+    assert.equal(nov[0].deadline, '2026-11-10');
+    assert.deepEqual(getPlannedOccurrencesInRange({ ...weekdaysDaily, endsOn: '2026-12-31' }, '2027-01-01', '2027-01-31'), []);
+    assert.deepEqual(getPlannedOccurrencesInRange({ ...weekdaysDaily, paused: true }, '2026-11-01', '2026-11-30'), []);
+  });
+
+  it('lead days apply to every series except plain every-day', () => {
+    assert.equal(leadDaysApplies({ frequency: 'daily', interval: 1, weekendRule: 'keep' }), false);
+    assert.equal(leadDaysApplies({ frequency: 'daily', interval: 1, weekendRule: 'before' }), true);
+    assert.equal(leadDaysApplies({ frequency: 'daily', interval: 2, weekendRule: 'keep' }), true);
+    assert.equal(leadDaysApplies({ frequency: 'weekly', interval: 1, weekendRule: 'keep' }), true);
+  });
+});

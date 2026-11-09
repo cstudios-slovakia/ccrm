@@ -1,0 +1,2 @@
+- **Recurring tasks in the calendar never "end"** (`recurringTasks.ts`, `TaskDashboardView.tsx`): planned occurrences of a series without an end date are drawn for whatever month you browse to. Before, the calendar stopped after 40 occurrences, so a weekday series seemed to end around New Year.
+- **"Show N days before due" hidden for every-day series** (`TaskRecurrenceFields.tsx`): the field is hidden, and its value cleared, when a task repeats every day including weekends. It stays for weekdays-only series, so Monday's task can appear over the weekend.
