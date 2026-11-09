@@ -66,9 +66,9 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 
 | Phase | Package | Agent effort | Status | Commit | Date |
 |---|---|---|---|---|---|
-| 1 Foundation | 1A Backend core (schema, API, audience) | Sonnet, high | ⬜ | | |
-| | 1B E-mail builder (schema, renderer, editor UI) | Sonnet, high | ⬜ | | |
-| | 1C Module shell (wiring, RBAC, list, campaign screen) | Sonnet, medium | ⬜ | | |
+| 1 Foundation | 1A Backend core (schema, API, audience) | Sonnet, high | ✅ | `6c2f9582`, `1cf3d559` | 2026-11-09 |
+| | 1B E-mail builder (schema, renderer, editor UI) | Sonnet, high | ✅ | `12febb45`, `16bb36f3`, `c9f95f02` | 2026-11-09 |
+| | 1C Module shell (wiring, RBAC, list, campaign screen) | Sonnet, medium | ✅ | `95cd7b7f` | 2026-11-09 |
 | 2 Sending and integration | 2A Sending engine and public pages | Sonnet, high | ⬜ | | |
 | | 2B Builder in the app, review and send, results | Sonnet, medium | ⬜ | | |
 | | 2C Demo data (en, sk, hu) | Sonnet, medium | ⬜ | | |
@@ -115,50 +115,52 @@ phase 2.
 Files: `public/api/schema.php`, `public/api/newsletter.php`, `public/api/newsletter_audience.php`,
 `entities_overview.md`, `scripts/test-newsletter.php`, `package.json` (one script line), mirrors.
 
-- [ ] Tables `newsletter_campaigns`, `newsletter_recipients`, `newsletter_suppressions` in
+- [x] Tables `newsletter_campaigns`, `newsletter_recipients`, `newsletter_suppressions` in
       `ccrm_schema_statements()` exactly as C2 (no foreign keys, like the rest of the schema)
-- [ ] `entities_overview.md` documents the three tables and the `NEWSLETTER_CONFIG` setting
-- [ ] `newsletter.php`: every **read**, **write** and **settings** action of C4 (not the send
+- [x] `entities_overview.md` documents the three tables and the `NEWSLETTER_CONFIG` setting
+- [x] `newsletter.php`: every **read**, **write** and **settings** action of C4 (not the send
       actions, those are 2A), with the permission checks of C14. Uses the key names of C14 even
       though 1C adds them to the RBAC registry in parallel
-- [ ] `settings_get` returns defaults (C3) when `NEWSLETTER_CONFIG` is missing; `settings_save`
+- [x] `settings_get` returns defaults (C3) when `NEWSLETTER_CONFIG` is missing; `settings_save`
       validates and normalises (numbers clamped, colours `#rrggbb`, docs must be `version: 1`)
-- [ ] `newsletter_audience.php`: `ccrm_newsletter_resolve_audience(PDO, array $audience): array`
+- [x] `newsletter_audience.php`: `ccrm_newsletter_resolve_audience(PDO, array $audience): array`
       implementing C5 (sources, dedupe, precedence, suppressions, invalid addresses, merge values,
       first-name title stripping) as pure-ish functions that the test can call without a database
       where possible; `audience_preview` uses it
-- [ ] `upload_image` (C4): type and size checks, random file name under the uploads dir,
+- [x] `upload_image` (C4): type and size checks, random file name under the uploads dir,
       absolute URL through `ccrm_app_base_url()`; `images` lists the last 200
-- [ ] `scripts/test-newsletter.php` + `npm run test:newsletter`: extra-address parsing
+- [x] `scripts/test-newsletter.php` + `npm run test:newsletter`: extra-address parsing
       (`Name <a@b.c>`, commas, semicolons, new lines, invalid), dedupe precedence, suppression
       skip, first-name extraction (`Ing. Peter Novák` → `Peter`)
-- [ ] `npm run sync:backend`; PHP lint of every changed file; `npm run check`
-- [ ] Changelog fragment
-- Left over:
+- [x] `npm run sync:backend`; PHP lint of every changed file; `npm run check`
+- [x] Changelog fragment
+- Left over: `list` returns at most 500 campaigns, without paging (low priority).
 
 **1B E-mail builder** (Sonnet, high). Reads C6, C7, C8, C9. Pure frontend, self-contained:
 it does **not** call the API (uploads come in through a prop).
 Files: `src/components/newsletter/builder/**`, `src/utils/safeHtml.ts` (one new profile).
 
-- [ ] `builder/types.ts`: `EmailDoc` and friends exactly as C6, plus `NewsletterTheme` (C3)
-- [ ] `builder/defaults.ts`: `newBlock(type)`, `newRow(layout)`, `defaultBody(lang)`,
+- [x] `builder/types.ts`: `EmailDoc` and friends exactly as C6, plus `NewsletterTheme` (C3)
+- [x] `builder/defaults.ts`: `newBlock(type)`, `newRow(layout)`, `defaultBody(lang)`,
       `defaultHeader(company, lang)`, `defaultFooter(company, lang)` (C6, C3)
-- [ ] `builder/docOps.ts`: pure immutable operations (insert, move, duplicate, remove block; insert,
+- [x] `builder/docOps.ts`: pure immutable operations (insert, move, duplicate, remove block; insert,
       move, duplicate, remove row; change row layout keeping blocks; update block/row) +
       `docOps.test.ts`
-- [ ] `builder/renderEmail.ts`: `renderEmail()` and the plain-text version exactly as C7 +
+- [x] `builder/renderEmail.ts`: `renderEmail()` and the plain-text version exactly as C7 +
       `renderEmail.test.ts`
-- [ ] `builder/mergeTags.ts`: parse, list, substitute (C9) + `builder/mergeTags.fixtures.json`
+- [x] `builder/mergeTags.ts`: parse, list, substitute (C9) + `builder/mergeTags.fixtures.json`
       (the shared cases 2A's PHP reuses) + `mergeTags.test.ts` reading that fixture
-- [ ] Sanitiser profile `newsletter` in `src/utils/safeHtml.ts` (C6 allowlist; `href` values that
+- [x] Sanitiser profile `newsletter` in `src/utils/safeHtml.ts` (C6 allowlist; `href` values that
       are merge tags such as `{{unsubscribe_url}}` survive)
-- [ ] `EmailBuilder` component with the props of C8 and every interaction in C8's acceptance list;
+- [x] `EmailBuilder` component with the props of C8 and every interaction in C8's acceptance list;
       `EmailPreview` (sandboxed iframe of the real rendered HTML, desktop/mobile)
-- [ ] Phone width: notice plus preview only (C8); dark mode: chrome follows the app, the e-mail
+- [x] Phone width: notice plus preview only (C8); dark mode: chrome follows the app, the e-mail
       canvas stays light
-- [ ] Every string `t(en, sk, hu)`; no file over ~600 lines
-- [ ] `npm run check`; changelog fragment
-- Left over:
+- [x] Every string `t(en, sk, hu)`; no file over ~600 lines
+- [x] `npm run check`; changelog fragment
+- Left over: nothing has run in a browser yet. 2B must check by hand: drag and drop, the text
+  format bar, keyboard after Escape, image upload, the preview. `html` blocks get no `dangerous_url`
+  check (the author's own markup; the view-online page's CSP blocks scripts).
 
 **1C Module shell** (Sonnet, medium). Reads C1, C4 (as a client), C5 (the shape only), C12, C13,
 C14. Does **not** import anything from `builder/` (it does not exist in this worktree): the campaign
@@ -168,26 +170,33 @@ Files: registration lines in `App.tsx`, `Sidebar.tsx`, `StartMenu.tsx`, `moduleC
 `translations.settingsNav.ts`, `settingsRegistry.ts`, `SettingsView.tsx`, `src/types/index.ts`;
 new files under `src/components/newsletter/` (not `builder/`).
 
-- [ ] RBAC section `newsletter` (C14) in `src/utils/permissions.ts`, mirrored in
+- [x] RBAC section `newsletter` (C14) in `src/utils/permissions.ts`, mirrored in
       `public/api/permissions.php`, labels in en/sk/hu, route mapping `newsletter` → `newsletter`;
       legacy keys `newsletter.view` / `newsletter.edit` in `public/api/setup.php` reconciled (say how)
-- [ ] Remove the unused legacy `NewsletterCampaign` type from `src/types/index.ts` (check it is unused)
-- [ ] Route ids `newsletter`, `newsletter/<id>`, `newsletter/<id>/design` (the last one renders a
+- [x] Remove the unused legacy `NewsletterCampaign` type from `src/types/index.ts` (check it is unused)
+- [x] Route ids `newsletter`, `newsletter/<id>`, `newsletter/<id>/design` (the last one renders a
       placeholder until 2B) through `validTabs`, the render switch, `canOpenRoute`, lazy-loaded with
       `safeLazy`, gated by the permission and `disabledModules`
-- [ ] Sidebar item + saved-layout migration, Start menu entry, module catalog entry (en/sk/hu
+- [x] Sidebar item + saved-layout migration, Start menu entry, module catalog entry (en/sk/hu
       title, description, long description, icon `Mail` or `Send`, colour)
-- [ ] `newsletter/newsletterApi.ts`: typed client for every C4 action (send actions included, so 2B
+- [x] `newsletter/newsletterApi.ts`: typed client for every C4 action (send actions included, so 2B
       only wires buttons), `newsletter/types.ts` for the API shapes
-- [ ] Campaign list screen (C12) with the Campaigns and Unsubscribed tabs
-- [ ] Campaign screen for drafts (C12): header with inline rename, Recipients card with the full
+- [x] Campaign list screen (C12) with the Campaigns and Unsubscribed tabs
+- [x] Campaign screen for drafts (C12): header with inline rename, Recipients card with the full
       `AudienceEditor` and live count, Sender and subject card, Content card placeholder, Review card
       placeholder; read-only summary for non-draft statuses (the results view is 2B)
-- [ ] Settings category `newsletter` with sections `design` and `sending` (C13) registered with
+- [x] Settings category `newsletter` with sections `design` and `sending` (C13) registered with
       translations (title, hint, kw in en/sk/hu) and placeholder panels; `sending` fully built (its
       fields need no builder); `design` theme fields built, header/footer slots left for 2B
-- [ ] `npm run check` (includes `settingsRegistry.test.ts`, permission mirror test); changelog fragment
-- Left over:
+- [x] `npm run check` (includes `settingsRegistry.test.ts`, permission mirror test); changelog fragment
+- Left over: the Content and Review cards, the design route and the Settings header/footer cards are
+  placeholders (2B). `newsletter/types.ts` has its own `EmailDocJson` and `NewsletterThemeJson`; 2B
+  switches them to the `builder/` types.
+
+**Phase 1 verification (2026-11-09):** `npm run check` green on the merged result (type-check,
+unit tests incl. 130 builder tests, backend mirror, symbol audit); `test:newsletter` green (Docker
+PHP 8.2); two `ccrm-reviewer` passes, every confirmed finding fixed (`1cf3d559`, `c9f95f02`).
+Scoped browser QA: see A5 (it needs 1.5 GB free RAM).
 
 ### Phase 2: Sending and integration (2A, 2B, 2C in parallel)
 
@@ -196,14 +205,20 @@ Files: `public/api/newsletter_send.php`, `public/api/newsletter_mailer.php`,
 `public/api/newsletter_merge.php`, `public/api/newsletter_public.php`, `public/api/newsletter.php`
 (send actions only), `public/api/cron.php` (one guarded call), `scripts/test-newsletter.php`.
 
-- [ ] `newsletter_merge.php`: substitution identical to `builder/mergeTags.ts`; the PHP test runs
-      every case of `src/components/newsletter/builder/mergeTags.fixtures.json`
+- [ ] `newsletter_merge.php`: substitution identical to `builder/mergeTags.ts` (follow the rules in
+      its header comment and C9 exactly); the PHP test runs every case of
+      `src/components/newsletter/builder/mergeTags.fixtures.json` (44 cases)
 - [ ] `newsletter_mailer.php`: MIME `multipart/alternative`, headers of C10 (incl.
       `List-Unsubscribe` and `List-Unsubscribe-Post`), RFC 2047 subject, quoted-printable bodies,
       dot-stuffing, one SMTP session per batch with the **system mail profile**; reuse the low-level
       SMTP helpers of `mail_broker.php` only if they are separate functions, never grow that file
-- [ ] Actions `send_test`, `start_send`, `pause`, `resume`, `cancel`, `tick` (C4, C10), including
-      the validations and the atomic `draft → sending` switch
+- [ ] Actions `send_test`, `start_send`, `pause`, `resume`, `cancel`, `tick` (C4, C10), added to the
+      `$routes` array of `newsletter.php` (helpers go in `newsletter_send.php` / `newsletter_lib.php`),
+      including the validations and the atomic `draft → sending` switch. `start_send` also checks
+      `ccrm_newsletter_audience_valid()` and refuses HTML with a `javascript:`, `vbscript:` or `data:`
+      href (defence in depth behind the renderer's `dangerous_url`)
+- [ ] The worker, `tick`, `resume` and `cancel` ignore soft-deleted campaigns (`deleted_at IS NULL`):
+      `delete` is allowed for paused campaigns that still have queued rows
 - [ ] Worker `ccrm_newsletter_tick()` (C10): lock, hourly limit, batch, retries, SMTP failure →
       paused with `last_error`, hard bounce → suppression, campaign → `sent` when the queue is empty
 - [ ] `cron.php` calls the worker once per run inside try/catch (a newsletter error never breaks
@@ -214,7 +229,8 @@ Files: `public/api/newsletter_send.php`, `public/api/newsletter_mailer.php`,
       one-click POST, view-online page, `t=test` page, unknown-token page; runs without a session
 - [ ] PHP test: MIME builder (headers present, encoded subject, QP line length ≤ 76,
       dot-stuffing), merge parity, unsubscribe idempotency (pure parts)
-- [ ] `npm run sync:backend`; PHP lint; `npm run check`; changelog fragment
+- [ ] `npm run sync:backend` (it only updates root copies that exist: copy each **new** PHP file to
+      `api/` by hand once); PHP lint; `npm run check`; changelog fragment
 - Left over:
 
 **2B Builder in the app, review and send, results** (Sonnet, medium). Reads C3, C8 (props), C10
@@ -287,6 +303,28 @@ the user made later.)
   no retry, no unsubscribe and no tracking code anywhere.
 - 2026-11-09, planning: VPS installs run `api/cron.php` every minute (`deploy/vps/cron-tick.sh`).
   Shared-hosting installs may have no cron; sending then continues only while a campaign page is open.
+- 2026-11-09, phase 1: the API envelope (copied from `time_entries.php`) is flat: success
+  `{ "success": true, ...payload }`, error `{ "success": false, "code": "...", "message"?: "..." }` with
+  the HTTP status. `newsletterApi.ts` throws `NewsletterApiError { code, status, message }`.
+- 2026-11-09, phase 1: `public/api/newsletter_lib.php` holds config, campaign JSON, doc checks and image
+  helpers; `newsletter.php` is a `$routes` table. Permission names in it: `view`, `edit` (access key
+  `newsletter`), `send`, `settings` (toggles `newsletter_send`, `newsletter_settings`).
+- 2026-11-09, phase 1: no employment-end column exists; employees are filtered by `is_active = 1`.
+  `created_by` / `updated_by` store the user's display name (like the rest of the schema).
+- 2026-11-09, phase 1: `AudiencePreview` has `valid: boolean` (a pick audience with nothing picked
+  previews as zero instead of failing); `suppression_add` also returns `invalid: string[]`; `update`
+  refuses a malformed audience (`invalid_audience`) instead of defaulting to "all clients".
+- 2026-11-09, phase 1: `npm run sync:backend` updates only root copies that already exist. A new
+  `public/api/*.php` file has to be copied to `api/` by hand once (`check:backend` then keeps it in sync).
+- 2026-11-09, phase 1: dark mode works by re-pointing the palette variables (`src/index.css`), so raw
+  palette classes adapt without `dark:` variants. The e-mail canvas uses fixed hex colours.
+- 2026-11-09, phase 1: `newsletter_settings` is in `SETTINGS_PERMISSION_KEYS`, so a holder of only that
+  toggle can open Settings. The legacy seed rows `newsletter.view` / `newsletter.edit` were removed
+  from `setup.php`; the unused `NewsletterCampaign` type was removed.
+- 2026-11-09, phase 1: in a worktree-isolated session, Bash refuses `docker run` with a computed volume
+  path. Lint from PowerShell instead: `docker run --rm -v "${pwd}:/app" -w /app php:8.2-cli php -l <file>`.
+- 2026-11-09, phase 1: the scoped browser QA could not start on this machine (160-500 MB free RAM,
+  the runner needs 1536 MB); it runs when memory allows or at the end of phase 2.
 
 ---
 
@@ -459,11 +497,14 @@ recipient gets the e-mail, and the links `{{unsubscribe_url}}` ("Unsubscribe") a
 
 ## C4. API: `public/api/newsletter.php`
 
-`POST /api/newsletter.php` with a JSON body `{ action, ... }` (same style as
-`time_entries.php`; check its response envelope and copy it). `upload_image` is
-`POST /api/newsletter.php?action=upload_image` with `multipart/form-data` (`file`).
-Errors: 400 invalid input, 403 permission, 404 unknown id, 409 wrong status, 422 failed validation
-(with a machine `code` and a readable message).
+`POST /api/newsletter.php` with a JSON body `{ action, ... }` (same style as `time_entries.php`).
+`upload_image` is `POST /api/newsletter.php?action=upload_image` with `multipart/form-data` (`file`).
+A GET answers 405. Success: HTTP 200 `{ "success": true, ...payload }`. Error: the HTTP status and
+`{ "success": false, "code": "<machine code>", "message"?: "<readable>" }`. Codes so far:
+`invalid_input` / `unknown_action` / `no_file` 400, `forbidden` 403, `not_found` 404, `not_draft` /
+`campaign_sending` 409, and 422 `invalid_name`, `invalid_reply_to`, `invalid_audience`, `invalid_doc`,
+`doc_too_large`, `invalid_test_recipient`, `too_many_test_recipients`, `invalid_image_type`,
+`file_too_large`, `base_url_unknown`.
 
 | Action | Permission | Request | Response | Package |
 |---|---|---|---|---|
@@ -594,8 +635,9 @@ export type EmailBlock =
   `color` kept. Merge tags are plain text (`{{first_name}}`), also inside `href`.
 - `html` blocks are raw (the author's own markup); the canvas shows them in a sandboxed iframe.
 - Ids are short random strings (`crypto.randomUUID().slice(0, 8)` is fine).
-- Social icons are PNG files shipped in `public/newsletter/social/<network>.png` (48×48, shown at
-  24 px), referenced by absolute URL (`assetBaseUrl`).
+- Social items are 28 px brand-coloured round badges with a short white label (f, in, IG, X, ▶, TT,
+  www), drawn with a table cell (Outlook shows them square). No image files. (Changed from PNG icons
+  on 2026-11-09: there were no icon files to ship.)
 
 ## C7. Renderer: `renderEmail()`
 
@@ -626,8 +668,14 @@ type RenderWarning = { level: 'error' | 'warning'; code: string; blockId?: strin
   links as `label (url)`, buttons as `label: url`, images by `alt`, dividers as `----`, header and
   footer included.
 - Warnings: `missing_unsubscribe` (error: no `{{unsubscribe_url}}` anywhere), `data_url_image`
-  (error), `image_no_alt`, `button_no_href`, `empty_body`, `unknown_merge_tag`, `bad_url`
-  (not http(s), mailto, tel or a merge tag).
+  (error), `dangerous_url` (error: a `javascript:`, `vbscript:` or `data:` href, also inside the
+  fallback of a leading merge tag; the href is output as `#`), `image_no_alt`, `image_no_src` (the
+  block renders nothing), `button_no_href`, `empty_body`, `unknown_merge_tag`, `bad_url` (not
+  http(s), mailto, tel or a merge tag whose fallback is one of those).
+- Every colour from the doc or theme passes `safeColor()` (hex, `rgb()/rgba()`, or a named colour),
+  enums pass a whitelist, the whole theme passes `safeTheme()`, and every attribute value is escaped.
+- Every merge tag in the output (HTML, text, subject, preheader) is rewritten to the canonical form
+  `{{tag}}` / `{{tag|fallback}}` (C9), so the server never sees spaces or NBSP inside braces.
 - Deterministic output (tests compare substrings and structure).
 
 ## C8. The builder (`EmailBuilder`)
@@ -695,7 +743,20 @@ Implementation: canvas components and the renderer share the style computation
 
 ## C9. Merge tags
 
-Syntax `{{tag}}` or `{{tag|fallback}}`, spaces inside the braces allowed.
+Syntax `{{tag}}` or `{{tag|fallback}}`. The full rules are in the header comment of
+`builder/mergeTags.ts`; the PHP port follows them exactly:
+
+- Regex `/\{\{[ \t\r\n]*([A-Za-z0-9_]+)[ \t\r\n]*(?:\|([^{}]*))?\}\}/` (PHP: the same, no `/u`). Only
+  ASCII whitespace counts; never `\s` or JS `trim()`. NBSP is not whitespace (the renderer has already
+  made every tag canonical).
+- The fallback is trimmed with ASCII whitespace only (PHP `trim($s, " \t\r\n")`).
+- Order: a non-empty value, else a non-empty fallback, else `''` when sending, else (preview) the tag
+  is left as written.
+- Text context (subject, plain-text part): value and fallback as they are, no decoding, no escaping.
+- HTML context: a value is escaped once like PHP `htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE)`
+  (`&amp; &lt; &gt; &quot; &#039;`). A fallback was already escaped by the renderer, so it is first
+  decoded in one pass with exactly this map (PHP `strtr`): `&amp;`→`&`, `&lt;`→`<`, `&gt;`→`>`,
+  `&quot;`→`"`, `&#039;` / `&#39;` / `&apos;`→`'`, `&nbsp;`→U+00A0; then escaped once.
 
 | Tag | Value |
 |---|---|
@@ -708,12 +769,11 @@ Syntax `{{tag}}` or `{{tag|fallback}}`, spaces inside the braces allowed.
 | `sender_company` | Company name from the company profile |
 | `current_year` | e.g. 2026 |
 
-- In HTML, values are HTML-escaped; in the subject and the text part they are plain.
-- Empty value → fallback, else empty. Unknown tag → left untouched in preview (with the
-  `unknown_merge_tag` warning), replaced by its fallback or empty when sending.
+- Unknown tags follow the same order (they never have a value): the `unknown_merge_tag` warning in
+  the builder, the fallback or empty when sending.
 - `builder/mergeTags.fixtures.json` holds the shared cases
-  (`{ template, values, context: 'html' | 'text', expected }`); the TS test and the PHP test both
-  run all of them, so the two implementations cannot drift.
+  (`{ name, template, values, context: 'html' | 'text', mode: 'preview' | 'send', expected }`, 44 of
+  them); the TS test and the PHP test both run all of them, so the two implementations cannot drift.
 - `<base>` is `ccrm_app_base_url()` on the server. In test sends both URLs use the token `test`.
 
 ## C10. Sending engine
