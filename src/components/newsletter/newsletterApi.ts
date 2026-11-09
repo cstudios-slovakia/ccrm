@@ -119,20 +119,30 @@ export const knownErrorLine = (code: string, t: TFn): string | null => {
       return t("Only JPEG, PNG, GIF and WebP images can be uploaded.", "Nahrať sa dajú iba obrázky JPEG, PNG, GIF a WebP.", "Csak JPEG, PNG, GIF és WebP képek tölthetők fel.");
     case "file_too_large":
       return t("The file is larger than 5 MB.", "Súbor je väčší ako 5 MB.", "A fájl nagyobb 5 MB-nál.");
+    case "no_file":
+      return t("Choose a file to upload.", "Vyberte súbor na nahratie.", "Válasszon feltöltendő fájlt.");
+    case "storage_failed":
+      return t("The file could not be saved on the server.", "Súbor sa nepodarilo uložiť na serveri.", "A fájlt nem sikerült menteni a szerveren.");
+    case "invalid_name":
+      return t("The campaign needs a name.", "Kampaň potrebuje názov.", "A kampánynak név kell.");
+    case "invalid_reply_to":
+      return t("The reply-to address is not a valid e-mail address.", "Adresa pre odpoveď nie je platná e-mailová adresa.", "A válaszcím nem érvényes e-mail-cím.");
+    case "invalid_input":
+      return t("The request was incomplete. Reload the page and try again.", "Požiadavka bola neúplná. Obnovte stránku a skúste to znova.", "A kérés hiányos volt. Töltse újra az oldalt, és próbálja újra.");
     default:
       return null;
   }
 };
 
 /**
- * Readable text for an error. A known code gets its translated line (the server's `message` is
- * English); only an unknown code falls back to the server's message, then to a generic line.
+ * Readable text for an error. A known code gets its translated line; any other code gets the
+ * generic translated line. The server's `message` is English, so it is never shown as the line
+ * itself (only as the detail of `smtp_failed`, see `newsletterErrorDetail`).
  */
 export const newsletterErrorMessage = (e: unknown, t: TFn): string => {
   if (e instanceof NewsletterApiError) {
     const known = knownErrorLine(e.code, t);
     if (known) return known;
-    if (e.message && e.message !== e.code) return e.message;
   }
   return t("Something went wrong. Try again.", "Niečo sa pokazilo. Skúste to znova.", "Hiba történt. Próbálja újra.");
 };

@@ -5,8 +5,8 @@ import type { RenderResult, RenderWarning } from "./builder";
 import { SendTestDialog } from "./SendTestDialog";
 import { newsletterApi, newsletterErrorDetail, newsletterErrorMessage } from "./newsletterApi";
 import { reviewChecklist, sendBlock, type CheckKey } from "./reviewChecklist";
-import type { Campaign, NewsletterSettingsResponse } from "./types";
-import { BTN_SECONDARY, Notice, type NewsletterEnv } from "./shared";
+import type { AudiencePreview, Campaign, NewsletterSettingsResponse } from "./types";
+import { BTN_SECONDARY, Notice, senderReady, unsavedSendLine, type NewsletterEnv } from "./shared";
 
 const checkLabel = (key: CheckKey, t: NewsletterEnv["t"]): string => {
   switch (key) {
@@ -38,6 +38,7 @@ export const ReviewCard = ({
   audienceValid,
   env,
   userEmail,
+  samples,
   beforeSend,
   onStarted,
 }: {
@@ -49,8 +50,10 @@ export const ReviewCard = ({
   audienceValid: boolean;
   env: NewsletterEnv;
   userEmail: string;
-  /** Writes every pending edit before the server looks at the campaign. */
-  beforeSend: () => Promise<void>;
+  /** `audience_preview.sample`: the Send test dialog offers these as the sample recipient. */
+  samples: AudiencePreview["sample"];
+  /** Writes every pending edit before the server looks at the campaign; false when that failed. */
+  beforeSend: () => Promise<boolean>;
   onStarted: (c: Campaign) => void;
 }) => {
   const { t, language, canSend, canEdit } = env;
@@ -62,7 +65,7 @@ export const ReviewCard = ({
     recipientCount,
     audienceValid,
     subject: campaign.subject,
-    senderConfigured: !!settings?.senderConfigured,
+    senderConfigured: senderReady(settings),
     warnings: rendered.warnings,
   });
   const block = sendBlock(items, canSend && canEdit);
@@ -74,7 +77,11 @@ export const ReviewCard = ({
     setSending(true);
     setError(null);
     try {
-      await beforeSend();
+      // The server sends the stored subject and audience: never start on top of a failed save.
+      if (!(await beforeSend())) {
+        setError({ line: unsavedSendLine(t), detail: null });
+        return;
+      }
       // Render again at this moment: what is posted is exactly this render (B2.2).
       const c = await newsletterApi.startSend({ id: campaign.id, html: rendered.html, text: rendered.text });
       onStarted(c);
@@ -157,6 +164,7 @@ export const ReviewCard = ({
         render={() => ({ html: rendered.html, text: rendered.text })}
         configured={settings?.config.sending.testRecipients ?? []}
         userEmail={userEmail}
+        samples={samples}
         beforeSend={beforeSend}
       />
     </div>

@@ -29,8 +29,9 @@ export const Dialog = ({
   }, [open, onClose]);
   if (!open) return null;
   return createPortal(
+    // Drawer layer (100000): portaled CustomSelect / ColorPicker panels (100001) must paint above it.
     <div
-      className="fixed inset-0 z-[100010] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div role="dialog" aria-modal="true" aria-label={title} className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">

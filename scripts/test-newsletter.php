@@ -462,6 +462,9 @@ $same('send check: javascript: href', $sendCode($goodHtml . '<a href="javascript
 $same('send check: entity-obfuscated javascript:', $sendCode($goodHtml . '<a href="jav&#x61;script&colon;alert(1)">x</a>'), 'dangerous_url');
 $same('send check: tab inside the scheme', $sendCode($goodHtml . "<a href=\"java\tscript:alert(1)\">x</a>"), 'dangerous_url');
 $same('send check: vbscript: and data: href', [$sendCode($goodHtml . '<a href=vbscript:x>x</a>'), $sendCode($goodHtml . '<a href="data:text/html,hi">x</a>')], ['dangerous_url', 'dangerous_url']);
+$same('send check: javascript: in the fallback of a leading merge tag', $sendCode($goodHtml . '<a href="{{ name | javascript:alert(1) }}">x</a>'), 'dangerous_url');
+$same('send check: data: image in the fallback of a leading merge tag', $sendCode($goodHtml . '<img src="{{logo|data:image/png;base64,AA}}">'), 'data_url_image');
+$same('send check: a merge tag with an https fallback is fine', $sendCode($goodHtml . '<a href="{{website|https://example.com}}">x</a>'), null);
 $same('send check: text that merely mentions javascript: is fine', $sendCode($goodHtml . '<p>javascript: is a scheme</p>'), null);
 $same('send check: an html part over 1 MB', $sendCode($goodHtml . str_repeat('x', 1048577)), 'html_too_large');
 $same('send check: a text part over 1 MB', $sendCode($goodHtml, str_repeat('x', 1048577)), 'html_too_large');

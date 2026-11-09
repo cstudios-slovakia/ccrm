@@ -8,7 +8,8 @@ import { composeEmail, resolveFooter, resolveHeader } from "./composeEmail";
 import { NewsletterApiError, newsletterApi, newsletterErrorMessage } from "./newsletterApi";
 import type { Campaign, NewsletterSettingsResponse } from "./types";
 import { useDebouncedSave } from "./useDebouncedSave";
-import { BTN_SECONDARY, Loading, Notice, type NewsletterEnv } from "./shared";
+import { useConfirmDialog } from "../ui/ConfirmDialog";
+import { BTN_SECONDARY, Loading, Notice, unsavedLeaveOptions, type NewsletterEnv } from "./shared";
 
 const asLanguage = (l: string): Language => (l === "sk" || l === "hu" ? l : "en");
 
@@ -21,6 +22,7 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
   const [body, setBody] = useState<EmailDoc>(emptyDoc());
   const [error, setError] = useState<string | null>(null);
   const [testOpen, setTestOpen] = useState(false);
+  const [confirm, confirmNode] = useConfirmDialog();
 
   const { status, queue, flush } = useDebouncedSave<EmailDoc>(async (doc) => {
     try {
@@ -78,14 +80,16 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
   const lockedHeader = useMemo(() => (campaign && config ? resolveHeader(campaign, config, company, language) : null), [campaign, config, company, language]);
   const lockedFooter = useMemo(() => (campaign && config ? resolveFooter(campaign, config, company, language) : null), [campaign, config, company, language]);
 
-  const back = () => {
-    void flush().then(() => navigate(`newsletter/${id}`));
+  /** Saves, then goes; when the save failed, asks before leaving the edits behind. */
+  const leave = async (go: () => void) => {
+    if (await flush()) return go();
+    if (await confirm(unsavedLeaveOptions(t))) go();
   };
-  const editLocked = (part: "header" | "footer") => {
-    void flush().then(() => {
+  const back = () => void leave(() => navigate(`newsletter/${id}`));
+  const editLocked = (part: "header" | "footer") =>
+    void leave(() => {
       window.location.hash = `settings/newsletter/design/${part}`;
     });
-  };
 
   if (error && !campaign) {
     return (
@@ -199,6 +203,7 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
         userEmail={userEmail}
         beforeSend={flush}
       />
+      {confirmNode}
     </Page>
   );
 };

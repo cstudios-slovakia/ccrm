@@ -55,6 +55,11 @@ if (!function_exists('ccrm_newsletter_tick')) {
         if (preg_match_all('/\b(href|src)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))/i', $html, $all, PREG_SET_ORDER)) {
             foreach ($all as $m) {
                 $url = ccrm_newsletter_url_scheme_text(($m[2] ?? '') !== '' ? $m[2] : (($m[3] ?? '') !== '' ? $m[3] : ($m[4] ?? '')));
+                // A leading merge tag sends its fallback when the value is empty (C9), so the
+                // fallback is the address to check: {{name|javascript:x}} must not pass.
+                if (preg_match('/^\{\{[a-z0-9_]+\|([^{}]*)\}\}/', $url, $tag)) {
+                    $url = ccrm_newsletter_url_scheme_text($tag[1]);
+                }
                 if (strtolower($m[1]) === 'src' && strncmp($url, 'data:', 5) === 0) {
                     throw new ccrm_newsletter_error('data_url_image', 'Images must be uploaded; embedded (data:) images are not allowed.');
                 }
@@ -154,7 +159,10 @@ if (!function_exists('ccrm_newsletter_tick')) {
                 if (!ccrm_newsletter_sender_info(ccrm_load_integrations_config($pdo))['senderConfigured']) {
                     throw new ccrm_newsletter_error('sender_not_configured', 'The outgoing mail server is not set up (Settings > E-mail > Outgoing).');
                 }
-                if (ccrm_app_base_url($pdo) === '') {
+                // The stored address only (config CCRM_APP_URL, else the first admin sign-in): the
+                // cron worker has no request to fall back on, so the browser must not use one either,
+                // or the first batches and the rest would carry links to different hosts.
+                if (ccrm_app_base_url($pdo, false) === '') {
                     throw new ccrm_newsletter_error('base_url_unknown', 'The address of this installation is not known, so unsubscribe links cannot be built.');
                 }
             }
@@ -302,7 +310,7 @@ if (!function_exists('ccrm_newsletter_tick')) {
         if (!ccrm_newsletter_sender_info($integrations)['senderConfigured']) {
             throw new ccrm_newsletter_error('sender_not_configured', 'The outgoing mail server is not set up (Settings > E-mail > Outgoing).');
         }
-        $base = ccrm_app_base_url($pdo);
+        $base = ccrm_app_base_url($pdo, false);
         if ($base === '') {
             throw new ccrm_newsletter_error('base_url_unknown', 'The address of this installation is not known, so links cannot be built.');
         }

@@ -437,7 +437,8 @@ function ccrm_nl_do_tick(array $ctx, array $body): void {
     if ($id !== '') {
         ccrm_nl_row($pdo, $id); // 404 for an unknown or deleted campaign
     }
-    $worker = ccrm_newsletter_tick($pdo, 8, ccrm_app_base_url($pdo));
+    // No base URL passed: the worker uses the stored one, the same as the cron run.
+    $worker = ccrm_newsletter_tick($pdo, 8);
     $payload = ['worker' => $worker['worker']];
     $progress = $id !== '' ? ccrm_newsletter_progress($pdo, $id) : null;
     if ($progress !== null) {

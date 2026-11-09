@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Send } from "lucide-react";
 import { Dialog } from "./Dialog";
 import { parseExtraAddresses } from "./audience";
+import { CustomSelect } from "../ui/CustomSelect";
 import { newsletterApi, newsletterErrorDetail, newsletterErrorMessage } from "./newsletterApi";
-import { BTN_PRIMARY, BTN_SECONDARY, FIELD, HINT, LABEL, Notice, type NewsletterEnv } from "./shared";
+import type { AudiencePreview } from "./types";
+import { BTN_PRIMARY, BTN_SECONDARY, FIELD, HINT, LABEL, Notice, unsavedSendLine, type NewsletterEnv } from "./shared";
 
 const MAX_TEST = 5;
 
@@ -31,6 +33,7 @@ export const SendTestDialog = ({
   render,
   configured,
   userEmail,
+  samples,
   beforeSend,
 }: {
   open: boolean;
@@ -42,11 +45,14 @@ export const SendTestDialog = ({
   render: () => { html: string; text: string };
   configured: string[];
   userEmail: string;
-  /** Writes pending edits first (the server checks the saved subject). */
-  beforeSend?: () => Promise<void>;
+  /** `audience_preview.sample`: whose merge values the test shows. Empty: the server uses the sender's own. */
+  samples?: AudiencePreview["sample"];
+  /** Writes pending edits first (the server checks the saved subject); false when that failed. */
+  beforeSend?: () => Promise<boolean>;
 }) => {
   const { t } = env;
   const [raw, setRaw] = useState("");
+  const [sample, setSample] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ line: string; detail: string | null } | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -54,6 +60,7 @@ export const SendTestDialog = ({
   useEffect(() => {
     if (!open) return;
     setRaw(prefillTestAddresses(configured, userEmail).join("\n"));
+    setSample(samples?.[0]?.email ?? "");
     setError(null);
     setDone(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,9 +75,21 @@ export const SendTestDialog = ({
     setError(null);
     setDone(null);
     try {
-      await beforeSend?.();
+      if (beforeSend && !(await beforeSend())) {
+        setError({ line: unsavedSendLine(t), detail: null });
+        return;
+      }
       const { html, text } = render();
-      const r = await newsletterApi.sendTest({ id: campaignId, subject, html, text, to: parsed.valid });
+      const picked = samples?.find((s) => s.email === sample);
+      // The server matches `sample.id` against a lead id, an employee id or an e-mail address.
+      const r = await newsletterApi.sendTest({
+        id: campaignId,
+        subject,
+        html,
+        text,
+        to: parsed.valid,
+        ...(picked ? { sample: { source: picked.source, id: picked.email } } : {}),
+      });
       setDone(
         r.demo
           ? t("Demo mode: nothing was sent.", "Demo režim: nič sa neodoslalo.", "Demó mód: semmi nem lett elküldve.")
@@ -95,6 +114,19 @@ export const SendTestDialog = ({
             {tooMany && `, ${t("at most 5", "najviac 5", "legfeljebb 5")}`}
           </span>
         </label>
+        {samples && samples.length > 0 && (
+          <div className="grid gap-1">
+            <span className={LABEL}>{t("Sample recipient (merge tags)", "Ukážkový príjemca (zlučovacie polia)", "Mintacímzett (egyesítő mezők)")}</span>
+            <CustomSelect
+              value={sample}
+              onChange={setSample}
+              options={[
+                { value: "", label: t("Me (my own name and address)", "Ja (moje meno a adresa)", "Én (saját név és cím)") },
+                ...samples.map((s) => ({ value: s.email, label: s.name ? `${s.name} <${s.email}>` : s.email })),
+              ]}
+            />
+          </div>
+        )}
         <p className={HINT}>
           {t(
             "Merge tags show sample values in a test. Test e-mails carry a test unsubscribe link that does nothing.",

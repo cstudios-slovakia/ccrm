@@ -13,7 +13,8 @@ import { DEFAULT_NEWSLETTER_CONFIG } from "./types";
 import { isAudienceValid, normalizeAudience } from "./audience";
 import { NewsletterApiError, newsletterApi, newsletterErrorMessage } from "./newsletterApi";
 import type { Audience, AudiencePreview, Campaign, CampaignPatch, NewsletterSettingsResponse } from "./types";
-import { BTN_SECONDARY, Loading, Notice, StatusChip, type NewsletterData, type NewsletterEnv } from "./shared";
+import { registerPendingSave } from "../../utils/pendingSaves";
+import { BTN_SECONDARY, Loading, Notice, StatusChip, senderReady, unsavedLeaveOptions, type NewsletterData, type NewsletterEnv } from "./shared";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -48,39 +49,70 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
 
   // Edits go out together, 700 ms after the last keystroke, and at once when leaving the screen.
   const pending = useRef<CampaignPatch>({});
+  const inFlight = useRef<Promise<boolean> | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const idRef = useRef(id);
   idRef.current = id;
 
-  const flush = useCallback(async () => {
+  /**
+   * Writes the waiting edits now, one request at a time (two PATCHes never overtake each other).
+   * Resolves true when nothing is left unsaved, false when a write failed. Sending checks it: the
+   * server sends the stored subject and audience, not what is on screen.
+   */
+  const flush = useCallback(async (): Promise<boolean> => {
     window.clearTimeout(timer.current);
-    const patch = pending.current;
-    if (Object.keys(patch).length === 0) return;
-    pending.current = {};
-    setSave("saving");
-    try {
-      await newsletterApi.update(idRef.current, patch);
-      setSave((s) => (Object.keys(pending.current).length ? s : "saved"));
-    } catch (e) {
-      pending.current = { ...patch, ...pending.current };
-      setSave("error");
-      if (e instanceof NewsletterApiError && e.status === 409) {
-        // Started elsewhere meanwhile: the draft is no longer editable.
-        pending.current = {};
-        setError(newsletterErrorMessage(e, t));
-        newsletterApi.get(idRef.current).then(setCampaign).catch(() => undefined);
+    for (;;) {
+      if (inFlight.current) {
+        await inFlight.current;
+        continue;
       }
+      const patch = pending.current;
+      if (Object.keys(patch).length === 0) return true;
+      pending.current = {};
+      setSave("saving");
+      const run = newsletterApi.update(idRef.current, patch).then(
+        () => {
+          setSave((s) => (Object.keys(pending.current).length ? s : "saved"));
+          return true;
+        },
+        (e: unknown) => {
+          pending.current = { ...patch, ...pending.current };
+          setSave("error");
+          if (e instanceof NewsletterApiError && e.status === 409) {
+            // Started elsewhere meanwhile: the draft is no longer editable.
+            pending.current = {};
+            setError(newsletterErrorMessage(e, t));
+            newsletterApi.get(idRef.current).then(setCampaign).catch(() => undefined);
+          }
+          return false;
+        },
+      );
+      inFlight.current = run;
+      const ok = await run;
+      if (inFlight.current === run) inFlight.current = null;
+      if (!ok) return false;
     }
   }, [t]);
 
   const flushRef = useRef(flush);
   flushRef.current = flush;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // A reload inside the 700 ms pause hands the edits to the app's unload guard.
+    const unregister = registerPendingSave({
+      isPending: () => Object.keys(pending.current).length > 0,
+      flush: () => void flushRef.current(),
+    });
+    return () => {
+      unregister();
       void flushRef.current();
-    },
-    [],
-  );
+    };
+  }, []);
+
+  /** Saves, then goes; when the save failed, asks before leaving the edits behind. */
+  const leave = async (go: () => void) => {
+    if (await flush()) return go();
+    if (await confirm(unsavedLeaveOptions(t))) go();
+  };
 
   const queue = useCallback(
     (patch: CampaignPatch, immediate = false) => {
@@ -113,12 +145,8 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const back = () => {
-    void flush().then(() => navigate("newsletter"));
-  };
-  const editDesign = () => {
-    void flush().then(() => navigate(`newsletter/${id}/design`));
-  };
+  const back = () => void leave(() => navigate("newsletter"));
+  const editDesign = () => void leave(() => navigate(`newsletter/${id}/design`));
   // The e-mail exactly as it would be sent: the thumbnail, the checklist and Start send all use this one render.
   const rendered = useMemo(
     () =>
@@ -162,7 +190,13 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
 
   const duplicate = async () => {
     try {
-      await flush();
+      if (!(await flush())) {
+        window.showToast?.(
+          t("Your last changes are not saved. Retry the save first.", "Posledné zmeny nie sú uložené. Najprv skúste uložiť znova.", "Az utolsó módosítások nincsenek mentve. Előbb próbálja újra a mentést."),
+          "error",
+        );
+        return;
+      }
       const copy = await newsletterApi.duplicate(campaign.id);
       navigate(`newsletter/${copy.id}`);
     } catch (e) {
@@ -191,7 +225,7 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
 
   const audience = campaign.audience as Audience;
   const recipientsOk = isAudienceValid(audience) && (preview ? preview.total > 0 : false);
-  const senderOk = campaign.subject.trim().length > 0 && !!settings?.senderConfigured;
+  const senderOk = campaign.subject.trim().length > 0 && senderReady(settings);
   const contentOk = !!campaign.body && campaign.body.rows.length > 0 && !rendered.warnings.some((w) => w.level === "error");
 
   const saveLabel =
@@ -292,6 +326,7 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
               audienceValid={isAudienceValid(audience)}
               env={env}
               userEmail={data.userEmail}
+              samples={preview?.sample ?? []}
               beforeSend={flush}
               onStarted={started}
             />

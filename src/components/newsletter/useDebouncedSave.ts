@@ -13,33 +13,43 @@ export type SaveState = "idle" | "saving" | "saved" | "error";
 export const useDebouncedSave = <T,>(save: (value: T) => Promise<void>, delay = 1500) => {
   const [status, setStatus] = useState<SaveState>("idle");
   const pending = useRef<{ value: T } | null>(null);
-  const inFlight = useRef<Promise<void> | null>(null);
+  const inFlight = useRef<Promise<boolean> | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const saveRef = useRef(save);
   saveRef.current = save;
   const mounted = useRef(true);
 
-  const flush = useCallback(async (): Promise<void> => {
+  /** Writes the waiting value now. Resolves true when nothing is left unsaved, false when a write failed. */
+  const flush = useCallback(async (): Promise<boolean> => {
     window.clearTimeout(timer.current);
-    // Wait for a write that is already on its way, so two writes never overtake each other.
-    if (inFlight.current) await inFlight.current.catch(() => undefined);
-    const job = pending.current;
-    if (!job) return;
-    pending.current = null;
-    if (mounted.current) setStatus("saving");
-    const run = saveRef.current(job.value).then(
-      () => {
-        if (mounted.current) setStatus(pending.current ? "saving" : "saved");
-      },
-      () => {
-        // Keep the value (unless a newer one arrived meanwhile) so the retry has something to write.
-        if (!pending.current) pending.current = job;
-        if (mounted.current) setStatus("error");
-      },
-    );
-    inFlight.current = run;
-    await run;
-    if (inFlight.current === run) inFlight.current = null;
+    for (;;) {
+      // Wait for a write that is already on its way, so two writes never overtake each other;
+      // then look again, because another caller may have started the next one meanwhile.
+      if (inFlight.current) {
+        await inFlight.current;
+        continue;
+      }
+      const job = pending.current;
+      if (!job) return true;
+      pending.current = null;
+      if (mounted.current) setStatus("saving");
+      const run = saveRef.current(job.value).then(
+        () => {
+          if (mounted.current) setStatus(pending.current ? "saving" : "saved");
+          return true;
+        },
+        () => {
+          // Keep the value (unless a newer one arrived meanwhile) so the retry has something to write.
+          if (!pending.current) pending.current = job;
+          if (mounted.current) setStatus("error");
+          return false;
+        },
+      );
+      inFlight.current = run;
+      const ok = await run;
+      if (inFlight.current === run) inFlight.current = null;
+      if (!ok) return false;
+    }
   }, []);
 
   const queue = useCallback(

@@ -112,3 +112,28 @@ export const Notice = ({ tone, children }: { tone: "error" | "warning" | "info";
 export const Loading = ({ t }: { t: TFn }) => (
   <p className="type-body py-8 text-center text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
 );
+
+/** True when sending can go ahead as far as the sender goes: a configured outgoing server, or demo mode (C10: demo never connects). */
+export const senderReady = (settings: { senderConfigured: boolean; demo: boolean } | null | undefined): boolean =>
+  !!settings && (settings.senderConfigured || settings.demo);
+
+/** Shown instead of sending when the last edits could not be saved: the server sends what it has stored. */
+export const unsavedSendLine = (t: TFn): string =>
+  t(
+    "Your last changes are not saved, so nothing was sent. Retry the save first.",
+    "Posledné zmeny nie sú uložené, preto sa nič neodoslalo. Najprv skúste uložiť znova.",
+    "Az utolsó módosítások nincsenek mentve, ezért semmi sem lett elküldve. Előbb próbálja újra a mentést.",
+  );
+
+/** The ConfirmDialog options when leaving a screen whose last save failed. */
+export const unsavedLeaveOptions = (t: TFn) => ({
+  title: t("Your last changes are not saved", "Posledné zmeny nie sú uložené", "Az utolsó módosítások nincsenek mentve"),
+  message: t(
+    "The server did not accept them. Stay and retry, or leave and lose them.",
+    "Server ich neprijal. Zostaňte a skúste to znova, alebo odíďte a zmeny sa stratia.",
+    "A szerver nem fogadta el őket. Maradjon és próbálja újra, vagy lépjen ki, és elvesznek.",
+  ),
+  confirmLabel: t("Leave without saving", "Odísť bez uloženia", "Kilépés mentés nélkül"),
+  cancelLabel: t("Stay", "Zostať", "Maradok"),
+  danger: true,
+});

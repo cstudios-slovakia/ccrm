@@ -204,7 +204,8 @@ if (!function_exists('ccrm_newsletter_mask_email')) {
                     $invalid();
                 }
                 $merge = json_decode((string)$rec['merge_json'], true);
-                $base = ccrm_app_base_url($pdo);
+                // Anonymous request: never build links from its Host header (auth.php docblock).
+                $base = ccrm_app_base_url($pdo, false);
                 $values = ccrm_newsletter_values_for(is_array($merge) ? $merge : [], (string)$rec['email'], (string)$rec['token'], $base, $company);
                 ccrm_newsletter_public_respond(200, ccrm_newsletter_substitute((string)$rec['html_snapshot'], $values, 'html', 'send'));
             }
