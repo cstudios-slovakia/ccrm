@@ -43,12 +43,12 @@ test.describe('System title', () => {
     await expect.poll(() => page.title()).toContain('CCRM (Koperniq)');
   });
 
-  test('a custom title shows as "Lapidea (Koperniq)" in the tab; the sidebar keeps the product name', async ({ page }) => {
+  test('a custom title shows as "Lapidea (Koperniq)" in the tab and as "Lapidea" in the page header', async ({ page }) => {
     const sync = await openProfile(page, 'Lapidea');
     await expect(page.locator(FIELD)).toHaveValue('Lapidea');
     await expect.poll(() => page.title()).toContain('Lapidea (Koperniq)');
-    // The sidebar's top button is the product, whatever the company calls the system.
-    await expect(page.getByRole('button', { name: /Koperniq/ }).first()).toBeVisible();
+    // The page header carries the company's title, not the product name.
+    await expect(page.getByRole('heading', { level: 1, name: 'Lapidea' })).toBeVisible();
 
     await page.locator(FIELD).fill('');
     // Autosave waits ~700 ms of quiet, then the settings push is debounced once more.
