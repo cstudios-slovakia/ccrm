@@ -26,7 +26,7 @@ return [
             $c = $company['clients'][$ref];
             $row = $leads[demo_ref_id($ref)] ?? null;
             if ($row === null) { $bad[] = "{$ref}: no row"; continue; }
-            if ($row['name'] !== $c['name'] || $row['contact_person'] !== $c['contact'] || $row['city'] !== $c['city'] || $row['country'] !== $c['country'] || $row['email'] !== $c['email'] || $row['client_type'] !== $c['type']) {
+            if ($row['name'] !== $c['name'] || $row['contact_person'] !== ccrm_compose_contact_name($c['contactFirst'], $c['contactLast']) || $row['contact_first_name'] !== $c['contactFirst'] || $row['contact_last_name'] !== $c['contactLast'] || $row['city'] !== $c['city'] || $row['country'] !== $c['country'] || $row['email'] !== $c['email'] || $row['client_type'] !== $c['type']) {
                 $bad[] = "{$ref}: row differs from the cast record";
             }
         }

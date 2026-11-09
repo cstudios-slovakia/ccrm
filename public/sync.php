@@ -485,6 +485,12 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         if ($incClient !== $dbClient) return false;
     }
 
+    // Contact first / last name (docs/NEWSLETTER.md C18): an older bundle never sends them, so
+    // their absence is "no opinion" as well.
+    foreach (['contactFirstName' => 'contact_first_name', 'contactLastName' => 'contact_last_name'] as $incKey => $dbCol) {
+        if (array_key_exists($incKey, $inc) && trim((string)($inc[$incKey] ?? '')) !== trim((string)($db[$dbCol] ?? ''))) return false;
+    }
+
     // Same "no opinion" rule for the price level an older bundle never sends.
     if (array_key_exists('priceLevelId', $inc)) {
         $incLevel = ($inc['priceLevelId'] ?? '') !== '' ? $inc['priceLevelId'] : null;
@@ -1144,6 +1150,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'vatId' => $row['vat_id'] ?? '',
                 'vatValidationResult' => isset($row['vat_validation_result']) && !empty($row['vat_validation_result']) ? json_decode($row['vat_validation_result'], true) : null,
                 'contactPerson' => $row['contact_person'] ?? '',
+                'contactFirstName' => $row['contact_first_name'] ?? '',
+                'contactLastName' => $row['contact_last_name'] ?? '',
                 'priceLevelId' => ($row['price_level_id'] ?? '') !== '' ? $row['price_level_id'] : null,
                 'website' => $row['website'] ?? '',
                 'address' => [
@@ -3291,6 +3299,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
                 $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)'");
             }
+            // The contact person's first / last name, written right after the lead upsert below.
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_first_name')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_first_name` VARCHAR(100) NULL AFTER `contact_person`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_last_name')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_last_name` VARCHAR(100) NULL AFTER `contact_first_name`");
+            }
         }
 
         if ((isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks'))
@@ -4612,6 +4627,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
+                // Contact first / last name and the full name composed from them (C18, contact_name.php).
+                $contactName = ccrm_contact_name_for_sync($l, $dbLeads[$leadId] ?? null);
+                if ($contactName !== null) $l['contactPerson'] = $contactName[2];
+
                 // Optimization: Skip if the lead is identical to what we have in the DB
                 if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId], $defaultOwner)) {
                     continue;
@@ -4702,6 +4721,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // ON DUPLICATE KEY UPDATE created_at (null = keep the stored date)
                     ccrm_date_only($l['createdAt'] ?? null)
                 ]);
+
+                if ($contactName !== null) {
+                    $pdo->prepare("UPDATE `leads` SET `contact_first_name` = ?, `contact_last_name` = ? WHERE `id` = ?")
+                        ->execute([$contactName[0], $contactName[1], $leadId]);
+                }
 
                 // The client's price level. Written on its own and only when the payload
                 // names it: a bundle that predates price levels must not clear it.

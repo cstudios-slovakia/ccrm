@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/contact_name.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -364,6 +365,7 @@ if ($action === 'create_lead') {
     try {
         $ins = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `phone`, `email`, `contact_person`, `interest_note`, `created_at`) VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?, NOW())");
         $ins->execute([$leadId, $name, $city, $clientType, $source, $owner, $value, $phone, $email, $contactPerson, $interestNote]);
+        ccrm_set_contact_parts_from_person($pdo, $leadId);
 
         echo json_encode([
             'success' => true,

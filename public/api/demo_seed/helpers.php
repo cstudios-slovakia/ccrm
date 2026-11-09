@@ -121,6 +121,17 @@ if (!function_exists('demo_d')) {
     }
 
     /**
+     * Columns the prefix wipe and count never match, as 'table.column'. A table without a text `id`
+     * (newsletter_recipients has a numeric one) is normally matched on every `*_id` column, but
+     * these two link a recipient row to a demo lead or employee while the row itself belongs to the
+     * user's own campaign. Only its `campaign_id` (a demo campaign) decides. Shared by
+     * demo_wipe_by_prefix() and demo_count_by_prefix(), so the counted rows are the deleted rows.
+     */
+    function demo_wipe_skip_columns(): array {
+        return ['newsletter_recipients.lead_id', 'newsletter_recipients.employee_id'];
+    }
+
+    /**
      * Delete every row whose id starts with one of $prefixes (e.g. ['demo-']).
      * Matches each string `id` column; join tables without an `id` are matched on
      * their `*_id` columns instead, and the mail caches on `email_uid`.
@@ -142,6 +153,7 @@ if (!function_exists('demo_d')) {
         foreach ($cols as $col) {
             $isIdCol = $col['c'] === 'id' || $col['c'] === 'email_uid';
             if (!$isIdCol && isset($tablesWithId[$col['t']])) continue;
+            if (in_array($col['t'] . '.' . $col['c'], demo_wipe_skip_columns(), true)) continue;
             $t = str_replace('`', '', $col['t']);
             $c = str_replace('`', '', $col['c']);
             $stmt = $pdo->prepare("DELETE FROM `{$t}` WHERE `{$c}` LIKE ?");
@@ -172,6 +184,7 @@ if (!function_exists('demo_d')) {
         foreach ($cols as $col) {
             $isIdCol = $col['c'] === 'id' || $col['c'] === 'email_uid';
             if (!$isIdCol && isset($tablesWithId[$col['t']])) continue;
+            if (in_array($col['t'] . '.' . $col['c'], demo_wipe_skip_columns(), true)) continue;
             $t = str_replace('`', '', $col['t']);
             $c = str_replace('`', '', $col['c']);
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM `{$t}` WHERE `{$c}` LIKE ?");

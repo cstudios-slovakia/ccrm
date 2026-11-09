@@ -13,6 +13,7 @@
  */
 
 require_once __DIR__ . '/employee_name.php';
+require_once __DIR__ . '/contact_name.php';
 require_once __DIR__ . '/payroll_lib.php';
 
 if (!function_exists('ccrm_schema_statements')) {
@@ -76,6 +77,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `tax_id` VARCHAR(50) NULL COMMENT 'DIC',
               `vat_id` VARCHAR(50) NULL COMMENT 'IC DPH',
               `contact_person` VARCHAR(100) NULL,
+              `contact_first_name` VARCHAR(100) NULL,
+              `contact_last_name` VARCHAR(100) NULL,
               `website` VARCHAR(255) NULL,
               `street` VARCHAR(255) NULL,
               `postal_code` VARCHAR(20) NULL,
@@ -1906,6 +1909,16 @@ if (!function_exists('ccrm_schema_statements')) {
                 count($backfill['ambiguous_groups'])
             ));
         }
+        // The contact person as typed first and last name (docs/NEWSLETTER.md C18). The full
+        // `contact_person` stays; the parts feed {{first_name}}. Existing rows are split once
+        // (contact_name.php), after the columns exist.
+        if (!ccrm_column_exists($pdo, 'leads', 'contact_first_name')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_first_name` VARCHAR(100) NULL AFTER `contact_person`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'contact_last_name')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_last_name` VARCHAR(100) NULL AFTER `contact_first_name`");
+        }
+        ccrm_backfill_contact_names($pdo);
         // 1.9.26: where the visitor came from before they filled in the form
         // (facebook, instagram, google, direct...). Written by api/pipeline.php
         // only; the app shows it and never edits it.
@@ -3642,7 +3655,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

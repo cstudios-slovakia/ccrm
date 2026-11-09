@@ -592,6 +592,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updateParams[] = $existingLeadId;
                 $updStmt = $pdo->prepare("UPDATE `leads` SET " . implode(', ', $updateFields) . " WHERE `id` = ?");
                 $updStmt->execute($updateParams);
+                if (empty($existingLead['contact_person']) && $contactPerson !== null) ccrm_set_contact_parts_from_person($pdo, (string)$existingLeadId);
             }
 
             // 2. Add categories if not already associated
@@ -712,6 +713,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $newInterestNote !== '' ? $newInterestNote : null,
             $created_at
         ]);
+        ccrm_set_contact_parts_from_person($pdo, $newLeadId);
 
         // 2. Insert into lead_categories
         if (!empty($categories)) {

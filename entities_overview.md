@@ -101,6 +101,8 @@ Main table representing potential deals, customers, and client accounts.
 * `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
 * `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
 * `contact_person` VARCHAR(100)
+* `contact_first_name` VARCHAR(100) [NULLable] (the contact person's first name as typed; synced as `contactFirstName`. `{{first_name}}` of the newsletter reads this, never `contact_person`. Rule shared by `composeContactName()` and `ccrm_compose_contact_name()`: when either part is filled, `contact_person` = first + ' ' + last; both empty keeps `contact_person`. Rows that predate the column were split once by `ccrm_backfill_contact_names()`, flag `CONTACT_NAME_BACKFILL` in `system_settings`)
+* `contact_last_name` VARCHAR(100) [NULLable] (the contact person's last name as typed; synced as `contactLastName`)
 
 ### `client_adjustment_migration`
 Written only by `php kprnq adjustment-clients --apply` (created on first use, not by the schema). One row per client row that command created from an adjustment-only client; `--undo` reads it to put the adjustment back.

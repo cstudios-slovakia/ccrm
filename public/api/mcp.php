@@ -1553,6 +1553,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ai_assistant', ?)"
             );
             $stmt->execute([$id, $name, $city, $street, $phone, $email, $contact, $value, $status, $owner, $interestNote, $today]);
+            ccrm_set_contact_parts_from_person($pdo, $id);
 
             mcp_audit($pdo, $user, 'lead_create', "Created lead '{$name}' (ID: $id) with value €{$value}");
 
@@ -1581,6 +1582,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $params[] = $id;
             $stmt = $pdo->prepare("UPDATE leads SET " . implode(', ', $updates) . " WHERE id = ?");
             $stmt->execute($params);
+            if (array_key_exists('contact_person', $args)) ccrm_set_contact_parts_from_person($pdo, (string)$id);
 
             mcp_audit($pdo, $user, 'lead_update', "Updated lead $id");
 
@@ -1653,6 +1655,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                         $lead['phone'], $lead['email'], $lead['contact_person'], $lead['company_id'], $lead['tax_id'], $lead['vat_id'], $lead['website'],
                         $lead['client_type'] ?: 'business', $won, $lead['owner'] ?: $user['name'], $lead['rating'] ?: 5, date('Y-m-d'),
                     ]);
+                    // The client carries the lead's typed contact name, not a fresh guess from the full name.
+                    $pdo->prepare("UPDATE leads SET contact_first_name = ?, contact_last_name = ? WHERE id = ?")
+                        ->execute([$lead['contact_first_name'] ?? null, $lead['contact_last_name'] ?? null, $clientId]);
                     $pdo->prepare(
                         "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
                          VALUES (?, ?, 'note', NOW(), 'Client Registered', ?, ?)"
@@ -1735,6 +1740,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $params[] = $id;
             $stmt = $pdo->prepare("UPDATE leads SET " . implode(', ', $updates) . " WHERE id = ?");
             $stmt->execute($params);
+            if (array_key_exists('contact_person', $args)) ccrm_set_contact_parts_from_person($pdo, (string)$id);
 
             mcp_audit($pdo, $user, 'client_update', "Updated client $id");
 

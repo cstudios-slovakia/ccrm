@@ -196,6 +196,7 @@ switch ($method) {
                     $ord['billing_country'] ?: ($ord['delivery_country'] ?? 'SK'),
                     (string)($user['name'] ?? $user['email'] ?? '')
                 ]);
+                ccrm_set_contact_parts_from_person($pdo, $newClientId);
 
                 // Link order to the newly created client
                 $updateOrder = $pdo->prepare("UPDATE `orders` SET `customer_type` = 'client', `client_id` = ? WHERE `id` = ?");

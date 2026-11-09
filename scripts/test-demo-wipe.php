@@ -73,6 +73,8 @@ function wipe_fixture(): array {
             'email_summaries' => ['summary' => 's'],
             'project_types' => ['name' => 'Type', 'icon' => 'i', 'color' => '#000000', 'attributes_json' => '[]'],
             'employees' => ['name' => 'Staff'],
+            'newsletter_recipients' => ['source' => 'client', 'token' => md5(serialize($row))],
+            'newsletter_suppressions' => ['created_at' => '2026-01-01 00:00:00'],
         ];
         return $row + ($defaults[$table] ?? []);
     };
@@ -102,6 +104,15 @@ function wipe_fixture(): array {
     foreach (['task-1722222222', 'task-4'] as $id) $seed('tasks', ['id' => $id], true);
     foreach (['ev-1', 'email-10412', 'demo-timeline-3'] as $id) $seed('timeline_events', ['id' => $id], false);
     $seed('timeline_events', ['id' => 'ev-1722222222', 'lead_id' => 'lead-1722222222'], true);
+
+    // --- newsletter (B1.6): recipient rows go by their demo campaign_id only, never by lead_id / employee_id;
+    //     the demo lead's manual suppression goes by its e-mail, a user's own suppression stays ---------------
+    foreach (range(1, 11) as $i) {
+        $seed('newsletter_recipients', ['campaign_id' => 'demo-newsletter-1', 'email' => "r{$i}@demo.example", 'lead_id' => 'demo-clients-' . $i, 'employee_id' => $i % 3 === 0 ? 'demo-employees-1' : null], false);
+    }
+    $seed('newsletter_recipients', ['campaign_id' => 'nlc-mine', 'email' => 'mine@acme.example', 'lead_id' => 'demo-clients-1', 'employee_id' => 'demo-employees-1'], true);
+    $seed('newsletter_suppressions', ['email' => strtolower((string)demo_company_pack('sk')['clients']['L11']['email']), 'reason' => 'manual'], false);
+    $seed('newsletter_suppressions', ['email' => 'optout@acme.example', 'reason' => 'manual'], true);
 
     // --- legacy staff, warehouse, orders: ids with LIKE patterns and an id that holds '_' --------------
     foreach (['emp-1', 'emp-4', 'demo-employees-2'] as $id) $seed('employees', ['id' => $id], false);
@@ -194,10 +205,17 @@ $check('every row a user made is still there (' . array_sum(array_map('count', $
 $check('lookalikes survive: lead \'my-demo-lead\', \'leads-1\', project type \'ptXluxuryXstone\' (an exact id is never a LIKE pattern)',
     in_array('my-demo-lead', $ids($db, 'leads'), true) && in_array('leads-1', $ids($db, 'leads'), true) && in_array('ptXluxuryXstone', $ids($db, 'project_types'), true));
 
+$recipients = $db->rows('newsletter_recipients');
+$check('newsletter (B1.6): a user\'s campaign row pointing at a demo lead and employee survives; demo rows go by campaign_id',
+    count($recipients) === 1 && $recipients[0]['campaign_id'] === 'nlc-mine' && $recipients[0]['lead_id'] === 'demo-clients-1', json_encode($recipients));
+$check('newsletter (B1.6): 11 demo recipient rows count as 11, not once per matching column', ($counts['newsletter_recipients'] ?? 0) === 11, 'counted ' . ($counts['newsletter_recipients'] ?? 0));
+$check('newsletter: the demo lead\'s manual suppression goes by its e-mail, a user\'s own suppression stays',
+    $ids($db, 'newsletter_suppressions', 'email') === ['optout@acme.example'], json_encode($ids($db, 'newsletter_suppressions', 'email')));
 $leftDemo = [];
 foreach ($db->tablesWithRows() as $t) {
     foreach ($db->rows($t) as $r) {
         foreach (['id', 'lead_id', 'task_id', 'project_id'] as $c) {
+            if ($t === 'newsletter_recipients') continue;   // a user's campaign row keeps its (now stale) link, checked above
             if (isset($r[$c]) && is_string($r[$c]) && strpos($r[$c], 'demo-') === 0) $leftDemo[] = "{$t}.{$c} = {$r[$c]}";
         }
     }
@@ -535,6 +553,7 @@ $check('keep configs: DEMO_MODE is false, DEMO_DATASET is gone, settings and lis
     ($ld->settings()['DEMO_MODE'] ?? '') === 'false' && !array_key_exists('DEMO_DATASET', $ld->settings()) && ($ld->settings()['HAND_MADE_SETTING'] ?? '') === 'keep me' && ($ld->settings()['SYSTEM_CURRENCY'] ?? '') === 'EUR');
 $demoLeft = [];
 foreach ($ld->tablesWithRows() as $t) foreach ($ld->rows($t) as $r) foreach (['id', 'lead_id', 'task_id', 'project_id', 'workflow_id', 'ticket_id'] as $c) {
+    if ($t === 'newsletter_recipients') continue;   // a user's campaign row keeps its stale link (B1.6)
     if (isset($r[$c]) && is_string($r[$c]) && strpos($r[$c], 'demo-') === 0) $demoLeft[] = "{$t}.{$c} = {$r[$c]}";
 }
 $demoTypesLeft = array_filter($ld->rows('project_types'), static fn($r) => strpos((string)$r['id'], 'demo-') === 0);

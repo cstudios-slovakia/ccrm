@@ -362,6 +362,7 @@ function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
             $args['country'] ?? 'Slovakia', $args['notes'] ?? null, $won,
             mcp_enum($args, 'client_type', ['business', 'person', 'partner'], 'business'), $user['name'], date('Y-m-d'),
         ]);
+        ccrm_set_contact_parts_from_person($pdo, $id);
         $pdo->prepare(
             "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
              VALUES (?, ?, 'note', NOW(), 'Client Registered', 'Client profile registered via MCP.', ?)"

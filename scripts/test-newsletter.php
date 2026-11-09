@@ -9,6 +9,8 @@
 chdir(dirname(__DIR__));
 require_once __DIR__ . '/../public/api/newsletter_audience.php';
 require_once __DIR__ . '/../public/api/newsletter_lib.php';
+require_once __DIR__ . '/../public/api/schema.php';
+require_once __DIR__ . '/lib/demo-fake-pdo.php';
 
 $fails = 0;
 $check = function (string $name, bool $ok) use (&$fails) {
@@ -118,7 +120,8 @@ $preview = ccrm_newsletter_audience_preview(ccrm_newsletter_build_rows(
 ));
 $same('preview sample is the first 20 queued rows', [$preview['total'], count($preview['sample']), $preview['sample'][0]['email']], [30, 20, 'p1@x.sk']);
 $check('preview has every field of AudiencePreview',
-    array_keys($preview) === ['valid', 'total', 'bySource', 'skipped', 'withoutEmail', 'sample']);
+    array_keys($preview) === ['valid', 'total', 'bySource', 'skipped', 'withoutEmail', 'withoutFirstName', 'sample']);
+$same('withoutFirstName counts every queued address with no first name, not only the sample', $preview['withoutFirstName'], 30);
 
 // ---- client profiles, categories -------------------------------------------------------
 $lead = fn($id, $name, $clientId = null, $adj = 0, $extra = []) => $extra + [
@@ -173,9 +176,9 @@ $same('mode pick, client: chosen by id, also through a lead of it',
 
 // profile addresses: the client first, archived rows out, one "withoutEmail" when nothing is left
 $profile = ccrm_newsletter_group_client_profiles([
-    $lead('client-1', 'Acme', null, 0, ['email' => 'info@acme.sk', 'contact_person' => 'Ing. Peter Novák']),
+    $lead('client-1', 'Acme', null, 0, ['email' => 'info@acme.sk', 'contact_person' => 'Ing. Peter Novák', 'contact_first_name' => 'Ing. Peter', 'contact_last_name' => 'Novák']),
     $lead('l-1', 'Acme', 'client-1', 0, ['email' => 'INFO@acme.sk']),
-    $lead('l-2', 'Acme', 'client-1', 0, ['email' => 'sales@acme.sk', 'contact_person' => 'Mgr. Eva Kováčová']),
+    $lead('l-2', 'Acme', 'client-1', 0, ['email' => 'sales@acme.sk', 'contact_person' => 'Mgr. Eva Kováčová', 'contact_first_name' => 'Eva', 'contact_last_name' => 'Kováčová']),
     $lead('l-3', 'Acme', 'client-1', 0, ['email' => 'old@acme.sk', 'archived' => 1]),
 ])['profiles']['client-1'];
 $built = ccrm_newsletter_build_rows(ccrm_newsletter_profile_candidates($profile), []);
@@ -192,6 +195,56 @@ $c = ccrm_newsletter_lead_candidate(['id' => 'x', 'name' => 'Ing. Jana Malá', '
 $same('a person client without a contact person gives its own first name', $c['merge']['first_name'], 'Jana');
 $c = ccrm_newsletter_lead_candidate(['id' => 'x', 'name' => 'Acme s.r.o.', 'email' => 'j@x.sk', 'client_type' => 'business'], 'client', 'Acme s.r.o.');
 $same('a company never does', $c['merge']['first_name'], '');
+
+// ---- contact first and last name (C18) ------------------------------------------------------
+// first_name is the stored first name with titles stripped, never guessed from contact_person.
+$first = fn(array $row) => ccrm_newsletter_lead_candidate($row + ['id' => 'x', 'email' => 'j@x.sk', 'client_type' => 'business'], 'client', 'Acme')['merge']['first_name'];
+$same('stored first name with a title: Ing. Michal -> Michal', $first(['contact_person' => 'Ing. Michal Kováč', 'contact_first_name' => 'Ing. Michal', 'contact_last_name' => 'Kováč']), 'Michal');
+$same('Hungarian contact: first Péter, last Kovács -> Péter (not Kovács)', $first(['contact_person' => 'Péter Kovács', 'contact_first_name' => 'Péter', 'contact_last_name' => 'Kovács']), 'Péter');
+$same('a contact person without a stored first name gives none (not guessed from the full name)', $first(['contact_person' => 'Kovács Péter']), '');
+$same('a first name that is only a title gives none', $first(['contact_person' => 'Ing. Kováč', 'contact_first_name' => 'Ing.', 'contact_last_name' => 'Kováč']), '');
+$p = ccrm_newsletter_parse_extra('Peter Novák <p@x.sk>');
+$cands = [
+    ['source' => 'extra', 'email' => 'p@x.sk', 'name' => $p[0]['name'], 'lead_id' => null, 'employee_id' => null, 'merge' => ccrm_newsletter_merge_values($p[0]['name'], '', '', '')],
+    ccrm_newsletter_lead_candidate(['id' => 'c1', 'name' => 'Acme', 'email' => 'a@acme.sk', 'client_type' => 'business', 'contact_person' => 'Péter Kovács', 'contact_first_name' => 'Péter', 'contact_last_name' => 'Kovács'], 'client', 'Acme'),
+    ccrm_newsletter_lead_candidate(['id' => 'c2', 'name' => 'Beta', 'email' => 'b@beta.sk', 'client_type' => 'business', 'contact_person' => 'Silent'], 'client', 'Beta'),
+];
+$pv = ccrm_newsletter_audience_preview(ccrm_newsletter_build_rows($cands, []));
+$same('the preview counts the queued addresses without a first name (extra + one client)', [$pv['total'], $pv['withoutFirstName']], [3, 2]);
+
+// the contact name rule, the same as composeContactName() in src/utils/contactName.ts
+$same('compose: given name first', ccrm_compose_contact_name('Péter', 'Kovács'), 'Péter Kovács');
+$same('compose: only a first name', ccrm_compose_contact_name(' Jana ', ''), 'Jana');
+$same('compose: both empty keeps the current full name', ccrm_compose_contact_name('', null, 'Old Name'), 'Old Name');
+$same('split: two words', ccrm_contact_parts_from_person('Michal Kováč'), ['Michal', 'Kováč']);
+$same('split: a title stays with the first name', ccrm_contact_parts_from_person('Ing. Michal Kováč'), ['Ing. Michal', 'Kováč']);
+$same('split: one word is not guessed', ccrm_contact_parts_from_person('Jana'), [null, null]);
+$same('split: a comma is not guessed', ccrm_contact_parts_from_person('Kováč, Michal'), [null, null]);
+$same('split: a trailing title is not guessed', ccrm_contact_parts_from_person('Michal Kováč PhD.'), [null, null]);
+$same('sync: parts present, the full name is composed from them', ccrm_contact_name_for_sync(['contactPerson' => 'stale', 'contactFirstName' => 'Péter', 'contactLastName' => 'Kovács'], null), ['Péter', 'Kovács', 'Péter Kovács']);
+$same('sync: parts present and empty keep the sent full name', ccrm_contact_name_for_sync(['contactPerson' => 'Jana', 'contactFirstName' => '', 'contactLastName' => ''], ['contact_person' => 'Jana']), [null, null, 'Jana']);
+$same('sync: an older bundle with a changed full name is split', ccrm_contact_name_for_sync(['contactPerson' => 'Eva Mináriková'], ['contact_person' => 'Eva']), ['Eva', 'Mináriková', 'Eva Mináriková']);
+$same('sync: an older bundle with an unchanged full name leaves the stored parts alone', ccrm_contact_name_for_sync(['contactPerson' => 'Eva Mináriková'], ['contact_person' => 'Eva Mináriková']), null);
+
+// the one-time backfill, against the fake PDO that reads the real schema
+$db = new DemoFakePdo();
+$mk = fn($id, $person, $first = null, $last = null) => $db->seedRow('leads', ['id' => $id, 'name' => 'N ' . $id, 'owner' => 'o', 'created_at' => '2026-01-01', 'contact_person' => $person, 'contact_first_name' => $first, 'contact_last_name' => $last]);
+$mk('b1', 'Michal Kováč');
+$mk('b2', 'Ing. Michal Kováč');
+$mk('b3', 'Jana');
+$mk('b4', 'Kováč, Michal');
+$mk('b5', 'Michal Kováč PhD.');
+$mk('b6', 'Jana Malá', 'Janka', null);       // a typed part: never overwritten
+$mk('b7', null);
+$mk('b8', 'Péter Kovács');
+$parts = static function (DemoFakePdo $d) { $o = []; foreach ($d->rows('leads') as $r) $o[$r['id']] = [$r['contact_first_name'], $r['contact_last_name']]; return $o; };
+$same('backfill splits what it can and reports the count', ccrm_backfill_contact_names($db), 3);
+$same('backfill result: split, comma, one word, trailing title, typed part, no contact',
+    $parts($db), ['b1' => ['Michal', 'Kováč'], 'b2' => ['Ing. Michal', 'Kováč'], 'b3' => [null, null], 'b4' => [null, null], 'b5' => [null, null], 'b6' => ['Janka', null], 'b7' => [null, null], 'b8' => ['Péter', 'Kovács']]);
+$mk('b9', 'Eva Malá');
+$same('backfill never runs twice', [ccrm_backfill_contact_names($db), $parts($db)['b9']], [0, [null, null]]);
+ccrm_set_contact_parts_from_person($db, 'b9');
+$same('a writer of contact_person only keeps the parts consistent', $parts($db)['b9'], ['Eva', 'Malá']);
 
 // ---- audience shape --------------------------------------------------------------------
 $a = ccrm_newsletter_normalize_audience(null);

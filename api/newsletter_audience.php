@@ -9,7 +9,7 @@
  * Almost everything here is pure so that scripts/test-newsletter.php can run it without a database:
  *
  *   ccrm_newsletter_parse_extra()            pasted text -> addresses ("Name <a@b.c>", , ; new lines)
- *   ccrm_newsletter_first_name()             "Ing. Peter Novák" -> "Peter"
+ *   ccrm_newsletter_first_name()             strips titles: "Ing. Peter" -> "Peter" (fed with the stored contact_first_name, C18)
  *   ccrm_newsletter_group_client_profiles()  which lead rows belong to which client
  *   ccrm_newsletter_expand_categories()      chosen client categories + all descendants
  *   ccrm_newsletter_build_rows()             dedupe (client > lead > employee > extra), skips
@@ -378,7 +378,10 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
         $contact = trim((string)($row['contact_person'] ?? ''));
         $own = trim((string)($row['name'] ?? ''));
         $display = $contact !== '' ? $contact : $own;
-        $first = ccrm_newsletter_first_name($contact);
+        // C18: the first name is the stored one (titles stripped), never guessed from the full name.
+        // A person client with no contact name at all is the person themselves: no field exists to
+        // complete, so their own name still gives the first word.
+        $first = ccrm_newsletter_first_name($row['contact_first_name'] ?? '');
         if ($first === '' && $contact === '' && (string)($row['client_type'] ?? '') === 'person') {
             $first = ccrm_newsletter_first_name($own);
         }
@@ -489,8 +492,15 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
     /** The AudiencePreview of C4 for a resolved audience (the first 20 queued addresses as sample). */
     function ccrm_newsletter_audience_preview(array $resolved, bool $valid = true): array {
         $sample = [];
+        $withoutFirstName = 0;
         foreach ($resolved['rows'] as $r) {
             if ($r['status'] !== 'queued') {
+                continue;
+            }
+            if (trim((string)($r['merge']['first_name'] ?? '')) === '') {
+                $withoutFirstName++;
+            }
+            if (count($sample) >= 20) {
                 continue;
             }
             $sample[] = [
@@ -499,9 +509,6 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
                 'source' => $r['source'],
                 'merge' => $r['merge'],
             ];
-            if (count($sample) >= 20) {
-                break;
-            }
         }
         return [
             'valid' => $valid,
@@ -509,6 +516,7 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
             'bySource' => $resolved['bySource'],
             'skipped' => $resolved['skipped'],
             'withoutEmail' => $resolved['withoutEmail'],
+            'withoutFirstName' => $withoutFirstName,
             'sample' => $sample,
         ];
     }
@@ -530,7 +538,7 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
     function ccrm_newsletter_collect_candidates(\PDO $pdo, array $audience): array {
         $candidates = [];
         $leadRows = $pdo->query(
-            "SELECT `id`, `name`, `email`, `contact_person`, `client_type`, `client_category_id`, `archived`, `status`, `client_id`, `adjustment`
+            "SELECT `id`, `name`, `email`, `contact_person`, `contact_first_name`, `client_type`, `client_category_id`, `archived`, `status`, `client_id`, `adjustment`
                FROM `leads` ORDER BY `id`"
         )->fetchAll(\PDO::FETCH_ASSOC);
         $grouped = ccrm_newsletter_group_client_profiles($leadRows);
@@ -609,7 +617,7 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
                 $candidates[] = [
                     'source' => 'extra', 'email' => $x['email'], 'name' => $x['name'],
                     'lead_id' => null, 'employee_id' => null,
-                    'merge' => ccrm_newsletter_merge_values($x['name'], ccrm_newsletter_first_name($x['name']), '', ''),
+                    'merge' => ccrm_newsletter_merge_values($x['name'], '', '', ''),   // C18: an extra address has no first name
                 ];
             }
         }

@@ -36,7 +36,7 @@ if (!function_exists('ccrm_plan_adjustment_clients')) {
     /** Columns copied from the lead onto the new client row. Absent columns are skipped. */
     function ccrm_adjustment_copy_columns(): array {
         return [
-            'name', 'city', 'street', 'postal_code', 'country', 'phone', 'email', 'contact_person',
+            'name', 'city', 'street', 'postal_code', 'country', 'phone', 'email', 'contact_person', 'contact_first_name', 'contact_last_name',
             'company_id', 'tax_id', 'vat_id', 'website', 'client_type', 'status', 'source', 'owner',
             'division', 'rating', 'client_category_id', 'legal_form', 'sk_nace', 'establishment_date',
             'organization_size', 'ownership_type', 'data_source', 'dissolution_date', 'region',

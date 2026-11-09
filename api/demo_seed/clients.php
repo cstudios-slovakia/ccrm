@@ -28,6 +28,7 @@
  */
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/lookup.php';
+require_once __DIR__ . '/../contact_name.php';
 
 if (!function_exists('demo_seed_clients')) {
 
@@ -82,9 +83,9 @@ if (!function_exists('demo_seed_clients')) {
         // --- Clients and leads --------------------------------------------------------------
         $insLead = $pdo->prepare(
             "INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `division`, `value`, `adjustment`, `rating`,
-                `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`,
+                `phone`, `email`, `company_id`, `tax_id`, `vat_id`, `contact_person`, `contact_first_name`, `contact_last_name`, `website`, `street`, `postal_code`, `country`,
                 `interest_note`, `referral_lead_id`, `client_category_id`, `legal_form`, `created_at`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $insLeadCat = $pdo->prepare("INSERT INTO `lead_categories` (`lead_id`, `category_name`) VALUES (?, ?)");
         $interest = [];
@@ -99,7 +100,9 @@ if (!function_exists('demo_seed_clients')) {
                 $c['id'], $c['name'], $c['city'], $c['type'], $states[$c['stage']], $sources[$sourceIdx],
                 $users[$l['owner']]['name'], $division,
                 demo_money((float)$c['valueEur']), demo_money((float)$l['adjustmentEur']), (int)$c['rating'],
-                $c['phone'], $c['email'], $nz($c['companyId']), $nz($c['taxId']), $nz($c['vatId']), $c['contact'], $nz($c['website']),
+                $c['phone'], $c['email'], $nz($c['companyId']), $nz($c['taxId']), $nz($c['vatId']),
+                // contact_person is composed from the typed parts, given name first, like the app does (C18).
+                ccrm_compose_contact_name($c['contactFirst'], $c['contactLast']), $c['contactFirst'], $c['contactLast'], $nz($c['website']),
                 $c['street'], $c['postalCode'], $c['country'],
                 $interest[$ref], $referral, $l['clientCategory'] === null ? null : $catIds[$l['clientCategory']],
                 $nz($l['legalForm']), demo_d((int)$l['day']),

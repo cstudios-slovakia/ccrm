@@ -880,6 +880,7 @@ if (!function_exists('ccrm_execute_workflow')) {
                           $leadId, $name, $city, $clientType, $recordStatus, $owner, $value, $phone, $email,
                           $street, $postalCode, $country, $companyId, $taxId, $vatId, $contactPerson, $website
                         ]);
+                        ccrm_set_contact_parts_from_person($pdo, $leadId);
                         // A lead an automation created is still a new lead, so it
                         // gets the same paired projects as one typed in by hand or
                         // captured by the web form (Projects → Settings). It carries
