@@ -12,6 +12,9 @@ import { TEST_USER } from './helpers/fixture';
 
 const TOKEN = 'a'.repeat(64);
 
+/** The cold dev server needs several seconds to reach the login screen on a busy runner. */
+const BOOT = { timeout: 20_000 };
+
 /** Starts from the login screen: the mocks, minus the seeded admin session. */
 async function signedOut(page: Page) {
   await startSession(page);
@@ -56,7 +59,7 @@ test.describe('Password reset and sign-in limits', () => {
     const posted = await mockPasswordReset(page, { tokenValid: true });
     await page.goto(`/?reset_token=${TOKEN}`, { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByText(TEST_USER.email)).toBeVisible();
+    await expect(page.getByText(TEST_USER.email)).toBeVisible(BOOT);
     await expect(rule(page, LENGTH_RULE)).toHaveAttribute('data-met', 'false');
     await expect(rule(page, MIX_RULE)).toHaveAttribute('data-met', 'false');
 
@@ -89,7 +92,7 @@ test.describe('Password reset and sign-in limits', () => {
     await mockPasswordReset(page, { tokenValid: false });
     await page.goto(`/?reset_token=${TOKEN}`, { waitUntil: 'domcontentloaded' });
 
-    await expect(page.getByText(/invalid or has expired|neplatný alebo vypršal|érvénytelen vagy lejárt/)).toBeVisible();
+    await expect(page.getByText(/invalid or has expired|neplatný alebo vypršal|érvénytelen vagy lejárt/)).toBeVisible(BOOT);
     await expect(page.getByPlaceholder(/Confirm new password|Potvrďte nové heslo|Új jelszó megerősítése/)).toHaveCount(0);
 
     await page.getByRole('button', { name: /Request a new link|Vyžiadať nový odkaz|Új link kérése/ }).click();
@@ -109,6 +112,7 @@ test.describe('Password reset and sign-in limits', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const emailField = page.locator('input[type="email"]').first();
+    await emailField.waitFor(BOOT);
     await emailField.fill(TEST_USER.email);
     const passwordField = page.locator('input[type="password"]').first();
     await passwordField.fill('wrong');

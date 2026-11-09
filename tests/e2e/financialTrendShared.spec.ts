@@ -13,7 +13,8 @@ import { buildSyncPayload } from './helpers/fixture';
  */
 
 const CUMULATIVE = /^(Cumulative Balance|Stav na účte \(Kumulatívny\)|Bankszámla egyenleg)$/;
-const OPEN_TABLE = /Inspect Full 18-Week|Zobraziť podrobnú 18-týždňovú|Részletes 18 hetes/;
+// The week count in the label follows the chart's history and forecast settings, so it is not pinned.
+const OPEN_TABLE = /Inspect (Full \d+-Week )?Weekly Breakdown|Zobraziť podrobnú (\d+-týždňovú|týždennú) tabuľku/;
 const CUMULATIVE_CHIP = /(Cumulative Funds|Kumulatívny stav|Kumulált egyenleg)/;
 const CALIBRATE = /^(Calibrate|Nastaviť|Beállít)$/;
 const SAVE = /Save & Recalculate Timeline|Uložiť a prepočítať os|Mentés és újraszámolás/;

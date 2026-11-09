@@ -110,8 +110,9 @@ test.describe('Drafts survive their exits', () => {
     const pushed = recordPushed(page, 'tasks');
     await gotoView(page, '#tasks');
     await page.getByText('Zavolať klientke Silvii').first().click();
-    const card = page.locator('div.rounded-2xl').filter({ has: page.getByRole('heading', { name: 'Zavolať klientke Silvii' }) }).last();
-    await card.getByTitle(/^(Edit Task|Upraviť úlohu|Feladat szerkesztése)$/).click();
+    // The task title is no longer a heading inside a card; the row's pencil is the way in.
+    // Two pencils exist per row (a mobile and a desktop one), only one of them shown.
+    await page.getByTitle(/^(Edit Task|Upraviť úlohu|Feladat szerkesztése)$/).filter({ visible: true }).first().click();
 
     const titleInput = page.getByText(/^(Task Title|Názov|Cím)$/).locator('xpath=following::input[1]');
     await titleInput.fill('Zavolať klientke Silvii — upravené');

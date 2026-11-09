@@ -65,7 +65,8 @@ async function seed(page: Page, rows: Row[]) {
 async function openBlock(page: Page): Promise<Locator> {
   await gotoView(page, '#projects');
   await page.getByText('Strecha Silvia — etapa 1').first().click();
-  await page.getByRole('button', { name: /^(Finances|Financie|Pénzügyek)$/ }).first().click();
+  // A tab, and its name carries the profit badge ("Financie 4 000 €").
+  await page.getByRole('tab', { name: /^(Finances|Financie|Pénzügyek)/ }).first().click();
   const block = page
     .locator('div.rounded-2xl')
     .filter({ hasText: /Project Value & Invoicable|Hodnota projektu a fakturácia/ })
