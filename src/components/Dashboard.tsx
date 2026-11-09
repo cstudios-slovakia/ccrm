@@ -19,6 +19,7 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { GroupedStatusValueEquationStats, type StatusStatGroup, type StatusStatItem, type StatusStatDetailRow } from "./GroupedStatusValueEquationStats";
 import { useUserPref } from "../utils/userPrefs";
 import { StatGrid, PageHeader, Tabs } from "./layout";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface DashboardProps {
   systemName: string;
@@ -1237,7 +1238,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <span className="type-overline text-blue-700">{getTranslation(systemLanguage, "dashboard.kpi.leads")}</span>
                 <span className="type-metric text-slate-900">{totalLeadsCount}</span>
                 <span className="text-micro text-blue-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  {t("CRM Registered Slabs", "Záznamy v CRM", "CRM-ben regisztrált tételek")}
+                  {t(`${PRODUCT_NAME} Registered Slabs`, `Záznamy v ${PRODUCT_NAME}`, `${PRODUCT_NAME}-ben regisztrált tételek`)}
                 </span>
               </div>
               <Sparkline points={leadCountPoints} color="#3b82f6" />
@@ -1668,7 +1669,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(metaSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t("CRM Won Value", "Získaná hodnota v CRM", "CRM megnyert érték")}</span>
+                  <span className="type-overline text-slate-400 block">{t(`${PRODUCT_NAME} Won Value`, `Získaná hodnota v ${PRODUCT_NAME}`, `${PRODUCT_NAME} megnyert érték`)}</span>
                   <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(metaWonValue)}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
@@ -1701,7 +1702,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(googleSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t("CRM Won Value", "Získaná hodnota v CRM", "CRM megnyert érték")}</span>
+                  <span className="type-overline text-slate-400 block">{t(`${PRODUCT_NAME} Won Value`, `Získaná hodnota v ${PRODUCT_NAME}`, `${PRODUCT_NAME} megnyert érték`)}</span>
                   <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(googleWonValue)}</span>
                 </div>
                 <div className="p-3 bg-white rounded-2xl border border-slate-100">
@@ -1793,7 +1794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* Company Core KPI Summaries */}
           <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
             <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-              <Compass className="h-4 w-4 text-indigo-600" /> {t("CRM Company Key Performance Indicators", "Kľúčové ukazovatele výkonnosti firmy v CRM", "A vállalat kulcsfontosságú teljesítménymutatói a CRM-ben")}
+              <Compass className="h-4 w-4 text-indigo-600" /> {t(`${PRODUCT_NAME} Company Key Performance Indicators`, `Kľúčové ukazovatele výkonnosti firmy v ${PRODUCT_NAME}`, `A vállalat kulcsfontosságú teljesítménymutatói a ${PRODUCT_NAME}-ben`)}
             </h3>
             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4 text-center">
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
@@ -2085,7 +2086,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div key={trend.label} className="p-4 bg-slate-50/30 rounded-2xl border border-slate-100 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
                     <div className="flex flex-col">
                       <span className="text-ui font-bold text-slate-800">{trend.label}</span>
-                      <span className="text-micro text-slate-400 font-semibold">{t("CRM Activity Node Period", "Obdobie aktivity v CRM", "CRM aktivitási időszak")}</span>
+                      <span className="text-micro text-slate-400 font-semibold">{t(`${PRODUCT_NAME} Activity Node Period`, `Obdobie aktivity v ${PRODUCT_NAME}`, `${PRODUCT_NAME} aktivitási időszak`)}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-4 text-center ws-sm:text-right">
                       <div>
@@ -2106,7 +2107,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             ) : (
               <div className="py-8 flex flex-col items-center justify-center text-center text-slate-400 text-ui">
-                <span>{t("No monthly records found in CRM sandbox. Seeding cleanup records will regenerate trends.", "V CRM sandboxe sa nenašli žiadne mesačné záznamy. Vyčistenie a opätovné naplnenie záznamov obnoví trendy.", "Nem találhatók havi rekordok a CRM sandboxban. A rekordok feltöltése után újragenerálódnak a trendek.")}</span>
+                <span>{t(`No monthly records found in ${PRODUCT_NAME} sandbox. Seeding cleanup records will regenerate trends.`, `V ${PRODUCT_NAME} sandboxe sa nenašli žiadne mesačné záznamy. Vyčistenie a opätovné naplnenie záznamov obnoví trendy.`, `Nem találhatók havi rekordok a ${PRODUCT_NAME} sandboxban. A rekordok feltöltése után újragenerálódnak a trendek.`)}</span>
               </div>
             )}
           </div>

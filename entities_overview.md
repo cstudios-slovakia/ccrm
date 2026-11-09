@@ -103,7 +103,7 @@ Main table representing potential deals, customers, and client accounts.
 * `contact_person` VARCHAR(100)
 
 ### `client_adjustment_migration`
-Written only by `php ccrm adjustment-clients --apply` (created on first use, not by the schema). One row per client row that command created from an adjustment-only client; `--undo` reads it to put the adjustment back.
+Written only by `php kprnq adjustment-clients --apply` (created on first use, not by the schema). One row per client row that command created from an adjustment-only client; `--undo` reads it to put the adjustment back.
 * `client_id` VARCHAR(50) [PK] (the `client-adj-*` row created in `leads`)
 * `name` VARCHAR(150)
 * `adjustment` DECIMAL(14,2) (the amount that was moved onto the client row)

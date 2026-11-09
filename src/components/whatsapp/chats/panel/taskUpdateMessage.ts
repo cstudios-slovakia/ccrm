@@ -38,7 +38,7 @@ const STRINGS: Record<TaskUpdateLanguage, Strings> = {
     batchIntro: (s) => `These tasks were marked as done by ${s}:`,
     notes: "Notes",
     attachments: (n) => `📎 ${n} attachment${n === 1 ? "" : "s"} below`,
-    footer: "_Automatic update · {brand}_",
+    footer: "_Automatic update · {product}_",
   },
   sk: {
     singleHeader: "✅ *Úloha hotová*",
@@ -47,7 +47,7 @@ const STRINGS: Record<TaskUpdateLanguage, Strings> = {
     batchIntro: (s) => `Tieto úlohy sú hotové · ${s}:`,
     notes: "Poznámka",
     attachments: (n) => `📎 Prílohy nižšie: ${n}`,
-    footer: "_Automatická aktualizácia · {brand}_",
+    footer: "_Automatická aktualizácia · {product}_",
   },
   hu: {
     singleHeader: "✅ *Feladat kész*",
@@ -56,7 +56,7 @@ const STRINGS: Record<TaskUpdateLanguage, Strings> = {
     batchIntro: (s) => `Ezek a feladatok készek · ${s}:`,
     notes: "Megjegyzés",
     attachments: (n) => `📎 Mellékletek lent: ${n}`,
-    footer: "_Automatikus frissítés · {brand}_",
+    footer: "_Automatikus frissítés · {product}_",
   },
 };
 

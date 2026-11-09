@@ -15,6 +15,7 @@ import {
   BOARD_COMMS_PROMPT,
 } from "./executivePrompts";
 import { VERSION_CODENAME } from "../version";
+import { PRODUCT_NAME } from "../brand.ts";
 
 export interface ExecutiveRole {
   id: string;
@@ -219,7 +220,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     suggestedPrompts: {
       en: [
         "What are the standard liability caps and indemnification terms we should enforce in client MSAs?",
-        "How do we protect proprietary CRM data and IP assignment in contractor agreements?",
+        `How do we protect proprietary ${PRODUCT_NAME} data and IP assignment in contractor agreements?`,
         "Analyze the legal and termination risks in our standard client agreement template."
       ],
       sk: [

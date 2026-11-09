@@ -1,6 +1,7 @@
 import React from "react";
 import { getStoredLanguage } from "./translations";
 import { FileText, User, Folder, CheckSquare, Receipt, Calendar, Sparkles, ExternalLink, ArrowRight } from "lucide-react";
+import { PRODUCT_NAME } from "./brand";
 
 export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, url }) => {
   const handleEntityClick = (e: React.MouseEvent) => {
@@ -58,7 +59,7 @@ export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, ur
       title={(() => {
         const lang = getStoredLanguage();
         const verb = lang === "sk" ? "Otvoriť" : lang === "hu" ? "Megnyitás" : "Open";
-        const where = lang === "sk" ? "v CRM" : lang === "hu" ? "a CRM-ben" : "in CRM";
+        const where = lang === "sk" ? `v ${PRODUCT_NAME}` : lang === "hu" ? `a ${PRODUCT_NAME}-ben` : `in ${PRODUCT_NAME}`;
         return `${verb} ${displayLabel} ${where}`;
       })()}
     >

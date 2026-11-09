@@ -38,6 +38,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
+import { PRODUCT_NAME } from "../utils/brand";
 
 export interface Message {
   id: string;
@@ -137,9 +138,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         isAutonomous: foundCustom.is_autonomous,
         skillContent: foundCustom.skill_content,
         suggestedPrompts: {
-          en: ["Provide your strategic domain assessment based on CRM records."],
-          sk: ["Poskytni svoje strategické zhodnotenie na základe dát v CRM."],
-          hu: ["Add meg a stratégiai értékelésedet a CRM adatok alapján."]
+          en: [`Provide your strategic domain assessment based on ${PRODUCT_NAME} records.`],
+          sk: [`Poskytni svoje strategické zhodnotenie na základe dát v ${PRODUCT_NAME}.`],
+          hu: [`Add meg a stratégiai értékelésedet a ${PRODUCT_NAME} adatok alapján.`]
         },
         description: {
           en: "Custom configured AI agent.",
@@ -295,8 +296,8 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     return systemLanguage === "sk"
       ? `Ahoj! Ja som **${role.name}** — ${pos}. Som pripravený analyzovať vaše dáta a navrhnúť konkrétne riešenia. V čom vám môžem pomôcť?`
       : systemLanguage === "hu"
-        ? `Üdvözlöm! Én vagyok a(z) **${role.name}** — ${pos}. Készen állok a CRM adatok elemzésére és a konkrét javaslatok kidolgozására. Miben segíthetek?`
-        : `Hello! I am **${role.name}** — ${pos}. I am grounded in your CRM data and ready to provide specialized domain guidance. How can I assist you?`;
+        ? `Üdvözlöm! Én vagyok a(z) **${role.name}** — ${pos}. Készen állok a ${PRODUCT_NAME} adatok elemzésére és a konkrét javaslatok kidolgozására. Miben segíthetek?`
+        : `Hello! I am **${role.name}** — ${pos}. I am grounded in your ${PRODUCT_NAME} data and ready to provide specialized domain guidance. How can I assist you?`;
   };
 
   // Fetch chat history for selected agent or council mode with client cache
@@ -728,9 +729,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         icon={<SectionIcon id="rag_ai" />}
         title={t("Virtual Executive Team & RAG Suite", "Virtuálny tím vedenia & RAG AI", "Virtuális Vezetői Csapat és RAG AI")}
         subtitle={t(
-              "OpenExecutive C-Suite architecture grounded in your live CRM records & episodic decisions",
-              "OpenExecutive architektúra C-Suite napojená na reálne CRM dáta a strategickú pamäť",
-              "OpenExecutive C-Suite architektúra a valós CRM adatokra és stratégiai döntésekre építve"
+              `OpenExecutive C-Suite architecture grounded in your live ${PRODUCT_NAME} records & episodic decisions`,
+              `OpenExecutive architektúra C-Suite napojená na reálne ${PRODUCT_NAME} dáta a strategickú pamäť`,
+              `OpenExecutive C-Suite architektúra a valós ${PRODUCT_NAME} adatokra és stratégiai döntésekre építve`
             )}
         actions={<>
           {/* Global Action Chips */}

@@ -29,7 +29,7 @@ import {
   mcpKeyHeader,
   mcpServerUrl,
 } from "../utils/mcpConnect";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 type T = (en: string, sk: string, hu: string) => string;
 
@@ -251,7 +251,7 @@ export interface McpAssistantSettingsProps {
 }
 
 export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ currentUser, activeLang }) => {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const t: T = (en, sk, hu) => (activeLang === "sk" ? sk : activeLang === "hu" ? hu : en);
   const lang = asLang(activeLang);
 
@@ -456,9 +456,9 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
               </h3>
               <p className="text-ui text-slate-500 font-medium mt-0.5">
                 {t(
-                  "Let an AI assistant read and update your CRM data — leads, clients, projects, tasks, invoices — within your permissions.",
-                  "Nechajte AI asistenta čítať a upravovať vaše CRM dáta – leady, klientov, projekty, úlohy, faktúry – v rámci vašich oprávnení.",
-                  "Engedje, hogy egy MI asszisztens olvassa és frissítse a CRM adatait – leadeket, ügyfeleket, projekteket, feladatokat, számlákat – a jogosultságai keretein belül."
+                  `Let an AI assistant read and update your ${PRODUCT_NAME} data — leads, clients, projects, tasks, invoices — within your permissions.`,
+                  `Nechajte AI asistenta čítať a upravovať ${PRODUCT_NAME} dáta – leady, klientov, projekty, úlohy, faktúry – v rámci vašich oprávnení.`,
+                  `Engedje, hogy egy MI asszisztens olvassa és frissítse a ${PRODUCT_NAME} adatait – leadeket, ügyfeleket, projekteket, feladatokat, számlákat – a jogosultságai keretein belül.`
                 )}
               </p>
             </div>

@@ -1,3 +1,5 @@
+import { PRODUCT_NAME } from "../../utils/brand.ts";
+
 /**
  * Unified Bilingual (EN / SK / HU) Translations for the SAI Module
  */
@@ -31,9 +33,9 @@ export const SAI_TRANSLATIONS = {
     liveTitle: { en: 'Live Test (Live API)', sk: 'Živý test (Live API)', hu: 'Éles teszt (Live API)' },
     liveCost: { en: '~0.026 €', sk: '~0.026 €', hu: '~0.026 €' },
     liveDesc: {
-      en: 'Real AI simulation with live OpenAI calls, CRM context extraction, and complete agent ReAct cycles.',
-      sk: 'Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z CRM a plnohodnotným ReAct cyklom agentov.',
-      hu: 'Valódi AI szimuláció élő OpenAI hívásokkal, CRM kontextus kinyeréssel és teljes ágens ReAct ciklussal.'
+      en: `Real AI simulation with live OpenAI calls, ${PRODUCT_NAME} context extraction, and complete agent ReAct cycles.`,
+      sk: `Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z ${PRODUCT_NAME} a plnohodnotným ReAct cyklom agentov.`,
+      hu: `Valódi AI szimuláció élő OpenAI hívásokkal, ${PRODUCT_NAME} kontextus kinyeréssel és teljes ágens ReAct ciklussal.`
     },
     selectedBadgeDemo: { en: 'SELECTED: DEMO TEST ($0.00)', sk: 'ZVOLENÝ: DEMO TEST (0 €)', hu: 'KIVÁLASZTVA: DEMO TESZT (0 €)' },
     selectedBadgeLive: { en: 'SELECTED: LIVE TEST (LIVE API)', sk: 'ZVOLENÝ: ŽIVÝ TEST (LIVE API)', hu: 'KIVÁLASZTVA: ÉLES TESZT (LIVE API)' },
@@ -72,8 +74,8 @@ export const SAI_TRANSLATIONS = {
     seedHint: { en: 'Press release, internal memo, or pricing document', sk: 'Tlačová správa, interné memorandum alebo cenový dokument', hu: 'Sajtóközlemény, belső feljegyzés vagy árazási dokumentum' },
     seedPlaceholder: { en: 'Enter the proposed announcement text, changes, new terms, or market move...', sk: 'Zadajte text navrhovaného oznámenia, zmeny, nové podmienky...', hu: 'Adja meg a bejelentés szövegét, változásokat, új feltételeket...' },
 
-    crmSourcesTitle: { en: 'CRM Context & Ingestion Sources', sk: 'Zdroje kontextu a dáta z CRM', hu: 'CRM kontextus és adatforrások' },
-    crmSourcesHint: { en: 'Select which historical CRM intelligence and records feed the swarm ontology', sk: 'Vyberte, ktoré historické CRM záznamy a poznatky budú napájať ontológiu roja', hu: 'Válassza ki a szimulációhoz felhasznált CRM forrásokat' },
+    crmSourcesTitle: { en: `${PRODUCT_NAME} Context & Ingestion Sources`, sk: `Zdroje kontextu a dáta z ${PRODUCT_NAME}`, hu: `${PRODUCT_NAME} kontextus és adatforrások` },
+    crmSourcesHint: { en: `Select which historical ${PRODUCT_NAME} intelligence and records feed the swarm ontology`, sk: `Vyberte, ktoré historické ${PRODUCT_NAME} záznamy a poznatky budú napájať ontológiu roja`, hu: `Válassza ki a szimulációhoz felhasznált ${PRODUCT_NAME} forrásokat` },
 
     contextDocsTitle: { en: 'Context Documents & Knowledge Base', sk: 'Kontextové dokumenty & Znalostná báza', hu: 'Kontextus dokumentumok & Tudásbázis' },
     contextDocsHint: { en: 'Upload PDF, DOCX, TXT, CSV or paste market research notes', sk: 'Nahrajte PDF, DOCX, TXT, CSV alebo vložte textové poznatky', hu: 'Töltsön fel PDF, DOCX, TXT, CSV fájlokat' },

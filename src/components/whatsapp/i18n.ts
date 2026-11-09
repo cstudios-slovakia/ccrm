@@ -1,3 +1,5 @@
+import { PRODUCT_NAME } from "../../utils/brand.ts";
+
 /**
  * Strings of the native WhatsApp module, in the CRM's three languages. The module reads the CRM's
  * language; there is no separate WAAI language switch. Wording follows WAAI's own dictionaries
@@ -31,12 +33,12 @@ const en = {
   },
   notLinked: {
     title: "Your account is not linked to WAAI",
-    body: "Ask the WAAI administrator to link your CRM user in WAAI → Settings → CRM.",
+    body: `Ask the WAAI administrator to link your ${PRODUCT_NAME} user in WAAI → Settings → ${PRODUCT_NAME}.`,
   },
   needsUpdate: {
     title: "WhatsApp needs an update",
     admin: (crm: number, waai: number) =>
-      `This CRM speaks version ${crm} of the WhatsApp API and WAAI speaks version ${waai}. Update the older of the two.`,
+      `${PRODUCT_NAME} speaks version ${crm} of the WhatsApp API and WAAI speaks version ${waai}. Update the older of the two.`,
     member: "Ask an administrator to update WhatsApp.",
   },
   wasNotReady: {
@@ -87,11 +89,11 @@ const sk: WaMessages = {
   },
   notLinked: {
     title: "Váš účet nie je prepojený s WAAI",
-    body: "Požiadajte správcu WAAI, aby prepojil vášho používateľa CRM v WAAI → Nastavenia → CRM.",
+    body: `Požiadajte správcu WAAI, aby prepojil vášho používateľa ${PRODUCT_NAME} v WAAI → Nastavenia → ${PRODUCT_NAME}.`,
   },
   needsUpdate: {
     title: "WhatsApp potrebuje aktualizáciu",
-    admin: (crm, waai) => `Toto CRM používa verziu ${crm} rozhrania WhatsApp a WAAI verziu ${waai}. Aktualizujte staršie z nich.`,
+    admin: (crm, waai) => `${PRODUCT_NAME} používa verziu ${crm} rozhrania WhatsApp a WAAI verziu ${waai}. Aktualizujte staršie z nich.`,
     member: "Požiadajte administrátora o aktualizáciu WhatsAppu.",
   },
   wasNotReady: {
@@ -140,11 +142,11 @@ const hu: WaMessages = {
   },
   notLinked: {
     title: "A fiókja nincs összekapcsolva a WAAI-val",
-    body: "Kérje meg a WAAI adminisztrátorát, hogy kösse össze a CRM-felhasználóját a WAAI → Beállítások → CRM részben.",
+    body: `Kérje meg a WAAI adminisztrátorát, hogy kösse össze a ${PRODUCT_NAME}-felhasználóját a WAAI → Beállítások → ${PRODUCT_NAME} részben.`,
   },
   needsUpdate: {
     title: "A WhatsApp frissítést igényel",
-    admin: (crm, waai) => `Ez a CRM a WhatsApp-felület ${crm}. verzióját használja, a WAAI a ${waai}. verziót. Frissítse a régebbit.`,
+    admin: (crm, waai) => `Ez a ${PRODUCT_NAME} a WhatsApp-felület ${crm}. verzióját használja, a WAAI a ${waai}. verziót. Frissítse a régebbit.`,
     member: "Kérjen meg egy adminisztrátort a WhatsApp frissítésére.",
   },
   wasNotReady: {

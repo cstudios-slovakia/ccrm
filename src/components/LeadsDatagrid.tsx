@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "../utils/brand";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
@@ -872,7 +873,6 @@ const generateAiSummary = (
 };
 
 interface LeadsDatagridProps {
-    systemName: string;
     leads: Lead[];
     setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
     leadStates: string[];
@@ -1072,7 +1072,6 @@ const LEAD_OVERFLOW_FILTERS = ["time", "type", "division", "rating", "archive", 
 type LeadOverflowFilter = (typeof LEAD_OVERFLOW_FILTERS)[number];
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
-    systemName,
     leads,
     setLeads,
     leadStates,
@@ -12538,7 +12537,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Pridajte nové riadky do aktívnej tabuľky leadov",
                                         "Adjon új sorokat az aktív lead táblázathoz",
                                     )}{" "}
-                                    {systemName}{" "}
+                                    {PRODUCT_NAME}{" "}
                                     {t(
                                         "leads datagrid (Bottom Slideout)",
                                         "(spodné okno)",

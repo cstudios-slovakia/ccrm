@@ -13,7 +13,7 @@
     <meta name="application-name" content="Koperniq" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Koperniq | Advanced Sales & Operations Control</title>
-    <meta name="description" content="Next-generation client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment." />
+    <meta name="description" content="Sales, projects, documents and operations in one workspace for the whole team." />
     <!-- Preconnect to Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -33,12 +33,17 @@
       (function () {
         try {
           var read = function (key) { try { return localStorage.getItem(key); } catch (e) { return null; } };
+          // Cached by updatePwaManifest(): the title alone for the home-screen label,
+          // title + product ("Lapidea (Koperniq)") for the application name.
           var sysName = read("crm_system_name");
+          var sysNameFull = read("crm_system_name_full") || sysName;
           if (sysName) {
             var metaApple = document.querySelector('meta[name="apple-mobile-web-app-title"]');
             if (metaApple) metaApple.setAttribute("content", sysName);
+          }
+          if (sysNameFull) {
             var metaApp = document.querySelector('meta[name="application-name"]');
-            if (metaApp) metaApp.setAttribute("content", sysName);
+            if (metaApp) metaApp.setAttribute("content", sysNameFull);
           }
           var mode = read("ccrm_theme_mode") || "system";
           var palette = read("crm_user_theme") || "basic";

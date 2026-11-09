@@ -46,7 +46,7 @@ import {
   type OfferStatusDef,
 } from "../utils/offerStatuses";
 import { useListFilter } from "../hooks/useListFilter";
-import { getBrandName } from "../utils/brand";
+import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
 import { ListViewMenu } from "./common/ListViewMenu";
 import { flattenOfferCategories, offerCategoryColor, offerCategoryPath } from "../utils/offerCategories";
 import {
@@ -600,7 +600,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           `Kiállított árajánlat ${money(doc.totalPrice)} értékben. Tárgy: ${doc.subject || "—"}`
         ),
         amount: doc.totalPrice,
-        author: currentUser?.name || getBrandName()
+        author: currentUser?.name || getSystemTitle()
       };
 
       if (onAddTimelineEvent) {
@@ -617,7 +617,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
     toast(
       isEdit
         ? t("Price offer updated.", "Cenová ponuka bola aktualizovaná.", "Az árajánlat frissítve.")
-        : t("Price offer issued and logged in the CRM.", "Cenová ponuka bola vystavená a zaevidovaná v CRM.", "Az árajánlat kiállítva és rögzítve.")
+        : t(`Price offer issued and logged in ${PRODUCT_NAME}.`, `Cenová ponuka bola vystavená a zaevidovaná v ${PRODUCT_NAME}.`, "Az árajánlat kiállítva és rögzítve.")
     );
     setEditorSession(null);
     setEditorDirty(false);

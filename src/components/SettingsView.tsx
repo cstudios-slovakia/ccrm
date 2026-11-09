@@ -93,7 +93,7 @@ import { SectionCard, ModuleLinkCard } from "./settings/SectionCard";
 import { SaveStatus } from "./settings/SectionCard";
 import { DemoReseedSettings } from "./settings/DemoReseedSettings";
 import { useAutosave } from "./settings/useAutosave";
-import { DEFAULT_BRAND_NAME, normalizeBrandOverride } from "../utils/brand";
+import { PRODUCT_NAME, normalizeSystemTitleOverride } from "../utils/brand";
 import { ScrollFade } from "./settings/ScrollFade";
 import { AiUsagePanel } from "./settings/AiUsagePanel";
 import { WaaiIntegrationSettings } from "./settings/WaaiIntegrationSettings";
@@ -2391,10 +2391,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (getPermission("system_reset") !== "edit") return;
     if (confirm(
       userLanguage === "sk" 
-        ? "Naozaj chcete resetovať celé úložisko CRM? Toto vymaže reláciu a obnoví stavy." 
+        ? `Naozaj chcete resetovať celé úložisko ${PRODUCT_NAME}? Toto vymaže reláciu a obnoví stavy.` 
         : userLanguage === "hu" 
-          ? "Biztosan vissza szeretné állítani a teljes CRM tárolót? Ez törli a munkamenetet és visszaállítja az állapotokat." 
-          : "Are you sure you want to reset all CRM storage? This will clear the active session and reload states."
+          ? `Biztosan vissza szeretné állítani a teljes ${PRODUCT_NAME} tárolót? Ez törli a munkamenetet és visszaállítja az állapotokat.` 
+          : `Are you sure you want to reset all ${PRODUCT_NAME} storage? This will clear the active session and reload states.`
     )) {
       sessionStorage.clear();
       window.location.reload();
@@ -2422,10 +2422,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (data.success) {
         (window as any).showToast(
           userLanguage === "sk"
-            ? "Demo dáta boli úspešne odstránené a CRM bol resetovaný."
+            ? `Demo dáta boli úspešne odstránené a ${PRODUCT_NAME} bol resetovaný.`
             : userLanguage === "hu"
-              ? "A bemutató adatok sikeresen törölve, és a CRM visszaállítva."
-              : "Demo data was successfully removed and CRM was reset."
+              ? `A bemutató adatok sikeresen törölve, és a ${PRODUCT_NAME} visszaállítva.`
+              : `Demo data was successfully removed and ${PRODUCT_NAME} was reset.`
         );
         // No local overrides left to clear: leads, tasks, states, users and roles
         // all come from the server on load, so the reload alone pulls a clean slate.
@@ -3057,9 +3057,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const nameStatus = useAutosave({
     value: tempName,
     // An empty field is a real edit: it means "use the default name".
-    dirty: normalizeBrandOverride(tempName) !== systemName,
+    dirty: normalizeSystemTitleOverride(tempName) !== systemName,
     enabled: canEditCompany,
-    save: (name) => setSystemName(normalizeBrandOverride(name)),
+    save: (name) => setSystemName(normalizeSystemTitleOverride(name)),
   });
   // Both write independently; the chip shows the one that is busy.
   const companyStatus = billingStatus === "saving" || nameStatus === "saving" ? "saving" : billingStatus === "saved" || nameStatus === "saved" ? "saved" : "idle";
@@ -3068,7 +3068,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // was edited, including the moment after it has been written ("Saved").
   const companyChip = React.useRef<"profile" | "billing" | "bank" | "defaults" | null>(null);
   const fieldDirty = (k: keyof CompanyBillingSettings) => normField(billingForm[k]) !== normField(savedBilling[k]);
-  const nameDirty = normalizeBrandOverride(tempName) !== systemName;
+  const nameDirty = normalizeSystemTitleOverride(tempName) !== systemName;
   if (nameDirty || (["companyLogoUrl", "companyName", "companySubtitle", "email", "phone", "phoneSecondary", "website"] as const).some(fieldDirty)) companyChip.current = "profile";
   else if ((["companyId", "taxId", "vatId", "street", "city", "postalCode", "country"] as const).some(fieldDirty)) companyChip.current = "billing";
   else if ((["iban", "swift"] as const).some(fieldDirty)) companyChip.current = "bank";
@@ -4353,7 +4353,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {/* API CREDENTIALS — always editable, independent of vector DB connection state */}
                     <SectionCard
                       title={t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
-                      description={t("Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.", "Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli CRM.", "Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a CRM oldalsávi asszisztensében.")}
+                      description={t(`Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the ${PRODUCT_NAME} sidebar assistant.`, `Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli ${PRODUCT_NAME}.`, `Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a ${PRODUCT_NAME} oldalsávi asszisztensében.`)}
                       action={<SaveStatus lang={userLanguage} status={aiStatus} />}
                     >
         
@@ -4417,9 +4417,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <div className="space-y-4 pt-4 border-t border-slate-100">
                         <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
                           {t(
-                            "Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in the CRM runs on OpenAI.",
-                            "Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v CRM bežia na OpenAI.",
-                            "Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A CRM összes többi AI funkciója OpenAI-t használ."
+                            `Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in ${PRODUCT_NAME} runs on OpenAI.`,
+                            `Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v ${PRODUCT_NAME} bežia na OpenAI.`,
+                            `Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A ${PRODUCT_NAME} összes többi AI funkciója OpenAI-t használ.`
                           )}
                         </p>
         
@@ -4823,9 +4823,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <SectionCard
                       title="Zernio Social Media Engine"
                       description={t(
-                                "Connect your CRM to Zernio REST API & AI Agents infrastructure for unified social media scheduling, multi-platform publishing, and inbox engagement across Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky, and more.",
-                                "Pripojte vaše CRM k Zernio REST API a AI agentom pre unifikované plánovanie sociálnych sietí, publikovanie na 15+ platformách (Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky).",
-                                "Csatlakoztassa CRM-jét a Zernio REST API-hoz az egységes közösségi média ütemezéshez 15+ platformon."
+                                `Connect ${PRODUCT_NAME} to Zernio REST API & AI Agents infrastructure for unified social media scheduling, multi-platform publishing, and inbox engagement across Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky, and more.`,
+                                `Pripojte ${PRODUCT_NAME} k Zernio REST API a AI agentom pre unifikované plánovanie sociálnych sietí, publikovanie na 15+ platformách (Twitter/X, Instagram, TikTok, LinkedIn, YouTube, Facebook, Threads, Bluesky).`,
+                                `Csatlakoztassa ${PRODUCT_NAME}-jét a Zernio REST API-hoz az egységes közösségi média ütemezéshez 15+ platformon.`
                               )}
                       action={
                         <div className="flex flex-wrap items-center gap-3">
@@ -4864,7 +4864,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) && !isEditingZernioKey && (
                       <SectionCard
                         title={t("Zernio API Connection Active", "Zernio API pripojenie je aktívne", "Zernio API kapcsolat aktív")}
-                        description={t("Your CRM is successfully connected to Zernio API backend.", "Vaše CRM je úspešne pripojené k Zernio API backendu.", "A CRM sikeresen csatlakozik a Zernio API-hoz.")}
+                        description={t(`${PRODUCT_NAME} is successfully connected to Zernio API backend.`, `${PRODUCT_NAME} je úspešne pripojené k Zernio API backendu.`, `A ${PRODUCT_NAME} sikeresen csatlakozik a Zernio API-hoz.`)}
                         action={
 <div className="flex items-center gap-2">
                             <button
@@ -4940,7 +4940,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {/* Option 1: 1-Click Device Authorization */}
                         <SectionCard
                           title={t("1-Click Agent Device Authorization", "1-Click Autorizácia zariadenia agenta", "1-Kattintásos eszköz hitelesítés")}
-                          description={t("Authorize your CRM instance instantly with Zernio via browser authentication flow.", "Autorizujte vašu CRM inštanciu okamžite so Zernio cez bezpečné prehliadačové overenie.", "Hitelesítse CRM-jét azonnal a Zernióval böngészős hitelesítéssel.")}
+                          description={t(`Authorize your ${PRODUCT_NAME} instance instantly with Zernio via browser authentication flow.`, `Autorizujte ${PRODUCT_NAME} inštanciu okamžite so Zernio cez bezpečné prehliadačové overenie.`, `Hitelesítse ${PRODUCT_NAME}-jét azonnal a Zernióval böngészős hitelesítéssel.`)}
                           action={
 <button
                               type="button"
@@ -5138,10 +5138,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <SectionCard
                         title={userLanguage === "sk" ? "Odstrániť Demo Dáta" : userLanguage === "hu" ? "Demo Adatok Törlése" : "Wipe Demo Data"}
                         description={userLanguage === "sk" 
-                            ? "Tento krok vymaže všetky vopred načítané demo údaje (leady, históriu pipeline, kalendáre, projektové úlohy) a trvalo prepne CRM z demo režimu do čistej databázy." 
+                            ? `Tento krok vymaže všetky vopred načítané demo údaje (leady, históriu pipeline, kalendáre, projektové úlohy) a trvalo prepne ${PRODUCT_NAME} z demo režimu do čistej databázy.` 
                             : userLanguage === "hu"
                               ? "Ez a lépés törli az összes előre betöltött bemutató adatot (leadek, naptár, feladatok), és véglegesen kikapcsolja a demo módot."
-                              : "This will remove all pre-loaded demo records (leads, pipeline history, calendar slots, project tasks) and permanently switch the CRM out of demo mode."}
+                              : `This will remove all pre-loaded demo records (leads, pipeline history, calendar slots, project tasks) and permanently switch ${PRODUCT_NAME} out of demo mode.`}
                         tone="warning"
                       >
         
@@ -6685,7 +6685,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 disabled={getPermission("general_config") === "view"}
                                 value={senderName}
                                 onChange={(e) => setSenderName(e.target.value)}
-                                placeholder="Geely CRM Portal"
+                                placeholder={`Geely ${PRODUCT_NAME} Portal`}
                                 className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
                               />
                             </div>
@@ -7049,7 +7049,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             value={tempName}
                             onChange={(e) => setTempName(e.target.value)}
                             className="w-full min-h-12 ws-lg:min-h-0 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-                            placeholder={DEFAULT_BRAND_NAME}
+                            placeholder={PRODUCT_NAME}
                           />
                           <p className="text-micro text-slate-500">
                             {getTranslation(userLanguage, "settings.general.system_name_desc")}

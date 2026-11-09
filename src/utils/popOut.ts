@@ -1,4 +1,4 @@
-import { getBrandName } from "./brand.ts";
+import { getSystemTitleWithProduct } from "./brand.ts";
 /**
  * The compact "My tasks" mini window — what the Chrome side panel was.
  *
@@ -61,7 +61,7 @@ const openFramedPip = async (api: PipApi, url: string): Promise<boolean> => {
   }
   const pip = await api.requestWindow({ width: WIDTH, height: HEIGHT });
   const doc = pip.document;
-  doc.title = `${getBrandName()} — My tasks`;
+  doc.title = `${getSystemTitleWithProduct()} — My tasks`;
 
   const style = doc.createElement("style");
   style.textContent =
@@ -70,7 +70,7 @@ const openFramedPip = async (api: PipApi, url: string): Promise<boolean> => {
   doc.head.appendChild(style);
 
   const frame = doc.createElement("iframe");
-  frame.title = `${getBrandName()} — My tasks`;
+  frame.title = `${getSystemTitleWithProduct()} — My tasks`;
   // Same origin already inherits these; stating them keeps voice tasks working.
   frame.allow = "microphone; clipboard-write";
   doc.body.appendChild(frame);

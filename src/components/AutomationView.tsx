@@ -23,7 +23,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
-import { getBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 const SYSTEM_COLORS = [
   { name: "Purple", hex: "#7e22ce" },
@@ -1531,7 +1531,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         data = { type: "create_task", title: "", description: "", priority: "medium", deadline_days: 2, deadline_time: "09:00" };
       } else if (subType === "send_email") {
         name = t("Send Email", "Odoslať e-mail", "E-mail küldése");
-        data = { type: "send_email", to: "{{$trigger.email}}", subject: `Welcome to ${getBrandName()}`, body: "Hello {{$trigger.name}}, ..." };
+        data = { type: "send_email", to: "{{$trigger.email}}", subject: `Welcome to ${PRODUCT_NAME}`, body: "Hello {{$trigger.name}}, ..." };
       } else if (subType === "update_project_status") {
         name = t("Change Project Status", "Zmeniť stav projektu", "Projekt állapotának módosítása");
         // Defaults to the project paired with the lead the workflow is about —
@@ -1824,9 +1824,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         icon={<SectionIcon id="automation" />}
         title={t("Automations & Workflows", "Automatizácie a workflowy", "Automatizálás és munkafolyamatok")}
         subtitle={t(
-              "Build event-driven triggers, branching logic and AI agents that run your CRM for you.",
-              "Vytvárajte spúšťače udalostí, vetviacu logiku a AI agentov, ktorí za vás obsluhujú CRM.",
-              "Eseményvezérelt triggerek, elágazó logika és AI ágensek, amelyek Ön helyett működtetik a CRM-et."
+              `Build event-driven triggers, branching logic and AI agents that run ${PRODUCT_NAME} for you.`,
+              `Vytvárajte spúšťače udalostí, vetviacu logiku a AI agentov, ktorí za vás obsluhujú ${PRODUCT_NAME}.`,
+              `Eseményvezérelt triggerek, elágazó logika és AI ágensek, amelyek Ön helyett működtetik a ${PRODUCT_NAME}-et.`
             )}
         actions={<>
           {/* Global Action Buttons */}

@@ -300,7 +300,7 @@ Done when: the QA check passes and a mocked install request for hu/EUR sends
       and `SYSTEM_LANGUAGE` → `SYSTEM_CURRENCY` → `demo_seed_all()` → return the per-module
       report. `set_time_limit(300)`. Runs outside a transaction (the runner opens one per
       module).
-- [x] CLI: `php ccrm demo:seed --lang=hu --currency=EUR [--force]` does the same;
+- [x] CLI: `php kprnq demo:seed --lang=hu --currency=EUR [--force]` does the same;
       `--force` allows it when `DEMO_MODE` is off and then sets it on. Retire
       `api/seed_demo_data.php` into a call of the same function (keep the file, CLI-only).
 - [x] Settings: in the demo / system-reset section add **Re-seed demo data**: language and

@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import type { SwarmPost } from '../../utils/swarm/types';
 import { Markdown } from '../../utils/markdown';
 import { MessageSquare, Heart, Repeat2, Sparkles, MessageCircle, MessagesSquare, CheckCircle2, Loader2, CircleDot, Network } from 'lucide-react';
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface SocialFeedStreamProps {
   posts: SwarmPost[];
@@ -106,7 +107,7 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5 text-ui">
                 <div className="flex items-center gap-2.5 text-emerald-700 font-semibold text-caption">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{t('1. CRM Temporal Lookback Extraction', '1. Extrakcia CRM dát z histórie', '1. Időbeli CRM adatok kinyerése')}</span>
+                  <span>{t(`1. ${PRODUCT_NAME} Temporal Lookback Extraction`, `1. Extrakcia ${PRODUCT_NAME} dát z histórie`, `1. Időbeli ${PRODUCT_NAME} adatok kinyerése`)}</span>
                 </div>
                 <div className="flex items-center gap-2.5 text-purple-700 font-bold text-caption bg-purple-50/80 p-1.5 rounded-xl border border-purple-200/60">
                   <Loader2 className="w-4 h-4 text-purple-600 animate-spin shrink-0" />

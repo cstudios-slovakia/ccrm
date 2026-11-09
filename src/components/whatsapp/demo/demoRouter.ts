@@ -55,6 +55,7 @@ import {
   windowStart,
 } from "./demoDto.ts";
 import { DEFAULT_QUICK_REACTIONS, DEMO_ACCOUNT_ID, DemoStore, type DemoMedia, type StoredChat, type StoredMessage } from "./demoStore.ts";
+import { PRODUCT_NAME } from "../../../utils/brand.ts";
 
 /**
  * The fake WAAI (docs/WHATSAPP-DEMO-MODULE.md B2, C5): the module API implemented as a `fetch` function that
@@ -112,21 +113,21 @@ const TEXT = {
   en: {
     notInDemo: "Not available in the demo.",
     emptyWindow: "No messages in this period.",
-    linkedTask: "This task is synced with the CRM and cannot be changed that way in the demo.",
+    linkedTask: `This task is synced with ${PRODUCT_NAME} and cannot be changed that way in the demo.`,
     askIntro: "In the demo, Ask searches the demo chats. These messages match:",
     askNothing: "Nothing found in the demo chats. Try another word.",
   },
   sk: {
     notInDemo: "V ukážke nie je dostupné.",
     emptyWindow: "V tomto období nie sú žiadne správy.",
-    linkedTask: "Táto úloha je synchronizovaná s CRM a v ukážke sa takto zmeniť nedá.",
+    linkedTask: `Táto úloha je synchronizovaná s ${PRODUCT_NAME} a v ukážke sa takto zmeniť nedá.`,
     askIntro: "V ukážke Opýtať sa prehľadáva ukážkové konverzácie. Tieto správy sedia:",
     askNothing: "V ukážkových konverzáciách sa nič nenašlo. Skúste iné slovo.",
   },
   hu: {
     notInDemo: "A demóban nem érhető el.",
     emptyWindow: "Ebben az időszakban nincs üzenet.",
-    linkedTask: "Ez a feladat szinkronban van a CRM-mel, a demóban így nem módosítható.",
+    linkedTask: `Ez a feladat szinkronban van a ${PRODUCT_NAME}-mel, a demóban így nem módosítható.`,
     askIntro: "A demóban a Kérdezz a minta beszélgetésekben keres. Ezek az üzenetek egyeznek:",
     askNothing: "A minta beszélgetésekben nem található semmi. Próbálj másik szót.",
   },

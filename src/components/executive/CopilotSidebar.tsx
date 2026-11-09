@@ -18,6 +18,7 @@ import type { ScreenContextInfo } from "../../hooks/useCurrentScreenContext";
 import { viewSizeScale } from "../../utils/viewSize";
 import { reportVoiceUsage } from "../../utils/aiUsage";
 import { ModuleSetupRequired } from "../ui/ModuleSetupRequired";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface CopilotSidebarProps {
   isOpen: boolean;
@@ -187,9 +188,9 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
   const welcomeText = useMemo(() => {
     if (!hasIntroduced) {
       return t(
-        `👋 Hi **${userName}**! I am your **Executive Copilot (${VERSION_CODENAME})**. I have live CRM data access and I am actively grounded in **${screenContext.title}**. How can I help you today?`,
-        `👋 Ahoj **${userName}**! Som tvoj **Výkonný AI Copilot (${VERSION_CODENAME})**. Mám živý prístup k CRM dátam a sledujem s tebou obrazovku **${screenContext.title}**. Ako ti môžem dnes pomôcť?`,
-        `👋 Szia **${userName}**! Én vagyok a **Vezetői AI Copilot (${VERSION_CODENAME})**. Valós időben látom a CRM adatokat és a megnyitott **${screenContext.title}** felületet. Miben segíthetek ma?`
+        `👋 Hi **${userName}**! I am your **Executive Copilot (${VERSION_CODENAME})**. I have live ${PRODUCT_NAME} data access and I am actively grounded in **${screenContext.title}**. How can I help you today?`,
+        `👋 Ahoj **${userName}**! Som tvoj **Výkonný AI Copilot (${VERSION_CODENAME})**. Mám živý prístup k ${PRODUCT_NAME} dátam a sledujem s tebou obrazovku **${screenContext.title}**. Ako ti môžem dnes pomôcť?`,
+        `👋 Szia **${userName}**! Én vagyok a **Vezetői AI Copilot (${VERSION_CODENAME})**. Valós időben látom a ${PRODUCT_NAME} adatokat és a megnyitott **${screenContext.title}** felületet. Miben segíthetek ma?`
       );
     }
     return t(
@@ -406,7 +407,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         ];
       default:
         return [
-          t("Give me an executive brief of today's CRM activity", "Daj mi manažérsky súhrn dnešných CRM aktivít", "Adj vezetői összefoglalót a mai aktivitásokról"),
+          t(`Give me an executive brief of today's ${PRODUCT_NAME} activity`, `Daj mi manažérsky súhrn dnešných ${PRODUCT_NAME} aktivít`, "Adj vezetői összefoglalót a mai aktivitásokról"),
           t("What strategic decisions or risks should I review?", "Aké strategické riziká by sme mali riešiť?", "Milyen stratégiai kockázatokat vizsgáljunk meg?"),
           t("Highlight top revenue opportunities", "Zvýrazni najlepšie obchodné príležitosti", "Emeld ki a legjobb bevételi lehetőségeket")
         ];
@@ -1428,7 +1429,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                 </div>
                 <div className="p-3.5 rounded-2xl bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-xs flex items-center gap-2">
                   <span className="text-ui font-semibold text-slate-500">
-                    {t("Analyzing screen & CRM context...", "Analyzujem kontext obrazovky...", "Képernyő és adatok elemzése...")}
+                    {t(`Analyzing screen & ${PRODUCT_NAME} context...`, "Analyzujem kontext obrazovky...", "Képernyő és adatok elemzése...")}
                   </span>
                   <span className="h-1.5 w-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                   <span className="h-1.5 w-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />

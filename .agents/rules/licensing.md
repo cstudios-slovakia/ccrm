@@ -16,7 +16,7 @@ An expired, missing, revoked, or unverifiable licence must **never**:
 
 It may only:
 
-- refuse `php ccrm update`
+- refuse `php kprnq update`
 - show the informational banner (`LicenseBanner`)
 - refuse the creation of a **new** user past `maxUsers` — never remove, disable
   or hide an account that already exists

@@ -19,7 +19,7 @@ Whenever you add a column to a table that `sync.php` (or an `api/*.php` endpoint
    ```
 3. **Pre-transaction column healing in `public/sync.php`** (right *before* `$pdo->beginTransaction()`):
    - `ccrm_apply_schema()` skips itself once `SCHEMA_FINGERPRINT` in `system_settings` matches. During a rollout, a PHP worker still holding the previous release's cached `schema.php` in OPcache can stamp that marker without having added the new column.
-   - Without column healing in `sync.php`, every save on that instance throws HTTP 500 (`Unknown column '...' in 'INSERT INTO'`) until `php ccrm migrate` is run manually.
+   - Without column healing in `sync.php`, every save on that instance throws HTTP 500 (`Unknown column '...' in 'INSERT INTO'`) until `php kprnq migrate` is run manually.
    - Heal the column right before `$pdo->beginTransaction()`, gated on the payload key that writes to that table (same pattern as `projects.value`, `projects.contact_phone`, `ai_custom_templates.layout_json`):
      ```php
      if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
@@ -40,7 +40,7 @@ Whenever you add a column to a table that `sync.php` (or an `api/*.php` endpoint
 
 - **Order of operations**: In `ccrm_apply_migrations()`, always add columns *before* any backfill, catalogue step, or seed function that queries or writes those columns (e.g., `leads.price_level_id`, `orders` table creation before `ALTER TABLE orders`).
 - **Schema fingerprint (`ccrm_schema_fingerprint()`)**: `sync.php` calls `ccrm_apply_schema()` on every request, gated by the MD5 hash of `schema.php` and its helper files (`employee_name.php`, `lead_client_backfill.php`, `ticket_time_migration.php`, `payroll_lib.php`). If a migration `require_once`s a new file, **you must add that file to `ccrm_schema_fingerprint()`** or edits to it will never trigger `ccrm_apply_schema()`.
-- **`function_exists` guards on included files**: Every helper file loaded by `schema.php` or `api/*.php` must wrap its functions in `if (!function_exists('...'))`. `php ccrm update` can load both `api/` and `dist/api/` (or `public/api/`) in one process; `require_once` does not deduplicate across different paths, and unguarded functions abort the update with a fatal redeclaration error.
+- **`function_exists` guards on included files**: Every helper file loaded by `schema.php` or `api/*.php` must wrap its functions in `if (!function_exists('...'))`. `php kprnq update` can load both `api/` and `dist/api/` (or `public/api/`) in one process; `require_once` does not deduplicate across different paths, and unguarded functions abort the update with a fatal redeclaration error.
 - **Standalone `api/*.php` endpoints**: Any endpoint that calls `ccrm_column_exists()`, `ccrm_table_exists()`, or a `ccrm_migrate_*()` helper must explicitly `require_once __DIR__ . '/schema.php';` — never assume `config.php` loaded it.
 
 ## 4. Mirror `public/` to Root (`npm run sync:backend`)

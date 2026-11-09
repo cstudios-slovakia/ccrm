@@ -51,6 +51,7 @@ import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { runUndoable } from "../../utils/undoable";
 import { reinsertAt } from "../../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../../utils/undoMessages";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface SaiModuleProps {
   isDemoMode?: boolean;
@@ -370,9 +371,9 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         const activeSrcCount = config.crmDataSources ? config.crmDataSources.length : 8;
         setPrepStepMessage(
           t(
-            `[Demo Mode] Extracting CRM context (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
-            `[Demo režim] Extrakcia CRM kontextu (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
-            `[Demo mód] CRM kontext kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
+            `[Demo Mode] Extracting ${PRODUCT_NAME} context (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
+            `[Demo režim] Extrakcia ${PRODUCT_NAME} kontextu (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
+            `[Demo mód] ${PRODUCT_NAME} kontext kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
           )
         );
         await new Promise(r => setTimeout(r, 600));
@@ -478,20 +479,20 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       setPrepStepMessage(
         attachedDocsCount > 0 
           ? t(
-              `Extracting CRM data (${config.lookbackMonths}-mo horizon, ${activeSrcCount} sources) and processing ${attachedDocsCount} attached documents...`,
-              `Extrakcia CRM dát (${config.lookbackMonths}-mes. horizont, ${activeSrcCount} zdrojov) a spracovanie ${attachedDocsCount} priložených dokumentov...`,
-              `CRM adatok kinyerése (${config.lookbackMonths} hónapos horizont, ${activeSrcCount} forrás) és ${attachedDocsCount} csatolt dokumentum feldolgozása...`
+              `Extracting ${PRODUCT_NAME} data (${config.lookbackMonths}-mo horizon, ${activeSrcCount} sources) and processing ${attachedDocsCount} attached documents...`,
+              `Extrakcia ${PRODUCT_NAME} dát (${config.lookbackMonths}-mes. horizont, ${activeSrcCount} zdrojov) a spracovanie ${attachedDocsCount} priložených dokumentov...`,
+              `${PRODUCT_NAME} adatok kinyerése (${config.lookbackMonths} hónapos horizont, ${activeSrcCount} forrás) és ${attachedDocsCount} csatolt dokumentum feldolgozása...`
             )
           : activeSrcCount > 0
             ? t(
-                `Extracting selected CRM data (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
-                `Extrakcia vybraných CRM dát (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
-                `Kijelölt CRM adatok kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
+                `Extracting selected ${PRODUCT_NAME} data (${config.lookbackMonths}-month horizon, ${activeSrcCount} active sources)...`,
+                `Extrakcia vybraných ${PRODUCT_NAME} dát (${config.lookbackMonths}-mesačný horizont, ${activeSrcCount} aktívnych zdrojov)...`,
+                `Kijelölt ${PRODUCT_NAME} adatok kinyerése (${config.lookbackMonths} hónapos időtáv, ${activeSrcCount} aktív forrás)...`
               )
             : t(
-                'Grounded purely on scenario prompt (all CRM sources disabled)...',
-                'Založené výhradne na oznámení scenára (všetky CRM zdroje vypnuté)...',
-                'Kizárólag a forgatókönyv alapján (minden CRM forrás kikapcsolva)...'
+                `Grounded purely on scenario prompt (all ${PRODUCT_NAME} sources disabled)...`,
+                `Založené výhradne na oznámení scenára (všetky ${PRODUCT_NAME} zdroje vypnuté)...`,
+                `Kizárólag a forgatókönyv alapján (minden ${PRODUCT_NAME} forrás kikapcsolva)...`
               )
       );
       const crmContext = await fetchCrmContext(config.lookbackMonths, config.crmDataSources);
@@ -827,9 +828,9 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
               </div>
               <p className="text-ui text-slate-500 font-medium">
                 {t(
-                  'Predictive market simulation with autonomous agents grounded in live CRM history',
-                  'Prediktívna simulácia trhu s autonómnymi agentmi založená na reálnej histórii CRM',
-                  'Prediktív piaci szimuláció autonóm ágensekkel, valós CRM történetre alapozva'
+                  `Predictive market simulation with autonomous agents grounded in live ${PRODUCT_NAME} history`,
+                  `Prediktívna simulácia trhu s autonómnymi agentmi založená na reálnej histórii ${PRODUCT_NAME}`,
+                  `Prediktív piaci szimuláció autonóm ágensekkel, valós ${PRODUCT_NAME} történetre alapozva`
                 )}
               </p>
             </div>
@@ -981,7 +982,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
               <div className="relative z-10 max-w-2xl space-y-3">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-ui font-semibold text-emerald-300">
                   <Sparkles className="w-3.5 h-3.5" />
-                  {t('Grounded in live CRM lead history', 'Podložené živou históriou leadov z CRM', 'Élő CRM leadek történetével alátámasztva')}
+                  {t(`Grounded in live ${PRODUCT_NAME} lead history`, `Podložené živou históriou leadov z ${PRODUCT_NAME}`, `Élő ${PRODUCT_NAME} leadek történetével alátámasztva`)}
                 </div>
                 <h2 className="type-metric text-white">
                   {t('Stress-test strategic market moves before publishing', 'Otestujte strategické kroky na trhu ešte pred ich zverejnením', 'Tesztelje piaci stratégiai lépéseit még a közzététel előtt')}

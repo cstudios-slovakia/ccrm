@@ -33,6 +33,7 @@ import { todayLocal } from "../utils/localTime";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface QueuedFile {
   id: string;
@@ -942,7 +943,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
                 <span className="type-overline text-amber-600">
-                  {systemLanguage === "sk" ? "Systém správy dokumentov" : systemLanguage === "hu" ? "Dokumentumkezelő Rendszer" : "CRM Document Management"}
+                  {systemLanguage === "sk" ? "Systém správy dokumentov" : systemLanguage === "hu" ? "Dokumentumkezelő Rendszer" : `${PRODUCT_NAME} Document Management`}
                 </span>
                 <h3 className="text-body font-heading font-bold">
                   {systemLanguage === "sk" ? "Nahrať nové dokumenty" : systemLanguage === "hu" ? "Új dokumentumok feltöltése" : "Upload New Documents"}

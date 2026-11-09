@@ -60,7 +60,7 @@ import { nextDocumentNumber } from "../utils/documentNumbering";
 import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
 import { useListFilter } from "../hooks/useListFilter";
-import { getBrandName } from "../utils/brand";
+import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
 
 export interface OrdersViewProps {
   orders: Order[];
@@ -199,7 +199,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // Convert guest to client
   const handleConvertGuest = async (order: Order) => {
     if (!canEdit || order.customerType !== "guest") return;
-    if (!confirm(t("Convert this guest to a registered CRM client?", "Vytvoriť z tohto hosťa nového klienta v CRM?", "Létrehozza ebből a vendégből az új CRM ügyfelet?"))) return;
+    if (!confirm(t(`Convert this guest to a registered ${PRODUCT_NAME} client?`, `Vytvoriť z tohto hosťa nového klienta v ${PRODUCT_NAME}?`, `Létrehozza ebből a vendégből az új ${PRODUCT_NAME} ügyfelet?`))) return;
 
     try {
       const res = await fetch("/api/orders.php?action=convert_guest_to_client", {
@@ -437,7 +437,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           `A(z) ${newInvoiceNumber} számla kiállítva a(z) ${order.orderNumber} rendelésből ${formatMoney(order.totalGrossAmount, order.currency, userLanguage)} összegben.`
         ),
         amount: order.totalGrossAmount,
-        author: currentUser?.name || getBrandName()
+        author: currentUser?.name || getSystemTitle()
       };
 
       if (onAddTimelineEvent) {
@@ -811,7 +811,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             className="w-full"
             options={[
               { value: "all", label: t("All customers", "Všetci zákazníci", "Minden vevő") },
-              { value: "client", label: t("Registered clients only", "Iba klienti CRM", "Csak CRM ügyfelek") },
+              { value: "client", label: t("Registered clients only", `Iba klienti ${PRODUCT_NAME}`, `Csak ${PRODUCT_NAME} ügyfelek`) },
               { value: "guest", label: t("Guests only (E-shop)", "Iba hostia (E-shop)", "Csak vendég vásárlók") }
             ]}
           />
@@ -889,7 +889,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               type="button"
                               onClick={() => onOpenClient(order.clientId!)}
                               className="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors cursor-pointer"
-                              title={t("View client in CRM", "Zobraziť klienta v CRM", "Ügyfél megtekintése")}
+                              title={t(`View client in ${PRODUCT_NAME}`, `Zobraziť klienta v ${PRODUCT_NAME}`, "Ügyfél megtekintése")}
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                             </button>
@@ -912,10 +912,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               type="button"
                               onClick={() => handleConvertGuest(order)}
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer"
-                              title={t("Convert guest to CRM client", "Vytvoriť z hosťa klienta", "Vendégből ügyfél")}
+                              title={t(`Convert guest to ${PRODUCT_NAME} client`, "Vytvoriť z hosťa klienta", "Vendégből ügyfél")}
                             >
                               <UserCheck className="h-3 w-3" />
-                              <span>{t("To client", "+ Do CRM", "+ Ügyfél")}</span>
+                              <span>{t("To client", `+ Do ${PRODUCT_NAME}`, "+ Ügyfél")}</span>
                             </button>
                           )}
                         </div>

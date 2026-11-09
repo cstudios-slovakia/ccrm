@@ -9,6 +9,7 @@ import {
   Pause, 
   Clock 
 } from 'lucide-react';
+import { PRODUCT_NAME } from "../../utils/brand";
 
 export interface SimulationStepInfo {
   id: number;
@@ -24,7 +25,7 @@ export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
         id: 1,
         shortLabel: '1. Forgatókönyv',
         title: '1. Stratégiai forgatókönyv & Hipotézis',
-        tagline: 'Határozza meg a stratégiai javaslatot, a what-if kérdést és a CRM forrásokat.'
+        tagline: `Határozza meg a stratégiai javaslatot, a what-if kérdést és a ${PRODUCT_NAME} forrásokat.`
       },
       {
         id: 2,
@@ -35,8 +36,8 @@ export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
       {
         id: 3,
         shortLabel: '3. Adatok betöltése',
-        title: '3. CRM adatok betöltése & Tudásgráf',
-        tagline: 'CRM kontextus kinyerése, ontológia építése és ágens perszónák szintézise.'
+        title: `3. ${PRODUCT_NAME} adatok betöltése & Tudásgráf`,
+        tagline: `${PRODUCT_NAME} kontextus kinyerése, ontológia építése és ágens perszónák szintézise.`
       },
       {
         id: 4,
@@ -64,7 +65,7 @@ export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
         id: 1,
         shortLabel: '1. Scenár',
         title: '1. Strategický scenár & Definícia hypotézy',
-        tagline: 'Definujte návrh, what-if otázku a podkladové zdroje z CRM.'
+        tagline: `Definujte návrh, what-if otázku a podkladové zdroje z ${PRODUCT_NAME}.`
       },
       {
         id: 2,
@@ -75,8 +76,8 @@ export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
       {
         id: 3,
         shortLabel: '3. Načítanie dát',
-        title: '3. Načítanie CRM dát & Tvorba grafu znalostí',
-        tagline: 'Extrakcia CRM kontextu, tvorba ontologického grafu a syntéza persón.'
+        title: `3. Načítanie ${PRODUCT_NAME} dát & Tvorba grafu znalostí`,
+        tagline: `Extrakcia ${PRODUCT_NAME} kontextu, tvorba ontologického grafu a syntéza persón.`
       },
       {
         id: 4,
@@ -103,7 +104,7 @@ export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
       id: 1,
       shortLabel: '1. Scenario',
       title: '1. Strategic Scenario & Hypothesis Definition',
-      tagline: 'Define your strategic proposal, what-if question, and CRM context sources.'
+      tagline: `Define your strategic proposal, what-if question, and ${PRODUCT_NAME} context sources.`
     },
     {
       id: 2,
@@ -114,7 +115,7 @@ export const getSimulationSteps = (lang?: string): SimulationStepInfo[] => {
     {
       id: 3,
       shortLabel: '3. Data Ingestion',
-      title: '3. CRM Data Ingestion & Knowledge Graph',
+      title: `3. ${PRODUCT_NAME} Data Ingestion & Knowledge Graph`,
       tagline: 'Context extraction, ontology graph construction, and agent persona synthesis.'
     },
     {

@@ -14,7 +14,7 @@ import { type ExecutiveRole } from "../../utils/executive/defaultExecutives";
 import type { Language } from "../../utils/translations";
 import { BlobatarAvatar, type ExpressionName } from "../common/BlobatarAvatar";
 import { reportVoiceUsage } from "../../utils/aiUsage";
-import { getBrandName } from "../../utils/brand";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface ExecutiveCallModalProps {
   isOpen: boolean;
@@ -286,7 +286,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
             instructions: isFirstInteraction
               ? `Speak now. Proactively greet ${userName} warmly by name in ${
                   systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
-                }. Introduce yourself as ${executive.name} (${translatedPosition}). State that you have live access to ${getBrandName()} database records (including client accounts such as Acme Ltd., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.`
+                }. Introduce yourself as ${executive.name} (${translatedPosition}). State that you have live access to ${PRODUCT_NAME} database records (including client accounts such as Acme Ltd., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.`
               : `Speak now. Proactively greet ${userName} warmly and casually/informally by name in ${
                   systemLanguage === "sk"
                     ? `Slovak (say exactly or similar to: 'Ahoj ${userName}, ako ti môžem dnes pomôcť?')`
@@ -437,7 +437,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
                     item: {
                       type: "function_call_output",
                       call_id: event.call_id,
-                      output: "Error querying CRM database."
+                      output: `Error querying ${PRODUCT_NAME} database.`
                     }
                   })
                 );
@@ -723,7 +723,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           {callState === "connected" && !isAiSpeaking && !isAiThinking && !isUserSpeaking && (
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-slate-200/80 text-slate-700 text-ui font-bold shadow-xs backdrop-blur-md">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {t("Ready & connected to CRM data", "Pripravený s prístupom k CRM dátam", "Készen áll a CRM adatokkal")}
+              {t(`Ready & connected to ${PRODUCT_NAME} data`, `Pripravený s prístupom k ${PRODUCT_NAME} dátam`, `Készen áll a ${PRODUCT_NAME} adatokkal`)}
             </div>
           )}
 

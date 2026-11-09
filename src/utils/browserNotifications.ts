@@ -1,4 +1,6 @@
-// Web Push / Browser Notification Utility for CCRM (Desktop & PWA Mobile)
+import { PRODUCT_NAME } from "./brand.ts";
+
+// Web Push / Browser Notification Utility for Koperniq (Desktop & PWA Mobile)
 
 export type NotificationPermissionState = "granted" | "denied" | "default" | "unsupported";
 
@@ -57,7 +59,7 @@ export const registerWebPushSubscription = async (
       if (!keyRes.ok) return false;
       const keyData = await keyRes.json();
       if (!keyData.success || !keyData.publicKey) {
-        console.warn("[CCRM Push] Failed to retrieve VAPID public key", keyData);
+        console.warn(`[${PRODUCT_NAME} Push] Failed to retrieve VAPID public key`, keyData);
         return false;
       }
 
@@ -99,7 +101,7 @@ export const registerWebPushSubscription = async (
     const saveData = await saveRes.json();
     return !!saveData.success;
   } catch (err) {
-    console.warn("[CCRM Push] Subscription registration failed:", err);
+    console.warn(`[${PRODUCT_NAME} Push] Subscription registration failed:`, err);
     return false;
   }
 };
@@ -131,7 +133,7 @@ export const unregisterWebPushSubscription = async (): Promise<boolean> => {
     }
     return true;
   } catch (err) {
-    console.warn("[CCRM Push] Unregister failed:", err);
+    console.warn(`[${PRODUCT_NAME} Push] Unregister failed:`, err);
     return false;
   }
 };

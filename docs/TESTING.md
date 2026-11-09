@@ -470,7 +470,7 @@ database. All three run in `npm test`.
 |---|---|
 | `npm run test:demo-packs` | the sk/hu/en packs have identical shape, no cross-language leakage, valid company IDs and IBANs, every placeholder and ref resolves |
 | `npm run test:demo-seed` | every module seeds in sk/EUR, hu/HUF, hu/EUR, en/USD; ids, currencies, totals, links; per-module assertions in `scripts/demo-assert/<module>.php`; a second run leaves the same rows |
-| `npm run test:demo-wipe` | the re-seed wipe removes demo rows and nothing else; `demo_reseed_run()` / `php ccrm demo:seed`; `demo_leave_demo_mode()` (Settings › Wipe demo data) |
+| `npm run test:demo-wipe` | the re-seed wipe removes demo rows and nothing else; `demo_reseed_run()` / `php kprnq demo:seed`; `demo_leave_demo_mode()` (Settings › Wipe demo data) |
 | `npm run test:demo-seed:db` | **optional**, needs `CCRM_TEST_DSN` pointing at an EMPTY MySQL database: the same on a real server (`--combo=hu/EUR`, one edition per run) |
 
 The fake cannot run `ON DELETE CASCADE`, `GET_LOCK` or `DROP TABLE` the way MySQL does. A change to the
@@ -495,7 +495,7 @@ It takes the same machine-wide lock as a QA run, so it queues behind one.
 
 It asserts nothing. **Look at every image** it writes - an empty state, a
 spinner, a toast or an open popover means re-shooting - and commit the result.
-The files ship because Vite copies `public/` into `dist/` and `php ccrm update`
+The files ship because Vite copies `public/` into `dist/` and `php kprnq update`
 publishes `public/*` to the docroot (`scripts/sync-backend.mjs` only mirrors
 files that already have a root counterpart, so these are untouched by it).
 

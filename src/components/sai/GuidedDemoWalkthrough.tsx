@@ -21,6 +21,7 @@ import { getDemoData } from '../../utils/swarm/demoData';
 import { SwarmGraphCanvas } from './SwarmGraphCanvas';
 import { StrategicReportView } from './StrategicReportView';
 import { Markdown } from '../../utils/markdown';
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface GuidedDemoWalkthroughProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
       title: t("1. Strategic Scenario & Hypothesis Definition", "1. Strategický scenár & Definícia hypotézy", "1. Stratégiai forgatókönyv és hipotézismeghatározás"),
       shortLabel: t("1. Scenario", "1. Scenár", "1. Forgatókönyv"),
       tagline: t("Define strategic proposal, pricing adjustments, or market announcement.", "Definujte strategický návrh, úpravu cien alebo trhové oznámenie.", "Határozza meg a stratégiai javaslatot, árváltoztatást vagy piaci bejelentést."),
-      userAction: t("Input business scenario, hypothesis, and proposal document. Select CRM history lookback window to ground the swarm.", "Zadáte obchodný scenár, hypotézu a dokument ponuky. Zvolíte počet mesiacov skutočnej CRM histórie na ukotvenie roju.", "Megadja az üzleti forgatókönyvet, hipotézist és ajánlati dokumentumot. Kiválasztja a raj lehorgonyzásához szükséges CRM előzmények időtávját."),
+      userAction: t(`Input business scenario, hypothesis, and proposal document. Select ${PRODUCT_NAME} history lookback window to ground the swarm.`, `Zadáte obchodný scenár, hypotézu a dokument ponuky. Zvolíte počet mesiacov skutočnej ${PRODUCT_NAME} histórie na ukotvenie roju.`, `Megadja az üzleti forgatókönyvet, hipotézist és ajánlati dokumentumot. Kiválasztja a raj lehorgonyzásához szükséges ${PRODUCT_NAME} előzmények időtávját.`),
       engineAction: t("System analyzes proposal, identifies key value drivers, and compiles initial market participant categories.", "Systém analyzuje návrh, identifikuje kľúčové prínosy a zostaví počiatočné kategórie účastníkov trhu.", "A rendszer elemzi a javaslatot, azonosítja a kulcsfontosságú előnyöket és összeállítja a piaci résztvevők kezdőkategóriáit."),
       durationSec: 8
     },
@@ -80,9 +81,9 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
       id: 3,
       title: t("3. Data Ingestion & Knowledge Graph Assembly", "3. Načítanie dát & Zostavenie grafu znalostí", "3. Adatbetöltés és tudásgráf felépítése"),
       shortLabel: t("3. Data Ingestion", "3. Načítanie dát", "3. Adatbetöltés"),
-      tagline: t("Synthesize realistic buying committees, auditors, and competitors from CRM records.", "Syntéza realistických nákupných výborov, audítorov a konkurencie z CRM záznamov.", "Valósághű beszerzési bizottságok, auditorok és versenytársak szintetizálása CRM rekordokból."),
+      tagline: t(`Synthesize realistic buying committees, auditors, and competitors from ${PRODUCT_NAME} records.`, `Syntéza realistických nákupných výborov, audítorov a konkurencie z ${PRODUCT_NAME} záznamov.`, `Valósághű beszerzési bizottságok, auditorok és versenytársak szintetizálása ${PRODUCT_NAME} rekordokból.`),
       userAction: t("Inspect synthesized stakeholder personas (buyers, compliance auditors, legacy competitors, clients).", "Prezriete si syntetizované persóny účastníkov trhu (nákupcovia, compliance audítori, tradiční konkurenti, klienti).", "Megtekinti a szintetizált érintetti perszónákat (vásárlók, megfelelőségi auditorok, hagyományos versenytársak, ügyfelek)."),
-      engineAction: t("Extracts closed deals, loss reasons, and customer profiles from CRM into an interconnected knowledge graph.", "Systém čerpá z CRM obchodov, dôvodov straty a klientskych persón na zostavenie prepojeného znalostného grafu.", "A rendszer a CRM üzletekből, elvesztési indokokból és ügyfélelőzményekből épít össze egy összefüggő tudásgráfot."),
+      engineAction: t(`Extracts closed deals, loss reasons, and customer profiles from ${PRODUCT_NAME} into an interconnected knowledge graph.`, `Systém čerpá z ${PRODUCT_NAME} obchodov, dôvodov straty a klientskych persón na zostavenie prepojeného znalostného grafu.`, `A rendszer a ${PRODUCT_NAME} üzletekből, elvesztési indokokból és ügyfélelőzményekből épít össze egy összefüggő tudásgráfot.`),
       durationSec: 8
     },
     {
@@ -422,7 +423,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
                       <div className="flex items-center gap-1.5 text-slate-500 font-bold text-caption mb-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        <span>{t("CRM time horizon", "Časový horizont CRM", "CRM időhorizont")}</span>
+                        <span>{t(`${PRODUCT_NAME} time horizon`, `Časový horizont ${PRODUCT_NAME}`, `${PRODUCT_NAME} időhorizont`)}</span>
                       </div>
                       <span className="text-body font-bold text-slate-900">{t("12 months", "12 mesiacov", "12 hónap")}</span>
                       <span className="text-micro text-slate-400 block">{t("Drawn from past won and lost deals", "Čerpá z minulých vyhratých a prehratých obchodov", "Korábbi megnyert és elvesztett üzletekből")}</span>
@@ -555,14 +556,14 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                       <Users className="w-4 h-4 text-indigo-600" />
                       <h4 className="text-ui font-bold text-slate-800">
                         {t(
-                          `CRM persona feed (${DEMO_AGENTS.length} agents)`,
-                          `Prúd načítaných persón z CRM (${DEMO_AGENTS.length} agentov)`,
-                          `CRM-ből betöltött perszónák (${DEMO_AGENTS.length} ágens)`,
+                          `${PRODUCT_NAME} persona feed (${DEMO_AGENTS.length} agents)`,
+                          `Prúd načítaných persón z ${PRODUCT_NAME} (${DEMO_AGENTS.length} agentov)`,
+                          `${PRODUCT_NAME}-ből betöltött perszónák (${DEMO_AGENTS.length} ágens)`,
                         )}
                       </h4>
                     </div>
                     <span className="text-micro font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      {t("Grounded in CRM deals", "Ukotvené v obchodoch CRM", "CRM üzletekhez kötve")}
+                      {t(`Grounded in ${PRODUCT_NAME} deals`, `Ukotvené v obchodoch ${PRODUCT_NAME}`, `${PRODUCT_NAME} üzletekhez kötve`)}
                     </span>
                   </div>
 

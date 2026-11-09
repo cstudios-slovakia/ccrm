@@ -76,7 +76,7 @@ async function fillAndIssue(page: Page, title: string, issuedOn?: string) {
   await page.getByPlaceholder(/Item name|Názov položky/).fill('Konzultácia');
   await page.getByRole('spinbutton', { name: /Unit price|Jedn\. cena/ }).fill('100');
 
-  await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+  await page.getByRole('button', { name: /Issue & log in Koperniq|Vystaviť a zaevidovať/ }).click();
 }
 
 test.describe('Price offers — dated edits (audit F11/F12)', () => {

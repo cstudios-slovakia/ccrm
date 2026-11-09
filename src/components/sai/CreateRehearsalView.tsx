@@ -42,6 +42,7 @@ import { TemplateCatalogueModal } from './TemplateCatalogueModal';
 import type { UseCaseTemplate } from './useCasesCatalogue';
 import { initServerSimulation } from '../../utils/swarm/checkpointClient';
 import { formatBytes } from '../../utils/formatBytes';
+import { PRODUCT_NAME } from "../../utils/brand";
 
 export interface DraftData {
   id?: string;
@@ -153,9 +154,9 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
     category: 'Prieskum trhu',
     categoryEn: 'Market Research',
     categoryHu: 'Piackutatás',
-    description: 'Poznámky v CRM odkazujúce na konkurenčné platformy, alternatívnych dodávateľov a porovnanie cien.',
-    descriptionEn: 'CRM notes referencing competing platforms, alternative vendors, and pricing comparisons.',
-    descriptionHu: 'Versenytárs platformokra, alternatív beszállítókra és árakra vonatkozó CRM megjegyzések.',
+    description: `Poznámky v ${PRODUCT_NAME} odkazujúce na konkurenčné platformy, alternatívnych dodávateľov a porovnanie cien.`,
+    descriptionEn: `${PRODUCT_NAME} notes referencing competing platforms, alternative vendors, and pricing comparisons.`,
+    descriptionHu: `Versenytárs platformokra, alternatív beszállítókra és árakra vonatkozó ${PRODUCT_NAME} megjegyzések.`,
     icon: Swords,
     badge: 'Konkurencia',
     badgeEn: 'Competitors',
@@ -199,14 +200,14 @@ export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
   {
     id: 'files',
     title: 'Nahrané súbory & Dokumenty',
-    titleEn: 'CRM Attachments & Files',
+    titleEn: `${PRODUCT_NAME} Attachments & Files`,
     titleHu: 'Feltöltött fájlok & Dokumentumok',
     category: 'Dokumenty',
     categoryEn: 'Documents',
     categoryHu: 'Dokumentumok',
-    description: 'Obchodné zmluvy, ponuky, faktúry, cenové kalkulácie a textové prílohy z CRM leadov.',
+    description: `Obchodné zmluvy, ponuky, faktúry, cenové kalkulácie a textové prílohy z ${PRODUCT_NAME} leadov.`,
     descriptionEn: 'Contracts, proposals, invoices, rate calculations, and uploaded text attachments.',
-    descriptionHu: 'Kereskedelmi szerződések, ajánlatok, számlák, árkalkulációk és CRM csatolmányok.',
+    descriptionHu: `Kereskedelmi szerződések, ajánlatok, számlák, árkalkulációk és ${PRODUCT_NAME} csatolmányok.`,
     icon: FolderOpen,
     badge: 'Súbory',
     badgeEn: 'Files',
@@ -944,9 +945,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </div>
                 <p className="text-ui text-slate-600 mt-1 leading-relaxed">
                   {t(
-                    'Real AI simulation with live OpenAI calls, CRM context extraction, and complete agent ReAct cycles.',
-                    'Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z CRM a plnohodnotným ReAct cyklom agentov.',
-                    'Valódi MI szimuláció élő OpenAI hívásokkal, CRM kontextus-kinyeréssel és teljes körű ReAct ágens-ciklusokkal.'
+                    `Real AI simulation with live OpenAI calls, ${PRODUCT_NAME} context extraction, and complete agent ReAct cycles.`,
+                    `Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z ${PRODUCT_NAME} a plnohodnotným ReAct cyklom agentov.`,
+                    `Valódi MI szimuláció élő OpenAI hívásokkal, ${PRODUCT_NAME} kontextus-kinyeréssel és teljes körű ReAct ágens-ciklusokkal.`
                   )}
                 </p>
               </div>
@@ -1404,7 +1405,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <div className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-purple-600" />
                 <h3 className="text-ui font-bold text-slate-800">
-                  {t('CRM Grounding Data Sources', 'CRM podkladové zdroje dát', 'CRM megalapozó adatforrások')}
+                  {t(`${PRODUCT_NAME} Grounding Data Sources`, `${PRODUCT_NAME} podkladové zdroje dát`, `${PRODUCT_NAME} megalapozó adatforrások`)}
                 </h3>
                 <span className={`px-2 py-0.5 rounded-full text-micro font-bold tracking-wide border ${
                   selectedSources.length === 0
@@ -1412,15 +1413,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     : 'bg-purple-50 text-purple-700 border-purple-200'
                 }`}>
                   {selectedSources.length === 0 
-                    ? t('Pure Scenario Mode (0 CRM records)', 'Čistý režim scenára (0 CRM záznamov)', 'Tiszta forgatókönyv mód (0 CRM rekord)') 
-                    : t(`Hybrid (${selectedSources.length} CRM sources active)`, `Hybrid (${selectedSources.length} CRM zdrojov aktívnych)`, `Hibrid (${selectedSources.length} CRM forrás aktív)`)}
+                    ? t(`Pure Scenario Mode (0 ${PRODUCT_NAME} records)`, `Čistý režim scenára (0 ${PRODUCT_NAME} záznamov)`, `Tiszta forgatókönyv mód (0 ${PRODUCT_NAME} rekord)`) 
+                    : t(`Hybrid (${selectedSources.length} ${PRODUCT_NAME} sources active)`, `Hybrid (${selectedSources.length} ${PRODUCT_NAME} zdrojov aktívnych)`, `Hibrid (${selectedSources.length} ${PRODUCT_NAME} forrás aktív)`)}
                 </span>
               </div>
               <p className="text-caption text-slate-500 font-normal">
                 {t(
-                  'Choose whether to ground the simulation strictly on your uploaded files or pull real CRM customer records & past deal objections.',
-                  'Zvoľte, či má simulácia vychádzať výhradne z vašich nahratých súborov, alebo vyťažiť skutočné CRM kontakty a minulé námietky.',
-                  'Válassza ki, hogy a szimuláció kizárólag a feltöltött fájlokra támaszkodjon, vagy bevonja a valós CRM ügyfélrekordokat és múltbeli kifogásokat.'
+                  `Choose whether to ground the simulation strictly on your uploaded files or pull real ${PRODUCT_NAME} customer records & past deal objections.`,
+                  `Zvoľte, či má simulácia vychádzať výhradne z vašich nahratých súborov, alebo vyťažiť skutočné ${PRODUCT_NAME} kontakty a minulé námietky.`,
+                  `Válassza ki, hogy a szimuláció kizárólag a feltöltött fájlokra támaszkodjon, vagy bevonja a valós ${PRODUCT_NAME} ügyfélrekordokat és múltbeli kifogásokat.`
                 )}
               </p>
             </div>
@@ -1449,7 +1450,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 }`}
               >
                 <Database className="w-3.5 h-3.5 text-purple-600" />
-                <span>{t('Include Live CRM Data', 'Zahrnúť živé CRM dáta', 'Élő CRM adatok bevonása')}</span>
+                <span>{t(`Include Live ${PRODUCT_NAME} Data`, `Zahrnúť živé ${PRODUCT_NAME} dáta`, `Élő ${PRODUCT_NAME} adatok bevonása`)}</span>
               </button>
             </div>
           </div>
@@ -1526,9 +1527,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
                 {t(
-                  'All CRM sources are currently disabled. The simulation will rely strictly on the text provided above without importing past client history or deal objections.',
-                  'Všetky CRM zdroje sú momentálne vypnuté. Simulácia bude vychádzať výhradne z vyššie zadaného textu bez importu histórie klientov alebo obchodných námietok.',
-                  'Minden CRM forrás ki van kapcsolva. A szimuláció kizárólag a fenti szövegre fog támaszkodni a korábbi ügyfélelőzmények vagy üzleti kifogások importálása nélkül.'
+                  `All ${PRODUCT_NAME} sources are currently disabled. The simulation will rely strictly on the text provided above without importing past client history or deal objections.`,
+                  `Všetky ${PRODUCT_NAME} zdroje sú momentálne vypnuté. Simulácia bude vychádzať výhradne z vyššie zadaného textu bez importu histórie klientov alebo obchodných námietok.`,
+                  `Minden ${PRODUCT_NAME} forrás ki van kapcsolva. A szimuláció kizárólag a fenti szövegre fog támaszkodni a korábbi ügyfélelőzmények vagy üzleti kifogások importálása nélkül.`
                 )}
               </span>
             </div>
@@ -1539,9 +1540,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <span>
               <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
               {t(
-                'Real CRM records selected to ground the simulated market in your company\'s actual commercial history.',
-                'Reálne dáta z CRM vybrané na ukotvenie simulovaného trhu v skutočnej obchodnej histórii vašej spoločnosti.',
-                'Valós CRM adatok a szimulált piac megalapozására a vállalat tényleges kereskedelmi múltjában.'
+                `Real ${PRODUCT_NAME} records selected to ground the simulated market in your company\'s actual commercial history.`,
+                `Reálne dáta z ${PRODUCT_NAME} vybrané na ukotvenie simulovaného trhu v skutočnej obchodnej histórii vašej spoločnosti.`,
+                `Valós ${PRODUCT_NAME} adatok a szimulált piac megalapozására a vállalat tényleges kereskedelmi múltjában.`
               )}{' '}
               <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
               {t(
@@ -1561,15 +1562,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-indigo-600" />
-                {t('CRM Data Lookback Horizon', 'Časový horizont CRM dát', 'CRM adatok időhorizontja')}
+                {t(`${PRODUCT_NAME} Data Lookback Horizon`, `Časový horizont ${PRODUCT_NAME} dát`, `${PRODUCT_NAME} adatok időhorizontja`)}
               </label>
               <span className="text-caption text-slate-400">{t('Data Period', 'Obdobie dát', 'Időszak')}</span>
             </div>
             <p className="text-ui text-slate-500 font-normal">
               {t(
-                'Extracts leads, active accounts, and sales objections from historical CRM data:',
-                'Extrahuje leady, aktívne účty a obchodné námietky z minulej histórie CRM:',
-                'Érdeklődők, aktív fiókok és értékesítési kifogások kinyerése a múltbeli CRM adatokból:'
+                `Extracts leads, active accounts, and sales objections from historical ${PRODUCT_NAME} data:`,
+                `Extrahuje leady, aktívne účty a obchodné námietky z minulej histórie ${PRODUCT_NAME}:`,
+                `Érdeklődők, aktív fiókok és értékesítési kifogások kinyerése a múltbeli ${PRODUCT_NAME} adatokból:`
               )}
             </p>
             <div className="grid grid-cols-3 gap-2.5 pt-1">
@@ -1596,9 +1597,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <span>
                 <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
                 {t(
-                  'Time window for scanning and analyzing CRM leads and customer interactions.',
-                  'Časové obdobie pre vyhľadávanie a analýzu vašich CRM leadov a interakcií s klientmi.',
-                  'Időkeret a CRM érdeklődők és ügyfélinterakciók vizsgálatára és elemzésére.'
+                  `Time window for scanning and analyzing ${PRODUCT_NAME} leads and customer interactions.`,
+                  `Časové obdobie pre vyhľadávanie a analýzu vašich ${PRODUCT_NAME} leadov a interakcií s klientmi.`,
+                  `Időkeret a ${PRODUCT_NAME} érdeklődők és ügyfélinterakciók vizsgálatára és elemzésére.`
                 )}{' '}
                 <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
                 {t(

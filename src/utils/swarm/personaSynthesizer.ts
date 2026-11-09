@@ -7,6 +7,7 @@ import { AI_MODEL_LUNA } from "../aiModels";
 import { callLlmJson } from './llmProxyClient';
 import type { SwarmEntityNode, SwarmAgentProfile } from './types';
 import { normalizeAnswer } from './answerNormalizer.ts';
+import { PRODUCT_NAME } from "../brand.ts";
 
 export async function synthesizeAgentProfiles(
   nodes: SwarmEntityNode[],
@@ -67,7 +68,7 @@ Output JSON strictly matching this schema:
       "userChar": "${sampleUserChar}",
       "publicBio": "${sampleBio}",
       "followerCount": 840,
-      "interestedTopics": ["GDPR", "pricing", "CRM", "compliance"],
+      "interestedTopics": ["GDPR", "pricing", "${PRODUCT_NAME}", "compliance"],
       "sourceEntityId": "node_1"
     }
   ]

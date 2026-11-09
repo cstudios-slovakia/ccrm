@@ -1,7 +1,7 @@
 # CCRM on a VPS (Docker)
 
 A production stack for a plain Linux VPS with Docker. The shared-hosting flow
-(`git clone` into the docroot, `php ccrm update`) is unchanged — the containers
+(`git clone` into the docroot, `php kprnq update`) is unchanged — the containers
 only provide the runtime it needs.
 
 ```
@@ -34,7 +34,7 @@ chmod +x *.sh
 docker compose up -d --build db vector_db web
 docker compose exec -u www-data web git clone --depth 1 -b 1.12-mango https://github.com/cstudios-slovakia/ccrm.git .
 docker compose exec -u www-data web composer install --no-dev
-docker compose exec -u www-data web php ccrm update
+docker compose exec -u www-data web php kprnq update
 docker compose up -d caddy
 ```
 
@@ -55,7 +55,7 @@ sudo ufw allow 22,80,443/tcp && sudo ufw allow 443/udp && sudo ufw enable
 ## Updating
 
 ```bash
-/opt/ccrm-stack/update.sh     # backup → php ccrm update → graceful reload
+/opt/ccrm-stack/update.sh     # backup → php kprnq update → graceful reload
 ```
 
 Track another branch with

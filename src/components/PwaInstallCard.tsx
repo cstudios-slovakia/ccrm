@@ -19,7 +19,7 @@ import { installCardState } from "../utils/pwaInstallLogic";
 import { isAppBadgeSupported } from "../utils/appBadge";
 import { buildBookmarklet } from "../utils/launchIntent";
 import { openTasksMiniWindow } from "../utils/popOut";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface PwaInstallCardProps {
   systemLanguage: Language;
@@ -38,7 +38,7 @@ const secondaryButton =
  * nothing: Install exists only while the browser is actually offering it.
  */
 export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ systemLanguage, userKey }) => {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const t = (en: string, sk: string, hu: string) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
   const { canInstall, isInstalled, isStandalone, platform, isSecureContext, promptInstall } = usePwaInstall();
   const [busy, setBusy] = useState(false);

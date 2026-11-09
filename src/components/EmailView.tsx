@@ -24,6 +24,7 @@ import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface EmailViewProps {
   currentUser: any;
@@ -967,7 +968,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const renderLeadChip = (lead: Lead | null) =>
     lead ? (
       <span
-        title={`${t("CRM Match:", "Zhoda CRM:", "CRM egyezés:")} ${lead.name}`}
+        title={`${t(`${PRODUCT_NAME} Match:`, `Zhoda ${PRODUCT_NAME}:`, `${PRODUCT_NAME} egyezés:`)} ${lead.name}`}
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border ${
           isClientLead(lead) ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"
         }`}
@@ -1034,7 +1035,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           renderLeadChip(lead)
         ) : (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-slate-500 border-slate-200">
-            👤 {t("Not in CRM", "Nie je v CRM", "Nincs a CRM-ben")}
+            👤 {t(`Not in ${PRODUCT_NAME}`, `Nie je v ${PRODUCT_NAME}`, `Nincs a ${PRODUCT_NAME}-ben`)}
           </span>
         )}
       </div>
@@ -1434,13 +1435,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
     <PageHeader
       icon={<SectionIcon id="email" />}
       title={t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
-      subtitle={t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
+      subtitle={t(`Unified SMTP / IMAP inbox connected to your ${PRODUCT_NAME} contacts`, `Jednotná SMTP / IMAP schránka prepojená s kontaktmi ${PRODUCT_NAME}`, `Egységes SMTP / IMAP postafiók a ${PRODUCT_NAME} kapcsolatokhoz`)}
       actions={
         <>
           {!canEdit && (
             <span
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
-              title={t("Your role can read mail but not send it or write into the CRM from here.", "Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do CRM.", "A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a CRM-be.")}
+              title={t(`Your role can read mail but not send it or write into ${PRODUCT_NAME} from here.`, `Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do ${PRODUCT_NAME}.`, `A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a ${PRODUCT_NAME}-be.`)}
             >
               <Lock className="h-4 w-4" />
               {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
@@ -1666,7 +1667,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                       </span>
                       {threadLead ? renderLeadChip(threadLead) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-slate-500 border-slate-200">
-                          👤 {t("Not in CRM", "Nie je v CRM", "Nincs a CRM-ben")}
+                          👤 {t(`Not in ${PRODUCT_NAME}`, `Nie je v ${PRODUCT_NAME}`, `Nincs a ${PRODUCT_NAME}-ben`)}
                         </span>
                       )}
                     </div>
@@ -1929,7 +1930,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
             {/* Header */}
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
               <div className="text-left">
-                <span className="type-overline text-pink-500">{t("CRM Detail Timeline", "Detailná časová os CRM", "Részletes CRM idővonal")}</span>
+                <span className="type-overline text-pink-500">{t(`${PRODUCT_NAME} Detail Timeline`, `Detailná časová os ${PRODUCT_NAME}`, `Részletes ${PRODUCT_NAME} idővonal`)}</span>
                 <h3 className="text-body font-heading font-bold">{slideoutLead.name}</h3>
               </div>
               <button
@@ -2062,7 +2063,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           <div className={`w-full max-w-5xl h-[70vh] bg-white rounded-t-[32px] border-t border-slate-200/80 shadow-2xl p-8 flex flex-col justify-between text-left ${isClosingClient ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
-                <span className="type-overline text-pink-500">{t("CRM Client Registration", "Registrácia klienta CRM", "CRM ügyfél regisztráció")}</span>
+                <span className="type-overline text-pink-500">{t(`${PRODUCT_NAME} Client Registration`, `Registrácia klienta ${PRODUCT_NAME}`, `${PRODUCT_NAME} ügyfél regisztráció`)}</span>
                 <h3 className="text-body font-heading font-bold">{t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}</h3>
               </div>
               <button

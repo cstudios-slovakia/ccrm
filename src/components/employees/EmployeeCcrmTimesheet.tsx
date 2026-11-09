@@ -3,7 +3,7 @@ import { Surface } from "../layout";
 import { listEntries } from "../../utils/timeTrackingApi.ts";
 import { formatDuration } from "../../utils/timeTracking.ts";
 import type { Employee } from "../../types";
-import { useBrandName } from "../../utils/brand";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface Props {
   employee: Employee;
@@ -14,7 +14,7 @@ interface Props {
 
 /** Native time entries for one employee-month. Shown only when the source switch says CCRM. */
 export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const [seconds, setSeconds] = useState<number | null>(null);
   const [days, setDays] = useState<Array<{ date: string; seconds: number }>>([]);
   const [error, setError] = useState(false);

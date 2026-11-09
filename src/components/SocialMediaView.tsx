@@ -14,7 +14,7 @@ import { getDemoSocialPosts } from "../demo/packs/socialPosts";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { StatGrid, EntityHeader, PageHeader, Tabs } from "./layout";
 import { useListFilter } from "../hooks/useListFilter";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface SocialMediaViewProps {
   systemLanguage: Language;
@@ -86,7 +86,7 @@ export const SocialMediaView: React.FC<SocialMediaViewProps> = ({
   access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   // Read-only roles can browse the feed, calendar and analytics; replying is the
   // only thing this view writes (through Zernio), so it is the only thing gated.
   const canEdit = access.edit;
@@ -748,7 +748,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
               </div>
               <div>
                 <span className="text-ui font-bold text-slate-900 block">{post.accountName} • 1st</span>
-                <span className="text-micro text-slate-400 block">CRM Automation Engine • {formattedTime}</span>
+                <span className="text-micro text-slate-400 block">{PRODUCT_NAME} Automation Engine • {formattedTime}</span>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded-full type-overline bg-blue-50 text-blue-700 border border-blue-200">

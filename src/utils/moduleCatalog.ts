@@ -28,6 +28,7 @@ import { isHomeDashboard } from "./dashboardWidgets";
 import { EmployeeTieIcon } from "../components/icons/EmployeeTieIcon";
 import { FlockIcon } from "../components/icons/FlockIcon";
 import { applySectionVisual } from "./sectionVisuals";
+import { PRODUCT_NAME } from "./brand.ts";
 
 /**
  * The one list of modules an admin can show or hide.
@@ -176,14 +177,14 @@ const LONG_DESCRIPTIONS: Record<(typeof SCREENSHOT_MODULE_IDS)[number], Triple> 
     "Központi könyvtár a dokumentumokhoz és mellékletekhez, amelyeket a csapat az ügyfelekhez, projektekhez és munkatársakhoz tölt fel. Egyetlen képernyőn kereshet, megtekinthet és letölthet, ahelyett hogy minden rekordban keresgélne. Akkor hasznos, ha a fájlok szétszórtak.",
   ],
   email: [
-    "A built-in mail client for your company mailbox (IMAP and SMTP), so you can read and reply without leaving the CRM. Messages can be summarised by AI and tied to the right client. You need to connect a mailbox before it works.",
-    "Zabudovaný poštový klient pre firemnú schránku (IMAP a SMTP), takže môžete čítať a odpovedať bez opustenia CRM. Správy vie AI zhrnúť a priradiť k správnemu klientovi. Aby fungoval, treba najprv pripojiť schránku.",
-    "Beépített levelezőkliens a céges postafiókhoz (IMAP és SMTP), így a CRM elhagyása nélkül olvashat és válaszolhat. Az üzeneteket az AI összefoglalhatja, és a megfelelő ügyfélhez kapcsolhatja. A működéshez előbb csatlakoztatnia kell egy postafiókot.",
+    `A built-in mail client for your company mailbox (IMAP and SMTP), so you can read and reply without leaving ${PRODUCT_NAME}. Messages can be summarised by AI and tied to the right client. You need to connect a mailbox before it works.`,
+    `Zabudovaný poštový klient pre firemnú schránku (IMAP a SMTP), takže môžete čítať a odpovedať bez opustenia ${PRODUCT_NAME}. Správy vie AI zhrnúť a priradiť k správnemu klientovi. Aby fungoval, treba najprv pripojiť schránku.`,
+    `Beépített levelezőkliens a céges postafiókhoz (IMAP és SMTP), így a ${PRODUCT_NAME} elhagyása nélkül olvashat és válaszolhat. Az üzeneteket az AI összefoglalhatja, és a megfelelő ügyfélhez kapcsolhatja. A működéshez előbb csatlakoztatnia kell egy postafiókot.`,
   ],
   rag_ai: [
-    "An AI assistant that answers questions from your own company knowledge, such as documents, notes and CRM records. You can create several agents for different jobs. It needs an OpenAI key to be set up in the settings.",
-    "AI asistent, ktorý odpovedá na otázky z vašich firemných znalostí, napríklad dokumentov, poznámok a záznamov v CRM. Pre rôzne úlohy môžete vytvoriť viacero agentov. Vyžaduje nastavený kľúč OpenAI v nastaveniach.",
-    "AI-asszisztens, amely a saját céges tudásából – például dokumentumokból, jegyzetekből és CRM-rekordokból – válaszol a kérdésekre. Különböző feladatokra több ügynököt is létrehozhat. Működéséhez be kell állítani egy OpenAI-kulcsot a beállításokban.",
+    `An AI assistant that answers questions from your own company knowledge, such as documents, notes and ${PRODUCT_NAME} records. You can create several agents for different jobs. It needs an OpenAI key to be set up in the settings.`,
+    `AI asistent, ktorý odpovedá na otázky z vašich firemných znalostí, napríklad dokumentov, poznámok a záznamov v ${PRODUCT_NAME}. Pre rôzne úlohy môžete vytvoriť viacero agentov. Vyžaduje nastavený kľúč OpenAI v nastaveniach.`,
+    `AI-asszisztens, amely a saját céges tudásából – például dokumentumokból, jegyzetekből és ${PRODUCT_NAME}-rekordokból – válaszol a kérdésekre. Különböző feladatokra több ügynököt is létrehozhat. Működéséhez be kell állítani egy OpenAI-kulcsot a beállításokban.`,
   ],
   sai: [
     "Swarm AI rehearsals for your market and strategy: describe a scenario and a swarm of AI agents simulates how it could play out, before you commit real money or time. Use it to test pricing, messaging or plans. It is an advanced, optional tool.",
@@ -191,9 +192,9 @@ const LONG_DESCRIPTIONS: Record<(typeof SCREENSHOT_MODULE_IDS)[number], Triple> 
     "Swarm AI próbák a piacához és stratégiájához: leír egy forgatókönyvet, az AI-ügynökök rajai pedig lejátsszák, hogyan alakulhat, mielőtt valódi pénzt vagy időt fektetne bele. Használja árazás, kommunikáció vagy tervek tesztelésére. Haladó, opcionális eszköz.",
   ],
   automation: [
-    "Build rules that run on their own: when something happens in the CRM or a webhook arrives, send an email, create a task or update a record. A visual builder makes this possible without writing code. It takes repetitive work off your team.",
-    "Vytvárajte pravidlá, ktoré bežia samé: keď sa v CRM niečo stane alebo príde webhook, odošle sa e-mail, vytvorí úloha alebo upraví záznam. Vizuálny editor to umožní bez programovania. Odstráni opakujúcu sa prácu z pliec vášho tímu.",
-    "Hozzon létre magától futó szabályokat: ha a CRM-ben történik valami vagy webhook érkezik, a rendszer e-mailt küld, feladatot hoz létre vagy módosít egy rekordot. A vizuális szerkesztő kódolás nélkül lehetővé teszi ezt. Leveszi az ismétlődő munkát a csapat válláról.",
+    `Build rules that run on their own: when something happens in ${PRODUCT_NAME} or a webhook arrives, send an email, create a task or update a record. A visual builder makes this possible without writing code. It takes repetitive work off your team.`,
+    `Vytvárajte pravidlá, ktoré bežia samé: keď sa v ${PRODUCT_NAME} niečo stane alebo príde webhook, odošle sa e-mail, vytvorí úloha alebo upraví záznam. Vizuálny editor to umožní bez programovania. Odstráni opakujúcu sa prácu z pliec vášho tímu.`,
+    `Hozzon létre magától futó szabályokat: ha a ${PRODUCT_NAME}-ben történik valami vagy webhook érkezik, a rendszer e-mailt küld, feladatot hoz létre vagy módosít egy rekordot. A vizuális szerkesztő kódolás nélkül lehetővé teszi ezt. Leveszi az ismétlődő munkát a csapat válláról.`,
   ],
   social_media: [
     "Plan and publish posts to your social networks from one calendar. Schedule content ahead of time and keep an overview of what goes out where. Useful for teams who run their own channels.",
@@ -201,9 +202,9 @@ const LONG_DESCRIPTIONS: Record<(typeof SCREENSHOT_MODULE_IDS)[number], Triple> 
     "Tervezze meg és tegye közzé a közösségi média bejegyzéseit egyetlen naptárból. Előre időzítheti a tartalmakat, és áttekintheti, mi hová kerül. Hasznos a saját csatornáikat kezelő csapatoknak.",
   ],
   updates: [
-    "Release notes for every version of the CRM, with screenshots of what is new and what has changed. Open it after an update to see which features you can start using. It is read-only and needs no setup.",
-    "Poznámky k vydaniu pre každú verziu CRM so snímkami toho, čo je nové a čo sa zmenilo. Otvorte ich po aktualizácii a zistíte, ktoré funkcie môžete začať používať. Sú len na čítanie a nevyžadujú žiadne nastavenie.",
-    "Kiadási jegyzetek a CRM minden verziójáról, képernyőképekkel arról, mi az új és mi változott. Frissítés után nyissa meg, hogy lássa, mely funkciókat kezdheti használni. Csak olvasható, és nem igényel beállítást.",
+    `Release notes for every version of ${PRODUCT_NAME}, with screenshots of what is new and what has changed. Open it after an update to see which features you can start using. It is read-only and needs no setup.`,
+    `Poznámky k vydaniu pre každú verziu ${PRODUCT_NAME} so snímkami toho, čo je nové a čo sa zmenilo. Otvorte ich po aktualizácii a zistíte, ktoré funkcie môžete začať používať. Sú len na čítanie a nevyžadujú žiadne nastavenie.`,
+    `Kiadási jegyzetek a ${PRODUCT_NAME} minden verziójáról, képernyőképekkel arról, mi az új és mi változott. Frissítés után nyissa meg, hogy lássa, mely funkciókat kezdheti használni. Csak olvasható, és nem igényel beállítást.`,
   ],
 };
 
@@ -450,11 +451,11 @@ export function buildModuleCatalog(
       id: "whatsapp",
       category: "collaboration",
       title: t("WhatsApp", "WhatsApp", "WhatsApp"),
-      description: t("Your WhatsApp chats, digest and tasks, inside the CRM", "Vaše WhatsApp chaty, prehľad a úlohy priamo v CRM", "WhatsApp-csevegései, összefoglalója és feladatai a CRM-ben"),
+      description: t(`Your WhatsApp chats, digest and tasks, inside ${PRODUCT_NAME}`, `Vaše WhatsApp chaty, prehľad a úlohy priamo v ${PRODUCT_NAME}`, `WhatsApp-csevegései, összefoglalója és feladatai a ${PRODUCT_NAME}-ben`),
       longDescription: t(
-        "The full WAAI app inside the CRM, already signed in as you: chats with a composer and voice notes, the AI digest, tasks and the AI lookup. Chats are paired with your clients, leads and projects, so a client's page opens its chat in one click, and the tasks WAAI finds in a conversation land on the right client and project.",
-        "Celá aplikácia WAAI priamo v CRM, už prihlásená ako vy: chaty s písaním správ a hlasovými správami, AI prehľad, úlohy a AI vyhľadávanie. Chaty sú spárované s vašimi klientmi, leadmi a projektmi, takže stránka klienta otvorí jeho chat jedným klikom a úlohy, ktoré WAAI nájde v konverzácii, pristanú pri správnom klientovi a projekte.",
-        "A teljes WAAI alkalmazás a CRM-ben, már az Ön nevében belépve: csevegések íróval és hangüzenetekkel, az AI-összefoglaló, feladatok és az AI-keresés. A csevegések párosítva vannak az ügyfelekkel, érdeklődőkkel és projektekkel, így az ügyfél oldaláról egy kattintással megnyílik a csevegése, a WAAI által a beszélgetésben talált feladatok pedig a megfelelő ügyfélhez és projekthez kerülnek.",
+        `The full WAAI app inside ${PRODUCT_NAME}, already signed in as you: chats with a composer and voice notes, the AI digest, tasks and the AI lookup. Chats are paired with your clients, leads and projects, so a client's page opens its chat in one click, and the tasks WAAI finds in a conversation land on the right client and project.`,
+        `Celá aplikácia WAAI priamo v ${PRODUCT_NAME}, už prihlásená ako vy: chaty s písaním správ a hlasovými správami, AI prehľad, úlohy a AI vyhľadávanie. Chaty sú spárované s vašimi klientmi, leadmi a projektmi, takže stránka klienta otvorí jeho chat jedným klikom a úlohy, ktoré WAAI nájde v konverzácii, pristanú pri správnom klientovi a projekte.`,
+        `A teljes WAAI alkalmazás a ${PRODUCT_NAME}-ben, már az Ön nevében belépve: csevegések íróval és hangüzenetekkel, az AI-összefoglaló, feladatok és az AI-keresés. A csevegések párosítva vannak az ügyfelekkel, érdeklődőkkel és projektekkel, így az ügyfél oldaláról egy kattintással megnyílik a csevegése, a WAAI által a beszélgetésben talált feladatok pedig a megfelelő ügyfélhez és projekthez kerülnek.`,
       ),
       icon: Icons.MessageCircle || PencilLine,
       color: "#16a34a",

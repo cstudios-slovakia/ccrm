@@ -52,6 +52,10 @@ broken, and "I only ran typecheck" is a skipped step.
 
 These live in `.agents/rules/` and apply to every change:
 
+- [`docs/BRANDING.md`](docs/BRANDING.md) — **two names, never mixed**: the product (Koperniq,
+  `PRODUCT_NAME` / `KOPERNIQ_PRODUCT_NAME`) and the company's own system title (Settings → System
+  title). Never write either as a literal in a visible string, and never call the product "CRM".
+  The command line is `php kprnq`; `php ccrm` only forwards.
 - [`agent-worktrees.md`](.agents/rules/agent-worktrees.md) — **any task that changes repo
   files runs in its own worktree**: call `EnterWorktree` first, commit there, `ExitWorktree`
   (keep), then `node scripts/agent/finish-worktree.mjs <name>` from the main checkout. Read-only
@@ -167,5 +171,5 @@ follow its Part A.
 - The backend source is `public/`; the repo-root copies (`sync.php`, `api/`) are
   mirrored by `npm run sync:backend`. Edit `public/`, then sync.
 - The production server has **no build step**. The compiled frontend is built
-  locally and committed to `dist/`, then published by `php ccrm update`.
+  locally and committed to `dist/`, then published by `php kprnq update`.
 - A `tasks` row with `task_kind = 'recurring'` is a template; read tasks through `ccrm_sql_real_tasks()`. The guard test enforces it.

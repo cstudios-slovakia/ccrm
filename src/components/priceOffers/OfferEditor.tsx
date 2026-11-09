@@ -30,6 +30,7 @@ import {
   offerForEditing, offerTotals, patchLine, previewOfferFromDraft, warehouseLine, num
 } from "../../utils/offerDraft";
 import type { AssembleOptions } from "../../utils/offerDraft";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 const newLineId = () => "ioi-" + Math.random().toString(36).slice(2, 11);
 const newDocumentId = () => "io-" + Math.random().toString(36).slice(2, 11);
@@ -485,7 +486,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
     ? t("Save changes", "Uložiť zmeny", "Módosítások mentése")
     : isExternal
       ? t("Issue via external API", "Vystaviť cez externé API", "Kiállítás külső API-n")
-      : t("Issue & log in CRM", "Vystaviť a zaevidovať", "Kiállítás és rögzítés");
+      : t(`Issue & log in ${PRODUCT_NAME}`, "Vystaviť a zaevidovať", "Kiállítás és rögzítés");
 
   const segment = (value: EditorView, label: string, icon: React.ReactNode) => (
     <button

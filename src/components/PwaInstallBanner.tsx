@@ -10,7 +10,7 @@ import {
   writeInstallDismissedAt,
 } from "../utils/pwaInstall";
 import { shouldOfferInstall } from "../utils/pwaInstallLogic";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface PwaInstallBannerProps {
   language: Language;
@@ -25,7 +25,7 @@ interface PwaInstallBannerProps {
  */
 export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, userKey }) => {
   const t = (en: string, sk: string, hu: string) => (language === "sk" ? sk : language === "hu" ? hu : en);
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const { canInstall, isInstalled } = usePwaInstall();
   const [dismissedAt, setDismissedAt] = useState<number | null>(() => readInstallDismissedAt(userKey));
   const [busy, setBusy] = useState(false);

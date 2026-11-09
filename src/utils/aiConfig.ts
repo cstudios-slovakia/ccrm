@@ -1,4 +1,5 @@
 import type { Language } from "./translations";
+import { PRODUCT_NAME } from "./brand.ts";
 
 /**
  * Shared client-side view of the AI configuration.
@@ -181,9 +182,9 @@ export const translateAiApiError = (error: AiApiError, lang: Language): string =
     case "not_installed":
       return pick(
         lang,
-        "The CRM is not installed yet.",
-        "CRM ešte nie je nainštalovaný.",
-        "A CRM még nincs telepítve."
+        `${PRODUCT_NAME} is not installed yet.`,
+        `${PRODUCT_NAME} ešte nie je nainštalovaný.`,
+        `A ${PRODUCT_NAME} még nincs telepítve.`
       );
     case "db_error":
       return pick(

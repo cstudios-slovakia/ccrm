@@ -19,6 +19,7 @@ import {
   type MailboxDraft,
   type MailboxList,
 } from "../utils/companyMailboxes";
+import { PRODUCT_NAME } from "../utils/brand";
 
 /*
   ── COMPANY MAILBOXES ───────────────────────────────────
@@ -151,9 +152,9 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
     <SectionCard
       title={t("Company mailboxes", "Firemné schránky", "Céges postafiókok")}
       description={t(
-              "Shared mailboxes such as info@ or an order desk. Every few minutes the CRM reads them, and everyone's personal mailbox, and files each message from or to a known customer onto that customer's timeline, where everyone who may see it can read it.",
-              "Spoločné schránky, napríklad info@ alebo objednávky. CRM ich každých pár minút načíta spolu s osobnými schránkami všetkých a každú správu od známeho zákazníka alebo jemu zaeviduje do jeho časovej osi, kde si ju prečíta každý, kto ju smie vidieť.",
-              "Közös postafiókok, például az info@ vagy a rendeléskezelő. A CRM néhány percenként beolvassa őket és mindenki személyes postafiókját, és minden ismert ügyféltől érkező vagy neki küldött üzenetet az ügyfél idővonalán rögzít, ahol mindenki elolvashatja, aki láthatja.",
+              `Shared mailboxes such as info@ or an order desk. Every few minutes ${PRODUCT_NAME} reads them, and everyone's personal mailbox, and files each message from or to a known customer onto that customer's timeline, where everyone who may see it can read it.`,
+              `Spoločné schránky, napríklad info@ alebo objednávky. ${PRODUCT_NAME} ich každých pár minút načíta spolu s osobnými schránkami všetkých a každú správu od známeho zákazníka alebo jemu zaeviduje do jeho časovej osi, kde si ju prečíta každý, kto ju smie vidieť.`,
+              `Közös postafiókok, például az info@ vagy a rendeléskezelő. A ${PRODUCT_NAME} néhány percenként beolvassa őket és mindenki személyes postafiókját, és minden ismert ügyféltől érkező vagy neki küldött üzenetet az ügyfél idővonalán rögzít, ahol mindenki elolvashatja, aki láthatja.`,
             )}
       action={!draft ? (
 <button

@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "../utils/brand";
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -1664,7 +1665,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                                     {/* Lower Footer with Logout Option */}
                                     <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center type-overline text-slate-400 select-none">
-                                        <span>{systemName} CRM</span>
+                                        <span>{PRODUCT_NAME}</span>
                                         {onLogout ? (
                                             <button
                                                 onClick={() => {

@@ -42,7 +42,7 @@ php scripts/import/villatesta/reconcile.php --data=scripts/import/villatesta/out
 ```
 
 `--dry-run` runs every step inside a rolled-back transaction and does not touch the schema (apply it
-first with a normal run or `php ccrm update`). `--only=config,users,clients,leads,projects,mail,products,files,leftovers`
+first with a normal run or `php kprnq update`). `--only=config,users,clients,leads,projects,mail,products,files,leftovers`
 runs single steps, in that order. `--reset` removes what earlier runs created (ids `*-vt-*`): rehearsals only.
 
 ## Rules the importer follows

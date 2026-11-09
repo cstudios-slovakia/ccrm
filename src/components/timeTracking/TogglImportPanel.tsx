@@ -4,7 +4,7 @@ import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import type { Language } from "../../utils/translations";
-import { useBrandName } from "../../utils/brand";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface Named {
   id: string;
@@ -59,7 +59,7 @@ const postImport = async (payload: Record<string, unknown>): Promise<any> => {
  * Idempotent: the server skips rows whose Toggl id is already stored.
  */
 export function TogglImportPanel({ language, t, canEdit }: { language: Language; t: (en: string, sk: string, hu: string) => string; canEdit: boolean }) {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = `${today.slice(0, 7)}-01`;
   const [from, setFrom] = useState(monthStart);

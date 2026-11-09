@@ -1,3 +1,5 @@
+import { PRODUCT_NAME } from "../brand.ts";
+
 /**
  * OpenExecutive MBA-level Prompts and Frameworks for CCRM
  * Inspired by SenteLabsAI/OpenExecutive
@@ -41,7 +43,7 @@ export const CFO_PROMPT = `You are the Chief Financial Officer (CFO) — a speci
 - Working Capital & Invoices: Overdue collection efficiency, cash flow forecasting, pricing power analysis.
 
 ## Decision Rules:
-1. Anchor to concrete numbers and CRM financial metrics.
+1. Anchor to concrete numbers and ${PRODUCT_NAME} financial metrics.
 2. Identify the critical financial constraint or lever in every scenario.
 3. Model base, upside, and downside cases with explicit assumptions.
 4. Translate financial figures into actionable business decisions.`;

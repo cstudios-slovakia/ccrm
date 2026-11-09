@@ -364,7 +364,7 @@ test.describe('Price offer inline editor', () => {
     await chooseTemplate(page, standard);
     const editor = editorOf(page);
 
-    await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+    await page.getByRole('button', { name: /Issue & log in Koperniq|Vystaviť a zaevidovať/ }).click();
     await expect(editor.getByRole('button', { name: /Select a client|Vyberte klienta/ })).toBeFocused();
     await expect(editor.locator('[data-offer-client-picker]').first()).toHaveClass(/ring-rose-500/);
     // Validation never switches mode or closes anything.
@@ -372,14 +372,14 @@ test.describe('Price offer inline editor', () => {
 
     await editor.getByRole('button', { name: /Select a client|Vyberte klienta/ }).click();
     await page.getByRole('option', { name: LEAD_NAME }).click();
-    await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+    await page.getByRole('button', { name: /Issue & log in Koperniq|Vystaviť a zaevidovať/ }).click();
     await expect(editor.locator('[data-offer-add-item]')).toBeFocused();
     await expect(editor.locator('[data-offer-items]')).toHaveClass(/ring-rose-500/);
     await expect(editor).toHaveAttribute('data-offer-view', 'edit');
 
     // Preview has no control to focus, so the same block is outlined on the document.
     await editor.getByRole('tab', { name: /Preview|Náhľad/ }).click();
-    await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+    await page.getByRole('button', { name: /Issue & log in Koperniq|Vystaviť a zaevidovať/ }).click();
     await expect(editor.locator('[data-offer-items]')).toHaveClass(/ring-rose-500/);
     await expect(editor).toHaveAttribute('data-offer-view', 'preview');
   });
@@ -524,7 +524,7 @@ test.describe('Price offer inline editor', () => {
     await editor.getByRole('tab', { name: /Preview|Náhľad/ }).click();
     const before = await editor.locator('.print-document').evaluate((el) => el.outerHTML);
 
-    await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+    await page.getByRole('button', { name: /Issue & log in Koperniq|Vystaviť a zaevidovať/ }).click();
     await expect(editorOf(page)).toHaveCount(0);
 
     await page.locator('tbody tr').filter({ hasText: 'Ponuka — zhoda' }).getByTitle(/Preview & print|Náhľad a tlač/).click();
@@ -676,7 +676,7 @@ test.describe('AI price offer templates', () => {
     await page.getByRole('button', { name: /Custom item|Vlastná položka/ }).click();
     await page.getByPlaceholder(/Item name|Názov položky/).fill('Fólia');
     await page.getByRole('spinbutton', { name: /Unit price|Jedn\. cena/ }).fill('80');
-    await page.getByRole('button', { name: /Issue & log in CRM|Vystaviť a zaevidovať/ }).click();
+    await page.getByRole('button', { name: /Issue & log in Koperniq|Vystaviť a zaevidovať/ }).click();
     await expect(editorOf(page)).toHaveCount(0);
 
     await expect.poll(() => [...pushed.values()].find((o) => o.title === 'Ponuka — signum')?.customTemplateId, { timeout: 10_000 }).toBe('tpl-signum');

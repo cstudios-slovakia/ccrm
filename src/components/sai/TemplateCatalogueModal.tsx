@@ -12,6 +12,7 @@ import {
   TEMPLATE_CATEGORIES, 
   type UseCaseTemplate 
 } from './useCasesCatalogue';
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface TemplateCatalogueModalProps {
   isOpen: boolean;
@@ -282,7 +283,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                     <div className="pt-3.5 mt-3 border-t border-slate-100 flex items-center justify-between">
                       <div className="flex items-center gap-1 text-micro font-medium text-slate-400">
                         <Database className="w-3 h-3 text-slate-400" />
-                        <span>{tmpl.recommendedSources.length} {t('CRM sources', 'CRM zdrojov', 'CRM adatforrás')}</span>
+                        <span>{tmpl.recommendedSources.length} {t(`${PRODUCT_NAME} sources`, `${PRODUCT_NAME} zdrojov`, `${PRODUCT_NAME} adatforrás`)}</span>
                       </div>
 
                       <div className="flex items-center gap-1 text-ui font-bold text-purple-600 group-hover:text-purple-700 transition">
@@ -301,9 +302,9 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
         <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between text-ui text-slate-500">
           <span>
             {t(
-              'Curated from MiroFish Use Cases connected with real CRM leads & client context.',
-              'Šablóny z MiroFish Use Cases s prepojením na reálne CRM leady & klientov.',
-              'A MiroFish esettanulmányaiból származó sablonok valós CRM leadekkel és ügyfélkontextussal összekötve.'
+              `Curated from MiroFish Use Cases connected with real ${PRODUCT_NAME} leads & client context.`,
+              `Šablóny z MiroFish Use Cases s prepojením na reálne ${PRODUCT_NAME} leady & klientov.`,
+              `A MiroFish esettanulmányaiból származó sablonok valós ${PRODUCT_NAME} leadekkel és ügyfélkontextussal összekötve.`
             )}
           </span>
           <button

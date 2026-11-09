@@ -99,7 +99,7 @@ import { StatGrid, PageHeader, Tabs } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { useListFilter } from "../hooks/useListFilter";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface WarehouseViewProps {
   systemLanguage: Language;
@@ -150,7 +150,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   onAddTimelineEvent: onAddTimelineEventRaw,
   access = FULL_MODULE_ACCESS
 }) => {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -2083,7 +2083,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-ui font-bold text-slate-500">
                   <UserCheck className="w-4 h-4 text-blue-700" />
-                  <span>{t("Client / Customer from CRM", "Klient / Zákazník z CRM", "Ügyfél a CRM-ből")}</span>
+                  <span>{t(`Client / Customer from ${PRODUCT_NAME}`, `Klient / Zákazník z ${PRODUCT_NAME}`, `Ügyfél a ${PRODUCT_NAME}-ből`)}</span>
                 </div>
                 {selectedClient && (
                   <button
@@ -2159,10 +2159,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   />
                   <div>
                     <span className="font-bold text-ui text-blue-900">
-                      {t("Attach to Client History as Sale", "Pripojiť ako predaj & dodací list do CRM", "Csatolás az ügyfélelőzményekhez eladásként")}
+                      {t("Attach to Client History as Sale", `Pripojiť ako predaj & dodací list do ${PRODUCT_NAME}`, "Csatolás az ügyfélelőzményekhez eladásként")}
                     </span>
                     <p className="text-caption text-blue-700 mt-0.5">
-                      {t("Creates a detailed sale entry in client timeline with list of items and prices", "Vytvorí záznam o predaji v časovej osi klienta so súpisom položiek a celkovou sumou", "Részletes bejegyzést hoz létre a CRM-ben")}
+                      {t("Creates a detailed sale entry in client timeline with list of items and prices", "Vytvorí záznam o predaji v časovej osi klienta so súpisom položiek a celkovou sumou", `Részletes bejegyzést hoz létre a ${PRODUCT_NAME}-ben`)}
                     </p>
                   </div>
                 </label>

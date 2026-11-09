@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from "../utils/brand";
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import * as Icons from "lucide-react";
 import { AI_MODEL_TERRA } from "../utils/aiModels";
@@ -100,7 +101,6 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter((key) => {
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  systemName: string;
   showSettings?: boolean;
   onLogout?: () => void;
   systemLanguage: Language;
@@ -453,7 +453,6 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
-  systemName,
   showSettings = true,
   onLogout,
   systemLanguage,
@@ -1176,7 +1175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {isExpanded && (
               <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
                 <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-slate-950 transition-colors">
-                  {systemName}
+                  {PRODUCT_NAME}
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium mt-0.5 truncate">
                   {getTranslation(systemLanguage, "sidebar.command_center")}
@@ -1880,7 +1879,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           setActiveTab(tabId);
           if (!isPinned) setIsCollapsed(true);
         }}
-        systemName={systemName}
         systemLanguage={systemLanguage}
         currentUser={currentUser}
         roles={roles}

@@ -1,4 +1,5 @@
 import { WaaiApiError } from "./waaiClient.ts";
+import { PRODUCT_NAME } from "../../../utils/brand.ts";
 
 /**
  * What the CRM itself says about the WhatsApp module: how it is set up (GET `api/waai_sso.php`) and a
@@ -58,11 +59,11 @@ export async function fetchModuleConfig(fetchImpl: typeof fetch = (...a) => fetc
   try {
     res = await fetchImpl("/api/waai_sso.php", { credentials: "same-origin", cache: "no-store" });
   } catch {
-    throw new WaaiApiError(0, "network", "The CRM could not be reached.");
+    throw new WaaiApiError(0, "network", `${PRODUCT_NAME} could not be reached.`);
   }
   const body = await res.json().catch(() => null);
   const config = res.ok ? parseModuleConfig(body) : null;
-  if (!config) throw new WaaiApiError(res.status, res.status === 403 ? "crm_forbidden" : "crm_error", "The CRM did not describe the WhatsApp connection.");
+  if (!config) throw new WaaiApiError(res.status, res.status === 403 ? "crm_forbidden" : "crm_error", `${PRODUCT_NAME} did not describe the WhatsApp connection.`);
   return config;
 }
 
@@ -72,7 +73,7 @@ export async function fetchSsoToken(fetchImpl: typeof fetch = (...a) => fetch(..
   try {
     res = await fetchImpl("/api/waai_sso.php", { method: "POST", credentials: "same-origin", cache: "no-store" });
   } catch {
-    throw new WaaiApiError(0, "network", "The CRM could not be reached.");
+    throw new WaaiApiError(0, "network", `${PRODUCT_NAME} could not be reached.`);
   }
   const body = (await res.json().catch(() => null)) as { token?: unknown } | null;
   if (res.ok && typeof body?.token === "string" && body.token.length > 0) return body.token;
@@ -81,6 +82,6 @@ export async function fetchSsoToken(fetchImpl: typeof fetch = (...a) => fetch(..
     const retry = Number(res.headers.get("Retry-After"));
     throw new WaaiApiError(429, "rate_limited", "Too many sign-ins.", null, Number.isFinite(retry) && retry > 0 ? retry : null);
   }
-  if (res.status === 401 || res.status === 403) throw new WaaiApiError(res.status, "crm_forbidden", "The CRM refused the sign-in.");
-  throw new WaaiApiError(res.status, "crm_error", "The CRM could not issue a sign-in token.");
+  if (res.status === 401 || res.status === 403) throw new WaaiApiError(res.status, "crm_forbidden", `${PRODUCT_NAME} refused the sign-in.`);
+  throw new WaaiApiError(res.status, "crm_error", `${PRODUCT_NAME} could not issue a sign-in token.`);
 }

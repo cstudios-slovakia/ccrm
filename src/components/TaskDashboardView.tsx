@@ -93,7 +93,7 @@ import { TaskDescriptionMark } from "./TaskDescriptionMark";
 import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { useListFilter } from "../hooks/useListFilter";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
@@ -557,7 +557,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     leadStageGroups,
     leadStateParents,
 }) => {
-    const brand = useBrandName();
+    const brand = PRODUCT_NAME;
     const isDoneState = (status: string) => isDoneTaskState(status, taskStates);
 
     const isClosedRecentTask = (t: Task): boolean => {

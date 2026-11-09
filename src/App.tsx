@@ -127,7 +127,7 @@ import {
 } from "./utils/financialTrend";
 import { flushPendingSaves } from "./utils/pendingSaves";
 import { updatePwaManifest } from "./utils/pwaManifest";
-import { DEFAULT_BRAND_NAME, normalizeBrandOverride, resolveBrandName, setBrandName } from "./utils/brand";
+import { PRODUCT_NAME, normalizeSystemTitleOverride, resolveSystemTitle, resolveTitleWithProduct, setSystemTitle } from "./utils/brand";
 import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
 import { clearErrorLogsWithUndo } from "./utils/errorLogs";
 
@@ -222,7 +222,7 @@ const computeSettingsSig = (s: any): string => {
   if (!s || typeof s !== "object") return "null";
   return JSON.stringify([
     // Trimmed, so server and client agree on what "no custom name" looks like ("").
-    normalizeBrandOverride(s.systemName),
+    normalizeSystemTitleOverride(s.systemName),
     s.systemLanguage ?? "",
     s.systemCurrency ?? "",
     s.leadStates ?? [],
@@ -687,8 +687,9 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undoToast]);
-  // Only the company's OWN choice (Settings → System Brand Name) is stored; "" means
-  // "use the default". `systemName` below is what to display: the override, or Koperniq.
+  // Only the company's OWN choice (Settings → System title) is stored; "" means
+  // "none". `systemName` below is the title to display: the override, or Koperniq.
+  // The product name itself (Koperniq) is not stored anywhere: see utils/brand.ts.
   const [systemNameOverride, setSystemNameOverride] = useState(() => {
     let stored: string | null = null;
     try {
@@ -697,24 +698,26 @@ function App() {
       // that kept "CCRM" does not flash Koperniq until the server answers.
       if (stored === null) {
         const old = localStorage.getItem("crm_system_name");
-        if (old && old !== DEFAULT_BRAND_NAME) stored = old;
+        if (old && old !== PRODUCT_NAME) stored = old;
       }
     } catch (_) {}
-    const override = normalizeBrandOverride(stored);
+    const override = normalizeSystemTitleOverride(stored);
     // Before the first render, so nothing paints under the wrong name.
-    setBrandName(override);
+    setSystemTitle(override);
     return override;
   });
-  const systemName = resolveBrandName(systemNameOverride);
+  const systemName = resolveSystemTitle(systemNameOverride);
+  // Title and product together, for the browser tab and the installed app: "Lapidea (Koperniq)".
+  const systemTitleWithProduct = resolveTitleWithProduct(systemNameOverride);
   useLayoutEffect(() => {
-    setBrandName(systemNameOverride);
+    setSystemTitle(systemNameOverride);
     try { localStorage.setItem(SYSTEM_NAME_OVERRIDE_KEY, systemNameOverride); } catch (_) {}
   }, [systemNameOverride]);
 
-  // Synchronize PWA manifest & mobile app title with systemName
+  // Synchronize PWA manifest & mobile app title with the system title
   useEffect(() => {
-    updatePwaManifest(systemName);
-  }, [systemName]);
+    updatePwaManifest(systemNameOverride);
+  }, [systemNameOverride]);
   // The company language. Starts from the last value the server reported (so a
   // reload does not flash the default) and is replaced by the server's answer,
   // which reaches even the login screen (see sync.php's 401 body).
@@ -981,7 +984,7 @@ function App() {
     smtpAuth: true,
     smtpUser: "",
     smtpPassword: "",
-    senderName: DEFAULT_BRAND_NAME,
+    senderName: PRODUCT_NAME,
     senderEmail: "",
     exchUrl: "https://outlook.office365.com/EWS/Exchange.asmx",
     exchDomain: "",
@@ -1106,7 +1109,7 @@ function App() {
   };
 
   const handleCopyLogDetails = (log: any) => {
-    const text = `### ${systemName} Exception Report
+    const text = `### ${PRODUCT_NAME} Exception Report
 - **Timestamp**: ${log.created_at}
 - **Request**: ${log.request_method} ${log.request_uri}
 - **Error Message**: ${log.message}
@@ -1282,9 +1285,9 @@ ${log.payload || ''}
     // vite ports are distinguishable by tab title; import.meta.env.DEV is
     // false in a production build, so this never reaches deployed instances.
     document.title = import.meta.env.DEV
-      ? `${viewName} | ${systemName} — ${VERSION}`
-      : `${viewName} | ${systemName}`;
-  }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
+      ? `${viewName} | ${systemTitleWithProduct} — ${VERSION}`
+      : `${viewName} | ${systemTitleWithProduct}`;
+  }, [activeTab, systemTitleWithProduct, userLanguage, leads, customDashboards, unifiedEntries]);
   // Single permission resolver for the shell: sidebar, launcher, header
   // shortcuts and the route guard all read from it. Views receive their own
   // `ModuleAccess` slice so none of them has to know about roles.
@@ -2854,7 +2857,7 @@ ${log.payload || ''}
         const s = data.settings;
         if (s) {
           // An empty name is a real answer ("use the default"), so it is adopted too.
-          if (s.systemName !== undefined) setSystemNameOverride(normalizeBrandOverride(s.systemName));
+          if (s.systemName !== undefined) setSystemNameOverride(normalizeSystemTitleOverride(s.systemName));
           if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
           if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         }
@@ -3094,7 +3097,7 @@ ${log.payload || ''}
       }
       if (data.settings) {
         const s = data.settings;
-        if (s.systemName !== undefined) setSystemNameOverride(normalizeBrandOverride(s.systemName));
+        if (s.systemName !== undefined) setSystemNameOverride(normalizeSystemTitleOverride(s.systemName));
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
         if (s.companyBillingSettings) setCompanyBillingSettings(sameOr(s.companyBillingSettings));
@@ -3434,9 +3437,9 @@ ${log.payload || ''}
   // while the vector database is not connected. One source, so they never drift.
   const ragAiSetupCard = {
     description: t(
-      "The assistant answers from a vector index of your CRM data, so it stays inactive until a vector database is connected.",
-      "Asistent odpovedá z vektorového indexu dát CRM, preto zostane neaktívny, kým nebude pripojená vektorová databáza.",
-      "Az asszisztens a CRM-adatok vektorindexéből válaszol, ezért inaktív marad, amíg nincs csatlakoztatott vektoradatbázis."
+      `The assistant answers from a vector index of your ${PRODUCT_NAME} data, so it stays inactive until a vector database is connected.`,
+      `Asistent odpovedá z vektorového indexu dát ${PRODUCT_NAME}, preto zostane neaktívny, kým nebude pripojená vektorová databáza.`,
+      `Az asszisztens a ${PRODUCT_NAME}-adatok vektorindexéből válaszol, ezért inaktív marad, amíg nincs csatlakoztatott vektoradatbázis.`
     ),
     missing: [
       ...(hasOpenAiKey(integrationsConfig) ? [] : [t("OpenAI API key", "OpenAI API kľúč", "OpenAI API kulcs")]),
@@ -3792,7 +3795,6 @@ ${log.payload || ''}
       const leadId = matchedLead ? matchedLead.id : rawLeadId;
       return (
         <LeadsDatagrid 
-          systemName={systemName}
           leads={leads}
           setLeads={updateLeadsAndSync}
           leadStates={orderedLeadStates}
@@ -3977,7 +3979,6 @@ ${log.payload || ''}
           : undefined;
         return (
           <LeadsDatagrid 
-            systemName={systemName}
             access={access.module("leads")}
             orderAccess={access.module("orders")}
             leads={leads}
@@ -4854,7 +4855,6 @@ ${log.payload || ''}
                 if (!access.canOpenRoute(tab)) return;
                 window.location.hash = tab; 
               }} 
-              systemName={systemName}
               showSettings={access.hasSettingsAccess}
               canOpenRoute={access.canOpenRoute}
               onLogout={() => {

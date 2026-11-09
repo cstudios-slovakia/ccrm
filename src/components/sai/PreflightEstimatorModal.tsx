@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AI_MODEL_INPUT_USD_PER_M, AI_MODEL_LUNA, AI_MODEL_TERRA } from '../../utils/aiModels';
 import { ShieldAlert, Zap, X, ArrowRight, Coins, FileText, Sparkles } from 'lucide-react';
 import type { SwarmContextDocument } from '../../utils/swarm/types';
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface PreflightEstimatorModalProps {
   isOpen: boolean;
@@ -234,9 +235,9 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               <p>
                 <strong>{t('Live Real-Time Simulation:', 'Živá simulácia v reálnom čase:', 'Valós idejű éles szimuláció:')}</strong>{' '}
                 {t(
-                  'Executes live parallel OpenAI model calls with real-time CRM context extraction. Ensure you have an active internet connection.',
-                  'Vykonáva skutočné paralelné volania OpenAI modelov vo vašom prehliadači s extrakciou kontextu z CRM. Uistite sa, že máte aktívne internetové pripojenie.',
-                  'Valódi párhuzamos OpenAI hívásokat hajt végre a böngészőben valós idejű CRM kontextus kinyeréssel. Győződjön meg az aktív internetkapcsolatról.'
+                  `Executes live parallel OpenAI model calls with real-time ${PRODUCT_NAME} context extraction. Ensure you have an active internet connection.`,
+                  `Vykonáva skutočné paralelné volania OpenAI modelov vo vašom prehliadači s extrakciou kontextu z ${PRODUCT_NAME}. Uistite sa, že máte aktívne internetové pripojenie.`,
+                  `Valódi párhuzamos OpenAI hívásokat hajt végre a böngészőben valós idejű ${PRODUCT_NAME} kontextus kinyeréssel. Győződjön meg az aktív internetkapcsolatról.`
                 )}
               </p>
             </div>

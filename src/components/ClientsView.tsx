@@ -78,7 +78,7 @@ import { Chart as BundledChart } from "../utils/chartRuntime";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useListFilter } from "../hooks/useListFilter";
-import { DEFAULT_BRAND_NAME } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -461,7 +461,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   leadCategories,
   integrationsConfig,
   taskStates,
-  systemName = DEFAULT_BRAND_NAME,
+  systemName = PRODUCT_NAME,
   currencyCode,
   financialRecords = [],
   setFinancialRecords,
@@ -958,9 +958,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           timestamp: nowLocalStamp(),
           title: t("Client Registered", "Klient zaregistrovaný", "Ügyfél regisztrálva"),
           content: t(
-            "Client profile successfully registered inside CRM system.",
-            "Profil klienta bol úspešne zaregistrovaný v CRM systéme.",
-            "Az ügyfélprofil sikeresen regisztrálva a CRM rendszerben."
+            `Client profile successfully registered inside ${PRODUCT_NAME} system.`,
+            `Profil klienta bol úspešne zaregistrovaný v ${PRODUCT_NAME} systéme.`,
+            `Az ügyfélprofil sikeresen regisztrálva a ${PRODUCT_NAME} rendszerben.`
           )
         }
       ]
@@ -6737,7 +6737,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             {/* Header */}
             <div className="bg-white border-b border-slate-100 px-6 py-5 rounded-t-[30px] flex items-center justify-between shrink-0">
               <div className="text-left">
-                <span className="type-overline text-emerald-600">{systemName} CRM System</span>
+                <span className="type-overline text-emerald-600">{systemName}</span>
                 <h3 className="text-body font-heading font-bold text-slate-800">
                   {systemLanguage === "sk" ? "Registrovať Nového Klienta" : systemLanguage === "hu" ? "Új Ügyfél Regisztrálása" : "Register New Client"}
                 </h3>

@@ -130,7 +130,7 @@ Not in the data (they are settings, not content): the SSO secret and connection,
 ## Seeding the CCRM side
 
 On a fresh install the module runs with the rest of the demo data. On an existing instance, run only this
-module (it needs the demo clients, projects and users to exist; for a full re-seed use **Settings › System › Re-seed demo data** or `php ccrm demo:seed`, which also switches the edition):
+module (it needs the demo clients, projects and users to exist; for a full re-seed use **Settings › System › Re-seed demo data** or `php kprnq demo:seed`, which also switches the edition):
 
 ```bash
 php -r '
@@ -185,4 +185,4 @@ Two things to know:
 - **Directory order.** WAAI computes `auto` links from its own copy of the CRM directory. On an existing install that copy is older than the seeded project phones, so the project chip is missing until Settings → CRM → "Obnoviť adresár" (refresh directory) is pressed once. On a fresh install the directory is read after the seed, so nothing is needed.
 - **The demo account is visible in Settings → WhatsApp** ("Alex", connected). It is marked deliberately disconnected so the worker never opens a session; "Reconnect" on it would start a real QR session. Do not press it on a demo.
 
-The loader was hot-copied into the running `waai-web-1` container (the image has no copy yet; it is lost when the container is recreated). The CRM files were copied into `/srv/ccrm/api/` by hand: before a licensed `php ccrm update` there, delete the untracked `api/demo_seed/whatsapp.php` and `whatsapp_demo.json` and `git checkout -- api`, or the pull refuses.
+The loader was hot-copied into the running `waai-web-1` container (the image has no copy yet; it is lost when the container is recreated). The CRM files were copied into `/srv/ccrm/api/` by hand: before a licensed `php kprnq update` there, delete the untracked `api/demo_seed/whatsapp.php` and `whatsapp_demo.json` and `git checkout -- api`, or the pull refuses.

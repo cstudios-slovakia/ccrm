@@ -19,7 +19,7 @@ import { ExtensionSettings } from "./ExtensionSettings";
 import { TogglImportPanel } from "./TogglImportPanel";
 import { formatMoney } from "../../utils/currency";
 import type { Language } from "../../utils/translations";
-import { useBrandName } from "../../utils/brand";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 const OFFICIAL_SOURCE: Record<HolidayCountry, { label: string; href: string }> = {
   SK: { label: "slov-lex.sk", href: "https://www.slov-lex.sk/" },
@@ -30,7 +30,7 @@ const num = (v: string, fallback: number) => (Number.isFinite(parseFloat(v)) ? p
 
 /** Settings → Time tracking: cost basis, working days and holidays, rules, extension, re-pricing. */
 export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string }) {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const tt = useTimeTracking();
   const { t, settings, ready, enabled } = tt;
   const [draft, setDraft] = useState<TimeTrackingSettings>(settings);

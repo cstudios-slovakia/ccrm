@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { typePx, useViewSize } from '../../utils/viewSize';
 import type { SwarmKnowledgeGraph, SwarmEntityNode, SwarmAgentProfile } from '../../utils/swarm/types';
 import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Loader2, Network, Users } from 'lucide-react';
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface SwarmGraphCanvasProps {
   graph: SwarmKnowledgeGraph;
@@ -284,9 +285,9 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
               </h3>
               <p className="text-ui text-slate-500 leading-relaxed max-w-md mx-auto font-normal">
                 {prepStepMessage || t(
-                  'Extracting stakeholder entities, competitor stances, and relationship edges from CRM context and scenario...',
-                  'Extrakcia entít stakeholderov, postojov konkurencie a väzieb z CRM kontextu a zadania...',
-                  'Érintetti entitások, versenytársi álláspontok és kapcsolatok kinyerése a CRM kontextusból és forgatókönyvből...'
+                  `Extracting stakeholder entities, competitor stances, and relationship edges from ${PRODUCT_NAME} context and scenario...`,
+                  `Extrakcia entít stakeholderov, postojov konkurencie a väzieb z ${PRODUCT_NAME} kontextu a zadania...`,
+                  `Érintetti entitások, versenytársi álláspontok és kapcsolatok kinyerése a ${PRODUCT_NAME} kontextusból és forgatókönyvből...`
                 )}
               </p>
             </div>

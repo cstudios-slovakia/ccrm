@@ -23,14 +23,13 @@ import { cn } from "../utils/cn";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface StartMenuProps {
   isOpen: boolean;
   onClose: () => void;
   activeTab: string;
   onSelectTab: (tabId: string) => void;
-  systemName: string;
   systemLanguage: Language;
   currentUser: UserProfile | null;
   roles: RolePermission[];
@@ -71,7 +70,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onClose,
   activeTab,
   onSelectTab,
-  systemName,
   systemLanguage,
   currentUser,
   roles: _roles,
@@ -90,7 +88,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onSaveDefaultPage,
   disabledModules = []
 }) => {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -544,7 +542,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     items.push({
       id: "whatsapp",
       label: "WhatsApp",
-      description: t("Your WhatsApp chats, digest & tasks inside the CRM", "Vaše WhatsApp chaty, prehľad a úlohy priamo v CRM", "WhatsApp-csevegések, összefoglaló és feladatok a CRM-ben"),
+      description: t(`Your WhatsApp chats, digest & tasks inside ${PRODUCT_NAME}`, `Vaše WhatsApp chaty, prehľad a úlohy priamo v ${PRODUCT_NAME}`, `WhatsApp-csevegések, összefoglaló és feladatok a ${PRODUCT_NAME}-ben`),
       icon: Icons.MessageCircle || Icons.Mail,
       color: "#16a34a",
       bgColor: "rgba(22, 163, 74, 0.12)",
@@ -1002,7 +1000,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-heading font-bold text-title-sm text-slate-900 tracking-tight">
-                    {systemName}
+                    {PRODUCT_NAME}
                   </span>
                   <span className="type-overline px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
                     {t("Start Menu", "Štart menu", "Start menü")}
@@ -1011,7 +1009,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 <p className="text-caption text-slate-400 font-medium hidden sm:block">
                   {(isEditing
                     ? t("Drag groups to reorder columns • Add new group to sidebar • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu pre bočný panel • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport az oldalsávhoz • Kitűzés 📌 a bal oldalsávra")
-                    : t("Quick access to all CRM modules & applications", "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
+                    : t(`Quick access to all ${PRODUCT_NAME} modules & applications`, "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
                 </p>
               </div>
             </div>

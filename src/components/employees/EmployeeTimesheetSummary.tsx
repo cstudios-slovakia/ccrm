@@ -20,7 +20,7 @@ import type { Employee } from "../../types";
 import { formatNumber } from "../../utils/currency";
 import { timesheetSourceSwitch, type TimesheetSource } from "../../utils/timesheetSource.ts";
 import { EmployeeCcrmTimesheet } from "./EmployeeCcrmTimesheet";
-import { useBrandName } from "../../utils/brand";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 /**
  * Format fractional hours into "X h Y m" format without decimals.
@@ -130,7 +130,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
   t,
   onLinkTogglUser,
 }) => {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const [viewMode, setViewMode] = useState<ViewMode>("matrix");
   const [source, setSource] = useState<TimesheetSource>("toggl");
   const sourceSwitch = timesheetSourceSwitch(source);

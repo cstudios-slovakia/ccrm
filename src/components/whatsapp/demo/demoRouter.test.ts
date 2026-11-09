@@ -480,7 +480,7 @@ test("Tasks tab: every task as a HomeTask, open first, filtered by status, ticki
 
   // Deleting and reopening say why in the language of the module, not with a code.
   const done = completed.tasks[0]!;
-  assert.equal((await rejection(client.del(`/tasks/${done.id}`))).message, "This task is synced with the CRM and cannot be changed that way in the demo.");
+  assert.equal((await rejection(client.del(`/tasks/${done.id}`))).message, "This task is synced with Koperniq and cannot be changed that way in the demo.");
   assert.equal((await rejection(client.patch(`/tasks/${done.id}`, { status: "open" }))).status, 409);
   assert.equal(((await client.post(`/tasks/${done.id}/crm`, { action: "retry" })) as { ok: boolean }).ok, true);
   assert.equal((await rejection(client.post("/tasks/nope/crm", { action: "retry" }))).status, 404);

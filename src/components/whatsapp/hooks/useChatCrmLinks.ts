@@ -6,6 +6,7 @@ import type {
   CrmLinkSetRequest,
 } from "../api/contract.ts";
 import { type WaaiClient, WaaiApiError } from "../api/waaiClient.ts";
+import { PRODUCT_NAME } from "../../../utils/brand.ts";
 
 export interface UseChatCrmLinksOptions {
   client: WaaiClient;
@@ -66,7 +67,7 @@ export function useChatCrmLinks({
       setCrmLinks(res);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(err instanceof WaaiApiError ? err.message : "Failed to load CRM links");
+      setError(err instanceof WaaiApiError ? err.message : `Failed to load ${PRODUCT_NAME} links`);
     } finally {
       setLoading(false);
     }
@@ -99,7 +100,7 @@ export function useChatCrmLinks({
         return entities;
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return [];
-        setError(err instanceof WaaiApiError ? err.message : "Failed to search CRM entities");
+        setError(err instanceof WaaiApiError ? err.message : `Failed to search ${PRODUCT_NAME} entities`);
         setSearchResults([]);
         return [];
       } finally {
@@ -127,7 +128,7 @@ export function useChatCrmLinks({
         setSearchQuery("");
         setSearchResults([]);
       } catch (err) {
-        setError(err instanceof WaaiApiError ? err.message : "Failed to link CRM entity");
+        setError(err instanceof WaaiApiError ? err.message : `Failed to link ${PRODUCT_NAME} entity`);
         throw err;
       } finally {
         setSaving(false);
@@ -152,7 +153,7 @@ export function useChatCrmLinks({
         );
         setCrmLinks(updated);
       } catch (err) {
-        setError(err instanceof WaaiApiError ? err.message : "Failed to unlink CRM entity");
+        setError(err instanceof WaaiApiError ? err.message : `Failed to unlink ${PRODUCT_NAME} entity`);
         throw err;
       } finally {
         setSaving(false);

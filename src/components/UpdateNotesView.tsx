@@ -7,7 +7,7 @@ import { useUserPref } from "../utils/userPrefs";
 import { fetchUpdateNotes, type UpdateEntry } from "../utils/updateNotes";
 import { useUpdateFancybox } from "./ZoomableUpdateImage";
 import { UpdateNoteBlocks } from "./UpdateNoteBlocks";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface UpdateNotesViewProps {
     systemLanguage: Language;
@@ -16,7 +16,7 @@ interface UpdateNotesViewProps {
 export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
     systemLanguage,
 }) => {
-    const brand = useBrandName();
+    const brand = PRODUCT_NAME;
     const [updates, setUpdates] = useState<UpdateEntry[]>([]);
     // Opening this view is what marks the newest release note as read; the flag is
     // a DB-backed user preference shared with the header's "new updates" dot.

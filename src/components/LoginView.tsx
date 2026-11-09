@@ -29,7 +29,7 @@ import {
   getCurrentLoginTheme,
   formatLocalizedClock
 } from "../utils/loginTheme";
-import { useBrandName } from "../utils/brand";
+import { PRODUCT_NAME } from "../utils/brand";
 
 interface LoginViewProps {
   users: UserProfile[];
@@ -48,7 +48,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   isDemoMode,
   isModal
 }) => {
-  const brand = useBrandName();
+  const brand = PRODUCT_NAME;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -347,6 +347,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <h2 className="type-page-title text-slate-900">
                 {systemName}
               </h2>
+              {systemName !== PRODUCT_NAME && (
+                <p className="type-meta text-slate-400 mt-0.5">{PRODUCT_NAME}</p>
+              )}
               <p className="type-overline text-slate-500 mt-1">
                 {getTranslation(systemLanguage, "login.subtitle")}
               </p>

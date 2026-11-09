@@ -20,6 +20,7 @@ import { deepenForWhite } from "../utils/accentColor";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
 import { BigNumber, CardFooter, SegmentBar, SegmentedToggle, WidgetCard } from "./dashboard/widgetKit";
+import { PRODUCT_NAME } from "../utils/brand";
 
 export interface StatusStatDetailRow {
   id: string;
@@ -891,7 +892,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                           onClick={() => setDrawerData(null)}
                           className="text-micro font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
                         >
-                          <span>{t("Open in CRM", "Otvoriť v CRM", "Megnyitás a CRM-ben")}</span>
+                          <span>{t(`Open in ${PRODUCT_NAME}`, `Otvoriť v ${PRODUCT_NAME}`, `Megnyitás a ${PRODUCT_NAME}-ben`)}</span>
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       </div>

@@ -56,6 +56,7 @@ import { getAvailableShippingMethods } from "../utils/shipping";
 import { getAvailablePaymentMethods, getDefaultPaymentMethod } from "../utils/payment";
 import { formatDateLocalized } from "../utils/localTime";
 import { isClientRecord } from "../utils/clientRecord";
+import { PRODUCT_NAME } from "../utils/brand";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -437,7 +438,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
     // Validate customer attachment
     if (formData.customerType === "client" && !formData.clientId) {
-      alert(t("Please select a registered client from the CRM database or switch to guest checkout.", "Prosím vyberte registrovaného klienta z CRM databázy alebo prepnite na nákup bez registrácie.", "Kérjük, válasszon egy regisztrált ügyfelet vagy váltson vendég vásárlásra."));
+      alert(t(`Please select a registered client from the ${PRODUCT_NAME} database or switch to guest checkout.`, `Prosím vyberte registrovaného klienta z ${PRODUCT_NAME} databázy alebo prepnite na nákup bez registrácie.`, "Kérjük, válasszon egy regisztrált ügyfelet vagy váltson vendég vásárlásra."));
       return;
     }
     if (formData.customerType === "guest" && !formData.guest?.name && !formData.guest?.email && !formData.guest?.phone) {
@@ -512,7 +513,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
             ) : formData.customerType === "client" ? (
               <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                 <UserCheck className="size-3" />
-                {t("CRM Client", "CRM Klient", "CRM Ügyfél")}
+                {t(`${PRODUCT_NAME} Client`, `${PRODUCT_NAME} Klient`, `${PRODUCT_NAME} Ügyfél`)}
               </span>
             ) : (
               <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
@@ -672,7 +673,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  {t("CRM Client", "CRM Klient", "CRM Ügyfél")}
+                  {t(`${PRODUCT_NAME} Client`, `${PRODUCT_NAME} Klient`, `${PRODUCT_NAME} Ügyfél`)}
                 </button>
                 <button
                   type="button"
@@ -788,7 +789,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           : <UserCheck className="size-3.5 text-emerald-600" />}
                         {selectedIsLead
                           ? t("Lead (no client profile)", "Lead (bez profilu klienta)", "Lead (nincs ügyfélprofil)")
-                          : t("Synced CRM Client", "Zosynchronizovaný klient", "Szinkronizált ügyfél")}
+                          : t(`Synced ${PRODUCT_NAME} Client`, "Zosynchronizovaný klient", "Szinkronizált ügyfél")}
                       </span>
                       <div className="flex items-center gap-2">
                         {onOpenClient && (
@@ -886,7 +887,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       </h4>
                       <p className="text-micro text-slate-400 max-w-sm mx-auto mt-0.5">
                         {t(
-                          "Search and select an existing CRM client above to link this order, or switch to Guest Checkout.",
+                          `Search and select an existing ${PRODUCT_NAME} client above to link this order, or switch to Guest Checkout.`,
                           "Hore vyhľadajte a vyberte existujúceho klienta pre prepojenie s objednávkou, alebo prepnite na Nákup bez registrácie.",
                           "Keressen és válasszon ki egy ügyfelet fent a megrendelés összekapcsolásához, vagy váltson Vendég fizetésre."
                         )}
@@ -909,7 +910,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       onClick={() => onConvertGuest(formData)}
                       className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-micro font-bold transition-all shadow-xs"
                     >
-                      {t("Convert to CRM Client", "Vytvoriť klienta v CRM", "Ügyfél létrehozása")}
+                      {t(`Convert to ${PRODUCT_NAME} Client`, `Vytvoriť klienta v ${PRODUCT_NAME}`, "Ügyfél létrehozása")}
                     </button>
                   )}
                 </div>
@@ -1514,7 +1515,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
               <div className="ws-sm:col-span-2 space-y-1">
                 <label className="type-overline text-slate-500 block">
-                  {t("Internal Note (CRM)", "Interná poznámka (CRM)", "Belső megjegyzés (CRM)")}
+                  {t(`Internal Note (${PRODUCT_NAME})`, `Interná poznámka (${PRODUCT_NAME})`, `Belső megjegyzés (${PRODUCT_NAME})`)}
                 </label>
                 <textarea
                   rows={2}

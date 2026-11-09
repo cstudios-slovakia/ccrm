@@ -109,6 +109,7 @@ import { useTicketTimeEntries } from "../hooks/useTimeEntries";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { createEntry, deleteEntry, listProjectUsage, updateEntry, type UsageEntry } from "../utils/timeTrackingApi";
+import { PRODUCT_NAME } from "../utils/brand";
 
 /** Single time input in H:MM format (e.g. 1:30 for 90 minutes) with a permanent preset ":" */
 const ColonTimeInput: React.FC<{
@@ -1092,9 +1093,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     setShowTaskForm(false);
     (window as any).showToast?.(
       t(
-        "CRM Task created & linked to employee.",
+        `${PRODUCT_NAME} Task created & linked to employee.`,
         "Úloha vytvorená a priradená riešiteľovi.",
-        "CRM feladat létrehozva és hozzárendelve.",
+        `${PRODUCT_NAME} feladat létrehozva és hozzárendelve.`,
       ),
     );
   };
@@ -1903,7 +1904,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     <span className="type-overline text-slate-500 flex items-center gap-1">
                       <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
                       {t(
-                        "Linked CRM Tasks",
+                        `Linked ${PRODUCT_NAME} Tasks`,
                         "Prepojené úlohy",
                         "Kapcsolt feladatok",
                       )}
@@ -3758,7 +3759,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     <CheckSquare className="w-8 h-8 text-slate-300 mx-auto" />
                     <p className="text-caption font-bold text-slate-500">
                       {t(
-                        "No CRM tasks linked to this ticket yet.",
+                        `No ${PRODUCT_NAME} tasks linked to this ticket yet.`,
                         "K tomuto tiketu zatiaľ nie sú priradené žiadne úlohy.",
                         "Ehhez a jegyhez még nincs kapcsolt feladat.",
                       )}

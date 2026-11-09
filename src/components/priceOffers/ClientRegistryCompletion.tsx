@@ -6,6 +6,7 @@ import { useCompanyLookup } from "../../utils/useCompanyLookup";
 import { applyCompanyDetailsToLead, registryCountryOf } from "../../utils/companyRegistry";
 import type { CompanyLookupField, CompanySuggestion } from "../../utils/companyRegistry";
 import { isBlankText } from "../../utils/offerDraft";
+import { PRODUCT_NAME } from "../../utils/brand";
 
 interface ClientRegistryCompletionProps {
   lang: Language;
@@ -112,9 +113,9 @@ export const ClientRegistryCompletion: React.FC<ClientRegistryCompletionProps> =
           </div>
           <p className="text-[0.85em] text-slate-400 font-medium">
             {t(
-              "Picking a match updates this client in the CRM, not just this document.",
-              "Vybraná zhoda sa uloží ku klientovi v CRM, nielen do tohto dokladu.",
-              "A kiválasztott találat a CRM ügyféladatait is frissíti, nem csak ezt a bizonylatot."
+              `Picking a match updates this client in ${PRODUCT_NAME}, not just this document.`,
+              `Vybraná zhoda sa uloží ku klientovi v ${PRODUCT_NAME}, nielen do tohto dokladu.`,
+              `A kiválasztott találat a ${PRODUCT_NAME} ügyféladatait is frissíti, nem csak ezt a bizonylatot.`
             )}
           </p>
         </div>

@@ -39,7 +39,7 @@ export interface LicenseState {
   status: LicenseStatus;
   /** True only for `active` and `expiring`. */
   valid: boolean;
-  /** e.g. `CCRM-********DDDD`. The full key is never sent to the browser. */
+  /** e.g. `KPRNQ-********DDDD` (keys issued before the rename start with `CCRM-`). The full key is never sent to the browser. */
   keyMasked: string;
   expiresAt: string | null;
   /** Negative once expired. Null when the licence carries no expiry. */

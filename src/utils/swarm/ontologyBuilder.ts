@@ -6,6 +6,7 @@
 import { AI_MODEL_LUNA } from "../aiModels";
 import { callLlmJson } from './llmProxyClient';
 import type { SwarmKnowledgeGraph, SwarmContextDocument } from './types';
+import { PRODUCT_NAME } from "../brand.ts";
 
 export async function buildKnowledgeGraph(
   seedDocument: string,
@@ -29,7 +30,7 @@ export async function buildKnowledgeGraph(
     : 'Zvažujú doživotnú licenciu za 1 500 € v porovnaní s mesačnými SaaS poplatkami.';
 
   const systemPrompt = `You are an expert Swarm Intelligence Knowledge Architect.
-Your task is to analyze a seed business scenario, attached specification/contract documents, and recent CRM context to extract key stakeholder ENTITIES and RELATIONSHIP EDGES for an upcoming social media market rehearsal.
+Your task is to analyze a seed business scenario, attached specification/contract documents, and recent ${PRODUCT_NAME} context to extract key stakeholder ENTITIES and RELATIONSHIP EDGES for an upcoming social media market rehearsal.
 
 CRITICAL RULES:
 1. STRICT SEED DATA GROUNDING MANDATE:
@@ -73,8 +74,8 @@ Output JSON strictly matching this schema:
   }
 
   const crmSection = crmContextText && crmContextText.trim().length > 0
-    ? `\n\nRecent CRM Stakeholder Data:\n${crmContextText.slice(0, 15000)}`
-    : '\n\nRecent CRM Stakeholder Data:\n(None - Grounding relies strictly and exclusively on the Seed Document and Attached Documents provided above)';
+    ? `\n\nRecent ${PRODUCT_NAME} Stakeholder Data:\n${crmContextText.slice(0, 15000)}`
+    : `\n\nRecent ${PRODUCT_NAME} Stakeholder Data:\n(None - Grounding relies strictly and exclusively on the Seed Document and Attached Documents provided above)`;
 
   const userPrompt = `Hypothesis / Prediction Goal:
 ${hypothesis}

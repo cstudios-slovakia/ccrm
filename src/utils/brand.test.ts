@@ -1,40 +1,69 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  DEFAULT_BRAND_NAME,
-  getBrandName,
-  normalizeBrandOverride,
-  resolveBrandName,
-  setBrandName,
+  PRODUCT_CLI,
+  PRODUCT_NAME,
+  getSystemTitle,
+  getSystemTitleWithProduct,
+  normalizeSystemTitleOverride,
+  resolveSystemTitle,
+  resolveTitleWithProduct,
+  setSystemTitle,
   withBrand,
 } from "./brand.ts";
 import { getTranslation } from "./translations.ts";
 
-test("an empty or missing name falls back to Koperniq", () => {
+test("the product is Koperniq and its command is kprnq", () => {
+  assert.equal(PRODUCT_NAME, "Koperniq");
+  assert.equal(PRODUCT_CLI, "kprnq");
+});
+
+test("an empty or missing title falls back to the product name", () => {
   for (const blank of ["", "   ", undefined, null]) {
-    assert.equal(resolveBrandName(blank), DEFAULT_BRAND_NAME);
-    assert.equal(normalizeBrandOverride(blank), "");
+    assert.equal(resolveSystemTitle(blank), PRODUCT_NAME);
+    assert.equal(normalizeSystemTitleOverride(blank), "");
   }
-  assert.equal(DEFAULT_BRAND_NAME, "Koperniq");
 });
 
-test("CCRM is an ordinary custom name: existing installs keep it and it can be set", () => {
-  assert.equal(normalizeBrandOverride("CCRM"), "CCRM");
-  assert.equal(resolveBrandName(" CCRM "), "CCRM");
+test("CCRM is an ordinary custom title: existing installs keep it and it can be set", () => {
+  assert.equal(normalizeSystemTitleOverride("CCRM"), "CCRM");
+  assert.equal(resolveSystemTitle(" CCRM "), "CCRM");
 });
 
-test("a custom name wins, trimmed", () => {
-  assert.equal(normalizeBrandOverride("  Acme Hub "), "Acme Hub");
-  assert.equal(resolveBrandName("Acme Hub"), "Acme Hub");
+test("a custom title wins, trimmed", () => {
+  assert.equal(normalizeSystemTitleOverride("  Lapidea "), "Lapidea");
+  assert.equal(resolveSystemTitle("Lapidea"), "Lapidea");
 });
 
-test("{brand} in translations and copy follows the current name", () => {
-  setBrandName("");
-  assert.equal(getBrandName(), "Koperniq");
+test("title and product together: 'Lapidea (Koperniq)', never 'Koperniq (Koperniq)'", () => {
+  assert.equal(resolveTitleWithProduct("Lapidea"), "Lapidea (Koperniq)");
+  assert.equal(resolveTitleWithProduct(""), "Koperniq");
+  assert.equal(resolveTitleWithProduct("Koperniq"), "Koperniq");
+});
+
+test("{product} is always the product; {title} follows the company's title", () => {
+  setSystemTitle("");
+  assert.equal(getSystemTitle(), "Koperniq");
   assert.match(getTranslation("en", "license.banner.revoked"), /Koperniq licence/);
-  setBrandName("Acme Hub");
-  assert.match(getTranslation("sk", "license.banner.revoked"), /Acme Hub/);
-  assert.equal(withBrand("by {brand}, for {brand}"), "by Acme Hub, for Acme Hub");
-  setBrandName("");
-  assert.equal(getBrandName(), "Koperniq");
+  setSystemTitle("Lapidea");
+  // the product name does not change when the company sets a title of its own
+  assert.match(getTranslation("sk", "license.banner.revoked"), /Koperniq/);
+  assert.doesNotMatch(getTranslation("sk", "license.banner.revoked"), /Lapidea/);
+  assert.equal(withBrand("by {product}, for {title}"), "by Koperniq, for Lapidea");
+  assert.equal(getSystemTitleWithProduct(), "Lapidea (Koperniq)");
+  setSystemTitle("");
+  assert.equal(getSystemTitle(), "Koperniq");
+});
+
+// Static files cannot import PRODUCT_NAME; they carry the literal and this keeps them honest.
+test("static files that cannot import the constant carry the product name", () => {
+  for (const file of ["index.html", "public/manifest.json", "public/api/brand.php"]) {
+    assert.ok(readFileSync(file, "utf8").includes(PRODUCT_NAME), `${file} should say ${PRODUCT_NAME}`);
+  }
+});
+
+test("the old product name is not shown as a command in visible text", () => {
+  assert.doesNotMatch(getTranslation("en", "license.updates_explainer"), /php ccrm/);
+  assert.match(getTranslation("en", "license.updates_explainer"), /php kprnq update/);
 });
