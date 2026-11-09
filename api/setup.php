@@ -215,8 +215,6 @@ try {
         ['calendar.create', 'Create bookings'],
         ['calendar.edit', 'Adjust calendar configurations'],
         ['time_records.log', 'Log work stopwatch sessions'],
-        ['newsletter.view', 'Inspect email campaigns list'],
-        ['newsletter.edit', 'Create/edit email newsletter campaigns'],
         ['hr.view', 'View employee records list'],
         ['files.view', 'Browse files database'],
         ['files.create', 'Upload contract proposals'],

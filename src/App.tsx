@@ -187,6 +187,7 @@ const Dashboard = safeLazy(() => import("./components/Dashboard").then(m => ({ d
 const SettingsView = safeLazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
 const LeadsDatagrid = safeLazy(() => import("./components/LeadsDatagrid").then(m => ({ default: m.LeadsDatagrid })));
 const ClientsView = safeLazy(() => import("./components/ClientsView").then(m => ({ default: m.ClientsView })));
+const NewsletterView = safeLazy(() => import("./components/newsletter/NewsletterView").then(m => ({ default: m.NewsletterView })));
 const FilesView = safeLazy(() => import("./components/FilesView").then(m => ({ default: m.FilesView })));
 const PersonalSettingsView = safeLazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
 const EmailView = safeLazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
@@ -494,7 +495,7 @@ function App() {
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "whatsapp", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "whatsapp", "newsletter", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -4364,6 +4365,30 @@ ${log.payload || ''}
             onLogout={() => { setCurrentUser(null); window.location.href = "/"; }}
           />
         );
+      case "newsletter":
+        return newsletterEnabled && currentUser ? (
+            <NewsletterView
+              language={userLanguage}
+              route={activeRoute}
+              onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+              canEdit={access.canEdit("newsletter")}
+              canSend={access.canEdit("newsletter_send")}
+              leads={leads}
+              clientCategories={clientCategories}
+              leadStates={orderedLeadStates}
+              leadCategories={leadCategories}
+              userEmail={currentUser.email || ""}
+            />
+        ) : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => { setActiveTab(route); window.location.hash = route; }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => { setCurrentUser(null); window.location.href = "/"; }}
+          />
+        );
       case "time-tracking":
         return timeDeps && timeEnabled ? (
           <TimeTrackingView
@@ -4680,6 +4705,7 @@ ${log.payload || ''}
   // Everything the Time Tracking module needs from the rest of the app (see components/timeTracking/shared.tsx).
   const timeEnabled = !!currentUser?.id && access.can("time_tracking") && !(integrationsConfig?.disabledModules || []).includes("time-tracking");
   const whatsappEnabled = !!currentUser?.id && access.can("whatsapp") && !(integrationsConfig?.disabledModules || []).includes("whatsapp");
+  const newsletterEnabled = !!currentUser?.id && access.can("newsletter") && !(integrationsConfig?.disabledModules || []).includes("newsletter");
   const whatsappRoute = parseAppHash(activeTab);
   const whatsappActive = whatsappRoute.route.split("/")[0].toLowerCase() === "whatsapp";
   const whatsappHost = whatsappEnabled && currentUser && (whatsappOpened || whatsappActive) ? (

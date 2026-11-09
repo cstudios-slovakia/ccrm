@@ -180,6 +180,14 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     ],
     related: [rel("email/outgoing", "outgoing_server"), rel("email/mailboxes", "company_mailboxes")],
   },
+  {
+    id: "newsletter", group: "work", icon: Mail, tint: "sky",
+    sections: [
+      S("design", LayoutTemplate, "newsletter_settings"),
+      S("sending", Send, "newsletter_settings"),
+    ],
+    related: [rel("email/outgoing", "outgoing_server")],
+  },
   // ── Connections & system ──────────────────────────────────────────────────
   {
     id: "email", group: "connections", icon: Mail, tint: "rose",

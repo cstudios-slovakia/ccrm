@@ -298,21 +298,6 @@ export interface MarketingChannel {
   leadsCount: number;
 }
 
-export interface NewsletterCampaign {
-  id: string;
-  subject: string;
-  content: string;
-  segment: "all" | "leads" | "won_clients" | "employees";
-  status: "draft" | "sent";
-  sentAt?: string;
-  stats: {
-    opens: number;
-    clicks: number;
-    bounce: number;
-    conversions: number;
-  };
-}
-
 export interface Task {
   id: string;
   title: string;

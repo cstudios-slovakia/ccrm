@@ -473,6 +473,20 @@ export function buildModuleCatalog(
       bgColor: "rgba(219, 39, 119, 0.12)",
     },
     {
+      id: "newsletter",
+      category: "collaboration",
+      title: t("Newsletter", "Newsletter", "Hírlevél"),
+      description: t("E-mail campaigns to your clients, with your own design", "E-mailové kampane pre klientov vo vlastnom dizajne", "E-mail kampányok az ügyfeleknek, saját dizájnnal"),
+      longDescription: t(
+        "Write an e-mail once and send it to all your clients, to chosen client categories or to individual clients, optionally with leads, employees and pasted addresses. A shared header and footer keep every campaign on brand, every e-mail carries an unsubscribe link, and a suppression list makes sure nobody who opted out is written to again. Sending runs in the background in small batches within your hourly limit, and you see the result per recipient.",
+        "Napíšte e-mail raz a pošlite ho všetkým klientom, vybraným kategóriám klientov alebo jednotlivým klientom, voliteľne aj s leadmi, zamestnancami a vloženými adresami. Spoločná hlavička a pätička držia každú kampaň v jednotnom štýle, každý e-mail obsahuje odkaz na odhlásenie a zoznam odhlásených zaručí, že sa nikto, kto sa odhlásil, už neoslovuje. Odosielanie beží na pozadí v malých dávkach v rámci hodinového limitu a výsledok vidíte pre každého príjemcu.",
+        "Írjon meg egyszer egy e-mailt, és küldje el minden ügyfelének, a kiválasztott ügyfélkategóriáknak vagy egyes ügyfeleknek, igény szerint érdeklődőkkel, munkatársakkal és beillesztett címekkel. A közös fejléc és lábléc egységesen tartja a kampányokat, minden e-mail tartalmaz leiratkozási hivatkozást, a leiratkozottak listája pedig gondoskodik róla, hogy aki leiratkozott, azt többé ne keressék. A küldés a háttérben, kis kötegekben, az óránkénti korláton belül fut, az eredményt pedig címzettenként látja.",
+      ),
+      icon: Icons.Send || Mail,
+      color: "#0284c7",
+      bgColor: "rgba(2, 132, 199, 0.12)",
+    },
+    {
       id: "rag_ai",
       category: "collaboration",
       title: t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens"),

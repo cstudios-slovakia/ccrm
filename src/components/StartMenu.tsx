@@ -549,6 +549,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       defaultSection: "collaboration"
     });
 
+    items.push({
+      id: "newsletter",
+      label: t("Newsletter", "Newsletter", "Hírlevél"),
+      description: t("E-mail campaigns to your clients, with your own design", "E-mailové kampane pre klientov vo vlastnom dizajne", "E-mail kampányok az ügyfeleknek, saját dizájnnal"),
+      icon: Icons.Send || Icons.Mail,
+      color: "#0284c7",
+      bgColor: "rgba(2, 132, 199, 0.12)",
+      defaultSection: "collaboration"
+    });
+
     // 4. SYSTEM & PERSONAL
     items.push({
       id: "personal-settings",

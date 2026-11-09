@@ -116,6 +116,12 @@ if (!function_exists('ccrm_permission_sections')) {
             ]],
             // WAAI (WhatsApp) shown inside the CRM. Nobody has it until an administrator grants it; admins always do.
             ['id' => 'whatsapp', 'permissions' => [$access('whatsapp', 'nothing', 'nothing')]],
+            // Newsletter: nobody until an administrator grants it; admins always have everything.
+            ['id' => 'newsletter', 'permissions' => [
+                $access('newsletter', 'nothing', 'nothing'),
+                $toggle('newsletter_send', 'nothing', 'nothing', ['key' => 'newsletter', 'level' => 'edit']),
+                $toggle('newsletter_settings', 'nothing', 'nothing', ['key' => 'newsletter', 'level' => 'edit']),
+            ]],
             ['id' => 'files', 'permissions' => [
                 $access('files', 'edit', 'nothing', ['keys' => ['files.view', 'files.create'], 'edit' => ['files.create']]),
                 $toggle('files.delete', 'edit', 'nothing', ['key' => 'files', 'level' => 'edit'], ['files.delete']),
@@ -420,6 +426,9 @@ if (!function_exists('ccrm_permission_sections')) {
             'time_tracking_costs' => 'nothing',
             'time_tracking_salary_report' => 'nothing',
             'whatsapp' => 'nothing',
+            'newsletter' => 'nothing',
+            'newsletter_send' => 'nothing',
+            'newsletter_settings' => 'nothing',
             'files' => 'nothing',
             'files.delete' => 'nothing',
             'email' => 'nothing',

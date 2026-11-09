@@ -79,6 +79,13 @@ const withTasksSection = (layout: string[]): string[] => {
     const at = next.indexOf("time-tracking");
     next.splice(at === -1 ? next.length : at + 1, 0, "whatsapp");
   }
+  // Newsletter: behind Mail. Only roles granted the `newsletter` permission see it (canOpenRoute), and admins
+  // can hide it for everyone in Settings -> Visible modules.
+  if (!next.includes("newsletter")) {
+    next = [...next];
+    const at = next.indexOf("email");
+    next.splice(at === -1 ? next.length : at + 1, 0, "newsletter");
+  }
   // My employment used to be its own nav item; it now lives as a tab of People (`employees`).
   if (next.includes("my-employment")) {
     next = next.filter((id) => id !== "my-employment");
@@ -575,6 +582,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ...dynamicDashItems.map((item) => item.id),
       "files",
       "email",
+      "newsletter",
       "automation",
       "social_media",
       "updates"
@@ -630,6 +638,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ...dynamicDashItems,
       { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "var(--color-amber-700)" },
       { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "var(--color-pink-600)" },
+      { id: "newsletter", label: systemLanguage === "hu" ? "Hírlevél" : "Newsletter", icon: Icons.Send || Mail, color: "#0284c7" },
       { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)" },
       { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)" },
       { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "var(--color-amber-600)" }

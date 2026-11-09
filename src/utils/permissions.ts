@@ -188,6 +188,15 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     permissions: [access("whatsapp", "nothing", "nothing")],
   },
   {
+    // Newsletter: nobody until an administrator grants it (same intent as whatsapp); admins always do.
+    id: "newsletter",
+    permissions: [
+      access("newsletter", "nothing", "nothing"),
+      toggle("newsletter_send", "nothing", "nothing", { key: "newsletter", level: "edit" }),
+      toggle("newsletter_settings", "nothing", "nothing", { key: "newsletter", level: "edit" }),
+    ],
+  },
+  {
     id: "files",
     permissions: [
       access("files", "edit", "nothing", { keys: ["files.view", "files.create"], edit: ["files.create"] }),
@@ -236,8 +245,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
   },
 ];
 
-/** Keys of the settings section — any of them at `view` or better opens Settings. */
-export const SETTINGS_PERMISSION_KEYS = PERMISSION_SECTIONS.find((s) => s.id === "settings")!.permissions.map((p) => p.key);
+/**
+ * Keys of the settings section — any of them at `view` or better opens Settings.
+ * `newsletter_settings` lives in the newsletter section but its only screen is Settings > Newsletter.
+ */
+export const SETTINGS_PERMISSION_KEYS = [
+  ...PERMISSION_SECTIONS.find((s) => s.id === "settings")!.permissions.map((p) => p.key),
+  "newsletter_settings",
+];
 
 export const PERMISSION_DEFS: Record<string, PermissionDef> = Object.fromEntries(
   PERMISSION_SECTIONS.flatMap((s) => s.permissions.map((p) => [p.key, p])),
@@ -351,6 +366,9 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   time_tracking_costs: "nothing",
   time_tracking_salary_report: "nothing",
   whatsapp: "nothing",
+  newsletter: "nothing",
+  newsletter_send: "nothing",
+  newsletter_settings: "nothing",
   files: "nothing",
   "files.delete": "nothing",
   email: "nothing",
@@ -456,6 +474,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   if (base === "employees" || base === "my-employment") return "people";
   if (base === "time-tracking") return "time_tracking";
   if (base === "whatsapp") return "whatsapp";
+  if (base === "newsletter") return "newsletter";
   // SAI rehearses sales conversations against the lead / client base. It has no permission key of
   // its own; it follows leads so a role with no sales access (Employee) is not offered it.
   if (base === "sai") return "leads";

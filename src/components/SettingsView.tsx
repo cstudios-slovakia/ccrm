@@ -18,6 +18,7 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
 import { TimeTrackingSettingsPanel } from "./timeTracking/TimeTrackingSettingsPanel";
+import { NewsletterDesignSettings, NewsletterSendingSettings } from "./newsletter/NewsletterSettings";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
 import { PriceLevelSettings } from "./PriceLevelSettings";
 import { CompanyMailboxSettings } from "./CompanyMailboxSettings";
@@ -4007,6 +4008,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </div>
         );
+      case "newsletter/design":
+        return <NewsletterDesignSettings language={userLanguage} canEdit={getPermission("newsletter_settings") === "edit"} />;
+      case "newsletter/sending":
+        return <NewsletterSendingSettings language={userLanguage} canEdit={getPermission("newsletter_settings") === "edit"} />;
       case "projects/tasks":
         return (
                   <div className="space-y-6">

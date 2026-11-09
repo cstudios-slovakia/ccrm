@@ -94,12 +94,12 @@ test("section ids are unique inside a category and refs are unique overall", () 
   assert.equal(new Set(ALL_SECTION_REFS).size, ALL_SECTION_REFS.length);
 });
 
-test("12 categories in three groups, in the approved order", () => {
+test("13 categories in three groups, in the approved order", () => {
   assert.deepEqual(
     SETTINGS_CATEGORIES.map((c) => c.id),
-    ["company", "access", "modules", "leads", "projects", "offers", "orders", "finance", "tickets", "email", "integrations", "system"],
+    ["company", "access", "modules", "leads", "projects", "offers", "orders", "finance", "tickets", "newsletter", "email", "integrations", "system"],
   );
-  assert.deepEqual(visibleGroups(everything()).map((g) => [g.id, g.categories.length]), [["organization", 3], ["work", 6], ["connections", 3]]);
+  assert.deepEqual(visibleGroups(everything()).map((g) => [g.id, g.categories.length]), [["organization", 3], ["work", 7], ["connections", 3]]);
 });
 
 test("related links point at sections that exist", () => {
