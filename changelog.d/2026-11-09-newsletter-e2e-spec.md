@@ -1,0 +1,1 @@
+- Newsletter: browser journey spec (campaign, builder, autosave, Send test, Hold to send, results, Unsubscribed tab, Settings design).
