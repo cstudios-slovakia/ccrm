@@ -94,6 +94,8 @@ export interface ClientSortConfig {
 const CLIENTS_SORT_STORAGE_KEY = "ccrm_clients_sort_config";
 
 interface ClientsViewProps {
+  /** The user can open the Newsletter module: the profile shows the newsletter block (no request otherwise). */
+  newsletterEnabled?: boolean;
   /** The configured price levels: a client can be put on one (Client profile → Price level). */
   priceLevels?: PriceLevel[];
   leads: Lead[];
@@ -452,6 +454,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
 };
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
+  newsletterEnabled = false,
   leads,
   setLeads,
   projectManagers,
@@ -4216,7 +4219,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
             </form>
-            <ClientNewsletterStatus email={activeClient.email} language={systemLanguage} t={t} />
+            <ClientNewsletterStatus emails={[activeClient.email, ...activeClient.associatedLeads.map(l => l.email)]} enabled={newsletterEnabled} language={systemLanguage} t={t} />
           </div>
 
           {/* RIGHT PANEL: Chronological Event Timeline & Interactive Logger (Combined) */}

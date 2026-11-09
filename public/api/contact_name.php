@@ -71,10 +71,16 @@ if (!function_exists('ccrm_compose_contact_name')) {
      */
     function ccrm_set_contact_parts_from_person(PDO $pdo, string $leadId): void {
         try {
-            $stmt = $pdo->prepare("SELECT `contact_person` FROM `leads` WHERE `id` = ?");
+            $stmt = $pdo->prepare("SELECT `contact_person`, `contact_first_name`, `contact_last_name` FROM `leads` WHERE `id` = ?");
             $stmt->execute([$leadId]);
-            $person = $stmt->fetchColumn();
-            if ($person === false) {
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row === false) {
+                return;
+            }
+            $person = $row['contact_person'];
+            // The stored parts already compose to this name (e.g. typed "Anna" + "van Dijk"): keep them.
+            $hasParts = trim((string)($row['contact_first_name'] ?? '')) !== '' || trim((string)($row['contact_last_name'] ?? '')) !== '';
+            if ($hasParts && ccrm_compose_contact_name($row['contact_first_name'], $row['contact_last_name']) === trim((string)$person)) {
                 return;
             }
             [$first, $last] = ccrm_contact_parts_from_person($person === null ? null : (string)$person);
@@ -104,7 +110,8 @@ if (!function_exists('ccrm_compose_contact_name')) {
                    AND `contact_first_name` IS NULL AND `contact_last_name` IS NULL"
             )->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $upd = $pdo->prepare(
-                "UPDATE `leads` SET `contact_first_name` = ?, `contact_last_name` = ?
+                // `updated_at` pinned: the sync conflict guard compares it with every open tab's baseSyncedAt.
+                "UPDATE `leads` SET `contact_first_name` = ?, `contact_last_name` = ?, `updated_at` = `updated_at`
                  WHERE `id` = ? AND `contact_first_name` IS NULL AND `contact_last_name` IS NULL"
             );
             $done = 0;

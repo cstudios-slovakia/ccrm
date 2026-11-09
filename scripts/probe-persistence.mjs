@@ -372,7 +372,7 @@ try {
       source: "Facebook Ads", owner: "Probe", value: 1234.5, rating: 4, createdAt: "2026-02-01",
       phone: "+421 900 123 456", email: "probe@example.test",
       address: { street: "Hlavná 1", city: "Žilina", postalCode: "010 01", country: "Slovakia" },
-      companyId: "12345678", taxId: "2020202020", vatId: "SK2020202020", contactPerson: "Mgr. Anna Nováková",
+      companyId: "12345678", taxId: "2020202020", vatId: "SK2020202020", contactPerson: "Mgr. Anna Nováková", contactFirstName: "Mgr. Anna", contactLastName: "Nováková",
       website: "https://example.test", establishmentDate: "2001-05-06", legalForm: "s.r.o.", skNace: "62010",
       organizationSize: "10-19", ownershipType: "private", dataSource: "registeruz", dissolutionDate: "",
       region: "Žilinský", district: "Žilina",
@@ -391,7 +391,7 @@ try {
     check("POST field-complete lead 200", r.status === 200 && r.body?.success === true, `status=${r.status} body=${JSON.stringify(r.body)?.slice(0, 300)}`);
     const back = ((await json("/sync.php")).body?.leads || []).find((l) => l.id === fullLeadId);
     const scalar = ["name", "city", "clientType", "status", "source", "owner", "value", "rating", "createdAt", "phone", "email",
-      "companyId", "taxId", "vatId", "contactPerson", "website", "establishmentDate", "legalForm", "skNace", "organizationSize",
+      "companyId", "taxId", "vatId", "contactPerson", "contactFirstName", "contactLastName", "website", "establishmentDate", "legalForm", "skNace", "organizationSize",
       "ownershipType", "dataSource", "dissolutionDate", "region", "district", "interestNote", "referralLeadId", "clientId", "aiSummary",
       "aiSummaryFingerprint", "clientCategoryId", "archived", "address", "vatValidationResult", "followUps"];
     const d = diffKeys(back, lead, scalar);

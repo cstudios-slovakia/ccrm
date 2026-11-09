@@ -20,6 +20,9 @@ export const Dialog = ({
 }) => {
   const panel = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  // Callers pass an inline onClose; a ref keeps the effect below from re-running (and stealing focus) on every parent render.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return undefined;
     const before = document.activeElement as HTMLElement | null;
@@ -29,7 +32,7 @@ export const Dialog = ({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
     };
     document.addEventListener("keydown", onKey, true);
@@ -37,7 +40,7 @@ export const Dialog = ({
       document.removeEventListener("keydown", onKey, true);
       before?.focus?.({ preventScroll: true });
     };
-  }, [open, onClose]);
+  }, [open]);
 
   /** Tab wraps inside the dialog. A portaled dropdown panel is outside it and keeps its own keys. */
   const trap = (e: ReactKeyboardEvent<HTMLDivElement>) => {

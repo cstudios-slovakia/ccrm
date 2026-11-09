@@ -345,7 +345,12 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
             <div>
               <ContactNameFields
                 lang={lang}
-                value={contactNameFieldsOf(newClient)}
+                value={
+                  // Typed parts are shown raw (untrimmed) so a space can be typed between two words; trimmed on save.
+                  newClient.contactFirstName !== undefined || newClient.contactLastName !== undefined
+                    ? { firstName: newClient.contactFirstName ?? "", lastName: newClient.contactLastName ?? "" }
+                    : contactNameFieldsOf(newClient)
+                }
                 onChange={v => patchNewClient({ contactFirstName: v.firstName, contactLastName: v.lastName, contactPerson: composeContactName(v.firstName, v.lastName) })}
                 inputClassName={inputClass}
                 labelClassName={labelClass}

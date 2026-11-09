@@ -3736,6 +3736,7 @@ ${log.payload || ''}
       );
       return (
         <ClientsView
+          newsletterEnabled={newsletterEnabled}
           priceLevels={priceLevels} 
           leads={leads}
           setLeads={updateLeadsAndSync}
@@ -4069,6 +4070,7 @@ ${log.payload || ''}
           : undefined;
         return (
           <ClientsView
+          newsletterEnabled={newsletterEnabled}
           priceLevels={priceLevels}
             leads={leads}
             orders={orders}
