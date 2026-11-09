@@ -164,7 +164,7 @@ export function ProjectPicker({
   const panel = (
     <div
       data-testid="project-picker-panel"
-      className={`${inline ? "" : `absolute z-[960] mt-2 w-80 ${align === "right" ? "right-0" : "left-0"} shadow-xl`} flex max-h-96 flex-col rounded-2xl border border-slate-200 bg-white`}
+      className={`${inline ? "" : `absolute z-[960] mt-2 w-80 max-w-[calc(100vw-2rem)]${align === "right" ? "right-0" : "left-0"} shadow-xl`} flex max-h-96 flex-col rounded-2xl border border-slate-200 bg-white`}
     >
       <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
         <Search className="size-4 shrink-0 text-slate-400" />
@@ -229,7 +229,7 @@ export function ProjectPicker({
           </button>
         )}
         {onCreateProject && creating && (
-          <div className="mt-2 grid gap-2 rounded-xl bg-slate-50 p-2.5">
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2 rounded-xl bg-slate-50 p-2.5">
             <ClientSelect
               leads={leads}
               value={newClient}

@@ -1,0 +1,1 @@
+- **Project picker no longer overflows on the right** (`src/components/timeTracking/ProjectPicker.tsx`): in "Create project" a long client name pushed the form past the panel's right edge, where it was clipped (the "Create" button was cut off). The form column now shrinks to the panel and the long name is truncated; the panel also never exceeds the viewport width.
