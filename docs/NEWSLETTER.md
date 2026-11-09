@@ -72,9 +72,9 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 2 Sending and integration | 2A Sending engine and public pages | Sonnet, high | ✅ | `09bc4e92`, `51ae465d` | 2026-11-09 |
 | | 2B Builder in the app, review and send, results | Sonnet, medium | ✅ | `b4be3883`, `51ae465d` | 2026-11-09 |
 | | 2C Demo data (en, sk, hu) | Sonnet, medium | ✅ | `50218c88` | 2026-11-09 |
-| 3 QA and polish | 3A E2E journey, QA registration, view-size pass | Sonnet, medium | ⬜ | | |
-| | 3B Client profile: newsletter status | Sonnet, low | ⬜ | | |
-| | 3C Contact first/last name, demo wipe fix | Sonnet, high | ⬜ | | |
+| 3 QA and polish | 3A E2E journey, QA registration, view-size pass | Sonnet, medium | 🟡 | `56c7d013`..`fa18ee23`, fixes on top | 2026-11-09 |
+| | 3B Client profile: newsletter status | Sonnet, low | ✅ | `11494794`, review fixes | 2026-11-09 |
+| | 3C Contact first/last name, demo wipe fix | Sonnet, high | 🟡 | `cb67fc93`, `61e1e206`, review fixes | 2026-11-09 |
 
 Branch: everything goes on `1.13-nectarine`, through worktrees (`.agents/rules/agent-worktrees.md`).
 
@@ -304,7 +304,7 @@ stack's MySQL (`t=test` 200, unknown token 404 for GET and the one-click POST, C
 Files: `tests/e2e/helpers/newsletterMock.ts`, `tests/e2e/newsletter.spec.ts`,
 `tests/e2e/crawler.spec.ts`, `tests/e2e/darkmode.spec.ts`, `scripts/qa/run-qa.mjs`.
 
-- [ ] Stateful mock of `/api/newsletter.php` (pattern: `tests/e2e/helpers/timeTrackingMock.ts`),
+- [x] Stateful mock of `/api/newsletter.php` (pattern: `tests/e2e/helpers/timeTrackingMock.ts`),
       including the send actions and the error codes of C4
 - [ ] **First browser run** of the builder and the send flow (left over from 1B and 2B): every item of
       C8's acceptance list, autosave (status chip, edits survive Back and reload, the "leave without
@@ -312,22 +312,41 @@ Files: `tests/e2e/helpers/newsletterMock.ts`, `tests/e2e/newsletter.spec.ts`,
       the dialog), Hold to send in demo mode, results polling, Pause / Resume / Cancel, Settings ›
       Newsletter › Design header/footer editors. What the spec cannot cover, the orchestrator checks
       by hand in a browser
-- [ ] Journey spec of C16; crawler and dark-mode registration; QA area mapping
+- [x] Journey spec of C16; crawler and dark-mode registration; QA area mapping
 - [ ] View-size pass over every newsletter screen (`docs/VIEW-SIZE.md`); fix what it finds inside
       `src/components/newsletter/`
-- [ ] `npm run check`; changelog fragment. The orchestrator runs the scoped QA, not the agent
-- Left over:
+- [x] `npm run check`; changelog fragment. The orchestrator runs the scoped QA, not the agent
+- Left over: (1) **the browser run is incomplete.** The first scoped run reached the newsletter spec:
+  the C16 journey passed from New campaign through the audience count, subject autosave, the design
+  route (Text and Button blocks), Back with the flushed body, the checklist and Send test, then failed
+  on an intermediate progress of 50 %. Cause: the results page polls `tick` at once on mount, twice under
+  React StrictMode in dev, so the first visible value was 100 %. The spec now stops the mock worker,
+  checks 0 %, starts the worker and waits for the page's own polling to reach sent (review-fix commit).
+  The run then ended with the session, so the other 16 newsletter tests have **not run yet**; a second
+  run was stopped by the system for low memory. Run
+  `node scripts/qa/run-qa.mjs --files tests/e2e/newsletter.spec.ts` when the machine has 1.5 GB free.
+  (2) Manual browser checks still open (the spec cannot cover them): C8 row drag and moves, inline
+  toolbar and paste, image upload, row panel, social block, HTML iframe, Ctrl+Z keys, phone-width
+  message, dark-mode canvas; the view-size pass at the four reference sizes (the agent's grep found no
+  hand font sizes, pixel widths or `sm:` breakpoints, so nothing was changed). (3) Not fixed: the
+  builder's fixed `calc(100dvh - 7rem)` height; Hold to send uses `HoldToConfirm tone="archive"`.
+  Fixed in 3A: Dialog focus trap with focus restore; no stale thumbnail after Back (`settleSaves()` in
+  `useDebouncedSave.ts`); test ids on the save and status chips. Review fix: the Dialog no longer
+  re-focuses its first field when the parent re-renders (inline `onClose` kept in a ref).
 
 **3B Client profile: newsletter status** (Sonnet, low). Reads C12 ("Client profile").
 Files: one new component under `src/components/newsletter/`, one mount line in the client
 detail view, one read action in `newsletter.php`.
 
-- [ ] Action `contact_status {emails[]}` → per address: unsubscribed (date, campaign) and the last
+- [x] Action `contact_status {emails[]}` → per address: unsubscribed (date, campaign) and the last
       5 campaigns it was sent; view permission
-- [ ] Small "Newsletter" block on the client profile: campaigns received, "Unsubscribed on <date>"
+- [x] Small "Newsletter" block on the client profile: campaigns received, "Unsubscribed on <date>"
       badge; hidden without newsletter access
-- [ ] `npm run sync:backend`; `npm run check`; changelog fragment
-- Left over:
+- [x] `npm run sync:backend`; `npm run check`; changelog fragment
+- Left over: none. Review fixes (`cf1a0e7d`): the block now asks only when the user can open the module
+  (`newsletterEnabled` passed from `App.tsx`; before, every profile open of a user without access sent a
+  request that answered 403) and asks for every distinct address of the profile (client and member
+  leads), not only the client's own e-mail.
 
 **3C Contact first and last name, demo wipe fix** (Sonnet, high: schema and sync change). Reads C18,
 C5 step 7, C4 (`AudiencePreview`), `.agents/rules/database-schema-and-sync.md` and the employee
@@ -341,31 +360,49 @@ other the implementer finds), the PHP writers of `contact_person` that are not t
 `scripts/test-newsletter.php`, `public/api/demo_seed/helpers.php`, the demo packs that hold contacts,
 `scripts/test-demo-wipe.php` (or its assert file), `translations*.ts` as needed, mirrors.
 
-- [ ] Columns `leads.contact_first_name` and `leads.contact_last_name` with the **4-place rule**:
+- [x] Columns `leads.contact_first_name` and `leads.contact_last_name` with the **4-place rule**:
       `CREATE TABLE` in `schema.php`, idempotent migration in `ccrm_apply_migrations()`, pre-transaction
       column healing in `public/sync.php` (above `beginTransaction()`), `entities_overview.md`,
       `npm run sync:backend`. Synced fields `contactFirstName` / `contactLastName` on the lead type
-- [ ] One-time backfill (C18): split existing `contact_person` with `ccrm_split_person_name()`; rows
+- [x] One-time backfill (C18): split existing `contact_person` with `ccrm_split_person_name()`; rows
       it cannot split stay empty; guarded so it never runs twice and never overwrites typed parts. If
       the migration `require`s a new file, add it to `ccrm_schema_fingerprint()`
-- [ ] `contactName.ts` (`composeContactName`, mirrors the PHP rule) + unit test; `ContactNameFields`
+- [x] `contactName.ts` (`composeContactName`, mirrors the PHP rule) + unit test; `ContactNameFields`
       ("First name" / "Last name", en/sk/hu) replaces the single contact field in every form; the full
       `contact_person` is composed on save. Large files get only the mount line
-- [ ] Every other writer of `contact_person` (MCP write tools, company-register lookup, workflows,
+- [x] Every other writer of `contact_person` (MCP write tools, company-register lookup, workflows,
       orders, pipeline, …) keeps the parts consistent (C18); list each one in the report
-- [ ] Newsletter: `first_name` comes from `contact_first_name` (titles stripped), never guessed from the
+- [x] Newsletter: `first_name` comes from `contact_first_name` (titles stripped), never guessed from the
       full name; `AudiencePreview.withoutFirstName`; the live count shows "N without a first name"
-- [ ] Demo: packs give each contact a first and last name (Hungarian: given name in `first`);
+- [x] Demo: packs give each contact a first and last name (Hungarian: given name in `first`);
       `test:demo-packs`, `test:demo-seed`, `test:demo-wipe` as before (the 4 employee failures are known)
-- [ ] Demo wipe (B1.6): `newsletter_recipients` rows go only by `campaign_id`; a two-entry skip list
+- [x] Demo wipe (B1.6): `newsletter_recipients` rows go only by `campaign_id`; a two-entry skip list
       (`newsletter_recipients.lead_id`, `.employee_id`) used by both `demo_wipe_by_prefix()` and
       `demo_count_by_prefix()`; the wipe test asserts that a non-demo campaign's row pointing at a demo
       lead survives, that 11 demo rows count as 11, and covers the manual-suppression lookup by e-mail
-- [ ] PHP test: backfill split cases (incl. one word, comma, trailing title), newsletter `first_name`
+- [x] PHP test: backfill split cases (incl. one word, comma, trailing title), newsletter `first_name`
       from the stored field with a title, a Hungarian contact (`Péter` / `Kovács` → `Péter`)
-- [ ] `npm run check`; changelog fragment. After the merge the orchestrator runs
+- [x] `npm run check`; changelog fragment. After the merge the orchestrator runs
       `npm run test:persistence` from the main checkout (the new fields must survive a sync round trip)
-- Left over:
+- Left over: (1) a *person* client or lead with no contact name still gets `{{first_name}}` from the
+  first word of its own name (`ccrm_newsletter_lead_candidate()` in `newsletter_audience.php`): the
+  person forms have no fields to complete. **Decided (B1.7):** person records store their own first and
+  last name; follow-up task `docs/prompts/newsletter-person-first-name.md`, not started. (2) `QuickAddClient.tsx` has no contact field, so it got none.
+  (3) `scripts/import/villatesta/load.php` (one-off loader) writes `contact_person` without the parts;
+  rows it loads after the backfill marker is set stay without parts (no `{{first_name}}`) until edited.
+  (4) The Hungarian packs' `{contact:L7}` texts still read "Kovács Péter", while `contact_person` is now
+  composed given-name-first ("Péter Kovács").
+
+**Phase 3 verification (2026-11-09):** `npm run check` green on the merged result and after the review
+fixes; `test:newsletter` green (Docker PHP 8.2); 3C's `test:demo-packs` and `test:demo-wipe` green,
+`test:demo-seed` with the 4 known employee failures. `test:persistence` 68/68 (run as a patched copy:
+the script hard-codes container `crm-19-jackfruit` and port 8086, the current stack is `crm` on 8085;
+the new name fields were added to its field-complete lead). Scoped browser QA: crawler and dark-mode
+registrations pass (Newsletter page included), navigation passes; the newsletter spec is incomplete (3A
+Left over). The crawler's Leads / Pipeline finding (`DROPDOWN_DID_NOT_OPEN` on the "Všetky typy" /
+"Všetky divízie" filters) also appears in the run of 2026-11-06, before this phase: pre-existing, not
+triaged here. One `ccrm-reviewer` pass: 7 confirmed findings; 6 fixed in the review-fix commit, the
+seventh (person-record first name) became decision B1.7 and its own task.
 
 ## A5. Findings
 
@@ -438,6 +475,18 @@ the user made later.)
 - 2026-11-09, phase 2: the scoped QA failure `timeTracking.spec.ts:271` ("the timer bar takes a
   Description before Start…") is time tracking's `project-request-dialog` intercepting the click; time
   tracking was being changed by another session at the same time (`d9d1de75`). Not triaged here.
+- 2026-11-09, phase 3: a one-time backfill `UPDATE leads` must pin `updated_at = updated_at`: the sync
+  conflict guard compares it with every open tab's `baseSyncedAt`, so bumping it drops the next push of
+  every tab until it refetches (the other backfills already pin it).
+- 2026-11-09, phase 3: a component effect that depends on an inline callback prop re-runs on every
+  parent render; hold such callbacks in a ref (the newsletter `Dialog` lost focus this way).
+- 2026-11-09, phase 3: `run-qa.mjs` treats any file under `tests/e2e/helpers/` as a harness change and
+  refuses without `--full`; pass the spec files only (the spec loads its mock). Under React StrictMode
+  in dev an effect that fires a request on mount fires it twice, so a spec must not expect the state
+  after exactly one poll.
+- 2026-11-09, phase 3: two of three Sonnet implementers stalled (no output for 600 s) and were resumed
+  with SendMessage; the uncommitted work in their worktrees survived. Ask implementers to commit each
+  part as soon as it passes `npm run check`.
 - 2026-11-09, phase 2: a worktree-isolated Bash session refuses commands that `cd` into the main
   checkout and long heredoc appends; edit with the Edit tool and run git from the worktree itself.
 
@@ -468,6 +517,11 @@ the user made later.)
    Spec C18, package 3C.
 6. **The demo wipe keeps a user's own campaign history** (Peter, 2026-11-09): recipient rows are
    wiped only by demo `campaign_id`, never by `lead_id` / `employee_id`. Package 3C.
+7. **Person records store their own first and last name** (Peter, 2026-11-09, after the phase 3
+   review). A lead or client of type `person` keeps the person's first and last name in
+   `contact_first_name` / `contact_last_name` (a "Name for greetings" pair of fields in its forms);
+   `name` and `contact_person` stay as they are. `{{first_name}}` is never guessed from `name`.
+   Handoff: `docs/prompts/newsletter-person-first-name.md`.
 
 ## B2. Technical decisions
 
