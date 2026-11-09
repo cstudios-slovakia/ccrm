@@ -362,8 +362,8 @@ test.describe('AI Assistant (MCP) settings', () => {
       await generate(page);
 
       for (let i = 0; i < 5; i++) {
-        // 0 = web tab, setup prompt with its preview open; 1 = web tab, manual; 2..4 = the other tabs.
-        if (i === 0) await page.getByText(/Preview what you are copying|Zobraziť, čo kopírujete|Előnézet a másolandó/).first().click();
+        // 0 = web tab, setup prompt expanded; 1 = web tab, manual; 2..4 = the other tabs.
+        if (i === 0) await page.getByRole('button', { name: /Show whole prompt|Zobraziť celý prompt|Teljes prompt megjelenítése/ }).first().click();
         else if (i === 1) await openManual(page);
         else await tabs(page).nth(i - 1).click();
         const overflow = await page.evaluate(() => {

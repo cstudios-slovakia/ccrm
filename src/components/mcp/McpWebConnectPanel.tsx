@@ -184,7 +184,7 @@ export const McpWebConnectPanel: React.FC<McpWebConnectPanelProps> = ({
               monospace={false}
               label={t("Setup prompt", "Prompt na nastavenie", "Beállító prompt")}
               value={setupPrompt}
-              previewLabel={t("Preview what you are copying", "Zobraziť, čo kopírujete", "Előnézet a másolandó szövegről")}
+              longText
               // A prompt with `<your key>` would make an agent write the placeholder into its config.
               disabled={!hasToken}
               disabledReason={t(

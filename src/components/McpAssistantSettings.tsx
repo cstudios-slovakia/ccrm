@@ -574,7 +574,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
           monospace={false}
           label={t("Instructions for the assistant", "Pokyny pre asistenta", "Utasítások az asszisztensnek")}
           value={agentPrompt}
-          previewLabel={t("Preview what you are copying", "Zobraziť, čo kopírujete", "Előnézet a másolandó szövegről")}
+          longText
         />
         <div className="bg-amber-50/50 border border-amber-200/60 rounded-2xl p-4.5 text-ui text-amber-950 font-medium space-y-3">
           <div className="font-bold text-amber-900 flex items-center gap-2">
