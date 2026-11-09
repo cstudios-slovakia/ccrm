@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Mail, Plus } from "lucide-react";
+import { Mail, Plus } from "lucide-react";
 import { Page, PageHeader, Tabs } from "../layout";
-import type { ClientCategory, Lead } from "../../types";
+import type { ClientCategory, CompanyBillingSettings, Lead } from "../../types";
 import { makeT } from "../../utils/timeTracking";
+import { CampaignDesignScreen } from "./CampaignDesignScreen";
 import { CampaignList } from "./CampaignList";
+import { companyInfoFrom } from "./company";
 import { CampaignScreen } from "./CampaignScreen";
 import { UnsubscribedTab } from "./UnsubscribedTab";
 import { newsletterApi, newsletterErrorMessage } from "./newsletterApi";
-import { BTN_PRIMARY, BTN_SECONDARY, type NewsletterData, type NewsletterEnv } from "./shared";
+import { BTN_PRIMARY, type NewsletterData, type NewsletterEnv } from "./shared";
 
 type Tab = "campaigns" | "unsubscribed";
 
@@ -23,13 +25,16 @@ export interface NewsletterViewProps {
   leadStates: string[];
   leadCategories: string[];
   userEmail: string;
+  /** Company profile (Settings > Invoicing identity): the default header and footer show its name, address and logo. */
+  companyBilling?: CompanyBillingSettings | null;
 }
 
 /** The Newsletter module (docs/NEWSLETTER.md C12): campaign list, draft screen, design route. */
 export const NewsletterView = (props: NewsletterViewProps) => {
   const { language, route, onNavigate, canEdit, canSend } = props;
   const t = useMemo(() => makeT(language), [language]);
-  const env: NewsletterEnv = { language, t, canEdit, canSend, navigate: onNavigate };
+  const company = useMemo(() => companyInfoFrom(props.companyBilling), [props.companyBilling]);
+  const env: NewsletterEnv = { language, t, canEdit, canSend, navigate: onNavigate, company };
   const data: NewsletterData = {
     leads: props.leads,
     clientCategories: props.clientCategories,
@@ -56,17 +61,7 @@ export const NewsletterView = (props: NewsletterViewProps) => {
   };
 
   if (campaignId && parts[2] === "design") {
-    return (
-      <Page>
-        <div className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm">
-          <button type="button" className={BTN_SECONDARY} onClick={() => onNavigate(`newsletter/${campaignId}`)}>
-            <ArrowLeft className="size-4" />
-            {t("Back to the campaign", "Späť na kampaň", "Vissza a kampányhoz")}
-          </button>
-          <p className="type-body mt-6 text-slate-500">{t("Design editor coming soon.", "Editor dizajnu už čoskoro.", "A dizájnszerkesztő hamarosan érkezik.")}</p>
-        </div>
-      </Page>
-    );
+    return <CampaignDesignScreen key={campaignId} id={campaignId} env={env} userEmail={props.userEmail} />;
   }
 
   if (campaignId) return <CampaignScreen key={campaignId} id={campaignId} env={env} data={data} />;

@@ -4009,7 +4009,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         );
       case "newsletter/design":
-        return <NewsletterDesignSettings language={userLanguage} canEdit={getPermission("newsletter_settings") === "edit"} />;
+        return <NewsletterDesignSettings language={userLanguage} canEdit={getPermission("newsletter_settings") === "edit"} companyBilling={companyBillingSettings} rest={route.sectionId === "design" ? route.rest : []} />;
       case "newsletter/sending":
         return <NewsletterSendingSettings language={userLanguage} canEdit={getPermission("newsletter_settings") === "edit"} />;
       case "projects/tasks":

@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from "react";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { SaveStatus, SectionCard, SettingsGroup } from "../settings/SectionCard";
 import { ColorPicker } from "../ui/ColorPicker";
 import { CustomSelect } from "../ui/CustomSelect";
 import { makeT } from "../../utils/timeTracking";
+import type { CompanyBillingSettings } from "../../types";
+import { companyInfoFrom } from "./company";
 import type { Language } from "../../utils/translations";
 import { parseExtraAddresses } from "./audience";
 import { useNewsletterConfig, type NewsletterConfigState } from "./useNewsletterConfig";
 import { NEWSLETTER_FONT_STACKS, type NewsletterConfig, type NewsletterSettingsResponse, type NewsletterThemeJson } from "./types";
 import { FIELD, HINT, LABEL, Loading, Notice } from "./shared";
+
+// The builder is large and only the header/footer editors and thumbnails need it.
+const HeaderFooterEditor = lazy(() => import("./HeaderFooterEditor").then((m) => ({ default: m.HeaderFooterEditor })));
+const HeaderFooterCards = lazy(() => import("./HeaderFooterEditor").then((m) => ({ default: m.HeaderFooterCards })));
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(n)));
 
@@ -223,15 +229,43 @@ const THEME_COLORS: { key: keyof NewsletterThemeJson; label: [string, string, st
   { key: "buttonTextColor", label: ["Button text", "Text tlačidla", "Gomb szövege"] },
 ];
 
-/** Settings > Newsletter > Design: the theme fields (header and footer editors arrive with the builder). */
-export const NewsletterDesignSettings = ({ language, canEdit }: { language: Language; canEdit: boolean }) => {
+/** Settings > Newsletter > Design: header and footer cards (their editors open on `rest`), then the theme. */
+export const NewsletterDesignSettings = ({
+  language,
+  canEdit,
+  companyBilling,
+  rest = [],
+}: {
+  language: Language;
+  canEdit: boolean;
+  companyBilling?: CompanyBillingSettings | null;
+  /** The route segments after `settings/newsletter/design`: `header` or `footer` opens that editor. */
+  rest?: string[];
+}) => {
   const t = useMemo(() => makeT(language), [language]);
   const state = useNewsletterConfig(t, canEdit);
+  const company = useMemo(() => companyInfoFrom(companyBilling), [companyBilling]);
+  const slot = rest[0] === "header" || rest[0] === "footer" ? rest[0] : null;
 
   return (
     <div className="grid gap-6">
       <Gate state={state} t={t}>
         {({ draft, setDraft, status }) => {
+          if (slot) {
+            return (
+              <Suspense fallback={<Loading t={t} />}>
+                <HeaderFooterEditor
+                  slot={slot}
+                  config={draft}
+                  company={company}
+                  language={language}
+                  canEdit={canEdit}
+                  status={status}
+                  onChange={(doc) => setDraft((c) => ({ ...c, [slot]: doc }))}
+                />
+              </Suspense>
+            );
+          }
           const th = draft.theme;
           const setTheme = (patch: Partial<NewsletterThemeJson>) => setDraft((c) => ({ ...c, theme: { ...c.theme, ...patch } }));
           return (
@@ -239,21 +273,9 @@ export const NewsletterDesignSettings = ({ language, canEdit }: { language: Lang
               {!canEdit && (
                 <Notice tone="info">{t("You can view these settings but not change them.", "Tieto nastavenia môžete zobraziť, ale nie meniť.", "Ezeket a beállításokat megtekintheti, de nem módosíthatja.")}</Notice>
               )}
-              <div className="grid gap-6 ws-md:grid-cols-2">
-                {(["header", "footer"] as const).map((slot) => (
-                  <SectionCard
-                    key={slot}
-                    title={slot === "header" ? t("Header", "Hlavička", "Fejléc") : t("Footer", "Pätička", "Lábléc")}
-                    description={
-                      slot === "header"
-                        ? t("Shown above every campaign.", "Zobrazuje sa nad každou kampaňou.", "Minden kampány felett megjelenik.")
-                        : t("Shown below every campaign. It must keep the unsubscribe link.", "Zobrazuje sa pod každou kampaňou. Musí obsahovať odkaz na odhlásenie.", "Minden kampány alatt megjelenik. Tartalmaznia kell a leiratkozási hivatkozást.")
-                    }
-                  >
-                    <p className="text-ui text-slate-500">{t("Design editor coming soon.", "Editor dizajnu už čoskoro.", "A dizájnszerkesztő hamarosan érkezik.")}</p>
-                  </SectionCard>
-                ))}
-              </div>
+              <Suspense fallback={<Loading t={t} />}>
+                <HeaderFooterCards config={draft} company={company} language={language} canEdit={canEdit} />
+              </Suspense>
 
               <SectionCard
                 title={t("Theme", "Vzhľad", "Megjelenés")}

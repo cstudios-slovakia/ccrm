@@ -1,35 +1,23 @@
 /**
- * Newsletter: the shapes of docs/NEWSLETTER.md C3, C4 and C5.
- *
- * The campaign body is opaque here (`EmailDocJson`): package 2B swaps it, and the theme, for the
- * builder's own types. Nothing in this module imports from `builder/`.
+ * Newsletter: the shapes of docs/NEWSLETTER.md C3, C4 and C5. The e-mail document and the theme
+ * are the builder's own types.
  */
+import type { EmailDoc, NewsletterTheme } from "./builder";
 
-/** The e-mail document as the server stores it (C6). Opaque until the builder is wired in. */
-export type EmailDocJson = { version: 1; rows: unknown[] };
-
-/** C3 `NewsletterTheme`, exactly. */
-export type NewsletterThemeJson = {
-  contentWidth: number; // 520..800
-  pageBackground: string;
-  contentBackground: string;
-  fontFamily: string;
-  textColor: string;
-  linkColor: string;
-  buttonBackground: string;
-  buttonTextColor: string;
-};
+export type { EmailDoc, NewsletterTheme };
+/** Kept as a name for the theme the settings screens edit. */
+export type NewsletterThemeJson = NewsletterTheme;
 
 export type NewsletterConfig = {
   version: 1;
-  header: EmailDocJson | null;
-  footer: EmailDocJson | null;
-  theme: NewsletterThemeJson;
+  header: EmailDoc | null;
+  footer: EmailDoc | null;
+  theme: NewsletterTheme;
   sender: { fromName: string; replyTo: string };
   sending: { batchSize: number; perHourLimit: number; testRecipients: string[] };
 };
 
-export const DEFAULT_NEWSLETTER_THEME: NewsletterThemeJson = {
+export const DEFAULT_NEWSLETTER_THEME: NewsletterTheme = {
   contentWidth: 600,
   pageBackground: "#f1f5f9",
   contentBackground: "#ffffff",
@@ -99,7 +87,7 @@ export type Campaign = CampaignSummary & {
   preheader: string;
   fromName: string | null;
   replyTo: string | null;
-  body: EmailDocJson | null;
+  body: EmailDoc | null;
   useHeader: boolean;
   useFooter: boolean;
   htmlSnapshot: string | null;

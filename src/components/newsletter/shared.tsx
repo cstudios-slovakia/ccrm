@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { ClientCategory, Lead } from "../../types";
 import type { TFn } from "../../utils/timeTracking";
+import type { CompanyInfo } from "./builder";
 import type { CampaignStatus, Counts } from "./types";
 
 /** What every Newsletter screen gets from the module root. */
@@ -12,6 +13,8 @@ export interface NewsletterEnv {
   /** `newsletter_send`: tests, start, pause, resume, cancel (wired by package 2B). */
   canSend: boolean;
   navigate: (route: string) => void;
+  /** Name, address and logo of the company profile: the default header and footer are built from them. */
+  company: CompanyInfo;
 }
 
 /** Records the audience editor chooses from; all of it comes from the app state, not from the newsletter API. */

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, CircleAlert, Copy, Trash2 } from "lucide-react";
 import { EntityHeader, Page, Surface } from "../layout";
 import { InlineRenameName } from "../ui/InlineRenameName";
 import { useConfirmDialog } from "../ui/ConfirmDialog";
 import { AudienceEditor } from "./AudienceEditor";
 import { CampaignSummaryView } from "./CampaignSummaryView";
+import { ContentCard } from "./ContentCard";
+import { ReviewCard } from "./ReviewCard";
 import { SenderCard } from "./SenderCard";
+import { composeEmail } from "./composeEmail";
+import { DEFAULT_NEWSLETTER_CONFIG } from "./types";
 import { isAudienceValid, normalizeAudience } from "./audience";
 import { NewsletterApiError, newsletterApi, newsletterErrorMessage } from "./newsletterApi";
 import type { Audience, AudiencePreview, Campaign, CampaignPatch, NewsletterSettingsResponse } from "./types";
@@ -112,6 +116,28 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
   const back = () => {
     void flush().then(() => navigate("newsletter"));
   };
+  const editDesign = () => {
+    void flush().then(() => navigate(`newsletter/${id}/design`));
+  };
+  // The e-mail exactly as it would be sent: the thumbnail, the checklist and Start send all use this one render.
+  const rendered = useMemo(
+    () =>
+      campaign
+        ? composeEmail({
+            campaign,
+            config: settings?.config ?? DEFAULT_NEWSLETTER_CONFIG,
+            company: env.company,
+            language: env.language,
+            assetBaseUrl: window.location.origin,
+          })
+        : null,
+    [campaign, settings, env.company, env.language],
+  );
+  // Sending has started: fetch the stored campaign (with its snapshot) so the results view has it all.
+  const started = (c: Campaign) => {
+    setCampaign((prev) => (prev ? { ...prev, ...c, audience: normalizeAudience(c.audience) } : prev));
+    newsletterApi.get(id).then((full) => setCampaign({ ...full, audience: normalizeAudience(full.audience) })).catch(() => undefined);
+  };
 
   if (error && !campaign) {
     return (
@@ -123,7 +149,7 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
       </Page>
     );
   }
-  if (!campaign) {
+  if (!campaign || !rendered) {
     return (
       <Page>
         <Loading t={t} />
@@ -166,6 +192,7 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
   const audience = campaign.audience as Audience;
   const recipientsOk = isAudienceValid(audience) && (preview ? preview.total > 0 : false);
   const senderOk = campaign.subject.trim().length > 0 && !!settings?.senderConfigured;
+  const contentOk = !!campaign.body && campaign.body.rows.length > 0 && !rendered.warnings.some((w) => w.level === "error");
 
   const saveLabel =
     save === "saving"
@@ -234,7 +261,7 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
       )}
 
       {!isDraft ? (
-        <CampaignSummaryView campaign={campaign} settings={settings} env={env} />
+        <CampaignSummaryView campaign={campaign} settings={settings} env={env} onChange={(patch) => setCampaign((c) => (c ? { ...c, ...patch } : c))} />
       ) : (
         <div className="grid gap-6">
           <CardShell title={t("Recipients", "Príjemcovia", "Címzettek")} mark={recipientsOk ? "done" : "attention"}>
@@ -252,52 +279,22 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
             <SenderCard campaign={campaign} settings={settings} disabled={!editable} env={env} onPatch={(patch) => queue(patch)} />
           </CardShell>
 
-          <CardShell title={t("Content", "Obsah", "Tartalom")} mark="none">
-            <div className="grid gap-4">
-              <p className="text-ui text-slate-500">{t("Design editor coming soon.", "Editor dizajnu už čoskoro.", "A dizájnszerkesztő hamarosan érkezik.")}</p>
-              <div className="grid gap-2">
-                <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    disabled={!editable}
-                    checked={campaign.useHeader}
-                    onChange={(e) => queue({ useHeader: e.target.checked })}
-                    className="size-4 accent-indigo-600"
-                  />
-                  {t("Use the global header", "Použiť globálnu hlavičku", "A globális fejléc használata")}
-                </label>
-                <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    disabled={!editable}
-                    checked={campaign.useFooter}
-                    onChange={(e) => queue({ useFooter: e.target.checked })}
-                    className="size-4 accent-indigo-600"
-                  />
-                  {t("Use the global footer", "Použiť globálnu pätičku", "A globális lábléc használata")}
-                </label>
-              </div>
-            </div>
+          <CardShell title={t("Content", "Obsah", "Tartalom")} mark={contentOk ? "done" : "attention"}>
+            <ContentCard campaign={campaign} rendered={rendered} editable={editable} env={env} onPatch={(patch) => queue(patch)} onEditDesign={editDesign} />
           </CardShell>
 
           <CardShell title={t("Review and send", "Kontrola a odoslanie", "Ellenőrzés és küldés")} mark="none">
-            <ul className="grid gap-2 text-ui">
-              {[
-                { ok: recipientsOk, label: t("There is at least one recipient", "Je aspoň jeden príjemca", "Van legalább egy címzett") },
-                { ok: campaign.subject.trim().length > 0, label: t("The subject is filled in", "Predmet je vyplnený", "A tárgy ki van töltve") },
-                { ok: !!settings?.senderConfigured, label: t("Outgoing e-mail is set up", "Odchádzajúca pošta je nastavená", "A kimenő levelezés be van állítva") },
-              ].map((c) => (
-                <li key={c.label} className={`flex items-center gap-2 ${c.ok ? "text-slate-700" : "text-amber-700"}`}>
-                  {c.ok ? <CheckCircle2 className="size-4 text-emerald-600" /> : <CircleAlert className="size-4" />}
-                  {c.label}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-4 text-ui text-slate-500">
-              {t("Test send and sending will be added with the design editor.", "Testovacie odoslanie a odoslanie pribudnú spolu s editorom dizajnu.", "A tesztküldés és a küldés a dizájnszerkesztővel együtt érkezik.")}
-            </p>
+            <ReviewCard
+              campaign={campaign}
+              rendered={rendered}
+              settings={settings}
+              recipientCount={preview ? preview.total : null}
+              audienceValid={isAudienceValid(audience)}
+              env={env}
+              userEmail={data.userEmail}
+              beforeSend={flush}
+              onStarted={started}
+            />
           </CardShell>
         </div>
       )}

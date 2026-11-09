@@ -4378,6 +4378,7 @@ ${log.payload || ''}
               leadStates={orderedLeadStates}
               leadCategories={leadCategories}
               userEmail={currentUser.email || ""}
+              companyBilling={companyBillingSettings}
             />
         ) : (
           <AccessDeniedView
