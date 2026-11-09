@@ -124,11 +124,15 @@ test.describe('Newsletter: list and journey', () => {
     expect(mock.callsOf('send_test').at(-1)!.to).toEqual(['erik@crm.com']);
     await page.getByRole('dialog').getByRole('button', { name: L('Close', 'Zavrieť', 'Bezárás') }).last().click();
 
-    // Hold to send: one tick per poll sends one recipient, the page polls every 5 s until it is done.
-    mock.set({ tickBatch: 1 });
+    // Hold to send with the worker stopped: the queue is filled and nothing is sent yet. The page polls
+    // `tick` at once on mount (twice under React StrictMode in dev), so an intermediate percentage is a
+    // race; a stopped worker makes the 0 % state deterministic. Then the worker starts and the page's
+    // own 5 s polling, with no user action, carries the campaign to sent.
+    mock.set({ worker: false, tickBatch: 1 });
     await holdToConfirm(page.getByTestId('newsletter-send'));
-    await expect(page.getByTestId('newsletter-status').first()).toHaveAttribute('data-status', /sending|sent/);
-    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+    await expect(page.getByTestId('newsletter-status').first()).toHaveAttribute('data-status', 'sending');
+    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    mock.set({ worker: true });
     await expect(page.getByTestId('newsletter-status').first()).toHaveAttribute('data-status', 'sent', { timeout: 15_000 });
     await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
     expect(mock.callsOf('start_send')).toHaveLength(1);
