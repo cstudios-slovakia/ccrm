@@ -10,6 +10,7 @@ import {
   waitForNoPopover,
   waitForOpaque,
   waitForStableRect,
+  waitForWorkspaceContent,
   type ConsoleCapture,
   type ViewState,
 } from './appDriver';
@@ -210,7 +211,17 @@ export class ViewCrawler {
    * screen, no error panel. `context` names how we got here.
    */
   async assertViewHealthy(context: string, expected: string): Promise<ViewState> {
-    const state = await readViewState(this.page);
+    let state = await readViewState(this.page);
+
+    // Opening a view swaps the outgoing one out before the lazy chunk of the new
+    // one has painted, so <main> is briefly empty — for seconds on a cold dev
+    // server on a CI runner. The navigation wait can return on the OLD view's
+    // text just before it unmounts. A view is only blank if it stays blank, so
+    // give it a real chance before reporting; a view that never renders still fails.
+    if (!state.errorScreen && state.textLength < 40) {
+      await waitForWorkspaceContent(this.page, 8_000);
+      state = await readViewState(this.page);
+    }
 
     if (state.errorScreen) {
       this.record({
@@ -399,11 +410,33 @@ export class ViewCrawler {
 
     if ((await this.robustClick(trigger, target, action, expected, 3000)) === 'failed') return;
 
+    // A loaded CI runner can swallow the opening click (the form re-renders under
+    // it) or stretch the 150 ms enter animation past the wait. Such a miss is not
+    // yet a finding: close, let the page settle and open it once more. A dropdown
+    // that is really broken fails both attempts and is still reported.
     const panel = this.page.locator('[role="listbox"]').last();
-    const mounted = await panel.waitFor({ state: 'attached', timeout: 2000 }).then(
-      () => true,
-      () => false,
-    );
+    let mounted = false;
+    let analysis!: Awaited<ReturnType<typeof analyzePanel>>;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        await this.closeDropdown(trigger);
+        await waitForNoPopover(this.page);
+        await this.page.waitForTimeout(SETTLE.content);
+        if ((await this.robustClick(trigger, target, action, expected, 3000)) === 'failed') return;
+      }
+      mounted = await panel.waitFor({ state: 'attached', timeout: attempt === 0 ? 2000 : 4000 }).then(
+        () => true,
+        () => false,
+      );
+      if (!mounted) continue;
+      // Let the enter animation finish before measuring anything: reading
+      // geometry or opacity mid-flight is what made the old crawler misreport
+      // both the visibility and the occluding layer.
+      await waitForStableRect(panel, attempt === 0 ? 1500 : 3000);
+      await waitForOpaque(panel, attempt === 0 ? 1200 : 3000);
+      analysis = await analyzePanel(panel);
+      if (analysis.paintable && !analysis.outsideViewport) break;
+    }
 
     if (!mounted) {
       const expanded = await trigger.getAttribute('aria-expanded').catch(() => null);
@@ -427,12 +460,6 @@ export class ViewCrawler {
       return;
     }
 
-    // Let the enter animation finish before measuring anything: reading
-    // geometry or opacity mid-flight is what made the old crawler misreport
-    // both the visibility and the occluding layer.
-    await waitForStableRect(panel, 1500);
-    await waitForOpaque(panel, 1200);
-    const analysis = await analyzePanel(panel);
     const evidence = formatEvidence(analysis);
 
     if (!analysis.paintable || analysis.outsideViewport) {
@@ -504,11 +531,36 @@ export class ViewCrawler {
       await this.closeDropdown(trigger);
       return;
     }
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     const optionText = (await option.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
-    const clicked = await option.click({ timeout: 2500 }).then(
+    await option.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+    let clicked = await option.click({ timeout: 4000 }).then(
       () => true,
       () => false,
     );
+
+    if (!clicked) {
+      // Retry once with force click or dispatch if layout/scroll was settling on a slow runner
+      clicked = await option.click({ timeout: 1500, force: true }).then(
+        () => true,
+        () =>
+          option
+            .evaluate((el: HTMLElement) => {
+              el.click();
+              return true;
+            })
+            .catch(() => false),
+      );
+    }
+
+    if (!clicked) {
+      // If the click landed right as Playwright gave up, check if the panel already closed or selection changed
+      const panelVisible = await panel.isVisible({ timeout: 300 }).catch(() => false);
+      const afterAttempt = await trigger.innerText().catch(() => '');
+      if (!panelVisible || (norm(afterAttempt) && norm(afterAttempt) !== norm(before))) {
+        clicked = true;
+      }
+    }
 
     if (!clicked) {
       this.record({
@@ -545,7 +597,6 @@ export class ViewCrawler {
     // Triggers are styled `uppercase`, and innerText returns the transformed
     // text, so the comparison has to be case-insensitive or every filter pill
     // reads as "the selection was not applied".
-    const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     const changed = norm(after) !== norm(before);
     if (!changed && optionText && !norm(before).includes(norm(optionText))) {
       this.record({

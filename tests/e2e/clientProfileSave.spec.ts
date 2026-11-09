@@ -62,7 +62,8 @@ test.describe('Clients — saving the profile', () => {
     await gotoView(page, `#client-${encodeURIComponent(NAME)}`);
 
     await page.getByTitle('Upraviť údaje profilu').click();
-    await page.locator('form input[type="tel"]').first().fill('+421 911 777 777');
+    // The profile's phone box is a plain text input; its placeholder is what names it.
+    await page.getByPlaceholder('napr. +421 905...').fill('+421 911 777 777');
     await page.getByRole('button', { name: /Uložiť profil klienta/ }).click();
 
     await expect.poll(() => pushed.get('client-kovac')?.phone).toBe('+421 911 777 777');
