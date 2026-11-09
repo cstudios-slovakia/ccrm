@@ -69,9 +69,9 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | 1 Foundation | 1A Backend core (schema, API, audience) | Sonnet, high | ✅ | `6c2f9582`, `1cf3d559` | 2026-11-09 |
 | | 1B E-mail builder (schema, renderer, editor UI) | Sonnet, high | ✅ | `12febb45`, `16bb36f3`, `c9f95f02` | 2026-11-09 |
 | | 1C Module shell (wiring, RBAC, list, campaign screen) | Sonnet, medium | ✅ | `95cd7b7f` | 2026-11-09 |
-| 2 Sending and integration | 2A Sending engine and public pages | Sonnet, high | ⬜ | | |
-| | 2B Builder in the app, review and send, results | Sonnet, medium | ⬜ | | |
-| | 2C Demo data (en, sk, hu) | Sonnet, medium | ⬜ | | |
+| 2 Sending and integration | 2A Sending engine and public pages | Sonnet, high | ✅ | `09bc4e92`, `51ae465d` | 2026-11-09 |
+| | 2B Builder in the app, review and send, results | Sonnet, medium | ✅ | `b4be3883`, `51ae465d` | 2026-11-09 |
+| | 2C Demo data (en, sk, hu) | Sonnet, medium | ✅ | `50218c88` | 2026-11-09 |
 | 3 QA and polish | 3A E2E journey, QA registration, view-size pass | Sonnet, medium | ⬜ | | |
 | | 3B Client profile: newsletter status | Sonnet, low | ⬜ | | |
 
@@ -205,66 +205,93 @@ Files: `public/api/newsletter_send.php`, `public/api/newsletter_mailer.php`,
 `public/api/newsletter_merge.php`, `public/api/newsletter_public.php`, `public/api/newsletter.php`
 (send actions only), `public/api/cron.php` (one guarded call), `scripts/test-newsletter.php`.
 
-- [ ] `newsletter_merge.php`: substitution identical to `builder/mergeTags.ts` (follow the rules in
+- [x] `newsletter_merge.php`: substitution identical to `builder/mergeTags.ts` (follow the rules in
       its header comment and C9 exactly); the PHP test runs every case of
       `src/components/newsletter/builder/mergeTags.fixtures.json` (44 cases)
-- [ ] `newsletter_mailer.php`: MIME `multipart/alternative`, headers of C10 (incl.
+- [x] `newsletter_mailer.php`: MIME `multipart/alternative`, headers of C10 (incl.
       `List-Unsubscribe` and `List-Unsubscribe-Post`), RFC 2047 subject, quoted-printable bodies,
       dot-stuffing, one SMTP session per batch with the **system mail profile**; reuse the low-level
       SMTP helpers of `mail_broker.php` only if they are separate functions, never grow that file
-- [ ] Actions `send_test`, `start_send`, `pause`, `resume`, `cancel`, `tick` (C4, C10), added to the
+      (they are not: `newsletter_mailer.php` has its own small client; `mail_broker.php` untouched)
+- [x] Actions `send_test`, `start_send`, `pause`, `resume`, `cancel`, `tick` (C4, C10), added to the
       `$routes` array of `newsletter.php` (helpers go in `newsletter_send.php` / `newsletter_lib.php`),
       including the validations and the atomic `draft → sending` switch. `start_send` also checks
       `ccrm_newsletter_audience_valid()` and refuses HTML with a `javascript:`, `vbscript:` or `data:`
-      href (defence in depth behind the renderer's `dangerous_url`)
-- [ ] The worker, `tick`, `resume` and `cancel` ignore soft-deleted campaigns (`deleted_at IS NULL`):
+      href (defence in depth behind the renderer's `dangerous_url`; also inside a leading merge tag's
+      fallback since `51ae465d`)
+- [x] The worker, `tick`, `resume` and `cancel` ignore soft-deleted campaigns (`deleted_at IS NULL`):
       `delete` is allowed for paused campaigns that still have queued rows
-- [ ] Worker `ccrm_newsletter_tick()` (C10): lock, hourly limit, batch, retries, SMTP failure →
+- [x] Worker `ccrm_newsletter_tick()` (C10): lock, hourly limit, batch, retries, SMTP failure →
       paused with `last_error`, hard bounce → suppression, campaign → `sent` when the queue is empty
-- [ ] `cron.php` calls the worker once per run inside try/catch (a newsletter error never breaks
+- [x] `cron.php` calls the worker once per run inside try/catch (a newsletter error never breaks
       the other cron jobs). Never from `sync.php`
-- [ ] Demo mode: no SMTP connection at all; recipients are marked sent; `send_test` answers
+- [x] Demo mode: no SMTP connection at all; recipients are marked sent; `send_test` answers
       "demo, nothing was sent"
-- [ ] `newsletter_public.php` (C11): unsubscribe page (GET shows, POST confirms), RFC 8058
+- [x] `newsletter_public.php` (C11): unsubscribe page (GET shows, POST confirms), RFC 8058
       one-click POST, view-online page, `t=test` page, unknown-token page; runs without a session
-- [ ] PHP test: MIME builder (headers present, encoded subject, QP line length ≤ 76,
+- [x] PHP test: MIME builder (headers present, encoded subject, QP line length ≤ 76,
       dot-stuffing), merge parity, unsubscribe idempotency (pure parts)
-- [ ] `npm run sync:backend` (it only updates root copies that exist: copy each **new** PHP file to
+- [x] `npm run sync:backend` (it only updates root copies that exist: copy each **new** PHP file to
       `api/` by hand once); PHP lint; `npm run check`; changelog fragment
-- Left over:
+- Left over: the worker paths that need a real SMTP server (retry and backoff, bounce → suppression,
+  pause on a login failure, the hourly allowance) are covered only by the PHP unit test with a
+  scripted SMTP stream, not end to end. The manual check in C16 (before the first build) should also
+  send one campaign through the worker; a local Mailpit can serve as the SMTP server for it.
 
 **2B Builder in the app, review and send, results** (Sonnet, medium). Reads C3, C8 (props), C10
 (statuses), C12, C13. Frontend only; uses 2A's actions through 1C's `newsletterApi.ts` (the
 contract in C4 is fixed, so it does not wait for 2A).
 Files: `src/components/newsletter/**` except `builder/`, the newsletter settings panels.
 
-- [ ] Design route `newsletter/<id>/design`: full-page `EmailBuilder` (body mode) with locked global
+- [x] Design route `newsletter/<id>/design`: full-page `EmailBuilder` (body mode) with locked global
       header/footer, autosave (debounce 1.5 s, flush on leave; follow
       `docs/UNSAVED-DRAFTS-DECISIONS.md`), save status, Preview, Send test
-- [ ] Content card: scaled live thumbnail, "Edit design", header/footer toggles with the unsubscribe
+- [x] Content card: scaled live thumbnail, "Edit design", header/footer toggles with the unsubscribe
       warning
-- [ ] Review and send card: checklist (C12), Send test dialog, **Hold to send** (`HoldToConfirm`),
+- [x] Review and send card: checklist (C12), Send test dialog, **Hold to send** (`HoldToConfirm`),
       disabled states with the reason; `start_send` posts the HTML and text from `renderEmail()`
-- [ ] Results view for sending/paused/sent/cancelled (C12): progress, `StatGrid`, pause/resume/cancel,
+- [x] Results view for sending/paused/sent/cancelled (C12): progress, `StatGrid`, pause/resume/cancel,
       `last_error` banner, view e-mail, recipients table (paged, status filter, search); polls `tick`
       every 5 s while sending and the tab is visible
-- [ ] Settings › Newsletter › Design: header and footer editors (builder in header/footer mode, route
+- [x] Settings › Newsletter › Design: header and footer editors (builder in header/footer mode, route
       `settings/newsletter/design/header|footer`), theme preview
-- [ ] Image upload and the uploaded-images picker wired to `upload_image` / `images`
-- [ ] `npm run check`; changelog fragment
-- Left over:
+- [x] Image upload and the uploaded-images picker wired to `upload_image` / `images`
+- [x] `npm run check`; changelog fragment
+- Left over: **nothing of the newsletter UI has run in a browser yet** (subagents run no browser and no
+  spec covers `src/components/newsletter/`; the scoped QA run selected nothing for those files). This is
+  now a box in 3A. Known small things for that pass: Back from the design route can show a stale
+  thumbnail for a moment (the unmount flush is asynchronous); the builder's height is a fixed
+  `calc(100dvh - …)`; the newsletter `Dialog` has no focus trap; **Hold to send** uses
+  `HoldToConfirm tone="archive"` (the component has only `danger` and `archive`).
 
 **2C Demo data** (Sonnet, medium). Reads C2, C3, C6, C15 and `docs/DEMO-MODE.md`.
 Files: `public/api/demo_seed/**`, `docs/DEMO-MODE.md`, `README.md` (demo module list line).
 
-- [ ] Module `newsletter` registered in the demo seeder; `demo_seed/newsletter.php` and
+- [x] Module `newsletter` registered in the demo seeder; `demo_seed/newsletter.php` and
       `packs/en|sk|hu/newsletter.php` (C15); bodies, header and footer are valid `EmailDoc` JSON
-- [ ] Re-seed replaces and wipe empties the three tables and `NEWSLETTER_CONFIG` (follow how other
+- [x] Re-seed replaces and wipe empties the three tables and `NEWSLETTER_CONFIG` (follow how other
       modules mark demo rows)
-- [ ] `npm run test:demo-packs`, `test:demo-seed`, `test:demo-wipe` pass (Docker PHP if needed)
-- [ ] `docs/DEMO-MODE.md`: the newsletter part of the story and numbers
-- [ ] `npm run sync:backend`; `npm run check`; changelog fragment
-- Left over:
+- [x] `npm run test:demo-packs`, `test:demo-seed`, `test:demo-wipe` pass (Docker PHP if needed).
+      `test:demo-seed` has 4 failures, all `employees: E1-E3 have no leave in the last five weeks`;
+      they fail the same way on `a0e36820`, before this package (not newsletter code)
+- [x] `docs/DEMO-MODE.md`: the newsletter part of the story and numbers
+- [x] `npm run sync:backend`; `npm run check`; changelog fragment
+- Left over: (1) in the Hungarian edition `{{first_name}}` resolves to the family name, because
+  `ccrm_newsletter_first_name()` (1A) takes the first word and Hungarian contacts are written
+  surname-first; see A5. (2) `demo_wipe_by_prefix` also matches `newsletter_recipients.lead_id`, so
+  wiping the demo deletes a user's own recipient rows that point at demo leads (the same rule as every
+  other module), and its row count counts such a row once per matching `*_id` column (22 for 11 rows).
+  (3) The wipe test's fake PDO does not interpret the lookup of the manual suppression by e-mail, so
+  that one path is untested.
+
+**Phase 2 verification (2026-11-09):** `npm run check` green on the merged result and again after the
+review fixes; `test:newsletter` green (Docker PHP 8.2, incl. the 44 merge fixtures and the new
+fallback cases); `test:demo-packs` and `test:demo-wipe` green, `test:demo-seed` with the 4 known
+employee failures. Scoped browser QA (`src/App.tsx`, `SettingsView.tsx` and the newsletter files):
+29 of 30 passed; the failure is `timeTracking.spec.ts:271` (time tracking's `project-request-dialog`
+stays open over the row the test clicks; not newsletter code, see A5). One `ccrm-reviewer` pass: 7
+confirmed findings, all fixed in `51ae465d`. The public pages answered correctly against the dev
+stack's MySQL (`t=test` 200, unknown token 404 for GET and the one-click POST, C11 headers present).
 
 ### Phase 3: QA and polish (3A, 3B in parallel)
 
@@ -272,7 +299,14 @@ Files: `public/api/demo_seed/**`, `docs/DEMO-MODE.md`, `README.md` (demo module 
 Files: `tests/e2e/helpers/newsletterMock.ts`, `tests/e2e/newsletter.spec.ts`,
 `tests/e2e/crawler.spec.ts`, `tests/e2e/darkmode.spec.ts`, `scripts/qa/run-qa.mjs`.
 
-- [ ] Stateful mock of `/api/newsletter.php` (pattern: `tests/e2e/helpers/timeTrackingMock.ts`)
+- [ ] Stateful mock of `/api/newsletter.php` (pattern: `tests/e2e/helpers/timeTrackingMock.ts`),
+      including the send actions and the error codes of C4
+- [ ] **First browser run** of the builder and the send flow (left over from 1B and 2B): every item of
+      C8's acceptance list, autosave (status chip, edits survive Back and reload, the "leave without
+      saving" dialog after a failed save), Send test with a sample recipient (the dropdown paints above
+      the dialog), Hold to send in demo mode, results polling, Pause / Resume / Cancel, Settings ›
+      Newsletter › Design header/footer editors. What the spec cannot cover, the orchestrator checks
+      by hand in a browser
 - [ ] Journey spec of C16; crawler and dark-mode registration; QA area mapping
 - [ ] View-size pass over every newsletter screen (`docs/VIEW-SIZE.md`); fix what it finds inside
       `src/components/newsletter/`
@@ -325,6 +359,40 @@ the user made later.)
   path. Lint from PowerShell instead: `docker run --rm -v "${pwd}:/app" -w /app php:8.2-cli php -l <file>`.
 - 2026-11-09, phase 1: the scoped browser QA could not start on this machine (160-500 MB free RAM,
   the runner needs 1536 MB); it runs when memory allows or at the end of phase 2.
+- 2026-11-09, phase 2: there was no shared demo-mode helper; `ccrm_newsletter_is_demo(PDO)` is in
+  `newsletter_lib.php`. The company name in e-mails and public pages is
+  `COMPANY_BILLING_SETTINGS.companyName`, else the system title, else empty ("this sender"); never the
+  product name. Test e-mails get the subject prefix `[Test] `.
+- 2026-11-09, phase 2: links in e-mails use **only the stored base URL** (`ccrm_app_base_url($pdo,
+  false)`: `CCRM_APP_URL` in config.php, else `APP_BASE_URL`, written at the first admin sign-in).
+  The cron worker has no request to fall back on, so `start_send`, `send_test`, `tick` and the public
+  pages must not use the request host either. `ccrm_newsletter_tick($pdo, $budgetSec = 20, ?string
+  $baseUrl = null)`; the browser's `tick` runs with 8 s, cron with 20 s; cron's JSON gains a
+  `newsletter` key. The worker skips queued rows suppressed after `start_send`, and an unsubscribe
+  marks the address's other queued rows skipped.
+- 2026-11-09, phase 2: the server sends the **stored** subject, audience and sender; only the HTML and
+  text come from the browser. So the campaign screen's `flush()` returns `false` on a failed save and
+  Hold to send / Send test refuse to start on it (`51ae465d`). Keep that when touching the screen.
+- 2026-11-09, phase 2: demo mode counts as a ready sender in the review checklist (`senderReady()` in
+  `shared.tsx`); the demo seeds no SMTP profile. The demo `NEWSLETTER_CONFIG` carries `"demo": true`,
+  which the wipe needs and the first Settings save drops (a user's own config survives a wipe).
+  `DEMO_DATASET_VERSION` is 3. Demo texts avoid merge tags without an underscore (`{{company}}`): the
+  demo placeholder resolver would replace them.
+- 2026-11-09, phase 2: `ccrm_newsletter_first_name()` takes the first word of the contact person, so a
+  Hungarian contact written surname-first ("Kovács Péter") gets `{{first_name}}` = "Kovács".
+  Proposed fix (needs a decision): when the system language is `hu`, take the last word; or store
+  given and family name separately. Not changed in phase 2.
+- 2026-11-09, phase 2: z-index layers: the newsletter `Dialog` sits on the drawer layer
+  (`z-[100000]`) so `CustomSelect` / `ColorPicker` panels (`100001`) paint above it; `ConfirmDialog`
+  is `100020`. A newsletter overlay above `100001` hides every dropdown inside it.
+- 2026-11-09, phase 2: the dev stack sends its global CSP and `Referrer-Policy` next to the public
+  page's own. Browsers enforce both CSPs, so the strict `default-src 'none'` still holds; check the
+  production server's headers in the manual test of C16.
+- 2026-11-09, phase 2: the scoped QA failure `timeTracking.spec.ts:271` ("the timer bar takes a
+  Description before Start…") is time tracking's `project-request-dialog` intercepting the click; time
+  tracking was being changed by another session at the same time (`d9d1de75`). Not triaged here.
+- 2026-11-09, phase 2: a worktree-isolated Bash session refuses commands that `cd` into the main
+  checkout and long heredoc appends; edit with the Edit tool and run git from the worktree itself.
 
 ---
 
@@ -502,9 +570,14 @@ recipient gets the e-mail, and the links `{{unsubscribe_url}}` ("Unsubscribe") a
 A GET answers 405. Success: HTTP 200 `{ "success": true, ...payload }`. Error: the HTTP status and
 `{ "success": false, "code": "<machine code>", "message"?: "<readable>" }`. Codes so far:
 `invalid_input` / `unknown_action` / `no_file` 400, `forbidden` 403, `not_found` 404, `not_draft` /
-`campaign_sending` 409, and 422 `invalid_name`, `invalid_reply_to`, `invalid_audience`, `invalid_doc`,
-`doc_too_large`, `invalid_test_recipient`, `too_many_test_recipients`, `invalid_image_type`,
-`file_too_large`, `base_url_unknown`.
+`campaign_sending` / `wrong_status` 409, 422 `invalid_name`, `invalid_reply_to`, `invalid_audience`,
+`invalid_doc`, `doc_too_large`, `invalid_test_recipient`, `too_many_test_recipients`,
+`no_test_recipients`, `invalid_image_type`, `file_too_large`, `base_url_unknown`, `empty_subject`,
+`sender_not_configured`, `missing_unsubscribe`, `data_url_image`, `dangerous_url`, `html_too_large`,
+`no_recipients`, and 502 `smtp_failed` (its `message` is the SMTP server's reply). The server's
+`message` is English: the client shows its own translated line per code and the server text only as
+the detail of `smtp_failed`. `send_test.sample.id` is a lead id, an employee id or an e-mail address
+(the app sends the audience sample's e-mail).
 
 | Action | Permission | Request | Response | Package |
 |---|---|---|---|---|
