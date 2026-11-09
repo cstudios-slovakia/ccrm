@@ -113,6 +113,7 @@ export function selectFiles(src) {
   const out = [];
   for (const f of src.list('public')) if (f.endsWith('.php') && !f.includes('/uploads/')) out.push(f);
   if (src.exists('ccrm')) out.push('ccrm');
+  if (src.exists('kprnq')) out.push('kprnq');
   for (const f of src.list('src-php')) if (f.endsWith('.php')) out.push(f);
   for (const f of src.list('scripts')) if (f.endsWith('.php')) out.push(f);
   return out.filter((f) => f !== 'public/config.php');

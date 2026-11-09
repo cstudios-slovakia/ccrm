@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/pipeline_extras.php';
@@ -23,7 +24,7 @@ $configFile = dirname(__DIR__) . '/config.php';
 // Check if installation exists
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['status' => 'error', 'message' => 'CCRM is not installed yet.']);
+    echo json_encode(['status' => 'error', 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 

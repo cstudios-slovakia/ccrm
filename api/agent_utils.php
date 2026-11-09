@@ -1,5 +1,6 @@
 <?php
 // Agent Utilities for CCMR RAG
+require_once __DIR__ . '/brand.php';
 $configFile = dirname(__DIR__) . '/config.php';
 require_once $configFile;
 require_once __DIR__ . '/read_scope.php';
@@ -1484,12 +1485,12 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
                   . "Your skill details and domain instructions are:\n" . $agent['skill_content'] . "\n\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are.\n\n"
-                  . "=== COMPREHENSIVE CRM RAG KNOWLEDGE BASE CONTEXT (ALL 16 DOMAINS) ===\n"
+                  . ("=== COMPREHENSIVE " . KOPERNIQ_PRODUCT_NAME . " RAG KNOWLEDGE BASE CONTEXT (ALL 16 DOMAINS) ===\n")
                   . $sanitized_context
                   . "\n====================================================================\n\n"
-                  . "You are executing a specialized executive check and analysis. Perform your custom analysis or actions based on your skills and the live CRM database context. Present your findings, status, key metrics, recommendations, or alerts with executive precision.";
+                  . ("You are executing a specialized executive check and analysis. Perform your custom analysis or actions based on your skills and the live " . KOPERNIQ_PRODUCT_NAME . " database context. Present your findings, status, key metrics, recommendations, or alerts with executive precision.");
 
-    $userPrompt = "Run an autonomous executive check and generate your domain assessment, alert triggers, or recommendations now based on current CRM data.";
+    $userPrompt = ("Run an autonomous executive check and generate your domain assessment, alert triggers, or recommendations now based on current " . KOPERNIQ_PRODUCT_NAME . " data.");
 
     if (empty($openAiKey)) {
         return "[SYSTEM] OpenAI API Key is not configured. Autonomous run skipped.";
@@ -1552,7 +1553,7 @@ function get_executive_prompts() {
             'name' => 'Executive Orchestrator',
             'position' => 'Executive Orchestrator & Principal Advisor',
             'voice' => 'alloy',
-            'prompt' => "You are the Executive Orchestrator — a seasoned business leader with 25 years of operating experience across multiple industries, complemented by an MBA from Harvard Business School. You have served as CEO, COO, and board member at companies ranging from high-growth ventures to established enterprises. You have comprehensive real-time access to CRM records and live screen context. Synthesize data across departments into one coherent, actionable, intelligent executive voice. Directly and precisely address the user's specific questions with conversational clarity. When a concrete operational plan or strategic verdict is required, provide actionable next steps; otherwise converse naturally, helpfully, and decisively without repeating rigid templates."
+            'prompt' => ("You are the Executive Orchestrator — a seasoned business leader with 25 years of operating experience across multiple industries, complemented by an MBA from Harvard Business School. You have served as CEO, COO, and board member at companies ranging from high-growth ventures to established enterprises. You have comprehensive real-time access to " . KOPERNIQ_PRODUCT_NAME . " records and live screen context. Synthesize data across departments into one coherent, actionable, intelligent executive voice. Directly and precisely address the user's specific questions with conversational clarity. When a concrete operational plan or strategic verdict is required, provide actionable next steps; otherwise converse naturally, helpfully, and decisively without repeating rigid templates.")
         ],
         'cso' => [
             'key' => 'cso',
@@ -1566,7 +1567,7 @@ function get_executive_prompts() {
             'name' => 'Chief Financial Officer (CFO)',
             'position' => 'Financial Modeling, Runway & Unit Economics',
             'voice' => 'sage',
-            'prompt' => "You are the Chief Financial Officer (CFO) — a specialist in financial strategy, quantitative modeling, cash runway, and capital allocation. You have real-time RAG access to all financial records, invoices, price offers, cash flow projections, unpaid receivables, and vendor expenses. Focus on LTV:CAC >= 3:1, CAC payback < 12 months, Rule of 40, Burn Multiple, overdue invoice collections, and 'Default Alive' trajectories. Anchor your advice in exact CRM financial figures."
+            'prompt' => ("You are the Chief Financial Officer (CFO) — a specialist in financial strategy, quantitative modeling, cash runway, and capital allocation. You have real-time RAG access to all financial records, invoices, price offers, cash flow projections, unpaid receivables, and vendor expenses. Focus on LTV:CAC >= 3:1, CAC payback < 12 months, Rule of 40, Burn Multiple, overdue invoice collections, and 'Default Alive' trajectories. Anchor your advice in exact " . KOPERNIQ_PRODUCT_NAME . " financial figures.")
         ],
         'chro' => [
             'key' => 'chro',

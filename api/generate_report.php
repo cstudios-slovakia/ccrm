@@ -4,6 +4,7 @@
  * Fetches all available statements for a company, extracts table details,
  * and uses OpenAI to generate a multi-year revenue history table and written analysis.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -39,7 +40,7 @@ if (php_sapi_name() !== 'cli') {
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
-    report_error(503, 'not_installed', 'CRM is not installed yet.', ['installed' => false]);
+    report_error(503, 'not_installed', (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.'), ['installed' => false]);
 }
 require_once $configFile;
 

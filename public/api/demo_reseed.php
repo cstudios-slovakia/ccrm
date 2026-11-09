@@ -23,6 +23,7 @@
  * This file is also a library: define CCRM_DEMO_RESEED_LIB before requiring it and the
  * handler does not run.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/demo_seed/index.php';
 require_once __DIR__ . '/demo_seed/wipe.php';
 
@@ -364,7 +365,7 @@ if (!function_exists('demo_reseed_run')) {
 
         $configFile = dirname(__DIR__) . '/config.php';
         if (!file_exists($configFile)) {
-            $fail(400, 'not_installed', 'CCRM is not installed yet.');
+            $fail(400, 'not_installed', (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.'));
         }
         require_once $configFile;
 

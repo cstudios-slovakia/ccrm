@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 ini_set('display_errors', '0');
 require_once __DIR__ . '/auth.php';
 
@@ -22,7 +23,7 @@ ccrm_require_auth();
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'error' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'error' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 
@@ -1439,18 +1440,18 @@ function ccrm_send_system_mail(array $config, string $to, string $subject, strin
  */
 function send_system_test_email(array $config, string $to, string $lang = 'en') {
     if ($lang === 'sk') {
-        $subject = 'CCRM — testovací e-mail';
-        $body    = 'Toto je testovacia správa z CRM. Ak ste ju dostali, odchádzajúci e-mailový server je nastavený správne.';
+        $subject = (KOPERNIQ_PRODUCT_NAME . ' — testovací e-mail');
+        $body    = ('Toto je testovacia správa z ' . KOPERNIQ_PRODUCT_NAME . '. Ak ste ju dostali, odchádzajúci e-mailový server je nastavený správne.');
     } elseif ($lang === 'hu') {
-        $subject = 'CCRM — teszt e-mail';
-        $body    = 'Ez egy teszt üzenet a CRM-ből. Ha megkapta, a kimenő levelezőszerver helyesen van beállítva.';
+        $subject = (KOPERNIQ_PRODUCT_NAME . ' — teszt e-mail');
+        $body    = ('Ez egy teszt üzenet a ' . KOPERNIQ_PRODUCT_NAME . '-ből. Ha megkapta, a kimenő levelezőszerver helyesen van beállítva.');
     } else {
-        $subject = 'CCRM — test email';
-        $body    = 'This is a test message from your CRM. If you received it, the outgoing mail server is configured correctly.';
+        $subject = (KOPERNIQ_PRODUCT_NAME . ' — test email');
+        $body    = ('This is a test message from ' . KOPERNIQ_PRODUCT_NAME . '. If you received it, the outgoing mail server is configured correctly.');
     }
 
     $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b">'
-        . '<h2 style="font-size:18px;margin:0 0 16px">CCRM</h2>'
+        . ('<h2 style="font-size:18px;margin:0 0 16px">' . KOPERNIQ_PRODUCT_NAME . '</h2>')
         . '<p style="font-size:14px;line-height:1.5;margin:0">' . htmlspecialchars($body, ENT_QUOTES, 'UTF-8') . '</p>'
         . '</div>';
 

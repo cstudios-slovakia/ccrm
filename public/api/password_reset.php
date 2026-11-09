@@ -25,6 +25,7 @@
  *   - New passwords need 12+ characters with upper and lower case and a digit,
  *     and are stored as bcrypt hashes via ccrm_hash_password().
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mail_broker.php';
 
@@ -34,7 +35,7 @@ ccrm_send_cors('GET, POST, OPTIONS');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -295,28 +296,28 @@ if ($action === 'request') {
 
                 $name = htmlspecialchars((string)($user['name'] ?? ''), ENT_QUOTES, 'UTF-8');
                 if ($lang === 'sk') {
-                    $subject = 'Obnovenie hesla — CCRM';
+                    $subject = ('Obnovenie hesla — ' . KOPERNIQ_PRODUCT_NAME);
                     $intro   = 'Dobrý deň' . ($name ? ' ' . $name : '') . ',';
-                    $body    = 'prijali sme žiadosť o obnovenie hesla k vášmu účtu CCRM. Pre nastavenie nového hesla kliknite na tlačidlo nižšie. Odkaz platí 30 minút a dá sa použiť raz.';
+                    $body    = ('prijali sme žiadosť o obnovenie hesla k vášmu účtu ' . KOPERNIQ_PRODUCT_NAME . '. Pre nastavenie nového hesla kliknite na tlačidlo nižšie. Odkaz platí 30 minút a dá sa použiť raz.');
                     $btn     = 'Obnoviť heslo';
                     $ignore  = 'Ak ste o obnovenie hesla nežiadali, tento e-mail môžete ignorovať.';
                 } elseif ($lang === 'hu') {
-                    $subject = 'Jelszó visszaállítása — CCRM';
+                    $subject = ('Jelszó visszaállítása — ' . KOPERNIQ_PRODUCT_NAME);
                     $intro   = 'Kedves' . ($name ? ' ' . $name : '') . ',';
-                    $body    = 'kérelmet kaptunk a CCRM-fiókja jelszavának visszaállítására. Az új jelszó beállításához kattintson az alábbi gombra. A link 30 percig érvényes és egyszer használható.';
+                    $body    = ('kérelmet kaptunk a ' . KOPERNIQ_PRODUCT_NAME . '-fiókja jelszavának visszaállítására. Az új jelszó beállításához kattintson az alábbi gombra. A link 30 percig érvényes és egyszer használható.');
                     $btn     = 'Jelszó visszaállítása';
                     $ignore  = 'Ha nem Ön kérte a jelszó visszaállítását, hagyja figyelmen kívül ezt az e-mailt.';
                 } else {
-                    $subject = 'Password reset — CCRM';
+                    $subject = ('Password reset — ' . KOPERNIQ_PRODUCT_NAME);
                     $intro   = 'Hello' . ($name ? ' ' . $name : '') . ',';
-                    $body    = 'we received a request to reset the password for your CCRM account. Click the button below to set a new password. This link is valid for 30 minutes and can be used once.';
+                    $body    = ('we received a request to reset the password for your ' . KOPERNIQ_PRODUCT_NAME . ' account. Click the button below to set a new password. This link is valid for 30 minutes and can be used once.');
                     $btn     = 'Reset password';
                     $ignore  = 'If you did not request a password reset, you can safely ignore this email.';
                 }
 
                 $safeLink = htmlspecialchars($resetLink, ENT_QUOTES, 'UTF-8');
                 $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b">'
-                    . '<h2 style="font-size:18px;margin:0 0 16px">CCRM</h2>'
+                    . ('<h2 style="font-size:18px;margin:0 0 16px">' . KOPERNIQ_PRODUCT_NAME . '</h2>')
                     . '<p style="font-size:14px;margin:0 0 8px">' . $intro . '</p>'
                     . '<p style="font-size:14px;line-height:1.5;margin:0 0 20px">' . $body . '</p>'
                     . '<p style="margin:0 0 20px"><a href="' . $safeLink . '" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:10px;font-size:14px">' . $btn . '</a></p>'

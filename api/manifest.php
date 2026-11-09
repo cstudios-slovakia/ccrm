@@ -1,27 +1,25 @@
 <?php
 /**
  * Dynamic Web App Manifest Endpoint.
- * Serves PWA manifest with the configured system name from system_settings.
+ * Serves PWA manifest with the configured system title from system_settings.
  */
 header('Content-Type: application/manifest+json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Cache-Control: public, max-age=60');
 
-$systemName = 'Koperniq';
+require_once __DIR__ . '/brand.php';
+
+// The company's own title ("" = none). The installed app is named "Lapidea (Koperniq)", its
+// home-screen label is just "Lapidea"; with no title of its own both are "Koperniq".
+$titleOverride = '';
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (file_exists($configFile)) {
     require_once $configFile;
     try {
-        $pdo = get_db_connection();
-        $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_NAME' LIMIT 1");
-        $stmt->execute();
-        $val = $stmt->fetchColumn();
-        if ($val !== false && trim((string)$val) !== '') {
-            $systemName = trim((string)$val);
-        }
-    } catch (\Throwable $e) {
-        // Fallback to default
+        $titleOverride = kprnq_system_title_override(get_db_connection());
+    } catch (Throwable $e) {
+        // Fallback to the product name
     }
 }
 
@@ -42,7 +40,7 @@ if (is_readable($staticFile)) {
 if ($manifest === null) {
     $manifest = [
         'id' => '/',
-        'description' => 'Client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment.',
+        'description' => 'Sales, projects, documents and operations in one workspace for the whole team.',
         'start_url' => '/',
         'scope' => '/',
         'display' => 'standalone',
@@ -57,7 +55,7 @@ if ($manifest === null) {
     ];
 }
 
-$manifest['name'] = $systemName;
-$manifest['short_name'] = $systemName;
+$manifest['name'] = kprnq_title_with_product($titleOverride);
+$manifest['short_name'] = kprnq_resolve_title($titleOverride);
 
 echo json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

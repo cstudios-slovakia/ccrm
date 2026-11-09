@@ -3,6 +3,7 @@
  * Dynamic Dashboard Data Querying API
  * Exposes secure, read-only analytics query actions.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 // The tasks_summary / tasks_by_owner / recent_tasks presets call ccrm_sql_real_tasks().
@@ -18,7 +19,7 @@ if (php_sapi_name() !== 'cli') {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;

@@ -11,6 +11,7 @@
  *  - All seeded/admin passwords are stored as bcrypt hashes.
  *  - Schema comes from the shared schema.php (single source of truth).
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 
@@ -78,7 +79,7 @@ $isInstalled = (file_exists($configFile) && @filesize($configFile) > 100)
 if ($isInstalled) {
     if ($installType !== 'test_only') {
         http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'CRM is already installed. Setup is disabled.']);
+        echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is already installed. Setup is disabled.')]);
         exit;
     }
     require_once $configFile;
@@ -108,13 +109,13 @@ if ($installType === 'test_only') {
 }
 
 // 2. Prepare credentials for config.php (will be written upon successful migration and seeding)
-$configContent = "<?php
+$configContent = ("<?php
 // Database credentials file
-// Automatically created by the CCRM Installation Wizard
+// Automatically created by the " . KOPERNIQ_PRODUCT_NAME . " Installation Wizard
 
 date_default_timezone_set('Europe/Bratislava');
 
-define('DB_HOST', " . var_export($host, true) . ");
+define('DB_HOST', ") . var_export($host, true) . ");
 define('DB_PORT', " . var_export($port, true) . ");
 define('DB_NAME', " . var_export($dbname, true) . ");
 define('DB_USER', " . var_export($user, true) . ");
@@ -175,7 +176,7 @@ try {
 }
 if ($targetHasUsers && !file_exists(dirname($configFile) . '/ALLOW_SETUP_RESET')) {
     http_response_code(409);
-    echo json_encode(['success' => false, 'message' => 'This database already contains CRM users, so the setup will not overwrite it. To reinstall on purpose, create an empty file named ALLOW_SETUP_RESET in the application folder and run the setup again (delete it afterwards).']);
+    echo json_encode(['success' => false, 'message' => ('This database already contains ' . KOPERNIQ_PRODUCT_NAME . ' users, so the setup will not overwrite it. To reinstall on purpose, create an empty file named ALLOW_SETUP_RESET in the application folder and run the setup again (delete it afterwards).')]);
     exit;
 }
 
@@ -316,11 +317,11 @@ try {
         exit;
     }
 
-    $response = ['success' => true, 'message' => 'CCRM successfully provisioned!'];
+    $response = ['success' => true, 'message' => (KOPERNIQ_PRODUCT_NAME . ' successfully provisioned!')];
     if (!empty($generatedPassword)) {
         $response['adminEmail'] = $adminEmail;
         $response['generatedPassword'] = $generatedPassword;
-        $response['message'] = 'CCRM provisioned. Save these admin credentials now — they will not be shown again.';
+        $response['message'] = (KOPERNIQ_PRODUCT_NAME . ' provisioned. Save these admin credentials now — they will not be shown again.');
     }
     echo json_encode($response);
 } catch (\Exception $e) {

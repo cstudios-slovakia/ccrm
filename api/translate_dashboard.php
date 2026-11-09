@@ -6,6 +6,7 @@
  * become readable in every app language instead of staying frozen in
  * whichever language the original prompt happened to use.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -21,7 +22,7 @@ if (php_sapi_name() !== 'cli') {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -61,7 +62,7 @@ if (!is_array($layout) || !isset($layout['widgets']) || !is_array($layout['widge
     exit;
 }
 
-$systemInstruction = "You translate display text inside a dashboard layout JSON object into English (en), Slovak (sk) and Hungarian (hu).
+$systemInstruction = ("You translate display text inside a dashboard layout JSON object into English (en), Slovak (sk) and Hungarian (hu).
 
 You MUST output ONLY the same JSON object back, with no markdown formatting, no ```json wrapper, and no text outside of the JSON.
 
@@ -73,7 +74,7 @@ Rules:
 - For every tabs widget's `tabs[].label` (and `tabs[].title`, if present), apply the exact same rule — including for tables nested inside a tab, whose `columns[].label` must also be translated.
 - Do NOT change, translate, or remove any other field: `id`, `type`, `size`, `color`, `chartType`, `mapping`, `columns[].key`, `columns[].format`, `query`, `metricValue`, etc. must be returned byte-for-byte identical.
 - Do NOT add, remove, or reorder widgets, tabs or columns.
-- Keep translations concise and consistent with normal CRM/dashboard terminology.";
+- Keep translations concise and consistent with normal " . KOPERNIQ_PRODUCT_NAME . "/dashboard terminology.");
 
 $messages = [
     ['role' => 'system', 'content' => $systemInstruction],

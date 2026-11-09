@@ -12,6 +12,7 @@
  * and nothing is created: a template that silently ignores the uploaded PDF is
  * worse than an error.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/offer_document.php';
@@ -179,7 +180,7 @@ if (php_sapi_name() !== 'cli') {
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
-    tpl_error(503, 'not_installed', 'CRM is not installed yet.');
+    tpl_error(503, 'not_installed', (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.'));
 }
 require_once $configFile;
 

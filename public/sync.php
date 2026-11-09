@@ -10,6 +10,7 @@
  *
  * Schema/migrations come from the shared api/schema.php (single source of truth).
  */
+require_once __DIR__ . '/api/brand.php';
 require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/schema.php';
 require_once __DIR__ . '/api/warehouse_item_fields.php';
@@ -32,7 +33,7 @@ $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile) || @filesize($configFile) < 100) {
     echo json_encode([
         'installed' => false,
-        'message' => 'CCRM is not installed yet.'
+        'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')
     ]);
     exit;
 }
@@ -7439,7 +7440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $serverTime = ccrm_db_clock($pdo);
         echo json_encode([
             'success' => true,
-            'message' => 'CCRM Database Synced Successfully!',
+            'message' => (KOPERNIQ_PRODUCT_NAME . ' Database Synced Successfully!'),
             'dataVersion' => ccrm_compute_data_version($pdo),
             'serverTime' => $serverTime,
             // Ids whose stored row was newer than this client's snapshot and were

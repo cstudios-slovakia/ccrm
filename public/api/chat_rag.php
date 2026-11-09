@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/json');
@@ -377,7 +378,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        . "CURRENT SYSTEM DATE: " . $todayFormatted . "\n\n"
                        . "Your objective is to analyze the following strategic question/dilemma from multiple executive viewpoints and synthesize a definitive decision."
                        . $pastDecisionsBlock . "\n\n"
-                       . "=== REAL-TIME CRM DATA CONTEXT ===\n"
+                       . ("=== REAL-TIME " . KOPERNIQ_PRODUCT_NAME . " DATA CONTEXT ===\n")
                        . $sanitized_context
                        . "\n==================================\n\n"
                        . ($vectorBlock['text'] !== '' ? $vectorBlock['text'] . "\n\n" : '')
@@ -386,7 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        . "**Executive Summary & Decision**: [Definitive recommendation by the Executive Orchestrator / CEO]\n\n"
                        . "## 👥 C-Suite Specialist Perspectives\n"
                        . "- **🎯 Chief Strategy Officer (CSO)**: [Competitive positioning, moat impact, and market timing]\n"
-                       . "- **💰 Chief Financial Officer (CFO)**: [Unit economics, cash runway, gross margin, and capital ROI based on CRM figures]\n"
+                       . ("- **💰 Chief Financial Officer (CFO)**: [Unit economics, cash runway, gross margin, and capital ROI based on " . KOPERNIQ_PRODUCT_NAME . " figures]\n")
                        . "- **⚖️ General Counsel (GC)**: [Contractual liability, IP protection, and compliance boundaries]\n"
                        . "- **📣 Chief Marketing Officer (CMO)**: [Value proposition, ICP resonance, and demand gen impact]\n"
                        . "- **⚡ Chief Operating Officer (COO)**: [Operational capacity, execution bottlenecks, and workflow requirements]\n\n"
@@ -497,16 +498,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $execPrompts = get_executive_prompts();
     $agentName = $versionCodename;
-    $skillInstructions = "You are " . $versionCodename . ", the active CRM RAG AI assistant. You have access to the context below from the CRM database.";
+    $skillInstructions = "You are " . $versionCodename . (", the active " . KOPERNIQ_PRODUCT_NAME . " RAG AI assistant. You have access to the context below from the " . KOPERNIQ_PRODUCT_NAME . " database.");
 
     if (isset($execPrompts[$agentId])) {
         $exec = $execPrompts[$agentId];
         $agentName = $exec['name'];
-        $skillInstructions = $exec['prompt'] . "\n\nYou also have access to the context below from the CRM database.";
+        $skillInstructions = $exec['prompt'] . ("\n\nYou also have access to the context below from the " . KOPERNIQ_PRODUCT_NAME . " database.");
     } elseif ($agentId === 'durian' || $agentId === 'orchestrator') {
         $exec = $execPrompts['orchestrator'];
         $agentName = "Executive Leader (" . $versionCodename . ")";
-        $skillInstructions = $exec['prompt'] . "\n\nYou also have access to the context below from the CRM database.";
+        $skillInstructions = $exec['prompt'] . ("\n\nYou also have access to the context below from the " . KOPERNIQ_PRODUCT_NAME . " database.");
     } elseif ($chatDb) {
         try {
             $aStmt = $chatDb->prepare("SELECT `name`, `skill_content`, `position` FROM `rag_agents` WHERE `id` = ?");
@@ -516,7 +517,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $agentName = $customAgent['name'];
                 $skillInstructions = "You are " . $customAgent['name'] . " (" . $customAgent['position'] . "), an AI assistant with the following custom skills/instructions:\n"
                                    . $customAgent['skill_content'] . "\n\n"
-                                   . "You also have access to the context below from the CRM database.";
+                                   . ("You also have access to the context below from the " . KOPERNIQ_PRODUCT_NAME . " database.");
             }
         } catch (\Exception $e) {
             // Fallback
@@ -543,7 +544,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!empty($screenContext)) {
         $screenContextBlock = "\n\n=== USER'S ACTIVE SCREEN CONTEXT ===\n" . $screenContext . "\n====================================\n"
                             . "The user is currently viewing the active screen described above. When the user asks about what they are viewing, what is on this screen, or how to use it, explain the exact screen elements, features, and active data clearly.\n"
-                            . "Whenever you recommend or mention a CRM record, client, project, invoice, lead, or tab, format it as a markdown hash link so the user can click it directly in chat to open that entry (e.g. [Client: ClientName](#client-ClientName), [Project: Name](#projects), [Invoice: FA-2026-1045](#finances), [Task: Title](#tasks), [Lead: ID](#lead-ID)).\n";
+                            . ("Whenever you recommend or mention a " . KOPERNIQ_PRODUCT_NAME . " record, client, project, invoice, lead, or tab, format it as a markdown hash link so the user can click it directly in chat to open that entry (e.g. [Client: ClientName](#client-ClientName), [Project: Name](#projects), [Invoice: FA-2026-1045](#finances), [Task: Title](#tasks), [Lead: ID](#lead-ID)).\n");
     }
 
     $systemPrompt = $skillInstructions . "\n\n"
@@ -551,7 +552,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   . "CORE DIRECTIVES:\n"
                   . "1. DIRECT RELEVANCE: Always answer the user's specific question or request directly. Do not pivot to unrelated financial figures, overdue invoices, or generic summaries unless the user specifically inquired about them.\n"
                   . "2. SCREEN AWARENESS & ACCURACY: If the user asks what is on the screen, what they are looking at, or asks for guidance on the current view, refer directly to the USER'S ACTIVE SCREEN CONTEXT above and explain the specific module, visible sections, cards, and available actions in detail.\n"
-                  . "3. DATA CITATION: When asked about finances, clients, projects, tasks, or certificates, cite the exact figures, dates, and names from the CRM knowledge base accurately.\n"
+                  . ("3. DATA CITATION: When asked about finances, clients, projects, tasks, or certificates, cite the exact figures, dates, and names from the " . KOPERNIQ_PRODUCT_NAME . " knowledge base accurately.\n")
                   . "4. NATURAL EXECUTIVE TONE: Answer in the same language the user asked (" . ($systemLanguage === 'hu' ? 'Hungarian / Magyar' : ($systemLanguage === 'sk' ? 'Slovak / Slovenčina' : ($systemLanguage === 'en' ? 'English' : 'the language of the question'))) . "). Do not append boilerplate or repetitive headers unless a structured action plan was specifically requested.\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are. Answer the user question based on the context provided."

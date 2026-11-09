@@ -3,6 +3,7 @@
  * AI Dashboard Layout Generation Endpoint.
  * Communicates with OpenAI to create dynamic dashboard JSON layouts.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -18,7 +19,7 @@ if (php_sapi_name() !== 'cli') {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -63,20 +64,20 @@ if (empty($prompt)) {
 // Build messages array
 $messages = [];
 
-$systemInstruction = "You are a dashboard layout generator. Your task is to output a single JSON object representing the layout of a custom dashboard.
+$systemInstruction = ("You are a dashboard layout generator. Your task is to output a single JSON object representing the layout of a custom dashboard.
 You MUST output ONLY valid JSON, with no markdown formatting, no ```json wrapper, and no text outside of the JSON.
 
 API Endpoint: '/api/dashboard_query.php'
 Supported Actions:
 - Action: 'sql' (highly recommended for custom aggregates, joins, filters)
-  Allows executing custom read-only SQL SELECT queries on CCRM tables.
+  Allows executing custom read-only SQL SELECT queries on " . KOPERNIQ_PRODUCT_NAME . " tables.
   Params structure:
   {
     \"sql\": \"SELECT ... \",
     \"bind\": [ ... ] // optional array of values to bind to ? placeholders in SQL
   }
 
-CCRM Database Tables and Columns (Read-Only):
+" . KOPERNIQ_PRODUCT_NAME . " Database Tables and Columns (Read-Only):
 1. `leads`: `id` (VARCHAR), `name` (VARCHAR, company/client name), `status` (VARCHAR, e.g. new, contacted, offer sent, accepted, rejected), `source` (VARCHAR, e.g. website, referral), `owner` (VARCHAR, project manager name), `value` (DECIMAL, opportunity worth), `rating` (INT 1-5), `phone`, `email`, `city`, `client_type` (person, business, partner), `created_at` (DATE), `website`.
    * Note: Clients are represented as leads with `client_type` or status = 'accepted'.
 2. `tasks`: `id`, `title`, `description`, `priority` (low, medium, high), `start_date`, `deadline` (DATE), `status` (todo, in_progress, blocked, done), `owner`, `related_lead_id`, `created_at`.
@@ -196,7 +197,7 @@ JSON Response Schema:
       }
     }
   ]
-}";
+}");
 
 $messages[] = ['role' => 'system', 'content' => $systemInstruction];
 

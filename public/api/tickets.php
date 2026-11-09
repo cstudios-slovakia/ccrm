@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mail_broker.php';
@@ -199,7 +200,7 @@ function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $b
         );
     }
 
-    $systemPrompt = "You are an AI support desk router for a CRM. Given an incoming support email and a list of active projects, select the best matching projectId (or null if none matches), classify priority ('critical', 'high', 'normal', 'low'), and classify type ('bug', 'question', 'feature_request', 'incident', 'billing'). Return ONLY valid JSON with keys: projectId, priority, type.";
+    $systemPrompt = ("You are an AI support desk router for a " . KOPERNIQ_PRODUCT_NAME . ". Given an incoming support email and a list of active projects, select the best matching projectId (or null if none matches), classify priority ('critical', 'high', 'normal', 'low'), and classify type ('bug', 'question', 'feature_request', 'incident', 'billing'). Return ONLY valid JSON with keys: projectId, priority, type.");
     $userPrompt = "Available Projects:\n" . implode("\n", $projectListText)
         . "\n\nIncoming Email:\nFrom: " . $senderEmail
         . "\nSubject: " . mb_substr($subject, 0, 300)
@@ -554,7 +555,7 @@ header('Cache-Control: no-store');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed.')]);
     exit;
 }
 require_once $configFile;

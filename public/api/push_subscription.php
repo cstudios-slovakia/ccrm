@@ -8,6 +8,7 @@
  * DELETE — Removes an active subscription when permissions are revoked or reset.
  */
 
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/webpush.php';
@@ -20,7 +21,7 @@ ccrm_send_cors('GET, POST, DELETE, OPTIONS');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile) || @filesize($configFile) < 100) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'error' => 'CCRM is not configured yet.']);
+    echo json_encode(['success' => false, 'error' => (KOPERNIQ_PRODUCT_NAME . ' is not configured yet.')]);
     exit;
 }
 
@@ -87,7 +88,7 @@ if ($method === 'POST' && $action === 'test') {
     // Only ever the caller's own devices, matched on the account id.
     $userTarget = $userId;
 
-    $title = 'CCRM Notification Test';
+    $title = (KOPERNIQ_PRODUCT_NAME . ' Notification Test');
     $msg = 'Push notifications are working perfectly on this device! 🎉';
     $result = ccrm_send_push_notification($pdo, $userTarget, $title, $msg, '/#tasks', ['type' => 'test']);
 

@@ -1,6 +1,7 @@
 <?php
 namespace CCRM\Swarm;
 
+require_once dirname(__DIR__) . '/brand.php';
 use PDO;
 
 /**
@@ -218,7 +219,7 @@ class CrmContextExtractor {
         }
 
         if ($totalSampled === 0) {
-            $sections[] = "\n(No CRM records matched the active sources in the selected temporal horizon. Rehearsal will ground purely on scenario text.)";
+            $sections[] = ("\n(No " . KOPERNIQ_PRODUCT_NAME . " records matched the active sources in the selected temporal horizon. Rehearsal will ground purely on scenario text.)");
         }
 
         $fullText = implode("\n", $sections);

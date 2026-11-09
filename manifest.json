@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Koperniq",
   "short_name": "Koperniq",
-  "description": "Client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment.",
+  "description": "Sales, projects, documents and operations in one workspace for the whole team.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

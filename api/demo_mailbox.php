@@ -20,6 +20,7 @@
  * the demo Sent folder, and attachments are generated on request.
  */
 
+require_once __DIR__ . '/brand.php';
 const CCRM_DEMO_MAIL_HOST = 'mail.demo.invalid';
 
 /**
@@ -334,7 +335,7 @@ function ccrm_demo_pdf(string $title, array $lines): string {
         $y -= 18;
         if ($y < 60) break;
     }
-    $stream .= "BT /F1 8 Tf 56 40 Td (CCRM demo document - generated sample, not a real record) Tj ET\n";
+    $stream .= ("BT /F1 8 Tf 56 40 Td (" . KOPERNIQ_PRODUCT_NAME . " demo document - generated sample, not a real record) Tj ET\n");
 
     $objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",

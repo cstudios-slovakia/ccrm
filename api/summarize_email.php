@@ -2,6 +2,7 @@
 /**
  * AI Email Summarization Endpoint.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -28,7 +29,7 @@ if (empty($userEmail)) {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -156,7 +157,7 @@ $openAiHeaders = [
     'Authorization: Bearer ' . $openAiKey
 ];
 
-$prompt = "You are an expert CRM assistant. Analyze the following email details or conversation flow and output a JSON response containing a concise summary (1-2 sentences) and a list of action items / suggested tasks (up to 4 items).
+$prompt = ("You are an expert " . KOPERNIQ_PRODUCT_NAME . " assistant. Analyze the following email details or conversation flow and output a JSON response containing a concise summary (1-2 sentences) and a list of action items / suggested tasks (up to 4 items).
    
 You MUST detect the language in which the provided email is written and write the \"summary\" and all \"actionItems\" in that same language (e.g. Slovak if Slovak, English if English).
 
@@ -167,7 +168,7 @@ Output structure:
   \"actionItems\": [\"action1\", \"action2\", ...]
 }
 
-Email Subject: " . $subject . "\n\nEmail Content:\n" . $plainTextBody;
+Email Subject: ") . $subject . "\n\nEmail Content:\n" . $plainTextBody;
 
 $emailModel = ccrm_ai_model();
 $payload = [

@@ -25,6 +25,7 @@
  * new model call. Tokens that do not match, or that name a speaker the model was never told
  * about, are removed here.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -46,7 +47,7 @@ $sessionUser = ccrm_require_auth();
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -304,7 +305,7 @@ $openAiKey = trim((string)($integrationsConfig['openAiKey'] ?? ''));
 if ($openAiKey === '') {
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API key is missing. Please configure your OpenAI API Key in CRM Settings > Integrations.',
+        'message' => ('OpenAI API key is missing. Please configure your OpenAI API Key in ' . KOPERNIQ_PRODUCT_NAME . ' Settings > Integrations.'),
     ]);
     exit;
 }

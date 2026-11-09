@@ -3,6 +3,7 @@
  * AI Financial Statement Summarization Endpoint.
  * Fetches statement details, retrieves associated report tables from RegisterUZ, and summarizes them using OpenAI.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -32,7 +33,7 @@ if (php_sapi_name() !== 'cli') {
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
-    summary_error(503, 'not_installed', 'CRM is not installed yet.', ['installed' => false]);
+    summary_error(503, 'not_installed', (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.'), ['installed' => false]);
 }
 require_once $configFile;
 

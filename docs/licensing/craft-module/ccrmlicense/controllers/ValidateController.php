@@ -158,8 +158,12 @@ class ValidateController extends Controller
         if (!is_string($value) || strlen($value) < 12 || strlen($value) > 64) {
             return '';
         }
-        if (str_starts_with($value, 'CCRM') && strlen($value) === 20) {
-            return 'CCRM-' . implode('-', str_split(substr($value, 4), 4));
+        // New keys read KPRNQ-XXXX-XXXX-XXXX-XXXX; keys issued before the rename read CCRM-XXXX-XXXX-XXXX-XXXX.
+        foreach (['KPRNQ', 'CCRM'] as $prefix) {
+            $plen = strlen($prefix);
+            if (str_starts_with($value, $prefix) && strlen($value) === $plen + 16) {
+                return $prefix . '-' . implode('-', str_split(substr($value, $plen), 4));
+            }
         }
         return $value;
     }

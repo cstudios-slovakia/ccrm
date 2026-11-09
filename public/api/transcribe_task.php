@@ -3,6 +3,7 @@
  * AI Voice Task Transcription & Task Extraction Endpoint.
  * Transcribes audio via OpenAI gpt-transcribe and parses structured CRM task(s) via OpenAI GPT.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -23,7 +24,7 @@ ccrm_gate($sessionUser, 'tasks', 'edit');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -102,7 +103,7 @@ if (!empty($rawText)) {
     $whisperPayload = [
         'file' => $cFile,
         'model' => 'gpt-transcribe',
-        'prompt' => 'Hlasové CRM úlohy, pripomienky a termíny. Hangfeladatok, határidők és emlékeztetők a CRM-ben. Voice tasks, deadlines and reminders.'
+        'prompt' => ('Hlasové ' . KOPERNIQ_PRODUCT_NAME . ' úlohy, pripomienky a termíny. Hangfeladatok, határidők és emlékeztetők a ' . KOPERNIQ_PRODUCT_NAME . '-ben. Voice tasks, deadlines and reminders.')
     ];
 
     $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');

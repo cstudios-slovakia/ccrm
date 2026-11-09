@@ -10,6 +10,7 @@
  * Step 2, the minutes/summary, needs the OpenAI key (the configured text model). Without
  * it, or when it fails, the answer still carries the transcript, with `minutes: false`.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -30,7 +31,7 @@ ccrm_gate_any($sessionUser, ['meetings', 'leads', 'clients']);
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -244,7 +245,7 @@ if ($openAiKey === '') {
 }
 
 // --- STEP 2: GPT Synthesis ---
-$prompt = "You are an expert CRM assistant. You are given a raw audio transcription and the user's manual notes from a meeting.
+$prompt = ("You are an expert " . KOPERNIQ_PRODUCT_NAME . " assistant. You are given a raw audio transcription and the user's manual notes from a meeting.
 Your task is to compile a highly professional, detailed, and structured meeting minutes document in Markdown format, plus a concise summary, sentiment analysis, key topics, and action items.
 
 You MUST detect the language in which the transcription and manual notes are written. Output the automatedNotes (detailed minutes in Markdown), summary, and action items in that SAME language (e.g., Slovak if notes are in Slovak, Hungarian if in Hungarian, English if in English).
@@ -259,7 +260,7 @@ You MUST respond ONLY with a valid JSON object matching the following structure:
 }
 
 Do not wrap the JSON output in markdown code blocks or add any text outside of the JSON object.
-" . ($speakers ? "
+") . ($speakers ? "
 Transcription lines start with a timestamp and a speaker label: a person's name or a label such as \"Participant 1:\" (or its translation). Keep who said what where it matters (decisions, commitments, owners of action items), using those labels.
 " : "") . "
 Transcription:

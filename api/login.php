@@ -5,6 +5,7 @@
  * the browser). On success it establishes a session and returns the user
  * profile WITHOUT any password material.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/json');
@@ -19,7 +20,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;

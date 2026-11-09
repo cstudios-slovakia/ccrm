@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/json');
@@ -83,7 +84,7 @@ $openAiKey = $integrationsConfig['openAiKey'] ?? '';
 if (empty($openAiKey)) {
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API key is missing. Please configure your OpenAI API Key in CRM Settings > Integrations.'
+        'message' => ('OpenAI API key is missing. Please configure your OpenAI API Key in ' . KOPERNIQ_PRODUCT_NAME . ' Settings > Integrations.')
     ]);
     exit;
 }
@@ -159,11 +160,11 @@ if ($action === 'query_rag') {
         $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $query, $systemLanguage, $agentId, ['limit' => 20, 'scope' => $ccrmVoiceScope]);
         $resultText = !empty($ragData['raw_context']) ? $ragData['raw_context'] : $ragData['sanitized_context'];
         if (empty(trim($resultText))) {
-            $resultText = "No specific CRM records found matching query: " . $query;
+            $resultText = ("No specific " . KOPERNIQ_PRODUCT_NAME . " records found matching query: ") . $query;
         }
     } catch (\Exception $e) {
         ccrm_log_exception($e);
-        $resultText = "Error querying CRM data.";
+        $resultText = ("Error querying " . KOPERNIQ_PRODUCT_NAME . " data.");
     }
 
     echo json_encode([
@@ -808,7 +809,7 @@ if (isset($execPrompts[$agentId])) {
 }
 
 if (empty($skillInstructions)) {
-    $skillInstructions = "You are " . $versionCodename . ", the executive advisor. You advise with executive precision based on CRM data.";
+    $skillInstructions = "You are " . $versionCodename . (", the executive advisor. You advise with executive precision based on " . KOPERNIQ_PRODUCT_NAME . " data.");
 }
 
 // 4. Gather live CRM context across all 16 domains via comprehensive RAG engine
@@ -832,7 +833,7 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "   - NEVER repeat greetings (e.g. 'Hello', 'Hi', 'Dobrý deň') or re-introduce your name, position, or credentials during ongoing conversation. Jump straight into the answer or discussion.\n"
     . "   - Speak naturally and fluidly. Do NOT use markdown asterisks, headers, or bullet points in spoken responses.\n\n"
     . "2. LIVE SCREEN NAVIGATION CAPABILITIES:\n"
-    . "   - You can redirect and navigate the user's active CRM screen in real time!\n"
+    . ("   - You can redirect and navigate the user's active " . KOPERNIQ_PRODUCT_NAME . " screen in real time!\n")
     . "   - When the user asks to see or open a module or screen, immediately call 'navigate_to_entry':\n"
     . "     * Cashflow, finances, revenues ('mutasd a cashflowt', 'menjünk a pénzügyekre', 'financie', 'penzugyek'): call navigate_to_entry with entity_type: 'financial', target: 'financial'.\n"
     . "     * Projects overview ('nyisd meg a projekteket', 'projekty'): call navigate_to_entry with entity_type: 'project', target: 'projects'.\n"
@@ -863,12 +864,12 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "   - Tasks & Leads ('hozz létre egy feladatot...', 'új érdeklődő...'): call 'create_task', 'create_lead', or 'add_client_note'.\n"
     . "   - Always confirm completed actions briefly and conversationally in speech.\n\n"
     . "4. LIVE DATABASE ACCESS & ANTI-REFUSAL DIRECTIVE:\n"
-    . "   - You have 100% DIRECT, LIVE, REAL-TIME access to the CCRM database.\n"
-    . "   - NEVER refuse a request or state that you lack real-time access or cannot check the database. All records in your prompt and available via the 'query_crm_live_data' tool are live, current CRM records.\n"
-    . "   - When asked about any client (e.g. Acme Ltd., John Smith), company, invoice, cashflow, task, or project, answer immediately with exact figures, dates, managers, and details from your CRM knowledge base or call the 'query_crm_live_data' tool.\n\n"
-    . "5. GROUNDING IN CRM DATA:\n"
+    . ("   - You have 100% DIRECT, LIVE, REAL-TIME access to the " . KOPERNIQ_PRODUCT_NAME . " database.\n")
+    . ("   - NEVER refuse a request or state that you lack real-time access or cannot check the database. All records in your prompt and available via the 'query_crm_live_data' tool are live, current " . KOPERNIQ_PRODUCT_NAME . " records.\n")
+    . ("   - When asked about any client (e.g. Acme Ltd., John Smith), company, invoice, cashflow, task, or project, answer immediately with exact figures, dates, managers, and details from your " . KOPERNIQ_PRODUCT_NAME . " knowledge base or call the 'query_crm_live_data' tool.\n\n")
+    . ("5. GROUNDING IN " . KOPERNIQ_PRODUCT_NAME . " DATA:\n")
     . "   - Current system date is {$todayFormatted} ({$todayDate}).\n"
-    . "   - You have live grounding in CRM operations and financial records:\n"
+    . ("   - You have live grounding in " . KOPERNIQ_PRODUCT_NAME . " operations and financial records:\n")
     . "{$crmContext}\n\n";
 
 $screenContext = trim($payload['current_screen_context'] ?? '');
@@ -885,7 +886,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'query_crm_live_data',
-        'description' => 'Searches the live CCRM database across all 16 domains for deep records, client details, financial analysis, unpaid invoices, active projects, tasks, or inventory.',
+        'description' => ('Searches the live ' . KOPERNIQ_PRODUCT_NAME . ' database across all 16 domains for deep records, client details, financial analysis, unpaid invoices, active projects, tasks, or inventory.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -900,14 +901,14 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'navigate_to_entry',
-        'description' => 'Navigates or redirects the user\'s screen to a specific CRM entry, client profile, lead, project, financial cashflow view, invoices, task board, warehouse, meetings, or tab.',
+        'description' => ('Navigates or redirects the user\'s screen to a specific ' . KOPERNIQ_PRODUCT_NAME . ' entry, client profile, lead, project, financial cashflow view, invoices, task board, warehouse, meetings, or tab.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
                 'entity_type' => [
                     'type' => 'string',
                     'enum' => ['client', 'lead', 'project', 'financial', 'finances', 'cashflow', 'invoices', 'tasks', 'warehouse', 'meetings', 'dashboard', 'automation', 'sai', 'social_media', 'files', 'tab'],
-                    'description' => 'The type of CRM entity or tab to navigate to.'
+                    'description' => ('The type of ' . KOPERNIQ_PRODUCT_NAME . ' entity or tab to navigate to.')
                 ],
                 'target' => [
                     'type' => 'string',
@@ -920,7 +921,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'create_project',
-        'description' => 'Creates and registers a new project in CCRM with client pairing, budget, invoice date, deadline, managers, and status.',
+        'description' => ('Creates and registers a new project in ' . KOPERNIQ_PRODUCT_NAME . ' with client pairing, budget, invoice date, deadline, managers, and status.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -1022,7 +1023,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'add_project_task',
-        'description' => 'Adds a specific task or action item directly linked to a project in CCRM.',
+        'description' => ('Adds a specific task or action item directly linked to a project in ' . KOPERNIQ_PRODUCT_NAME . '.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -1058,7 +1059,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'add_project_financial',
-        'description' => 'Records a direct expense (cost) or income linked to a project in CCRM.',
+        'description' => ('Records a direct expense (cost) or income linked to a project in ' . KOPERNIQ_PRODUCT_NAME . '.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -1130,7 +1131,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'delete_project',
-        'description' => 'Permanently deletes a project from CCRM when requested by the user.',
+        'description' => ('Permanently deletes a project from ' . KOPERNIQ_PRODUCT_NAME . ' when requested by the user.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -1145,7 +1146,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'create_task',
-        'description' => 'Creates a new general task or action item in CRM tasks & Kanban board for the user or a team member.',
+        'description' => ('Creates a new general task or action item in ' . KOPERNIQ_PRODUCT_NAME . ' tasks & Kanban board for the user or a team member.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -1177,7 +1178,7 @@ $realtimeTools = [
     [
         'type' => 'function',
         'name' => 'create_lead',
-        'description' => 'Creates and registers a new lead / client account in the CRM sales pipeline.',
+        'description' => ('Creates and registers a new lead / client account in the ' . KOPERNIQ_PRODUCT_NAME . ' sales pipeline.'),
         'parameters' => [
             'type' => 'object',
             'properties' => [
@@ -1227,7 +1228,7 @@ $realtimeTools = [
             'properties' => [
                 'client_name' => [
                     'type' => 'string',
-                    'description' => 'Name of the client in CRM.'
+                    'description' => ('Name of the client in ' . KOPERNIQ_PRODUCT_NAME . '.')
                 ],
                 'title' => [
                     'type' => 'string',

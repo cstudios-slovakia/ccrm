@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/json');
@@ -142,9 +143,9 @@ if ($vectorDb === 'mariadb') {
         $raw = strtolower($e->getMessage());
         $where = $host . ':' . $port;
         if (strpos($raw, 'could not find driver') !== false) {
-            $reason = "The PHP pdo_mysql extension is not installed on the CRM server.";
+            $reason = ("The PHP pdo_mysql extension is not installed on the " . KOPERNIQ_PRODUCT_NAME . " server.");
         } elseif ($errno === 1045) {
-            $reason = "Access denied: wrong username or password, or this user may not connect from the CRM server's address.";
+            $reason = ("Access denied: wrong username or password, or this user may not connect from the " . KOPERNIQ_PRODUCT_NAME . " server's address.");
         } elseif ($errno === 1044) {
             $reason = "This user has no permission to open the database '" . htmlspecialchars($name) . "'.";
         } elseif ($errno === 1049) {
@@ -154,13 +155,13 @@ if ($vectorDb === 'mariadb') {
         } elseif (strpos($raw, 'timed out') !== false || strpos($raw, 'timeout') !== false || $errno === 2006) {
             $reason = "Connection to " . htmlspecialchars($where) . " timed out: the port is probably blocked by a firewall or not published.";
         } elseif (strpos($raw, 'no route') !== false || strpos($raw, 'unreachable') !== false) {
-            $reason = "No network route from the CRM server to " . htmlspecialchars($where) . ".";
+            $reason = ("No network route from the " . KOPERNIQ_PRODUCT_NAME . " server to ") . htmlspecialchars($where) . ".";
         } elseif (strpos($raw, 'getaddrinfo') !== false || strpos($raw, 'name or service not known') !== false) {
-            $reason = "The host name could not be resolved by the CRM server.";
+            $reason = ("The host name could not be resolved by the " . KOPERNIQ_PRODUCT_NAME . " server.");
         } elseif ($errno === 2002 || $errno === 2003) {
-            $reason = "Cannot reach " . htmlspecialchars($where) . " from the CRM server.";
+            $reason = "Cannot reach " . htmlspecialchars($where) . (" from the " . KOPERNIQ_PRODUCT_NAME . " server.");
         } elseif ($errno === 1129 || $errno === 1130) {
-            $reason = "The server rejects connections from the CRM server's address (host not allowed).";
+            $reason = ("The server rejects connections from the " . KOPERNIQ_PRODUCT_NAME . " server's address (host not allowed).");
         } elseif ($errno === 2026) {
             $reason = "The TLS/SSL handshake with the database failed.";
         } else {

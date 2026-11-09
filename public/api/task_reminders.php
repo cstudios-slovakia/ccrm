@@ -17,6 +17,7 @@
  * INSERT IGNORE before it is sent, so two overlapping runs cannot both send it,
  * and moving the task to another date or time earns a fresh reminder.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/task_done.php';
 require_once __DIR__ . '/mail_broker.php';
@@ -143,7 +144,7 @@ function ccrm_task_reminder_message(array $task, array $schedule, string $lang, 
     }
     if ($appUrl !== '') {
         $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px;font-weight:bold">'
-            . $esc($t('Open the CRM', 'Otvoriť CRM', 'CRM megnyitása')) . '</a></p>';
+            . $esc($t(('Open ' . KOPERNIQ_PRODUCT_NAME), ('Otvoriť ' . KOPERNIQ_PRODUCT_NAME), (KOPERNIQ_PRODUCT_NAME . ' megnyitása'))) . '</a></p>';
     }
     $html .= '<p style="font-size:12px;color:#94a3b8;margin:0">'
         . $esc($t(
@@ -413,7 +414,7 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             }
             if ($appUrl !== '') {
                 $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '#tasks" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:bold">'
-                    . $esc($t('Open in CRM', 'Otvoriť v CRM', 'Megnyitás a CRM-ben')) . '</a></p>';
+                    . $esc($t(('Open in ' . KOPERNIQ_PRODUCT_NAME), ('Otvoriť v ' . KOPERNIQ_PRODUCT_NAME), ('Megnyitás a ' . KOPERNIQ_PRODUCT_NAME . '-ben'))) . '</a></p>';
             }
             $html .= '</div>';
 
@@ -521,7 +522,7 @@ function ccrm_send_task_completed_email_notification(PDO $pdo, array $task, ?str
             . '</table>';
         if ($appUrl !== '') {
             $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '#tasks" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:bold">'
-                . $esc($t('View in CRM', 'Zobraziť v CRM', 'Megtekintés a CRM-ben')) . '</a></p>';
+                . $esc($t(('View in ' . KOPERNIQ_PRODUCT_NAME), ('Zobraziť v ' . KOPERNIQ_PRODUCT_NAME), ('Megtekintés a ' . KOPERNIQ_PRODUCT_NAME . '-ben'))) . '</a></p>';
         }
         $html .= '</div>';
 

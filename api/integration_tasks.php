@@ -14,6 +14,7 @@
  * sets `updated_at`, so sync.php's omission and clobber guards protect it from a stale client.
  */
 
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/task_done.php';
 
 if (!function_exists('ccrm_int_handle_task_push')) {
@@ -85,14 +86,14 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                 'hu' => 'Ehhez a feladathoz lezárás (következtetés) szükséges, mielőtt befejezhető.',
             ],
             'task_gone' => [
-                'en' => 'The task was deleted in CCRM.',
-                'sk' => 'Úloha bola v CCRM vymazaná.',
-                'hu' => 'A feladatot törölték a CCRM-ben.',
+                'en' => ('The task was deleted in ' . KOPERNIQ_PRODUCT_NAME . '.'),
+                'sk' => ('Úloha bola v ' . KOPERNIQ_PRODUCT_NAME . ' vymazaná.'),
+                'hu' => ('A feladatot törölték a ' . KOPERNIQ_PRODUCT_NAME . '-ben.'),
             ],
             'timeline_gone' => [
-                'en' => 'The timeline event was deleted in CCRM.',
-                'sk' => 'Udalosť na časovej osi bola v CCRM vymazaná.',
-                'hu' => 'Az idővonal-bejegyzést törölték a CCRM-ben.',
+                'en' => ('The timeline event was deleted in ' . KOPERNIQ_PRODUCT_NAME . '.'),
+                'sk' => ('Udalosť na časovej osi bola v ' . KOPERNIQ_PRODUCT_NAME . ' vymazaná.'),
+                'hu' => ('Az idővonal-bejegyzést törölték a ' . KOPERNIQ_PRODUCT_NAME . '-ben.'),
             ],
             'task_not_found' => [
                 'en' => 'No such task.',

@@ -10,6 +10,7 @@
  * keep_configs (default true): keep the settings, lists, categories and every login, only switch DEMO_MODE off.
  * keep_configs = false: replace them all with a fresh install's, with one admin and a random password.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/demo_seed/leave.php';
@@ -33,7 +34,7 @@ $keepConfigs = isset($data['keep_configs']) ? (bool)$data['keep_configs'] : true
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'CCRM is not installed yet.']);
+    echo json_encode(['success' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 

@@ -9,6 +9,7 @@
  *  - Simulation deletion with atomic table drops
  */
 
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -166,7 +167,7 @@ if ($action === 'llm_proxy') {
         http_response_code(400);
         echo json_encode([
             'success' => false, 
-            'message' => 'OpenAI API key is not configured in CCRM Integrations or server environment.'
+            'message' => ('OpenAI API key is not configured in ' . KOPERNIQ_PRODUCT_NAME . ' Integrations or server environment.')
         ]);
         exit;
     }

@@ -2,6 +2,7 @@
 /**
  * AI Meeting Note Summarization Endpoint.
  */
+require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -21,7 +22,7 @@ ccrm_gate($sessionUser, 'meetings');
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
     http_response_code(503);
-    echo json_encode(['success' => false, 'installed' => false, 'message' => 'CRM is not installed yet.']);
+    echo json_encode(['success' => false, 'installed' => false, 'message' => (KOPERNIQ_PRODUCT_NAME . ' is not installed yet.')]);
     exit;
 }
 require_once $configFile;
@@ -74,7 +75,7 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Authorization: Bearer ' . $openAiKey
 ]);
 
-$prompt = "You are an expert CRM assistant. Analyze the following meeting notes and output a JSON response containing a concise summary, sentiment classification, major topics, and action items.
+$prompt = ("You are an expert " . KOPERNIQ_PRODUCT_NAME . " assistant. Analyze the following meeting notes and output a JSON response containing a concise summary, sentiment classification, major topics, and action items.
 
 You MUST detect the language in which the provided meeting notes are written. You MUST write the \"summary\" and all \"actionItems\" in that same language (for example: if notes are in Slovak, output summary/action items in Slovak; if in Hungarian, output in Hungarian; if in English, output in English).
 
@@ -88,7 +89,7 @@ Output structure:
 }
 
 Meeting Notes:
-" . $notesText;
+") . $notesText;
 
 $meetingModel = ccrm_ai_model();
 $payload = [

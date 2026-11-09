@@ -10,6 +10,7 @@
  */
 
 // 1. Headers & CORS
+require_once __DIR__ . '/brand.php';
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-CCRM-MCP-KEY, X-API-Key');
 
@@ -361,10 +362,17 @@ switch ($rpcMethod) {
                 'capabilities' => [
                     'tools' => ['listChanged' => false]
                 ],
+                // serverInfo.name stays "ccrm-mcp-server" on purpose: it is the one identifier
+                // clients may have stored, so renaming it could force a reconnect. Everything else
+                // (instructions, tool descriptions) is plain text that is re-read on its own.
                 'serverInfo' => [
                     'name' => 'ccrm-mcp-server',
                     'version' => '1.0.0'
-                ]
+                ],
+                // Optional MCP field, ignored by clients that do not use it: tells the assistant whose
+                // installation this is ("Lapidea (Koperniq)"; just "Koperniq" with no title of its own).
+                'instructions' => 'This is ' . kprnq_title_with_product(kprnq_system_title_override($pdo))
+                    . '. Use these tools to read and update its data within the signed-in user\'s permissions.'
             ]
         ]);
         exit;
@@ -668,10 +676,10 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 3: Tasks & Collaboration
         [
             'name' => 'list_tasks',
-            'description' => 'List and filter tasks across projects, clients, and team members. Each task carries created_at and updated_at (ISO 8601 with the CRM time zone offset). '
+            'description' => ('List and filter tasks across projects, clients, and team members. Each task carries created_at and updated_at (ISO 8601 with the ' . KOPERNIQ_PRODUCT_NAME . ' time zone offset). ')
                 . 'updated_at moves on any edit to the task, including its assignees and tags; comments are on the linked client timeline and do not count. '
-                . 'To find what changed in a period use updated_from/updated_to with sort_by=updated_at. Time filters take YYYY-MM-DD or YYYY-MM-DD HH:MM in CRM local time (' . date_default_timezone_get() . '); '
-                . 'if the user is in another time zone, append their offset (2026-11-06 14:22+05:00) or convert to CRM time first.',
+                . ('To find what changed in a period use updated_from/updated_to with sort_by=updated_at. Time filters take YYYY-MM-DD or YYYY-MM-DD HH:MM in ' . KOPERNIQ_PRODUCT_NAME . ' local time (') . date_default_timezone_get() . '); '
+                . ('if the user is in another time zone, append their offset (2026-11-06 14:22+05:00) or convert to ' . KOPERNIQ_PRODUCT_NAME . ' time first.'),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1182,7 +1190,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 10: Team Directory (Read-Only)
         [
             'name' => 'list_team_members',
-            'description' => 'List CRM team members available for assigning tasks and projects (passwords excluded).',
+            'description' => ('List ' . KOPERNIQ_PRODUCT_NAME . ' team members available for assigning tasks and projects (passwords excluded).'),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
