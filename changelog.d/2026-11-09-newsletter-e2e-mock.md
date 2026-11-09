@@ -1,0 +1,1 @@
+- Newsletter: stateful mock of the newsletter API for the browser tests (QA suite only, no app change).
