@@ -74,12 +74,16 @@ Legend: ⬜ not started · 🟡 built but not finished (see Left over) · ✅ do
 | | 2C Demo data (en, sk, hu) | Sonnet, medium | ✅ | `50218c88` | 2026-11-09 |
 | 3 QA and polish | 3A E2E journey, QA registration, view-size pass | Sonnet, medium | ⬜ | | |
 | | 3B Client profile: newsletter status | Sonnet, low | ⬜ | | |
+| | 3C Contact first/last name, demo wipe fix | Sonnet, high | ⬜ | | |
 
 Branch: everything goes on `1.13-nectarine`, through worktrees (`.agents/rules/agent-worktrees.md`).
 
 Dependencies: phase 2 needs phase 1 merged (2A uses 1A's tables and 1B's merge-tag fixture; 2B
 mounts 1B's builder inside 1C's screens; 2C writes 1B documents into 1A's tables). Phase 3 needs
-phase 2.
+phase 2. Inside phase 3 the three packages run in parallel, with two small overlaps the orchestrator
+resolves on merge: 3B and 3C both touch `ClientsView.tsx` (3B a mount line in the profile, 3C the
+contact field of the edit form), and 3A's view-size pass and 3C both may touch
+`newsletter/AudienceEditor.tsx` (3C adds one line to the live count). Merge 3C last.
 
 ## A3. Rules that apply to every package
 
@@ -278,11 +282,12 @@ Files: `public/api/demo_seed/**`, `docs/DEMO-MODE.md`, `README.md` (demo module 
 - [x] `npm run sync:backend`; `npm run check`; changelog fragment
 - Left over: (1) in the Hungarian edition `{{first_name}}` resolves to the family name, because
   `ccrm_newsletter_first_name()` (1A) takes the first word and Hungarian contacts are written
-  surname-first; see A5. (2) `demo_wipe_by_prefix` also matches `newsletter_recipients.lead_id`, so
-  wiping the demo deletes a user's own recipient rows that point at demo leads (the same rule as every
-  other module), and its row count counts such a row once per matching `*_id` column (22 for 11 rows).
-  (3) The wipe test's fake PDO does not interpret the lookup of the manual suppression by e-mail, so
-  that one path is untested.
+  surname-first. **Moved to 3C** (decision B1.5: store first and last name separately). (2)
+  `demo_wipe_by_prefix` also matches `newsletter_recipients.lead_id` / `employee_id`, so wiping the
+  demo deletes a user's own recipient rows that point at demo leads, and its row count counts such a
+  row once per matching column (22 for 11 rows). This is **not** what other modules do (see A5).
+  **Moved to 3C** (decision B1.6). (3) The wipe test's fake PDO does not interpret the lookup of the
+  manual suppression by e-mail, so that one path is untested (3C adds the check).
 
 **Phase 2 verification (2026-11-09):** `npm run check` green on the merged result and again after the
 review fixes; `test:newsletter` green (Docker PHP 8.2, incl. the 44 merge fixtures and the new
@@ -293,7 +298,7 @@ stays open over the row the test clicks; not newsletter code, see A5). One `ccrm
 confirmed findings, all fixed in `51ae465d`. The public pages answered correctly against the dev
 stack's MySQL (`t=test` 200, unknown token 404 for GET and the one-click POST, C11 headers present).
 
-### Phase 3: QA and polish (3A, 3B in parallel)
+### Phase 3: QA and polish (3A, 3B, 3C in parallel)
 
 **3A E2E and QA** (Sonnet, medium). Reads C16.
 Files: `tests/e2e/helpers/newsletterMock.ts`, `tests/e2e/newsletter.spec.ts`,
@@ -322,6 +327,44 @@ detail view, one read action in `newsletter.php`.
 - [ ] Small "Newsletter" block on the client profile: campaigns received, "Unsubscribed on <date>"
       badge; hidden without newsletter access
 - [ ] `npm run sync:backend`; `npm run check`; changelog fragment
+- Left over:
+
+**3C Contact first and last name, demo wipe fix** (Sonnet, high: schema and sync change). Reads C18,
+C5 step 7, C4 (`AudiencePreview`), `.agents/rules/database-schema-and-sync.md` and the employee
+precedent (`public/api/employee_name.php`, `src/utils/employeeIdentity.ts`).
+Files: `public/api/schema.php`, `public/sync.php` (registration lines: column healing and the field
+mapping), `entities_overview.md`, `src/types/index.ts`, a new `src/utils/contactName.ts` (+ test), a new
+`src/components/ui/ContactNameFields.tsx`, mount lines in every form that types a contact person
+(`LeadsDatagrid.tsx`, `ClientsView.tsx`, `priceOffers/NewClientModal.tsx`, `ui/QuickAddClient.tsx`, any
+other the implementer finds), the PHP writers of `contact_person` that are not the form (C18),
+`public/api/newsletter_audience.php`, `newsletter/AudienceEditor.tsx` + `newsletter/types.ts` (one count),
+`scripts/test-newsletter.php`, `public/api/demo_seed/helpers.php`, the demo packs that hold contacts,
+`scripts/test-demo-wipe.php` (or its assert file), `translations*.ts` as needed, mirrors.
+
+- [ ] Columns `leads.contact_first_name` and `leads.contact_last_name` with the **4-place rule**:
+      `CREATE TABLE` in `schema.php`, idempotent migration in `ccrm_apply_migrations()`, pre-transaction
+      column healing in `public/sync.php` (above `beginTransaction()`), `entities_overview.md`,
+      `npm run sync:backend`. Synced fields `contactFirstName` / `contactLastName` on the lead type
+- [ ] One-time backfill (C18): split existing `contact_person` with `ccrm_split_person_name()`; rows
+      it cannot split stay empty; guarded so it never runs twice and never overwrites typed parts. If
+      the migration `require`s a new file, add it to `ccrm_schema_fingerprint()`
+- [ ] `contactName.ts` (`composeContactName`, mirrors the PHP rule) + unit test; `ContactNameFields`
+      ("First name" / "Last name", en/sk/hu) replaces the single contact field in every form; the full
+      `contact_person` is composed on save. Large files get only the mount line
+- [ ] Every other writer of `contact_person` (MCP write tools, company-register lookup, workflows,
+      orders, pipeline, …) keeps the parts consistent (C18); list each one in the report
+- [ ] Newsletter: `first_name` comes from `contact_first_name` (titles stripped), never guessed from the
+      full name; `AudiencePreview.withoutFirstName`; the live count shows "N without a first name"
+- [ ] Demo: packs give each contact a first and last name (Hungarian: given name in `first`);
+      `test:demo-packs`, `test:demo-seed`, `test:demo-wipe` as before (the 4 employee failures are known)
+- [ ] Demo wipe (B1.6): `newsletter_recipients` rows go only by `campaign_id`; a two-entry skip list
+      (`newsletter_recipients.lead_id`, `.employee_id`) used by both `demo_wipe_by_prefix()` and
+      `demo_count_by_prefix()`; the wipe test asserts that a non-demo campaign's row pointing at a demo
+      lead survives, that 11 demo rows count as 11, and covers the manual-suppression lookup by e-mail
+- [ ] PHP test: backfill split cases (incl. one word, comma, trailing title), newsletter `first_name`
+      from the stored field with a title, a Hungarian contact (`Péter` / `Kovács` → `Péter`)
+- [ ] `npm run check`; changelog fragment. After the merge the orchestrator runs
+      `npm run test:persistence` from the main checkout (the new fields must survive a sync round trip)
 - Left over:
 
 ## A5. Findings
@@ -380,8 +423,12 @@ the user made later.)
   demo placeholder resolver would replace them.
 - 2026-11-09, phase 2: `ccrm_newsletter_first_name()` takes the first word of the contact person, so a
   Hungarian contact written surname-first ("Kovács Péter") gets `{{first_name}}` = "Kovács".
-  Proposed fix (needs a decision): when the system language is `hu`, take the last word; or store
-  given and family name separately. Not changed in phase 2.
+  Decided (B1.5): store first and last name separately; package 3C, spec C18.
+- 2026-11-09, phase 2: how the generic demo wipe picks rows (`demo_wipe_by_prefix()` in
+  `demo_seed/helpers.php`): a table with a text `id` column is wiped by that id only; its other
+  `*_id` columns are matched **only** in tables without a text `id`. So a user's own task linked to a
+  demo lead survives a wipe (its link goes stale), while `newsletter_recipients` (numeric id) had its
+  `lead_id` / `employee_id` matched too. Decided (B1.6): recipient rows go by `campaign_id` only (3C).
 - 2026-11-09, phase 2: z-index layers: the newsletter `Dialog` sits on the drawer layer
   (`z-[100000]`) so `CustomSelect` / `ColorPicker` panels (`100001`) paint above it; `ConfirmDialog`
   is `100020`. A newsletter overlay above `100001` hides every dropdown inside it.
@@ -415,6 +462,12 @@ the user made later.)
 4. **Not in version 1** (Part C17): open and click tracking, scheduled sending, a dedicated
    newsletter SMTP account, CSV subscriber lists and signup forms, bounce-mailbox processing,
    templates library, A/B tests.
+5. **Contact names are stored as first and last name** (Peter, 2026-11-09, after phase 2), the way
+   employees already are. `{{first_name}}` reads the stored first name and never guesses it from the
+   full name. No name-order rule by system language (a Slovak install often has Hungarian contacts).
+   Spec C18, package 3C.
+6. **The demo wipe keeps a user's own campaign history** (Peter, 2026-11-09): recipient rows are
+   wiped only by demo `campaign_id`, never by `lead_id` / `employee_id`. Package 3C.
 
 ## B2. Technical decisions
 
@@ -629,6 +682,7 @@ type AudiencePreview = {
   bySource: { client: number; lead: number; employee: number; extra: number };
   skipped: { unsubscribed: number; invalid: number };
   withoutEmail: number;                            // CRM rows that matched but have no e-mail
+  withoutFirstName: number;                        // queued addresses whose first_name is empty (3C)
   sample: { email: string; name: string; source: string; merge: Record<string, string> }[];  // first 20
 };
 ```
@@ -673,6 +727,8 @@ Resolution (server, `ccrm_newsletter_resolve_audience`):
    leads, employee full name, extra name), `first_name` (first word of the contact person or the
    employee's first name, after stripping titles such as Ing., Mgr., Bc., MUDr., JUDr., PhDr.,
    RNDr., Dr., Prof., dr.; empty when unknown), `company` (client/lead name), `email`.
+   **From 3C on (C18):** `first_name` of a client or lead is the stored `contact_first_name` with the
+   titles stripped, empty when it is not filled in; it is never taken from `contact_person`.
 
 ## C6. The e-mail document (`EmailDoc`)
 
@@ -1041,3 +1097,38 @@ In rough order of value. Each would get its own phase here when the user asks fo
 6. **Subscriber lists**: CSV import, signup form, double opt-in, consent records per lead.
 7. A/B subject test, an automation node "Send campaign", AI writing help, per-division sender
    identities, MCP tools for campaigns.
+
+## C18. Contact first and last name (package 3C)
+
+Decision B1.5. The model follows employees (`employees.first_name` / `last_name`,
+`public/api/employee_name.php`, `src/utils/employeeIdentity.ts`).
+
+- **Columns:** `leads.contact_first_name VARCHAR(100) NULL`, `leads.contact_last_name VARCHAR(100)
+  NULL` (after `contact_person`). Leads are written by `sync.php`, so the 4-place rule applies in full
+  (`.agents/rules/database-schema-and-sync.md`). Synced as `contactFirstName` / `contactLastName`.
+- **`contact_person` stays** the full name everyone else reads (search, MCP, orders, tickets, offers,
+  vector index, …: ~30 files), so none of them change. Rule, the same in TS (`composeContactName`) and
+  PHP: when either part is filled, `contact_person = trim(first + ' ' + last)` (given name first, the
+  same as employees; no order by language); when both are empty, `contact_person` is kept as it is.
+- **Forms:** every place that types a contact person shows `ContactNameFields` ("First name" /
+  "Last name"; sk "Meno" / "Priezvisko"; hu "Keresztnév" / "Vezetéknév") instead of one field, and
+  saves both parts plus the composed `contact_person`.
+- **Other writers** that set only `contact_person` (MCP write tools, company-register lookup,
+  workflows, order and pipeline endpoints, …) also set the parts with `ccrm_split_person_name()`
+  (both empty when it returns null), so the three never disagree. The implementer lists every writer.
+- **Backfill, once:** rows with a `contact_person` and both parts NULL get the parts from
+  `ccrm_split_person_name()` (two or more words, last word = last name, titles stay with the first
+  name; nothing when unsure). This gives old contacts the same first name as before phase 3 (also the
+  wrong one for a surname-first contact) and makes it correctable; everything typed afterwards is
+  right. Guard it so it runs once (a `system_settings` flag or the pattern other one-time backfills
+  use) and never overwrites typed parts. No language-based order (B1.5).
+- **Newsletter:** `first_name` = `contact_first_name` with the titles of C5 stripped (`Ing. Michal` →
+  `Michal`); employees keep their own `first_name`; extra addresses have none. `AudiencePreview`
+  gains `withoutFirstName` and the live count in `AudienceEditor` shows "N without a first name" (en /
+  sk "N bez krstného mena" / hu "N keresztnév nélkül"), so they can be completed before sending.
+  `ccrm_newsletter_first_name()` remains only for the title stripping.
+- **Demo:** the packs give each contact both parts; the Hungarian pack puts the given name in
+  `first` (`Péter`) and the family name in `last` (`Kovács`).
+- **Demo wipe (B1.6):** `newsletter_recipients.lead_id` and `.employee_id` are skipped by
+  `demo_wipe_by_prefix()` and `demo_count_by_prefix()` (one shared two-entry list with a comment);
+  demo recipient rows still go through `campaign_id LIKE 'demo-%'`.
