@@ -155,7 +155,7 @@ require_once __DIR__ . '/helpers.php';
 
 /** The DEMO_DATASET `version`: bump whenever a module is added, so old installs are told to re-seed (C8). */
 if (!defined('DEMO_DATASET_VERSION')) {
-    define('DEMO_DATASET_VERSION', 2);
+    define('DEMO_DATASET_VERSION', 3);
 }
 
 if (!function_exists('demo_seed_modules')) {
@@ -177,6 +177,7 @@ if (!function_exists('demo_seed_modules')) {
             'finance',
             'tickets',
             'time',
+            'newsletter',
             'whatsapp',
             'email',
             'meetings',

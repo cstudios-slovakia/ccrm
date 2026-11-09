@@ -19,6 +19,9 @@
  *     employees.user_id pointing at them is set to NULL;
  *  5. the demo WhatsApp "is registered" answers (keyed by phone, so no prefix finds them) of
  *     every edition's whatsapp_demo*.json, and the cached mail data of the demo logins;
+ *     the newsletter's manual suppression (the demo lead L11's e-mail, no campaign) and the NEWSLETTER_CONFIG
+ *     setting while it still carries the seeder's `demo` marker (demo_wipe_newsletter); the campaigns, their
+ *     recipients and the bounced/unsubscribed suppressions go with step 1 through their demo- campaign id;
  *  6. after the DML transaction, because DDL commits implicitly in MySQL: the demo mailbox
  *     store, the sim<id>_* tables of the demo SAI simulations and the proj_data_/proj_timeline_/
  *     proj_gantt_ tables of the demo project types.
@@ -147,6 +150,26 @@ if (!function_exists('demo_wipe_demo_rows')) {
         }
         demo_wipe_delete($pdo, $schema, $counts, 'users', 'id', $ids);
         return $ids;
+    }
+
+    /**
+     * The newsletter rows the prefix wipe cannot find: the manual suppression of the demo lead L11 (no campaign,
+     * so no demo- id; matched by the e-mail of every edition) and the NEWSLETTER_CONFIG the demo seeded. The
+     * setting is deleted only while it still carries the seeder's `"demo": true` marker; the first save in
+     * Settings drops the marker, so a configuration the user edited survives.
+     */
+    function demo_wipe_newsletter(PDO $pdo, array $schema, array &$counts): void {
+        require_once __DIR__ . '/newsletter.php';
+        demo_wipe_delete($pdo, $schema, $counts, 'newsletter_suppressions', 'email', demo_newsletter_manual_emails());
+        if (isset($schema['system_settings'])) {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'NEWSLETTER_CONFIG'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+            $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+            if (is_array($decoded) && ($decoded['demo'] ?? null) === true) {
+                demo_wipe_delete($pdo, $schema, $counts, 'system_settings', 'key', ['NEWSLETTER_CONFIG']);
+            }
+        }
     }
 
     /** The demo simulations as [id => table_prefix], read before their rows go. */
@@ -345,6 +368,8 @@ if (!function_exists('demo_wipe_demo_rows')) {
             $mailUsers = array_merge(demo_all_user_emails(), [CCRM_DEMO_TEAM_MAILBOX]);
             demo_wipe_delete($pdo, $schema, $counts, 'email_summaries', 'user_email', $mailUsers);
             demo_wipe_delete($pdo, $schema, $counts, 'rag_emails', 'user_email', $mailUsers);
+            // 5b. the newsletter's manual suppression and its demo configuration
+            demo_wipe_newsletter($pdo, $schema, $counts);
 
             $pdo->commit();
         } catch (\Throwable $e) {

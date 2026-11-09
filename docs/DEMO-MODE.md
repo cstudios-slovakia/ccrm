@@ -1178,7 +1178,7 @@ Rules for a pack file:
 
 Order (later modules may link to earlier rows):
 `company, employees, clients, projects, tasks, offers, warehouse, orders, finance, tickets,
-time, whatsapp, email, meetings, workflows, sai`.
+time, newsletter, whatsapp, email, meetings, workflows, sai`.
 
 Ids: `demo-<module>-<n>`. Refs map to fixed ids so every module computes the same id
 without a lookup:
@@ -1258,7 +1258,7 @@ texts and USP cards in the pack language. Only written on install and on re-seed
 
 ## C8. `DEMO_DATASET` setting
 
-`{"version": 2, "language": "hu", "currency": "EUR", "seededAt": "2026-11-02T10:15:00Z",
+`{"version": 3, "language": "hu", "currency": "EUR", "seededAt": "2026-11-02T10:15:00Z",
 "modules": {"clients": 11, "time": 96, ...}}`. Written by `demo_seed_all()`. Absent on
 old installs → the Settings section says the data predates the current demo. Bump
 `version` whenever a module is added, so old installs are told to re-seed. Read by
@@ -1489,6 +1489,19 @@ Support contract: C6 (yearly maintenance, 2 re-sealing visits). Tickets:
 - **WhatsApp**: C1 site manager (photos of the facade progress, unread 2), L10 Thomas Müller
   (German/English), C6 hotel manager (spa wall), C2 (warranty chip photo). Tasks and
   timeline entries generated from them as today.
+- **Newsletter** (module `newsletter`, written straight into the three `newsletter_*` tables and
+  `NEWSLETTER_CONFIG`; docs/NEWSLETTER.md C15): a stone-toned theme with a {brand} header and the default footer
+  (company address, `{{unsubscribe_url}}`, `{{view_online_url}}`). Campaign 1, sent 20 days ago: the spring
+  remnant-slab sale to the "Trade partners & studios" and "Commercial & developers" categories (5 clients; four
+  sent, C5 failed with `550 mailbox unavailable` and is suppressed as bounced, C4 unsubscribed three days later).
+  Campaign 2, sent 60 days ago: "Caring for your new worktop" to all six clients. Campaign 3, a draft: the new
+  sintered-stone collection to all clients plus leads, 8 addresses queued after the suppressions (bounced C5,
+  unsubscribed C4 and the manual entry for the lost lead L11), so **Hold to send** works (demo never sends).
+  The sent campaigns carry `html_snapshot` / `text_snapshot` from a demo-only approximation of `renderEmail()`.
+  Rows: 3 campaigns, 11 recipients, 3 suppressions (17 in the `DEMO_DATASET` count). The wipe removes the
+  campaigns and recipients by their `demo-newsletter-` campaign id, the manual suppression by the lead's e-mail
+  and `NEWSLETTER_CONFIG` while it still carries the seeder's `"demo": true` marker (a configuration the user
+  saved in Settings survives).
 - **Social posts**: finished P2 kitchen, workshop waterjet video, showroom open day,
   care-kit promotion, a hotel project teaser (P3), a team photo.
 
