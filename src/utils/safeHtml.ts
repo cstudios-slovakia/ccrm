@@ -28,7 +28,7 @@ const domAvailable = (): boolean =>
   typeof document !== "undefined" &&
   DOMPurify.isSupported === true;
 
-export type HtmlProfile = "ticket" | "block";
+export type HtmlProfile = "ticket" | "block" | "newsletter";
 
 const PROFILES: Record<HtmlProfile, { tags: string[]; attrs: string[] }> = {
   // Ticket descriptions and replies: text formatting, lists, quotes, code, links, images.
@@ -45,6 +45,13 @@ const PROFILES: Record<HtmlProfile, { tags: string[]; attrs: string[] }> = {
       "b", "i", "em", "strong", "u", "s", "strike", "a", "code", "br", "span", "font", "div", "p", "mark",
     ],
     attrs: ["href", "target", "rel", "class", "style", "color"],
+  },
+  // E-mail builder text and headings: inline formatting, lists and links. The only style that
+  // survives is `color` on a span (see the hook below). A href that is a merge tag such as
+  // {{unsubscribe_url}} survives: DOMPurify's URI check accepts a value starting with "{".
+  newsletter: {
+    tags: ["p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li", "span"],
+    attrs: ["href", "target", "rel", "style"],
   },
 };
 
@@ -71,7 +78,16 @@ export const filterStyleAttribute = (style: string): string =>
     })
     .join("; ");
 
+/** Only the `color` declarations of a style attribute (the newsletter profile). */
+export const filterColorOnlyStyle = (style: string): string =>
+  filterStyleAttribute(style)
+    .split(";")
+    .map((decl) => decl.trim())
+    .filter((decl) => /^color\s*:/i.test(decl))
+    .join("; ");
+
 let hooksInstalled = false;
+let activeProfile: HtmlProfile | null = null;
 const installHooks = (): void => {
   if (hooksInstalled) return;
   hooksInstalled = true;
@@ -80,7 +96,13 @@ const installHooks = (): void => {
       node.setAttribute("rel", "noopener noreferrer");
     }
     if (node.hasAttribute("style")) {
-      const cleaned = filterStyleAttribute(node.getAttribute("style") || "");
+      const raw = node.getAttribute("style") || "";
+      const cleaned =
+        activeProfile === "newsletter"
+          ? node.tagName === "SPAN"
+            ? filterColorOnlyStyle(raw)
+            : ""
+          : filterStyleAttribute(raw);
       if (cleaned) node.setAttribute("style", cleaned);
       else node.removeAttribute("style");
     }
@@ -93,14 +115,19 @@ export const sanitizeRichHtml = (raw: string, profile: HtmlProfile): string => {
   if (!domAvailable()) return escapeHtml(raw);
   installHooks();
   const { tags, attrs } = PROFILES[profile];
-  return String(
-    DOMPurify.sanitize(raw, {
-      ALLOWED_TAGS: tags,
-      ALLOWED_ATTR: attrs,
-      ALLOW_DATA_ATTR: false,
-      ALLOW_ARIA_ATTR: false,
-    }),
-  );
+  activeProfile = profile;
+  try {
+    return String(
+      DOMPurify.sanitize(raw, {
+        ALLOWED_TAGS: tags,
+        ALLOWED_ATTR: attrs,
+        ALLOW_DATA_ATTR: false,
+        ALLOW_ARIA_ATTR: false,
+      }),
+    );
+  } finally {
+    activeProfile = null;
+  }
 };
 
 /**
