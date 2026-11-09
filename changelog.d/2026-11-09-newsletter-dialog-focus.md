@@ -1,0 +1,1 @@
+- Newsletter: the dialogs now keep keyboard focus inside and return it on close, and the campaign screen waits for a design save in flight before it loads (no stale thumbnail after Back). Test hooks added to the status chips.

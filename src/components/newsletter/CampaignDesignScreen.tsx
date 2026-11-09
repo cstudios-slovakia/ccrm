@@ -173,6 +173,8 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
                   onClick={() => void flush()}
                   disabled={status !== "error"}
                   aria-live="polite"
+                  data-testid="newsletter-save-status"
+                  data-state={status}
                   className={`type-meta ${status === "error" ? "cursor-pointer text-rose-700 underline" : "text-slate-500"}`}
                 >
                   {saveLabel}

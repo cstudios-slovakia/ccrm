@@ -73,7 +73,7 @@ const STATUS_TONE: Record<CampaignStatus, string> = {
 export const progressPercent = (c: Counts): number => (c.total > 0 ? Math.round(((c.total - c.queued) / c.total) * 100) : 0);
 
 export const StatusChip = ({ status, counts, t }: { status: CampaignStatus; counts?: Counts; t: TFn }) => (
-  <span className="inline-flex items-center gap-1.5">
+  <span className="inline-flex items-center gap-1.5" data-testid="newsletter-status" data-status={status}>
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 type-overline ${STATUS_TONE[status]}`}>
       {statusLabel(status, t)}
       {status === "sending" && counts ? ` ${progressPercent(counts)} %` : ""}

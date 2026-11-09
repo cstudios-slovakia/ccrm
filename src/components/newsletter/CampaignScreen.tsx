@@ -13,6 +13,7 @@ import { DEFAULT_NEWSLETTER_CONFIG } from "./types";
 import { isAudienceValid, normalizeAudience } from "./audience";
 import { NewsletterApiError, newsletterApi, newsletterErrorMessage } from "./newsletterApi";
 import type { Audience, AudiencePreview, Campaign, CampaignPatch, NewsletterSettingsResponse } from "./types";
+import { settleSaves } from "./useDebouncedSave";
 import { registerPendingSave } from "../../utils/pendingSaves";
 import { BTN_SECONDARY, Loading, Notice, StatusChip, senderReady, unsavedLeaveOptions, type NewsletterData, type NewsletterEnv } from "./shared";
 
@@ -131,8 +132,8 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
     setCampaign(null);
     setError(null);
     setSave("idle");
-    newsletterApi
-      .get(id)
+    settleSaves()
+      .then(() => newsletterApi.get(id))
       .then((c) => !cancelled && setCampaign({ ...c, audience: normalizeAudience(c.audience) }))
       .catch((e) => !cancelled && setError(newsletterErrorMessage(e, t)));
     newsletterApi
@@ -262,6 +263,8 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
                 onClick={() => void flush()}
                 disabled={save !== "error"}
                 aria-live="polite"
+                data-testid="newsletter-save-status"
+                data-state={save}
                 className={`type-meta ${save === "error" ? "text-rose-700 underline cursor-pointer" : "text-slate-500"}`}
               >
                 {saveLabel}

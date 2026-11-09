@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { registerPendingSave } from "../../utils/pendingSaves";
 
+/** Writes on their way, across screens: a screen that loads right after another unmounted waits for them (Back from the design route must not show the old body). */
+const writing = new Set<Promise<unknown>>();
+export const settleSaves = async (): Promise<void> => {
+  while (writing.size) await Promise.allSettled([...writing]);
+};
+
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
 /**
@@ -46,7 +52,9 @@ export const useDebouncedSave = <T,>(save: (value: T) => Promise<void>, delay = 
         },
       );
       inFlight.current = run;
+      writing.add(run);
       const ok = await run;
+      writing.delete(run);
       if (inFlight.current === run) inFlight.current = null;
       if (!ok) return false;
     }
