@@ -130,6 +130,7 @@ Interaction history logged against leads (emails, call logs, meetings).
 * `content` TEXT
 * `author` VARCHAR(100) (CRM user whose action produced the entry; NULL for entries nobody triggered here — incoming mail, public-form inquiries, imports — and for rows written before the column existed)
 * `external_url` VARCHAR(255) [NULLable] (deep link path into the external system, e.g. /c/<id>?m=<id>)
+* `task_id` VARCHAR(50) [NULLable, indexed `idx_event_task`] (the task a "Comment on task: <title>" note belongs to; written by the MCP `add_task_comment` tool, NULL for every other entry. No foreign key: the note stays on the client timeline when the task goes. The app never sends it, so `sync.php` carries it over by event id when it rewrites a lead's timeline. Older comments are linked by title in `ccrm_migrate_timeline_task_link()`, only where one task of that client has the title.)
 * `created_at` TIMESTAMP
 
 ---

@@ -134,10 +134,12 @@ if (!function_exists('ccrm_schema_statements')) {
               `transcription` TEXT NULL COMMENT 'Speech-to-text transcript of `audio_file`, produced by api/transcribe_meeting.php',
               `hidden` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'mail entries only: removed from the lead timeline by the user; kept so the mailbox importer does not file it again',
               `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)',
+              `task_id` VARCHAR(50) NULL COMMENT 'The task a note comments on (written by the MCP add_task_comment tool); NULL for every other entry. No foreign key: the note stays on the client timeline when the task goes',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
-              INDEX idx_event_type (`type`)
+              INDEX idx_event_type (`type`),
+              INDEX idx_event_task (`task_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Tasks
@@ -2142,6 +2144,8 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);
         ccrm_migrate_integration_timeline($pdo);
+        require_once __DIR__ . '/timeline_task_link.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_timeline_task_link($pdo);
         // Exact copies only. A distinct note, offer, time, amount or file is kept.
         ccrm_dedupe_exact_timeline_events($pdo);
         ccrm_migrate_ai_models($pdo);
@@ -3707,7 +3711,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

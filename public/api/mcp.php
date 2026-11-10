@@ -1577,12 +1577,14 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             }
 
             if ($task && !empty($task['related_lead_id'])) {
+                mcp_ensure_task_link($pdo);
                 $evId = 'ev_' . bin2hex(random_bytes(8));
                 $evStmt = $pdo->prepare(
-                    "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                     VALUES (?, ?, 'note', ?, ?, ?, ?)"
+                    "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author, task_id)
+                     VALUES (?, ?, 'note', ?, ?, ?, ?, ?)"
                 );
-                $evStmt->execute([$evId, $task['related_lead_id'], mcp_now_local(), "Comment on task: " . $task['title'], $comment, $user['name']]);
+                // task_id ties the note to this task, so it shows as the task's last_activity_at (a rename later cannot lose it).
+                $evStmt->execute([$evId, $task['related_lead_id'], mcp_now_local(), "Comment on task: " . $task['title'], $comment, $user['name'], $taskId]);
             }
 
             mcp_audit($pdo, $user, 'task_comment', "Commented on task $taskId");

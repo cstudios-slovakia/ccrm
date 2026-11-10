@@ -3304,6 +3304,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
                 $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `external_url` VARCHAR(255) NULL COMMENT 'Deep link path into the external system (e.g. /c/xyz?m=abc)'");
             }
+            // The task a comment note belongs to (written by the MCP add_task_comment tool, carried through every save below).
+            if (!ccrm_column_exists($pdo, 'timeline_events', 'task_id')) {
+                $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `task_id` VARCHAR(50) NULL COMMENT 'The task a note comments on (written by the MCP add_task_comment tool); NULL for every other entry. No foreign key: the note stays on the client timeline when the task goes'");
+            }
             // The contact person's first / last name, written right after the lead upsert below.
             if (!ccrm_column_exists($pdo, 'leads', 'contact_first_name')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_first_name` VARCHAR(100) NULL AFTER `contact_person`");
@@ -4857,11 +4861,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 while ($r = $extUrlStmt->fetch(PDO::FETCH_ASSOC)) {
                     $existingExtUrls[$r['id']] = $r['external_url'];
                 }
+                // The client never sees task_id, so the delete-and-reinsert below would drop it: carry it over by event id.
+                $existingTaskLinks = [];
+                $taskLinkStmt = $pdo->prepare("SELECT `id`, `task_id` FROM `timeline_events` WHERE `lead_id` = ? AND `task_id` IS NOT NULL");
+                $taskLinkStmt->execute([$leadId]);
+                while ($r = $taskLinkStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $existingTaskLinks[$r['id']] = $r['task_id'];
+                }
                 $delTimeline = $pdo->prepare("DELETE FROM `timeline_events` WHERE `lead_id` = ? AND `id` NOT LIKE 'email-%'");
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`, `external_url`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`, `external_url`, `task_id`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     // Editing an entry the mail importer owns: only these columns
                     // are the user's to change. Everything else belongs to the
                     // message and is rewritten from IMAP on the next read.
@@ -4970,7 +4981,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $teAuthor,
                             $teAudioFile,
                             $teTranscription,
-                            $existingExtUrls[$teId] ?? null
+                            $existingExtUrls[$teId] ?? null,
+                            $existingTaskLinks[$teId] ?? null
                         ];
 
                         $isNewTe = true;

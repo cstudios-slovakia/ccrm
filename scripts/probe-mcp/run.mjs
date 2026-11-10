@@ -594,6 +594,33 @@ async function writeChecks() {
   const byUpdate = await call(A, 'list_tasks', { search: 'Bucket', bucket: 'done', sort_by: 'updated_at' });
   check('sort_by=updated_at puts the most recently changed first', byUpdate[0]?.id === r.id && byUpdate.at(-1)?.id === t1, JSON.stringify(byUpdate.map?.((t) => t.id)));
 
+  // last_activity_at / activity_from..to: a comment or a time entry is activity, but does not move updated_at
+  r = await call(A, 'create_task', { title: 'Activity task', deadline: '2030-01-01', client_id: 'lead-parity', owner: 'Probe Editor' });
+  const ta = r.id;
+  ageTask(ta);
+  const actRow = async (tok = A) => (await call(tok, 'list_tasks', { search: 'Activity task', limit: 10 })).find?.((t) => t.id === ta);
+  const actIn = async (from, tok = A) => (await call(tok, 'list_tasks', { search: 'Activity task', activity_from: from, limit: 10 })).some?.((t) => t.id === ta);
+  const base = await actRow();
+  check('last_activity_at equals updated_at for a task with no comment or time', base && base.last_activity_at === base.updated_at, JSON.stringify(base));
+  check('activity_from leaves out a task with no activity since', !(await actIn('2021-01-01')), '');
+  r = await call(A, 'add_task_comment', { task_id: ta, comment: 'Probe comment' });
+  check('add_task_comment on a linked task succeeds', r.success === true, JSON.stringify(r));
+  check('the comment note carries the task id', rows(`SELECT COUNT(*) FROM timeline_events WHERE task_id=${sq(ta)}`)[0][0] === '1', '');
+  const afterComment = await actRow();
+  check('a comment does not move updated_at', afterComment.updated_at === base.updated_at, JSON.stringify(afterComment));
+  check('a comment moves last_activity_at to now', Date.parse(afterComment.last_activity_at) > Date.parse('2026-01-01'), JSON.stringify(afterComment));
+  check('activity_from finds the commented task, updated_from does not', await actIn('2021-01-01') && !(await call(A, 'list_tasks', { search: 'Activity task', updated_from: '2021-01-01' })).some?.((t) => t.id === ta), '');
+  check('get_task returns the same last_activity_at', (await call(A, 'get_task', { id: ta })).last_activity_at === afterComment.last_activity_at, '');
+  sql(`UPDATE tasks SET title = 'Activity task renamed', updated_at = FROM_UNIXTIME(1590998400) WHERE id = ${sq(ta)}`);
+  check('a renamed task keeps its comment as activity (linked by id, not by title)', (await call(A, 'list_tasks', { search: 'Activity task renamed', activity_from: '2021-01-01', limit: 10 })).some?.((t) => t.id === ta), '');
+  sql(`INSERT INTO time_entries (id, user_id, recorded_by_user_id, task_id, entry_date, duration_sec, updated_at) VALUES ('te-probe-act', 'probe-admin', 'probe-admin', ${sq(ta)}, '2030-01-01', 60, FROM_UNIXTIME(1893456000))`);
+  const withTime = (await call(A, 'list_tasks', { search: 'Activity task renamed', limit: 10 })).find?.((t) => t.id === ta);
+  check('a time entry moves last_activity_at for a key that may see it', Date.parse(withTime.last_activity_at) >= Date.parse('2029-12-31T00:00:00Z'), JSON.stringify(withTime));
+  check('another user\'s time entry is not activity for a key without time_tracking_team', Date.parse((await actRow(TOKENS.editor))?.last_activity_at ?? '2000-01-01') < Date.parse('2029-01-01'), '');
+  sql(`UPDATE time_entries SET deleted_at = NOW() WHERE id = 'te-probe-act'`);
+  check('a deleted time entry is no activity', Date.parse((await call(A, 'list_tasks', { search: 'Activity task renamed', limit: 10 })).find?.((t) => t.id === ta)?.last_activity_at ?? '2000-01-01') < Date.parse('2029-01-01'), '');
+  check('a malformed activity_from is refused', isErr(await call(A, 'list_tasks', { activity_from: 'lately' }), /YYYY-MM-DD/), '');
+
   // small guards
   r = await call(A, 'create_task', { title: 'Unlinked', deadline: '2030-01-01' });
   check('add_task_comment refuses a task with no linked lead (nothing would be stored)', isErr(await call(A, 'add_task_comment', { task_id: r.id, comment: 'hi' }), /not linked to a lead/), '');

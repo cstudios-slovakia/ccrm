@@ -382,7 +382,81 @@ function mcp_list_meeting_tasks(\PDO $pdo, array $args): array {
 // list_tasks / get_task  (RC7a, RC4, RC8, RC10): the reference list, plus archives, a deadline range and deadline history
 // ============================================================================
 
+// ----------------------------------------------------------------------------
+// Task activity: comments and tracked time next to the task's own updated_at
+// ----------------------------------------------------------------------------
+//
+// Same decision as for leads (mcp_last_activity_ts): a comment or a time entry does NOT move tasks.updated_at,
+// because sync.php's conflict check reads it and an old browser tab would then look stale. They show in
+// last_activity_at and in the activity_from/activity_to filter instead.
+//  - comments: timeline_events.task_id (written by add_task_comment); DATETIME holding app-local wall time.
+//  - time entries: time_entries.task_id; read through the TIMESTAMP updated_at (start_at/end_at are UTC DATETIMEs).
+//    They count only for a key that may see them: everyone's with time_tracking_team, else the key owner's own.
+
+/**
+ * timeline_events.task_id must exist before a task query or add_task_comment touches it. During a rollout a worker can
+ * still hold the previous schema.php and skip the migration, so heal it here (once per request, never inside a transaction),
+ * as sync.php does for its own columns.
+ */
+function mcp_ensure_task_link(\PDO $pdo): void {
+    static $done = false;
+    if ($done) return;
+    require_once __DIR__ . '/timeline_task_link.php';
+    if (!ccrm_column_exists($pdo, 'timeline_events', 'task_id')) ccrm_migrate_timeline_task_link($pdo);
+    $done = true;
+}
+
+/** [sql, params] limiting time_entries rows (alias $alias) to the ones this key may see. */
+function mcp_task_time_scope(array $user, string $alias = 'x'): array {
+    if (!mcp_can('time_tracking')) return ['0 = 1', []];
+    if (mcp_can('time_tracking_team')) return ['1 = 1', []];
+    return ["$alias.user_id = ?", [(string)($user['id'] ?? '')]];
+}
+
+/** Newest comment or visible time entry per task, as Unix seconds: [task_id => ts]. */
+function mcp_task_activity_latest(\PDO $pdo, array $user, array $taskIds): array {
+    $out = [];
+    [$timeSql, $timeParams] = mcp_task_time_scope($user, 'x');
+    $ids = array_values(array_unique(array_map('strval', $taskIds)));
+    foreach (array_chunk($ids, 500) as $chunk) {
+        $in = implode(',', array_fill(0, count($chunk), '?'));
+        $c = $pdo->prepare("SELECT task_id, MAX(timestamp) AS m FROM timeline_events WHERE task_id IN ($in) AND hidden = 0 GROUP BY task_id");
+        $c->execute($chunk);
+        foreach ($c->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $t = strtotime((string)$r['m']);
+            if ($t !== false) $out[(string)$r['task_id']] = max($out[(string)$r['task_id']] ?? 0, $t);
+        }
+        $e = $pdo->prepare("SELECT x.task_id, MAX(UNIX_TIMESTAMP(x.updated_at)) AS m FROM time_entries x WHERE x.task_id IN ($in) AND x.deleted_at IS NULL AND $timeSql GROUP BY x.task_id");
+        $e->execute(array_merge($chunk, $timeParams));
+        foreach ($e->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            if ($r['m'] !== null) $out[(string)$r['task_id']] = max($out[(string)$r['task_id']] ?? 0, (int)$r['m']);
+        }
+    }
+    return $out;
+}
+
+/**
+ * activity_from / activity_to: tasks with a change of their own (updated_at), a comment or a visible time entry inside the window.
+ * The comment side compares app-local wall time; updated_at and time entries compare as Unix moments.
+ * @return array{0: string[], 1: array}
+ */
+function mcp_task_activity_where(array $args, array $user, string $alias = 'tasks'): array {
+    $from = mcp_optional_moment($args, 'activity_from', false);
+    $to = mcp_optional_moment($args, 'activity_to', true);
+    if ($from === null && $to === null) return [[], []];
+    $own = []; $ownP = []; $time = []; $timeP = [];
+    if ($from !== null) { $own[] = "UNIX_TIMESTAMP($alias.updated_at) >= ?"; $ownP[] = $from; $time[] = 'UNIX_TIMESTAMP(x.updated_at) >= ?'; $timeP[] = $from; }
+    if ($to !== null) { $own[] = "UNIX_TIMESTAMP($alias.updated_at) < ?"; $ownP[] = $to; $time[] = 'UNIX_TIMESTAMP(x.updated_at) < ?'; $timeP[] = $to; }
+    [$tl, $tlP] = mcp_local_range($args, 'activity_from', 'activity_to', 'te.timestamp');
+    [$timeSql, $timeScopeP] = mcp_task_time_scope($user, 'x');
+    $sql = '((' . implode(' AND ', $own) . ")"
+        . " OR EXISTS (SELECT 1 FROM timeline_events te WHERE te.task_id = $alias.id AND te.hidden = 0 AND " . implode(' AND ', $tl) . ')'
+        . " OR EXISTS (SELECT 1 FROM time_entries x WHERE x.task_id = $alias.id AND x.deleted_at IS NULL AND $timeSql AND " . implode(' AND ', $time) . '))';
+    return [[$sql], array_merge($ownP, $tlP, $timeScopeP, $timeP)];
+}
+
 function mcp_list_tasks(\PDO $pdo, array $user, array $args): array {
+    mcp_ensure_task_link($pdo);
     $where = []; $params = [];
     if (empty($args['include_archived'])) $where[] = 'archived = 0';
     foreach (['status' => 'status', 'priority' => 'priority', 'owner' => 'owner', 'project_id' => 'related_project_id', 'client_id' => 'related_lead_id'] as $key => $col) {
@@ -400,29 +474,38 @@ function mcp_list_tasks(\PDO $pdo, array $user, array $args): array {
     $bucket = mcp_enum($args, 'bucket', ['overdue', 'today', 'tomorrow', 'upcoming', 'done']);
     [$bWhere, $bParams] = $bucket ? mcp_date_bucket($bucket, 'deadline', mcp_open_task_sql($pdo), "COALESCE(NULLIF(deadline_time, ''), '23:59')") : [[], []];
     [$dWhere, $dParams] = mcp_date_range($args, 'deadline', 'deadline');
-    $where = array_merge($where, $win['where'], $bWhere, $dWhere, [ccrm_sql_real_tasks()]);
-    $params = array_merge($params, $win['params'], $bParams, $dParams);
+    [$aWhere, $aParams] = mcp_task_activity_where($args, $user, 'tasks');
+    $where = array_merge($where, $win['where'], $bWhere, $dWhere, $aWhere, [ccrm_sql_real_tasks()]);
+    $params = array_merge($params, $win['params'], $bParams, $dParams, $aParams);
     $stmt = $pdo->prepare(
         'SELECT id, title, description, priority, deadline, deadline_time, original_deadline, deadline_moves, status, owner, created_by, related_lead_id, related_project_id,
                 completed_by, completed_at, archived, ' . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at')
         . ' FROM tasks WHERE ' . implode(' AND ', $where) . ' ' . $win['tail']
     );
     $stmt->execute($params);
-    return array_map(function ($t) {
+    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    $latest = mcp_task_activity_latest($pdo, $user, array_column($rows, 'id'));
+    return array_map(function ($t) use ($latest) {
         $t['archived'] = (int)$t['archived'] === 1;
         $t['deadline_moves'] = (int)$t['deadline_moves'];
         $t['completed_at_iso'] = mcp_local_iso($t['completed_at']);
+        $t['last_activity_at__ts'] = mcp_last_activity_ts($t['updated_at__ts'], [(string)$t['id']], $latest);
         return mcp_row_moments($t);
-    }, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }, $rows);
 }
 
 function mcp_get_task(\PDO $pdo, array $user, array $args): array {
+    mcp_ensure_task_link($pdo);
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
     $stmt = $pdo->prepare('SELECT *, UNIX_TIMESTAMP(created_at) AS created_ts, UNIX_TIMESTAMP(updated_at) AS updated_ts FROM tasks WHERE id = ? AND ' . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $stmt->execute(array_merge([$args['id']], $scopeParams));
     $task = $stmt->fetch(\PDO::FETCH_ASSOC);
     if (!$task) throw new \Exception('Task not found with ID: ' . $args['id']);
+    // last_activity_at needs the raw updated_ts, which mcp_task_moments removes.
+    $latest = mcp_task_activity_latest($pdo, $user, [(string)$args['id']]);
+    $lastActivityTs = mcp_last_activity_ts($task['updated_ts'], [(string)$args['id']], $latest);
     $task = mcp_task_moments($task);
+    $task['last_activity_at'] = mcp_format_moment($lastActivityTs);
     // completed_at is a local "YYYY-MM-DD HH:MM" string; the same moment with the offset sits beside it.
     $task['completed_at_iso'] = mcp_local_iso($task['completed_at'] ?? null);
     $as = $pdo->prepare('SELECT user_name FROM task_assignees WHERE task_id = ?');
@@ -510,7 +593,10 @@ function mcp_crm_defs(): array {
         'list_tasks' => [
             'name' => 'list_tasks',
             'description' => 'List and filter tasks across projects, clients, and team members. '
-                . 'updated_at moves on any edit to the task, including its assignees and tags, and when it is archived or restored; comments are on the linked client timeline and do not count. '
+                . 'updated_at moves on any edit to the task, including its assignees and tags, and when it is archived or restored; comments and tracked time do not move it. '
+                . 'last_activity_at is the later of updated_at, the newest comment added with add_task_comment and the newest time entry on the task (time entries count only if your key may see them); '
+                . 'activity_from/activity_to select tasks with an edit, a comment or a time entry inside that window, so use them for "what happened on tasks since X" and updated_from/updated_to for "which tasks were edited". '
+                . 'Comments written before this field existed count only where one task of the client has that title. '
                 . 'Archived tasks are left out unless include_archived=true (each row says archived), so an archive can be found with include_archived + updated_from. '
                 . 'deadline_from/deadline_to take a deadline range (inclusive dates); original_deadline is the deadline the task was first given and deadline_moves how many times it was pushed later. '
                 . 'completed_at is a local "YYYY-MM-DD HH:MM" string; completed_at_iso is the same moment with the offset. '
@@ -525,12 +611,14 @@ function mcp_crm_defs(): array {
                     'client_id' => $s('Filter by related client ID'),
                     'search' => $s('Search task titles and descriptions'),
                     'include_archived' => ['type' => 'boolean', 'description' => 'Also list archived tasks (default false)'],
+                    'activity_from' => $s('Edited, commented or time tracked at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'),
+                    'activity_to' => $s('Edited, commented or time tracked before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'),
                 ] + mcp_bucket_prop('deadline') + mcp_date_range_props('deadline', 'Deadline') + mcp_window_props(MCP_TASK_WINDOW),
             ],
         ],
         'get_task' => [
             'name' => 'get_task',
-            'description' => 'Retrieve full task details, assignees, and tags. created_at and updated_at are ISO moments with the offset; completed_at is a local "YYYY-MM-DD HH:MM" string and completed_at_iso the same moment with the offset; original_deadline and deadline_moves show how often the deadline was pushed.',
+            'description' => 'Retrieve full task details, assignees, and tags. created_at and updated_at are ISO moments with the offset; last_activity_at is the later of updated_at, the newest comment and the newest time entry you may see; completed_at is a local "YYYY-MM-DD HH:MM" string and completed_at_iso the same moment with the offset; original_deadline and deadline_moves show how often the deadline was pushed.',
             'inputSchema' => ['type' => 'object', 'properties' => ['id' => $s('Task ID')], 'required' => ['id']],
         ],
         'list_meetings' => [
