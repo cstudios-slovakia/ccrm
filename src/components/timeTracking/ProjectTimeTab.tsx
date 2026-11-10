@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ListChecks, Play, Timer, Wallet } from "lucide-react";
+import { ListChecks, Play, Square, Timer, Wallet } from "lucide-react";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { formatDuration, hoursOf } from "../../utils/timeTracking.ts";
@@ -62,11 +62,16 @@ export function ProjectTimeTab({
             <button
               type="button"
               data-testid="project-start-timer"
-              onClick={() => void tt.start({ projectId: project.id, description: null, originType: "project", originId: project.id })}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold shadow-sm transition-all active:scale-95 cursor-pointer ${runningHere ? "bg-rose-600 text-white" : "bg-primary text-primary-foreground hover:opacity-90"}`}
+              onClick={() => {
+                if (runningHere) void tt.stop();
+                else void tt.start({ projectId: project.id, description: null, originType: "project", originId: project.id });
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold shadow-sm transition-all active:scale-95 cursor-pointer ${runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-primary text-primary-foreground hover:opacity-90"}`}
             >
-              <Play className="size-4 fill-current" />
-              {t("Start timer on this project", "Spustiť časovač na tomto projekte", "Időzítő indítása ezen a projekten")}
+              {runningHere ? <Square className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
+              {runningHere
+                ? t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")
+                : t("Start timer on this project", "Spustiť časovač na tomto projekte", "Időzítő indítása ezen a projekten")}
             </button>
           )}
         </div>
