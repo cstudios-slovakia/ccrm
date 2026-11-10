@@ -410,6 +410,20 @@ try {
     check("lead: every timeline entry shape reads back unchanged", teDiffs.length === 0, teDiffs.join(" "));
     check("lead: a note that logged a sale keeps its amount", byId[`ev-${t0}-5`]?.amount === 250.25, `amount=${JSON.stringify(byId[`ev-${t0}-5`]?.amount)}`);
 
+    // A person record stores its OWN first and last name in the contact parts; the
+    // display name keeps the user's order and contactPerson stays empty (B1.7).
+    const personLeadId = `${PREFIX}person-${t0}`;
+    const personLead = {
+      id: personLeadId, name: `${PREFIX}Kovács Péter`, city: "Komárno", clientType: "person", status: "new",
+      source: "Web", owner: "Probe", value: 0, rating: 0, createdAt: "2026-02-01",
+      contactFirstName: "Péter", contactLastName: "Kovács", timeline: [],
+    };
+    const rPerson = await post({ baseSyncedAt: await clock(), leads: [personLead] });
+    const personBack = ((await json("/sync.php")).body?.leads || []).find((l) => l.id === personLeadId);
+    check("person lead: POST 200", rPerson.status === 200 && rPerson.body?.success === true, `status=${rPerson.status} body=${JSON.stringify(rPerson.body)?.slice(0, 300)}`);
+    check("person lead: own first and last name read back", personBack?.contactFirstName === "Péter" && personBack?.contactLastName === "Kovács", `first=${JSON.stringify(personBack?.contactFirstName)} last=${JSON.stringify(personBack?.contactLastName)}`);
+    check("person lead: contactPerson stays empty, name unchanged", !personBack?.contactPerson && personBack?.name === personLead.name, `contactPerson=${JSON.stringify(personBack?.contactPerson)} name=${JSON.stringify(personBack?.name)}`);
+
     // Hiding an imported mail entry as the ONLY change to the lead. The row is
     // inserted the way api/mail_broker.php does (with seconds); the lead is
     // pushed once unchanged first so the timestamps are already normalised —
