@@ -1,0 +1,1 @@
+- **Tests**: MCP probe (`scripts/probe-mcp/run.mjs`, `changeMoneyChecks`): 76 checks for the money-side change visibility (project buckets and ranges, invoice payment state and `last_activity_at`, derived ledger overdue, forecast overdue block, milestones across projects, paging).

@@ -1012,6 +1012,213 @@ async function changeCrmChecks() {
 
 async function changeMoneyChecks() {
   section('change visibility: projects, invoices, expenses, ledger, forecast');
+  const A = TOKENS.admin;
+  const today = (await call(A, 'get_financial_overview', { year: 2026 })).as_of;   // the app's date, not this machine's
+  const shift = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const [yesterday, in3, in5, in10, in14, in20] = [-1, 3, 5, 10, 14, 20].map((n) => shift(today, n));
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  const list = (r) => (Array.isArray(r) ? r : []);
+  const ids = (rs) => list(rs).map((r) => r.id).join();
+  const sortedIds = (rs) => list(rs).map((r) => r.id).sort().join();
+  // 1590998400 = 2020-06-01 10:00 Europe/Bratislava, whatever the MySQL zone (as in the task checks).
+  const age = (table, where) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(1590998400) WHERE ${where}`);
+  const unix = (iso) => Date.parse(iso) / 1000;
+
+  // ---- projects: deadline buckets and ranges, window, paging
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM projects WHERE id LIKE 'cm-p%' OR id LIKE 'cm-bulk%';
+       INSERT INTO projects (id,project_type_id,name,status,value,completion_deadline,invoice_date) VALUES
+         ('cm-p1','pt-parity','cmprobe overdue','active',1000,'${yesterday}','${in3}'),
+         ('cm-p2','pt-parity','cmprobe done late','completed',1000,'${yesterday}',NULL),
+         ('cm-p3','pt-parity','cmprobe soon','active',1000,'${in10}',NULL),
+         ('cm-p4','pt-parity','cmprobe undated','active',1000,NULL,NULL);
+       INSERT INTO projects (id,project_type_id,name,status) VALUES ${Array.from({ length: 120 }, (_, i) => `('cm-bulk${i}','pt-parity','cmbulk probe','active')`).join(',')};
+       SET FOREIGN_KEY_CHECKS=1;`);
+  const lp = (a) => call(A, 'list_projects', { search: 'cmprobe', ...a });
+  let r = await lp({});
+  const p1 = list(r).find((p) => p.id === 'cm-p1');
+  check('list_projects returns created_at and updated_at as ISO moments with an offset', p1 && isoRe.test(p1.created_at) && isoRe.test(p1.updated_at), JSON.stringify(p1));
+  check('list_projects: updated_at is the moment the database holds', p1 && unix(p1.updated_at) === Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM projects WHERE id = 'cm-p1'`)), p1?.updated_at);
+  check('list_projects rows carry the status group', p1?.status_group === 'in_progress' && list(r).find((p) => p.id === 'cm-p2')?.status_group === 'completed', JSON.stringify(list(r).map((p) => p.status_group)));
+  check('list_projects bucket=overdue: open and past the deadline (a completed late project is not)', sortedIds(await lp({ bucket: 'overdue' })) === 'cm-p1', JSON.stringify(await lp({ bucket: 'overdue' })).slice(0, 300));
+  check('list_projects bucket=done: the completed project', sortedIds(await lp({ bucket: 'done' })) === 'cm-p2', '');
+  check('list_projects bucket=upcoming: a deadline later than tomorrow', sortedIds(await lp({ bucket: 'upcoming' })) === 'cm-p3', '');
+  check('list_projects bucket=today: nothing due today', Array.isArray(await lp({ bucket: 'today' })) && sortedIds(await lp({ bucket: 'today' })) === '', '');
+  check('list_projects deadline_from/deadline_to is an inclusive range (today .. +14 days)', sortedIds(await lp({ deadline_from: today, deadline_to: in14 })) === 'cm-p3', '');
+  check('list_projects deadline_to alone: everything due up to yesterday', sortedIds(await lp({ deadline_to: yesterday })) === 'cm-p1,cm-p2', '');
+  check('list_projects invoice_date_from/invoice_date_to', sortedIds(await lp({ invoice_date_from: today, invoice_date_to: in3 })) === 'cm-p1', '');
+  check('list_projects sort_by=deadline: soonest first, undated last', ids(await lp({ sort_by: 'deadline' })) === 'cm-p1,cm-p2,cm-p3,cm-p4', ids(await lp({ sort_by: 'deadline' })));
+  check('list_projects sort_by=deadline sort_order=desc keeps undated last', ids(await lp({ sort_by: 'deadline', sort_order: 'desc' })) === 'cm-p3,cm-p1,cm-p2,cm-p4', ids(await lp({ sort_by: 'deadline', sort_order: 'desc' })));
+  check('list_projects refuses a malformed deadline_from and an unknown bucket', isErr(await lp({ deadline_from: 'soon' }), /YYYY-MM-DD/) && isErr(await lp({ bucket: 'late' }), /bucket/), '');
+  age('projects', `id = 'cm-p1'`);
+  check('list_projects updated_from leaves out a project last changed before it', !ids(await lp({ updated_from: '2021-01-01' })).includes('cm-p1') && ids(await lp({ updated_from: '2021-01-01' })).includes('cm-p3'), '');
+  check('list_projects updated_from takes a time of day', ids(await lp({ updated_from: '2020-06-01 09:59' })).includes('cm-p1') && !ids(await lp({ updated_from: '2020-06-01 10:01' })).includes('cm-p1'), '');
+  check('list_projects sort_by=updated_at lists the oldest change last', list(await lp({ sort_by: 'updated_at' })).at(-1)?.id === 'cm-p1', ids(await lp({ sort_by: 'updated_at' })));
+  const page1 = await lp({ limit: 2, sort_by: 'deadline' });
+  const page2 = await lp({ limit: 2, offset: 2, sort_by: 'deadline' });
+  check('list_projects offset pages without overlap or gaps', ids(page1) === 'cm-p1,cm-p2' && ids(page2) === 'cm-p3,cm-p4', `${ids(page1)} | ${ids(page2)}`);
+  const bulk = (a) => call(A, 'list_projects', { search: 'cmbulk', limit: 100, ...a });
+  const bulkA = await bulk({});
+  const bulkB = await bulk({ offset: 100 });
+  check('list_projects: 120 projects, offset 100 returns the last 20 (no silent cap at 100)', list(bulkA).length === 100 && list(bulkB).length === 20 && new Set([...list(bulkA), ...list(bulkB)].map((p) => p.id)).size === 120, `${list(bulkA).length} / ${list(bulkB).length}`);
+  const gp = await call(A, 'get_project', { id: 'cm-p1' });
+  check('get_project returns created_at and updated_at as ISO moments (the stored moment, any MySQL zone)', isoRe.test(gp.created_at) && isoRe.test(gp.updated_at) && unix(gp.updated_at) === 1590998400, `${gp.created_at} ${gp.updated_at}`);
+
+  // ---- milestones: across projects, deadline range, bucket, paging
+  sql(`CREATE TABLE IF NOT EXISTS proj_gantt_ptparity (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50) NOT NULL, title VARCHAR(255) NOT NULL, contact_id VARCHAR(50) NULL, start_date DATE NULL, end_date DATE NULL, progress INT NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+       DELETE FROM proj_gantt_ptparity WHERE id LIKE 'cmg%';
+       INSERT INTO proj_gantt_ptparity (id,project_id,title,start_date,end_date,progress) VALUES
+         ('cmg1','cm-p1','CM Gantt late','${shift(today, -30)}','${yesterday}',40),
+         ('cmg2','cm-p1','CM Gantt done','${shift(today, -30)}','${yesterday}',100),
+         ('cmg3','cm-p3','CM Gantt later','${today}','${in10}',0);`);
+  const ms = await call(A, 'create_milestone', { project_id: 'cm-p1', title: 'CM milestone task', deadline: yesterday });
+  const lmAll = async (a, token = A) => (await call(token, 'list_milestones', a)).milestones || [];
+  check('list_milestones with project_id and bucket=overdue: open milestones past their deadline', sortedIds(await lmAll({ project_id: 'cm-p1', bucket: 'overdue' })) === ['cmg1', ms.id].sort().join(), JSON.stringify(await lmAll({ project_id: 'cm-p1', bucket: 'overdue' })).slice(0, 300));
+  // The dev data may hold other milestones: narrow ranges keep ours on the first page.
+  let all = await lmAll({ deadline_from: yesterday, deadline_to: in10, limit: 100 });
+  check('list_milestones without project_id lists milestones of every project, each with its project', ['cmg1', 'cmg2', 'cmg3', ms.id].every((id) => all.some((m) => m.id === id)) && all.every((m) => m.project_id && 'project_name' in m), JSON.stringify(all.slice(0, 2)));
+  all = await lmAll({ bucket: 'overdue', deadline_from: yesterday, deadline_to: in10, limit: 100 });
+  check('list_milestones across projects: bucket=overdue has the open late ones, not the finished or future ones', all.some((m) => m.id === 'cmg1') && all.some((m) => m.id === ms.id) && !all.some((m) => m.id === 'cmg2' || m.id === 'cmg3'), ids(all));
+  all = await lmAll({ deadline_from: today, deadline_to: in20, limit: 100 });
+  check('list_milestones across projects: deadline_from/deadline_to', all.some((m) => m.id === 'cmg3') && !all.some((m) => m.id === 'cmg1'), ids(all));
+  check('list_milestones across projects: open_only leaves out the finished Gantt row', (await lmAll({ open_only: true, deadline_from: yesterday, deadline_to: yesterday, limit: 100 })).some((m) => m.id === 'cmg1') && !(await lmAll({ open_only: true, deadline_from: yesterday, deadline_to: yesterday, limit: 100 })).some((m) => m.id === 'cmg2'), '');
+  const mp1 = await call(A, 'list_milestones', { limit: 1 });
+  const mp2 = await call(A, 'list_milestones', { limit: 1, offset: 1 });
+  check('list_milestones pages with limit + offset and says whether a next page exists', mp1.milestones?.length === 1 && mp2.milestones?.length === 1 && mp1.milestones[0].id !== mp2.milestones[0].id && mp1.has_more === true, JSON.stringify([mp1.has_more, mp1.milestones?.map((m) => m.id), mp2.milestones?.map((m) => m.id)]));
+  const msRow = (await lmAll({ project_id: 'cm-p1' })).find((m) => m.id === ms.id);
+  check('list_milestones: a milestone task carries created_at and updated_at as ISO moments', msRow && isoRe.test(msRow.created_at) && isoRe.test(msRow.updated_at), JSON.stringify(msRow));
+  check('list_milestones across projects: milestone tasks follow task visibility', (await lmAll({ deadline_from: yesterday, deadline_to: yesterday, limit: 100 }, TOKENS.editor)).some((m) => m.id === 'cmg1') && !(await lmAll({ deadline_from: yesterday, deadline_to: yesterday, limit: 100 }, TOKENS.editor)).some((m) => m.source === 'task' && m.id === ms.id), '');
+  sql(`UPDATE projects SET archived = 1 WHERE id = 'cm-p3'`);
+  check('list_milestones across projects leaves out archived projects unless asked', !(await lmAll({ deadline_from: in10, deadline_to: in10, limit: 100 })).some((m) => m.id === 'cmg3') && (await lmAll({ deadline_from: in10, deadline_to: in10, limit: 100, include_archived: true })).some((m) => m.id === 'cmg3'), '');
+
+  // ---- invoices: payment state, derived overdue, due/issue ranges, last_activity_at
+  const inv = (n, o) => `('cm-inv${n}','CMP-${n}','${o.type || 'invoice'}','cm-lead','cm-client','CMProbe Client','Inv ${n}','Inv ${n}',${o.total / 1.2},${o.total - o.total / 1.2},${o.total},'${o.status || 'sent'}',${o.changed ? `'${o.changed}'` : 'NULL'},'${o.issued}',${o.due ? `'${o.due}'` : 'NULL'})`;
+  const fr = (n, status, planned, real, paidDate, due) => `('fr-inv-cm-inv${n}','income','invoice','Inv ${n}',${planned},${real},'EUR','${status}','${today}',${due ? `'${due}'` : 'NULL'},${paidDate ? `'${paidDate}'` : 'NULL'},'CMP-${n}')`;
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM invoices_offers WHERE id LIKE 'cm-inv%'; DELETE FROM financial_records WHERE id LIKE 'fr-inv-cm-inv%';
+       INSERT INTO invoices_offers (id,document_number,type,lead_id,client_id,client_name,title,subject,subtotal,vat_amount,total_price,status,status_changed_at,issued_at,due_date) VALUES
+         ${inv(1, { total: 120, issued: shift(today, -5), due: yesterday, changed: '2026-11-01' })},
+         ${inv(2, { total: 240, issued: shift(today, -2), due: in10 })},
+         ${inv(3, { total: 360, issued: shift(today, -1), due: in10 })},
+         ${inv(4, { type: 'price_offer', total: 600, issued: shift(today, -20) })},
+         ${inv(5, { total: 600, issued: shift(today, -3), due: yesterday })};
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date,paid_date,invoice_number) VALUES
+         ${fr(1, 'pending', 120, 0, null, yesterday)}, ${fr(2, 'paid', 240, 240, yesterday, in10)}, ${fr(3, 'pending', 360, 0, null, in10)};
+       SET FOREIGN_KEY_CHECKS=1;`);
+  const li = (a) => call(A, 'list_invoices', { search: 'CMProbe', ...a });
+  const pay = (rs) => list(rs).map((i) => `${i.id.replace('cm-inv', '')}:${i.payment_status}`).sort().join();
+  r = await li({});
+  check('list_invoices returns the payment state (paid, derived overdue, no ledger row, offers have none)', pay(r) === '1:overdue,2:paid,3:unpaid,4:null,5:overdue', pay(r));
+  const i2 = list(r).find((i) => i.id === 'cm-inv2');
+  const i1 = list(r).find((i) => i.id === 'cm-inv1');
+  check('list_invoices: paid, open and paid_date come from the ledger movement', i2?.paid === 240 && i2?.open === 0 && i2?.paid_date === yesterday && i1?.paid === 0 && i1?.open === 120, JSON.stringify([i1, i2]).slice(0, 400));
+  check('list_invoices keeps its columns and adds status_changed_at and ISO moments', i1?.status === 'sent' && i1?.issued_at === shift(today, -5) && i1?.total_price !== undefined && i1?.status_changed_at === '2026-11-01' && isoRe.test(i1?.created_at) && isoRe.test(i1?.updated_at) && isoRe.test(i1?.last_activity_at), JSON.stringify(i1));
+  r = await li({ payment_status: 'overdue' });
+  check('list_invoices payment_status=overdue: past due and unpaid, with or without a ledger row', sortedIds(r) === 'cm-inv1,cm-inv5' && list(r).every((i) => i.payment_status === 'overdue'), sortedIds(r));
+  check('list_invoices payment_status=overdue answers "how much is open" across clients (120 + 600)', list(r).reduce((s, i) => s + i.open, 0) === 720, JSON.stringify(list(r).map((i) => i.open)));
+  check('list_invoices payment_status=paid / unpaid', sortedIds(await li({ payment_status: 'paid' })) === 'cm-inv2' && sortedIds(await li({ payment_status: 'unpaid' })) === 'cm-inv3', '');
+  const overdueAll = await call(A, 'list_invoices', { payment_status: 'overdue', limit: 100 });
+  check('list_invoices payment_status=overdue across all clients includes both', ['cm-inv1', 'cm-inv5'].every((id) => list(overdueAll).some((i) => i.id === id)) && list(overdueAll).every((i) => i.payment_status === 'overdue'), ids(overdueAll).slice(0, 200));
+  check('list_invoices offset pages the derived payment_status filter', ids(await li({ payment_status: 'overdue', limit: 1 })) === 'cm-inv5' && ids(await li({ payment_status: 'overdue', limit: 1, offset: 1 })) === 'cm-inv1', '');
+  check('list_invoices due_from/due_to', sortedIds(await li({ due_to: yesterday })) === 'cm-inv1,cm-inv5' && sortedIds(await li({ due_from: today, due_to: in14 })) === 'cm-inv2,cm-inv3', '');
+  check('list_invoices issued_from/issued_to', sortedIds(await li({ issued_from: shift(today, -4), issued_to: shift(today, -3) })) === 'cm-inv5', '');
+  check('list_invoices refuses a malformed date, activity_from and an unknown payment_status', isErr(await li({ due_from: 'x' }), /YYYY-MM-DD/) && isErr(await li({ activity_from: 'x' }), /YYYY-MM-DD/) && isErr(await li({ payment_status: 'late' }), /payment_status/), '');
+  // A payment moves the movement's updated_at, not the invoice's: it shows in last_activity_at.
+  age('invoices_offers', `id IN ('cm-inv1','cm-inv3')`);
+  age('financial_records', `id IN ('fr-inv-cm-inv1','fr-inv-cm-inv3')`);
+  sql(`UPDATE financial_records SET status = 'paid', amount_real = 360, paid_date = '${yesterday}' WHERE id = 'fr-inv-cm-inv3'`);
+  r = await li({});
+  const i3 = list(r).find((i) => i.id === 'cm-inv3');
+  check('a payment moves last_activity_at but not the invoice updated_at, and the invoice is now paid', i3?.payment_status === 'paid' && unix(i3.updated_at) === 1590998400 && unix(i3.last_activity_at) > unix('2026-01-01T00:00:00Z'), JSON.stringify(i3));
+  check('an untouched invoice has last_activity_at = updated_at', unix(list(r).find((i) => i.id === 'cm-inv1').last_activity_at) === 1590998400, '');
+  check('list_invoices updated_from does not see the payment', !ids(await li({ updated_from: '2021-01-01' })).includes('cm-inv3') && !ids(await li({ updated_from: '2021-01-01' })).includes('cm-inv1'), ids(await li({ updated_from: '2021-01-01' })));
+  check('list_invoices activity_from sees the payment, not the untouched invoice', ids(await li({ activity_from: '2021-01-01' })).includes('cm-inv3') && !ids(await li({ activity_from: '2021-01-01' })).includes('cm-inv1'), ids(await li({ activity_from: '2021-01-01' })));
+  check('list_invoices activity_to is exclusive with a time', Array.isArray(await li({ activity_to: '2020-06-01 10:00' })) && ids(await li({ activity_to: '2020-06-01 10:00' })) === '' && ids(await li({ activity_to: '2020-06-01' })) === 'cm-inv1', ids(await li({ activity_to: '2020-06-01' })));
+  check('list_invoices sort_by=last_activity_at puts the untouched invoice last', list(await li({ sort_by: 'last_activity_at' })).at(-1)?.id === 'cm-inv1', ids(await li({ sort_by: 'last_activity_at' })));
+  check('list_invoices: a non-admin key with invoices access sees the paid amounts too', list(await call(TOKENS.editor, 'list_invoices', { search: 'CMProbe' })).find((i) => i.id === 'cm-inv2')?.paid === 240, JSON.stringify(await call(TOKENS.editor, 'list_invoices', { search: 'CMProbe' })).slice(0, 200));
+  const gi = await call(A, 'get_invoice', { id: 'cm-inv3' });
+  check('get_invoice: payment state, ISO moments, last_activity_at, items', gi.payment_status === 'paid' && gi.paid === 360 && gi.open === 0 && gi.paid_date === yesterday && unix(gi.updated_at) === 1590998400 && isoRe.test(gi.created_at) && unix(gi.last_activity_at) > 1590998400 && Array.isArray(gi.items), JSON.stringify(gi).slice(0, 400));
+  check('get_invoice: derived overdue and status_changed_at', (await call(A, 'get_invoice', { id: 'cm-inv1' })).payment_status === 'overdue' && (await call(A, 'get_invoice', { id: 'cm-inv1' })).status_changed_at === '2026-11-01', '');
+  check('get_client_invoices says whether it was truncated', (await call(A, 'get_client_invoices', { identifier: 'Villatesta' })).truncated === false, '');
+
+  // ---- expenses
+  const ex = (n, issue, due, status = 'pending') => `('cm-ex${n}','expense','expense','CMProbe expense ${n}',${n * 10},0,'EUR','${status}','${issue}',${due ? `'${due}'` : 'NULL'})`;
+  sql(`DELETE FROM financial_records WHERE id LIKE 'cm-ex%';
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date) VALUES
+         ${ex(1, shift(today, -10), shift(today, -5))}, ${ex(2, shift(today, -2), in5)}, ${ex(3, shift(today, -2), null)};`);
+  const le = (a) => call(A, 'list_expenses', { search: 'CMProbe expense', ...a });
+  r = await le({});
+  check('list_expenses returns created_at and updated_at as ISO moments', list(r).length === 3 && list(r).every((e) => isoRe.test(e.created_at) && isoRe.test(e.updated_at)), JSON.stringify(list(r)[0]));
+  check('list_expenses start_date/end_date still filter the issue date', sortedIds(await le({ start_date: shift(today, -3) })) === 'cm-ex2,cm-ex3' && sortedIds(await le({ end_date: shift(today, -5) })) === 'cm-ex1', '');
+  check('list_expenses validates its dates', isErr(await le({ start_date: 'last week' }), /YYYY-MM-DD/) && isErr(await le({ end_date: '2026-13-45' }), /YYYY-MM-DD/), '');
+  check('list_expenses due_from/due_to', sortedIds(await le({ due_to: shift(today, -1) })) === 'cm-ex1' && sortedIds(await le({ due_from: today })) === 'cm-ex2', '');
+  age('financial_records', `id = 'cm-ex1'`);
+  check('list_expenses updated_from leaves out an expense last changed before it', !ids(await le({ updated_from: '2021-01-01' })).includes('cm-ex1') && ids(await le({ updated_from: '2021-01-01' })).includes('cm-ex2'), '');
+  check('list_expenses offset pages (ties broken by id)', ids(await le({ limit: 1, offset: 0 })) !== ids(await le({ limit: 1, offset: 1 })) && list(await le({ limit: 2, offset: 2 })).length === 1, '');
+
+  // ---- ledger movements: derived overdue, due / paid / issue ranges, updated_at
+  const mv = (n, type, status, planned, real, issue, due, paid) => `('cm-mv${n}','${type}','invoice','CMProbe mv ${n}',${planned},${real},'EUR','${status}','${issue}',${due ? `'${due}'` : 'NULL'},${paid ? `'${paid}'` : 'NULL'})`;
+  const d9 = shift(today, -9), d3 = shift(today, -3);
+  sql(`DELETE FROM financial_records WHERE id LIKE 'cm-mv%' OR id = 'cm-rec1';
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date,paid_date) VALUES
+         ${mv(1, 'income', 'pending', 100, 0, shift(today, -10), d3)},
+         ${mv(2, 'expense', 'overdue', 40, 0, d9, in10)},
+         ${mv(3, 'income', 'pending', 30, 0, d9, in5)},
+         ${mv(4, 'income', 'paid', 60, 60, d9, shift(today, -8), yesterday)},
+         ${mv(5, 'income', 'planned', 25, 0, d9, d3)},
+         ${mv(6, 'income', 'partially_paid', 100, 100, d9, d3)},
+         ${mv(7, 'income', 'partially_paid', 200, 50, d9, shift(today, -2))},
+         ${mv(8, 'income', 'pending', 11, 0, d9, today)};
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,is_recurring,recurring_frequency,recurring_config_json,recurring_start_date,recurring_amount_history_json) VALUES
+         ('cm-rec1','expense','overhead','CMProbe rule',20,0,'EUR','planned','2026-01-01',1,'monthly',${sq(JSON.stringify({ monthlyType: 'day_of_month', dayOfMonth: 1 }))},'2026-01-01',${sq(JSON.stringify([{ until: '2026-03-31', amountPlanned: 10, amountReal: 10 }]))});`);
+  const lm = (a) => call(A, 'list_financial_movements', { search: 'CMProbe mv', ...a });
+  r = await lm({});
+  check('list_financial_movements returns updated_at and created_at as ISO moments', list(r).length === 8 && list(r).every((m) => isoRe.test(m.updated_at) && isoRe.test(m.created_at)), JSON.stringify(list(r)[0]));
+  check('list_financial_movements rows carry the derived payment_status', list(r).map((m) => `${m.id.replace('cm-mv', '')}:${m.payment_status}`).sort().join() === '1:overdue,2:overdue,3:unpaid,4:paid,5:planned,6:paid,7:overdue,8:unpaid', list(r).map((m) => `${m.id}:${m.payment_status}`).join());
+  r = await lm({ status: 'overdue' });
+  check('list_financial_movements status=overdue is derived: unpaid and past due, or flagged (not planned, not covered by payments)', sortedIds(r) === 'cm-mv1,cm-mv2,cm-mv7', sortedIds(r));
+  check('list_financial_movements status=overdue agrees with the row payment_status', list(r).every((m) => m.payment_status === 'overdue'), '');
+  check('list_financial_movements paid_from/paid_to: what was paid yesterday', sortedIds(await lm({ paid_from: yesterday, paid_to: yesterday })) === 'cm-mv4', '');
+  check('list_financial_movements due_from/due_to', sortedIds(await lm({ due_from: d3, due_to: d3 })) === 'cm-mv1,cm-mv5,cm-mv6', '');
+  check('list_financial_movements issue_from/issue_to', sortedIds(await lm({ issue_from: shift(today, -10), issue_to: shift(today, -10) })) === 'cm-mv1', '');
+  check('list_financial_movements keeps from/to on the filed date', sortedIds(await lm({ from: yesterday, to: yesterday })) === 'cm-mv4', '');
+  check('list_financial_movements refuses a malformed paid_from', isErr(await lm({ paid_from: 'yesterday' }), /YYYY-MM-DD/), '');
+  age('financial_records', `id = 'cm-mv1'`);
+  check('list_financial_movements updated_from leaves out a movement last changed before it', !ids(await lm({ updated_from: '2021-01-01' })).includes('cm-mv1') && ids(await lm({ updated_from: '2021-01-01' })).includes('cm-mv2'), '');
+  check('list_financial_movements offset pages', list(await lm({ limit: 3 })).length === 3 && list(await lm({ limit: 3, offset: 6 })).length === 2, '');
+  const rec = list(await call(A, 'list_recurring_movements', {})).find((x) => x.id === 'cm-rec1');
+  check('list_recurring_movements returns the amount history', rec?.amount_history?.length === 1 && rec.amount_history[0].until === '2026-03-31' && rec.amount_history[0].amountPlanned === 10, JSON.stringify(rec));
+
+  // ---- forecast: overdue block
+  const fc = await call(A, 'get_cash_flow_forecast', { months: 3, include_items: true });
+  const od = fc.overdue || {};
+  const odItem = (id) => (od.items || []).find((i) => i.record_id === id);
+  check('get_cash_flow_forecast keeps as_of and has an overdue block with totals and items', fc.as_of === today && Array.isArray(od.items) && od.truncated === false && od.totals && od.count === od.items.length, JSON.stringify(od).slice(0, 300));
+  check('forecast overdue: unpaid issued movements dated before today, at the amount still open', odItem('cm-mv1')?.amount === 100 && odItem('cm-mv1')?.days_overdue === 3 && odItem('cm-mv7')?.amount === 150, JSON.stringify([odItem('cm-mv1'), odItem('cm-mv7')]));
+  check('forecast overdue leaves out planned, paid, future and due-today movements', ['cm-mv3', 'cm-mv4', 'cm-mv5', 'cm-mv6', 'cm-mv8', 'cm-mv2'].every((id) => !odItem(id)), JSON.stringify((od.items || []).map((i) => i.record_id)));
+  check('forecast overdue: planned movements already past are counted apart, due-today money too', od.planned_past?.count >= 1 && od.due_today?.count >= 1 && od.due_today.income >= 11, JSON.stringify([od.planned_past, od.due_today]));
+  check('forecast overdue: totals net = income - expense', Math.abs(od.totals.net - (od.totals.income - od.totals.expense)) < 0.011 && od.totals.income >= 250, JSON.stringify(od.totals));
+  check('forecast months still hold the future movements and not the overdue ones', (fc.items || []).some((i) => i.record_id === 'cm-mv3') && !(fc.items || []).some((i) => ['cm-mv1', 'cm-mv7', 'cm-mv5'].includes(i.record_id)), '');
+
+  // ---- project billing summary paging; financial mode / simplified table moments
+  const b1 = await call(A, 'get_project_billing_summary', { limit: 2 });
+  const b2 = await call(A, 'get_project_billing_summary', { limit: 2, offset: 2 });
+  const bIds = (b) => (b.projects || []).map((p) => p.project_id);
+  check('get_project_billing_summary: offset pages and truncated says a next page exists', bIds(b1).length === 2 && bIds(b2).length === 2 && bIds(b1).every((id) => !bIds(b2).includes(id)) && b1.truncated === true, JSON.stringify([bIds(b1), bIds(b2), b1.truncated]));
+  const setMoment = (key) => Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM system_settings WHERE \`key\` = '${key}'`));
+  const mode = await call(A, 'get_financial_mode', {});
+  check('get_financial_mode returns updated_at as the stored moment', isoRe.test(mode.updated_at) && unix(mode.updated_at) === setMoment('FINANCIAL_MODE'), JSON.stringify(mode));
+  const simp = await call(A, 'get_financial_simplified_table', {});
+  check('get_financial_simplified_table returns updated_at as the stored moment', isoRe.test(simp.updated_at) && unix(simp.updated_at) === setMoment('FINANCIAL_SIMPLIFIED_TABLE'), JSON.stringify(simp.updated_at));
+
+  // ---- clean up (the scratch database is dropped at the end, but later sections should not see these rows)
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM tasks WHERE related_project_id LIKE 'cm-p%';
+       DELETE FROM proj_gantt_ptparity WHERE id LIKE 'cmg%';
+       DELETE FROM projects WHERE id LIKE 'cm-p%' OR id LIKE 'cm-bulk%';
+       DELETE FROM invoices_offers WHERE id LIKE 'cm-inv%';
+       DELETE FROM financial_records WHERE id LIKE 'fr-inv-cm-inv%' OR id LIKE 'cm-ex%' OR id LIKE 'cm-mv%' OR id = 'cm-rec1';
+       SET FOREIGN_KEY_CHECKS=1;`);
 }
 
 // ---- (separator: keep these stubs apart so git merges them cleanly) ----
