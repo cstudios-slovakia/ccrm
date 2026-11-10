@@ -1441,6 +1441,61 @@ async function changeSyncChecks() {
   const ms = await call(A, 'create_milestone', { project_id: 'ds-proj', title: 'Probe go-live', deadline: '2031-05-01' });
   check('create_milestone moves the project\'s updated_at', !ms.__error && stampOf('projects', 'ds-proj') > AGED + 3600, JSON.stringify(ms) + ' ts=' + stampOf('projects', 'ds-proj'));
   sql(`DELETE FROM tasks WHERE related_project_id = 'ds-proj'; DELETE FROM projects WHERE id = 'ds-proj';`);
+
+  // ---- list_deleted_records. The MCP never deletes (the source check above), so the tombstones are written
+  // here the way sync.php writes them; the delete paths themselves are checked in probe-persistence.mjs.
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  const unix = (iso) => Date.parse(iso) / 1000;
+  const at = (k) => AGED + 60 * k;
+  const utc = (k) => new Date(at(k) * 1000).toISOString().slice(0, 19) + 'Z';
+  sql(`DELETE FROM deleted_records WHERE entity_id LIKE 'ds-%';
+       INSERT INTO deleted_records (entity, entity_id, label, deleted_by, extra, deleted_at) VALUES
+         ('leads', 'ds-l1', 'Lead one', 'Probe Admin', '{"client":false}', FROM_UNIXTIME(${at(0)})),
+         ('leads', 'ds-c1', 'Client one', 'Probe Admin', '{"client":true}', FROM_UNIXTIME(${at(1)})),
+         ('projects', 'ds-p1', 'Project one', 'Probe Admin', NULL, FROM_UNIXTIME(${at(2)})),
+         ('tasks', 'ds-t1', 'Task one', NULL, NULL, FROM_UNIXTIME(${at(3)})),
+         ('employee_salaries', 'ds-s1', '2020-05', 'Probe Admin', NULL, FROM_UNIXTIME(${at(4)}));`);
+  const window = { deleted_from: utc(0), deleted_to: utc(10) }; // isolates the five rows above from any real tombstone
+  const list = (token, args = {}) => call(token, 'list_deleted_records', { ...window, ...args });
+  const dsIds = (r) => (Array.isArray(r) ? r.filter((x) => String(x.entity_id).startsWith('ds-')).map((x) => x.entity_id).join() : JSON.stringify(r).slice(0, 200));
+
+  let r = await list(A);
+  check('list_deleted_records: oldest first, one row per tombstone', dsIds(r) === 'ds-l1,ds-c1,ds-p1,ds-t1,ds-s1', dsIds(r));
+  const lead = r.find?.((x) => x.entity_id === 'ds-l1');
+  check('list_deleted_records: entity, label, deleted_by and deleted_at as an ISO moment', lead?.entity === 'leads' && lead.label === 'Lead one' && lead.deleted_by === 'Probe Admin' && isoRe.test(lead.deleted_at || '') && unix(lead.deleted_at) === at(0), JSON.stringify(lead));
+  check('list_deleted_records: a client record is reported as clients, a lead as leads', r.find?.((x) => x.entity_id === 'ds-c1')?.entity === 'clients' && lead?.entity === 'leads', JSON.stringify(r.slice?.(0, 2)));
+  check('list_deleted_records: no raw TIMESTAMP and no tombstone internals leave the server', r.every?.((x) => !('extra' in x) && !('deleted_at__ts' in x) && Object.keys(x).sort().join() === 'deleted_at,deleted_by,entity,entity_id,label'), JSON.stringify(r[0]));
+  check('list_deleted_records: entity=clients returns only client records, entity=leads only leads', dsIds(await list(A, { entity: 'clients' })) === 'ds-c1' && dsIds(await list(A, { entity: 'leads' })) === 'ds-l1', '');
+  check('list_deleted_records: entity=projects', dsIds(await list(A, { entity: 'projects' })) === 'ds-p1', '');
+  check('list_deleted_records: deleted_from is inclusive, deleted_to exclusive', dsIds(await call(A, 'list_deleted_records', { deleted_from: utc(2), deleted_to: utc(10) })) === 'ds-p1,ds-t1,ds-s1' && dsIds(await call(A, 'list_deleted_records', { deleted_from: utc(0), deleted_to: utc(2) })) === 'ds-l1,ds-c1', '');
+  check('list_deleted_records: sort_order=desc reverses it', dsIds(await list(A, { sort_order: 'desc' })) === 'ds-s1,ds-t1,ds-p1,ds-c1,ds-l1', '');
+  check('list_deleted_records: limit + offset page without gaps', dsIds(await list(A, { limit: 2 })) + '|' + dsIds(await list(A, { limit: 2, offset: 2 })) + '|' + dsIds(await list(A, { limit: 2, offset: 4 })) === 'ds-l1,ds-c1|ds-p1,ds-t1|ds-s1', '');
+  check('list_deleted_records: a malformed deleted_from or deleted_to is refused', isErr(await call(A, 'list_deleted_records', { deleted_from: 'yesterday' }), /deleted_from/) && isErr(await call(A, 'list_deleted_records', { deleted_to: '2020-13-45' }), /deleted_to/), '');
+  check('list_deleted_records: an unknown entity is refused', isErr(await call(A, 'list_deleted_records', { entity: 'users' }), /entity/), '');
+
+  // Permissions: a row is visible only when the key may view that record's module.
+  const rbac = JSON.parse(cell("SELECT `value` FROM system_settings WHERE `key` = 'ROLES_RBAC'"));
+  const only = (name, ...modules) => { const x = role(name, 'nothing'); for (const m of modules) x.permissions[m] = 'view'; return x; };
+  const extra = [only('ProbeLeadsOnly', 'leads'), only('ProbeClientsOnly', 'clients'), only('ProbeProjectsOnly', 'projects')];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify([...rbac.filter((x) => !extra.some((e) => e.name === x.name)), ...extra]))});`);
+  const limited = {};
+  for (const [k, name] of [['leadsOnly', 'ProbeLeadsOnly'], ['clientsOnly', 'ProbeClientsOnly'], ['projectsOnly', 'ProbeProjectsOnly']]) {
+    const id = `probe-${k}`;
+    limited[k] = `ccrm_mcp_probe_${k}_${'0'.repeat(40)}`;
+    sql(`DELETE FROM mcp_keys WHERE id = ${sq('pk-' + k)}; DELETE FROM users WHERE id = ${sq(id)} OR email = ${sq(id + '@probe.test')};
+         INSERT INTO users (id,name,email,password_hash,role) VALUES (${sq(id)},${sq('Probe ' + k)},${sq(id + '@probe.test')},'x',${sq(name)});
+         INSERT INTO mcp_keys (id,user_id,key_hash,key_prefix,name,created_at) VALUES (${sq('pk-' + k)},${sq(id)},${sq(createHash('sha256').update(limited[k]).digest('hex'))},'ccrm_mcp_p...','probe',NOW() - INTERVAL 1 DAY);`);
+  }
+  check('list_deleted_records: a leads-only key sees lead deletions only (no client, project, task or salary)', dsIds(await list(limited.leadsOnly)) === 'ds-l1', dsIds(await list(limited.leadsOnly)));
+  check('list_deleted_records: a clients-only key sees client deletions only', dsIds(await list(limited.clientsOnly)) === 'ds-c1', dsIds(await list(limited.clientsOnly)));
+  check('list_deleted_records: a projects-only key sees project deletions only', dsIds(await list(limited.projectsOnly)) === 'ds-p1', dsIds(await list(limited.projectsOnly)));
+  check('list_deleted_records: entity=projects is empty for a leads-only key', dsIds(await list(limited.leadsOnly, { entity: 'projects' })) === '', dsIds(await list(limited.leadsOnly, { entity: 'projects' })));
+  check('list_deleted_records: pages stay full for a limited key (the filter runs in SQL)', dsIds(await list(limited.leadsOnly, { limit: 1 })) === 'ds-l1', '');
+  r = await list(TOKENS.editor);
+  check('list_deleted_records: without tasks.view_all or employees.salaries the task and salary deletions stay hidden', dsIds(r) === 'ds-l1,ds-c1,ds-p1', dsIds(r));
+  check('list_deleted_records: the nothing-role is refused (-32003)', forbidden(await list(TOKENS.none)), '');
+  check('list_deleted_records is listed for a key that can view leads, not for the nothing-role', (await listTools(limited.leadsOnly)).includes('list_deleted_records') && !(await listTools(TOKENS.none)).includes('list_deleted_records'), '');
+  sql(`DELETE FROM deleted_records WHERE entity_id LIKE 'ds-%'; DELETE FROM mcp_keys WHERE id LIKE 'pk-%Only'; DELETE FROM users WHERE id LIKE 'probe-%Only';`);
 }
 
 // ----------------------------------------------------------------------------- main

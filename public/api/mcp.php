@@ -34,6 +34,7 @@ require_once __DIR__ . '/mcp_ext.php';
 require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
 require_once __DIR__ . '/mcp_ext_intel.php';
+require_once __DIR__ . '/mcp_deleted.php';
 require_once __DIR__ . '/mcp_window.php';
 // The list tools rebuilt on the shared window, one module per area (audit 2026-11-10).
 require_once __DIR__ . '/mcp_lists_crm.php';
@@ -187,6 +188,7 @@ function mcp_tool_permissions(): array {
     $map += mcp_ext_fin_permissions();
     $map += mcp_ext_ops_permissions();
     $map += mcp_ext_intel_permissions();
+    $map += mcp_deleted_permissions();
     return $map;
 }
 
@@ -477,7 +479,7 @@ switch ($rpcMethod) {
 // TOOL DEFINITIONS (core tools; the finance, operations and automation tools live in mcp_ext*.php)
 // ============================================================================
 function mcp_get_tool_definitions(): array {
-    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions());
+    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions(), mcp_deleted_tool_definitions());
 }
 
 function mcp_core_tool_definitions(): array {
@@ -2098,6 +2100,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $extResult = mcp_ext_ops_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             $extResult = mcp_ext_intel_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_deleted_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             throw new \Exception("Unrecognized tool name: " . htmlspecialchars($tool));
     }
