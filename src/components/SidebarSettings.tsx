@@ -1,23 +1,14 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Pin,
   Sparkles,
-  Plus,
-  Trash2,
-  Pencil,
-  Check,
-  RotateCcw,
   SlidersHorizontal,
   PanelLeftClose,
   PanelLeftOpen
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
-import { normalizeSidebarGroups, type SidebarGroup } from "../utils/sidebarLayout";
 import { cn } from "../utils/cn";
-import { HoldToConfirmButton } from "./ui/HoldToConfirm";
-import { runUndoable } from "../utils/undoable";
-import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 
 interface SidebarSettingsProps {
   systemLanguage: Language;
@@ -31,15 +22,6 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
   const [sidebarPinned, setSidebarPinned] = useUserPref("sidebarPinned");
   const [sidebarCompactness, setSidebarCompactness] = useUserPref("sidebarCompactness");
   const [sidebarUnpinnedStyle, setSidebarUnpinnedStyle] = useUserPref("sidebarUnpinnedStyle");
-  const [storedGroups, setStoredGroups] = useUserPref("sidebarGroups");
-
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
-  const [newGroupTitle, setNewGroupTitle] = useState("");
-  const [isAddingGroup, setIsAddingGroup] = useState(false);
-
-  // Fallback defaults if groups are not customized
-  const activeGroups = normalizeSidebarGroups(storedGroups, []);
 
   const handleTogglePin = (pinned: boolean) => {
     setSidebarPinned(pinned);
@@ -51,66 +33,6 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
 
   const handleUnpinnedStyleChange = (style: "overlay" | "dock") => {
     setSidebarUnpinnedStyle(style);
-  };
-
-  const handleStartRenameGroup = (group: SidebarGroup) => {
-    setEditingGroupId(group.id);
-    setEditingTitle(group.title || "");
-  };
-
-  const handleSaveRenameGroup = () => {
-    if (!editingGroupId) return;
-    const current = normalizeSidebarGroups(storedGroups, []);
-    const updated = current.map((g) =>
-      g.id === editingGroupId ? { ...g, title: editingTitle.trim() } : g
-    );
-    setStoredGroups(updated);
-    setEditingGroupId(null);
-    setEditingTitle("");
-  };
-
-  const handleAddGroup = () => {
-    if (!newGroupTitle.trim()) return;
-    const current = normalizeSidebarGroups(storedGroups, []);
-    const newGroup: SidebarGroup = {
-      id: `group_${Date.now()}`,
-      title: newGroupTitle.trim(),
-      items: []
-    };
-    setStoredGroups([...current, newGroup]);
-    setNewGroupTitle("");
-    setIsAddingGroup(false);
-  };
-
-  const handleDeleteGroup = (groupId: string) => {
-    const current = normalizeSidebarGroups(storedGroups, []);
-    if (current.length <= 1) return;
-    const toDelete = current.find((g) => g.id === groupId);
-    if (!toDelete) return;
-    // Built without touching `current`, which is also the snapshot Undo writes back.
-    const remaining = current
-      .filter((g) => g.id !== groupId)
-      .map((g, index) => (index === 0 && toDelete.items.length > 0 ? { ...g, items: [...g.items, ...toDelete.items] } : g));
-    runUndoable({
-      message: singleMessage(asLang(systemLanguage), "group", "delete", toDelete.title),
-      undoLabel: undoLabel(asLang(systemLanguage)),
-      apply: () => setStoredGroups(remaining),
-      revert: () => setStoredGroups(current),
-    });
-  };
-
-  const handleResetGroups = () => {
-    if (
-      window.confirm(
-        t(
-          "Reset sidebar groups and layout to defaults?",
-          "Obnoviť predvolené skupiny a rozloženie bočného menu?",
-          "Visszaállítja az oldalsáv csoportjait és elrendezését az alapértelmezettre?"
-        )
-      )
-    ) {
-      setStoredGroups(null);
-    }
   };
 
   return (
@@ -126,9 +48,9 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
             </h4>
             <p className="text-micro font-medium text-slate-500 mt-0.5">
               {t(
-                "Customize left sidebar behavior, density, depth style, and groups",
-                "Prispôsobte správanie ľavého menu, hustotu, hĺbku a skupiny",
-                "Szabja testre a bal oldalsáv működését, sűrűségét, stílusát és csoportjait"
+                "Customize left sidebar behavior, density and depth style",
+                "Prispôsobte správanie ľavého menu, hustotu a hĺbku",
+                "Szabja testre a bal oldalsáv működését, sűrűségét és stílusát"
               )}
             </p>
           </div>
@@ -301,147 +223,6 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
                 </span>
               </div>
             </button>
-          </div>
-        </div>
-
-        {/* 4. Navigation Groups Organizer */}
-        <div className={cn("p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3", !compact && "md:col-span-2")}>
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <div>
-              <label className="type-overline text-slate-600 block">
-                {t("Navigation Groups", "Navigačné skupiny", "Navigációs csoportok")}
-              </label>
-              <p className="text-micro text-slate-500 mt-0.5">
-                {t(
-                  "Organize menu items into named groups (divided by lines when collapsed)",
-                  "Usporiadajte položky do skupín (v zbalenom stave oddelené čiarou)",
-                  "Rendszerezze a menüpontokat csoportokba (összecsukva elválasztó vonallal)"
-                )}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleResetGroups}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-micro font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-                title={t("Reset to default layout", "Obnoviť predvolené rozloženie", "Alapértelmezett elrendezés visszaállítása")}
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>{t("Reset", "Obnoviť", "Visszaállítás")}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsAddingGroup(true)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-micro font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs"
-              >
-                <Plus className="h-3 w-3" />
-                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Add Group Inline Form */}
-          {isAddingGroup && (
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2 animate-in fade-in duration-200">
-              <input
-                type="text"
-                value={newGroupTitle}
-                onChange={(e) => setNewGroupTitle(e.target.value)}
-                placeholder={t("Group name (e.g. Sales, Core, Finance)...", "Názov skupiny (napr. Predaj, Jadro)...", "Csoport neve...")}
-                className="flex-1 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddGroup();
-                  if (e.key === "Escape") setIsAddingGroup(false);
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleAddGroup}
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-ui font-bold hover:bg-indigo-700 transition-colors cursor-pointer"
-              >
-                <Check className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsAddingGroup(false)}
-                className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-slate-600 text-ui font-semibold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Groups List */}
-          <div className="space-y-2">
-            {activeGroups.map((grp, idx) => (
-              <div
-                key={grp.id}
-                className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 flex items-center justify-between gap-3 group"
-              >
-                <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                  <span className="text-micro font-bold text-slate-500 w-4">{idx + 1}.</span>
-                  {editingGroupId === grp.id ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="text"
-                        value={editingTitle}
-                        onChange={(e) => setEditingTitle(e.target.value)}
-                        className="flex-1 px-2.5 py-1 rounded-lg bg-white border border-indigo-400 text-slate-800 text-ui font-semibold focus:outline-none"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleSaveRenameGroup();
-                          if (e.key === "Escape") setEditingGroupId(null);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSaveRenameGroup}
-                        className="p-1 rounded-md bg-emerald-600 text-white cursor-pointer"
-                      >
-                        <Check className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-ui font-bold text-slate-800 truncate">
-                        {grp.title || t("Main Section", "Hlavná sekcia", "Fő szekció")}
-                      </span>
-                      <span className="text-micro px-1.5 py-0.5 rounded-md bg-slate-200/80 text-slate-700 font-semibold">
-                        {grp.items.length} {t("items", "položiek", "elem")}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {editingGroupId !== grp.id && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleStartRenameGroup(grp)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition-colors cursor-pointer"
-                      title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </button>
-                    {activeGroups.length > 1 && (
-                      <HoldToConfirmButton
-                          tone="danger"
-                          lang={asLang(systemLanguage)}
-                          what={grp.title}
-                          onConfirm={() => handleDeleteGroup(grp.id)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </HoldToConfirmButton>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
           </div>
         </div>
       </div>
