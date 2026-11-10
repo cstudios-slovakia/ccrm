@@ -462,6 +462,20 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_audit_action` (`action`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Deletion tombstones: one row per business record sync.php really deleted, read by the
+            // MCP tool list_deleted_records. Written by api/deleted_records.php (fail-soft).
+            "CREATE TABLE IF NOT EXISTS `deleted_records` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `entity` VARCHAR(64) NOT NULL COMMENT 'Table of the deleted record: leads, projects, invoices_offers, ...',
+              `entity_id` VARCHAR(191) NOT NULL,
+              `deleted_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+              `deleted_by` VARCHAR(255) NULL COMMENT 'Name of the acting user',
+              `label` VARCHAR(255) NULL COMMENT 'Name or title the record had when it was deleted',
+              `extra` TEXT NULL COMMENT 'JSON; for a leads row {\"client\":true|false}, so the leads/clients split applies on read',
+              INDEX `idx_deleted_time` (`deleted_at`, `id`),
+              INDEX `idx_deleted_entity` (`entity`, `entity_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Rate-limit ledger for password-reset requests (per IP/email).
             "CREATE TABLE IF NOT EXISTS `password_reset_attempts` (
               `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -2101,6 +2115,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_stock_updated_at($pdo);
+        ccrm_migrate_deleted_records($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
         ccrm_migrate_invoice_status_changed_at($pdo);
@@ -2666,6 +2681,23 @@ if (!function_exists('ccrm_schema_statements')) {
             if (ccrm_table_exists($pdo, $table) && !ccrm_column_exists($pdo, $table, 'updated_at')) {
                 $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
             }
+        }
+    }
+
+    /**
+     * `deleted_records`, the deletion tombstones. The CREATE TABLE lives in ccrm_schema_statements();
+     * this runs that statement alone, so a database whose schema marker an older schema.php already
+     * stamped still gets the table. sync.php calls it before its transaction when the table is
+     * missing. Idempotent; an error is logged, never thrown (the tombstone write is fail-soft too).
+     */
+    function ccrm_migrate_deleted_records(PDO $pdo): void {
+        try {
+            if (ccrm_table_exists($pdo, 'deleted_records')) return;
+            foreach (ccrm_schema_statements() as $stmt) {
+                if (strpos($stmt, 'CREATE TABLE IF NOT EXISTS `deleted_records`') !== false) $pdo->exec($stmt);
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: deleted_records migration skipped: ' . $e->getMessage());
         }
     }
 

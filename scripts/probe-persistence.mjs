@@ -632,6 +632,8 @@ require '/var/www/html/config.php';
 $pdo = get_db_connection();
 $pdo->exec("DELETE FROM tasks WHERE id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM warehouse_movements WHERE id LIKE '${PREFIX}%'");
+$pdo->exec("DELETE FROM deleted_records WHERE entity_id LIKE '${PREFIX}%' OR entity_id LIKE 'client-${PREFIX}%'");
+$pdo->exec("DELETE FROM leads WHERE id LIKE 'client-${PREFIX}%'");
 $pdo->exec("DELETE FROM meeting_notes WHERE id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM timeline_events WHERE lead_id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM leads WHERE id LIKE '${PREFIX}%'");
@@ -666,11 +668,13 @@ if (findings.length) {
 }
 
 /**
- * Child bumps (RC3a of docs/audits/mcp-change-visibility-audit.md): a changed project manager, Gantt row,
+ * Change visibility through sync.php (docs/audits/mcp-change-visibility-audit.md).
+ * RC3a, child bumps: a changed project manager, Gantt row,
  * invoice line item, meeting action item or movement line moves the parent's updated_at; an unchanged
  * re-save does not. Needs the Docker backend this script already uses (DB access through phpFile()).
  * The parent is aged with UPDATE ... updated_at = FROM_UNIXTIME(1590998400) before each push, so a bump
  * is any later value and "unchanged" is exactly the aged one.
+ * RC7b, tombstones: a named delete leaves one deleted_records row (name, who, client flag), a child rewrite none.
  */
 async function changeVisibilityChecks({ post, clock, check, phpFile, json, types }) {
   const AGED = 1590998400;
@@ -699,8 +703,8 @@ echo 'aged';
 
   const admin = ((await json("/sync.php")).body?.users || [])[0]?.id;
   const typeId = types[0]?.id;
+  const pid = `ccrm-del-probe-bump-proj-${t}`;
   if (typeId && admin) {
-    const pid = `ccrm-del-probe-bump-proj-${t}`;
     const proj = (managers, gantt) => ({ projects: [{ id: pid, name: "ccrm-del-probe bump project", projectTypeId: typeId, status: "active", managers, data: {}, timeline: [], gantt }] });
     const g1 = [{ id: `${pid}-g1`, title: "Milestone 1", startDate: "2026-01-01", endDate: "2026-01-05", progress: 0 }];
     const made = await post({ baseSyncedAt: await clock(), ...proj([admin], g1) });
@@ -730,7 +734,7 @@ echo 'aged';
   const whId = `ccrm-del-probe-bump-wh-${t}`;
   const itemId = `ccrm-del-probe-bump-item-${t}`;
   const movId = `ccrm-del-probe-bump-mov-${t}`;
-  const mov = (quantity) => ({ warehouseMovements: [{ id: movId, documentNumber: `PROBE-MOV-${t}`, type: "inward", status: "confirmed", warehouseId: whId, items: [{ id: `${movId}-l1`, itemId, quantity, unitPurchasePrice: 1, unitSellPrice: 2, totalPrice: quantity }] }] });
+  const mov = (quantity) => ({ warehouseMovements: [{ id: movId, documentNumber: `PROBE-MOV-${t}`, type: "inward", status: "confirmed", warehouseId: whId, issuedAt: "2026-01-02 10:00:00", items: [{ id: `${movId}-l1`, itemId, quantity, unitPurchasePrice: 1, unitSellPrice: 2, totalPrice: quantity }] }] });
   const stock = await post({ baseSyncedAt: await clock(),
     warehouses: [{ id: whId, name: "ccrm-del-probe bump warehouse", code: `PB${String(t).slice(-6)}` }],
     warehouseItems: [{ id: itemId, sku: `PRB-BUMP-${t}`, name: "Probe bump item", unit: "ks", minStock: 0, optimalStock: 0, hasExpiration: false, defaultSellPrice: 0, avgPurchasePrice: 0, lastPurchasePrice: 0 }],
@@ -739,4 +743,43 @@ echo 'aged';
   check("bump: stock fixture created", stock.status === 200 && stock.body?.success === true, `status=${stock.status}`);
   expectMoved("bump: re-saving the same movement lines leaves updated_at alone", await bumped("warehouse_movements", movId, mov(1)), false);
   expectMoved("bump: changing a movement line quantity moves updated_at", await bumped("warehouse_movements", movId, mov(5)), true);
+
+  // ---- Deletions leave tombstones (deleted_records, RC7b). Child rewrites above (managers, Gantt rows, line
+  // items, action items, movement lines) are not deletions of a record: nothing may be logged for them.
+  const tomb = (entityId) => JSON.parse(phpFile("ccrm-tomb-q.php", `<?php
+require '/var/www/html/config.php';
+$pdo = get_db_connection();
+$st = $pdo->prepare('SELECT entity, entity_id, label, deleted_by, extra FROM deleted_records WHERE entity_id LIKE ? ORDER BY id');
+$st->execute([${JSON.stringify(entityId)}]);
+echo json_encode($st->fetchAll(PDO::FETCH_ASSOC));
+`));
+  check("tombstone: rewriting child rows logged nothing", tomb(`ccrm-del-probe-bump-%`).length === 0, JSON.stringify(tomb(`ccrm-del-probe-bump-%`)));
+
+  const personId = `ccrm-del-probe-tomb-lead-${t}`;
+  const clientId = `client-ccrm-del-probe-tomb-${t}`;
+  const leadRec = (id, clientType) => ({ id, name: `ccrm-del-probe tomb ${clientType}`, clientType, status: "new", source: "website", owner: "Probe", value: 0, rating: 3, city: "Probe", createdAt: "2026-01-01", timeline: [], categories: [] });
+  await post({ baseSyncedAt: await clock(), leads: [leadRec(personId, "person"), leadRec(clientId, "business")] });
+  const del = await post({ baseSyncedAt: await clock(), leads: [], deleted: { leads: [personId, clientId] } });
+  check("tombstone: named lead and client delete accepted", del.status === 200 && del.body?.success === true, `status=${del.status} blocked=${JSON.stringify(del.body?.deleteBlocked)}`);
+  const lt = tomb(personId)[0];
+  check("tombstone: a deleted lead is logged with its name, who deleted it and client:false", lt?.entity === "leads" && lt.label === "ccrm-del-probe tomb person" && lt.deleted_by === "Probe" && lt.extra === '{"client":false}', JSON.stringify(lt));
+  const ct = tomb(clientId)[0];
+  check("tombstone: a deleted client record is logged with client:true", ct?.entity === "leads" && ct.extra === '{"client":true}', JSON.stringify(ct));
+
+  const gone = await post({ baseSyncedAt: await clock(), meetingNotes: [], invoicesOffers: [], warehouseMovements: [], projects: [], deleted: { meetingNotes: [mid], invoicesOffers: [ioId], warehouseMovements: [movId], ...(typeId && admin ? { projects: [pid] } : {}) } });
+  check("tombstone: named delete of a meeting, invoice, movement and project accepted", gone.status === 200 && gone.body?.success === true, `status=${gone.status} blocked=${JSON.stringify(gone.body?.deleteBlocked)}`);
+  const mt = tomb(mid)[0];
+  check("tombstone: a deleted meeting is logged with its title", mt?.entity === "meeting_notes" && mt.label === "ccrm-del-probe bump meeting", JSON.stringify(mt));
+  const it = tomb(ioId)[0];
+  check("tombstone: a deleted invoice is logged by its document number", it?.entity === "invoices_offers" && it.label === `PROBE-BUMP-${t}`, JSON.stringify(it));
+  const vt = tomb(movId)[0];
+  check("tombstone: a deleted stock movement is logged", vt?.entity === "warehouse_movements" && vt.label === `PROBE-MOV-${t}`, JSON.stringify(vt));
+  if (typeId && admin) {
+    const pt = tomb(pid)[0];
+    check("tombstone: a deleted project is logged with its name", pt?.entity === "projects" && pt.label === "ccrm-del-probe bump project", JSON.stringify(pt));
+  }
+  check("tombstone: deleting a record logs the record only, not its child rows", tomb(`ccrm-del-probe-bump-%`).every((r) => ["meeting_notes", "invoices_offers", "warehouse_movements", "projects"].includes(r.entity)), JSON.stringify(tomb(`ccrm-del-probe-bump-%`)));
+  const again = tomb(personId).length;
+  await post({ baseSyncedAt: await clock(), leads: [], deleted: { leads: [personId] } });
+  check("tombstone: deleting a record that is already gone logs nothing more", tomb(personId).length === again, `before=${again} after=${tomb(personId).length}`);
 }

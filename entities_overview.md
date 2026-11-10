@@ -373,6 +373,17 @@ Security and privilege tracking log.
 * `detail` TEXT
 * `created_at` TIMESTAMP
 
+### `deleted_records`
+Deletion tombstones: one row per business record `sync.php` really deleted, so "which records were deleted since X?" has an answer (MCP tool `list_deleted_records`). Written by `ccrm_delete_omitted()` (the generic delete) and the project delete in `sync.php` through `ccrm_record_deleted()` (`api/deleted_records.php`), only after the DELETE affected a row: a delete the mass-delete circuit breaker refused leaves nothing, and neither does a child rewrite (timeline entries, action items, line items, Gantt rows, managers). The write is fail-soft (a missing table or any error is logged, never a 500). Recorded from the version that added the table on; earlier deletions are not known. Recorded entities: `leads`, `tasks`, `meeting_notes`, `projects`, `invoices_offers`, `financial_records`, `employees`, `employee_salaries`, `employee_vacations`, `warehouse_items`, `warehouse_batches`, `warehouse_movements`, `suppliers`, `warehouses`.
+* `id` BIGINT AUTO_INCREMENT [PK]
+* `entity` VARCHAR(64) NOT NULL (table of the deleted record)
+* `entity_id` VARCHAR(191) NOT NULL
+* `deleted_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+* `deleted_by` VARCHAR(255) [NULLable] (name of the acting user)
+* `label` VARCHAR(255) [NULLable] (name or title the record had)
+* `extra` TEXT [NULLable] (JSON; for a `leads` row `{"client":true|false}`: a client record is a `client-*` id or adjustment > 0, so the leads/clients module split applies on read)
+* Indexes: `(deleted_at, id)`, `(entity, entity_id)`
+
 ### `integration_clients`
 One external system allowed to use the machine API (`/api/v1`, today only `waai`). JSON-valued columns are TEXT holding JSON.
 * `id` VARCHAR(50) [PK]
