@@ -28,7 +28,7 @@ const MCP_INVOICE_WINDOW = [
     'created' => 'io.created_at', 'updated' => 'io.updated_at', 'id' => 'io.id',
     'sorts' => [
         'issued_at' => ['io.issued_at', 'DESC'],
-        'due_date' => ["COALESCE(io.due_date, '9999-12-31')", 'ASC'],
+        'due_date' => ['io.due_date', 'ASC'],   // undated last either way: mcp_due_date_last()
         'last_activity_at' => [MCP_INVOICE_ACTIVITY, 'DESC'],
     ],
     'default_sort' => 'issued_at',
@@ -36,15 +36,28 @@ const MCP_INVOICE_WINDOW = [
 
 const MCP_EXPENSE_WINDOW = [
     'created' => 'created_at', 'updated' => 'updated_at', 'id' => 'id',
-    'sorts' => ['issue_date' => ['issue_date', 'DESC'], 'due_date' => ["COALESCE(due_date, '9999-12-31')", 'ASC']],
+    'sorts' => ['issue_date' => ['issue_date', 'DESC'], 'due_date' => ['due_date', 'ASC']],
     'default_sort' => 'issue_date',
 ];
 
 const MCP_MOVEMENT_WINDOW = [
     'created' => 'created_at', 'updated' => 'updated_at', 'id' => 'id',
-    'sorts' => ['filed_on' => ['COALESCE(paid_date, due_date, issue_date)', 'DESC'], 'due_date' => ["COALESCE(due_date, '9999-12-31')", 'ASC']],
+    'sorts' => ['filed_on' => ['COALESCE(paid_date, due_date, issue_date)', 'DESC'], 'due_date' => ['due_date', 'ASC']],
     'default_sort' => 'filed_on',
 ];
+
+/**
+ * sort_by=due_date lists undated rows last in both directions, as list_projects does with the deadline.
+ * mcp_list_window puts the direction on the primary expression and MySQL sorts NULL first ascending,
+ * so this rebuilds the ORDER BY of a window ($win) as "(col IS NULL), col <dir>, id". Other sorts pass through.
+ */
+function mcp_due_date_last(array $args, array $win, string $col, string $idCol): array {
+    if (($args['sort_by'] ?? '') !== 'due_date') return $win;
+    $dir = strtolower((string)($args['sort_order'] ?? '')) === 'desc' ? 'DESC' : 'ASC';
+    $win['order'] = "($col IS NULL), $col $dir, $idCol ASC";
+    $win['tail'] = "ORDER BY {$win['order']} LIMIT {$win['limit']} OFFSET {$win['offset']}";
+    return $win;
+}
 
 /** Milestones carry no change moment of their own, so the window here is limit + offset only. */
 const MCP_MILESTONE_PAGE = ['default_limit' => 50, 'max_limit' => 100];
@@ -96,15 +109,15 @@ function mcp_money_tool_def(string $name): array {
         case 'list_invoices':
             return [
                 'name' => 'list_invoices',
-                'description' => 'List issued invoices, proformas and price offers with their payment state. status is the DOCUMENT status; payment_status is derived from the invoice\'s ledger movement and its due date: paid, partially_paid, unpaid, overdue (not paid and past its due date, or flagged overdue), planned (a draft), cancelled; price offers have none. paid, open and paid_date come from the ledger movement. '
+                'description' => 'List issued invoices, proformas and price offers with their payment state. status is the DOCUMENT status; payment_status is derived from the invoice\'s ledger movement and its dates: paid, partially_paid, unpaid, overdue, planned (a draft), cancelled. Overdue rule, the same in every tool: ' . mcp_overdue_rule_text() . '. Only an invoice that is still live is a receivable: price offers, proformas and rejected invoices have payment_status null, paid 0 and open 0. paid, open and paid_date come from the ledger movement. '
                     . 'Filters: type, status, payment_status, client_id, search, issued_from/issued_to and due_from/due_to (inclusive dates), activity_from/activity_to. "Which invoices are overdue across all clients, and how much is open": payment_status=overdue, then add up open over the pages. '
                     . 'updated_at changes with the document itself (its fields, status, items); recording a payment does NOT move it. A payment shows in last_activity_at = the later of updated_at and the last change of the invoice\'s ledger movement: use activity_from/activity_to, or sort_by=last_activity_at, to find invoices that changed or were paid in a period. '
                     . 'status_changed_at is the day the document status last changed (a date, no time of day). '
-                    . mcp_window_doc('invoices', MCP_INVOICE_WINDOW),
+                    . mcp_window_doc('invoices', MCP_INVOICE_WINDOW) . ' sort_by=due_date lists undated invoices last in both directions.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'type' => ['type' => 'string', 'description' => 'Type: invoice, price_offer, proforma (default: all types)'],
                     'status' => ['type' => 'string', 'description' => 'Document status. Invoices and proformas: draft, sent, approved, rejected, invoiced, cancelled. Price offers use the statuses configured in the app (Price offers → Settings), so any key of that list is valid; the defaults are the same six.'],
-                    'payment_status' => ['type' => 'string', 'enum' => $payEnum, 'description' => 'Derived payment state (never set on price offers)'],
+                    'payment_status' => ['type' => 'string', 'enum' => $payEnum, 'description' => 'Derived payment state (null on price offers, proformas and rejected invoices)'],
                     'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
                     'search' => ['type' => 'string', 'description' => 'Search document number or client name'],
                     'activity_from' => ['type' => 'string', 'description' => 'last_activity_at at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'],
@@ -120,7 +133,7 @@ function mcp_money_tool_def(string $name): array {
         case 'list_expenses':
             return [
                 'name' => 'list_expenses',
-                'description' => 'Query recorded business expenses (stored movements; recurring rules are listed by list_recurring_movements). start_date/end_date filter the issue date, due_from/due_to the due date (all inclusive, YYYY-MM-DD). ' . mcp_window_doc('expenses', MCP_EXPENSE_WINDOW),
+                'description' => 'Query recorded business expenses (stored movements; recurring rules are listed by list_recurring_movements). start_date/end_date filter the issue date, due_from/due_to the due date (all inclusive, YYYY-MM-DD). ' . mcp_window_doc('expenses', MCP_EXPENSE_WINDOW) . ' sort_by=due_date lists undated expenses last in both directions.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'category_id' => ['type' => 'string', 'description' => 'Filter by financial category ID'],
                     'start_date' => ['type' => 'string', 'description' => 'Issued on or after (YYYY-MM-DD)'],
@@ -132,9 +145,9 @@ function mcp_money_tool_def(string $name): array {
             return [
                 'name' => 'list_financial_movements',
                 'description' => 'List ledger movements (income and expenses): invoices, payments, salaries, recurring rules. Each row shows the settled and still-expected amount, the date it is filed under (filed_on = paid date, else due date, else issue date), payment_status for one-off movements and updated_at. '
-                    . 'status=overdue is derived: a one-off movement that is not paid and not cancelled or planned, and is flagged overdue or has a due date before today (' . KOPERNIQ_PRODUCT_NAME . ' date); recurring rules are never overdue. '
+                    . 'status=overdue is derived, with the overdue rule the same in every tool: ' . mcp_overdue_rule_text() . '; recurring rules are never overdue. '
                     . 'Date filters (inclusive): from/to on filed_on, due_from/due_to, paid_from/paid_to ("what was paid yesterday"), issue_from/issue_to. '
-                    . mcp_window_doc('movements', MCP_MOVEMENT_WINDOW),
+                    . mcp_window_doc('movements', MCP_MOVEMENT_WINDOW) . ' sort_by=due_date lists undated movements last in both directions.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'type' => ['type' => 'string', 'enum' => ['income', 'expense']],
                     'status' => ['type' => 'string', 'enum' => $statusEnum],
@@ -159,7 +172,7 @@ function mcp_money_tool_def(string $name): array {
             return [
                 'name' => 'get_cash_flow_forecast',
                 'description' => 'Money that has not moved yet over the next N months: recurring charges, unpaid movements by due date, and scheduled ones. Returns month totals and the individual expected transactions (months and totals start tomorrow). '
-                    . 'The overdue block holds what the months leave out: unpaid issued movements (pending, partially paid, flagged overdue) dated before today (due date, else issue date), with totals (income, expense, net), items oldest first (at most 100, truncated says more exist) and days_overdue. '
+                    . 'The overdue block holds what the months leave out: unpaid issued (not planned) movements whose due date, else issue date, is before today, whatever their stored status, with totals (income, expense, net), items oldest first (at most 100, truncated says more exist) and days_overdue. A movement flagged overdue but dated today or later is not in the block (list_financial_movements and payment_status call it overdue, but the forecast keeps it in its month). '
                     . 'planned_past counts planned (not yet issued) movements whose date has passed, due_today the unpaid money dated today. as_of is today\'s ' . KOPERNIQ_PRODUCT_NAME . ' date.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'months' => ['type' => 'integer', 'description' => 'Months ahead (default 3, max 24)'],
@@ -445,7 +458,7 @@ function mcp_list_invoices(\PDO $pdo, array $user, array $args): array {
         $where[] = '(io.document_number LIKE ? OR io.client_name LIKE ? OR io.title LIKE ?)';
         array_push($params, $term, $term, $term);
     }
-    $win = mcp_list_window($args, MCP_INVOICE_WINDOW);
+    $win = mcp_due_date_last($args, mcp_list_window($args, MCP_INVOICE_WINDOW), 'io.due_date', 'io.id');
     [$issWhere, $issParams] = mcp_date_range($args, 'issued', 'io.issued_at');
     [$dueWhere, $dueParams] = mcp_date_range($args, 'due', 'io.due_date');
     $where = array_merge($where, $win['where'], $issWhere, $dueWhere);
@@ -459,6 +472,7 @@ function mcp_list_invoices(\PDO $pdo, array $user, array $args): array {
     $base = 'SELECT ' . MCP_INVOICE_SELECT . ', ' . MCP_INVOICE_ACTIVITY . ' AS last_activity_at__ts FROM ' . MCP_INVOICE_FROM
         . ' WHERE ' . implode(' AND ', $where) . ' ORDER BY ' . $win['order'];
     $today = mcp_today();
+    ccrm_invoice_status_defs($pdo);   // reads INVOICE_STATUSES once, for mcp_invoice_expects_movement
 
     if ($payment === null) {
         $stmt = $pdo->prepare("$base LIMIT {$win['limit']} OFFSET {$win['offset']}");
@@ -497,6 +511,7 @@ function mcp_get_invoice(\PDO $pdo, array $user, array $args): array {
     if (!$inv) {
         throw new \Exception('Invoice not found with ID: ' . $args['id']);
     }
+    ccrm_invoice_status_defs($pdo);   // reads INVOICE_STATUSES once, for mcp_invoice_expects_movement
     $pay = mcp_invoice_doc_row($inv, mcp_today());
     $inv = mcp_row_moments($inv);
     unset($inv['fr_status'], $inv['fr_planned'], $inv['fr_real'], $inv['fr_paid_date'], $inv['fr_project_id']);
@@ -521,7 +536,7 @@ function mcp_list_expenses(\PDO $pdo, array $user, array $args): array {
         $where[] = '(title LIKE ? OR description LIKE ?)';
         array_push($params, '%' . $args['search'] . '%', '%' . $args['search'] . '%');
     }
-    $win = mcp_list_window($args, MCP_EXPENSE_WINDOW);
+    $win = mcp_due_date_last($args, mcp_list_window($args, MCP_EXPENSE_WINDOW), 'due_date', 'id');
     // start_date / end_date are the long-standing names of the issue-date range; now validated.
     $start = mcp_optional_date($args, 'start_date');
     $end = mcp_optional_date($args, 'end_date');
@@ -547,14 +562,15 @@ function mcp_list_expenses(\PDO $pdo, array $user, array $args): array {
 }
 
 /**
- * Overdue as mcp_payment_status derives it, for a one-off movement, in SQL: not paid, cancelled or planned,
- * and flagged overdue or due before $today. A partly paid movement whose paid part covers it is paid.
+ * Overdue as mcp_payment_status derives it (mcp_overdue_rule_text), for a one-off movement, in SQL:
+ * not paid, cancelled or planned, and flagged overdue or dated before $today (due date, else issue date).
+ * A partly paid movement whose paid part covers it is paid.
  * @return array{0: string, 1: array}
  */
 function mcp_overdue_movement_sql(string $today): array {
     return [
         "(is_recurring = 0 AND status NOT IN ('paid', 'cancelled', 'planned')
-          AND (status = 'overdue' OR (due_date IS NOT NULL AND due_date < ?))
+          AND " . mcp_overdue_date_sql() . "
           AND (status <> 'partially_paid' OR (amount_planned <> 0 AND amount_real < amount_planned)))",
         [$today],
     ];
@@ -589,7 +605,7 @@ function mcp_list_financial_movements(\PDO $pdo, array $user, array $args): arra
         $where[] = '(title LIKE ? OR description LIKE ? OR invoice_number LIKE ?)';
         array_push($params, $t, $t, $t);
     }
-    $win = mcp_list_window($args, MCP_MOVEMENT_WINDOW);
+    $win = mcp_due_date_last($args, mcp_list_window($args, MCP_MOVEMENT_WINDOW), 'due_date', 'id');
     $where = array_merge($where, $win['where']);
     $params = array_merge($params, $win['params']);
     foreach (['due' => 'due_date', 'paid' => 'paid_date', 'issue' => 'issue_date'] as $field => $col) {
@@ -613,7 +629,7 @@ function mcp_list_financial_movements(\PDO $pdo, array $user, array $args): arra
             'invoice_number' => $r['invoiceNumber'], 'currency' => $r['currency'],
             'amount_planned' => $r['amountPlanned'], 'amount_real' => $r['amountReal'],
             'settled' => mcp_round2($real), 'expected' => mcp_round2($est),
-            'payment_status' => $r['isRecurring'] ? null : mcp_payment_status((string)$r['status'], $real, $est, $r['dueDate'], $today),
+            'payment_status' => $r['isRecurring'] ? null : mcp_payment_status((string)$r['status'], $real, $est, $r['dueDate'], $today, $r['issueDate']),
             'filed_on' => mcp_fin_date($r), 'issue_date' => $r['issueDate'], 'due_date' => $r['dueDate'], 'paid_date' => $r['paidDate'],
             'is_recurring' => $r['isRecurring'], 'recurring_frequency' => $r['recurringFrequency'],
             'created_at' => mcp_format_moment($raw['created_at__ts']), 'updated_at' => mcp_format_moment($raw['updated_at__ts']),
@@ -626,7 +642,10 @@ function mcp_list_financial_movements(\PDO $pdo, array $user, array $args): arra
  * would list (unpaid, still expected) but whose date (due date, else issue date) is today or earlier:
  * [['date', 'type', 'amount', 'source', 'rec' => movement], ...].
  *
- * overdue      issued and unpaid, dated before today (planned ones are plans, not requests for money)
+ * overdue      issued and unpaid, effective date (due date, else issue date) before today (planned ones are plans,
+ *              not requests for money). This is the date half of the overdue rule (mcp_dated_before_today).
+ *              The forecast months mirror the app's cash-flow maths and are not changed by the rule, so a
+ *              movement flagged overdue but dated tomorrow or later stays in its month and is not listed here.
  * planned_past planned, dated before today
  * due_today    anything unpaid dated today: not overdue yet, but not in the months either
  */
@@ -638,6 +657,7 @@ function mcp_forecast_overdue_block(array $past, string $today, int $cap = 100):
     foreach ($past as $m) {
         if ($m['date'] === $today) { $dueToday[$m['type']] += $m['amount']; $counts['due_today']++; continue; }
         if ($m['rec']['status'] === 'planned') { $planned[$m['type']] += $m['amount']; $counts['planned_past']++; continue; }
+        if (!mcp_dated_before_today($m['rec']['dueDate'], $m['rec']['issueDate'], $today)) continue;
         $overdue[$m['type']] += $m['amount']; $counts['overdue']++;
         $items[] = $m;
     }
@@ -657,7 +677,7 @@ function mcp_forecast_overdue_block(array $past, string $today, int $cap = 100):
         'truncated' => count($items) > $cap,
         'planned_past' => ['count' => $counts['planned_past']] + $totals($planned),
         'due_today' => ['count' => $counts['due_today']] + $totals($dueToday),
-        'basis' => 'Unpaid, issued movements (pending, partially paid, flagged overdue) dated before ' . $today . ': due date, else issue date. Amounts are what is still expected. Recurring rules and their schedule are not included.',
+        'basis' => 'Unpaid, issued (not planned) movements dated before ' . $today . ' (due date, else issue date), whatever their stored status; the months leave these out. A movement flagged overdue but dated today or later is not in this block: it stays in its month (today: in due_today). Amounts are what is still expected. Recurring rules and their schedule are not included.',
     ];
 }
 

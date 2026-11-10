@@ -366,12 +366,44 @@ function mcp_project_row(\PDO $pdo, array $p, array &$ctx, array $groups): array
     return $row;
 }
 
-/** paid / partially_paid / unpaid / overdue / planned / cancelled, from a movement's status and split. */
-function mcp_payment_status(string $status, float $settled, float $expected, ?string $due, string $today): string {
+/**
+ * THE overdue rule for money, in one sentence (every tool description that mentions overdue money
+ * uses this text): a movement or invoice payment is overdue when it is still unpaid (not paid, not
+ * cancelled, not planned) and either flagged overdue or dated before today, the due date else the
+ * issue date. Implemented by mcp_is_overdue (PHP) and mcp_overdue_date_sql (SQL); do not restate it.
+ */
+function mcp_overdue_rule_text(): string {
+    return 'overdue = not paid, not cancelled and not planned, and either flagged overdue or dated before today (due date, else issue date; today is the ' . KOPERNIQ_PRODUCT_NAME . ' date)';
+}
+
+/** The overdue rule on dates: the effective date (due date, else issue date) is before $today. */
+function mcp_dated_before_today(?string $due, ?string $issue, string $today): bool {
+    $date = mcp_iso_ok($due) ? $due : $issue;
+    return mcp_iso_ok($date) && $date < $today;
+}
+
+/** The overdue rule on one unpaid, unplanned movement: flagged overdue, or dated before today. */
+function mcp_is_overdue(string $status, ?string $due, ?string $issue, string $today): bool {
+    return $status === 'overdue' || mcp_dated_before_today($due, $issue, $today);
+}
+
+/**
+ * The same rule in SQL on financial_records columns: flagged overdue, or due date (else issue date)
+ * before ?. The caller adds the unpaid / unplanned / not cancelled conditions and binds one date, $today.
+ */
+function mcp_overdue_date_sql(string $statusCol = 'status', string $dueCol = 'due_date', string $issueCol = 'issue_date'): string {
+    return "({$statusCol} = 'overdue' OR COALESCE({$dueCol}, {$issueCol}) < ?)";
+}
+
+/**
+ * paid / partially_paid / unpaid / overdue / planned / cancelled, from a movement's status and split.
+ * $due and $issue are the movement's dates (the overdue rule, mcp_is_overdue).
+ */
+function mcp_payment_status(string $status, float $settled, float $expected, ?string $due, string $today, ?string $issue = null): string {
     if ($status === 'cancelled') return 'cancelled';
     if ($status === 'paid' || ($expected <= 0.0 && $settled > 0.0)) return 'paid';
     if ($status === 'planned') return 'planned';
-    if ($status === 'overdue' || (mcp_iso_ok($due) && $due < $today)) return 'overdue';
+    if (mcp_is_overdue($status, $due, $issue, $today)) return 'overdue';
     return $settled > 0.0 ? 'partially_paid' : 'unpaid';
 }
 
@@ -384,7 +416,7 @@ function mcp_installment_row(array $r, string $today): array {
         'amount' => mcp_round2($r['amountPlanned'] != 0.0 ? $r['amountPlanned'] : $r['amountReal']),
         'paid' => mcp_round2($settled), 'open' => mcp_round2($expected), 'currency' => $r['currency'],
         'status' => $r['status'],
-        'payment_status' => mcp_payment_status((string)$r['status'], $settled, $expected, $r['dueDate'] ?: $r['issueDate'], $today),
+        'payment_status' => mcp_payment_status((string)$r['status'], $settled, $expected, $r['dueDate'], $today, $r['issueDate']),
         'is_recurring' => !empty($r['isRecurring']),
     ];
 }
@@ -519,7 +551,19 @@ function mcp_scope_invoice_docs(\PDO $pdo, array $scope, bool $withOffers = true
     );
     $stmt->execute($params);
     $today = mcp_today();
+    ccrm_invoice_status_defs($pdo);   // reads INVOICE_STATUSES once, for mcp_invoice_expects_movement
     return array_map(fn($d) => mcp_invoice_doc_row($d, $today), $stmt->fetchAll(\PDO::FETCH_ASSOC));
+}
+
+/**
+ * Does the app book a ledger movement (fr-inv-<id>) for this document? Only a live invoice does
+ * (src/utils/invoiceFinanceBridge.ts isLiveInvoice): type invoice, in a status whose group is neither
+ * `lost` (rejected) nor `cancelled`; a status the list does not know counts as live. A proforma or a
+ * price offer never has one. The statuses are configurable (INVOICE_STATUSES): the group is read from them.
+ */
+function mcp_invoice_expects_movement(array $d): bool {
+    if ($d['type'] !== 'invoice') return false;
+    return !in_array(ccrm_invoice_status_group((string)$d['status']), ['lost', 'cancelled'], true);
 }
 
 /**
@@ -534,13 +578,16 @@ function mcp_invoice_doc_row(array $d, string $today): array {
     if ($d['type'] !== 'price_offer') {
         if ($d['fr_status'] !== null) {
             [$settled, $expected] = mcp_fin_split(['status' => $d['fr_status'], 'amountPlanned' => (float)$d['fr_planned'], 'amountReal' => (float)$d['fr_real'], 'isRecurring' => false]);
-            $payment = mcp_payment_status((string)$d['fr_status'], $settled, $expected, $d['due_date'], $today);
+            $payment = mcp_payment_status((string)$d['fr_status'], $settled, $expected, $d['due_date'], $today, $d['issued_at']);
         } elseif ($d['status'] === 'cancelled') {
             $payment = 'cancelled';
+        } elseif (!mcp_invoice_expects_movement($d)) {
+            // A proforma, or a rejected invoice: the app never books money for it, so it is no receivable.
+            $payment = null;
         } else {
-            // No ledger movement (entered before the bridge, or removed): only the due date says anything.
+            // A live invoice whose movement is missing (not reconciled yet): the dates say what they can.
             $expected = $total;
-            $payment = mcp_payment_status($d['status'] === 'draft' ? 'planned' : 'pending', 0.0, $total, $d['due_date'], $today);
+            $payment = mcp_payment_status($d['status'] === 'draft' ? 'planned' : 'pending', 0.0, $total, $d['due_date'], $today, $d['issued_at']);
         }
     }
     return [
@@ -798,7 +845,7 @@ function mcp_ext_intel_tool_definitions(): array {
         ],
         [
             'name' => 'get_client_invoices',
-            'description' => 'All invoices of a client with number, variable symbol (SuperFaktúra only), issue and due date, amount, paid and open amount, currency and payment status (paid, partially_paid, unpaid, overdue, planned, cancelled). Combines the Invoicing module, invoices and planned installments in the finance ledger (on the client or its projects), and — when the SuperFaktúra integration is enabled — the invoices SuperFaktúra holds for the client (found by IČO, else by name). Works in either finance mode. Each source is capped (300 rows, SuperFaktúra one page of 100): truncated=true means a source holds more than is listed and totals leave those rows out. For overdue or unpaid invoices across all clients use list_invoices with payment_status.',
+            'description' => 'All invoices of a client with number, variable symbol (SuperFaktúra only), issue and due date, amount, paid and open amount, currency and payment status (paid, partially_paid, unpaid, overdue, planned, cancelled). Combines the Invoicing module, invoices and planned installments in the finance ledger (on the client or its projects), and — when the SuperFaktúra integration is enabled — the invoices SuperFaktúra holds for the client (found by IČO, else by name). Works in either finance mode. Each source is capped (300 rows, SuperFaktúra one page of 100): truncated=true means a source holds more than is listed and totals leave those rows out. Invoicing and ledger rows follow the overdue rule of the other money tools: \' . mcp_overdue_rule_text() . \'. A proforma or rejected invoice with no ledger movement is no receivable (payment_status null, open 0). For overdue or unpaid invoices across all clients use list_invoices with payment_status.',
             'inputSchema' => ['type' => 'object', 'properties' => [
                 'identifier' => $client,
                 'payment_status' => ['type' => 'string', 'enum' => ['paid', 'partially_paid', 'unpaid', 'overdue', 'planned', 'cancelled'], 'description' => 'Only invoices in this payment status'],
