@@ -121,5 +121,7 @@ export const editBtn = {
  * sidebar ignore targets inside it, so opening a menu never closes the editor.
  */
 export const MENU_EDIT_LAYER_ATTR = "data-menu-edit-layer";
+/** The app's bottom-right notification stack (Undo toast, save indicator) in App.tsx. */
+export const APP_NOTIFICATIONS_ATTR = "data-app-notifications";
 export const isInsideMenuEditLayer = (target: EventTarget | null): boolean =>
-  target instanceof Element && !!target.closest(`[${MENU_EDIT_LAYER_ATTR}]`);
+  target instanceof Element && !!target.closest(`[${MENU_EDIT_LAYER_ATTR}], [${APP_NOTIFICATIONS_ATTR}]`);

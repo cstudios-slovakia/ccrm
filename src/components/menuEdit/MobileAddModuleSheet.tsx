@@ -84,7 +84,7 @@ export const MobileAddModuleSheet: React.FC<{
   const empty = unpinned.length === 0 && hidden.length === 0;
 
   return (
-    <MobileSheet open={open && !!groupId} onClose={onClose} label={s.addModuleToGroup(groupName)} tall>
+    <MobileSheet open={open && !!groupId} onClose={onClose} label={s.addToGroupTitle(groupName)} tall>
       <div className="flex items-center gap-2 pl-5 pr-2 pt-1 pb-2 shrink-0">
         <div className="flex-1 min-w-0 flex flex-col">
           <h2 className="m-0 type-panel-title text-slate-900 truncate">{s.addToGroupTitle(groupName)}</h2>

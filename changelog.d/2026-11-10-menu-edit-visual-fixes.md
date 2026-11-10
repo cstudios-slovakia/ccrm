@@ -3,3 +3,5 @@
 - **Mobile editor: Escape closes only the open sheet** (`menuEdit/MobileSheet.tsx`, `StartMenu.tsx`): it used to leave edit mode too. Action-sheet icons are slate-500 and the current group reads in 12px slate-500, as in the design.
 - **Start screen picker opens on the current start screen** (`menuEdit/StartMenuEditMenus.tsx`): scrolled to it and focused, instead of at the top of the list.
 - **Tests**: `cn.test.ts` (type-role sizes survive a colour, sizes and colours still merge among themselves).
+- **Menu edit mode: pressing Undo on the toast no longer closes the Start menu** (`src/App.tsx`, `menuEdit/primitives.tsx`): the click-outside handlers now ignore the notification stack. The mobile add-module sheet is named after its visible title.
+- **Tests**: `menuEditMode.spec.ts` drives the edit mode end to end: pin toggle, move down / Alt+ArrowUp / move to group / hide / show, Escape closing a menu before the editor, new group rename, delete with confirmation and a reachable Undo, drag from the dialog onto the sidebar, the sidebar's unpin / rename / add-module, and the mobile item and add-module sheets.
