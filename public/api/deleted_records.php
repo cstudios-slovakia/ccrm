@@ -7,8 +7,11 @@
  * (docs/audits/mcp-change-visibility-audit.md, RC7b). One row per record that really went:
  * entity (the table), id, the name it had, who deleted it and when.
  *
- * Written by sync.php's generic delete (ccrm_delete_omitted) and the project delete, through
- * ccrm_record_deleted(). Never written for:
+ * Written through ccrm_record_deleted() by sync.php's generic delete (ccrm_delete_omitted) and
+ * project delete, the task delete endpoint (api/task.php), the voice assistant's delete_project
+ * (api/realtime_session.php) and the undo of the client-row migration
+ * (api/adjustment_client_migration.php). A new hard delete of a business record calls it too.
+ * Never written for:
  * - a delete the mass-delete circuit breaker refused (nothing was deleted, and the row count
  *   check runs on the DELETE itself);
  * - rows rewritten wholesale as part of a parent's save (timeline entries, action items, line

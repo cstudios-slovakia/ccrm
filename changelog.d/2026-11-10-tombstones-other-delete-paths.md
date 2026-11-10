@@ -1,0 +1,2 @@
+- **Deletion tombstones from every delete path** (`api/task.php`, `api/realtime_session.php`, `api/adjustment_client_migration.php`): deleting a task (the task delete endpoint), a project through the voice assistant, or a client row through the undo of the client-row migration now leaves a `deleted_records` row too, so `list_deleted_records` sees them.
+- **File-size baseline**: `public/api/mcp.php` dropped under 2,500 lines (2,814 → ~2,100) and leaves the ratchet list.

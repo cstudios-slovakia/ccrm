@@ -30,6 +30,7 @@
  */
 
 require_once __DIR__ . '/lead_client_backfill.php';
+require_once __DIR__ . '/deleted_records.php';
 
 if (!function_exists('ccrm_plan_adjustment_clients')) {
 
@@ -253,7 +254,9 @@ if (!function_exists('ccrm_plan_adjustment_clients')) {
                     $pdo->prepare("UPDATE `leads` SET `adjustment` = ?, `client_id` = NULL WHERE `id` = ?")->execute([$adjustment, $moved[0]]);
                     $rest = $pdo->prepare("UPDATE `leads` SET `client_id` = NULL, `updated_at` = `updated_at` WHERE `id` = ? AND `client_id` = ?");
                     foreach (array_diff($linked, [$moved[0]]) as $id) $rest->execute([$id, $clientId]);
+                    $tomb = ccrm_deleted_snapshot($pdo, 'leads', (string)$clientId);
                     $pdo->prepare("DELETE FROM `leads` WHERE `id` = ?")->execute([$clientId]);
+                    ccrm_record_deleted($pdo, 'leads', (string)$clientId, $tomb, 'php kprnq (undo of the client-row migration)');
                     $pdo->prepare("DELETE FROM `client_adjustment_migration` WHERE `client_id` = ?")->execute([$clientId]);
                     $was = ccrm_register_total($before);
                     $now = ccrm_register_total(ccrm_adjustment_name_rows($pdo, $l['name']));

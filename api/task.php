@@ -3,6 +3,7 @@ require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/deleted_records.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -104,6 +105,7 @@ if (!$isAdmin) {
 
 try {
     $pdo->beginTransaction();
+    $tomb = ccrm_deleted_snapshot($pdo, 'tasks', $taskId);
     $deleteStmt = $pdo->prepare("DELETE FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks());
     $deleteStmt->execute([$taskId]);
     if ($deleteStmt->rowCount() !== 1) {
@@ -118,6 +120,8 @@ try {
         'tasks.delete',
         $taskId . ': ' . (string)$task['title']
     );
+    // Tombstone for "what was deleted since X" (MCP list_deleted_records); fail-soft.
+    ccrm_record_deleted($pdo, 'tasks', $taskId, $tomb, (string)$task['session_user_name']);
     $pdo->commit();
     echo json_encode(['success' => true, 'id' => $taskId]);
 } catch (\Throwable $e) {

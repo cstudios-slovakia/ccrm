@@ -2,6 +2,7 @@
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/contact_name.php';
+require_once __DIR__ . '/deleted_records.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -718,8 +719,11 @@ if ($action === 'delete_project') {
     $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($proj['project_type_id'] ?: ''));
 
     try {
+        $tomb = ccrm_deleted_snapshot($pdo, 'projects', (string)$projId);
         $del = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
         $del->execute([$projId]);
+        // Tombstone for "what was deleted since X" (MCP list_deleted_records); fail-soft.
+        if ($del->rowCount() > 0) ccrm_record_deleted($pdo, 'projects', (string)$projId, $tomb, (string)($ccrmSessionProfile['name'] ?? ''));
 
         $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?")->execute([$projId]); /* recurring-template: unlinking deleted project from all tasks and templates */
 
