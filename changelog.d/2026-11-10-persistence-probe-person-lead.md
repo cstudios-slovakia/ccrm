@@ -1,1 +1,0 @@
-- **Tests: the persistence probe covers a person lead** (`scripts/probe-persistence.mjs`): a person's own first and last name read back after a sync round trip, and `contactPerson` stays empty.

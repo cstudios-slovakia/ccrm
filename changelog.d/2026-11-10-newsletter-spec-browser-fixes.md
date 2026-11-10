@@ -1,1 +1,0 @@
-- **Newsletter QA spec passes in the browser** (19/19): the results progress bar and the design body carry test hooks (`newsletter-progress`, `data-nl-body`), and the spec counts only the campaign body, uses the tab role and finds the suppression field by its label.

@@ -1,1 +1,0 @@
-- **Newsletter QA spec**: the C16 journey no longer expects an intermediate progress percentage (the results page polls at once, twice under React StrictMode); it checks 0 % with the worker stopped, then that the page's own polling finishes the send.

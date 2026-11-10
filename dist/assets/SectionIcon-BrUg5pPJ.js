@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-DQ2sTfV8.js";import{r as t}from"./sectionVisuals-jVBGHHeC.js";var n=e();function r({id:e,className:r,color:i}){let a=t(e);if(!a)return null;let o=a.icon,s=i??a.color;return(0,n.jsx)(o,{className:r,style:{color:s}})}export{r as t};

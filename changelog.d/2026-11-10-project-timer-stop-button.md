@@ -1,1 +1,0 @@
-- **Projects: the Time tab timer button now stops the timer** (`src/components/timeTracking/ProjectTimeTab.tsx`): pressing it while the timer was running on this project stopped it and immediately started a new one. It now shows "Stop timer" with a stop icon and only stops.
