@@ -1454,12 +1454,7 @@ function mcp_project_employee(array $row): array {
  * Returns [sqlFragment, params] to AND onto a query on `tasks` (alias optional).
  */
 function mcp_task_scope(array $user, string $alias = ''): array {
-    if (mcp_can('tasks.view_all')) return ['', []];
-    $a = $alias === '' ? '' : $alias . '.';
-    return [
-        "({$a}owner = ? OR {$a}created_by = ? OR EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = {$a}id AND ta.user_name = ?))",
-        [$user['name'], $user['name'], $user['name']],
-    ];
+    return mcp_task_scope_for($user, $alias); // name or e-mail, like ccrm_task_scope_sql (mcp_lists_crm.php)
 }
 
 // ============================================================================

@@ -270,17 +270,19 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'list_documents',
-            'description' => 'Documents filed on lead/client timelines (offers, orders, proforma invoices, advance receipts, invoices, delivery notes) with amount and file name. Invoicing module documents are listed with list_invoices.',
+            'description' => 'Documents filed on lead/client timelines (offers, orders, proforma invoices, advance receipts, invoices, delivery notes) with amount and file name; only records of the kind (leads or clients) your key may read are listed. Invoicing module documents are listed with list_invoices. '
+                . 'timestamp is the event time as entered, in ' . KOPERNIQ_PRODUCT_NAME . ' local time (' . mcp_zone() . '); timestamp_iso is the same moment with the offset. Newest first; pages: limit + offset.',
             'inputSchema' => ['type' => 'object', 'properties' => [
                 'lead_id' => $id('Only this lead/client record'),
                 'type' => ['type' => 'string', 'enum' => ['offer', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note']],
-                'limit' => ['type' => 'integer'],
+                'limit' => ['type' => 'integer', 'description' => 'Max rows (default 50, at most 100)'],
+                'offset' => ['type' => 'integer', 'description' => 'Rows to skip, for the next page'],
             ]],
         ],
         [
             'name' => 'list_files',
-            'description' => 'File metadata (names, types, dates; never the content) attached to a lead/client, a project, or an employee (employee files need the employees.files permission).',
-            'inputSchema' => ['type' => 'object', 'properties' => ['source' => ['type' => 'string', 'enum' => ['lead', 'project', 'employee']], 'id' => $id('Record ID')], 'required' => ['source', 'id']],
+            'description' => 'File metadata (names, types, dates; never the content) attached to a lead/client, a project, or an employee (employee files need the employees.files permission). A lead/client record of a kind your key may not read returns nothing. For source=lead, newest first with limit (default 200, at most 200) + offset; timestamp is local time (' . mcp_zone() . '), timestamp_iso carries the offset.',
+            'inputSchema' => ['type' => 'object', 'properties' => ['source' => ['type' => 'string', 'enum' => ['lead', 'project', 'employee']], 'id' => $id('Record ID'), 'limit' => ['type' => 'integer', 'description' => 'source=lead only: max rows (default 200)'], 'offset' => ['type' => 'integer', 'description' => 'source=lead only: rows to skip']], 'required' => ['source', 'id']],
         ],
     ];
 }
@@ -608,34 +610,13 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
         case 'get_unified_entry_rows':
             return mcp_get_unified_entry_rows($pdo, $user, $args);
 
-        case 'list_documents': {
-            $where = ["type IN ('offer','order','proforma_invoice','advance_receipt','invoice','delivery_note')", 'hidden = 0']; $params = [];
-            if (!empty($args['lead_id'])) { $where[] = 'lead_id = ?'; $params[] = (string)$args['lead_id']; }
-            if (!empty($args['lead_id'])) {
-                // The documents belong to the lead/client the caller names: the
-                // module split applies to the record, not just the documents.
-                $leadStmt = $pdo->prepare("SELECT id, adjustment FROM leads WHERE id = ?");
-                $leadStmt->execute([(string)$args['lead_id']]);
-                $leadRow = $leadStmt->fetch(\PDO::FETCH_ASSOC);
-                if ($leadRow && !mcp_lead_module_visible($leadRow)) {
-                    throw new \Exception("Lead not found with ID: " . (string)$args['lead_id']);
-                }
-            }
-            $t = mcp_enum($args, 'type', ['offer', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note']);
-            if ($t) { $where[] = 'type = ?'; $params[] = $t; }
-            $stmt = $pdo->prepare("SELECT id, lead_id, type, timestamp, title, amount, file_name, file_type, author FROM timeline_events WHERE " . implode(' AND ', $where) . " ORDER BY timestamp DESC LIMIT " . mcp_limit($args));
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        }
+        case 'list_documents':
+            return mcp_list_documents($pdo, $user, $args);
 
         case 'list_files': {
             $source = mcp_enum($args, 'source', ['lead', 'project', 'employee']);
             $id = mcp_require_string($args, 'id');
-            if ($source === 'lead') {
-                $stmt = $pdo->prepare("SELECT id, type, title, timestamp, file_name, file_type, file_size FROM timeline_events WHERE lead_id = ? AND hidden = 0 AND file_name IS NOT NULL AND file_name <> '' ORDER BY timestamp DESC LIMIT 200");
-                $stmt->execute([$id]);
-                return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
+            if ($source === 'lead') return mcp_list_lead_files($pdo, $user, $args, $id);
             if ($source === 'project') {
                 $stmt = $pdo->prepare("SELECT custom_files_json FROM projects WHERE id = ?");
                 $stmt->execute([$id]);
