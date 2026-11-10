@@ -27,14 +27,16 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({ open, onClose, label, 
     const id = requestAnimationFrame(() => panelRef.current?.focus({ preventScroll: true }));
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // Consumed here: the Start menu's own Escape ("Done") must not fire too.
         e.preventDefault();
+        e.stopPropagation();
         onClose();
       }
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       cancelAnimationFrame(id);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open, onClose]);
 
@@ -120,7 +122,10 @@ export const ActionRow: React.FC<{
           )
     )}
   >
-    <span className="shrink-0 inline-flex" aria-hidden="true">
+    <span
+      className={cn("shrink-0 inline-flex", disabled ? "text-slate-300" : danger ? "text-rose-600" : "text-slate-500")}
+      aria-hidden="true"
+    >
       {icon}
     </span>
     <span className="flex-1 min-w-0 flex flex-col">

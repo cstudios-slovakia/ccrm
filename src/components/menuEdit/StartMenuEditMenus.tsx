@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowLeft,
@@ -208,12 +208,26 @@ interface StartScreenMenuProps {
   onPick: (id: string) => void;
 }
 
-export const StartScreenMenu: React.FC<StartScreenMenuProps> = ({ anchor, strings, modules, currentId, onClose, onPick }) => (
+export const StartScreenMenu: React.FC<StartScreenMenuProps> = ({ anchor, strings, modules, currentId, onClose, onPick }) => {
+  // The list scrolls: open it on the current start screen, focused, not on the first module.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const current = document.querySelector<HTMLElement>(
+        `[role="menu"][aria-label="${CSS.escape(strings.startScreen)}"] [aria-checked="true"]`
+      );
+      current?.scrollIntoView({ block: "nearest" });
+      current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [strings.startScreen]);
+
+  return (
   <MenuPopover
     anchor={anchor}
     onClose={onClose}
     ariaLabel={strings.startScreen}
     widthClass="w-54"
+    autoFocus={false}
     className="max-h-[min(26rem,70vh)] overflow-y-auto scrollbar-thin"
   >
     {modules.map((m) => (
@@ -230,7 +244,8 @@ export const StartScreenMenu: React.FC<StartScreenMenuProps> = ({ anchor, string
       />
     ))}
   </MenuPopover>
-);
+  );
+};
 
 interface AddModulePopoverProps {
   anchor: HTMLElement;

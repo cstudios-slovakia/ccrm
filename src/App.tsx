@@ -5122,7 +5122,9 @@ ${log.payload || ''}
           column so they can never land on top of each other — they used to be two
           independently positioned "fixed" banners 4px apart, which read as a single
           garbled banner whenever both were up. */}
-      <div className="fixed bottom-20 right-6 z-[20001] flex flex-col items-end gap-2 pointer-events-none lg:bottom-6">
+      {/* Above every app layer, including the Start menu and its edit-mode menus
+          (z 99999–100070): an Undo toast hidden behind a dialog cannot be used. */}
+      <div className="fixed bottom-20 right-6 z-[100090] flex flex-col items-end gap-2 pointer-events-none lg:bottom-6">
         {/* Global save indicator — reassures the user their change is being saved
             and, together with the beforeunload guard, that they should not leave or
             reload the page until it disappears. */}

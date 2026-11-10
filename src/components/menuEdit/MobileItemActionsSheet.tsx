@@ -87,8 +87,12 @@ export const MobileItemActionsSheet: React.FC<MobileItemActionsSheetProps> = ({
               <ActionRow
                 icon={<ArrowRightLeft className="size-5" />}
                 label={s.moveToGroup}
-                meta={name}
-                trailing={<ChevronRight className="size-4 text-slate-400" aria-hidden="true" />}
+                trailing={
+                  <>
+                    <span className="text-ui font-normal text-slate-500 shrink-0">{name}</span>
+                    <ChevronRight className="size-4 text-slate-400 shrink-0" aria-hidden="true" />
+                  </>
+                }
                 onClick={() => setView("groups")}
               />
               <ActionRow icon={<Home className="size-5" />} label={s.setAsStart} onClick={run(() => onSetDefault(cur.id))} />

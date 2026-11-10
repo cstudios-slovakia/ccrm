@@ -121,6 +121,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   }, [initialEditing, isOpen]);
 
+  // The Start menu lives inside the app's `relative z-10` layout wrapper, so its
+  // z-index cannot rise above floating widgets mounted outside it (the copilot
+  // orb). They hide themselves while this flag is on <html>.
+  useEffect(() => {
+    if (!isOpen) return;
+    const root = document.documentElement;
+    root.setAttribute("data-start-menu-open", "");
+    return () => root.removeAttribute("data-start-menu-open");
+  }, [isOpen]);
+
   // Whether the Start menu was opened straight into edit mode: "Done" then closes it.
   const openedInEditRef = useRef(initialEditing);
   // True while a confirmation outside the dialog is open (click-outside must ignore it).
@@ -249,6 +259,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
+      // A menu, sheet or dialog above the Start menu already handled this Escape.
+      if (e.defaultPrevented) return;
       if (e.key === "Escape") {
         e.preventDefault();
         if (isEditing) handleDoneEditing();
