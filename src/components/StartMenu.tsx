@@ -4,9 +4,7 @@ import {
   LayoutDashboard, BarChart3, Briefcase, TableProperties, Users,
   Package, Coins, PencilLine, FolderOpen, Mail, Brain, Workflow,
   Globe, Sparkles, Settings, User, Search, X, ChevronRight,
-  Check, Pencil, GripVertical, Pin, RotateCcw, Plus,
-  Archive, EyeOff, Trash2, FolderPlus, ListTodo, Home,
-  ChevronUp, ChevronDown
+  Check, Pencil, Plus, ListTodo, Home
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import type { Language } from "../utils/translations";
@@ -19,12 +17,11 @@ import { FlockIcon } from "./icons/FlockIcon";
 import { EmployeeTieIcon } from "./icons/EmployeeTieIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
 import { applySectionVisual } from "../utils/sectionVisuals";
-import { cn } from "../utils/cn";
-import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
-import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 import { PRODUCT_NAME } from "../utils/brand";
 import { isInsideMenuEditLayer } from "./menuEdit/primitives";
+import { menuEditStrings } from "./menuEdit/menuEditStrings";
+import { StartMenuEditDialog } from "./menuEdit/StartMenuEditDialog";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -45,6 +42,7 @@ interface StartMenuProps {
   onTogglePinToSidebar?: (itemId: string) => void;
   initialEditing?: boolean;
   onEditModeChange?: (editing: boolean) => void;
+  /** Kept for the Sidebar call site; the Start menu edit dialog creates Start menu groups. */
   onAddSidebarGroup?: () => void;
   defaultPage?: string;
   onSaveDefaultPage?: (pageId: string) => void;
@@ -84,7 +82,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onTogglePinToSidebar,
   initialEditing = false,
   onEditModeChange,
-  onAddSidebarGroup,
   defaultPage,
   onSaveDefaultPage,
   disabledModules = []
@@ -96,19 +93,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [storedDefaultPage, setStoredDefaultPage] = useUserPref("defaultPage");
   const effectiveDefaultPage = defaultPage || storedDefaultPage || "dashboard";
 
+  const editStrings = useMemo(() => menuEditStrings(systemLanguage), [systemLanguage]);
+
   const handleSetDefaultPage = (pageId: string) => {
     if (onSaveDefaultPage) {
       onSaveDefaultPage(pageId);
     }
     setStoredDefaultPage(pageId);
     if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(
-        t(
-          "Default start screen updated.",
-          "Predvolená úvodná obrazovka bola zmenená.",
-          "Az alapértelmezett kezdőképernyő frissítve."
-        )
-      );
+      (window as any).showToast(editStrings.startScreenUpdated);
     }
   };
 
@@ -128,20 +121,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   }, [initialEditing, isOpen]);
 
-  // Group editing states
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [editingGroupName, setEditingGroupName] = useState("");
-  const [addMenuGroupId, setAddMenuGroupId] = useState<string | null>(null);
-
-  // Item drag & drop state
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-  const [draggedFromGroup, setDraggedFromGroup] = useState<string | null>(null);
-  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
-  const [dragOverItemIndex, setDragOverItemIndex] = useState<number | null>(null);
-
-  // Column / Group reordering drag & drop state
-  const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
-  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
+  // Whether the Start menu was opened straight into edit mode: "Done" then closes it.
+  const openedInEditRef = useRef(initialEditing);
+  // True while a confirmation outside the dialog is open (click-outside must ignore it).
+  const editLayerBusyRef = useRef(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -207,14 +190,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     });
   };
 
-  // Reset to default layout: clear the preference rather than remove a key, so
-  // the reset reaches the other machines this account is signed in on too.
-  const handleResetLayout = () => {
-    if (window.confirm(t("Reset Start Menu to default groups and layout?", "Obnoviť predvolené skupiny a rozloženie Štart menu?", "Visszaállítja a Start menü alapértelmezett csoportjait és elrendezését?"))) {
-      setStoredLayout(null);
-    }
-  };
-
   // Animated opening & closing lifecycle
   useEffect(() => {
     if (isOpen) {
@@ -231,10 +206,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       setIsVisible(false);
       setSearchQuery("");
       setEditingMode(false);
-      setEditingGroupId(null);
-      setAddMenuGroupId(null);
     }
   }, [isOpen, initialEditing]);
+
+  useEffect(() => {
+    if (isOpen) openedInEditRef.current = initialEditing;
+  }, [isOpen]);
 
   const handleAnimatedClose = () => {
     setIsClosing(true);
@@ -262,22 +239,32 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setTouchStartY(null);
   };
 
-  // Keyboard shortcut listener (ESC to close)
+  // "Done" in the edit dialog: back to the launcher, or out entirely when the menu was opened to edit.
+  const handleDoneEditing = () => {
+    if (openedInEditRef.current) handleAnimatedClose();
+    else setEditingMode(false);
+  };
+
+  // Keyboard shortcut listener (ESC closes; in edit mode it is "Done", menus and dialogs swallow it first)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
       if (e.key === "Escape") {
         e.preventDefault();
-        handleAnimatedClose();
+        if (isEditing) handleDoneEditing();
+        else handleAnimatedClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, isEditing]);
 
   // Click outside listener
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      // Below lg the edit dialog is hidden; the mobile editor owns the screen.
+      if (isEditing && !window.matchMedia("(min-width: 1024px)").matches) return;
+      if (editLayerBusyRef.current) return;
       if (isOpen && !isClosing && menuRef.current && !menuRef.current.contains(e.target as Node)) {
         // Do NOT close if clicking inside the sidebar navigation (aside or [data-sidebar])
         const target = e.target as HTMLElement | null;
@@ -291,19 +278,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen, isClosing]);
-
-  // Close menu group picker on outside click
-  useEffect(() => {
-    if (!addMenuGroupId) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest("[data-start-group-picker]")) return;
-      setAddMenuGroupId(null);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [addMenuGroupId]);
+  }, [isOpen, isClosing, isEditing]);
 
   // Build all available navigation items
   const allItems: NavMenuItem[] = useMemo(() => {
@@ -671,10 +646,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     );
   };
 
-  // Group Management Handlers
+  // Layout editing. The edit dialog reports intent; every change is persisted here.
   const handleCreateGroup = () => {
     const newId = `group_${Date.now()}`;
-    const newName = `${t("New Group", "Nová skupina", "Új csoport")} ${groups.length + 1}`;
+    const newName = editStrings.newGroupName(groups.length + 1);
     const newGroup: MenuGroup = {
       id: newId,
       name: newName,
@@ -682,22 +657,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       color: "text-indigo-600 ",
       isCustom: true
     };
-    const nextGroups = [...groups, newGroup];
-    setEditingGroupId(newId);
-    setEditingGroupName(newName);
-    persistLayout(nextGroups, groupItemsMap, unusedItemIds);
+    persistLayout([...groups, newGroup], groupItemsMap, unusedItemIds);
+    return { id: newId, name: newName };
   };
 
-  const handleSaveGroupName = (groupId: string) => {
-    if (!editingGroupName.trim()) {
-      setEditingGroupId(null);
-      return;
-    }
-    const nextGroups = groups.map((g) =>
-      g.id === groupId ? { ...g, name: editingGroupName.trim() } : g
+  const handleRenameGroup = (groupId: string, name: string) => {
+    if (!name.trim()) return;
+    persistLayout(
+      groups.map((g) => (g.id === groupId ? { ...g, name: name.trim() } : g)),
+      groupItemsMap,
+      unusedItemIds
     );
-    setEditingGroupId(null);
-    persistLayout(nextGroups, groupItemsMap, unusedItemIds);
   };
 
   const handleDeleteGroup = (groupId: string) => {
@@ -710,94 +680,34 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const nextUnused = Array.from(new Set([...unusedItemIds, ...itemsToMove]));
 
     // The layout as it is now: Undo writes exactly this back. The group's items
-    // were moved to Unused, so nothing is lost either way.
+    // were moved to Hidden, so nothing is lost either way.
     const before = { groups, groupItems: groupItemsMap, unused: unusedItemIds };
     runUndoable({
-      message: singleMessage(asLang(systemLanguage), "group", "delete", groupToDelete?.name ?? groups.find((g) => g.id === groupId)?.name),
-      undoLabel: undoLabel(asLang(systemLanguage)),
+      message: editStrings.groupDeleted,
+      undoLabel: editStrings.undo,
       apply: () => persistLayout(nextGroups, nextGroupItems, nextUnused),
       revert: () => persistLayout(before.groups, before.groupItems, before.unused),
     });
   };
 
-  // Group Drag & Drop (Reordering whole columns)
-  const handleGroupDragStart = (e: React.DragEvent, groupId: string) => {
-    if (!isEditing) return;
-    setDraggedGroupId(groupId);
-    e.dataTransfer.setData("text/group-id", groupId);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const handleGroupDragOver = (e: React.DragEvent, targetGroupId: string) => {
-    if (!isEditing || !draggedGroupId || draggedGroupId === targetGroupId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverGroupId(targetGroupId);
-  };
-
-  const handleGroupDrop = (e: React.DragEvent, targetGroupId: string) => {
-    if (!isEditing || !draggedGroupId || draggedGroupId === targetGroupId) return;
-    e.preventDefault();
-
-    const fromIdx = groups.findIndex((g) => g.id === draggedGroupId);
-    const toIdx = groups.findIndex((g) => g.id === targetGroupId);
-    if (fromIdx === -1 || toIdx === -1) return;
-
+  // Group columns: reorder by moving one step or by dropping a header on another group.
+  const handleReorderGroups = (fromId: string, toId: string) => {
+    const fromIdx = groups.findIndex((g) => g.id === fromId);
+    const toIdx = groups.findIndex((g) => g.id === toId);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
     const nextGroups = [...groups];
     const [moved] = nextGroups.splice(fromIdx, 1);
     nextGroups.splice(toIdx, 0, moved);
-
-    setDraggedGroupId(null);
-    setDragOverGroupId(null);
     persistLayout(nextGroups, groupItemsMap, unusedItemIds);
   };
 
-  // Item Drag & Drop Handlers
-  const draggedItemObj = useMemo(() => {
-    if (!draggedItemId) return null;
-    return allItems.find((i) => i.id === draggedItemId) || null;
-  }, [allItems, draggedItemId]);
-
-  const handleItemDragStart = (e: React.DragEvent, id: string, fromGroup: string) => {
-    if (!isEditing) return;
-    setDraggedItemId(id);
-    setDraggedFromGroup(fromGroup);
-    (window as any).__draggedModuleId = id;
-    try {
-      e.dataTransfer.setData("application/json", JSON.stringify({ type: "module", id }));
-    } catch (err) {}
-    e.dataTransfer.setData("text/plain", id);
-    e.dataTransfer.effectAllowed = "move";
+  const handleMoveGroup = (groupId: string, direction: -1 | 1) => {
+    const idx = groups.findIndex((g) => g.id === groupId);
+    const target = groups[idx + direction];
+    if (idx !== -1 && target) handleReorderGroups(groupId, target.id);
   };
 
-  const handleItemDragOverContainer = (e: React.DragEvent, targetGroup: string) => {
-    if (!isEditing || !draggedItemId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverGroup(targetGroup);
-    if (dragOverGroup !== targetGroup) {
-      setDragOverItemIndex(null);
-    }
-  };
-
-  const handleItemDragOverItem = (e: React.DragEvent, targetGroup: string, targetIndex: number) => {
-    if (!isEditing || !draggedItemId) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverGroup(targetGroup);
-    setDragOverItemIndex(targetIndex);
-  };
-
-  const handleItemDragEnd = () => {
-    setDraggedItemId(null);
-    setDraggedFromGroup(null);
-    setDragOverGroup(null);
-    setDragOverItemIndex(null);
-    (window as any).__draggedModuleId = null;
-  };
-
-  // Reorder item within a group
+  // Reorder one step inside a group (indexes are positions in the unfiltered group).
   const handleMoveMenuItem = (groupId: string, indexInGroup: number, direction: -1 | 1) => {
     const grp = resolvedGroupsData.groupsWithItems.find((g) => g.id === groupId);
     if (!grp) return;
@@ -812,156 +722,72 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     resolvedGroupsData.groupsWithItems.forEach((g) => {
       nextGroupItems[g.id] = g.id === groupId ? nextItems : g.items.map((i) => i.id);
     });
-    const nextUnused = resolvedGroupsData.unused.map((i) => i.id);
-
-    persistLayout(groups, nextGroupItems, nextUnused);
+    persistLayout(groups, nextGroupItems, resolvedGroupsData.unused.map((i) => i.id));
   };
 
-  // Move item directly to another group
-  const handleMoveMenuItemToGroup = (itemId: string, fromGroupId: string, targetGroupId: string) => {
-    if (fromGroupId === targetGroupId) return;
+  // The one place a module changes group: drag & drop, "Move to group", "Add module",
+  // "Hide" and "Show" all come through here. `target` is a group id or "unused" (hidden);
+  // `index` is the drop position among the group's current items (before removal).
+  const handleMoveItemTo = (itemId: string, target: string, index?: number) => {
     const nextGroupItems: Record<string, string[]> = {};
     resolvedGroupsData.groupsWithItems.forEach((g) => {
-      nextGroupItems[g.id] = g.items.map((i) => i.id).filter((id) => id !== itemId);
+      nextGroupItems[g.id] = g.items.map((i) => i.id);
     });
-    let nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== itemId);
+    let insertAt = index;
+    const sourceGroup = Object.keys(nextGroupItems).find((gid) => nextGroupItems[gid].includes(itemId));
+    if (sourceGroup === target && insertAt !== undefined && nextGroupItems[sourceGroup].indexOf(itemId) < insertAt) {
+      insertAt -= 1;
+    }
+    Object.keys(nextGroupItems).forEach((gid) => {
+      nextGroupItems[gid] = nextGroupItems[gid].filter((id) => id !== itemId);
+    });
+    const nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== itemId);
 
-    if (targetGroupId === "unused") {
+    if (target === "unused") {
       nextUnused.push(itemId);
     } else {
-      if (!nextGroupItems[targetGroupId]) {
-        nextGroupItems[targetGroupId] = [];
-      }
-      nextGroupItems[targetGroupId].push(itemId);
+      const list = nextGroupItems[target] ?? (nextGroupItems[target] = []);
+      list.splice(insertAt ?? list.length, 0, itemId);
     }
-
     persistLayout(groups, nextGroupItems, nextUnused);
   };
 
-  // Add item directly to a group
-  const handleAddItemToMenuGroup = (itemId: string, targetGroupId: string) => {
-    const nextGroupItems: Record<string, string[]> = {};
-    resolvedGroupsData.groupsWithItems.forEach((g) => {
-      nextGroupItems[g.id] = g.items.map((i) => i.id).filter((id) => id !== itemId);
-    });
-    let nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== itemId);
-
-    if (!nextGroupItems[targetGroupId]) {
-      nextGroupItems[targetGroupId] = [];
-    }
-    if (!nextGroupItems[targetGroupId].includes(itemId)) {
-      nextGroupItems[targetGroupId].push(itemId);
-    }
-
-    persistLayout(groups, nextGroupItems, nextUnused);
-    setAddMenuGroupId(null);
-  };
-
-  const handleItemDropOnGroup = (e: React.DragEvent, targetGroupId: string, targetIndex?: number) => {
-    if (!isEditing || !draggedItemId || !draggedFromGroup) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const nextGroupItems: Record<string, string[]> = {};
-    resolvedGroupsData.groupsWithItems.forEach((g) => {
-      nextGroupItems[g.id] = g.items.map((i) => i.id);
-    });
-    let nextUnused = resolvedGroupsData.unused.map((i) => i.id);
-
-    // Remove from source
-    if (draggedFromGroup === "unused") {
-      nextUnused = nextUnused.filter((id) => id !== draggedItemId);
-    } else if (nextGroupItems[draggedFromGroup]) {
-      nextGroupItems[draggedFromGroup] = nextGroupItems[draggedFromGroup].filter((id) => id !== draggedItemId);
-    }
-
-    // Insert into target
-    if (!nextGroupItems[targetGroupId]) {
-      nextGroupItems[targetGroupId] = [];
-    }
-    const targetList = nextGroupItems[targetGroupId];
-    const insertIdx = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetList.length;
-    targetList.splice(insertIdx, 0, draggedItemId);
-
-    persistLayout(groups, nextGroupItems, nextUnused);
-
-    setDraggedItemId(null);
-    setDraggedFromGroup(null);
-    setDragOverGroup(null);
-    setDragOverItemIndex(null);
-  };
-
-  const handleDropOnUnused = (e: React.DragEvent) => {
-    if (!isEditing || !draggedItemId || !draggedFromGroup) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (draggedFromGroup === "unused") {
-      setDraggedItemId(null);
-      setDraggedFromGroup(null);
-      setDragOverGroup(null);
-      setDragOverItemIndex(null);
-      return;
-    }
-
-    const nextGroupItems: Record<string, string[]> = {};
-    resolvedGroupsData.groupsWithItems.forEach((g) => {
-      nextGroupItems[g.id] = g.items.map((i) => i.id);
-    });
-
-    if (nextGroupItems[draggedFromGroup]) {
-      nextGroupItems[draggedFromGroup] = nextGroupItems[draggedFromGroup].filter((id) => id !== draggedItemId);
-    }
-
-    const nextUnused = Array.from(new Set([...resolvedGroupsData.unused.map((i) => i.id), draggedItemId]));
-
-    persistLayout(groups, nextGroupItems, nextUnused);
-
-    setDraggedItemId(null);
-    setDraggedFromGroup(null);
-    setDragOverGroup(null);
-    setDragOverItemIndex(null);
-  };
-
-  const handleHideItem = (itemId: string, fromGroupId: string) => {
-    const nextGroupItems: Record<string, string[]> = {};
-    resolvedGroupsData.groupsWithItems.forEach((g) => {
-      nextGroupItems[g.id] = g.items.map((i) => i.id);
-    });
-    if (nextGroupItems[fromGroupId]) {
-      nextGroupItems[fromGroupId] = nextGroupItems[fromGroupId].filter((id) => id !== itemId);
-    }
-    const nextUnused = Array.from(new Set([...resolvedGroupsData.unused.map((i) => i.id), itemId]));
-
-    persistLayout(groups, nextGroupItems, nextUnused);
-  };
-
-  const handleRestoreItem = (item: NavMenuItem) => {
-    const nextGroupItems: Record<string, string[]> = {};
-    resolvedGroupsData.groupsWithItems.forEach((g) => {
-      nextGroupItems[g.id] = g.items.map((i) => i.id);
-    });
-    const nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== item.id);
-
-    const targetGroupId = groups.some((g) => g.id === item.defaultSection)
-      ? item.defaultSection
-      : groups[0]?.id || "operations";
-
-    if (!nextGroupItems[targetGroupId]) {
-      nextGroupItems[targetGroupId] = [];
-    }
-    nextGroupItems[targetGroupId].push(item.id);
-
-    persistLayout(groups, nextGroupItems, nextUnused);
-  };
 
   if (!isOpen && !isClosing) return null;
 
   const handleItemClick = (id: string) => {
-    if (isEditing) return;
     onSelectTab(id);
     handleAnimatedClose();
   };
+
+  if (isEditing) {
+    return (
+      <StartMenuEditDialog
+        language={systemLanguage}
+        visible={isVisible}
+        dialogRef={menuRef}
+        busyRef={editLayerBusyRef}
+        groups={resolvedGroupsData.groupsWithItems}
+        hidden={resolvedGroupsData.unused}
+        modules={allItems}
+        defaultPageId={effectiveDefaultPage}
+        pinnedIds={pinnedSidebarItems}
+        canPin={!!onTogglePinToSidebar}
+        onCreateDashboard={onOpenCreateDashboard}
+        onSetDefaultPage={handleSetDefaultPage}
+        onTogglePin={(id) => onTogglePinToSidebar?.(id)}
+        onCreateGroup={handleCreateGroup}
+        onRenameGroup={handleRenameGroup}
+        onMoveGroup={handleMoveGroup}
+        onReorderGroups={handleReorderGroups}
+        onDeleteGroup={handleDeleteGroup}
+        onMoveItem={handleMoveMenuItem}
+        onMoveItemTo={handleMoveItemTo}
+        onResetLayout={() => setStoredLayout(null)}
+        onDone={handleDoneEditing}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-6 lg:pl-72 lg:pr-8 select-none">
@@ -970,9 +796,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         className={`fixed inset-0 bg-slate-950/40 backdrop-blur-md transition-opacity duration-250 ease-out ${
           isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
-        onClick={() => {
-          if (!isEditing) handleAnimatedClose();
-        }}
+        onClick={handleAnimatedClose}
       />
 
       {/* Start Menu Container */}
@@ -1061,90 +885,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               )}
             </div>
 
-            {/* Create New Group Button (in Edit Mode - adds group to Sidebar navigation) */}
-            {isEditing && (
-              <button
-                type="button"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onAddSidebarGroup) {
-                    onAddSidebarGroup();
-                  } else {
-                    handleCreateGroup();
-                  }
-                }}
-                className="px-3 py-2 rounded-2xl text-ui font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
-                title={t("Add New Group to Sidebar", "Pridať novú skupinu do bočného panelu", "Új csoport hozzáadása az oldalsávhoz")}
-              >
-                <FolderPlus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t("New Group", "Nová skupina", "Új csoport")}</span>
-              </button>
-            )}
-
-            {/* Default Startup Screen Selector (in Edit Mode) */}
-            {isEditing && (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-amber-900 transition-all shadow-xs shrink-0">
-                <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                <span className="text-caption font-bold whitespace-nowrap hidden md:inline">
-                  {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
-                </span>
-                <select
-                  value={effectiveDefaultPage}
-                  onChange={(e) => handleSetDefaultPage(e.target.value)}
-                  className="bg-transparent text-ui font-bold text-amber-950 focus:outline-none cursor-pointer pr-1"
-                  title={t(`Screen that opens when launching ${brand}`, `Obrazovka, ktorá sa otvorí pri spustení ${brand}`, `A ${brand} indításakor megnyíló képernyő`)}
-                >
-                  {allItems
-                    .filter((m) => canOpenRoute(m.id))
-                    .map((m) => (
-                      <option key={m.id} value={m.id} className="text-slate-800 bg-white">
-                        {m.label}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            )}
-
-            {/* Edit / Customize Toggle Button */}
+            {/* Enter edit mode: opens the edit dialog (and the sidebar's edit state) */}
             <button
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                setEditingMode(!isEditing);
+                setEditingMode(true);
               }}
-              className={`px-3.5 py-2 rounded-2xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                isEditing
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400/30"
-                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-              }`}
-              title={isEditing ? t("Finish Customization", "Ukončiť úpravy", "Módosítás befejezése") : t("Customize Order, Groups & Sidebar Pins", "Prispôsobiť menu a skupiny", "Menü és csoportok testreszabása")}
+              className="px-3.5 py-2 rounded-2xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 bg-slate-100 hover:bg-slate-200 text-slate-700"
+              title={t("Customize Order, Groups & Sidebar Pins", "Prispôsobiť menu a skupiny", "Menü és csoportok testreszabása")}
             >
-              {isEditing ? (
-                <>
-                  <Check className="h-3.5 w-3.5 stroke-[2.5]" />
-                  <span className="hidden sm:inline">{t("Done", "Hotovo", "Kész")}</span>
-                </>
-              ) : (
-                <>
-                  <Pencil className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t("Edit", "Upraviť", "Szerkesztés")}</span>
-                </>
-              )}
+              <Pencil className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t("Edit", "Upraviť", "Szerkesztés")}</span>
             </button>
-
-            {/* Reset to Default Button */}
-            {isEditing && (
-              <button
-                type="button"
-                onClick={handleResetLayout}
-                className="p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer shrink-0"
-                title={t("Reset to Default Layout", "Obnoviť predvolené", "Alapértelmezett visszaállítása")}
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-            )}
 
             {/* Close Button on Desktop */}
             <button
@@ -1158,31 +912,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           </div>
         </div>
 
-        {/* Edit Mode Instructions Banner */}
-        {isEditing && (
-          <div className="bg-indigo-50/90 border-b border-indigo-100 px-4 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-ui text-indigo-900 animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="flex items-center gap-2">
-              <span className="flex h-2 w-2 rounded-full bg-indigo-500 animate-ping shrink-0" />
-              <span className="font-bold shrink-0">
-                {t("Edit Mode Active:", "Režim úprav aktívny:", "Szerkesztési mód aktív:")}
-              </span>
-              <span className="truncate">
-                {t("Drag column headers to reorder whole groups • Rename with ✏️ • Pin 📌 to Left Sidebar", "Potiahnutím záhlavia zmeňte poradie skupín • Premenujte cez ✏️ • Pripnite 📌 na bočný panel", "Húzza a fejlécet a csoportok átrendezéséhez • Átnevezés ✏️ • Kitűzés 📌 az oldalsávra")}
-              </span>
-            </div>
-            <button
-              type="button"
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditingMode(false);
-              }}
-              className="text-ui font-bold text-indigo-600 hover:underline cursor-pointer shrink-0"
-            >
-              {t("Done Editing ➔", "Hotovo ➔", "Kész ➔")}
-            </button>
-          </div>
-        )}
 
         {/* Dynamic Multi-Column Grouped Menu Grid */}
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 scrollbar-thin space-y-4 sm:space-y-6">
@@ -1195,248 +924,29 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               return (
                 <div
                   key={group.id}
-                  onDragOver={(e) => {
-                    if (draggedGroupId) {
-                      handleGroupDragOver(e, group.id);
-                    } else {
-                      handleItemDragOverContainer(e, group.id);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    if (draggedGroupId) {
-                      handleGroupDrop(e, group.id);
-                    } else {
-                      handleItemDropOnGroup(e, group.id);
-                    }
-                  }}
-                  /*
-                    Dark Theme Preset for Group:
-                    isEditing && dragOverGroupId === group.id
-                      ? "bg-purple-50/60  ring-2 ring-purple-500 ring-dashed"
-                      : isEditing && dragOverGroup === group.id
-                      ? "bg-indigo-50/50  ring-2 ring-indigo-400/50 ring-dashed"
-                      : "bg-white  border border-slate-200/50 "
-                  */
-                  className={`space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300 fill-mode-both flex flex-col p-3 rounded-3xl transition-all ${
-                    isEditing && dragOverGroupId === group.id
-                      ? "bg-purple-50/60 ring-2 ring-purple-500 ring-dashed"
-                      : isEditing && dragOverGroup === group.id
-                      ? "bg-indigo-50/50 ring-2 ring-indigo-400/50 ring-dashed"
-                      : "bg-slate-50 border border-slate-200/50"
-                  }`}
+                  className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300 fill-mode-both flex flex-col p-3 rounded-3xl bg-slate-50 border border-slate-200/50"
                 >
-                  {/* Group Column Header (Draggable & Editable in Edit Mode) */}
-                  <div
-                    draggable={isEditing}
-                    onDragStart={(e) => handleGroupDragStart(e, group.id)}
-                    className={`flex items-center justify-between pb-2.5 border-b border-slate-200/70  type-overline ${
-                      group.color || "text-slate-700 "
-                    } ${isEditing ? "cursor-grab active:cursor-grabbing hover:opacity-80" : ""}`}
-                  >
+                  <div className={`flex items-center justify-between pb-2.5 border-b border-slate-200/70 type-overline ${group.color || "text-slate-700 "}`}>
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      {isEditing && (
-                        <GripVertical className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                      )}
                       <IconComp className="h-3.5 w-3.5 shrink-0" />
-
-                      {/* Inline Group Name Editing */}
-                      {editingGroupId === group.id ? (
-                        <div className="flex items-center gap-1 min-w-0 flex-1">
-                          <input
-                            type="text"
-                            value={editingGroupName}
-                            onChange={(e) => setEditingGroupName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveGroupName(group.id);
-                              if (e.key === "Escape") setEditingGroupId(null);
-                            }}
-                            autoFocus
-                            className="w-full px-2 py-1 text-ui font-bold rounded-lg border border-indigo-400 bg-white  text-slate-800  focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleSaveGroupName(group.id)}
-                            className="p-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer shrink-0"
-                            title="Save"
-                          >
-                            <Check className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingGroupId(null)}
-                            className="p-1 rounded-md bg-slate-200  text-slate-600  hover:bg-slate-300 cursor-pointer shrink-0"
-                            title="Cancel"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="truncate font-bold">{group.name}</span>
-                      )}
+                      <span className="truncate font-bold">{group.name}</span>
                     </div>
-
-                    {/* Group Header Actions */}
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <span className="text-micro px-1.5 py-0.2 rounded-full bg-slate-200/70  text-slate-600  font-bold">
-                        {filteredItems.length}
-                      </span>
-                      {isEditing && editingGroupId !== group.id && (
-                        <>
-                          {/* Add Module to this group button */}
-                          <button
-                            type="button"
-                            onClick={() => setAddMenuGroupId(addMenuGroupId === group.id ? null : group.id)}
-                            className={cn(
-                              "p-1 rounded-lg transition-colors cursor-pointer shrink-0",
-                              addMenuGroupId === group.id
-                                ? "bg-indigo-600 text-white shadow-xs"
-                                : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                            )}
-                            title={t("Add module to this group", "Pridať modul do tejto skupiny", "Modul hozzáadása ehhez a csoporthoz")}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingGroupId(group.id);
-                              setEditingGroupName(group.name);
-                            }}
-                            className="p-1 rounded-lg hover:bg-slate-200  text-slate-400 hover:text-slate-700  transition-colors cursor-pointer"
-                            title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                          {groups.length > 1 && (
-                            <HoldToConfirmButton
-                                tone="danger"
-                                lang={asLang(systemLanguage)}
-                                what={group.name}
-                                onConfirm={() => handleDeleteGroup(group.id)}
-                                className="p-1 rounded-lg hover:bg-rose-100  text-slate-400 hover:text-rose-600 transition-colors"
-                                title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </HoldToConfirmButton>
-                          )}
-                        </>
-                      )}
-                    </div>
+                    <span className="ml-2 shrink-0 text-micro px-1.5 py-0.2 rounded-full bg-slate-200/70 text-slate-600 font-bold">
+                      {filteredItems.length}
+                    </span>
                   </div>
 
-                  {/* Inline Module Picker Popover for StartMenu Group */}
-                  {addMenuGroupId === group.id && (
-                    <div
-                      data-start-group-picker="true"
-                      className="mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
-                    >
-                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="type-overline text-slate-600">
-                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setAddMenuGroupId(null)}
-                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {allItems
-                          .filter((i) => !group.items.some((gi) => gi.id === i.id))
-                          .map((mod) => {
-                            const ModIcon = mod.icon;
-                            return (
-                              <button
-                                key={mod.id}
-                                type="button"
-                                onClick={() => handleAddItemToMenuGroup(mod.id, group.id)}
-                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
-                              >
-                                <div
-                                  className="p-1 rounded-md shrink-0"
-                                  style={{ backgroundColor: mod.bgColor || `${mod.color}15`, color: mod.color }}
-                                >
-                                  <ModIcon className="h-3.5 w-3.5" />
-                                </div>
-                                <span className="text-ui font-medium truncate flex-1">{mod.label}</span>
-                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
-                              </button>
-                            );
-                          })}
-                        {allItems.filter((i) => !group.items.some((gi) => gi.id === i.id)).length === 0 && (
-                          <p className="text-caption text-slate-400 text-center py-2">
-                            {t("All modules are in this group", "Všetky moduly sú v tejto skupine", "Minden modul ebben a csoportban van")}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Group Items Container */}
                   <div className="space-y-1.5 flex-1 min-h-12.5">
-                    {filteredItems.map((item, idx) => {
-                      const isBeingDragged = draggedItemId === item.id;
-                      const isDropTargetBefore = isEditing && draggedItemId && dragOverGroup === group.id && dragOverItemIndex === idx && !isBeingDragged;
-
-                      return (
-                        <React.Fragment key={item.id}>
-                          {/* Non-displacing insertion line indicator */}
-                          {isDropTargetBefore && (
-                            <div className="w-full h-1.5 bg-indigo-500 rounded-full my-1 shadow-sm ring-2 ring-indigo-400/40 animate-pulse pointer-events-none" />
-                          )}
-
-                          <StartMenuItemTile
-                            item={item}
-                            isActive={activeTab === item.id || activeTab.startsWith(item.id + "/")}
-                            isEditing={isEditing}
-                            isDragging={isBeingDragged}
-                            isPinned={pinnedSidebarItems.includes(item.id)}
-                            isDefault={item.id === effectiveDefaultPage}
-                            onSetDefault={() => handleSetDefaultPage(item.id)}
-                            onTogglePin={() => onTogglePinToSidebar?.(item.id)}
-                            onHide={() => handleHideItem(item.id, group.id)}
-                            onMoveUp={() => handleMoveMenuItem(group.id, idx, -1)}
-                            onMoveDown={() => handleMoveMenuItem(group.id, idx, 1)}
-                            canMoveUp={idx > 0}
-                            canMoveDown={idx < filteredItems.length - 1}
-                            groups={groups}
-                            currentGroupId={group.id}
-                            onMoveToGroup={(targetGId) => handleMoveMenuItemToGroup(item.id, group.id, targetGId)}
-                            onDragStart={(e) => handleItemDragStart(e, item.id, group.id)}
-                            onDragEnd={handleItemDragEnd}
-                            onDragOver={(e) => handleItemDragOverItem(e, group.id, idx)}
-                            onDrop={(e) => handleItemDropOnGroup(e, group.id, idx)}
-                            onClick={() => handleItemClick(item.id)}
-                            systemLanguage={systemLanguage}
-                          />
-                        </React.Fragment>
-                      );
-                    })}
-
-                    {/* Compact dropzone indicator at end of group list */}
-                    {isEditing &&
-                      draggedItemId &&
-                      dragOverGroup === group.id &&
-                      (dragOverItemIndex === null || dragOverItemIndex >= filteredItems.length) &&
-                      !filteredItems.some((i) => i.id === draggedItemId) && (
-                        <div
-                          onDragOver={(e) => handleItemDragOverContainer(e, group.id)}
-                          onDrop={(e) => handleItemDropOnGroup(e, group.id, filteredItems.length)}
-                          className="w-full p-2 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/60 text-indigo-700 text-ui font-bold flex items-center justify-center gap-1.5 animate-in fade-in duration-100"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          <span>{t("Drop item here", "Pustiť sem", "Ide helyezés")}</span>
-                        </div>
-                      )}
-
-                    {filteredItems.length === 0 && isEditing && (
-                      <div className="py-4 text-center border border-dashed border-slate-200  rounded-2xl text-micro text-slate-400">
-                        {t("Drop items here", "Sem presuňte položky", "Húzza ide az elemeket")}
-                      </div>
-                    )}
+                    {filteredItems.map((item) => (
+                      <StartMenuItemTile
+                        key={item.id}
+                        item={item}
+                        isActive={activeTab === item.id || activeTab.startsWith(item.id + "/")}
+                        isDefault={item.id === effectiveDefaultPage}
+                        onClick={() => handleItemClick(item.id)}
+                        systemLanguage={systemLanguage}
+                      />
+                    ))}
 
                     {/* Skeleton New Dashboard Button inside Analytics Group */}
                     {isAnalyticsGroup && onOpenCreateDashboard && (
@@ -1472,151 +982,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             })}
           </div>
 
-          {/* DEDICATED UNUSED / HIDDEN ITEMS DROP CARD */}
-          {(isEditing || resolvedGroupsData.unused.length > 0) && (
-            <div
-              onDragOver={(e) => handleItemDragOverContainer(e, "unused")}
-              onDrop={handleDropOnUnused}
-              className={`p-4 rounded-3xl border-2 transition-all duration-200 animate-in fade-in slide-in-from-bottom-3 ${
-                dragOverGroup === "unused"
-                  ? "bg-rose-50/70  border-rose-400 ring-4 ring-rose-400/20"
-                  : "bg-slate-50/70  border-dashed border-slate-300 "
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-200/80 ">
-                <div className="flex items-center gap-2 text-slate-700 ">
-                  <Archive className="h-4 w-4 text-amber-500" />
-                  <span className="text-ui font-bold">
-                    {t("Unused / Hidden Modules", "Nepoužívané / Skryté moduly", "Nem használt / Rejtett modulok")}
-                  </span>
-                  <span className="text-micro font-bold px-2 py-0.5 rounded-full bg-slate-200  text-slate-600 ">
-                    {resolvedGroupsData.unused.length}
-                  </span>
-                </div>
-                <p className="text-caption text-slate-400">
-                  {t("Drop items here to hide them from the columns above.", "Presuňte sem položky, ktoré nechcete zobrazovať v stĺpcoch vyššie.", "Húzza ide azokat az elemeket, amelyeket el szeretne rejteni.")}
-                </p>
-              </div>
-
-              {resolvedGroupsData.unused.length === 0 && (!isEditing || dragOverGroup !== "unused") ? (
-                <div className="py-6 text-center text-ui text-slate-400 font-medium">
-                  {t("No hidden items. Drag and drop any module here to hide it from the Start Menu.", "Žiadne skryté moduly. Presuňte sem ľubovoľný modul zo zoznamu pre jeho skrytie.", "Nincsenek rejtett elemek. Húzzon ide egy modult az elrejtéshez.")}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {/* Landing Placeholder Slot in Unused Card */}
-                  {isEditing && draggedItemId && dragOverGroup === "unused" && (
-                    <div className="p-3 rounded-2xl border-2 border-dashed border-rose-500 bg-rose-50/90  shadow-sm flex items-center gap-2.5 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-rose-400/30">
-                      <div className="p-1.5 rounded-xl bg-rose-200  text-rose-700  shrink-0 animate-bounce">
-                        {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                      </div>
-                      <span className="text-ui font-bold text-rose-800  truncate flex-1">
-                        {draggedItemObj?.label || t("Hide item", "Skryť položku", "Elem elrejtése")}
-                      </span>
-                      <span className="type-overline px-2 py-0.5 rounded-md bg-rose-200  text-rose-800  shrink-0">
-                        {t("Drop to hide", "Pustiť pre skrytie", "Elrejtés")}
-                      </span>
-                    </div>
-                  )}
-
-                  {searchFilter(resolvedGroupsData.unused).map((item) => {
-                    const Icon = item.icon;
-                    const isPinned = pinnedSidebarItems.includes(item.id);
-                    const isBeingDragged = draggedItemId === item.id;
-                    return (
-                      <div
-                        key={item.id}
-                        draggable={isEditing}
-                        onDragStart={(e) => handleItemDragStart(e, item.id, "unused")}
-                        onDragEnd={handleItemDragEnd}
-                        className={`p-3 rounded-2xl border shadow-2xs flex flex-col gap-2 group transition-all ${
-                          isBeingDragged
-                            ? "opacity-25 scale-95 border-2 border-dashed border-rose-400 bg-rose-50/20"
-                            : "bg-white  border-slate-200  hover:border-slate-300 "
-                        }`}
-                      >
-                        {/* Title Row (Full width) */}
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          {isEditing && (
-                            <GripVertical className="h-3.5 w-3.5 text-slate-300 group-hover:text-slate-500 cursor-grab active:cursor-grabbing shrink-0" />
-                          )}
-                          <div
-                            className="p-1.5 rounded-xl shrink-0"
-                            style={{
-                              backgroundColor: item.bgColor || `${item.color}18`,
-                              color: item.color
-                            }}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                          </div>
-                          <span className="text-ui font-bold text-slate-700  truncate flex-1">
-                            {item.label}
-                          </span>
-                        </div>
-
-                        {/* Action Row Below Title */}
-                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100 ">
-                          {/* Pin to Sidebar button */}
-                          {onTogglePinToSidebar && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onTogglePinToSidebar(item.id);
-                              }}
-                              className={`flex-1 py-1.5 px-2 rounded-xl text-micro font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                                isPinned
-                                  ? "bg-indigo-600 text-white shadow-xs"
-                                  : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 "
-                              }`}
-                              title={isPinned ? t("Pinned to sidebar. Click to unpin.", "Pripnuté v bočnom paneli. Kliknite pre odopnutie.", "Kitűzve az oldalsávra.") : t("Pin to left sidebar", "Pripnúť na bočný panel", "Kitűzés a bal oldalsávra")}
-                            >
-                              <Pin className={`h-3 w-3 ${isPinned ? "fill-current" : ""}`} />
-                              <span>{isPinned ? t("Pinned", "Pripnuté", "Kitűzve") : t("Pin", "Pripnúť", "Kitűzés")}</span>
-                            </button>
-                          )}
-
-                          {/* Restore button */}
-                          <button
-                            type="button"
-                            onClick={() => handleRestoreItem(item)}
-                            className="py-1.5 px-2.5 rounded-xl bg-emerald-50  hover:bg-emerald-100  text-emerald-600  text-micro font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                            title={t("Restore to menu", "Vrátiť do menu", "Visszaállítás a menübe")}
-                          >
-                            <Plus className="h-3 w-3" />
-                            <span>{t("Restore", "Vrátiť", "Vissza")}</span>
-                          </button>
-
-                          {/* Restore directly to a specific group */}
-                          {groups.length > 1 && (
-                            <select
-                              defaultValue=""
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  handleAddItemToMenuGroup(item.id, e.target.value);
-                                }
-                              }}
-                              className="text-micro font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1.5 py-1 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-17.5 truncate shrink-0"
-                              title={t("Restore to group...", "Vrátiť do skupiny...", "Visszaállítás ide...")}
-                            >
-                              <option value="" disabled>
-                                {t("To...", "Do...", "Hova...")}
-                              </option>
-                              {groups.map((g) => (
-                                <option key={g.id} value={g.id}>
-                                  {g.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Footer: User Profile & Default Start Screen Quick Selector */}
@@ -1671,24 +1036,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 interface StartMenuItemTileProps {
   item: NavMenuItem;
   isActive: boolean;
-  isEditing?: boolean;
-  isDragging?: boolean;
-  isPinned?: boolean;
   isDefault?: boolean;
-  onSetDefault?: () => void;
-  onTogglePin?: () => void;
-  onHide?: () => void;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
-  groups?: MenuGroup[];
-  currentGroupId?: string;
-  onMoveToGroup?: (targetGroupId: string) => void;
-  onDragStart?: (e: React.DragEvent) => void;
-  onDragEnd?: (e: React.DragEvent) => void;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
   onClick: () => void;
   systemLanguage?: Language;
 }
@@ -1696,272 +1044,11 @@ interface StartMenuItemTileProps {
 const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
   item,
   isActive,
-  isEditing = false,
-  isDragging = false,
-  isPinned = false,
   isDefault = false,
-  onSetDefault,
-  onTogglePin,
-  onHide,
-  onMoveUp,
-  onMoveDown,
-  canMoveUp,
-  canMoveDown,
-  groups,
-  currentGroupId,
-  onMoveToGroup,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDrop,
   onClick,
   systemLanguage = "en"
 }) => {
   const Icon = item.icon;
-  const t = (en: string, sk: string, hu: string) =>
-    systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
-
-  if (isEditing) {
-    // EDIT MODE: Full-width title on top, NO description, actions row placed cleanly BELOW the title!
-    return (
-      <div
-        draggable={true}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-        className={`w-full p-2.5 rounded-2xl transition-all flex flex-col gap-2 cursor-grab active:cursor-grabbing group ${
-          isDragging
-            ? "opacity-25 scale-95 border-2 border-dashed border-indigo-400 bg-indigo-50/20 "
-            : "bg-white  border border-slate-200/90  shadow-2xs hover:shadow-md hover:border-indigo-300 "
-        }`}
-      >
-        {/* Top Row: Drag Handle + Icon + Full Title + Up/Down + Group Select + Badge */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="shrink-0 text-slate-300  group-hover:text-slate-500">
-            <GripVertical className="h-4 w-4" />
-          </div>
-          <div
-            className="p-1.5 rounded-xl shrink-0 transition-transform group-hover:scale-105"
-            style={{
-              backgroundColor: item.bgColor || `${item.color}18`,
-              color: item.color
-            }}
-          >
-            <Icon className="h-3.5 w-3.5" />
-          </div>
-          <span className="text-ui font-bold text-slate-900  truncate flex-1 min-w-0">
-            {item.label}
-          </span>
-
-          {/* Up / Down Reorder Arrows */}
-          {(onMoveUp || onMoveDown) && (
-            <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-              {onMoveUp && (
-                <button
-                  type="button"
-                  disabled={!canMoveUp}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMoveUp();
-                  }}
-                  className={`p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer ${
-                    !canMoveUp ? "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400" : ""
-                  }`}
-                  title={t("Move up", "Posunúť nahor", "Mozgatás fel")}
-                >
-                  <ChevronUp className="h-3 w-3" />
-                </button>
-              )}
-              {onMoveDown && (
-                <button
-                  type="button"
-                  disabled={!canMoveDown}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onMoveDown();
-                  }}
-                  className={`p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer ${
-                    !canMoveDown ? "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400" : ""
-                  }`}
-                  title={t("Move down", "Posunúť nadol", "Mozgatás le")}
-                >
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Move to group selector if more than 1 group */}
-          {groups && groups.length > 1 && onMoveToGroup && currentGroupId && (
-            <select
-              value={currentGroupId}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                e.stopPropagation();
-                onMoveToGroup(e.target.value);
-              }}
-              className="text-micro font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-16.25 truncate shrink-0"
-              title={t("Move to group", "Presunúť do skupiny", "Áthelyezés csoportba")}
-            >
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {isDefault && (
-            <span
-              className="type-overline px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300/80 flex items-center gap-1 shrink-0"
-              title={
-                systemLanguage === "sk"
-                  ? "Predvolená úvodná obrazovka"
-                  : systemLanguage === "hu"
-                  ? "Alapértelmezett kezdőképernyő"
-                  : "Default start screen"
-              }
-            >
-              <Home className="h-2.5 w-2.5 fill-current" />
-              <span>
-                {systemLanguage === "sk"
-                  ? "Úvodná"
-                  : systemLanguage === "hu"
-                  ? "Kezdő"
-                  : "Start"}
-              </span>
-            </span>
-          )}
-          {item.badge && !isDefault && (
-            <span className="type-overline px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500  shrink-0">
-              {item.badge}
-            </span>
-          )}
-        </div>
-
-        {/* Bottom Actions Row (Below the title) */}
-        <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 ">
-          {/* Default Startup Screen Button */}
-          {onSetDefault && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSetDefault();
-              }}
-              className={`flex-1 py-1 px-2 rounded-xl text-micro font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                isDefault
-                  ? "bg-amber-600 text-white shadow-xs ring-1 ring-amber-500 hover:bg-amber-700"
-                  : "bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600"
-              }`}
-              title={
-                isDefault
-                  ? systemLanguage === "sk"
-                    ? "Predvolená úvodná obrazovka"
-                    : systemLanguage === "hu"
-                    ? "Alapértelmezett kezdőképernyő"
-                    : "Default start screen"
-                  : systemLanguage === "sk"
-                  ? "Nastaviť ako úvodnú obrazovku"
-                  : systemLanguage === "hu"
-                  ? "Beállítás kezdőképernyőként"
-                  : "Set as default start screen"
-              }
-            >
-              <Home className={`h-3 w-3 ${isDefault ? "fill-current" : ""}`} />
-              <span>
-                {isDefault
-                  ? systemLanguage === "sk"
-                    ? "Predvolená"
-                    : systemLanguage === "hu"
-                    ? "Kezdő"
-                    : "Default"
-                  : systemLanguage === "sk"
-                  ? "Úvodná"
-                  : systemLanguage === "hu"
-                  ? "Kezdő"
-                  : "Start"}
-              </span>
-            </button>
-          )}
-
-          {/* Pin to Sidebar button */}
-          {onTogglePin && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePin();
-              }}
-              className={`py-1 px-2 rounded-xl text-micro font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                isPinned
-                  ? "bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 hover:bg-indigo-700"
-                  : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600  text-slate-600 "
-              }`}
-              title={
-                isPinned
-                  ? systemLanguage === "sk"
-                    ? "Pripnuté v bočnom paneli. Kliknite pre odopnutie."
-                    : systemLanguage === "hu"
-                    ? "Kitűzve az oldalsávra."
-                    : "Pinned to left sidebar. Click to unpin."
-                  : systemLanguage === "sk"
-                  ? "Pripnúť na bočný panel"
-                  : systemLanguage === "hu"
-                  ? "Kitűzés az oldalsávra"
-                  : "Pin to left sidebar"
-              }
-            >
-              <Pin className={`h-3 w-3 ${isPinned ? "fill-current" : ""}`} />
-              <span>
-                {isPinned
-                  ? systemLanguage === "sk"
-                    ? "Pripnuté"
-                    : systemLanguage === "hu"
-                    ? "Kitűzve"
-                    : "Pinned"
-                  : systemLanguage === "sk"
-                  ? "Pripnúť"
-                  : systemLanguage === "hu"
-                  ? "Kitűzés"
-                  : "Pin"}
-              </span>
-            </button>
-          )}
-
-          {/* Hide button */}
-          {onHide && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onHide();
-              }}
-              className="py-1 px-2 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-micro font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-              title={
-                systemLanguage === "sk"
-                  ? "Skryť modul"
-                  : systemLanguage === "hu"
-                  ? "Modul elrejtése"
-                  : "Hide item"
-              }
-            >
-              <EyeOff className="h-3 w-3" />
-              <span>
-                {systemLanguage === "sk"
-                  ? "Skryť"
-                  : systemLanguage === "hu"
-                  ? "Elrejtés"
-                  : "Hide"}
-              </span>
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
