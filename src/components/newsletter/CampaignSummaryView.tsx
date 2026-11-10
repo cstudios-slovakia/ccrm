@@ -121,7 +121,7 @@ export const CampaignSummaryView = ({
               {pct} %{left != null && ` · ${formatDuration(left, t)}`}
             </span>
           </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" data-testid="newsletter-progress" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
             <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${pct}%` }} />
           </div>
           <div className="flex flex-wrap items-center gap-2 pt-1">

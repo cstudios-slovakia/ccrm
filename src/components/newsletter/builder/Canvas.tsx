@@ -112,6 +112,8 @@ export const Canvas: React.FC<{
         style={{ width: mobile ? 375 : theme.contentWidth + 64, maxWidth: '100%', background: theme.pageBackground, color: theme.textColor, fontFamily: theme.fontFamily }}
       >
         {lockedHeader && lockedHeader.rows.length > 0 && <LockedPart doc={lockedHeader} part="header" onEdit={onEditLocked} />}
+        {/* data-nl-body: the campaign's own rows, apart from the locked header and footer (QA counts blocks inside it). */}
+        <div data-nl-body="">
         {doc.rows.length === 0 ? (
           <EmptyDoc />
         ) : (
@@ -125,6 +127,7 @@ export const Canvas: React.FC<{
             ))}
           </>
         )}
+        </div>
         {lockedFooter && lockedFooter.rows.length > 0 && <LockedPart doc={lockedFooter} part="footer" onEdit={onEditLocked} />}
       </div>
     </div>

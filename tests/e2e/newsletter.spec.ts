@@ -56,6 +56,8 @@ const readyDraft = (mock: NewsletterMock, patch: Record<string, unknown> = {}) =
 const palette = (page: Page) => page.locator('aside').filter({ has: page.getByRole('tab', { name: T.blocks }) });
 const tile = (page: Page, name: RegExp) => palette(page).getByRole('button', { name });
 const aside = (page: Page) => page.locator('aside.w-80');
+/** The campaign body on the design route; the locked global header and footer render blocks too. */
+const body = (page: Page) => page.locator('[data-nl-body]');
 const saveChip = (page: Page) => page.getByTestId('newsletter-save-status');
 
 /** Back from a selected block or row to the palette. */
@@ -105,7 +107,7 @@ test.describe('Newsletter: list and journey', () => {
     await tile(page, T.button).click();
     await aside(page).getByLabel(/^(Label|Text tlačidla|Felirat)/).fill('Pozrieť ponuku');
     await aside(page).getByPlaceholder('https://…').fill('https://example.com/ponuka');
-    await expect(page.locator('[data-nl-block]').getByText('Pozrieť ponuku')).toBeVisible();
+    await expect(body(page).locator('[data-nl-block]').getByText('Pozrieť ponuku')).toBeVisible();
 
     // Autosave (1.5 s), then Back flushes and the campaign card shows the new body.
     await expect(saveChip(page)).toHaveAttribute('data-state', 'saved', { timeout: 8000 });
@@ -131,10 +133,10 @@ test.describe('Newsletter: list and journey', () => {
     mock.set({ worker: false, tickBatch: 1 });
     await holdToConfirm(page.getByTestId('newsletter-send'));
     await expect(page.getByTestId('newsletter-status').first()).toHaveAttribute('data-status', 'sending');
-    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    await expect(page.getByTestId('newsletter-progress')).toHaveAttribute('aria-valuenow', '0');
     mock.set({ worker: true });
     await expect(page.getByTestId('newsletter-status').first()).toHaveAttribute('data-status', 'sent', { timeout: 15_000 });
-    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+    await expect(page.getByTestId('newsletter-progress')).toHaveAttribute('aria-valuenow', '100');
     expect(mock.callsOf('start_send')).toHaveLength(1);
     expect(mock.callsOf('start_send')[0].html).toContain('{{unsubscribe_url}}');
     expect(mock.campaigns.get(id)!.counts).toMatchObject({ total: 2, sent: 2 });
@@ -186,7 +188,7 @@ test.describe('Newsletter: autosave', () => {
     await tile(page, T.text).click();
     await expect(saveChip(page)).toHaveAttribute('data-state', 'saved', { timeout: 8000 });
     await gotoView(page, `#newsletter/${id}/design`);
-    await expect(page.locator('[data-nl-block]')).toHaveCount(1);
+    await expect(body(page).locator('[data-nl-block]')).toHaveCount(1);
 
     const stop = mock.failAll('update', 'server_error', 500);
     await toPalette(page);
@@ -199,7 +201,8 @@ test.describe('Newsletter: autosave', () => {
     stop();
     await saveChip(page).click();
     await expect(saveChip(page)).toHaveAttribute('data-state', 'saved');
-    expect(mock.campaigns.get(id)!.body.rows).toHaveLength(2);
+    // A tile adds its block after the selected one, in the same column (as in the journey).
+    expect(mock.campaigns.get(id)!.body.rows[0].columns[0].blocks.map((b: any) => b.type)).toEqual(['text', 'button']);
   });
 });
 
@@ -209,7 +212,7 @@ test.describe('Newsletter: builder', () => {
     const id = readyDraft(mock, { body: null });
     await gotoView(page, `#newsletter/${id}/design`);
     await tile(page, T.text).dragTo(page.getByText(C('Drag a row or a block here', 'Presuňte sem riadok alebo blok', 'Húzzon ide egy sort vagy blokkot')));
-    await expect(page.locator('[data-nl-block]')).toHaveCount(1);
+    await expect(body(page).locator('[data-nl-block]')).toHaveCount(1);
   });
 
   test('undo and redo, delete key, Escape, the preview modal', async ({ page }) => {
@@ -217,19 +220,19 @@ test.describe('Newsletter: builder', () => {
     const id = readyDraft(mock, { body: null });
     await gotoView(page, `#newsletter/${id}/design`);
     await tile(page, T.text).click();
-    await expect(page.locator('[data-nl-block]')).toHaveCount(1);
+    await expect(body(page).locator('[data-nl-block]')).toHaveCount(1);
     await page.getByRole('button', { name: /^(Undo|Späť \(|Visszavonás)/ }).click();
-    await expect(page.locator('[data-nl-block]')).toHaveCount(0);
+    await expect(body(page).locator('[data-nl-block]')).toHaveCount(0);
     await page.getByRole('button', { name: /^(Redo|Znova|Ismétlés)/ }).click();
-    await expect(page.locator('[data-nl-block]')).toHaveCount(1);
+    await expect(body(page).locator('[data-nl-block]')).toHaveCount(1);
     // Escape deselects (the palette is back); selecting again shows the action bar, whose Delete removes the block.
-    await page.locator('[data-nl-block]').first().click();
+    await body(page).locator('[data-nl-block]').first().click();
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await expect(palette(page)).toBeVisible();
-    await page.locator('[data-nl-block]').first().click();
+    await body(page).locator('[data-nl-block]').first().click();
     await page.getByRole('button', { name: T.del }).first().click();
-    await expect(page.locator('[data-nl-block]')).toHaveCount(0);
+    await expect(body(page).locator('[data-nl-block]')).toHaveCount(0);
     await page.getByRole('button', { name: T.preview }).click();
     await expect(page.getByRole('dialog').locator('iframe')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -243,13 +246,13 @@ test.describe('Newsletter: builder', () => {
     await expect(page.getByText(C('Global header', 'Globálna hlavička', 'Globális fejléc'))).toBeVisible();
     await expect(page.getByText(C('Global footer', 'Globálna pätička', 'Globális lábléc'))).toBeVisible();
     await page.getByRole('button', { name: L('Two columns', 'Dva stĺpce', 'Két oszlop') }).click();
-    await expect(page.locator('[data-nl-column]')).toHaveCount(2);
+    await expect(body(page).locator('[data-nl-column]')).toHaveCount(2);
     let blocks = 0;
     for (const name of [/^Heading|^Nadpis|^Címsor/, T.button, /^Divider|^Oddeľovač|^Elválasztó/, /^Spacer|^Medzera|^Térköz/, /^Social|^Sociálne|^Közösségi/, /^HTML$/]) {
       await toPalette(page);
       await tile(page, name).click();
       blocks += 1;
-      await expect(page.locator('[data-nl-block]')).toHaveCount(2 + blocks);
+      await expect(body(page).locator('[data-nl-block]')).toHaveCount(2 + blocks);
     }
   });
 
@@ -351,7 +354,7 @@ test.describe('Newsletter: sending states', () => {
     const mock = await open(page, '#newsletter', { worker: false });
     const id = mock.addCampaign({ name: 'Beží', subject: 'Beží', status: 'sending', recipients: 10, sent: 2 });
     await gotoView(page, `#newsletter/${id}`);
-    await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '20');
+    await expect(page.getByTestId('newsletter-progress')).toHaveAttribute('aria-valuenow', '20');
     await page.getByRole('button', { name: T.pause }).click();
     await expect(page.getByTestId('newsletter-status').first()).toHaveAttribute('data-status', 'paused');
     await page.getByRole('button', { name: T.resume }).click();
@@ -383,10 +386,12 @@ test.describe('Newsletter: sending states', () => {
 test.describe('Newsletter: Unsubscribed tab', () => {
   test('add addresses, then remove one after the confirmation', async ({ page }) => {
     const mock = await open(page);
-    await page.getByRole('button', { name: L('Unsubscribed', 'Odhlásení', 'Leiratkozottak') }).click();
+    await page.getByRole('tab', { name: L('Unsubscribed', 'Odhlásení', 'Leiratkozottak') }).click();
     await expect(page.getByRole('cell', { name: /chyba@example\.sk/ })).toBeVisible();
     await page.getByTestId('newsletter-suppression-add').click();
-    await page.locator('textarea').fill('novy@example.sk, zly-format');
+    await page
+      .getByRole('textbox', { name: C('Addresses that must never receive newsletters', 'Adresy, ktoré nikdy nemajú dostať newslettre', 'Címek, amelyek soha nem kaphatnak hírlevelet') })
+      .fill('novy@example.sk, zly-format');
     await page.getByRole('button', { name: L('Add', 'Pridať', 'Hozzáadás') }).click();
     await expect(page.getByRole('cell', { name: /novy@example\.sk/ })).toBeVisible();
     expect(mock.suppressions.some((s) => s.email === 'novy@example.sk')).toBe(true);

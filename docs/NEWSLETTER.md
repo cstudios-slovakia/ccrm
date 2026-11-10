@@ -316,16 +316,15 @@ Files: `tests/e2e/helpers/newsletterMock.ts`, `tests/e2e/newsletter.spec.ts`,
 - [ ] View-size pass over every newsletter screen (`docs/VIEW-SIZE.md`); fix what it finds inside
       `src/components/newsletter/`
 - [x] `npm run check`; changelog fragment. The orchestrator runs the scoped QA, not the agent
-- Left over: (1) **the browser run is incomplete.** The first scoped run reached the newsletter spec:
-  the C16 journey passed from New campaign through the audience count, subject autosave, the design
-  route (Text and Button blocks), Back with the flushed body, the checklist and Send test, then failed
-  on an intermediate progress of 50 %. Cause: the results page polls `tick` at once on mount, twice under
-  React StrictMode in dev, so the first visible value was 100 %. The spec now stops the mock worker,
-  checks 0 %, starts the worker and waits for the page's own polling to reach sent (review-fix commit).
-  The run then ended with the session, so the other 16 newsletter tests have **not run yet**; a second
-  run was stopped by the system for low memory. Run
-  `node scripts/qa/run-qa.mjs --files tests/e2e/newsletter.spec.ts` when the machine has 1.5 GB free.
-  (2) Manual browser checks still open (the spec cannot cover them): C8 row drag and moves, inline
+- Left over: (1) Browser run of the spec done (2026-11-10): **all 19 newsletter tests pass**
+  (`node scripts/qa/run-qa.mjs --files tests/e2e/newsletter.spec.ts`, 3.5 min). The first runs failed only
+  on spec mistakes, fixed then: an intermediate progress of 50 % raced the page's immediate `tick`
+  (twice under React StrictMode), so the journey stops the mock worker, checks 0 % and waits for the
+  page's own polling; `getByRole('progressbar')` also matched `HoldToConfirm`'s hidden ring (the results
+  bar has `data-testid="newsletter-progress"`); block and column counts included the locked global
+  header and footer (the body is wrapped in `data-nl-body`, counts are scoped to it); the tabs are
+  `role="tab"`; a tile adds its block to the selected column, not a new row; `locator('textarea')` also
+  hit the Agentation dev toolbar. (2) Manual browser checks still open (the spec cannot cover them): C8 row drag and moves, inline
   toolbar and paste, image upload, row panel, social block, HTML iframe, Ctrl+Z keys, phone-width
   message, dark-mode canvas; the view-size pass at the four reference sizes (the agent's grep found no
   hand font sizes, pixel widths or `sm:` breakpoints, so nothing was changed). (3) Not fixed: the
@@ -398,7 +397,7 @@ fixes; `test:newsletter` green (Docker PHP 8.2); 3C's `test:demo-packs` and `tes
 `test:demo-seed` with the 4 known employee failures. `test:persistence` 68/68 (run as a patched copy:
 the script hard-codes container `crm-19-jackfruit` and port 8086, the current stack is `crm` on 8085;
 the new name fields were added to its field-complete lead). Scoped browser QA: crawler and dark-mode
-registrations pass (Newsletter page included), navigation passes; the newsletter spec is incomplete (3A
+registrations pass (Newsletter page included), navigation passes; the newsletter spec passed 19/19 on 2026-11-10 after spec fixes (3A
 Left over). The crawler's Leads / Pipeline finding (`DROPDOWN_DID_NOT_OPEN` on the "Všetky typy" /
 "Všetky divízie" filters) also appears in the run of 2026-11-06, before this phase: pre-existing, not
 triaged here. One `ccrm-reviewer` pass: 7 confirmed findings; 6 fixed in the review-fix commit, the
