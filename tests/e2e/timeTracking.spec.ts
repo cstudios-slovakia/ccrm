@@ -345,4 +345,28 @@ test.describe('Time tracking', () => {
     await expect(page.getByTestId('ticket-start-timer')).toHaveCount(0);
     await expect(page.getByRole('tab', { name: /Zaznamenaný čas|Time Logged|Rögzített idő/ })).toHaveCount(0);
   });
+
+  test('a stale screen pressing Start on the running project timer adopts it instead of splitting it into a new entry', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#projects/project-1?tab=time');
+    const button = page.getByTestId('project-start-timer');
+    await expect(button).toContainText(/Spustiť|Start|indítása/);
+
+    // "Another tab" (or device, or agent) starts this project's timer; this screen never hears of it.
+    const startedElsewhere = await page.evaluate(async () => {
+      const res = await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start', projectId: 'project-1', description: null, originType: 'project', originId: 'project-1' }) });
+      return ((await res.json()) as { entry: { id: string } }).entry.id;
+    });
+    await expect(button).toContainText(/Spustiť|Start|indítása/);
+
+    await button.click();
+    await expect(button).toContainText(/Zastaviť|Stop|leállítása/);
+    await expect(page.getByText(/Časovač už beží|already running|már fut/).first()).toBeVisible();
+    const runningNow = await page.evaluate(async () => {
+      const res = await fetch('/api/time_entries.php?running=1');
+      return ((await res.json()) as { entry: { id: string } | null }).entry?.id ?? null;
+    });
+    expect(runningNow).toBe(startedElsewhere);
+    await expect(page.getByTestId('project-time-entry').filter({ hasText: /beží|running|fut/ })).toHaveCount(1);
+  });
 });

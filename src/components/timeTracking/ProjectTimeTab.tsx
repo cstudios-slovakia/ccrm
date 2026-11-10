@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { ListChecks, Play, Square, Timer, Wallet } from "lucide-react";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { formatDuration, hoursOf } from "../../utils/timeTracking.ts";
+import { clockTime, formatDuration, hoursOf } from "../../utils/timeTracking.ts";
 import { formatMoney } from "../../utils/currency";
+import { localeCodeFor } from "../../utils/localTime";
 import type { Language } from "../../utils/translations";
 import type { Project } from "../../types";
 
@@ -36,6 +37,10 @@ export function ProjectTimeTab({
   }, [project.id, project.hoursBudget, project.billableRate, project.isInternal]);
 
   const t = tt.t;
+  const dateLabel = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(localeCodeFor(language), { day: "numeric", month: "numeric", year: "numeric" });
+  };
   const money = (n: number) => formatMoney(n, currency, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const runningHere = tt.running?.projectId === project.id && !tt.running.taskId;
 
@@ -126,12 +131,23 @@ export function ProjectTimeTab({
           </p>
         ) : (
           <ul className="space-y-2">
-            {entries.map((e) => (
-              <li key={e.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui">
-                <span className="min-w-0 truncate font-semibold text-slate-800">{e.title || t("Untitled", "Bez názvu", "Névtelen")}</span>
-                <span className="shrink-0 tabular-nums font-bold text-slate-600">{e.running ? t("running", "beží", "fut") : formatDuration(e.durationSec)}</span>
-              </li>
-            ))}
+            {entries.map((e) => {
+              const span = e.startAt ? `${clockTime(e.startAt)}${e.endAt ? `–${clockTime(e.endAt)}` : ""}` : "";
+              return (
+                <li key={e.id} data-testid="project-time-entry" className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui">
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-slate-800">{e.title || e.note || t("No description", "Bez popisu", "Nincs leírás")}</span>
+                    <span className="block truncate text-caption font-medium text-slate-500 tabular-nums">
+                      {dateLabel(e.entryDate)}
+                      {span ? ` · ${span}` : ""}
+                    </span>
+                  </span>
+                  <span className="shrink-0 tabular-nums font-bold text-slate-600">
+                    {e.running ? t("running", "beží", "fut") : formatDuration(e.durationSec, (e.durationSec ?? 0) > 0 && (e.durationSec ?? 0) < 60)}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

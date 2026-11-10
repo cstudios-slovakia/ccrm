@@ -197,6 +197,11 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if ('error' in links) return route.fulfill(fail(links.error as string, 422));
       const now = new Date().toISOString();
       const prev = running();
+      // Like the server: starting what already runs (a stale tab) is refused, never a restart.
+      const same = (a: unknown, b: unknown) => String(a ?? '').trim() === String(b ?? '').trim();
+      if (prev && same(prev.projectId, links.projectId) && same(prev.taskId, links.taskId) && same(prev.ticketId, links.ticketId) && same(prev.description, links.description)) {
+        return route.fulfill(fail('already_running', 409, { entry: view(prev) }));
+      }
       if (prev) finish(prev, now);
       const entry: Json = {
         id: `te-mock-${++idSeq}`, userId: caller, recordedByUserId: caller, employeeId: ctx.employees[caller]?.id ?? null, ticketId: links.ticketId,

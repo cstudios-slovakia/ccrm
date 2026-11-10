@@ -134,7 +134,28 @@ export function TimeTrackingProvider({
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
-  const bump = useCallback(() => setVersion((v) => v + 1), []);
+  // Other tabs of this browser hear about every change, so none keeps offering "Start" on a timer
+  // that is already running (a click there would stop it and start a new, separate entry).
+  const channelRef = useRef<BroadcastChannel | null>(null);
+  const bump = useCallback(() => {
+    setVersion((v) => v + 1);
+    try {
+      channelRef.current?.postMessage("changed");
+    } catch {
+      /* the channel closed with the page */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !userId || typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(`ccrm-time-tracking:${userId}`);
+    channel.onmessage = () => setVersion((v) => v + 1);
+    channelRef.current = channel;
+    return () => {
+      channelRef.current = null;
+      channel.close();
+    };
+  }, [enabled, userId]);
 
   const reloadSettings = useCallback(async () => {
     try {
@@ -179,10 +200,14 @@ export function TimeTrackingProvider({
     const onVisible = () => {
       if (document.visibilityState === "visible") void refreshRunning();
     };
+    // Two windows side by side never become "visible" again; focusing one must still refresh it.
+    const onFocus = () => void refreshRunning();
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
     };
   }, [enabled, userId, reloadSettings, refreshRunning, refreshTotals]);
 
@@ -298,8 +323,17 @@ export function TimeTrackingProvider({
         return entry;
       } catch (e) {
         if (e instanceof TimeApiError && e.code === "already_running" && e.entry) {
+          // The server refuses a start of what is already running (this screen was out of date).
           setRunning(e.entry);
-          notifyToast(timeErrorMessage("already_running", t), "warning");
+          bump();
+          const title = e.entry.title;
+          const since = formatDuration(elapsedSeconds(e.entry.startAt, Date.now()));
+          notifyToast(
+            title
+              ? t(`The timer is already running on “${title}” (${since}).`, `Časovač už beží na „${title}“ (${since}).`, `Az időzítő már fut: „${title}” (${since}).`)
+              : t(`The timer is already running (${since}).`, `Časovač už beží (${since}).`, `Az időzítő már fut (${since}).`),
+            "warning",
+          );
           return e.entry;
         }
         fail(e);

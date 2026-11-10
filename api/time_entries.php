@@ -103,6 +103,15 @@ function ccrm_te_running_row(\PDO $pdo, string $userId, bool $lock = false): ?ar
     return $row ?: null;
 }
 
+/** The running row already tracks the target a start asks for (same project, task, ticket and text). */
+function ccrm_te_same_target(array $row, array $links): bool {
+    $norm = static fn($v): string => trim((string)($v ?? ''));
+    return $norm($row['project_id']) === $norm($links['project_id'] ?? null)
+        && $norm($row['task_id']) === $norm($links['task_id'] ?? null)
+        && $norm($row['ticket_id']) === $norm($links['ticket_id'] ?? null)
+        && $norm($row['description']) === $norm($links['description'] ?? null);
+}
+
 function ccrm_te_user_exists(\PDO $pdo, string $userId): bool {
     $stmt = $pdo->prepare("SELECT 1 FROM `users` WHERE `id` = ? LIMIT 1");
     $stmt->execute([$userId]);
@@ -772,6 +781,12 @@ if ($action === 'start') {
         $pdo->beginTransaction();
         $stopped = null;
         $old = ccrm_te_running_row($pdo, $owner, true);
+        // Starting what is already running is a click from a stale screen (a second tab, another
+        // device, an agent): restarting would split one block of work into a row of tiny entries.
+        if ($old && ccrm_te_same_target($old, $links)) {
+            $pdo->rollBack();
+            ccrm_te_fail('already_running', 409, ['entry' => ccrm_te_json($pdo, $old['id'], $viewer)]);
+        }
         if ($old) {
             $endUtc = max($startUtc, $old['start_at']);
             $dur = ccrm_tt_seconds_between($old['start_at'], $endUtc);

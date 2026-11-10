@@ -212,6 +212,9 @@ async function main() {
     check('T5: starting B stops A and returns it', b.data?.stopped?.id === a.data.entry.id && b.data?.stopped?.running === false && b.data.entry.running === true, b.raw);
     const running = rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
     check('T5: exactly one running entry in the database', running.length === 1 && running[0].id === b.data.entry.id);
+    // A stale tab offering "Start" on what already runs must not split it into a new entry.
+    const again = await te(S.erik, { action: 'start', description: 'Timer B' });
+    check('T5: starting the running target again is refused with the running entry', again.status === 409 && again.data?.code === 'already_running' && again.data?.entry?.id === b.data.entry.id && dbEntry(b.data.entry.id)?.end_at === null, again.raw);
     const stoppedRow = dbEntry(a.data.entry.id);
     check('T5: the stopped entry was priced when it stopped', stoppedRow?.cost_rate !== null && stoppedRow?.duration_sec !== null, JSON.stringify(stoppedRow));
     // The database itself refuses a second running row.
