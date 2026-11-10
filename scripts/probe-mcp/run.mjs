@@ -1498,6 +1498,87 @@ async function changeSyncChecks() {
   sql(`DELETE FROM deleted_records WHERE entity_id LIKE 'ds-%'; DELETE FROM mcp_keys WHERE id LIKE 'pk-%Only'; DELETE FROM users WHERE id LIKE 'probe-%Only';`);
 }
 
+// Review fixes of the change-visibility work: one overdue rule (flagged, or due date else issue date, before
+// today), documents with no ledger movement are not receivables, list_clients created_at ascends, undated last.
+async function changeReviewFixChecks() {
+  section('change visibility review fixes: overdue rule, no-movement documents, client order, undated last');
+  const A = TOKENS.admin;
+  const today = (await call(A, 'get_financial_overview', { year: 2026 })).as_of;   // the app's date, not this machine's
+  const shift = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const [yesterday, in5, in10] = [-1, 5, 10].map((n) => shift(today, n));
+  const list = (r) => (Array.isArray(r) ? r : []);
+  const ids = (rs) => list(rs).map((r) => r.id).join();
+  const sortedIds = (rs) => list(rs).map((r) => r.id).sort().join();
+  const cleanup = () => sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM invoices_offers WHERE id LIKE 'rv-inv%';
+       DELETE FROM financial_records WHERE id LIKE 'rv-mv%' OR id LIKE 'fr-inv-rv-inv%';
+       DELETE FROM leads WHERE id LIKE 'client-rv-%';
+       SET FOREIGN_KEY_CHECKS=1;`);
+  cleanup();
+
+  // ---- seed. Movements: 1 pending, no due date, issued 5 days ago (overdue by its issue date);
+  // 2 flagged overdue, issued today, no due date (overdue by the flag, but not dated before today);
+  // 3 pending, due in 5 days.
+  const mv = (n, status, issue, due) => `('rv-mv${n}','income','invoice','RVProbe mv ${n}',70,0,'EUR','${status}','${issue}',${due ? `'${due}'` : 'NULL'})`;
+  // Invoices: 1 rejected, 2 proforma, both with a due date in the past and no ledger movement (no receivable);
+  // 3 live invoice, no due date, issued 3 days ago, movement missing (kept as pending: overdue by its issue date);
+  // 4 live invoice due in 10 days with its movement.
+  const inv = (n, o) => `('rv-inv${n}','RVP-${n}','${o.type}','rv-lead','rv-client','RVProbe Client','Inv ${n}','Inv ${n}',100,20,120,'${o.status}','${o.issued}',${o.due ? `'${o.due}'` : 'NULL'})`;
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date) VALUES
+         ${mv(1, 'pending', shift(today, -5), null)}, ${mv(2, 'overdue', today, null)}, ${mv(3, 'pending', today, in5)};
+       INSERT INTO invoices_offers (id,document_number,type,lead_id,client_id,client_name,title,subject,subtotal,vat_amount,total_price,status,issued_at,due_date) VALUES
+         ${inv(1, { type: 'invoice', status: 'rejected', issued: shift(today, -5), due: yesterday })},
+         ${inv(2, { type: 'proforma', status: 'sent', issued: shift(today, -5), due: yesterday })},
+         ${inv(3, { type: 'invoice', status: 'sent', issued: shift(today, -3), due: null })},
+         ${inv(4, { type: 'invoice', status: 'sent', issued: shift(today, -1), due: in10 })};
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date,invoice_number) VALUES
+         ('fr-inv-rv-inv4','income','invoice','Inv 4',120,0,'EUR','pending','${shift(today, -1)}','${in10}','RVP-4');
+       INSERT INTO leads (id,name,owner,status,created_at,archived,adjustment) VALUES
+         ('client-rv-1','RVProbe C','Probe Admin','accepted','2020-01-01',0,0), ('client-rv-2','RVProbe A','Probe Admin','accepted','2020-01-02',0,0),
+         ('client-rv-3','RVProbe B','Probe Admin','accepted','2020-01-03',0,0);
+       SET FOREIGN_KEY_CHECKS=1;`);
+
+  // ---- 1. one overdue rule
+  const lm = (a) => call(A, 'list_financial_movements', { search: 'RVProbe mv', limit: 100, ...a });
+  let r = await lm({});
+  const row = (n) => list(r).find((m) => m.id === `rv-mv${n}`);
+  check('overdue rule: a pending movement with no due date and an old issue date has payment_status overdue', row(1)?.payment_status === 'overdue', JSON.stringify(row(1)));
+  check('overdue rule: a flagged movement dated today is overdue, an unflagged one due in 5 days is not', row(2)?.payment_status === 'overdue' && row(3)?.payment_status === 'unpaid', JSON.stringify([row(2), row(3)]));
+  r = await lm({ status: 'overdue' });
+  check('overdue rule: list_financial_movements status=overdue lists the issue-date one and the flagged one, agreeing with payment_status', sortedIds(r) === 'rv-mv1,rv-mv2' && list(r).every((m) => m.payment_status === 'overdue'), sortedIds(r));
+  const fc = await call(A, 'get_cash_flow_forecast', { months: 3, include_items: true });
+  const odItem = (id) => (fc.overdue?.items || []).find((i) => i.record_id === id);
+  check('overdue rule: the forecast overdue block holds the issue-date one with its age', odItem('rv-mv1')?.amount === 70 && odItem('rv-mv1')?.days_overdue === 5 && odItem('rv-mv1')?.due_date === null, JSON.stringify(odItem('rv-mv1')));
+  check('overdue rule: the forecast block leaves out a flagged movement dated today and one due later (months unchanged)', !odItem('rv-mv2') && !odItem('rv-mv3') && (fc.items || []).some((i) => i.record_id === 'rv-mv3') && !(fc.items || []).some((i) => i.record_id === 'rv-mv1'), JSON.stringify((fc.overdue?.items || []).map((i) => i.record_id)));
+  check('overdue rule: the forecast basis no longer claims flagged rows', typeof fc.overdue?.basis === 'string' && !/\(pending, partially paid, flagged overdue\)/.test(fc.overdue.basis) && /due date, else issue date/.test(fc.overdue.basis), fc.overdue?.basis);
+
+  // ---- 2. documents with no ledger movement are not receivables
+  const li = (a) => call(A, 'list_invoices', { search: 'RVProbe', limit: 100, ...a });
+  r = await li({});
+  const doc = (n) => list(r).find((d) => d.id === `rv-inv${n}`);
+  check('no movement: a rejected invoice has payment_status null, paid 0 and open 0', doc(1)?.payment_status === null && doc(1)?.paid === 0 && doc(1)?.open === 0, JSON.stringify(doc(1)));
+  check('no movement: a proforma has payment_status null, paid 0 and open 0', doc(2)?.payment_status === null && doc(2)?.paid === 0 && doc(2)?.open === 0, JSON.stringify(doc(2)));
+  check('no movement: a live invoice whose movement is missing keeps pending, open = total (overdue by its issue date)', doc(3)?.payment_status === 'overdue' && doc(3)?.open === 120 && doc(4)?.payment_status === 'unpaid' && doc(4)?.open === 120, JSON.stringify([doc(3), doc(4)]));
+  r = await li({ payment_status: 'overdue' });
+  check('no movement: payment_status=overdue returns neither the rejected invoice nor the proforma', sortedIds(r) === 'rv-inv3', sortedIds(r));
+  const gi = await call(A, 'get_invoice', { id: 'rv-inv1' });
+  check('no movement: get_invoice of the rejected invoice says the same', gi.payment_status === null && gi.open === 0 && gi.paid === 0, JSON.stringify([gi.payment_status, gi.open, gi.paid]));
+
+  // ---- 3. list_clients created_at ascends by default (oldest first); updated_at stays newest first
+  const cl = async (a) => ids(await call(A, 'list_clients', { search: 'RVProbe', limit: 100, ...a }));
+  check('list_clients: sort_by=created_at is ascending by default (oldest first)', (await cl({ sort_by: 'created_at' })) === 'client-rv-1,client-rv-2,client-rv-3', await cl({ sort_by: 'created_at' }));
+  check('list_clients: sort_by=created_at with sort_order=desc is newest first', (await cl({ sort_by: 'created_at', sort_order: 'desc' })) === 'client-rv-3,client-rv-2,client-rv-1', await cl({ sort_by: 'created_at', sort_order: 'desc' }));
+  check('list_clients: the default order is still by name', (await cl({})) === 'client-rv-2,client-rv-3,client-rv-1', await cl({}));
+
+  // ---- 4. undated rows sort last in both directions
+  check('list_invoices sort_by=due_date sort_order=desc puts the undated invoice last', ids(await li({ sort_by: 'due_date', sort_order: 'desc' })) === 'rv-inv4,rv-inv1,rv-inv2,rv-inv3', ids(await li({ sort_by: 'due_date', sort_order: 'desc' })));
+  check('list_invoices sort_by=due_date ascending still puts the undated invoice last', ids(await li({ sort_by: 'due_date' })) === 'rv-inv1,rv-inv2,rv-inv4,rv-inv3', ids(await li({ sort_by: 'due_date' })));
+  check('list_financial_movements sort_by=due_date sort_order=desc puts undated movements last', ids(await lm({ sort_by: 'due_date', sort_order: 'desc' })) === 'rv-mv3,rv-mv1,rv-mv2', ids(await lm({ sort_by: 'due_date', sort_order: 'desc' })));
+
+  cleanup();
+}
+
 // ----------------------------------------------------------------------------- main
 try {
   setup();
@@ -1510,6 +1591,7 @@ try {
   await changeMoneyChecks();
   await changePeopleChecks();
   await changeSyncChecks();
+  await changeReviewFixChecks();
 } catch (e) {
   failures++;
   console.log('\nPROBE ERROR: ' + (e && e.stack ? e.stack : e));
