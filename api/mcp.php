@@ -692,31 +692,8 @@ function mcp_core_tool_definitions(): array {
         ],
 
         // DOMAIN 4: Projects & Gantt Roadmaps
-        [
-            'name' => 'list_projects',
-            'description' => 'List and filter delivery projects with contract value, budget, rating, invoice date (invoice_date), deadline (completion_deadline), delay reason and finish date, plus project_type (name and the has_invoice_date / has_deadline switches: a null date on a type without the switch is not applicable rather than missing).',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'status' => ['type' => 'string', 'description' => 'Filter by a configured project status'],
-                    'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
-                    'search' => ['type' => 'string', 'description' => 'Search project names'],
-                    'include_archived' => ['type' => 'boolean', 'description' => 'Include archived projects (default false)'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_project',
-            'description' => 'Retrieve project details (incl. start_date, invoice_date, completion_deadline = the Deadline, delay_reason, finished_at; project_type tells whether its type uses the invoice date and the deadline) with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number and payment status), milestones, linked tasks and a url.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'Project ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_money_tool_def('list_projects'),
+        mcp_money_tool_def('get_project'),
         [
             'name' => 'create_project',
             'description' => 'Create a new client project.',
@@ -787,7 +764,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_financial_mode',
-            'description' => 'Get the current financial operating mode: connected (live movements) or simplified (detached spreadsheet).',
+            'description' => 'Get the current financial operating mode: connected (live movements) or simplified (detached spreadsheet). updated_at (ISO 8601 moment) is when the mode setting last changed.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => (object)[]
@@ -810,7 +787,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_financial_simplified_table',
-            'description' => 'Get the simplified spreadsheet matrix: categories, period columns, raw equations, and evaluated cell values.',
+            'description' => 'Get the simplified spreadsheet matrix: categories, period columns, raw equations, and evaluated cell values. updated_at (ISO 8601 moment) is when the matrix last changed, whatever the year filter.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -831,31 +808,8 @@ function mcp_core_tool_definitions(): array {
                 'required' => ['category_id', 'period', 'equation']
             ]
         ],
-        [
-            'name' => 'list_invoices',
-            'description' => 'List issued invoices and price offers with payment status.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'type' => ['type' => 'string', 'description' => 'Type: invoice, price_offer, proforma (default: all types)'],
-                    'status' => ['type' => 'string', 'description' => 'Status. Invoices and proformas: draft, sent, approved, rejected, invoiced, cancelled. Price offers use the statuses configured in the app (Price offers → Settings), so any key of that list is valid; the defaults are the same six.'],
-                    'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
-                    'search' => ['type' => 'string', 'description' => 'Search document number or client name'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_invoice',
-            'description' => 'Get full breakdown of an invoice or price offer with line items.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'Invoice document ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_money_tool_def('list_invoices'),
+        mcp_money_tool_def('get_invoice'),
         [
             'name' => 'create_invoice',
             'description' => 'Create a DRAFT invoice with line items, numbered FA-YYYY-NNN in sequence, with its pending income movement in the ledger. Line prices are net; VAT is added per line. Sending, approving and settling money are done in the app.',
@@ -900,20 +854,7 @@ function mcp_core_tool_definitions(): array {
                 'required' => ['id', 'status']
             ]
         ],
-        [
-            'name' => 'list_expenses',
-            'description' => 'Query recorded business expenses (stored movements; recurring rules are listed by list_recurring_movements).',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'category_id' => ['type' => 'string', 'description' => 'Filter by financial category ID'],
-                    'start_date' => ['type' => 'string', 'description' => 'From date (YYYY-MM-DD)'],
-                    'end_date' => ['type' => 'string', 'description' => 'To date (YYYY-MM-DD)'],
-                    'search' => ['type' => 'string', 'description' => 'Search expense title/description'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
+        mcp_money_tool_def('list_expenses'),
         [
             'name' => 'record_expense',
             'description' => 'Record a planned or pending expense. Marking it paid is done in the app.',
@@ -1648,69 +1589,10 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 4. Projects & Gantt Roadmaps ---
         case 'list_projects':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['status'])) {
-                $where[] = "p.status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['client_id'])) {
-                $where[] = "(p.client_id = ? OR p.lead_id = ?)";
-                $params[] = $args['client_id'];
-                $params[] = $args['client_id'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "p.name LIKE ?";
-                $params[] = '%' . $args['search'] . '%';
-            }
-            if (empty($args['include_archived'])) {
-                $where[] = "(p.archived = 0 OR p.archived IS NULL)";
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT p.id, p.name, p.status, p.division, p.rating, p.value, p.budget, p.invoice_date, p.completion_deadline, p.delay_reason, p.start_date, p.finished_at, p.project_type_id, p.lead_id, p.client_id, l.name as client_name, p.archived, p.created_at
-                    FROM projects p
-                    LEFT JOIN leads l ON l.id = COALESCE(p.lead_id, p.client_id)
-                    WHERE " . implode(' AND ', $where) . "
-                    ORDER BY p.created_at DESC
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return array_map(fn($p) => $p + ['project_type' => mcp_project_type_info($pdo, $p['project_type_id']), 'url' => mcp_project_url($pdo, (string)$p['id'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return mcp_list_projects($pdo, $user, $args);
 
         case 'get_project':
-            $stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $proj = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$proj) {
-                throw new \Exception("Project not found with ID: " . $args['id']);
-            }
-            $proj['url'] = mcp_project_url($pdo, (string)$proj['id']);
-            $proj['project_type'] = mcp_project_type_info($pdo, $proj['project_type_id'] ?? null);
-
-            // The client: client_id, else the paired lead, else the client the project is named for.
-            $owner = mcp_project_client($pdo, $proj);
-            $proj['client'] = $owner ? mcp_client_summary($pdo, $owner['scope'], $owner['linked_by']) : null;
-
-            $ctx = mcp_projects_ctx();
-            $proj['contract_value'] = mcp_project_value($pdo, $proj, $ctx);
-            if (mcp_can('financial')) {
-                $proj['financials'] = mcp_project_financials($pdo, $proj, $ctx);
-            }
-            $proj['milestones'] = mcp_project_milestones($pdo, $user, $proj);
-
-            // Linked tasks (only for callers who can see the tasks module, scoped by tasks.view_all)
-            if (mcp_can('tasks')) {
-                [$scopeSql, $scopeParams] = mcp_task_scope($user);
-                $tStmt = $pdo->prepare("SELECT id, title, priority, deadline, status, owner FROM tasks WHERE related_project_id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . " ORDER BY deadline ASC");
-                $tStmt->execute(array_merge([$args['id']], $scopeParams));
-                $proj['tasks'] = $tStmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            return $proj;
+            return mcp_get_project($pdo, $user, $args);
 
         case 'create_project':
             $id = mcp_create_project_row($pdo, $args);
@@ -1746,6 +1628,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $currentMode = $modeStmt->fetchColumn() ?: 'connected';
             return [
                 'mode' => $currentMode,
+                'updated_at' => mcp_setting_moment($pdo, 'FINANCIAL_MODE'),
                 'description' => $currentMode === 'simplified' 
                     ? 'Simplified mode: Detached spreadsheet matrix where overview and graph derive from cell equations/totals.' 
                     : 'Connected mode: Live financial movements, payments, and recurring schedules.'
@@ -1808,6 +1691,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             return [
                 'mode' => $currentMode,
+                'updated_at' => mcp_setting_moment($pdo, 'FINANCIAL_SIMPLIFIED_TABLE'),
                 'year_filter' => $filterYear,
                 'categories' => $categories,
                 'cells' => $filteredCells,
@@ -1907,55 +1791,10 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return mcp_financial_summary_connected($pdo, $year);
 
         case 'list_invoices':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['type'])) {
-                $where[] = "type = ?";
-                $params[] = $args['type'];
-            }
-            if (!empty($args['status'])) {
-                $where[] = "status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['client_id'])) {
-                $where[] = "(client_id = ? OR lead_id = ?)";
-                $params[] = $args['client_id'];
-                $params[] = $args['client_id'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(document_number LIKE ? OR client_name LIKE ? OR title LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT id, document_number, type, mode, client_id, lead_id, client_name, title, subtotal, vat_amount, total_price, currency, status, issued_at, valid_until, due_date, created_by 
-                    FROM invoices_offers 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY issued_at DESC 
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_invoices($pdo, $user, $args);
 
         case 'get_invoice':
-            $stmt = $pdo->prepare("SELECT * FROM invoices_offers WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $inv = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$inv) {
-                throw new \Exception("Invoice not found with ID: " . $args['id']);
-            }
-
-            $itStmt = $pdo->prepare("SELECT * FROM invoice_offer_items WHERE invoice_offer_id = ?");
-            $itStmt->execute([$args['id']]);
-            $inv['items'] = $itStmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            return $inv;
+            return mcp_get_invoice($pdo, $user, $args);
 
         case 'create_invoice':
             return mcp_do_create_invoice($pdo, $user, $args);
@@ -1964,43 +1803,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return mcp_do_update_invoice_status($pdo, $user, $args);
 
         case 'list_expenses':
-            // A recurring rule is not an expense of its own: its payments are stored rows.
-            $where = ["type = 'expense'", "is_recurring = 0"];
-            $params = [];
-
-            if (!empty($args['category_id'])) {
-                $where[] = "category_id = ?";
-                $params[] = $args['category_id'];
-            }
-            if (!empty($args['start_date'])) {
-                $where[] = "issue_date >= ?";
-                $params[] = $args['start_date'];
-            }
-            if (!empty($args['end_date'])) {
-                $where[] = "issue_date <= ?";
-                $params[] = $args['end_date'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "(title LIKE ? OR description LIKE ?)";
-                $params[] = '%' . $args['search'] . '%';
-                $params[] = '%' . $args['search'] . '%';
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT id, subtype, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, project_id, client_id, created_by 
-                    FROM financial_records 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY issue_date DESC 
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            $expenseRows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            if (!mcp_can('employees.salaries')) {
-                $expenseRows = array_map(fn($r) => ccrm_is_salary_finance_row($r) ? ccrm_anonymise_salary_finance_row($r) : $r, $expenseRows);
-            }
-            return $expenseRows;
+            return mcp_list_expenses($pdo, $user, $args);
 
         case 'record_expense':
             return mcp_do_record_expense($pdo, $user, $args);
