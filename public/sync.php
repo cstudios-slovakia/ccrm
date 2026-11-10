@@ -18,6 +18,7 @@ require_once __DIR__ . '/api/task_reminders.php';
 require_once __DIR__ . '/api/recurring_tasks.php';
 require_once __DIR__ . '/api/read_scope.php';
 require_once __DIR__ . '/api/offer_document.php';
+require_once __DIR__ . '/api/sync_child_bumps.php';
 // ccrm_employee_file_key() / ccrm_employee_private_gc(). schema.php loads this file only when
 // a migration actually runs, which the schema fingerprint skips on almost every request.
 require_once __DIR__ . '/api/employee_files.php';
@@ -4353,10 +4354,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Only rewrite this project's managers when the payload actually carries
                 // the list. An omitted `managers` key means "unchanged", not "none".
                 if (array_key_exists('managers', $p) && is_array($p['managers'])) {
+                    $mgrBefore = ccrm_child_snapshot($pdo, 'managers', $projId);
                     $delMgr->execute([$projId]);
                     foreach ($p['managers'] as $uid) {
                         $insMgr->execute([$projId, $uid]);
                     }
+                    ccrm_child_bump($pdo, 'managers', $projId, $mgrBefore); // only on a real change
                 }
 
                 $processedProjIds[] = $projId;
@@ -4450,6 +4453,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Same rule as the timeline above: a failed insert keeps the old rows.
                     $pdo->exec("SAVEPOINT ccrm_proj_gantt");
                     try {
+                        $ganttBefore = ccrm_child_snapshot($pdo, 'gantt', $projId, $ganttTable);
                         $pdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]);
                         if (isset($ragPdo) && $ragPdo) {
                             try { $ragPdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
@@ -4463,6 +4467,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $insGantt->execute($args);
                             if ($ragInsGantt) try { $ragInsGantt->execute($args); } catch(\Exception $e) {}
                         }
+                        ccrm_child_bump($pdo, 'gantt', $projId, $ganttBefore, $ganttTable); // only on a real change
                     } catch (\Throwable $e) {
                         try { $pdo->exec("ROLLBACK TO SAVEPOINT ccrm_proj_gantt"); } catch (\Throwable $_) {}
                         if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
@@ -5566,6 +5571,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // Sync meeting_tasks (Delete & Insert list)
+                $actionsBefore = ccrm_child_snapshot($pdo, 'meeting_tasks', $meetingId);
                 $delTasks = $pdo->prepare("DELETE FROM `meeting_tasks` WHERE `meeting_id` = ?");
                 $delTasks->execute([$meetingId]);
 
@@ -5585,6 +5591,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]);
                     }
                 }
+                ccrm_child_bump($pdo, 'meeting_tasks', $meetingId, $actionsBefore); // only on a real change
             }
 
             // Delete any meeting notes not present in payload
@@ -6042,6 +6049,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Sync items of this movement
                 if (isset($mov['items']) && is_array($mov['items'])) {
+                    $linesBefore = ccrm_child_snapshot($pdo, 'movement_items', $movId);
                     $delMovItems->execute([$movId]);
                     foreach ($mov['items'] as $mItem) {
                         $itemId = $mItem['id'] ?? ('mi-' . bin2hex(random_bytes(8)));
@@ -6058,6 +6066,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $mItem['note'] ?? null
                         ]);
                     }
+                    ccrm_child_bump($pdo, 'movement_items', $movId, $linesBefore); // only on a real change
                 }
             }
 
@@ -6384,6 +6393,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $processedIoIds[] = $ioId;
 
                 if (isset($io['items']) && is_array($io['items'])) {
+                    $itemsBefore = ccrm_child_snapshot($pdo, 'invoice_items', $ioId);
                     $delIoItems->execute([$ioId]);
                     foreach ($io['items'] as $item) {
                         $itemId = $item['id'] ?? ('ioi-' . bin2hex(random_bytes(8)));
@@ -6402,6 +6412,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             (float)($item['totalPrice'] ?? 0)
                         ]);
                     }
+                    ccrm_child_bump($pdo, 'invoice_items', $ioId, $itemsBefore); // only on a real change
                 }
             }
 

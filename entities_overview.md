@@ -194,7 +194,7 @@ Agendas, records, and AI-summaries of voice calls or in-person meetings.
 * `attached_users_json` TEXT
 * `archived` TINYINT
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) (also moves when the meeting's action items (`meeting_tasks`) really change, see `api/sync_child_bumps.php`)
 
 ### `meeting_tasks`
 Action items generated from meetings.
@@ -298,7 +298,7 @@ Individual instances of active project lifecycles.
 * `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
 * `contact_phone` VARCHAR(50) [NULLable] (phone of the project contact as typed; WAAI pairs WhatsApp chats to the project by it; written by the app's save only when the payload carries `contactPhone`)
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging]
+* `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging] (also moves when the project's managers (`project_managers`) or Gantt rows (`proj_gantt_*`) really change, and when the MCP creates a milestone for it: `sync.php` snapshots the set before its delete + insert and bumps only when the stored set differs, `api/sync_child_bumps.php`. An unchanged re-save leaves it alone. Timeline entries do not move it)
 
 ### `project_managers`
 Junction table mapping project managers to projects.
@@ -543,7 +543,7 @@ Stock transaction documents (Receipts, Issues, Transfers, Adjustments).
 * `file_path` VARCHAR(500)
 * `issued_at` DATETIME
 * `created_at` TIMESTAMP
-* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns or of its movement lines (`warehouse_movement_items`, bumped by `sync.php` only when the stored set really changed: `api/sync_child_bumps.php`); read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_movement_items`
 Individual line items attached to a movement document.
@@ -626,6 +626,7 @@ Core financial movement records representing current and planned/future incomes,
 ### `invoices_offers`
 Price offers, proformas and invoices in one table (`type`), with their line items in `invoice_offer_items`. Only the columns that carry rules are listed here; see `api/schema.php` for the rest.
 * `id` VARCHAR(50) [PK]
+* `updated_at` TIMESTAMP (moves on a real change of the document's own columns or of its line items (`invoice_offer_items`, bumped by `sync.php` only when the stored set really changed: `api/sync_child_bumps.php`). A payment (the `fr-inv-<id>` ledger movement) does not move it; the MCP reads that as `last_activity_at`)
 * `document_number` VARCHAR(100) (e.g. `CP-2026-001` for an offer, `FA-2026-001` for an invoice)
 * `type` ENUM('price_offer', 'proforma', 'invoice')
 * `status` VARCHAR(50) (was an ENUM until 1.12.70). For a **price offer** it is a key of the configurable `OFFER_STATUSES` setting (Price offers → Settings → Offer statuses); code reasons about the status's *group* (`draft`, `open`, `won`, `lost`, `cancelled`), never the key. Proformas and invoices keep the fixed built-ins `draft`, `sent`, `approved`, `rejected`, `invoiced`, `cancelled`. An unknown key must still render (raw, neutral badge).

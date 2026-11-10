@@ -659,10 +659,11 @@ function mcp_do_adjust_stock(\PDO $pdo, array $user, array $args): array {
 
             $docNum = mcp_next_document_number($pdo, 'warehouse_movements', 'document_number', $prefix, (int)date('Y'), 4);
             $movId = 'mov-' . bin2hex(random_bytes(6));
+            // issued_at is app-local wall time (the app writes nowLocalDateTime()), not MySQL NOW() (UTC on a server).
             $pdo->prepare(
                 "INSERT INTO warehouse_movements (id, document_number, type, status, warehouse_id, total_cost_value, total_sell_value, total_profit_value, created_by, note, issued_at)
-                 VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, NOW())"
-            )->execute([$movId, $docNum, $type, $whId, round($costValue, 2), round($sellValue, 2), $type === 'outward' ? round($sellValue - $costValue, 2) : 0, $user['email'], trim("Reason: {$reason}. {$notes}")]);
+                 VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, ?, ?)"
+            )->execute([$movId, $docNum, $type, $whId, round($costValue, 2), round($sellValue, 2), $type === 'outward' ? round($sellValue - $costValue, 2) : 0, $user['email'], trim("Reason: {$reason}. {$notes}"), mcp_now_local()]);
             $pdo->prepare(
                 "INSERT INTO warehouse_movement_items (id, movement_id, item_id, quantity, unit_purchase_price, unit_sell_price, total_price, note)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)"

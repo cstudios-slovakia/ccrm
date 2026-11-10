@@ -1617,6 +1617,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                  VALUES (?, ?, 'Project Milestone', ?, ?, 'todo', ?, ?, ?, 1)" /* recurring-template: milestone is a normal task */
             );
             $stmt->execute([$id, $title, $priority, $deadline, $user['name'], $user['name'], $projId]);
+            // The blocking milestone task is part of the project: a new one is a change of the project.
+            $pdo->prepare("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$projId]);
 
             mcp_audit($pdo, $user, 'milestone_create', "Created milestone '$title' for project $projId");
 

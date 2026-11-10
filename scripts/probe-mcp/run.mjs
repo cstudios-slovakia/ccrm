@@ -1426,6 +1426,21 @@ async function changePeopleChecks() {
 
 async function changeSyncChecks() {
   section('change visibility: child bumps, activity, deletions');
+  const A = TOKENS.admin;
+  const AGED = 1590998400;
+  const age = (table, id) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(${AGED}) WHERE id = ${sq(id)}`);
+  const stampOf = (table, id) => Number(cell(`SELECT UNIX_TIMESTAMP(updated_at) FROM ${table} WHERE id = ${sq(id)}`));
+
+  // ---- create_milestone: the blocking milestone task is part of the project (the sync.php child bumps
+  // - managers, Gantt rows, line items, action items, movement lines - need a push through sync.php and
+  // are checked in scripts/probe-persistence.mjs, changeVisibilityChecks()).
+  const typeId = cell(`SELECT id FROM project_types LIMIT 1`);
+  sql(`DELETE FROM projects WHERE id = 'ds-proj'; INSERT INTO projects (id,project_type_id,name,status) VALUES ('ds-proj',${sq(typeId)},'Sync visibility probe','active');`);
+  age('projects', 'ds-proj');
+  check('probe fixture: the project starts aged', stampOf('projects', 'ds-proj') === AGED, String(stampOf('projects', 'ds-proj')));
+  const ms = await call(A, 'create_milestone', { project_id: 'ds-proj', title: 'Probe go-live', deadline: '2031-05-01' });
+  check('create_milestone moves the project\'s updated_at', !ms.__error && stampOf('projects', 'ds-proj') > AGED + 3600, JSON.stringify(ms) + ' ts=' + stampOf('projects', 'ds-proj'));
+  sql(`DELETE FROM tasks WHERE related_project_id = 'ds-proj'; DELETE FROM projects WHERE id = 'ds-proj';`);
 }
 
 // ----------------------------------------------------------------------------- main
