@@ -344,8 +344,8 @@ function mcp_do_list_clients(\PDO $pdo, array $args): array {
     }
     $sort = in_array($args['sort_by'] ?? '', ['name', 'created_at', 'value', 'updated_at'], true) ? $args['sort_by'] : 'name';
     $key = ['value' => 'total_value', 'updated_at' => 'updated_at__ts'][$sort] ?? $sort;
-    // name and value ascend; created_at and updated_at start with the newest, as every other list does.
-    $dir = in_array($sort, ['updated_at', 'created_at'], true) ? -1 : 1;
+    // name, value and created_at ascend (oldest first, as list_clients always did); updated_at starts with the newest.
+    $dir = $sort === 'updated_at' ? -1 : 1;
     $order = strtolower((string)($args['sort_order'] ?? ''));
     if ($order === 'desc') $dir = -1; elseif ($order === 'asc') $dir = 1;
     // id breaks ties, so a row never moves between pages.

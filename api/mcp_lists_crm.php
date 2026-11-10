@@ -246,6 +246,16 @@ const MCP_CLIENT_WINDOW = [
     'sorts' => ['name' => ['name', 'ASC'], 'created_at' => ['created_at', 'ASC'], 'value' => ['total_value', 'ASC']], 'default_sort' => 'name',
 ];
 
+/**
+ * The inputSchema properties of list_clients: the shared window props, with the sort_by text corrected for
+ * this list (the shared text says created_at starts with the newest; here it ascends, as it always did).
+ */
+function mcp_client_window_props(): array {
+    $props = mcp_window_props(MCP_CLIENT_WINDOW);
+    $props['sort_by']['description'] = 'Order of the rows (default: name). name, value and created_at ascend (created_at: oldest client first); updated_at starts with the newest. sort_order=asc|desc reverses or forces the direction';
+    return $props;
+}
+
 /** Sets last_activity_at__ts on each profile: its newest record change or timeline entry across all its records. */
 function mcp_profiles_activity(\PDO $pdo, array $profiles): array {
     $latest = mcp_timeline_latest($pdo, array_merge(...array_column($profiles, 'lead_ids')));
@@ -467,6 +477,7 @@ function mcp_crm_defs(): array {
             'name' => 'list_clients',
             'description' => 'List clients as the Clients register shows them: one profile per client name (records with the same name are combined; total_value = sum of their lead values plus the client value adjustment). Pipeline leads are not clients. '
                 . 'A profile spans several records: its updated_at is the newest updated_at of its records, and last_activity_at is the later of that and the newest timeline entry of any of them. created_at is the earliest creation date. '
+                . 'Order: sort_by=name (default), value and created_at ascend (created_at lists the oldest client first), updated_at starts with the newest; sort_order reverses it. '
                 . mcp_window_doc('clients', MCP_CLIENT_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
@@ -475,7 +486,7 @@ function mcp_crm_defs(): array {
                     'city' => $s('Filter by city'),
                     'client_type' => $s('Filter by client type: business, person, partner'),
                     'include_archived' => ['type' => 'boolean', 'description' => 'Include archived clients (default false)'],
-                ] + mcp_window_props(MCP_CLIENT_WINDOW),
+                ] + mcp_client_window_props(),
             ],
         ],
         'get_client' => [
