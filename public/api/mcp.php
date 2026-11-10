@@ -34,6 +34,11 @@ require_once __DIR__ . '/mcp_ext.php';
 require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
 require_once __DIR__ . '/mcp_ext_intel.php';
+require_once __DIR__ . '/mcp_window.php';
+// The list tools rebuilt on the shared window, one module per area (audit 2026-11-10).
+require_once __DIR__ . '/mcp_lists_crm.php';
+require_once __DIR__ . '/mcp_lists_money.php';
+require_once __DIR__ . '/mcp_lists_people.php';
 
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
@@ -676,28 +681,19 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 3: Tasks & Collaboration
         [
             'name' => 'list_tasks',
-            'description' => ('List and filter tasks across projects, clients, and team members. Each task carries created_at and updated_at (ISO 8601 with the ' . KOPERNIQ_PRODUCT_NAME . ' time zone offset). ')
+            'description' => 'List and filter tasks across projects, clients, and team members. '
                 . 'updated_at moves on any edit to the task, including its assignees and tags; comments are on the linked client timeline and do not count. '
-                . ('To find what changed in a period use updated_from/updated_to with sort_by=updated_at. Time filters take YYYY-MM-DD or YYYY-MM-DD HH:MM in ' . KOPERNIQ_PRODUCT_NAME . ' local time (') . date_default_timezone_get() . '); '
-                . ('if the user is in another time zone, append their offset (2026-11-06 14:22+05:00) or convert to ' . KOPERNIQ_PRODUCT_NAME . ' time first.'),
+                . mcp_window_doc('tasks', MCP_TASK_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'status' => ['type' => 'string', 'description' => 'Filter by a configured task status'],
-                    'bucket' => ['type' => 'string', 'enum' => ['overdue', 'today', 'tomorrow', 'upcoming', 'done'], 'description' => 'Time bucket as in the task panel (upcoming = later than tomorrow)'],
-                    'created_from' => ['type' => 'string', 'description' => 'Created at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'],
-                    'created_to' => ['type' => 'string', 'description' => 'Created before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'],
-                    'updated_from' => ['type' => 'string', 'description' => 'Last changed at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'],
-                    'updated_to' => ['type' => 'string', 'description' => 'Last changed before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'],
-                    'sort_by' => ['type' => 'string', 'enum' => ['deadline', 'updated_at', 'created_at'], 'description' => 'deadline (default, soonest first), updated_at or created_at (newest first)'],
                     'priority' => ['type' => 'string', 'description' => 'Filter by priority: low, medium, high'],
                     'owner' => ['type' => 'string', 'description' => 'Filter by assignee name'],
                     'project_id' => ['type' => 'string', 'description' => 'Filter by related project ID'],
                     'client_id' => ['type' => 'string', 'description' => 'Filter by related client ID'],
                     'search' => ['type' => 'string', 'description' => 'Search task titles and descriptions'],
-                    'limit' => ['type' => 'integer', 'description' => 'Max results (default 50)'],
-                    'offset' => ['type' => 'integer', 'description' => 'Pagination offset']
-                ]
+                ] + mcp_bucket_prop('deadline') + mcp_window_props(MCP_TASK_WINDOW)
             ]
         ],
         [
@@ -1823,49 +1819,18 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 $where[] = $scopeSql;
                 $params = array_merge($params, $scopeParams);
             }
-            // Moments go through UNIX_TIMESTAMP(): see mcp_optional_moment for why.
-            foreach ([['created_from', 'created_at', '>=', false], ['created_to', 'created_at', '<', true],
-                      ['updated_from', 'updated_at', '>=', false], ['updated_to', 'updated_at', '<', true]] as [$key, $col, $op, $upper]) {
-                $ts = mcp_optional_moment($args, $key, $upper);
-                if ($ts !== null) { $where[] = "UNIX_TIMESTAMP($col) $op ?"; $params[] = $ts; }
-            }
-            if (!empty($args['bucket'])) {
-                // The time buckets of the task panel: overdue / today / tomorrow / upcoming (later than tomorrow) / done.
-                $bucket = mcp_enum($args, 'bucket', ['overdue', 'today', 'tomorrow', 'upcoming', 'done']);
-                [$openSql, $openParams] = mcp_open_task_sql($pdo);
-                $today = mcp_today(); $nowTime = date('H:i');
-                $limitExpr = "COALESCE(NULLIF(deadline_time, ''), '23:59')";
-                if ($bucket === 'done') {
-                    $where[] = "NOT $openSql"; $params = array_merge($params, $openParams);
-                } else {
-                    $where[] = $openSql; $params = array_merge($params, $openParams);
-                    if ($bucket === 'overdue') { $where[] = "(deadline < ? OR (deadline = ? AND $limitExpr < ?))"; array_push($params, $today, $today, $nowTime); }
-                    if ($bucket === 'today') { $where[] = "deadline = ? AND $limitExpr >= ?"; array_push($params, $today, $nowTime); }
-                    if ($bucket === 'tomorrow') { $where[] = "deadline = ?"; $params[] = mcp_iso_shift($today, 1); }
-                    if ($bucket === 'upcoming') { $where[] = "deadline > ?"; $params[] = mcp_iso_shift($today, 1); }
-                }
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-            $offset = max(0, (int)($args['offset'] ?? 0));
-
-            $orderBy = [
-                'deadline' => 'deadline ASC, priority DESC, id ASC',
-                'updated_at' => 'updated_at DESC, id ASC',
-                'created_at' => 'created_at DESC, id ASC',
-            ][mcp_enum($args, 'sort_by', ['deadline', 'updated_at', 'created_at'], 'deadline')];
-
-            $where[] = ccrm_sql_real_tasks();
+            // The shared window (mcp_window.php): created_*/updated_*, sort_by/sort_order, limit/offset.
+            $win = mcp_list_window($args, MCP_TASK_WINDOW);
+            $bucket = mcp_enum($args, 'bucket', ['overdue', 'today', 'tomorrow', 'upcoming', 'done']);
+            [$bWhere, $bParams] = $bucket ? mcp_date_bucket($bucket, 'deadline', mcp_open_task_sql($pdo), "COALESCE(NULLIF(deadline_time, ''), '23:59')") : [[], []];
+            $where = array_merge($where, $win['where'], $bWhere, [ccrm_sql_real_tasks()]);
+            $params = array_merge($params, $win['params'], $bParams);
             $sql = "SELECT id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_lead_id, related_project_id,
-                           completed_by, completed_at, UNIX_TIMESTAMP(created_at) AS created_ts, UNIX_TIMESTAMP(updated_at) AS updated_ts
-                    FROM tasks
-                    WHERE " . implode(' AND ', $where) . "
-                    ORDER BY $orderBy
-                    LIMIT $limit OFFSET $offset";
-
+                           completed_by, completed_at, " . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at') . "
+                    FROM tasks WHERE " . implode(' AND ', $where) . ' ' . $win['tail'];
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return array_map('mcp_task_moments', $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return array_map('mcp_row_moments', $stmt->fetchAll(\PDO::FETCH_ASSOC));
 
         case 'get_task':
             [$scopeSql, $scopeParams] = mcp_task_scope($user);

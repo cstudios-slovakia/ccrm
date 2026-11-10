@@ -763,6 +763,32 @@ async function intelChecks() {
   check('list_clients rows carry a url', (await call(A, 'list_clients', { search: 'Villatesta' })).some?.((c) => /#client-Villatesta$/.test(c.url)), '');
 }
 
+// ----------------------------------------------------------------------------- change visibility (audit 2026-11-10)
+// One function per work package so parallel branches never touch the same lines.
+// See docs/audits/mcp-change-visibility-audit.md §5 for what each should prove.
+
+async function changeCrmChecks() {
+  section('change visibility: leads, clients, communications, documents, meetings, tasks');
+}
+
+// ---- (separator: keep these stubs apart so git merges them cleanly) ----
+
+async function changeMoneyChecks() {
+  section('change visibility: projects, invoices, expenses, ledger, forecast');
+}
+
+// ---- (separator: keep these stubs apart so git merges them cleanly) ----
+
+async function changePeopleChecks() {
+  section('change visibility: employees, salaries, vacations, stock, workflows, registries');
+}
+
+// ---- (separator: keep these stubs apart so git merges them cleanly) ----
+
+async function changeSyncChecks() {
+  section('change visibility: child bumps, activity, deletions');
+}
+
 // ----------------------------------------------------------------------------- main
 try {
   setup();
@@ -771,6 +797,10 @@ try {
   await parityChecks();
   await writeChecks();
   await intelChecks();
+  await changeCrmChecks();
+  await changeMoneyChecks();
+  await changePeopleChecks();
+  await changeSyncChecks();
 } catch (e) {
   failures++;
   console.log('\nPROBE ERROR: ' + (e && e.stack ? e.stack : e));
