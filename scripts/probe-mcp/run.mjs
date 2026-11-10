@@ -769,6 +769,243 @@ async function intelChecks() {
 
 async function changeCrmChecks() {
   section('change visibility: leads, clients, communications, documents, meetings, tasks');
+  const A = TOKENS.admin;
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  const T20 = 1590998400; // 2020-06-01 10:00 in Europe/Bratislava (CEST), whatever the MySQL zone
+  const ids = (r) => (Array.isArray(r) ? r.map((x) => x.id).join() : JSON.stringify(r).slice(0, 200));
+  const has = (r, id) => Array.isArray(r) && r.some((x) => x.id === id);
+  const age = (table, id, unix) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(${unix}) WHERE id = ${sq(id)}`);
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bratislava' });
+
+  // Two more keys: one that reads leads but not clients, one that reads clients but not leads. Every row below is
+  // prefixed cx- / client-cx- and removed again at the end (the roles setting is put back as it was).
+  const rolesBefore = cell("SELECT `value` FROM system_settings WHERE `key` = 'ROLES_RBAC'");
+  const cxRole = (name, modules) => { const r = role(name, 'nothing'); for (const m of modules) r.permissions[m] = 'view'; return r; };
+  const roleList = JSON.parse(rolesBefore).concat([cxRole('ProbeLeadsOnly', ['leads', 'files']), cxRole('ProbeClientsOnly', ['clients', 'files'])]);
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify(roleList))});`);
+  const cxUsers = { cxl: ['probe-cxl', 'Probe LeadsOnly', 'ProbeLeadsOnly'], cxc: ['probe-cxc', 'Probe ClientsOnly', 'ProbeClientsOnly'] };
+  for (const [k, [id, name, r]] of Object.entries(cxUsers)) {
+    const token = `ccrm_mcp_probe_${k}_${'0'.repeat(40)}`;
+    TOKENS[k] = token;
+    sql(`INSERT INTO users (id,name,email,password_hash,role) VALUES (${sq(id)},${sq(name)},${sq(id + '@probe.test')},'x',${sq(r)});
+         INSERT INTO mcp_keys (id,user_id,key_hash,key_prefix,name,created_at) VALUES (${sq('pk-' + k)},${sq(id)},${sq(createHash('sha256').update(token).digest('hex'))},'ccrm_mcp_p...','probe',NOW() - INTERVAL 1 DAY);`);
+  }
+  const L = TOKENS.cxl, C = TOKENS.cxc;
+
+  try {
+    // ---- seed: leads, one client with two records (name pair), two more clients, timeline entries, meetings
+    sql(`INSERT INTO leads (id,name,owner,status,created_at,archived,adjustment) VALUES
+      ('cx-lead-1','CX Lead One','Probe Admin','new','2026-11-01',0,0), ('cx-lead-2','CX Lead Two','Probe Admin','new','2026-11-05',0,0),
+      ('cx-lead-3','CX Lead Three','Probe Admin','new','2026-10-15',0,0), ('cx-lead-doc','CX Lead Doc','Probe Admin','new','2026-10-01',0,0),
+      ('cx-lead-arch','CX Lead Arch','Probe Admin','new','2026-09-01',1,0), ('cx-lead-adj','CX Lead Adj','Probe Admin','new','2026-08-01',0,50),
+      ('cx-lead-pair','CX Client One','Probe Admin','accepted','2026-07-01',0,0), ('client-cx-1','CX Client One','Probe Admin','accepted','2026-11-09',0,0),
+      ('client-cx-2','CX Client Two','Probe Admin','accepted','2026-06-01',0,0), ('client-cx-3','CX Client Three','Probe Admin','accepted','2026-06-02',0,0);`);
+    age('leads', 'cx-lead-1', T20); age('leads', 'cx-lead-3', T20); age('leads', 'client-cx-1', T20);
+    age('leads', 'cx-lead-pair', T20 + 86400); age('leads', 'client-cx-2', T20 + 172800); age('leads', 'client-cx-3', T20 + 172800);
+    sql(`INSERT INTO timeline_events (id,lead_id,type,timestamp,title,author,hidden) VALUES
+      ('cx-ev-1','cx-lead-1','note','2020-07-01 12:00:00','CX note','Probe Admin',0),
+      ('cx-ev-2','cx-lead-1','note','2020-08-01 12:00:00','CX hidden note','Probe Admin',1),
+      ('cx-ev-3','cx-lead-3','email','2020-09-01 12:00:00','CX mail','Probe Admin',0),
+      ('cx-ev-4','cx-lead-doc','note','2099-02-01 08:00:00','CX lead note','Probe Admin',0),
+      ('cx-ev-5','client-cx-1','note','2099-02-01 09:00:00','CX client note','Probe Admin',0),
+      ('cx-ev-6','cx-lead-doc','phone','2099-02-02 08:00:00','CX lead call','Probe Admin',0);
+      INSERT INTO timeline_events (id,lead_id,type,timestamp,title,file_name,file_type,author) VALUES
+      ('cx-doc-lead','cx-lead-doc','offer','2099-01-01 10:00:00','CX doc lead','a.pdf','offer','Probe Admin'),
+      ('cx-doc-client','client-cx-1','offer','2099-01-02 10:00:00','CX doc client','b.pdf','offer','Probe Admin');`);
+    sql(`INSERT INTO meeting_notes (id,title,date,lead_id,archived) VALUES
+      ('cx-mtg-past','CX Mtg past','2020-01-10','client-cx-1',0), ('cx-mtg-today','CX Mtg today',${sq(today)},'client-cx-1',0),
+      ('cx-mtg-f1','CX Mtg f1','2099-03-01','client-cx-1',0), ('cx-mtg-f2','CX Mtg f2','2099-03-02','client-cx-1',0),
+      ('cx-mtg-arch','CX Mtg arch','2099-04-01',NULL,1);
+      INSERT INTO meeting_tasks (id,meeting_id,title,due_date,status) VALUES
+      ('cx-mt-1','cx-mtg-f1','CX item overdue','2020-01-01','todo'), ('cx-mt-2','cx-mtg-f1','CX item today',${sq(today)},'todo'),
+      ('cx-mt-3','cx-mtg-f1','CX item later','2099-05-01','todo'), ('cx-mt-4','cx-mtg-f1','CX item done','2020-01-02','done'),
+      ('cx-mt-5','cx-mtg-f1','CX item undated',NULL,'todo');`);
+    age('meeting_notes', 'cx-mtg-past', T20);
+
+    // ---- RC11: documents and files respect the leads/clients split
+    let r, r2;
+    r = await call(L, 'list_documents', { type: 'offer', limit: 100 });
+    check('list_documents without lead_id: a leads-only key sees the document of a lead record', has(r, 'cx-doc-lead'), ids(r));
+    check('list_documents without lead_id: a leads-only key does not see a client record\'s document', Array.isArray(r) && !has(r, 'cx-doc-client'), ids(r));
+    r = await call(A, 'list_documents', { type: 'offer', limit: 100 });
+    check('list_documents: Admin sees both kinds', has(r, 'cx-doc-lead') && has(r, 'cx-doc-client'), ids(r));
+    r = await call(A, 'list_documents', { type: 'offer', limit: 1 });
+    r2 = await call(A, 'list_documents', { type: 'offer', limit: 1, offset: 1 });
+    check('list_documents: offset pages on (newest first, id tiebreak)', ids(r) === 'cx-doc-client' && ids(r2) === 'cx-doc-lead', `${ids(r)} / ${ids(r2)}`);
+    check('list_documents: timestamp_iso is the stored local time with the offset', r2[0]?.timestamp_iso === '2099-01-01T10:00:00+01:00', JSON.stringify(r2[0]));
+    check('list_documents: a client record named by id is refused for a leads-only key', isErr(await call(L, 'list_documents', { lead_id: 'client-cx-1' }), /not found/), '');
+    check('list_files source=lead: a leads-only key gets nothing for a client record', (r = await call(L, 'list_files', { source: 'lead', id: 'client-cx-1' })) && Array.isArray(r) && r.length === 0, JSON.stringify(r));
+    check('list_files source=lead: a leads-only key still gets a lead record\'s files', has(await call(L, 'list_files', { source: 'lead', id: 'cx-lead-doc' }), 'cx-doc-lead'), '');
+    check('list_files source=lead: a clients-only key gets nothing for a lead record', (r = await call(C, 'list_files', { source: 'lead', id: 'cx-lead-doc' })) && Array.isArray(r) && r.length === 0, JSON.stringify(r));
+    check('list_files source=lead: a clients-only key gets a client record\'s files', has(await call(C, 'list_files', { source: 'lead', id: 'client-cx-1' }), 'cx-doc-client'), '');
+    r = await call(A, 'list_files', { source: 'lead', id: 'client-cx-1', limit: 1, offset: 5 });
+    check('list_files source=lead: offset past the end is an empty page', Array.isArray(r) && r.length === 0, JSON.stringify(r));
+
+    // ---- mcp_task_scope matches name or e-mail, like the app
+    sql(`INSERT INTO tasks (id,title,deadline,status,owner,created_by) VALUES ('cx-task-mail','CX Mail owner','2031-01-01','New','probe-editor@probe.test','Probe Admin');`);
+    check('a task owned by the caller\'s e-mail is visible without tasks.view_all', has(await call(TOKENS.editor, 'list_tasks', { search: 'CX Mail' }), 'cx-task-mail'), '');
+
+    // ---- list_leads
+    r = await call(A, 'list_leads', { search: 'CX', limit: 100 });
+    check('list_leads: archived leads are hidden by default, every row says archived=false', has(r, 'cx-lead-1') && !has(r, 'cx-lead-arch') && r.every((l) => l.archived === false), ids(r));
+    r = await call(A, 'list_leads', { search: 'CX', include_archived: true, limit: 100 });
+    check('list_leads: include_archived lists the archived lead and flags it', r.find?.((l) => l.id === 'cx-lead-arch')?.archived === true, ids(r));
+    r = await call(L, 'list_leads', { search: 'CX', limit: 100 });
+    check('list_leads: a leads-only key sees no client record and no record with a client adjustment', has(r, 'cx-lead-1') && !has(r, 'client-cx-1') && !has(r, 'cx-lead-adj'), ids(r));
+    r = await call(L, 'list_leads', { search: 'CX', limit: 2 });
+    check('list_leads: the module split runs before LIMIT, so a page is full (2 of 2)', ids(r) === 'cx-lead-2,cx-lead-1', ids(r));
+    r = await call(A, 'list_leads', { search: 'CX Lead One' });
+    const l1 = r[0];
+    check('list_leads: updated_at is an ISO moment, the one the database holds', l1 && l1.updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify(l1));
+    check('list_leads: created_at stays the plain creation date', l1 && l1.created_at === '2026-11-01', JSON.stringify(l1));
+    check('list_leads: last_activity_at is the newest visible timeline entry (a hidden one is ignored)', l1 && Date.parse(l1.last_activity_at) === Date.parse('2020-07-01T12:00:00+02:00'), JSON.stringify(l1));
+    r = await call(A, 'list_leads', { search: 'CX Lead Two' });
+    check('list_leads: with no timeline entry last_activity_at equals updated_at', r[0] && isoRe.test(r[0].updated_at) && r[0].last_activity_at === r[0].updated_at, JSON.stringify(r[0]));
+    const mailLead = async (tok) => (await call(tok, 'list_leads', { search: 'CX Lead Three' }))[0];
+    check('list_leads: an e-mail entry counts in last_activity_at only for a key with the mailbox module', Date.parse((await mailLead(A)).last_activity_at) === Date.parse('2020-09-01T12:00:00+02:00') && (await mailLead(L)).last_activity_at === '2020-06-01T10:00:00+02:00', JSON.stringify([await mailLead(A), await mailLead(L)]));
+    const since = async (args, tok = A) => ids(await call(tok, 'list_leads', { search: 'CX Lead', limit: 100, ...args }));
+    check('list_leads: updated_from leaves out a lead last changed before it', !(await since({ updated_from: '2021-01-01' })).includes('cx-lead-1') && (await since({ updated_from: '2021-01-01' })).includes('cx-lead-2'), '');
+    check('list_leads: updated_from takes a time of day', (await since({ updated_from: '2020-06-01 09:59' })).includes('cx-lead-1') && !(await since({ updated_from: '2020-06-01 10:01' })).includes('cx-lead-1'), '');
+    check('list_leads: updated_to is exclusive with a time, whole-day with a date', !(await since({ updated_to: '2020-06-01 10:00' })).includes('cx-lead-1') && (await since({ updated_to: '2020-06-01' })).includes('cx-lead-1'), '');
+    check('list_leads: a timeline entry does not move updated_at (the 2020-07-01 note is outside updated_from..to)', !(await since({ updated_from: '2020-06-30', updated_to: '2020-07-02' })).includes('cx-lead-1'), '');
+    check('list_leads: activity_from/activity_to find the lead through its timeline entry', (await since({ activity_from: '2020-06-30', activity_to: '2020-07-02' })) === 'cx-lead-1', await since({ activity_from: '2020-06-30', activity_to: '2020-07-02' }));
+    check('list_leads: activity_from also matches a record change', (await since({ activity_from: '2021-01-01' })).includes('cx-lead-2') && !(await since({ activity_from: '2021-01-01' })).includes('cx-lead-1'), '');
+    check('list_leads: the activity filter honours the e-mail gate', (await since({ activity_from: '2020-08-31', activity_to: '2020-09-02' })).includes('cx-lead-3') && !(await since({ activity_from: '2020-08-31', activity_to: '2020-09-02' }, L)).includes('cx-lead-3'), '');
+    r = (await since({ sort_by: 'updated_at' })).split(',');
+    check('list_leads: sort_by=updated_at puts the most recently changed first', r.indexOf('cx-lead-2') < r.indexOf('cx-lead-1'), r.join());
+    r = (await since({ sort_by: 'updated_at', sort_order: 'asc' })).split(',');
+    check('list_leads: sort_order=asc reverses it', r.indexOf('cx-lead-1') < r.indexOf('cx-lead-2'), r.join());
+    check('list_leads: created_from/created_to are an inclusive date range', (await since({ created_from: '2026-11-05', created_to: '2026-11-05' })) === 'cx-lead-2', await since({ created_from: '2026-11-05', created_to: '2026-11-05' }));
+    check('list_leads: created_from after created_to is refused', isErr(await call(A, 'list_leads', { created_from: '2026-11-06', created_to: '2026-11-05' }), /after/), '');
+    check('list_leads: a malformed sort_by is refused', isErr(await call(A, 'list_leads', { sort_by: 'name' }), /sort_by/), '');
+    check('list_leads: offset pages (limit 1, offset 1 on the default newest-created order)', ids(await call(A, 'list_leads', { search: 'CX Lead', limit: 1, offset: 1 })) === 'cx-lead-1', ids(await call(A, 'list_leads', { search: 'CX Lead', limit: 1, offset: 1 })));
+    r = await call(A, 'get_lead_pipeline_summary', {});
+    const rL = await call(L, 'get_lead_pipeline_summary', {});
+    check('get_lead_pipeline_summary: a leads-only key does not count a record with a client adjustment', r.active && rL.active && r.active.count > rL.active.count && r.as_of === today, JSON.stringify([r.active, rL.active, r.as_of]));
+
+    // ---- get_lead
+    r = await call(A, 'get_lead', { id: 'cx-lead-1' });
+    check('get_lead: updated_at is ISO with the offset', r.updated_at === '2020-06-01T10:00:00+02:00', r.updated_at);
+    check('get_lead: timeline entries keep the local time and carry an ISO form; hidden ones stay out', r.timeline_events?.length === 1 && r.timeline_events[0].timestamp === '2020-07-01 12:00:00' && r.timeline_events[0].timestamp_iso === '2020-07-01T12:00:00+02:00', JSON.stringify(r.timeline_events));
+    check('get_lead: last_activity_at is the newest timeline entry', Date.parse(r.last_activity_at) === Date.parse('2020-07-01T12:00:00+02:00'), r.last_activity_at);
+    check('get_lead: a leads-only key cannot read a client record', isErr(await call(L, 'get_lead', { id: 'client-cx-1' }), /not found/), '');
+
+    // ---- clients
+    r = await call(A, 'list_clients', { search: 'CX Client', limit: 100 });
+    const one = r.find?.((c) => c.id === 'client-cx-1');
+    check('list_clients: a profile\'s updated_at is the newest of its records, as ISO', one && one.leads_count === 2 && one.updated_at === '2020-06-02T10:00:00+02:00', JSON.stringify(one));
+    check('list_clients: last_activity_at adds the timeline of all its records', one && Date.parse(one.last_activity_at) === Date.parse('2099-02-01T09:00:00+01:00'), JSON.stringify(one));
+    check('list_clients: without a timeline last_activity_at equals updated_at', r.find?.((c) => c.id === 'client-cx-2')?.last_activity_at === '2020-06-03T10:00:00+02:00', JSON.stringify(r.map?.((c) => [c.id, c.last_activity_at])));
+    const cl = async (args) => ids(await call(A, 'list_clients', { search: 'CX Client', limit: 100, ...args }));
+    check('list_clients: sort_by=updated_at is newest first, ties by id', (await cl({ sort_by: 'updated_at' })) === 'client-cx-2,client-cx-3,client-cx-1', await cl({ sort_by: 'updated_at' }));
+    check('list_clients: sort_order=asc reverses the moment, not the id tiebreak', (await cl({ sort_by: 'updated_at', sort_order: 'asc' })) === 'client-cx-1,client-cx-2,client-cx-3', await cl({ sort_by: 'updated_at', sort_order: 'asc' }));
+    const pageIds = [];
+    for (const o of [0, 1, 2]) pageIds.push(ids(await call(A, 'list_clients', { search: 'CX Client', sort_by: 'updated_at', limit: 1, offset: o })));
+    check('list_clients: pages are stable, equal moments keep their id order (offset 0, 1, 2)', pageIds.join() === 'client-cx-2,client-cx-3,client-cx-1', pageIds.join());
+    check('list_clients: updated_from leaves out a profile whose newest record is older', (await cl({ updated_from: '2020-06-03' })).split(',').sort().join() === 'client-cx-2,client-cx-3', await cl({ updated_from: '2020-06-03' }));
+    check('list_clients: updated_to is whole-day with a date', (await cl({ updated_to: '2020-06-02' })) === 'client-cx-1', await cl({ updated_to: '2020-06-02' }));
+    check('list_clients: a malformed updated_from is refused', isErr(await call(A, 'list_clients', { updated_from: 'soon' }), /YYYY-MM-DD/), '');
+    r = await call(A, 'get_client_profile', { name: 'CX Client One' });
+    check('get_client_profile: updated_at, last_activity_at and each record\'s updated_at are ISO', r.updated_at === '2020-06-02T10:00:00+02:00' && isoRe.test(r.last_activity_at) && r.leads?.every((l) => isoRe.test(l.updated_at)), JSON.stringify([r.updated_at, r.last_activity_at, r.leads?.map((l) => l.updated_at)]));
+    r = await call(A, 'get_client', { id: 'client-cx-1' });
+    check('get_client: updated_at is ISO, the one the database holds', r.updated_at === '2020-06-01T10:00:00+02:00', r.updated_at);
+
+    // ---- get_client_dossier: upcoming vs recent meetings, ISO timeline
+    r = await call(A, 'get_client_dossier', { identifier: 'client-cx-1' });
+    check('get_client_dossier: upcoming_meetings are dated today or later, soonest first', ids(r.upcoming_meetings) === 'cx-mtg-today,cx-mtg-f1,cx-mtg-f2', ids(r.upcoming_meetings));
+    check('get_client_dossier: recent_meetings are the past ones only', ids(r.recent_meetings) === 'cx-mtg-past', ids(r.recent_meetings));
+    check('get_client_dossier: the timeline carries an ISO form and the profile an updated_at', r.latest_timeline?.length > 0 && r.latest_timeline.every((e) => isoRe.test(e.timestamp_iso)) && r.profile?.updated_at === '2020-06-02T10:00:00+02:00', JSON.stringify([r.latest_timeline?.[0], r.profile?.updated_at]));
+    check('get_client_dossier: open_tasks_truncated says the list is complete', r.open_tasks_truncated === false, JSON.stringify(r.open_tasks_truncated));
+
+    // ---- list_contacts
+    r = await call(A, 'list_contacts', { client_id: 'client-cx-1' });
+    check('list_contacts: carries the record\'s updated_at as ISO', r.length === 1 && r[0].updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify(r));
+    check('list_contacts: offset pages past the one contact', (await call(A, 'list_contacts', { client_id: 'client-cx-1', offset: 1 })).length === 0, '');
+    check('list_contacts: a clients-only key gets nothing for a lead record, and its contact for a client', (await call(C, 'list_contacts', { client_id: 'cx-lead-1' })).length === 0 && (await call(C, 'list_contacts', { client_id: 'client-cx-1' })).length === 1, '');
+
+    // ---- list_communications: the cross-record feed
+    const feed = async (args, tok = A) => ids(await call(tok, 'list_communications', { from: '2099-01-01', sort_order: 'asc', limit: 100, ...args }));
+    check('list_communications: lead_id is optional; Admin gets the feed across records, oldest first', (await feed({})) === 'cx-doc-lead,cx-doc-client,cx-ev-4,cx-ev-5,cx-ev-6', await feed({}));
+    check('list_communications: a leads-only key gets the feed without client records, in full', (await feed({}, L)) === 'cx-doc-lead,cx-ev-4,cx-ev-6', await feed({}, L));
+    check('list_communications: to is exclusive with a time', (await feed({ from: '2099-02-01', to: '2099-02-01 08:30' })) === 'cx-ev-4', await feed({ from: '2099-02-01', to: '2099-02-01 08:30' }));
+    check('list_communications: to is whole-day with a date', (await feed({ from: '2099-02-01', to: '2099-02-01' })) === 'cx-ev-4,cx-ev-5', await feed({ from: '2099-02-01', to: '2099-02-01' }));
+    check('list_communications: type filter', (await feed({ type: 'phone' })) === 'cx-ev-6', await feed({ type: 'phone' }));
+    check('list_communications: offset pages the feed', (await feed({ limit: 2, offset: 2 })) === 'cx-ev-4,cx-ev-5', await feed({ limit: 2, offset: 2 }));
+    check('list_communications: newest first by default', (await feed({ sort_order: 'desc' })).split(',')[0] === 'cx-ev-6', '');
+    r = await call(A, 'list_communications', { from: '2099-02-01', to: '2099-02-01', sort_order: 'asc' });
+    check('list_communications: rows carry lead_name and timestamp_iso (local time with the offset)', r[0]?.lead_name === 'CX Lead Doc' && r[0]?.timestamp === '2099-02-01 08:00:00' && r[0]?.timestamp_iso === '2099-02-01T08:00:00+01:00', JSON.stringify(r[0]));
+    check('list_communications: a client record named by lead_id is refused for a leads-only key', isErr(await call(L, 'list_communications', { lead_id: 'client-cx-1' }), /not found/), '');
+    check('list_communications: a malformed from is refused', isErr(await call(A, 'list_communications', { from: 'noon' }), /YYYY-MM-DD/), '');
+    r = await call(A, 'log_communication', { lead_id: 'cx-lead-doc', type: 'note', title: 'CX logged' });
+    const stamp = cell(`SELECT timestamp FROM timeline_events WHERE id = ${sq(r.id)}`);
+    const localNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Bratislava' });
+    const asUtc = (s) => Date.parse(s.replace(' ', 'T') + 'Z');
+    check('log_communication stamps the app clock, not MySQL NOW()', Math.abs(asUtc(stamp) - asUtc(localNow)) < 180000, `${stamp} vs ${localNow}`);
+    r2 = await call(A, 'list_communications', { lead_id: 'cx-lead-doc', from: stamp, sort_order: 'asc' });
+    check('list_communications: polling with from = the last timestamp seen returns the new entry', has(r2, r.id) && Math.abs(Date.parse(r2.find((x) => x.id === r.id).timestamp_iso) - Date.now()) < 180000, JSON.stringify(r2).slice(0, 300));
+
+    // ---- meetings
+    const mt = async (args, tok = A) => ids(await call(tok, 'list_meetings', { search: 'CX Mtg', limit: 100, ...args }));
+    check('list_meetings: archived meetings are hidden by default', (await mt({})) === 'cx-mtg-f2,cx-mtg-f1,cx-mtg-today,cx-mtg-past', await mt({}));
+    r = await call(A, 'list_meetings', { search: 'CX Mtg', include_archived: true, limit: 100 });
+    check('list_meetings: include_archived lists the archived meeting and flags it', r.find?.((m) => m.id === 'cx-mtg-arch')?.archived === true && r.find((m) => m.id === 'cx-mtg-f1').archived === false, ids(r));
+    const past = (await call(A, 'list_meetings', { search: 'CX Mtg past' }))[0];
+    check('list_meetings: created_at and updated_at are ISO moments, updated_at the one the database holds', past && isoRe.test(past.created_at) && past.updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify(past));
+    check('list_meetings: updated_from leaves out a meeting last changed before it', !(await mt({ updated_from: '2021-01-01' })).includes('cx-mtg-past') && (await mt({ updated_from: '2021-01-01' })).includes('cx-mtg-f1'), '');
+    check('list_meetings: sort_by=updated_at puts the most recently changed first', (await mt({ sort_by: 'updated_at' })).split(',').at(-1) === 'cx-mtg-past', await mt({ sort_by: 'updated_at' }));
+    check('list_meetings: upcoming_only runs on the app date (today counts)', (await mt({ upcoming_only: true })) === 'cx-mtg-f2,cx-mtg-f1,cx-mtg-today', await mt({ upcoming_only: true }));
+    check('list_meetings: date_from/date_to are an inclusive range on the meeting day', (await mt({ date_from: '2099-03-01', date_to: '2099-03-01' })) === 'cx-mtg-f1', await mt({ date_from: '2099-03-01', date_to: '2099-03-01' }));
+    check('list_meetings: start_date still works as a lower bound', (await mt({ start_date: '2099-03-02' })) === 'cx-mtg-f2', await mt({ start_date: '2099-03-02' }));
+    check('list_meetings: offset pages (limit 1, offset 1)', (await mt({ limit: 1, offset: 1 })) === 'cx-mtg-f1', await mt({ limit: 1, offset: 1 }));
+    r = await call(A, 'get_meeting', { id: 'cx-mtg-past' });
+    check('get_meeting: created_at and updated_at are ISO moments', isoRe.test(r.created_at) && r.updated_at === '2020-06-01T10:00:00+02:00', JSON.stringify([r.created_at, r.updated_at]));
+
+    // ---- list_meeting_tasks
+    const mit = async (args) => ids(await call(A, 'list_meeting_tasks', { meeting_id: 'cx-mtg-f1', ...args }));
+    check('list_meeting_tasks: default order is the due date, then id (undated first)', (await mit({})) === 'cx-mt-5,cx-mt-1,cx-mt-4,cx-mt-2,cx-mt-3', await mit({}));
+    check('list_meeting_tasks: bucket=overdue is open items past their due date only', (await mit({ bucket: 'overdue' })) === 'cx-mt-1', await mit({ bucket: 'overdue' }));
+    check('list_meeting_tasks: bucket=today', (await mit({ bucket: 'today' })) === 'cx-mt-2', await mit({ bucket: 'today' }));
+    check('list_meeting_tasks: bucket=upcoming', (await mit({ bucket: 'upcoming' })) === 'cx-mt-3', await mit({ bucket: 'upcoming' }));
+    check('list_meeting_tasks: bucket=done', (await mit({ bucket: 'done' })) === 'cx-mt-4', await mit({ bucket: 'done' }));
+    check('list_meeting_tasks: due_from/due_to are an inclusive range', (await mit({ due_from: '2020-01-01', due_to: '2020-01-02' })) === 'cx-mt-1,cx-mt-4', await mit({ due_from: '2020-01-01', due_to: '2020-01-02' }));
+    check('list_meeting_tasks: offset pages (limit 2, offset 2)', (await mit({ limit: 2, offset: 2 })) === 'cx-mt-4,cx-mt-2', await mit({ limit: 2, offset: 2 }));
+    check('list_meeting_tasks: an unknown bucket is refused', isErr(await call(A, 'list_meeting_tasks', { bucket: 'someday' }), /bucket/), '');
+
+    // ---- list_tasks: archives, deadline range, deadline history
+    const mk = async (title, deadline) => (await call(A, 'create_task', { title, deadline })).id;
+    const dlA = await mk('CX Dl A', '2031-03-01');
+    const dlB = await mk('CX Dl B', '2031-03-15');
+    const archId = await mk('CX Arch task', '2031-04-01');
+    const doneId = await mk('CX Done task', '2031-05-01');
+    const tk = async (args) => ids(await call(A, 'list_tasks', { limit: 100, ...args }));
+    check('list_tasks: deadline_from is an inclusive lower bound', (await tk({ search: 'CX Dl', deadline_from: '2031-03-10' })) === dlB, await tk({ search: 'CX Dl', deadline_from: '2031-03-10' }));
+    check('list_tasks: deadline_to is an inclusive upper bound', (await tk({ search: 'CX Dl', deadline_to: '2031-03-01' })) === dlA, await tk({ search: 'CX Dl', deadline_to: '2031-03-01' }));
+    check('list_tasks: a malformed deadline_from is refused', isErr(await call(A, 'list_tasks', { deadline_from: 'next week' }), /YYYY-MM-DD/), '');
+    sql(`UPDATE tasks SET original_deadline = '2031-02-01', deadline_moves = 2 WHERE id = ${sq(dlA)}`);
+    const rowA = (await call(A, 'list_tasks', { search: 'CX Dl A' }))[0];
+    check('list_tasks: rows carry original_deadline and deadline_moves', rowA && rowA.original_deadline === '2031-02-01' && rowA.deadline_moves === 2, JSON.stringify(rowA));
+    const gt = await call(A, 'get_task', { id: dlA });
+    check('get_task: original_deadline and deadline_moves, ISO created_at/updated_at', gt.original_deadline === '2031-02-01' && Number(gt.deadline_moves) === 2 && isoRe.test(gt.created_at) && isoRe.test(gt.updated_at), JSON.stringify(gt).slice(0, 300));
+    age('tasks', archId, T20);
+    sql(`UPDATE tasks SET archived = 1 WHERE id = ${sq(archId)}`);
+    check('list_tasks: an archived task is left out by default', !(await tk({ search: 'CX Arch' })).includes(archId), '');
+    const arch = (await call(A, 'list_tasks', { search: 'CX Arch', include_archived: true }))[0];
+    check('list_tasks: include_archived lists it, flagged archived', arch && arch.id === archId && arch.archived === true, JSON.stringify(arch));
+    check('list_tasks: archiving moves updated_at, so include_archived + updated_from shows it as a change', (await tk({ search: 'CX Arch', include_archived: true, updated_from: '2021-01-01' })) === archId, await tk({ search: 'CX Arch', include_archived: true, updated_from: '2021-01-01' }));
+    check('list_tasks: rows not archived say archived=false', (await call(A, 'list_tasks', { search: 'CX Dl A' }))[0]?.archived === false, '');
+    await call(A, 'complete_task', { id: doneId });
+    const done = (await call(A, 'list_tasks', { search: 'CX Done', bucket: 'done' }))[0];
+    check('list_tasks: completed_at_iso is the local completion time with the offset', done && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(done.completed_at) && Math.abs(Date.parse(done.completed_at_iso) - Date.now()) < 300000, JSON.stringify(done));
+  } finally {
+    sql(`DELETE FROM task_assignees WHERE task_id IN (SELECT id FROM tasks WHERE title LIKE 'CX %');
+         DELETE FROM tasks WHERE title LIKE 'CX %';
+         DELETE FROM meeting_notes WHERE id LIKE 'cx-mtg-%';
+         DELETE FROM timeline_events WHERE id LIKE 'cx-%' OR lead_id LIKE 'cx-%' OR lead_id LIKE 'client-cx-%';
+         DELETE FROM leads WHERE id LIKE 'cx-lead-%' OR id LIKE 'client-cx-%';
+         DELETE FROM mcp_keys WHERE id IN ('pk-cxl', 'pk-cxc');
+         DELETE FROM users WHERE id IN ('probe-cxl', 'probe-cxc');
+         REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(rolesBefore)});`);
+  }
 }
 
 // ---- (separator: keep these stubs apart so git merges them cleanly) ----

@@ -483,31 +483,8 @@ function mcp_get_tool_definitions(): array {
 function mcp_core_tool_definitions(): array {
     return [
         // DOMAIN 1: Leads & Opportunities (Pipeline)
-        [
-            'name' => 'list_leads',
-            'description' => 'List and filter sales leads and pipeline opportunities.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'status' => ['type' => 'string', 'description' => 'Filter by status: new, contacted, proposal_sent, negotiation, won, lost'],
-                    'search' => ['type' => 'string', 'description' => 'Search across lead name, email, phone, city'],
-                    'owner' => ['type' => 'string', 'description' => 'Filter by assigned owner/manager name'],
-                    'limit' => ['type' => 'integer', 'description' => 'Number of records to return (default 25, max 100)'],
-                    'offset' => ['type' => 'integer', 'description' => 'Pagination offset (default 0)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_lead',
-            'description' => 'Get full details of a specific lead by ID, including recent timeline events and notes.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'The lead ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_crm_defs()['list_leads'],
+        mcp_crm_defs()['get_lead'],
         [
             'name' => 'create_lead',
             'description' => 'Create a new sales opportunity or lead in the pipeline.',
@@ -577,34 +554,8 @@ function mcp_core_tool_definitions(): array {
         ],
 
         // DOMAIN 2: Clients & Contact Management
-        [
-            'name' => 'list_clients',
-            'description' => 'List clients as the Clients register shows them: one profile per client name (records with the same name are combined; total_value = sum of their lead values plus the client value adjustment). Pipeline leads are not clients.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'search' => ['type' => 'string', 'description' => 'Search by client name, email, ICO, phone'],
-                    'city' => ['type' => 'string', 'description' => 'Filter by city'],
-                    'client_type' => ['type' => 'string', 'description' => 'Filter by client type: business, person, partner'],
-                    'sort_by' => ['type' => 'string', 'description' => 'Sort column: name, created_at, value (default name)'],
-                    'sort_order' => ['type' => 'string', 'description' => 'Sort direction: asc or desc (default asc)'],
-                    'limit' => ['type' => 'integer', 'description' => 'Results limit (default 50)'],
-                    'offset' => ['type' => 'integer', 'description' => 'Offset for pagination'],
-                    'include_archived' => ['type' => 'boolean', 'description' => 'Include archived clients (default false)']
-                ]
-            ]
-        ],
-        [
-            'name' => 'get_client',
-            'description' => 'Get a client record with the projects and invoicing documents of the whole client: every record sharing its name (as the Clients register shows it), plus unlinked projects named for it (linked_by = name_match). Projects carry the resolved contract value, status group, invoice date (invoice_date), deadline (completion_deadline) and url; documents carry payment status. For one-call context use get_client_dossier.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'The client ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_crm_defs()['list_clients'],
+        mcp_crm_defs()['get_client'],
         [
             'name' => 'create_client',
             'description' => 'Create a new business client record with tax and invoicing details.',
@@ -651,17 +602,7 @@ function mcp_core_tool_definitions(): array {
                 'required' => ['id']
             ]
         ],
-        [
-            'name' => 'list_contacts',
-            'description' => 'List contacts associated with a specific client.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'client_id' => ['type' => 'string', 'description' => 'Client ID']
-                ],
-                'required' => ['client_id']
-            ]
-        ],
+        mcp_crm_defs()['list_contacts'],
         [
             'name' => 'create_contact',
             'description' => 'Log or link a contact person for a client.',
@@ -679,34 +620,8 @@ function mcp_core_tool_definitions(): array {
         ],
 
         // DOMAIN 3: Tasks & Collaboration
-        [
-            'name' => 'list_tasks',
-            'description' => 'List and filter tasks across projects, clients, and team members. '
-                . 'updated_at moves on any edit to the task, including its assignees and tags; comments are on the linked client timeline and do not count. '
-                . mcp_window_doc('tasks', MCP_TASK_WINDOW),
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'status' => ['type' => 'string', 'description' => 'Filter by a configured task status'],
-                    'priority' => ['type' => 'string', 'description' => 'Filter by priority: low, medium, high'],
-                    'owner' => ['type' => 'string', 'description' => 'Filter by assignee name'],
-                    'project_id' => ['type' => 'string', 'description' => 'Filter by related project ID'],
-                    'client_id' => ['type' => 'string', 'description' => 'Filter by related client ID'],
-                    'search' => ['type' => 'string', 'description' => 'Search task titles and descriptions'],
-                ] + mcp_bucket_prop('deadline') + mcp_window_props(MCP_TASK_WINDOW)
-            ]
-        ],
-        [
-            'name' => 'get_task',
-            'description' => 'Retrieve full task details, assignees, and tags.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'id' => ['type' => 'string', 'description' => 'Task ID']
-                ],
-                'required' => ['id']
-            ]
-        ],
+        mcp_crm_defs()['list_tasks'],
+        mcp_crm_defs()['get_task'],
         [
             'name' => 'create_task',
             'description' => 'Create a new task with assignees, deadline, and project/client links.',
@@ -1084,19 +999,7 @@ function mcp_core_tool_definitions(): array {
         ],
 
         // DOMAIN 7: Meetings & Scheduling
-        [
-            'name' => 'list_meetings',
-            'description' => 'Query scheduled client meetings and meeting notes.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'upcoming_only' => ['type' => 'boolean', 'description' => 'Only show future meetings'],
-                    'start_date' => ['type' => 'string', 'description' => 'From date (YYYY-MM-DD)'],
-                    'search' => ['type' => 'string', 'description' => 'Search meeting title or notes'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
-            ]
-        ],
+        mcp_crm_defs()['list_meetings'],
         [
             'name' => 'schedule_meeting',
             'description' => 'Schedule a client meeting with notes and attendees.',
@@ -1134,19 +1037,7 @@ function mcp_core_tool_definitions(): array {
         ],
 
         // DOMAIN 8: Communications & Notes
-        [
-            'name' => 'list_communications',
-            'description' => 'List interaction history (calls, emails, notes) for a lead or client.',
-            'inputSchema' => [
-                'type' => 'object',
-                'properties' => [
-                    'lead_id' => ['type' => 'string', 'description' => 'Lead or client ID'],
-                    'type' => ['type' => 'string', 'description' => 'Filter by event type: phone, email, note, appointment'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ],
-                'required' => ['lead_id']
-            ]
-        ],
+        mcp_crm_defs()['list_communications'],
         [
             'name' => 'log_communication',
             'description' => 'Log a client phone call, interaction note, or email summary to the timeline.',
@@ -1464,66 +1355,10 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
     switch ($tool) {
         // --- 1. Leads & Pipeline ---
         case 'list_leads':
-            $where = ["archived = 0"];
-            $params = [];
-
-            if (!empty($args['status'])) {
-                $where[] = "status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['owner'])) {
-                $where[] = "owner = ?";
-                $params[] = $args['owner'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(name LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 25)), 100);
-            $offset = max(0, (int)($args['offset'] ?? 0));
-
-            $sql = "SELECT id, name, city, client_type, status, source, owner, division, value, adjustment, rating, phone, email, contact_person, created_at
-                    FROM leads
-                    WHERE " . implode(' AND ', $where) . "
-                    ORDER BY created_at DESC
-                    LIMIT $limit OFFSET $offset";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            // The leads/clients module split: rows of the kind this key may not
-            // read are withheld, exactly as sync.php withholds them.
-            return array_map(
-                fn($l) => $l + ['url' => mcp_record_url($pdo, $l)],
-                array_values(array_filter($stmt->fetchAll(\PDO::FETCH_ASSOC), 'mcp_lead_module_visible'))
-            );
+            return mcp_list_leads($pdo, $user, $args);
 
         case 'get_lead':
-            $stmt = $pdo->prepare("SELECT * FROM leads WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$lead) {
-                throw new \Exception("Lead not found with ID: " . $args['id']);
-            }
-            // A client-classified row needs the clients module, a pipeline lead the
-            // leads module — same rule the list applies, so no record can be reached
-            // by id that the caller could not see in the list. The not-found message
-            // is reused so the split cannot be used to probe for record existence.
-            if (!mcp_lead_module_visible($lead)) {
-                throw new \Exception("Lead not found with ID: " . $args['id']);
-            }
-
-            // Fetch recent timeline events
-            $evStmt = $pdo->prepare("SELECT id, type, timestamp, title, content, amount, author FROM timeline_events WHERE lead_id = ? AND hidden = 0" . (mcp_can('email') ? '' : " AND type <> 'email'") . " ORDER BY timestamp DESC LIMIT 20");
-            $evStmt->execute([$args['id']]);
-            $lead['timeline_events'] = $evStmt->fetchAll(\PDO::FETCH_ASSOC);
-            $lead['url'] = mcp_record_url($pdo, $lead);
-
-            return $lead;
+            return mcp_get_lead($pdo, $user, $args);
 
         case 'create_lead':
             $id = 'ld_' . bin2hex(random_bytes(8));
@@ -1689,6 +1524,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $client['kind'] = $scope['is_client'] ? 'client' : 'lead';
             $client['url'] = mcp_scope_url($pdo, $scope);
             $client['record_ids'] = $scope['ids'];
+            $client = array_merge($client, mcp_moments_of($pdo, 'leads', (string)$client['id'], ['updated_at'])); // ISO, not the raw TIMESTAMP
 
             // Linked projects (only for callers who can see the projects module)
             if (mcp_can('projects')) {
@@ -1745,18 +1581,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return ['success' => true, 'id' => $id, 'updated_fields' => array_keys($args)];
 
         case 'list_contacts':
-            $stmt = $pdo->prepare("SELECT id, name, contact_person, email, phone FROM leads WHERE id = ?");
-            $stmt->execute([$args['client_id']]);
-            $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$lead) return [];
-            return [
-                [
-                    'name' => $lead['contact_person'] ?: $lead['name'],
-                    'email' => $lead['email'],
-                    'phone' => $lead['phone'],
-                    'role' => 'Primary Contact'
-                ]
-            ];
+            return mcp_list_contacts($pdo, $args);
 
         case 'create_contact':
             $clientId = mcp_require_string($args, 'client_id');
@@ -1780,75 +1605,10 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 3. Tasks & Collaboration ---
         case 'list_tasks':
-            $where = ["archived = 0"];
-            $params = [];
-
-            if (!empty($args['status'])) {
-                $where[] = "status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['priority'])) {
-                $where[] = "priority = ?";
-                $params[] = $args['priority'];
-            }
-            if (!empty($args['owner'])) {
-                $where[] = "owner = ?";
-                $params[] = $args['owner'];
-            }
-            if (!empty($args['project_id'])) {
-                $where[] = "related_project_id = ?";
-                $params[] = $args['project_id'];
-            }
-            if (!empty($args['client_id'])) {
-                $where[] = "related_lead_id = ?";
-                $params[] = $args['client_id'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(title LIKE ? OR description LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            if ($scopeSql !== '') {
-                $where[] = $scopeSql;
-                $params = array_merge($params, $scopeParams);
-            }
-            // The shared window (mcp_window.php): created_*/updated_*, sort_by/sort_order, limit/offset.
-            $win = mcp_list_window($args, MCP_TASK_WINDOW);
-            $bucket = mcp_enum($args, 'bucket', ['overdue', 'today', 'tomorrow', 'upcoming', 'done']);
-            [$bWhere, $bParams] = $bucket ? mcp_date_bucket($bucket, 'deadline', mcp_open_task_sql($pdo), "COALESCE(NULLIF(deadline_time, ''), '23:59')") : [[], []];
-            $where = array_merge($where, $win['where'], $bWhere, [ccrm_sql_real_tasks()]);
-            $params = array_merge($params, $win['params'], $bParams);
-            $sql = "SELECT id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_lead_id, related_project_id,
-                           completed_by, completed_at, " . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at') . "
-                    FROM tasks WHERE " . implode(' AND ', $where) . ' ' . $win['tail'];
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return array_map('mcp_row_moments', $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return mcp_list_tasks($pdo, $user, $args);
 
         case 'get_task':
-            [$scopeSql, $scopeParams] = mcp_task_scope($user);
-            $stmt = $pdo->prepare("SELECT *, UNIX_TIMESTAMP(created_at) AS created_ts, UNIX_TIMESTAMP(updated_at) AS updated_ts FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
-            $stmt->execute(array_merge([$args['id']], $scopeParams));
-            $task = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$task) {
-                throw new \Exception("Task not found with ID: " . $args['id']);
-            }
-            $task = mcp_task_moments($task);
-
-            // Assignees
-            $asStmt = $pdo->prepare("SELECT user_name FROM task_assignees WHERE task_id = ?");
-            $asStmt->execute([$args['id']]);
-            $task['assignees'] = $asStmt->fetchAll(\PDO::FETCH_COLUMN);
-
-            // Tags
-            $tgStmt = $pdo->prepare("SELECT tag_name FROM task_tags WHERE task_id = ?");
-            $tgStmt->execute([$args['id']]);
-            $task['tags'] = $tgStmt->fetchAll(\PDO::FETCH_COLUMN);
-
-            return $task;
+            return mcp_get_task($pdo, $user, $args);
 
         case 'create_task':
             return mcp_do_create_task($pdo, $user, $args);
@@ -2304,33 +2064,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 7. Meetings & Scheduling ---
         case 'list_meetings':
-            $where = ["archived = 0"];
-            $params = [];
-
-            if (!empty($args['upcoming_only'])) {
-                $where[] = "date >= CURDATE()";
-            }
-            if (!empty($args['start_date'])) {
-                $where[] = "date >= ?";
-                $params[] = $args['start_date'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "(title LIKE ? OR notes LIKE ?)";
-                $params[] = '%' . $args['search'] . '%';
-                $params[] = '%' . $args['search'] . '%';
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT id, title, date, duration, lead_id, lead_name, notes, created_at 
-                    FROM meeting_notes 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY date DESC 
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_meetings($pdo, $args);
 
         case 'schedule_meeting':
             $id = 'mtg_' . bin2hex(random_bytes(8));
@@ -2389,36 +2123,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 8. Communications & Notes ---
         case 'list_communications':
-            $leadId = $args['lead_id'];
-            // The lead/client the timeline belongs to must be readable by this key
-            // (module split), not just the leads module in general.
-            $leadStmt = $pdo->prepare("SELECT id, adjustment FROM leads WHERE id = ?");
-            $leadStmt->execute([$leadId]);
-            $leadRow = $leadStmt->fetch(\PDO::FETCH_ASSOC);
-            if ($leadRow && !mcp_lead_module_visible($leadRow)) {
-                throw new \Exception("Lead not found with ID: {$leadId}");
-            }
-            $where = ["lead_id = ?", "hidden = 0"];
-            $params = [$leadId];
-            // Mail bodies belong to the mailbox module: callers without it do not see email events.
-            if (!mcp_can('email')) $where[] = "type <> 'email'";
-
-            if (!empty($args['type'])) {
-                $where[] = "type = ?";
-                $params[] = $args['type'];
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $stmt = $pdo->prepare(
-                "SELECT id, lead_id, type, timestamp, title, content, amount, is_outgoing, author 
-                 FROM timeline_events 
-                 WHERE " . implode(' AND ', $where) . " 
-                 ORDER BY timestamp DESC 
-                 LIMIT $limit"
-            );
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_communications($pdo, $user, $args);
 
         case 'log_communication':
             $id = 'ev_' . bin2hex(random_bytes(8));

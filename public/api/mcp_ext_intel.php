@@ -770,7 +770,7 @@ function mcp_ext_intel_tool_definitions(): array {
     return [
         [
             'name' => 'get_client_dossier',
-            'description' => 'Everything about one client in a single call: profile (contacts, IČO/DIČ/IČ DPH, source, owner, notes), every project (active and past, with value, status, invoice date and deadline), a financial summary (contracted, invoiced, paid, outstanding, still billable), open tasks and milestones, upcoming meetings and the last 5 timeline entries. Sections the key may not see are left out.',
+            'description' => 'Everything about one client in a single call: profile (contacts, IČO/DIČ/IČ DPH, source, owner, notes), every project (active and past, with value, status, invoice date and deadline), a financial summary (contracted, invoiced, paid, outstanding, still billable), open tasks and milestones (up to 50 open tasks; open_tasks_truncated says if more exist), upcoming_meetings (dated today or later, soonest first, at most 5), recent_meetings (already past, newest first, at most 5) and the last 5 timeline entries (timestamp is local ' . mcp_zone() . ' time, timestamp_iso the same moment with the offset). profile.updated_at is the newest change of any of its records. Sections the key may not see are left out.',
             'inputSchema' => ['type' => 'object', 'properties' => ['identifier' => $client], 'required' => ['identifier']],
         ],
         [
@@ -932,10 +932,12 @@ function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args
                 $stmt = $pdo->prepare(
                     "SELECT id, title, priority, deadline, deadline_time, status, owner, is_locking, related_lead_id, related_project_id
                      FROM tasks WHERE ($rel) AND archived = 0 AND {$openSql} AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : '') . "
-                     ORDER BY deadline ASC LIMIT 50"
+                     ORDER BY deadline ASC, id ASC LIMIT 51"
                 );
                 $stmt->execute(array_merge($ids, $pids, $openParams, $scopeParams));
-                $out['open_tasks'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                $openTasks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                $out['open_tasks_truncated'] = count($openTasks) > 50;
+                $out['open_tasks'] = array_slice($openTasks, 0, 50);
             }
             if (mcp_can('projects')) {
                 $ms = [];
@@ -948,21 +950,27 @@ function mcp_ext_intel_execute(\PDO $pdo, array $user, string $tool, array $args
                 $out['open_milestones'] = $ms;
             }
             if (mcp_can('meetings')) {
-                $stmt = $pdo->prepare("SELECT id, title, date, duration FROM meeting_notes WHERE lead_id IN ($ph) AND archived = 0 ORDER BY date DESC LIMIT 5");
-                $stmt->execute($ids);
+                // Upcoming = dated today or later (soonest first); recent = already past (newest first). 5 each.
+                $stmt = $pdo->prepare("SELECT id, title, date, duration FROM meeting_notes WHERE lead_id IN ($ph) AND archived = 0 AND date >= ? ORDER BY date ASC, id ASC LIMIT 5");
+                $stmt->execute(array_merge($ids, [mcp_today()]));
+                $out['upcoming_meetings'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                $stmt = $pdo->prepare("SELECT id, title, date, duration FROM meeting_notes WHERE lead_id IN ($ph) AND archived = 0 AND date < ? ORDER BY date DESC, id ASC LIMIT 5");
+                $stmt->execute(array_merge($ids, [mcp_today()]));
                 $out['recent_meetings'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             }
 
             $stmt = $pdo->prepare(
                 "SELECT id, lead_id, type, timestamp, title, content, amount, author, is_outgoing FROM timeline_events
                  WHERE lead_id IN ($ph) AND hidden = 0" . (mcp_can('email') ? '' : " AND type <> 'email'") . "
-                 ORDER BY timestamp DESC LIMIT 5"
+                 ORDER BY timestamp DESC, id ASC LIMIT 5"
             );
             $stmt->execute($ids);
-            $out['latest_timeline'] = array_map(function ($e) {
+            $out['latest_timeline'] = mcp_rows_timestamp_iso(array_map(function ($e) {
                 if ($e['content'] !== null && mb_strlen($e['content']) > 1500) $e['content'] = mb_substr($e['content'], 0, 1500) . '…';
                 return $e;
-            }, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            }, $stmt->fetchAll(\PDO::FETCH_ASSOC)));
+            // The profile changes when any of its records does (ISO moment with the offset).
+            $out['profile']['updated_at'] = mcp_format_moment($pdo->query('SELECT UNIX_TIMESTAMP(MAX(updated_at)) FROM leads WHERE id IN (' . implode(',', array_map([$pdo, 'quote'], $ids)) . ')')->fetchColumn());
             return $out;
         }
     }

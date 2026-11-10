@@ -121,7 +121,8 @@ function mcp_employee_defaults(\PDO $pdo): array {
 /** @return array[] profiles; a profile is a client when any of its leads has id client-* or an adjustment > 0 */
 function mcp_client_profiles(\PDO $pdo, array $opts = []): array {
     $rows = $pdo->query(
-        "SELECT * FROM leads
+        'SELECT *, ' . mcp_moment_select('updated_at', 'updated') . "
+         FROM leads
          WHERE LOWER(TRIM(name)) IN (SELECT k FROM (SELECT LOWER(TRIM(name)) k FROM leads WHERE id LIKE 'client-%' OR adjustment > 0) x)
          ORDER BY created_at ASC, id ASC"
     )->fetchAll(\PDO::FETCH_ASSOC);
@@ -138,10 +139,12 @@ function mcp_client_profiles(\PDO $pdo, array $opts = []): array {
         foreach ($leads as $l) { if (strpos($l['id'], 'client-') === 0) { $base = $l; break; } }
         $adjustment = 0.0;
         foreach ($leads as $l) { if ((float)$l['adjustment'] != 0.0) { $adjustment = (float)$l['adjustment']; break; } }
-        $archived = true; $total = 0.0; $created = null;
+        $archived = true; $total = 0.0; $created = null; $updatedTs = null;
         foreach ($leads as $l) {
             $archived = $archived && (int)$l['archived'] === 1;
             $total += (float)$l['value'];
+            // A profile changes when any of its records does: its moment is the newest (a Unix value, see mcp_row_moments).
+            if ($l['updated__ts'] !== null && ($updatedTs === null || (float)$l['updated__ts'] > $updatedTs)) $updatedTs = (float)$l['updated__ts'];
             if ($l['created_at'] && ($created === null || $l['created_at'] < $created)) $created = $l['created_at'];
         }
         $isClient = $adjustment > 0;
@@ -155,7 +158,7 @@ function mcp_client_profiles(\PDO $pdo, array $opts = []): array {
             'company_id' => $base['company_id'], 'tax_id' => $base['tax_id'], 'vat_id' => $base['vat_id'], 'website' => $base['website'],
             'client_category_id' => $base['client_category_id'] ?? null, 'rating' => $base['rating'],
             'leads_count' => count($leads), 'adjustment' => mcp_round2($adjustment), 'total_value' => mcp_round2($total + $adjustment),
-            'archived' => $archived, 'created_at' => $created,
+            'archived' => $archived, 'created_at' => $created, 'updated_at__ts' => $updatedTs,
             'lead_ids' => array_column($leads, 'id'),
             '_leads' => $leads,
         ];
@@ -172,7 +175,7 @@ function mcp_ext_ops_tool_definitions(): array {
     return [
         [
             'name' => 'get_client_profile',
-            'description' => 'A client as the Clients register shows it: all leads/records with the same name rolled into one profile, with total value (sum of lead values plus the client\'s value adjustment), open tasks, projects and invoices.',
+            'description' => 'A client as the Clients register shows it: all leads/records with the same name rolled into one profile, with total value (sum of lead values plus the client\'s value adjustment), open tasks, projects and invoices. updated_at is the newest change of any of its records and last_activity_at adds its newest timeline entry (both ISO moments with the offset); each record under leads has its own updated_at.',
             'inputSchema' => ['type' => 'object', 'properties' => ['name' => $id('Client name (case-insensitive)'), 'id' => $id('Any lead/client record id of the client')]],
         ],
         [
@@ -182,7 +185,7 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'get_lead_pipeline_summary',
-            'description' => 'Sales pipeline overview: lead count and value per stage in pipeline order, active (not closed) totals, and leads that breached the stage SLA (days in stage vs the limit set in Settings).',
+            'description' => 'Sales pipeline overview: lead count and value per stage in pipeline order, active (not closed) totals, and leads that breached the stage SLA (days in stage vs the limit set in Settings). Days in stage run from the date of the newest stage-change entry (else the creation date) to today in ' . mcp_zone() . ' (as_of); client records and archived leads are not pipeline leads.',
             'inputSchema' => ['type' => 'object', 'properties' => ['owner' => $id('Only this owner\'s leads')]],
         ],
         [
@@ -197,13 +200,16 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'get_meeting',
-            'description' => 'Full meeting note: notes, AI summary, transcript (first 20,000 characters), automated notes, attendees, and its action items.',
+            'description' => 'Full meeting note: notes, AI summary, transcript (first 20,000 characters), automated notes, attendees, and its action items. created_at and updated_at are ISO moments with the offset; date is the meeting day.',
             'inputSchema' => ['type' => 'object', 'properties' => ['id' => $id('Meeting ID')], 'required' => ['id']],
         ],
         [
             'name' => 'list_meeting_tasks',
-            'description' => 'Action items created from meetings.',
-            'inputSchema' => ['type' => 'object', 'properties' => ['meeting_id' => $id('Only this meeting'), 'status' => ['type' => 'string', 'enum' => ['todo', 'in_progress', 'done']], 'limit' => ['type' => 'integer']]],
+            'description' => 'Action items created from meetings, soonest due date first (items with no due date first). Filter by the due date with due_from/due_to or a bucket (open = status not done; overdue, today, tomorrow, upcoming, done), as in the task panel. Items carry no change moment of their own. Pages: limit + offset.',
+            'inputSchema' => ['type' => 'object', 'properties' => [
+                'meeting_id' => $id('Only this meeting'), 'status' => ['type' => 'string', 'enum' => ['todo', 'in_progress', 'done']],
+                'limit' => ['type' => 'integer', 'description' => 'Max rows (default 50, at most 100)'], 'offset' => ['type' => 'integer', 'description' => 'Rows to skip, for the next page'],
+            ] + mcp_bucket_prop('due date') + mcp_date_range_props('due', 'Due date')],
         ],
         [
             'name' => 'get_warehouse_metrics',
@@ -327,7 +333,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             $out = $found;
             unset($out['_leads']);
             $out['url'] = mcp_client_url($pdo, (string)$found['name']);
-            $out['leads'] = array_map(fn($l) => ['id' => $l['id'], 'status' => $l['status'], 'value' => mcp_round2($l['value']), 'owner' => $l['owner'], 'created_at' => $l['created_at'], 'archived' => (int)$l['archived'] === 1], $found['_leads']);
+            $out['leads'] = array_map(fn($l) => ['id' => $l['id'], 'status' => $l['status'], 'value' => mcp_round2($l['value']), 'owner' => $l['owner'], 'created_at' => $l['created_at'], 'updated_at' => mcp_format_moment($l['updated__ts']), 'archived' => (int)$l['archived'] === 1], $found['_leads']);
             if (mcp_can('tasks')) {
                 [$openSql, $openParams] = mcp_open_task_sql($pdo);
                 [$scopeSql, $scopeParams] = mcp_task_scope($user);
@@ -345,7 +351,8 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 $stmt->execute(array_merge($leadIds, $leadIds));
                 $out['documents'] = array_map(fn($r) => ['type' => $r['type'], 'status' => $r['status'], 'count' => (int)$r['c'], 'total' => mcp_round2($r['total'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
             }
-            return $out;
+            // updated_at (newest of its records) and last_activity_at (adds the timeline) as ISO moments.
+            return mcp_row_moments(mcp_profiles_activity($pdo, [$out])[0]);
         }
 
         case 'list_client_categories':
@@ -358,6 +365,8 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             $sla = mcp_config_json($pdo, 'LEAD_STATE_SLA', []);
             $where = "archived = 0 AND id <> 'unassigned-docs' AND id NOT LIKE 'client-%'";
             $params = [];
+            // The leads/clients module split: a leads-only key must not count a record that carries a client value adjustment.
+            if (($scopeSql = mcp_lead_scope_sql($user, '')) !== '') $where .= " AND $scopeSql";
             if (!empty($args['owner'])) { $where .= ' AND owner = ?'; $params[] = (string)$args['owner']; }
             $stmt = $pdo->prepare("SELECT id, name, status, value, owner, created_at FROM leads WHERE {$where}");
             $stmt->execute($params);
@@ -395,6 +404,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             usort($breaches, fn($a, $b) => $b['overdue_days'] <=> $a['overdue_days']);
             return [
                 'currency' => mcp_currency($pdo),
+                'as_of' => mcp_today(),
                 'stages' => array_values($rows),
                 'active' => ['count' => $activeCount, 'value' => mcp_round2($activeValue)],
                 'sla_breaches' => $breaches,
@@ -462,7 +472,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
 
         case 'get_meeting': {
             $id = mcp_require_string($args, 'id');
-            $stmt = $pdo->prepare("SELECT * FROM meeting_notes WHERE id = ?");
+            $stmt = $pdo->prepare('SELECT *, ' . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at') . ' FROM meeting_notes WHERE id = ?');
             $stmt->execute([$id]);
             $m = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$m) throw new \Exception("Meeting not found with ID: {$id}");
@@ -475,22 +485,17 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 'attached_leads' => $dec($m['attached_leads_json']), 'attached_clients' => $dec($m['attached_clients_json']), 'attendees' => $dec($m['attached_users_json']),
                 'automated_notes' => $m['automated_notes'], 'archived' => (int)$m['archived'] === 1,
                 'transcription' => mb_substr($tr, 0, 20000), 'transcription_truncated' => mb_strlen($tr) > 20000,
+                'created_at__ts' => $m['created_at__ts'], 'updated_at__ts' => $m['updated_at__ts'],
             ];
+            $out = mcp_row_moments($out);
             $t = $pdo->prepare("SELECT id, title, description, assigned_user, due_date, priority, status FROM meeting_tasks WHERE meeting_id = ? ORDER BY due_date ASC");
             $t->execute([$id]);
             $out['action_items'] = $t->fetchAll(\PDO::FETCH_ASSOC);
             return $out;
         }
 
-        case 'list_meeting_tasks': {
-            $where = ['1=1']; $params = [];
-            if (!empty($args['meeting_id'])) { $where[] = 'mt.meeting_id = ?'; $params[] = (string)$args['meeting_id']; }
-            $st = mcp_enum($args, 'status', ['todo', 'in_progress', 'done']);
-            if ($st) { $where[] = 'mt.status = ?'; $params[] = $st; }
-            $stmt = $pdo->prepare("SELECT mt.id, mt.meeting_id, m.title AS meeting_title, mt.title, mt.assigned_user, mt.due_date, mt.priority, mt.status FROM meeting_tasks mt LEFT JOIN meeting_notes m ON m.id = mt.meeting_id WHERE " . implode(' AND ', $where) . " ORDER BY mt.due_date ASC LIMIT " . mcp_limit($args));
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        }
+        case 'list_meeting_tasks':
+            return mcp_list_meeting_tasks($pdo, $args);
 
         case 'get_warehouse_metrics': {
             $wh = !empty($args['warehouse_id']) ? (string)$args['warehouse_id'] : null;

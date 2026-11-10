@@ -324,8 +324,14 @@ function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
 function mcp_do_list_clients(\PDO $pdo, array $args): array {
     $profiles = mcp_client_profiles($pdo, ['include_archived' => !empty($args['include_archived'])]);
     $term = isset($args['search']) ? strtolower(trim((string)$args['search'])) : '';
+    // A profile's updated_at is the newest of its records (mcp_client_profiles): the window applies to that moment.
+    $from = mcp_optional_moment($args, 'updated_from', false);
+    $to = mcp_optional_moment($args, 'updated_to', true);
     $out = [];
     foreach ($profiles as $p) {
+        $ts = $p['updated_at__ts'] ?? null;
+        if ($from !== null && ($ts === null || $ts < $from)) continue;
+        if ($to !== null && ($ts === null || $ts >= $to)) continue;
         if (!empty($args['city']) && strtolower((string)$p['city']) !== strtolower((string)$args['city'])) continue;
         if (!empty($args['client_type']) && $p['client_type'] !== $args['client_type']) continue;
         if ($term !== '') {
@@ -336,11 +342,19 @@ function mcp_do_list_clients(\PDO $pdo, array $args): array {
         $p['url'] = mcp_client_url($pdo, (string)$p['name']);
         $out[] = $p;
     }
-    $sort = in_array($args['sort_by'] ?? '', ['name', 'created_at', 'value'], true) ? $args['sort_by'] : 'name';
-    $key = $sort === 'value' ? 'total_value' : $sort;
-    $dir = strtolower((string)($args['sort_order'] ?? '')) === 'desc' ? -1 : 1;
-    usort($out, fn($a, $b) => $dir * (is_numeric($a[$key]) ? $a[$key] <=> $b[$key] : strcasecmp((string)$a[$key], (string)$b[$key])));
-    return array_slice($out, max(0, (int)($args['offset'] ?? 0)), mcp_limit($args));
+    $sort = in_array($args['sort_by'] ?? '', ['name', 'created_at', 'value', 'updated_at'], true) ? $args['sort_by'] : 'name';
+    $key = ['value' => 'total_value', 'updated_at' => 'updated_at__ts'][$sort] ?? $sort;
+    // name and value ascend; created_at and updated_at start with the newest, as every other list does.
+    $dir = in_array($sort, ['updated_at', 'created_at'], true) ? -1 : 1;
+    $order = strtolower((string)($args['sort_order'] ?? ''));
+    if ($order === 'desc') $dir = -1; elseif ($order === 'asc') $dir = 1;
+    // id breaks ties, so a row never moves between pages.
+    usort($out, function ($a, $b) use ($key, $dir) {
+        $c = ($key === 'total_value' || $key === 'updated_at__ts') ? ((float)($a[$key] ?? 0) <=> (float)($b[$key] ?? 0)) : strcasecmp((string)$a[$key], (string)$b[$key]);
+        return $c !== 0 ? $dir * $c : strcmp((string)$a['id'], (string)$b['id']);
+    });
+    $page = array_slice($out, max(0, (int)($args['offset'] ?? 0)), mcp_limit($args));
+    return array_map('mcp_row_moments', mcp_profiles_activity($pdo, $page));
 }
 
 function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
