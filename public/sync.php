@@ -3392,6 +3392,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Stock tables gained `updated_at` (MCP change visibility). The upserts below do not name it,
+        // but a database without it must not lag behind the migration: heal it here, outside the transaction.
+        foreach (['suppliers' => 'suppliers', 'warehouseItems' => 'warehouse_items', 'warehouseBatches' => 'warehouse_batches', 'warehouseMovements' => 'warehouse_movements'] as $stockKey => $stockTable) {
+            if (isset($payload[$stockKey]) && is_array($payload[$stockKey]) && !$ccrm_skip_writes('warehouse', $stockKey)) {
+                if (!ccrm_column_exists($pdo, $stockTable, 'updated_at')) {
+                    $pdo->exec("ALTER TABLE `{$stockTable}` ADD COLUMN `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
+                }
+            }
+        }
+
         $pdo->beginTransaction();
 
         // 4.1. Save system settings & configurations.

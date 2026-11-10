@@ -467,6 +467,7 @@ B2B material and goods suppliers with invoicing data.
 * `notes` TEXT
 * `contacts_json` TEXT (Array of contact persons: name, phone, email, position)
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_items`
 Master catalog of goods, products, raw materials, and supplies.
@@ -491,6 +492,7 @@ Master catalog of goods, products, raw materials, and supplies.
 * `alt_codes_json` TEXT [NULLable] (JSON list of codes beside the SKU: supplier code, manufacturer code. Searched wherever items are searched: warehouse list, item pickers, universal search, MCP)
 * `weight_kg` DECIMAL(12,3) [NULLable]
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_item_prices`
 One price per item and price level; `warehouse_items.default_sell_price` stays the base / fallback. A zero or missing price means "not set".
@@ -520,6 +522,7 @@ Lot and expiration date tracking for perishable or batch-controlled goods.
 * `current_quantity` DECIMAL(12,2)
 * `purchase_price` DECIMAL(12,2)
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_movements`
 Stock transaction documents (Receipts, Issues, Transfers, Adjustments).
@@ -540,6 +543,7 @@ Stock transaction documents (Receipts, Issues, Transfers, Adjustments).
 * `file_path` VARCHAR(500)
 * `issued_at` DATETIME
 * `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP(3) NOT NULL (`ON UPDATE CURRENT_TIMESTAMP(3)`: moves on a real change of the row's own columns, not of its child rows; read by the MCP lists as `updated_at` / `updated_from`. Stamped with the migration time on rows that existed before it)
 
 ### `warehouse_movement_items`
 Individual line items attached to a movement document.

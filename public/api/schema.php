@@ -591,6 +591,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `notes` TEXT NULL,
               `contacts_json` TEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               INDEX `idx_supplier_name` (`name`),
               INDEX `idx_supplier_ico` (`company_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -613,6 +614,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `avg_purchase_price` DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
               `last_purchase_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               INDEX `idx_item_sku` (`sku`),
               INDEX `idx_item_category` (`category`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -640,6 +642,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `current_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE CASCADE,
               FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE CASCADE,
               INDEX `idx_batch_exp` (`expiration_date`)
@@ -664,6 +667,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `file_path` VARCHAR(500) NULL,
               `issued_at` DATETIME NOT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
               FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE RESTRICT,
               INDEX `idx_mov_doc` (`document_number`),
               INDEX `idx_mov_type` (`type`),
@@ -2096,6 +2100,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_employee_identity($pdo);
         ccrm_migrate_employee_company_ids($pdo);
         ccrm_migrate_updated_at_precision($pdo);
+        ccrm_migrate_stock_updated_at($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
         ccrm_migrate_invoice_status_changed_at($pdo);
@@ -2646,6 +2651,20 @@ if (!function_exists('ccrm_schema_statements')) {
                 // precision; sync.php's guard still works, just with the wider
                 // same-second window. Never block the sync over this.
                 if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+            }
+        }
+    }
+
+    /**
+     * `updated_at` on the stock tables (suppliers, warehouse_items / _batches / _movements): the MCP
+     * lists answer "what changed since X?" with it. TIMESTAMP(3), like the other versioned tables.
+     * Adding it stamps every existing row with the migration time, so the first poll after deploy
+     * reports all of them as changed. Idempotent; sync.php heals the same columns before its writes.
+     */
+    function ccrm_migrate_stock_updated_at(PDO $pdo): void {
+        foreach (['suppliers', 'warehouse_items', 'warehouse_batches', 'warehouse_movements'] as $table) {
+            if (ccrm_table_exists($pdo, $table) && !ccrm_column_exists($pdo, $table, 'updated_at')) {
+                $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `updated_at` TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
             }
         }
     }
