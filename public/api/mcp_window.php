@@ -213,7 +213,7 @@ function mcp_local_range(array $args, string $fromKey, string $toKey, string $co
  * The time buckets of the task panel, for any dated entity: overdue / today / tomorrow /
  * upcoming (later than tomorrow), plus done when $open is given.
  *
- * $col:      the DATE column ('p.completion_deadline').
+ * $col:      the DATE column ('p.completion_deadline'). Must be a DATE, not a VARCHAR ('' would count as overdue).
  * $open:     [sql, params] that is true for a row still open (not finished / paid / closed);
  *            overdue, today, tomorrow and upcoming only count open rows. null = every row counts.
  * $timeExpr: an 'HH:MM' expression for the time on the due day ("COALESCE(NULLIF(deadline_time, ''), '23:59')");
@@ -233,7 +233,8 @@ function mcp_date_bucket(?string $bucket, string $col, ?array $open = null, ?str
         return [["NOT ({$open[0]})"], $open[1]];
     }
     if ($open !== null) { $where[] = "({$open[0]})"; $params = array_merge($params, $open[1]); }
-    $where[] = "$col IS NOT NULL AND $col <> ''";
+    // Dated columns are DATE: comparing one with '' yields NULL (false), so no "<> ''" guard here.
+    $where[] = "$col IS NOT NULL";
     $now = date('H:i');
     switch ($bucket) {
         case 'overdue':
