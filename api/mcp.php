@@ -1022,15 +1022,14 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 6: Warehouse & Inventory
         [
             'name' => 'list_inventory_items',
-            'description' => 'List warehouse stock items and current inventory levels.',
+            'description' => 'List warehouse stock items and current inventory levels. updated_at moves when the item record itself changes (name, prices, limits), not when stock moves: stock changes are the movements (list_stock_movements). ' . mcp_window_doc('items', MCP_INVENTORY_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'category' => ['type' => 'string', 'description' => 'Filter by item category'],
                     'low_stock_only' => ['type' => 'boolean', 'description' => 'Show only items below min_stock'],
                     'search' => ['type' => 'string', 'description' => 'Search by item name, SKU, or barcode'],
-                    'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
-                ]
+                ] + mcp_window_props(MCP_INVENTORY_WINDOW)
             ]
         ],
         [
@@ -1186,20 +1185,20 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 10: Team Directory (Read-Only)
         [
             'name' => 'list_team_members',
-            'description' => ('List ' . KOPERNIQ_PRODUCT_NAME . ' team members available for assigning tasks and projects (passwords excluded).'),
+            'description' => ('List ' . KOPERNIQ_PRODUCT_NAME . ' team members available for assigning tasks and projects (passwords excluded). ' . mcp_window_doc('members', MCP_TEAM_WINDOW)),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'search' => ['type' => 'string', 'description' => 'Search name or email'],
                     'role' => ['type' => 'string', 'description' => 'Filter by role']
-                ]
+                ] + mcp_window_props(MCP_TEAM_WINDOW)
             ]
         ],
 
         // DOMAIN 11: Employees, Salaries & Vacations
         [
             'name' => 'list_employees',
-            'description' => 'List the staff roster. Every record has a kind (employee = a person, contractor = an external supplier, a company or a sole trader, ledger = a payroll-only line such as commission), first_name + last_name for a person (the contact person of a contractor) or company_name for a contractor/ledger item, company_id (IČO), tax_id (DIČ) and vat_id (IČ DPH) of a contractor, a job position and a department, plus compensation rates, contact details, vacation allowances and the app login it is linked to (user_id; null when none). The position is a job title; the app permission role (Admin, Project Manager...) is separate.',
+            'description' => 'List the staff roster. Every record has a kind (employee = a person, contractor = an external supplier, a company or a sole trader, ledger = a payroll-only line such as commission), first_name + last_name for a person (the contact person of a contractor) or company_name for a contractor/ledger item, company_id (IČO), tax_id (DIČ) and vat_id (IČ DPH) of a contractor, a job position and a department, plus compensation rates, contact details, vacation allowances and the app login it is linked to (user_id; null when none). The position is a job title; the app permission role (Admin, Project Manager...) is separate. ' . mcp_window_doc('records', MCP_EMPLOYEE_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1208,7 +1207,7 @@ function mcp_core_tool_definitions(): array {
                     'position' => ['type' => 'string', 'description' => 'Only this exact position (case-insensitive), e.g. "programátor"'],
                     'department' => ['type' => 'string', 'description' => 'Only this exact department (case-insensitive), e.g. "Marketing"'],
                     'active_only' => ['type' => 'boolean', 'description' => 'Filter by active employees only (default true)']
-                ]
+                ] + mcp_window_props(MCP_EMPLOYEE_WINDOW)
             ]
         ],
         [
@@ -1284,14 +1283,14 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'list_salaries',
-            'description' => 'Query salary and payment records for employees by period (year, month) or employee ID.',
+            'description' => 'Query salary and payment records for employees by period (year, month), employee ID, payout due date (due_from/due_to) or the day it was paid (payment_from/payment_to). closed_at is the moment the month was closed (paid in full), as an ISO 8601 moment. ' . mcp_window_doc('records', MCP_SALARY_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'employee_id' => ['type' => 'string', 'description' => 'Filter by employee ID'],
                     'year' => ['type' => 'integer', 'description' => 'Filter by year (e.g. 2026)'],
                     'period_key' => ['type' => 'string', 'description' => 'Filter by period key (e.g. 2026-09)']
-                ]
+                ] + mcp_date_range_props('due', 'Payout due date') + mcp_date_range_props('payment', 'Payment date') + mcp_window_props(MCP_SALARY_WINDOW)
             ]
         ],
         [
@@ -1316,14 +1315,16 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'list_vacations',
-            'description' => 'List vacation and absence entries with optional filtering by employee, status, or date.',
+            'description' => 'List vacation and absence entries with optional filtering by employee, status, year of the start, or a date range: from/to (YYYY-MM-DD, inclusive) return every entry with a day inside the range, so "who is away next week" is one call. ' . mcp_window_doc('entries', MCP_VACATION_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'employee_id' => ['type' => 'string', 'description' => 'Filter by employee ID'],
                     'status' => ['type' => 'string', 'enum' => ['pending', 'approved', 'rejected']],
-                    'year' => ['type' => 'integer', 'description' => 'Filter by year']
-                ]
+                    'year' => ['type' => 'integer', 'description' => 'Filter by the year the entry starts in'],
+                    'from' => ['type' => 'string', 'description' => 'Entries that end on or after this date (YYYY-MM-DD)'],
+                    'to' => ['type' => 'string', 'description' => 'Entries that start on or before this date (YYYY-MM-DD)'],
+                ] + mcp_window_props(MCP_VACATION_WINDOW)
             ]
         ],
         [
@@ -2251,74 +2252,10 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 6. Warehouse & Inventory ---
         case 'list_inventory_items':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['category'])) {
-                $where[] = "i.category = ?";
-                $params[] = $args['category'];
-            }
-            if (!empty($args['search'])) {
-                $term = '%' . $args['search'] . '%';
-                $where[] = "(i.name LIKE ? OR i.sku LIKE ? OR i.barcode LIKE ? OR i.alt_codes_json LIKE ? OR i.external_id LIKE ?)";
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-                $params[] = $term;
-            }
-
-            $having = "";
-            if (!empty($args['low_stock_only'])) {
-                $having = "HAVING current_stock <= i.min_stock";
-            }
-
-            $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
-
-            $sql = "SELECT i.id, i.sku, i.barcode, i.name, i.category, i.unit, i.min_stock, i.default_sell_price, i.avg_purchase_price,
-                           i.vat_rate, i.pack_quantity, i.pack_unit, i.weight_kg, i.external_source, i.external_id, i.alt_codes_json,
-                           COALESCE(SUM(s.quantity), 0) as current_stock
-                    FROM warehouse_items i
-                    LEFT JOIN warehouse_stock s ON i.id = s.item_id
-                    WHERE " . implode(' AND ', $where) . "
-                    GROUP BY i.id
-                    $having
-                    ORDER BY i.name ASC
-                    LIMIT $limit";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return array_map('mcp_inventory_row', $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return mcp_list_inventory_items($pdo, $user, $args);
 
         case 'get_inventory_item':
-            $stmt = $pdo->prepare("SELECT * FROM warehouse_items WHERE id = ?");
-            $stmt->execute([$args['id']]);
-            $item = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$item) {
-                throw new \Exception("Warehouse item not found with ID: " . $args['id']);
-            }
-
-            $stkStmt = $pdo->prepare(
-                "SELECT s.warehouse_id, w.name as warehouse_name, s.quantity, s.reserved_quantity, s.location
-                 FROM warehouse_stock s
-                 JOIN warehouses w ON s.warehouse_id = w.id
-                 WHERE s.item_id = ?"
-            );
-            $stkStmt->execute([$args['id']]);
-            $item['stock_breakdown'] = $stkStmt->fetchAll(\PDO::FETCH_ASSOC);
-            $item = mcp_inventory_row($item);
-            // One price per price level (Settings → Price levels), named; default_sell_price stays the fallback.
-            $priceStmt = $pdo->prepare("SELECT price_level_id, price FROM warehouse_item_prices WHERE item_id = ?");
-            $priceStmt->execute([$args['id']]);
-            $byLevel = $priceStmt->fetchAll(\PDO::FETCH_KEY_PAIR);
-            $item['price_levels'] = [];
-            foreach (ccrm_price_levels($pdo) as $level) {
-                if (isset($byLevel[$level['id']])) {
-                    $item['price_levels'][] = ['id' => $level['id'], 'name' => $level['name'], 'price' => (float)$byLevel[$level['id']]];
-                }
-            }
-
-            return $item;
+            return mcp_get_inventory_item($pdo, $user, $args);
 
         case 'create_inventory_item':
             $id = 'whi_' . bin2hex(random_bytes(8));
@@ -2513,84 +2450,14 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 10. Team Directory (Read-Only) ---
         case 'list_team_members':
-            $where = ["1=1"];
-            $params = [];
-
-            if (!empty($args['role'])) {
-                $where[] = "role = ?";
-                $params[] = $args['role'];
-            }
-            if (!empty($args['search'])) {
-                $where[] = "(name LIKE ? OR email LIKE ?)";
-                $params[] = '%' . $args['search'] . '%';
-                $params[] = '%' . $args['search'] . '%';
-            }
-
-            // CRITICAL: NEVER select password_hash or session secrets!
-            $sql = "SELECT id, name, email, role, avatar, color, created_at 
-                    FROM users 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY name ASC";
-
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_team_members($pdo, $user, $args);
 
         // --- 11. Employees, Salaries & Vacations ---
         case 'list_employees':
-            $where = ["1=1"];
-            $params = [];
-            if (!empty($args['search'])) {
-                $s = '%' . trim($args['search']) . '%';
-                if (mcp_can('employees.personal')) {
-                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ? OR company_id LIKE ? OR tax_id LIKE ? OR vat_id LIKE ?)";
-                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s, $s, $s]);
-                } else {
-                    // A search that matched on a PIN or phone would confirm one to someone who may not read it.
-                    $where[] = "(name LIKE ? OR `position` LIKE ? OR `department` LIKE ? OR email LIKE ? OR company_id LIKE ? OR tax_id LIKE ? OR vat_id LIKE ?)";
-                    $params = array_merge($params, [$s, $s, $s, $s, $s, $s, $s]);
-                }
-            }
-            if (!empty($args['kind'])) {
-                if (!in_array($args['kind'], CCRM_EMPLOYEE_KINDS, true)) throw new \Exception("kind must be one of: " . implode(', ', CCRM_EMPLOYEE_KINDS) . ".");
-                $where[] = "kind = ?";
-                $params[] = $args['kind'];
-            }
-            foreach (['position', 'department'] as $f) {
-                if (!empty($args[$f])) {
-                    $where[] = "`$f` = ?";
-                    $params[] = trim((string)$args[$f]);
-                }
-            }
-            if (!isset($args['active_only']) || !empty($args['active_only'])) {
-                $where[] = "is_active = 1";
-            }
-            $stmt = $pdo->prepare("SELECT id, name, first_name, last_name, kind, company_id, tax_id, vat_id, `position`, `department`, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
-            $stmt->execute($params);
-            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            return array_map(static fn($r) => mcp_label_employee(mcp_project_employee($r)), $rows);
+            return mcp_list_employees($pdo, $user, $args);
 
         case 'get_employee':
-            $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ? LIMIT 1");
-            $stmt->execute([$args['id']]);
-            $emp = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$emp) throw new \Exception("Employee not found with ID: " . $args['id']);
-            
-            // Pay records only with employees.salaries, leave only with employees.vacations
-            if (mcp_can('employees.salaries')) {
-                $salStmt = $pdo->prepare("SELECT * FROM employee_salaries WHERE employee_id = ? ORDER BY year DESC, period_number DESC LIMIT 12");
-                $salStmt->execute([$args['id']]);
-                $emp['salaries'] = $salStmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-            $emp = mcp_label_employee(mcp_project_employee($emp));
-
-            if (mcp_can('employees.vacations')) {
-                $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
-                $vacStmt->execute([$args['id']]);
-                $emp['vacations'] = $vacStmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            return $emp;
+            return mcp_get_employee($pdo, $user, $args);
 
         case 'create_employee':
             $id = 'emp-' . bin2hex(random_bytes(6));
@@ -2709,60 +2576,13 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return ['id' => $id, 'success' => true, 'message' => "Employee updated successfully."];
 
         case 'list_salaries':
-            $where = ["1=1"];
-            $params = [];
-            if (!empty($args['employee_id'])) {
-                $where[] = "es.employee_id = ?";
-                $params[] = $args['employee_id'];
-            }
-            if (!empty($args['year'])) {
-                $where[] = "es.year = ?";
-                $params[] = (int)$args['year'];
-            }
-            if (!empty($args['period_key'])) {
-                $where[] = "es.period_key = ?";
-                $params[] = $args['period_key'];
-            }
-
-            $stmt = $pdo->prepare("
-                SELECT es.*, e.name as employee_name
-                FROM employee_salaries es
-                JOIN employees e ON es.employee_id = e.id
-                WHERE " . implode(' AND ', $where) . "
-                ORDER BY es.year DESC, es.period_number DESC
-                LIMIT 500
-            ");
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_salaries($pdo, $user, $args);
 
         case 'record_salary_payout':
             return mcp_do_record_salary_payout($pdo, $user, $args);
 
         case 'list_vacations':
-            $where = ["1=1"];
-            $params = [];
-            if (!empty($args['employee_id'])) {
-                $where[] = "ev.employee_id = ?";
-                $params[] = $args['employee_id'];
-            }
-            if (!empty($args['status'])) {
-                $where[] = "ev.status = ?";
-                $params[] = $args['status'];
-            }
-            if (!empty($args['year'])) {
-                $where[] = "YEAR(ev.start_date) = ?";
-                $params[] = (int)$args['year'];
-            }
-
-            $stmt = $pdo->prepare("
-                SELECT ev.*, e.name as employee_name
-                FROM employee_vacations ev
-                JOIN employees e ON ev.employee_id = e.id
-                WHERE " . implode(' AND ', $where) . "
-                ORDER BY ev.start_date DESC
-            ");
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_vacations($pdo, $user, $args);
 
         case 'record_vacation':
             return mcp_do_record_vacation($pdo, $user, $args);

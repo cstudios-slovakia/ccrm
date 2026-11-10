@@ -177,7 +177,7 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'list_client_categories',
-            'description' => 'The client category tree.',
+            'description' => 'The client category tree. updated_at is the ISO 8601 moment a category last changed, with the ' . KOPERNIQ_PRODUCT_NAME . ' time-zone offset.',
             'inputSchema' => ['type' => 'object', 'properties' => new \stdClass()],
         ],
         [
@@ -217,31 +217,31 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'list_suppliers',
-            'description' => 'Suppliers (contact and payment terms; bank details are not returned).',
-            'inputSchema' => ['type' => 'object', 'properties' => ['search' => ['type' => 'string'], 'limit' => ['type' => 'integer']]],
+            'description' => 'Suppliers (contact and payment terms; bank details are not returned). ' . mcp_window_doc('suppliers', MCP_SUPPLIER_WINDOW),
+            'inputSchema' => ['type' => 'object', 'properties' => ['search' => ['type' => 'string']] + mcp_window_props(MCP_SUPPLIER_WINDOW)],
         ],
         [
             'name' => 'list_stock_movements',
-            'description' => 'Warehouse movement documents (receipts, issues, transfers, adjustments) with cost and sell values.',
+            'description' => 'Warehouse movement documents (receipts, issues, transfers, adjustments) with cost and sell values. issued_at is the document\'s own date and time; created_at / updated_at are when the record was saved and last changed. from/to filter issued_at (a bare date covers the whole day). ' . mcp_window_doc('documents', MCP_MOVEMENT_WINDOW),
             'inputSchema' => ['type' => 'object', 'properties' => [
                 'type' => ['type' => 'string', 'enum' => ['inward', 'outward', 'transfer', 'adjustment']],
                 'warehouse_id' => ['type' => 'string'], 'item_id' => ['type' => 'string'],
-                'from' => ['type' => 'string', 'description' => 'YYYY-MM-DD'], 'to' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
-                'limit' => ['type' => 'integer'],
-            ]],
+                'from' => ['type' => 'string', 'description' => 'Issued at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'],
+                'to' => ['type' => 'string', 'description' => 'Issued before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'],
+            ] + mcp_window_props(MCP_MOVEMENT_WINDOW)],
         ],
         [
             'name' => 'list_batches',
-            'description' => 'Stock batches with expiry dates.',
+            'description' => 'Stock batches with expiry dates. ' . mcp_window_doc('batches', MCP_BATCH_WINDOW),
             'inputSchema' => ['type' => 'object', 'properties' => [
-                'expiring_within_days' => ['type' => 'integer', 'description' => 'Only batches expiring within N days (includes already expired)'],
+                'expiring_within_days' => ['type' => 'integer', 'description' => 'Only batches expiring within N days of today (includes already expired)'],
                 'item_id' => ['type' => 'string'], 'warehouse_id' => ['type' => 'string'], 'include_empty' => ['type' => 'boolean'],
-            ]],
+            ] + mcp_window_props(MCP_BATCH_WINDOW)],
         ],
         [
             'name' => 'get_vacation_balance',
-            'description' => 'Vacation used / allowance / left per vacation type for the year (rejected requests do not count), plus who is on leave today.',
-            'inputSchema' => ['type' => 'object', 'properties' => ['employee_id' => $id('One employee; omit for all active employees'), 'year' => ['type' => 'integer']]],
+            'description' => 'Vacation used / allowance / left per vacation type for the year (rejected requests do not count), plus who is on leave on on_date (default today in ' . KOPERNIQ_PRODUCT_NAME . ' time, ' . mcp_zone() . '): on_leave, and on_leave_today.',
+            'inputSchema' => ['type' => 'object', 'properties' => ['employee_id' => $id('One employee; omit for all active employees'), 'year' => ['type' => 'integer'], 'on_date' => $id('Who is on leave on this day (YYYY-MM-DD); default today')]],
         ],
         [
             'name' => 'get_payroll_summary',
@@ -250,13 +250,13 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'list_workflows',
-            'description' => 'Automation workflows (name, trigger, active flag, size, last run). Workflow definitions are not returned.',
+            'description' => 'Automation workflows (name, trigger, active flag, size, last run). Workflow definitions are not returned. last_run, created_at and updated_at (the workflow was last edited) are ISO 8601 moments with the ' . KOPERNIQ_PRODUCT_NAME . ' time-zone offset (' . mcp_zone() . ').',
             'inputSchema' => ['type' => 'object', 'properties' => new \stdClass()],
         ],
         [
             'name' => 'get_workflow_runs',
-            'description' => 'Recent runs of a workflow: status, duration and trigger. Execution logs are not returned.',
-            'inputSchema' => ['type' => 'object', 'properties' => ['workflow_id' => $id('Workflow ID'), 'limit' => ['type' => 'integer']], 'required' => ['workflow_id']],
+            'description' => 'Recent runs of a workflow, newest first: status, duration and trigger. Execution logs are not returned. ' . mcp_window_doc('runs', MCP_WORKFLOW_RUN_WINDOW),
+            'inputSchema' => ['type' => 'object', 'properties' => ['workflow_id' => $id('Workflow ID')] + mcp_window_props(MCP_WORKFLOW_RUN_WINDOW), 'required' => ['workflow_id']],
         ],
         [
             'name' => 'list_unified_entries',
@@ -265,8 +265,8 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'get_unified_entry_rows',
-            'description' => 'Rows of one custom registry (read only, up to 100).',
-            'inputSchema' => ['type' => 'object', 'properties' => ['registry_id' => $id('Registry ID from list_unified_entries'), 'limit' => ['type' => 'integer']], 'required' => ['registry_id']],
+            'description' => 'Rows of one custom registry (read only). due_from / due_to / bucket work on registries that have a due date. ' . mcp_window_doc('rows', MCP_REGISTRY_ROW_WINDOW),
+            'inputSchema' => ['type' => 'object', 'properties' => ['registry_id' => $id('Registry ID from list_unified_entries')] + mcp_unified_rows_props(), 'required' => ['registry_id']],
         ],
         [
             'name' => 'list_documents',
@@ -347,7 +347,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
         }
 
         case 'list_client_categories':
-            return $pdo->query("SELECT id, name, parent_id, level, sort_order, color FROM client_categories ORDER BY level ASC, sort_order ASC, name ASC")->fetchAll(\PDO::FETCH_ASSOC);
+            return mcp_list_client_categories($pdo);
 
         case 'get_lead_pipeline_summary': {
             $states = mcp_config_json($pdo, 'LEAD_STATES', []);
@@ -524,37 +524,14 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
         case 'list_warehouses':
             return $pdo->query("SELECT id, name, code, address, is_default FROM warehouses ORDER BY name ASC")->fetchAll(\PDO::FETCH_ASSOC);
 
-        case 'list_suppliers': {
-            $where = ['1=1']; $params = [];
-            if (!empty($args['search'])) { $t = '%' . $args['search'] . '%'; $where[] = '(name LIKE ? OR company_id LIKE ? OR email LIKE ?)'; array_push($params, $t, $t, $t); }
-            $stmt = $pdo->prepare("SELECT id, name, company_id, tax_id, vat_id, street, city, postal_code, country, email, phone, website, payment_due_days FROM suppliers WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT " . mcp_limit($args));
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        }
+        case 'list_suppliers':
+            return mcp_list_suppliers($pdo, $user, $args);
 
-        case 'list_stock_movements': {
-            $where = ['1=1']; $params = [];
-            $type = mcp_enum($args, 'type', ['inward', 'outward', 'transfer', 'adjustment']);
-            if ($type) { $where[] = 'm.type = ?'; $params[] = $type; }
-            if (!empty($args['warehouse_id'])) { $where[] = '(m.warehouse_id = ? OR m.target_warehouse_id = ?)'; array_push($params, (string)$args['warehouse_id'], (string)$args['warehouse_id']); }
-            if (!empty($args['item_id'])) { $where[] = 'EXISTS (SELECT 1 FROM warehouse_movement_items mi WHERE mi.movement_id = m.id AND mi.item_id = ?)'; $params[] = (string)$args['item_id']; }
-            if ($d = mcp_optional_date($args, 'from')) { $where[] = 'DATE(m.issued_at) >= ?'; $params[] = $d; }
-            if ($d = mcp_optional_date($args, 'to')) { $where[] = 'DATE(m.issued_at) <= ?'; $params[] = $d; }
-            $stmt = $pdo->prepare("SELECT m.id, m.document_number, m.type, m.status, m.warehouse_id, m.target_warehouse_id, m.supplier_id, m.lead_id, m.total_cost_value, m.total_sell_value, m.total_profit_value, m.created_by, m.note, m.issued_at, (SELECT COUNT(*) FROM warehouse_movement_items mi WHERE mi.movement_id = m.id) AS items_count FROM warehouse_movements m WHERE " . implode(' AND ', $where) . " ORDER BY m.issued_at DESC, m.id DESC LIMIT " . mcp_limit($args));
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        }
+        case 'list_stock_movements':
+            return mcp_list_stock_movements($pdo, $user, $args);
 
-        case 'list_batches': {
-            $where = ['1=1']; $params = [];
-            if (isset($args['expiring_within_days'])) { $where[] = 'b.expiration_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)'; $params[] = max(0, (int)$args['expiring_within_days']); }
-            if (!empty($args['item_id'])) { $where[] = 'b.item_id = ?'; $params[] = (string)$args['item_id']; }
-            if (!empty($args['warehouse_id'])) { $where[] = 'b.warehouse_id = ?'; $params[] = (string)$args['warehouse_id']; }
-            if (empty($args['include_empty'])) $where[] = 'b.current_quantity > 0';
-            $stmt = $pdo->prepare("SELECT b.id, b.item_id, i.name AS item_name, b.warehouse_id, b.batch_number, b.expiration_date, b.initial_quantity, b.current_quantity FROM warehouse_batches b JOIN warehouse_items i ON i.id = b.item_id WHERE " . implode(' AND ', $where) . " ORDER BY b.expiration_date ASC LIMIT 200");
-            $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        }
+        case 'list_batches':
+            return mcp_list_batches($pdo, $user, $args);
 
         case 'get_vacation_balance': {
             $year = isset($args['year']) ? (int)$args['year'] : (int)date('Y');
@@ -581,9 +558,10 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 }
                 $out[] = ['employee_id' => $e['id'], 'name' => $e['name'], 'year' => $year, 'types' => $types];
             }
-            $on = $pdo->prepare("SELECT DISTINCT e.id, e.name FROM employee_vacations v JOIN employees e ON e.id = v.employee_id WHERE v.status <> 'rejected' AND CURDATE() BETWEEN v.start_date AND v.end_date AND e.is_active = 1");
-            $on->execute();
-            return ['employees' => $out, 'on_leave_today' => $on->fetchAll(\PDO::FETCH_ASSOC)];
+            $onDate = mcp_optional_date($args, 'on_date') ?? mcp_today();
+            $onLeave = mcp_vacation_on_leave($pdo, $onDate);
+            return ['employees' => $out, 'on_date' => $onDate, 'on_leave' => $onLeave,
+                'on_leave_today' => $onDate === mcp_today() ? $onLeave : mcp_vacation_on_leave($pdo, mcp_today())];
         }
 
         case 'get_payroll_summary': {
@@ -610,23 +588,11 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             ];
         }
 
-        case 'list_workflows': {
-            $rows = $pdo->query("SELECT w.id, w.name, w.description, w.is_active, w.trigger_type, (SELECT MAX(created_at) FROM workflow_logs l WHERE l.workflow_id = w.id) AS last_run, (SELECT status FROM workflow_logs l WHERE l.workflow_id = w.id ORDER BY created_at DESC LIMIT 1) AS last_status, w.nodes_json FROM workflows w ORDER BY w.name ASC")->fetchAll(\PDO::FETCH_ASSOC);
-            return array_map(function ($r) {
-                $nodes = json_decode((string)$r['nodes_json'], true);
-                unset($r['nodes_json']);
-                $r['is_active'] = (int)$r['is_active'] === 1;
-                $r['node_count'] = is_array($nodes) ? count($nodes) : 0;
-                return $r;
-            }, $rows);
-        }
+        case 'list_workflows':
+            return mcp_list_workflows($pdo);
 
-        case 'get_workflow_runs': {
-            $wid = mcp_require_string($args, 'workflow_id');
-            $stmt = $pdo->prepare("SELECT id, status, execution_time_ms, trigger_event, created_at FROM workflow_logs WHERE workflow_id = ? ORDER BY created_at DESC LIMIT " . mcp_limit($args, 20));
-            $stmt->execute([$wid]);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        }
+        case 'get_workflow_runs':
+            return mcp_get_workflow_runs($pdo, $user, $args);
 
         case 'list_unified_entries': {
             $rows = $pdo->query("SELECT id, name, entry_name, folder_name, icon, color, modules_json, folders_enabled, warning_days, archived FROM unified_entries ORDER BY name ASC")->fetchAll(\PDO::FETCH_ASSOC);
@@ -639,17 +605,8 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             }, $rows);
         }
 
-        case 'get_unified_entry_rows': {
-            $rid = mcp_require_string($args, 'registry_id');
-            $chk = $pdo->prepare("SELECT id FROM unified_entries WHERE id = ?");
-            $chk->execute([$rid]);
-            $realId = $chk->fetchColumn();
-            if (!$realId) throw new \Exception("Registry not found with ID: {$rid}");
-            $table = 'ue_' . preg_replace('/[^a-z0-9_]/', '', strtolower((string)$realId));
-            if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($table))->rowCount() === 0) return [];
-            $rows = $pdo->query("SELECT * FROM `{$table}` LIMIT " . mcp_limit($args, 50))->fetchAll(\PDO::FETCH_ASSOC);
-            return $rows;
-        }
+        case 'get_unified_entry_rows':
+            return mcp_get_unified_entry_rows($pdo, $user, $args);
 
         case 'list_documents': {
             $where = ["type IN ('offer','order','proforma_invoice','advance_receipt','invoice','delivery_note')", 'hidden = 0']; $params = [];

@@ -809,7 +809,7 @@ function mcp_ext_fin_tool_definitions(): array {
         ],
         [
             'name' => 'list_financial_categories',
-            'description' => 'The income and expense category tree used by the ledger.',
+            'description' => 'The income and expense category tree used by the ledger. updated_at is the ISO 8601 moment a category last changed, with the ' . KOPERNIQ_PRODUCT_NAME . ' time-zone offset.',
             'inputSchema' => ['type' => 'object', 'properties' => ['type' => ['type' => 'string', 'enum' => ['income', 'expense']]]],
         ],
         [
@@ -1060,10 +1060,11 @@ function mcp_ext_fin_execute(\PDO $pdo, array $user, string $tool, array $args) 
         case 'list_financial_categories': {
             $type = mcp_enum($args, 'type', ['income', 'expense']);
             $byId = mcp_fin_categories($pdo);
+            $moments = mcp_financial_category_moments($pdo);
             $out = [];
             foreach ($byId as $c) {
                 if ($type !== null && $c['type'] !== $type) continue;
-                $out[] = ['id' => $c['id'], 'type' => $c['type'], 'name' => $c['name'], 'parent_id' => mcp_cat_parent($c, $byId), 'level' => (int)$c['level'], 'sort_order' => (int)$c['sort_order'], 'color' => $c['color']];
+                $out[] = ['id' => $c['id'], 'type' => $c['type'], 'name' => $c['name'], 'parent_id' => mcp_cat_parent($c, $byId), 'level' => (int)$c['level'], 'sort_order' => (int)$c['sort_order'], 'color' => $c['color'], 'updated_at' => $moments[$c['id']] ?? null];
             }
             return $out;
         }
