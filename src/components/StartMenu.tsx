@@ -24,6 +24,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 import { PRODUCT_NAME } from "../utils/brand";
+import { isInsideMenuEditLayer } from "./menuEdit/primitives";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -283,6 +284,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         if (target && target.closest("aside, [data-sidebar]")) {
           return;
         }
+        // Menus, sheets, dialogs and the drag ghost of the edit mode live in portals.
+        if (isInsideMenuEditLayer(e.target)) return;
         handleAnimatedClose();
       }
     };

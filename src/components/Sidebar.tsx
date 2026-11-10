@@ -49,6 +49,10 @@ import { applySectionVisual } from "../utils/sectionVisuals";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
+import { MobileMenuEditor } from "./menuEdit/MobileMenuEditor";
+import { DragGhostLayer } from "./menuEdit/dragGhost";
+import { isInsideMenuEditLayer } from "./menuEdit/primitives";
+import { menuEditStrings } from "./menuEdit/menuEditStrings";
 
 /**
  * `dashboard` used to BE the task panel — the tasks section was split out of it
@@ -486,6 +490,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [sidebarCompactness] = useUserPref("sidebarCompactness");
   const [sidebarUnpinnedStyle] = useUserPref("sidebarUnpinnedStyle");
   const [storedSidebarGroups] = useUserPref("sidebarGroups");
+  const [storedDefaultPage, setStoredDefaultPage] = useUserPref("defaultPage");
 
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isStartMenuOpen, setIsStartMenuOpen] = useState(false);
@@ -751,6 +756,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       if (isStartMenuOpen && startMenuEditMode) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.closest("[data-start-menu]") || target.closest("[data-module-picker]"))) return;
+      if (isInsideMenuEditLayer(event.target)) return;
       if (!isCollapsed && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
         setIsCollapsed(true);
       }
@@ -883,6 +889,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setDragOverGroupId(null);
   };
 
+  /**
+   * Put `itemId` into a group at an index (pinning it if it was not pinned).
+   * Shared by the desktop drop handler and the mobile editor's touch drag.
+   */
+  const handleInsertItem = (itemId: string, targetGroupId?: string, targetIndex?: number) => {
+    if (!isItemVisibleInSystem(itemId)) return;
+    const currentGroups = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const grpId = targetGroupId || currentGroups[0]?.id || "group_main";
+
+    const nextGroups = currentGroups.map((g) => ({
+      ...g,
+      items: g.items.filter((id) => id !== itemId)
+    }));
+
+    const targetGrp = nextGroups.find((g) => g.id === grpId);
+    if (targetGrp) {
+      let insertAt = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetGrp.items.length;
+      if (insertAt > targetGrp.items.length) insertAt = targetGrp.items.length;
+      targetGrp.items.splice(insertAt, 0, itemId);
+    } else if (nextGroups.length > 0) {
+      nextGroups[0].items.push(itemId);
+    }
+
+    const newActiveLayout = flattenSidebarGroups(nextGroups);
+    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
+    const newHidden = currentHidden.filter((id: string) => id !== itemId);
+    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
+  };
+
   // Drag & Drop onto sidebar
   const handleDropOnSidebar = (e: React.DragEvent, targetGroupId?: string, targetIndex?: number) => {
     e.preventDefault();
@@ -909,27 +944,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return;
     }
 
-    const currentGroups = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
-    const grpId = targetGroupId || currentGroups[0]?.id || "group_main";
-
-    const nextGroups = currentGroups.map((g) => ({
-      ...g,
-      items: g.items.filter((id) => id !== droppedId)
-    }));
-
-    const targetGrp = nextGroups.find((g) => g.id === grpId);
-    if (targetGrp) {
-      let insertAt = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetGrp.items.length;
-      if (insertAt > targetGrp.items.length) insertAt = targetGrp.items.length;
-      targetGrp.items.splice(insertAt, 0, droppedId);
-    } else if (nextGroups.length > 0) {
-      nextGroups[0].items.push(droppedId);
-    }
-
-    const newActiveLayout = flattenSidebarGroups(nextGroups);
-    const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
-    const newHidden = currentHidden.filter((id: string) => id !== droppedId);
-    onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
+    handleInsertItem(droppedId, targetGroupId, targetIndex);
 
     setDraggedItemId(null);
     (window as any).__draggedModuleId = null;
@@ -1874,6 +1889,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Mobile "Upraviť menu" (below lg): edits the sidebar / bottom bar groups */}
+      <MobileMenuEditor
+        open={isStartMenuOpen && startMenuEditMode}
+        language={systemLanguage}
+        groups={sidebarGroups}
+        items={allPossibleItems
+          .filter((i) => isItemVisibleInSystem(i.id))
+          .map((i) => ({
+            id: i.id,
+            label: i.label,
+            icon: i.icon,
+            color: (i as any).color || (i as any).customColor,
+            kind: (i as any).isCustomDash ? ("dashboard" as const) : (i as any).isCustomUE ? ("table" as const) : undefined
+          }))}
+        defaultPage={defaultPage || storedDefaultPage || "dashboard"}
+        onSetDefaultPage={(id) => {
+          onSaveDefaultPage?.(id);
+          setStoredDefaultPage(id);
+        }}
+        onDone={() => {
+          setIsStartMenuOpen(false);
+          setStartMenuEditMode(false);
+        }}
+        onMoveItemInGroup={handleMoveItemInGroup}
+        onMoveItemToGroup={handleMoveItemToGroup}
+        onInsertItem={(itemId, groupId, index) => handleInsertItem(itemId, groupId, index)}
+        onUnpinItem={handleTogglePinItem}
+        onAddItemToGroup={handleAddItemToGroup}
+        onAddGroup={() => handleAddNewSidebarGroup()}
+        onRenameGroup={handleRenameSidebarGroup}
+        onMoveGroup={handleMoveSidebarGroup}
+        onDeleteGroup={handleDeleteSidebarGroup}
+        onCreateCustomDashboard={() => setIsDashModalOpen(true)}
+      />
+
+      {/* The card that follows the pointer while a module is dragged (Start menu dialog -> sidebar) */}
+      <DragGhostLayer pinLabel={menuEditStrings(systemLanguage).pin} />
 
       {/* Start Menu Modal Launcher */}
       <StartMenu
