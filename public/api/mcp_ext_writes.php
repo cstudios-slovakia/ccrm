@@ -365,8 +365,8 @@ function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
         ccrm_set_contact_parts_from_person($pdo, $id);
         $pdo->prepare(
             "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-             VALUES (?, ?, 'note', NOW(), 'Client Registered', 'Client profile registered via MCP.', ?)"
-        )->execute([mcp_new_id('ev_'), $id, $user['name']]);
+             VALUES (?, ?, 'note', ?, 'Client Registered', 'Client profile registered via MCP.', ?)"
+        )->execute([mcp_new_id('ev_'), $id, mcp_now_local(), $user['name']]);
     });
     mcp_audit($pdo, $user, 'client_create', "Created client '$name' (IČO: " . ($args['company_id'] ?? '') . ", ID: $id)");
     return ['success' => true, 'id' => $id, 'name' => $name, 'company_id' => $args['company_id'] ?? null];

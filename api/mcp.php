@@ -1604,8 +1604,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 $content = $fromStatus . ' → ' . $status . ($note !== '' ? "\n\n" . $note : '');
                 $pdo->prepare(
                     "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                     VALUES (?, ?, 'status_change', NOW(), 'Lead state changed', ?, ?)"
-                )->execute([mcp_new_id('ev_'), $id, $content, $user['name']]);
+                     VALUES (?, ?, 'status_change', ?, 'Lead state changed', ?, ?)"
+                )->execute([mcp_new_id('ev_'), $id, mcp_now_local(), $content, $user['name']]);
             });
 
             mcp_audit($pdo, $user, 'lead_stage_transition', "Moved lead $id from '$fromStatus' to '$status'");
@@ -1634,8 +1634,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                     $pdo->prepare("UPDATE leads SET status = ? WHERE id = ?")->execute([$won, $id]);
                     $pdo->prepare(
                         "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                         VALUES (?, ?, 'status_change', NOW(), 'Lead state changed', ?, ?)"
-                    )->execute([mcp_new_id('ev_'), $id, $lead['status'] . ' → ' . $won, $user['name']]);
+                         VALUES (?, ?, 'status_change', ?, 'Lead state changed', ?, ?)"
+                    )->execute([mcp_new_id('ev_'), $id, mcp_now_local(), $lead['status'] . ' → ' . $won, $user['name']]);
                 }
                 $exists = $pdo->prepare("SELECT id FROM leads WHERE id LIKE 'client-%' AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1");
                 $exists->execute([$lead['name']]);
@@ -1655,8 +1655,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                         ->execute([$lead['contact_first_name'] ?? null, $lead['contact_last_name'] ?? null, $clientId]);
                     $pdo->prepare(
                         "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                         VALUES (?, ?, 'note', NOW(), 'Client Registered', ?, ?)"
-                    )->execute([mcp_new_id('ev_'), $clientId, 'Converted from lead ' . $id . ' via MCP.', $user['name']]);
+                         VALUES (?, ?, 'note', ?, 'Client Registered', ?, ?)"
+                    )->execute([mcp_new_id('ev_'), $clientId, mcp_now_local(), 'Converted from lead ' . $id . ' via MCP.', $user['name']]);
                 }
                 // Point the lead at its client by id, the way the app does when it creates one.
                 $pdo->prepare("UPDATE leads SET client_id = ? WHERE id = ?")->execute([$clientId, $id]);
@@ -1770,9 +1770,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $content = "Added contact: $contactName ($role)" . ($email ? " - $email" : "") . ($phone ? " - $phone" : "");
             $evStmt = $pdo->prepare(
                 "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                 VALUES (?, ?, 'note', NOW(), 'Contact Person Added', ?, ?)"
+                 VALUES (?, ?, 'note', ?, 'Contact Person Added', ?, ?)"
             );
-            $evStmt->execute([$evId, $clientId, $content, $user['name']]);
+            $evStmt->execute([$evId, $clientId, mcp_now_local(), $content, $user['name']]);
 
             mcp_audit($pdo, $user, 'contact_create', "Added contact '$contactName' to client $clientId");
 
@@ -1877,9 +1877,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 $evId = 'ev_' . bin2hex(random_bytes(8));
                 $evStmt = $pdo->prepare(
                     "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-                     VALUES (?, ?, 'note', NOW(), ?, ?, ?)"
+                     VALUES (?, ?, 'note', ?, ?, ?, ?)"
                 );
-                $evStmt->execute([$evId, $task['related_lead_id'], "Comment on task: " . $task['title'], $comment, $user['name']]);
+                $evStmt->execute([$evId, $task['related_lead_id'], mcp_now_local(), "Comment on task: " . $task['title'], $comment, $user['name']]);
             }
 
             mcp_audit($pdo, $user, 'task_comment', "Commented on task $taskId");
@@ -2430,9 +2430,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare(
                 "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author, is_outgoing)
-                 VALUES (?, ?, ?, NOW(), ?, ?, ?, ?)"
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             );
-            $stmt->execute([$id, $leadId, $type, $title, $content, $user['name'], $isOutgoing]);
+            $stmt->execute([$id, $leadId, $type, mcp_now_local(), $title, $content, $user['name'], $isOutgoing]);
 
             mcp_audit($pdo, $user, 'communication_log', "Logged $type for lead $leadId: '$title'");
 
