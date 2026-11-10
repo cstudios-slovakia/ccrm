@@ -654,7 +654,10 @@ async function writeChecks() {
   const sm = await call(A, 'get_invoicable_summary', { include_rows: true });
   check('get_invoicable_summary: leads and projects groups, total adds up', sm.groups?.length === 2 && Math.abs(sm.total - sm.groups.reduce((s, g) => s + g.invoicable, 0)) < 0.01, JSON.stringify(sm).slice(0, 200));
   const im = await call(A, 'get_invoicing_metrics', {});
-  check('get_invoicing_metrics counts invoices only', im.invoiced_value > 0 && im.offers_value === 0, JSON.stringify(im).slice(0, 200));
+  // Compare with the table, not with zero: the scratch DB is a clone of dev data and holds price offers.
+  const wantInv = Number(cell("SELECT COALESCE(SUM(total_price),0) FROM invoices_offers WHERE type='invoice'"));
+  const wantOff = Number(cell("SELECT COALESCE(SUM(total_price),0) FROM invoices_offers WHERE type='price_offer'"));
+  check('get_invoicing_metrics counts invoices only', im.invoiced_value > 0 && Math.abs(im.invoiced_value - wantInv) < 0.01 && Math.abs(im.offers_value - wantOff) < 0.01, JSON.stringify(im).slice(0, 200));
   const wm = await call(A, 'get_warehouse_metrics', { warehouse_id: 'pw-1' });
   check('get_warehouse_metrics values stock at the average price', Math.abs(wm.stock_valuation - 34 * 116) < 0.01, JSON.stringify(wm));
   for (const [tool, args] of [['list_financial_movements', {}], ['list_financial_categories', {}], ['list_recurring_movements', { include_paused: true }], ['list_client_categories', {}], ['list_warehouses', {}], ['list_suppliers', {}], ['list_stock_movements', {}], ['list_batches', {}], ['list_workflows', {}], ['list_unified_entries', {}], ['list_meeting_tasks', {}], ['list_documents', {}], ['list_invoices', {}]]) {
