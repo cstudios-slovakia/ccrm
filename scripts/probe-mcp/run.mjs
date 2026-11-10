@@ -781,6 +781,201 @@ async function changeMoneyChecks() {
 
 async function changePeopleChecks() {
   section('change visibility: employees, salaries, vacations, stock, workflows, registries');
+  const A = TOKENS.admin;
+  const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+  // 1590998400 = 2020-06-01 10:00 in Europe/Bratislava (CEST), independent of the MySQL session zone.
+  const AGED = 1590998400;
+  const age = (table, id) => sql(`UPDATE ${table} SET updated_at = FROM_UNIXTIME(${AGED}) WHERE id = ${sq(id)}`);
+  const unix = (iso) => Date.parse(iso) / 1000;
+  const ids = (r) => (Array.isArray(r) ? r.map((x) => x.id).join() : JSON.stringify(r).slice(0, 200));
+  const shift = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
+  // "Today" as the app sees it (PHP zone), not this machine's.
+  const today = (await call(A, 'get_vacation_balance', { employee_id: 'pe-2' })).on_date;
+  check('get_vacation_balance names the day it answers for', /^\d{4}-\d{2}-\d{2}$/.test(today || ''), String(today));
+
+  // ---- employees: ISO moments, updated_from, offset
+  age('employees', 'pe-2');
+  sql(`UPDATE employees SET position = position WHERE id = 'pe-1'`);
+  const emp1 = (await call(A, 'list_employees', { search: 'Probe' })).find?.((e) => e.id === 'pe-1');
+  const empDbUnix = Number(cell(`SELECT FLOOR(UNIX_TIMESTAMP(updated_at)) FROM employees WHERE id = 'pe-1'`));
+  check('list_employees returns created_at and updated_at as ISO moments with an offset', emp1 && isoRe.test(emp1.created_at) && isoRe.test(emp1.updated_at), JSON.stringify(emp1)?.slice(0, 200));
+  check('list_employees updated_at is the moment the database holds', emp1 && unix(emp1.updated_at) === empDbUnix, `${emp1?.updated_at} vs ${empDbUnix}`);
+  const empSince = async (from) => ids(await call(A, 'list_employees', { search: 'Probe', updated_from: from })).split(',');
+  check('list_employees updated_from leaves out a record last changed before it', !(await empSince('2021-01-01')).includes('pe-2') && (await empSince('2021-01-01')).includes('pe-1'), '');
+  check('list_employees updated_from takes a time of day', (await empSince('2020-06-01 09:59')).includes('pe-2') && !(await empSince('2020-06-01 10:01')).includes('pe-2'), '');
+  const empAll = await call(A, 'list_employees', { search: 'Probe' });
+  const empP1 = await call(A, 'list_employees', { search: 'Probe', limit: 1 });
+  const empP2 = await call(A, 'list_employees', { search: 'Probe', limit: 1, offset: 1 });
+  check('list_employees pages by offset in a stable order', empAll.length >= 2 && empP1.length === 1 && empP1[0].id === empAll[0].id && empP2[0]?.id === empAll[1].id, ids(empAll));
+  check('list_employees sort_by=updated_at puts the most recent first', (await call(A, 'list_employees', { search: 'Probe', sort_by: 'updated_at' }))[0]?.id !== 'pe-2', '');
+  check('list_employees refuses a malformed updated_from', isErr(await call(A, 'list_employees', { updated_from: 'yesterday' }), /YYYY-MM-DD/), '');
+  const getEmp = await call(A, 'get_employee', { id: 'pe-2' });
+  check('get_employee returns created_at and updated_at as ISO moments', isoRe.test(getEmp.created_at || '') && unix(getEmp.updated_at) === AGED, JSON.stringify(getEmp)?.slice(0, 200));
+
+  // ---- salaries: ISO incl. closed_at, change window, due / payment ranges, paging
+  sql(`DELETE FROM employee_salaries WHERE id IN ('cp-sal-1','cp-sal-2');
+       INSERT INTO employee_salaries (id,employee_id,period_type,period_key,year,period_number,items_json,total_salary,total_paid,status,due_date,payment_date,closed_at)
+       VALUES ('cp-sal-1','pe-2','monthly','2031-01',2031,1,'[]',1000,1000,'paid','2031-01-15','2031-01-14','2031-01-14 12:30:00'),
+              ('cp-sal-2','pe-2','monthly','2031-02',2031,2,'[]',1000,0,'pending','2031-02-15',NULL,NULL);`);
+  const sal = async (args) => call(A, 'list_salaries', { employee_id: 'pe-2', ...args });
+  let r = await sal({ year: 2031 });
+  check('list_salaries lists the newest period first', ids(r) === 'cp-sal-2,cp-sal-1', ids(r));
+  const s1 = r.find?.((x) => x.id === 'cp-sal-1');
+  check('list_salaries returns created_at and updated_at as ISO moments', s1 && isoRe.test(s1.created_at) && isoRe.test(s1.updated_at), JSON.stringify(s1)?.slice(0, 200));
+  check('list_salaries closed_at is an ISO moment (the app writes local wall time)', s1?.closed_at === '2031-01-14T12:30:00+01:00', String(s1?.closed_at));
+  check('list_salaries leaves closed_at null for an open month', r.find?.((x) => x.id === 'cp-sal-2')?.closed_at === null, '');
+  check('list_salaries due_from / due_to', ids(await sal({ due_from: '2031-02-01' })) === 'cp-sal-2' && ids(await sal({ due_to: '2031-01-31' })) === 'cp-sal-1' && ids(await sal({ due_from: '2031-01-15', due_to: '2031-01-15' })) === 'cp-sal-1', '');
+  check('list_salaries payment_from / payment_to', ids(await sal({ payment_from: '2031-01-01' })) === 'cp-sal-1' && ids(await sal({ payment_to: '2030-12-31', year: 2031 })) === '', '');
+  check('list_salaries refuses a reversed due range', isErr(await sal({ due_from: '2031-03-01', due_to: '2031-01-01' }), /after/), '');
+  age('employee_salaries', 'cp-sal-1');
+  check('list_salaries updated_from leaves out a record last changed before it', ids(await sal({ year: 2031, updated_from: '2021-01-01' })) === 'cp-sal-2', '');
+  check('list_salaries pages by offset', ids(await sal({ year: 2031, limit: 1 })) === 'cp-sal-2' && ids(await sal({ year: 2031, limit: 1, offset: 1 })) === 'cp-sal-1', '');
+  const getEmpSal = (await call(A, 'get_employee', { id: 'pe-2' })).salaries?.find?.((x) => x.id === 'cp-sal-1');
+  check('get_employee salaries carry ISO moments, closed_at included', getEmpSal && isoRe.test(getEmpSal.created_at) && unix(getEmpSal.updated_at) === AGED && getEmpSal.closed_at === '2031-01-14T12:30:00+01:00', JSON.stringify(getEmpSal)?.slice(0, 200));
+  check('list_salaries stays closed to a role without employees.salaries', forbidden(await call(TOKENS.editor, 'list_salaries', {})), '');
+
+  // ---- vacations: overlap range, change window, on_date, ISO
+  sql(`DELETE FROM employee_vacations WHERE id IN ('cp-vac-1','cp-vac-2');
+       INSERT INTO employee_vacations (id,employee_id,vacation_type_id,start_date,end_date,days_count,status)
+       VALUES ('cp-vac-1','pe-2','annual','2031-03-03','2031-03-07',5,'approved'), ('cp-vac-2','pe-2','annual','2031-03-20','2031-03-21',2,'approved');`);
+  const vac = async (args) => call(A, 'list_vacations', { employee_id: 'pe-2', ...args });
+  r = await vac({ year: 2031 });
+  check('list_vacations keeps the year filter and returns ISO moments', ids(r) === 'cp-vac-2,cp-vac-1' && isoRe.test(r[0].created_at) && isoRe.test(r[0].updated_at), JSON.stringify(r)?.slice(0, 200));
+  check('list_vacations from/to finds an entry that starts before the range', ids(await vac({ from: '2031-03-05', to: '2031-03-10' })) === 'cp-vac-1', '');
+  check('list_vacations from/to is inclusive at both ends', ids(await vac({ from: '2031-03-07', to: '2031-03-07' })) === 'cp-vac-1' && ids(await vac({ from: '2031-03-02', to: '2031-03-03' })) === 'cp-vac-1', '');
+  check('list_vacations from/to leaves out entries wholly outside', ids(await vac({ from: '2031-03-08', to: '2031-03-19' })) === '' && ids(await vac({ to: '2031-03-02' })) === '', '');
+  check('list_vacations a range with only "from" or only "to"', ids(await vac({ from: '2031-03-10' })) === 'cp-vac-2' && ids(await vac({ to: '2031-03-10' })) === 'cp-vac-1', '');
+  check('list_vacations refuses a reversed range and a malformed date', isErr(await vac({ from: '2031-04-01', to: '2031-03-01' }), /after/) && isErr(await vac({ from: 'next week' }), /YYYY-MM-DD/), '');
+  age('employee_vacations', 'cp-vac-1');
+  check('list_vacations updated_from leaves out an entry last changed before it', ids(await vac({ updated_from: '2021-01-01' })) === 'cp-vac-2', '');
+  check('list_vacations pages by offset', ids(await vac({ limit: 1 })) === 'cp-vac-2' && ids(await vac({ limit: 1, offset: 1 })) === 'cp-vac-1', '');
+  const onLeave = async (d) => (await call(A, 'get_vacation_balance', { on_date: d })).on_leave?.map((e) => e.id) || [];
+  check('get_vacation_balance on_date: who is on leave that day', (await onLeave('2031-03-04')).includes('pe-2') && (await onLeave('2031-03-07')).includes('pe-2') && !(await onLeave('2031-03-10')).includes('pe-2'), '');
+  const balToday = await call(A, 'get_vacation_balance', { employee_id: 'pe-2' });
+  check('get_vacation_balance keeps on_leave_today, answered for today', Array.isArray(balToday.on_leave_today) && balToday.on_date === today && JSON.stringify(balToday.on_leave) === JSON.stringify(balToday.on_leave_today), JSON.stringify(balToday).slice(0, 200));
+  const balLater = await call(A, 'get_vacation_balance', { on_date: '2031-03-04' });
+  check('get_vacation_balance on_leave_today stays about today when on_date is another day', balLater.on_date === '2031-03-04' && !balLater.on_leave_today.some((e) => e.id === 'pe-2'), JSON.stringify(balLater.on_leave_today).slice(0, 200));
+  check('get_vacation_balance refuses a malformed on_date', isErr(await call(A, 'get_vacation_balance', { on_date: 'tomorrow' }), /YYYY-MM-DD/), '');
+  const getEmpVac = (await call(A, 'get_employee', { id: 'pe-2' })).vacations?.find?.((x) => x.id === 'cp-vac-1');
+  check('get_employee vacations carry ISO moments', getEmpVac && isoRe.test(getEmpVac.created_at) && unix(getEmpVac.updated_at) === AGED, JSON.stringify(getEmpVac)?.slice(0, 200));
+
+  // ---- team members: ISO created_at
+  const team = await call(A, 'list_team_members', { search: 'Probe', limit: 1 });
+  check('list_team_members returns created_at as an ISO moment and pages', Array.isArray(team) && team.length === 1 && isoRe.test(team[0].created_at) && isoRe.test(team[0].updated_at), JSON.stringify(team).slice(0, 200));
+
+  // ---- inventory items (warehouse_items.updated_at)
+  sql(`DELETE FROM warehouse_items WHERE id = 'cp-item-2';
+       INSERT INTO warehouse_items (id,sku,name,min_stock,avg_purchase_price,default_sell_price) VALUES ('cp-item-2','CP-ITEM-2','Probe item two',1,1,2);`);
+  age('warehouse_items', 'pi-1');
+  const itemsSince = async (from) => ids(await call(A, 'list_inventory_items', { search: 'Probe item', updated_from: from })).split(',');
+  const pi1 = (await call(A, 'list_inventory_items', { search: 'Probe item' })).find?.((x) => x.id === 'pi-1');
+  check('list_inventory_items returns created_at and updated_at as ISO moments', pi1 && isoRe.test(pi1.created_at) && unix(pi1.updated_at) === AGED, JSON.stringify(pi1)?.slice(0, 200));
+  check('list_inventory_items updated_from leaves out an item last changed before it', !(await itemsSince('2021-01-01')).includes('pi-1') && (await itemsSince('2021-01-01')).includes('cp-item-2'), '');
+  sql(`UPDATE warehouse_items SET description = 'changed by the probe' WHERE id = 'pi-1'`);
+  check('editing an item moves its updated_at', (await itemsSince('2021-01-01')).includes('pi-1'), '');
+  age('warehouse_items', 'pi-1');
+  sql(`UPDATE warehouse_items SET description = 'changed by the probe' WHERE id = 'pi-1'`);
+  check('re-saving an item with the same values leaves updated_at alone', !(await itemsSince('2021-01-01')).includes('pi-1'), '');
+  sql(`UPDATE warehouse_items SET description = NULL WHERE id = 'pi-1'`);
+  age('warehouse_items', 'pi-1');
+  const itAll = await call(A, 'list_inventory_items', { search: 'Probe item' });
+  check('list_inventory_items pages by offset in name order', itAll.length >= 2 && ids(await call(A, 'list_inventory_items', { search: 'Probe item', limit: 1 })) === itAll[0].id && ids(await call(A, 'list_inventory_items', { search: 'Probe item', limit: 1, offset: 1 })) === itAll[1].id, ids(itAll));
+  const gi = await call(A, 'get_inventory_item', { id: 'pi-1' });
+  check('get_inventory_item returns created_at and updated_at as ISO moments', isoRe.test(gi.created_at || '') && unix(gi.updated_at) === AGED, JSON.stringify(gi)?.slice(0, 200));
+
+  // ---- suppliers
+  sql(`DELETE FROM suppliers WHERE id IN ('cp-sup-1','cp-sup-2');
+       INSERT INTO suppliers (id,name) VALUES ('cp-sup-1','Probe Supplier A'), ('cp-sup-2','Probe Supplier B');`);
+  age('suppliers', 'cp-sup-1');
+  const sup = async (args) => call(A, 'list_suppliers', { search: 'Probe Supplier', ...args });
+  r = await sup({});
+  check('list_suppliers returns created_at and updated_at as ISO moments', ids(r) === 'cp-sup-1,cp-sup-2' && unix(r[0].updated_at) === AGED && isoRe.test(r[1].created_at), JSON.stringify(r)?.slice(0, 200));
+  check('list_suppliers updated_from leaves out a supplier last changed before it', ids(await sup({ updated_from: '2021-01-01' })) === 'cp-sup-2', '');
+  check('list_suppliers pages by offset', ids(await sup({ limit: 1 })) === 'cp-sup-1' && ids(await sup({ limit: 1, offset: 1 })) === 'cp-sup-2', '');
+
+  // ---- stock movements: time of day on issued_at, change window
+  sql(`DELETE FROM warehouse_movements WHERE id IN ('cp-mov-1','cp-mov-2');
+       INSERT INTO warehouse_movements (id,document_number,type,status,warehouse_id,created_by,issued_at)
+       VALUES ('cp-mov-1','CP-MOV-1','inward','confirmed','pw-1','probe','2031-04-10 14:30:00'), ('cp-mov-2','CP-MOV-2','inward','confirmed','pw-1','probe','2031-04-10 09:00:00');`);
+  const mov = async (args) => call(A, 'list_stock_movements', { warehouse_id: 'pw-1', ...args });
+  r = await mov({ from: '2031-04-10', to: '2031-04-10' });
+  check('list_stock_movements whole-day from/to still covers the day, latest first', ids(r) === 'cp-mov-1,cp-mov-2', ids(r));
+  check('list_stock_movements from takes a time of day (inclusive)', ids(await mov({ from: '2031-04-10 12:00', to: '2031-04-11' })) === 'cp-mov-1' && ids(await mov({ from: '2031-04-10 09:00', to: '2031-04-10 09:01' })) === 'cp-mov-2', '');
+  check('list_stock_movements to with a time is exclusive', ids(await mov({ from: '2031-04-10', to: '2031-04-10 14:30' })) === 'cp-mov-2', '');
+  check('list_stock_movements refuses a malformed from', isErr(await mov({ from: 'yesterday' }), /YYYY-MM-DD/), '');
+  check('list_stock_movements pages by offset', ids(await mov({ from: '2031-04-10', to: '2031-04-10', limit: 1, offset: 1 })) === 'cp-mov-2', '');
+  check('list_stock_movements returns created_at and updated_at as ISO moments', isoRe.test(r[0]?.created_at || '') && isoRe.test(r[0]?.updated_at || ''), JSON.stringify(r[0])?.slice(0, 200));
+  age('warehouse_movements', 'cp-mov-2');
+  check('list_stock_movements updated_from leaves out a document last changed before it', ids(await mov({ from: '2031-04-10', to: '2031-04-10', updated_from: '2021-01-01' })) === 'cp-mov-1', '');
+  check('list_stock_movements sort_by=updated_at puts the most recently changed first', ids(await mov({ from: '2031-04-10', to: '2031-04-10', sort_by: 'updated_at' })) === 'cp-mov-1,cp-mov-2', '');
+
+  // ---- batches: expiry relative to the app's today, change window
+  const days = (iso) => Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(today + 'T00:00:00Z')) / 86400000);
+  sql(`DELETE FROM warehouse_batches WHERE id IN ('cp-bat-1','cp-bat-2');
+       INSERT INTO warehouse_batches (id,item_id,warehouse_id,batch_number,expiration_date,initial_quantity,current_quantity)
+       VALUES ('cp-bat-1','pi-1','pw-1','CP1','2031-06-01',10,10), ('cp-bat-2','pi-1','pw-1','CP2','2031-12-01',10,10);`);
+  const bat = async (args) => call(A, 'list_batches', { item_id: 'pi-1', ...args });
+  check('list_batches expiring_within_days counts from the app\'s today (boundary included)', ids(await bat({ expiring_within_days: days('2031-06-01') })) === 'cp-bat-1' && ids(await bat({ expiring_within_days: days('2031-06-01') - 1 })) === '', '');
+  r = await bat({});
+  check('list_batches returns created_at and updated_at as ISO moments', ids(r) === 'cp-bat-1,cp-bat-2' && isoRe.test(r[0].created_at) && isoRe.test(r[0].updated_at), JSON.stringify(r)?.slice(0, 200));
+  age('warehouse_batches', 'cp-bat-1');
+  check('list_batches updated_from leaves out a batch last changed before it', ids(await bat({ updated_from: '2021-01-01' })) === 'cp-bat-2', '');
+  check('list_batches pages by offset', ids(await bat({ limit: 1 })) === 'cp-bat-1' && ids(await bat({ limit: 1, offset: 1 })) === 'cp-bat-2', '');
+
+  // ---- categories: updated_at as ISO
+  const cc = await call(A, 'list_client_categories', {});
+  check('list_client_categories returns updated_at as an ISO moment', Array.isArray(cc) && cc.every((c) => isoRe.test(c.updated_at || '')), JSON.stringify(cc?.[0]));
+  const fc = await call(A, 'list_financial_categories', {});
+  check('list_financial_categories returns updated_at as an ISO moment', Array.isArray(fc) && fc.length > 0 && fc.every((c) => isoRe.test(c.updated_at || '')), JSON.stringify(fc?.[0]));
+
+  // ---- workflows and runs
+  sql(`DELETE FROM workflow_logs WHERE workflow_id = 'cp-wf-1'; DELETE FROM workflows WHERE id = 'cp-wf-1';
+       INSERT INTO workflows (id,name,trigger_type,nodes_json,edges_json) VALUES ('cp-wf-1','Probe workflow','manual','[]','[]');
+       INSERT INTO workflow_logs (id,workflow_id,status,execution_time_ms,trigger_event,execution_log_json,created_at) VALUES
+         ('cp-wl-1','cp-wf-1','success',10,'manual','[]',FROM_UNIXTIME(${AGED})),
+         ('cp-wl-2','cp-wf-1','failed',20,'manual','[]',FROM_UNIXTIME(${AGED})),
+         ('cp-wl-3','cp-wf-1','success',5,'manual','[]',FROM_UNIXTIME(${AGED + 60}));`);
+  const wf = (await call(A, 'list_workflows', {})).find?.((w) => w.id === 'cp-wf-1');
+  check('list_workflows last_run is an ISO moment equal to the database moment', wf && isoRe.test(wf.last_run || '') && unix(wf.last_run) === AGED + 60 && wf.last_status === 'success', JSON.stringify(wf)?.slice(0, 200));
+  check('list_workflows returns the workflow\'s own updated_at (and created_at) as ISO', wf && isoRe.test(wf.updated_at || '') && isoRe.test(wf.created_at || ''), JSON.stringify(wf)?.slice(0, 200));
+  const runs = async (args) => call(A, 'get_workflow_runs', { workflow_id: 'cp-wf-1', ...args });
+  r = await runs({});
+  check('get_workflow_runs newest first with an id tiebreak, created_at as ISO', ids(r) === 'cp-wl-3,cp-wl-1,cp-wl-2' && unix(r[0].created_at) === AGED + 60, JSON.stringify(r)?.slice(0, 200));
+  check('get_workflow_runs pages by offset', ids(await runs({ limit: 1, offset: 1 })) === 'cp-wl-1' && ids(await runs({ limit: 2, offset: 2 })) === 'cp-wl-2', '');
+  check('get_workflow_runs created_from takes a time of day', ids(await runs({ created_from: '2020-06-01 10:01' })) === 'cp-wl-3', '');
+  check('get_workflow_runs refuses updated_from (runs are never edited)', isErr(await runs({ updated_from: '2021-01-01' }), /not available/), '');
+
+  // ---- custom registries: due date range / bucket, window, deterministic order
+  const t = today;
+  sql(`DELETE FROM unified_entries WHERE id IN ('cpreg','cpplain'); DROP TABLE IF EXISTS ue_cpreg; DROP TABLE IF EXISTS ue_cpplain;
+       INSERT INTO unified_entries (id,name,icon,color,modules_json) VALUES ('cpreg','Probe registry','Folder','#000000','["title","due_date"]'), ('cpplain','Probe plain registry','Folder','#000000','["title"]');
+       CREATE TABLE ue_cpreg (id VARCHAR(50) NOT NULL PRIMARY KEY, parent_id VARCHAR(50) NULL, is_folder TINYINT(1) NOT NULL DEFAULT 0,
+         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         title VARCHAR(255) NULL, due_date DATE NULL, warning_days INT NOT NULL DEFAULT 0);
+       CREATE TABLE ue_cpplain (id VARCHAR(50) NOT NULL PRIMARY KEY, parent_id VARCHAR(50) NULL, is_folder TINYINT(1) NOT NULL DEFAULT 0,
+         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, title VARCHAR(255) NULL);
+       INSERT INTO ue_cpreg (id,title,due_date) VALUES ('cp-r1','Overdue',${sq(shift(t, -3))}), ('cp-r2','Today',${sq(t)}), ('cp-r3','Tomorrow',${sq(shift(t, 1))}), ('cp-r4','Later',${sq(shift(t, 10))}), ('cp-r5','No date',NULL);
+       INSERT INTO ue_cpplain (id,title) VALUES ('cp-p1','One'), ('cp-p2','Two');`);
+  const reg = async (args) => call(A, 'get_unified_entry_rows', { registry_id: 'cpreg', ...args });
+  check('get_unified_entry_rows bucket=overdue / today / tomorrow / upcoming', ids(await reg({ bucket: 'overdue' })) === 'cp-r1' && ids(await reg({ bucket: 'today' })) === 'cp-r2' && ids(await reg({ bucket: 'tomorrow' })) === 'cp-r3' && ids(await reg({ bucket: 'upcoming' })) === 'cp-r4', '');
+  check('get_unified_entry_rows due_from / due_to is inclusive and leaves out rows without a date', ids(await reg({ due_from: t, due_to: shift(t, 1), sort_by: 'due_date' })) === 'cp-r2,cp-r3', '');
+  check('get_unified_entry_rows refuses a reversed range and bucket=done', isErr(await reg({ due_from: shift(t, 5), due_to: t }), /after/) && isErr(await reg({ bucket: 'done' }), /bucket/), '');
+  r = await reg({ sort_by: 'due_date', limit: 10 });
+  check('get_unified_entry_rows sort_by=due_date orders the dated rows', ids(r).split(',').filter((x) => x !== 'cp-r5').join() === 'cp-r1,cp-r2,cp-r3,cp-r4', ids(r));
+  check('get_unified_entry_rows has a deterministic order that pages without gaps', ids(await reg({ sort_by: 'due_date', limit: 2 })) + '|' + ids(await reg({ sort_by: 'due_date', limit: 2, offset: 2 })) + '|' + ids(await reg({ sort_by: 'due_date', limit: 2, offset: 4 })) === 'cp-r5,cp-r1|cp-r2,cp-r3|cp-r4', '');
+  check('get_unified_entry_rows returns created_at and updated_at as ISO moments', r.every((x) => isoRe.test(x.created_at || '') && isoRe.test(x.updated_at || '')), JSON.stringify(r[0])?.slice(0, 200));
+  age('ue_cpreg', 'cp-r1');
+  check('get_unified_entry_rows updated_from leaves out a row last changed before it', !ids(await reg({ updated_from: '2021-01-01' })).split(',').includes('cp-r1') && ids(await reg({ updated_from: '2021-01-01' })).split(',').includes('cp-r2'), '');
+  const plain = (args) => call(A, 'get_unified_entry_rows', { registry_id: 'cpplain', ...args });
+  check('a registry without a due date lists its rows in a deterministic order', ids(await plain({})).split(',').sort().join() === 'cp-p1,cp-p2' && ids(await plain({})) === ids(await plain({})), '');
+  check('a registry without a due date refuses due_from and bucket', isErr(await plain({ due_from: t }), /no due date/) && isErr(await plain({ bucket: 'overdue' }), /no due date/), '');
+
+  // ---- tidy up what this section made
+  sql(`DELETE FROM employee_salaries WHERE id IN ('cp-sal-1','cp-sal-2'); DELETE FROM employee_vacations WHERE id IN ('cp-vac-1','cp-vac-2');
+       DELETE FROM warehouse_batches WHERE id IN ('cp-bat-1','cp-bat-2'); DELETE FROM warehouse_movements WHERE id IN ('cp-mov-1','cp-mov-2');
+       DELETE FROM suppliers WHERE id IN ('cp-sup-1','cp-sup-2'); DELETE FROM warehouse_items WHERE id = 'cp-item-2';
+       DELETE FROM workflow_logs WHERE workflow_id = 'cp-wf-1'; DELETE FROM workflows WHERE id = 'cp-wf-1';
+       DELETE FROM unified_entries WHERE id IN ('cpreg','cpplain'); DROP TABLE IF EXISTS ue_cpreg; DROP TABLE IF EXISTS ue_cpplain;`);
 }
 
 // ---- (separator: keep these stubs apart so git merges them cleanly) ----
