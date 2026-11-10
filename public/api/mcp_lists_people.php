@@ -42,7 +42,7 @@ const MCP_SUPPLIER_WINDOW = [
 ];
 
 /** Movement documents: business time (issued_at) first, change time through sort_by=updated_at. */
-const MCP_MOVEMENT_WINDOW = [
+const MCP_STOCK_MOVEMENT_WINDOW = [
     'created' => 'm.created_at', 'updated' => 'm.updated_at', 'id' => 'm.id',
     'sorts' => ['issued_at' => ['m.issued_at', 'DESC']], 'default_sort' => 'issued_at',
 ];
@@ -335,7 +335,7 @@ function mcp_list_stock_movements(\PDO $pdo, array $user, array $args): array {
     [$w, $p] = mcp_local_range($args, 'from', 'to', 'm.issued_at');
     $where = array_merge($where, $w);
     $params = array_merge($params, $p);
-    $win = mcp_list_window($args, MCP_MOVEMENT_WINDOW);
+    $win = mcp_list_window($args, MCP_STOCK_MOVEMENT_WINDOW);
     $where = array_merge($where, $win['where']);
     $params = array_merge($params, $win['params']);
     $stmt = $pdo->prepare('SELECT m.id, m.document_number, m.type, m.status, m.warehouse_id, m.target_warehouse_id, m.supplier_id, m.lead_id, m.total_cost_value, m.total_sell_value, m.total_profit_value, m.created_by, m.note, m.issued_at,

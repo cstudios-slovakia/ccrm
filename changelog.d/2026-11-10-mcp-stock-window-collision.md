@@ -1,0 +1,2 @@
+- **MCP: `list_stock_movements` failed with a database error** (`mcp_lists_people.php`): its window constant had the same name as the ledger's, so the ledger window (sorted by `paid_date`) won. Renamed to `MCP_STOCK_MOVEMENT_WINDOW`.
+- **Tests**: `scripts/probe-mcp/duplicate-symbols.test.mjs` fails when two MCP modules define the same constant or function.

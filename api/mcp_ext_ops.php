@@ -228,13 +228,13 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'list_stock_movements',
-            'description' => 'Warehouse movement documents (receipts, issues, transfers, adjustments) with cost and sell values. issued_at is the document\'s own date and time; created_at / updated_at are when the record was saved and last changed. from/to filter issued_at (a bare date covers the whole day). ' . mcp_window_doc('documents', MCP_MOVEMENT_WINDOW),
+            'description' => 'Warehouse movement documents (receipts, issues, transfers, adjustments) with cost and sell values. issued_at is the document\'s own date and time; created_at / updated_at are when the record was saved and last changed. from/to filter issued_at (a bare date covers the whole day). ' . mcp_window_doc('documents', MCP_STOCK_MOVEMENT_WINDOW),
             'inputSchema' => ['type' => 'object', 'properties' => [
                 'type' => ['type' => 'string', 'enum' => ['inward', 'outward', 'transfer', 'adjustment']],
                 'warehouse_id' => ['type' => 'string'], 'item_id' => ['type' => 'string'],
                 'from' => ['type' => 'string', 'description' => 'Issued at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'],
                 'to' => ['type' => 'string', 'description' => 'Issued before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'],
-            ] + mcp_window_props(MCP_MOVEMENT_WINDOW)],
+            ] + mcp_window_props(MCP_STOCK_MOVEMENT_WINDOW)],
         ],
         [
             'name' => 'list_batches',
