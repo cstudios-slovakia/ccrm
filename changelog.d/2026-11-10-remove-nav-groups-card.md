@@ -1,1 +1,0 @@
-- **Personal settings: "Navigation Groups" card removed** (`SidebarSettings.tsx`): grouping the menu is done in the sidebar itself; pinning, size and unpinned style stay.

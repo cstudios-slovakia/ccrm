@@ -1,1 +1,0 @@
-- **Tests**: the MCP probe check "get_invoicing_metrics counts invoices only" compares with the table sums instead of assuming no price offers in the cloned dev data.

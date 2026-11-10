@@ -1,1 +1,0 @@
-- **Tests**: `scripts/probe-mcp/run.mjs` `changeReviewFixChecks()` (the overdue rule on movements and the forecast block, rejected and proforma invoices with no movement, `list_clients` created_at order, undated rows last).

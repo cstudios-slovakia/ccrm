@@ -1,1 +1,0 @@
-- **Tests**: the MCP probe (`scripts/probe-mcp/run.mjs`, `changePeopleChecks`) covers ISO moments, `updated_from`, paging, the vacation overlap range, `on_date`, salary due/payment ranges, movement time of day, batch expiry from the app's date, workflow runs and registry due-date buckets.

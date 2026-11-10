@@ -1,1 +1,0 @@
-- **`list_clients` sorts by `created_at` oldest first again** (`public/api/mcp_ext_writes.php`, `mcp_lists_crm.php`): the window constant, the handler and the tool description agree; `updated_at` stays newest first and `sort_order` reverses either.
