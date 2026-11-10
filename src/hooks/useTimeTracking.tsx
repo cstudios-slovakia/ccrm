@@ -74,6 +74,8 @@ export interface TimeTrackingContextValue {
 }
 
 const NOOP = async () => null;
+/** How often a visible page re-reads the running timer (one indexed SELECT on the server). */
+const RUNNING_POLL_MS = 30_000;
 const Ctx = createContext<TimeTrackingContextValue>({
   enabled: false,
   ready: false,
@@ -179,7 +181,11 @@ export function TimeTrackingProvider({
 
   const refreshRunning = useCallback(async () => {
     try {
-      setRunning(await getRunning());
+      const next = await getRunning();
+      // Started or stopped somewhere this page never heard from (another device, an agent):
+      // the lists and totals are out of date too, so let every view refetch.
+      if ((next?.id ?? null) !== (runningRef.current?.id ?? null)) setVersion((v) => v + 1);
+      setRunning(next);
     } catch {
       /* keep what we have */
     }
@@ -202,10 +208,15 @@ export function TimeTrackingProvider({
     };
     // Two windows side by side never become "visible" again; focusing one must still refresh it.
     const onFocus = () => void refreshRunning();
+    // Another device or browser cannot reach the tab channel: re-read the running timer while the page is shown.
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshRunning();
+    }, RUNNING_POLL_MS);
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
+      window.clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
     };

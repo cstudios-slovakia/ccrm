@@ -1,0 +1,2 @@
+- **Time tracking: a timer started or stopped on another device shows up on an open page** (`src/hooks/useTimeTracking.tsx`): a visible page re-reads the running timer every 30 seconds, so the header, the Start/Stop buttons, the lists and the totals catch up without a click or a reload.
+- **Tests**: `timeTracking.spec.ts` covers a timer started on another device appearing on an open page.

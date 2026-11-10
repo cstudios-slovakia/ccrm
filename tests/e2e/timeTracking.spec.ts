@@ -369,4 +369,22 @@ test.describe('Time tracking', () => {
     expect(runningNow).toBe(startedElsewhere);
     await expect(page.getByTestId('project-time-entry').filter({ hasText: /beží|running|fut/ })).toHaveCount(1);
   });
+
+  test('a timer started on another device shows up on an open page without a click', async ({ page }) => {
+    await page.clock.install();
+    await startSession(page);
+    await gotoView(page, '#projects/project-1?tab=time');
+    const button = page.getByTestId('project-start-timer');
+    await expect(button).toContainText(/Spustiť|Start|indítása/);
+    await expect(page.getByTestId('header-timer-running')).toHaveCount(0);
+
+    // Another device: the server knows, this page has no channel to hear it on.
+    await page.evaluate(async () => {
+      await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start', projectId: 'project-1', description: null, originType: 'project', originId: 'project-1' }) });
+    });
+    await page.clock.fastForward(31_000);
+    await expect(page.getByTestId('header-timer-running')).toBeVisible();
+    await expect(button).toContainText(/Zastaviť|Stop|leállítása/);
+    await expect(page.getByTestId('project-time-entry').filter({ hasText: /beží|running|fut/ })).toHaveCount(1);
+  });
 });
