@@ -19,13 +19,7 @@ import {
   X,
   Sparkles,
   Coins,
-  ListTodo,
-  Plus,
-  Check,
-  Trash2,
-  ChevronUp,
-  ChevronDown,
-  GripVertical
+  ListTodo
 } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -46,13 +40,12 @@ import {
 } from "framer-motion";
 import { normalizeSidebarGroups, flattenSidebarGroups, type SidebarGroup } from "../utils/sidebarLayout";
 import { applySectionVisual } from "../utils/sectionVisuals";
-import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { runUndoable } from "../utils/undoable";
-import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 import { MobileMenuEditor } from "./menuEdit/MobileMenuEditor";
 import { DragGhostLayer } from "./menuEdit/dragGhost";
 import { isInsideMenuEditLayer } from "./menuEdit/primitives";
 import { menuEditStrings } from "./menuEdit/menuEditStrings";
+import { SidebarEditPanel } from "./menuEdit/SidebarEditPanel";
 
 /**
  * `dashboard` used to BE the task panel — the tasks section was split out of it
@@ -172,19 +165,10 @@ interface SidebarDockButtonProps {
     headerHeight: string;
   };
   dragOverIndex: number | null;
-  isStartMenuOpen: boolean;
-  startMenuEditMode: boolean;
-  sidebarGroups?: SidebarGroup[];
   onItemClick: (itemId: string) => void;
   onHoverStart: (itemId: string) => void;
   onDrop: (e: React.DragEvent, groupId: string, indexInGroup: number) => void;
   onDragOver: (e: React.DragEvent, indexInGroup: number) => void;
-  onDragStartItem?: (e: React.DragEvent, itemId: string, fromGroupId: string) => void;
-  onDragEndItem?: () => void;
-  onMoveItemInGroup?: (groupId: string, indexInGroup: number, direction: -1 | 1) => void;
-  onMoveItemToGroup?: (itemId: string, targetGroupId: string) => void;
-  onTogglePinItem: (itemId: string) => void;
-  t: (en: string, sk: string, hu: string) => string;
 }
 
 const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
@@ -196,25 +180,14 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
   mouseY,
   widthClasses,
   dragOverIndex,
-  isStartMenuOpen,
-  startMenuEditMode,
-  sidebarGroups,
   onItemClick,
   onHoverStart,
   onDrop,
   onDragOver,
-  onDragStartItem,
-  onDragEndItem,
-  onMoveItemInGroup,
-  onMoveItemToGroup,
-  onTogglePinItem,
-  t,
 }) => {
   const item = entry.item;
   const Icon = item.icon;
   const btnRef = useRef<any>(null);
-  const isEditing = isStartMenuOpen && startMenuEditMode;
-
   // Magic UI Framer Motion distance & physics spring animation
   const distanceCalc = useTransform(mouseY, (val: number) => {
     if (!isDockMode || isExpanded || val === Infinity) return Infinity;
@@ -262,7 +235,7 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
 
   const commonClass = cn(
     "w-full flex items-center gap-2 rounded-2xl transition-colors duration-150 group text-left relative select-none",
-    isEditing ? "cursor-grab active:cursor-grabbing hover:bg-slate-50 border border-transparent hover:border-slate-200" : "cursor-pointer",
+    "cursor-pointer",
     widthClasses.itemPad,
     dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
     isActive
@@ -282,74 +255,11 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
     </span>
   );
 
-  if (!isEditing) {
-    return (
-      <motion.button
-        type="button"
-        ref={btnRef}
-        onClick={() => onItemClick(item.id)}
-        data-dock-id={item.id}
-        onMouseEnter={() => {
-          if (isDockMode && !isExpanded) onHoverStart(item.id);
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          e.dataTransfer.dropEffect = "move";
-          onDragOver(e, entry.indexInGroup);
-        }}
-        onDrop={(e) => {
-          e.stopPropagation();
-          onDrop(e, entry.group.id, entry.indexInGroup);
-        }}
-        style={commonStyle}
-        className={commonClass}
-        title={!isDockMode || isExpanded ? item.label : undefined}
-        aria-current={isActive ? "page" : undefined}
-      >
-        <span className="relative shrink-0 inline-flex">
-          <Icon
-            className={cn(
-              widthClasses.iconSize,
-              "shrink-0 transition-transform duration-200",
-              "shrink-0"
-            )}
-            style={{ color: item.color || item.customColor }}
-          />
-          {badge ? (
-            <span
-              aria-label={String(badge)}
-              className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-emerald-600 text-white text-micro font-bold leading-4 text-center shadow-sm"
-            >
-              {badge > 99 ? "99+" : badge}
-            </span>
-          ) : null}
-        </span>
-        {innerLabel}
-      </motion.button>
-    );
-  }
-
   return (
-    <motion.div
+    <motion.button
+      type="button"
       ref={btnRef}
-      role="button"
-      tabIndex={0}
-      draggable={true}
-      onDragStart={(e) => {
-        onDragStartItem?.(e as any, item.id, entry.group.id);
-      }}
-      onDragEnd={() => {
-        onDragEndItem?.();
-      }}
-      onClick={() => {
-        onItemClick(item.id);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          onItemClick(item.id);
-        }
-      }}
+      onClick={() => onItemClick(item.id)}
       data-dock-id={item.id}
       onMouseEnter={() => {
         if (isDockMode && !isExpanded) onHoverStart(item.id);
@@ -367,97 +277,28 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
       style={commonStyle}
       className={commonClass}
       title={!isDockMode || isExpanded ? item.label : undefined}
+      aria-current={isActive ? "page" : undefined}
     >
-      {/* Drag Grip Handle in Edit Mode */}
-      {isExpanded && (
-        <div className="shrink-0 text-slate-300 hover:text-slate-600 transition-colors cursor-grab active:cursor-grabbing">
-          <GripVertical className="h-3.5 w-3.5" />
-        </div>
-      )}
-
-      <Icon
-        className={cn(
-          widthClasses.iconSize,
-          "shrink-0"
-        )}
-        style={{ color: item.color || item.customColor }}
-      />
-
-      {innerLabel}
-
-      {/* Reorder and Group Actions in Edit Mode */}
-      {isExpanded && (
-        <div className="flex items-center gap-0.5 shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
-          {/* Move Up */}
-          <button
-            type="button"
-            disabled={entry.indexInGroup === 0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onMoveItemInGroup?.(entry.group.id, entry.indexInGroup, -1);
-            }}
-            className={cn(
-              "p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-              entry.indexInGroup === 0 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-            )}
-            title={t("Move up", "Posunúť nahor", "Mozgatás fel")}
-          >
-            <ChevronUp className="h-3 w-3" />
-          </button>
-
-          {/* Move Down */}
-          <button
-            type="button"
-            disabled={entry.indexInGroup >= entry.totalInGroup - 1}
-            onClick={(e) => {
-              e.stopPropagation();
-              onMoveItemInGroup?.(entry.group.id, entry.indexInGroup, 1);
-            }}
-            className={cn(
-              "p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-              entry.indexInGroup >= entry.totalInGroup - 1 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-            )}
-            title={t("Move down", "Posunúť nadol", "Mozgatás le")}
-          >
-            <ChevronDown className="h-3 w-3" />
-          </button>
-
-          {/* Move to another group select dropdown if more than 1 group */}
-          {sidebarGroups && sidebarGroups.length > 1 && (
-            <select
-              value={entry.group.id}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                e.stopPropagation();
-                onMoveItemToGroup?.(item.id, e.target.value);
-              }}
-              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[60px] truncate"
-              title={t("Move to group", "Presunúť do skupiny", "Áthelyezés csoportba")}
-            >
-              {sidebarGroups.map((g, gIdx) => (
-                <option key={g.id} value={g.id}>
-                  {g.title || `${t("Group", "Skupina", "Csoport")} ${gIdx + 1}`}
-                </option>
-              ))}
-            </select>
+      <span className="relative shrink-0 inline-flex">
+        <Icon
+          className={cn(
+            widthClasses.iconSize,
+            "shrink-0 transition-transform duration-200",
+            "shrink-0"
           )}
-
-          {/* Quick Unpin Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onTogglePinItem(item.id);
-            }}
-            className="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-            title={t("Remove from sidebar", "Odstrániť z bočného menu", "Eltávolítás az oldalsávról")}
+          style={{ color: item.color || item.customColor }}
+        />
+        {badge ? (
+          <span
+            aria-label={String(badge)}
+            className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-emerald-600 text-white text-micro font-bold leading-4 text-center shadow-sm"
           >
-            <X className="h-3 w-3" />
-          </button>
-        </div>
-      )}
-    </motion.div>
+            {badge > 99 ? "99+" : badge}
+          </span>
+        ) : null}
+      </span>
+      {innerLabel}
+    </motion.button>
   );
 };
 
@@ -679,20 +520,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isPinned = sidebarPinned === true;
   const isPinnedRail = isPinned && sidebarPinnedCollapsed === true;
   const isDockMode = !isPinned && sidebarUnpinnedStyle === "dock";
-  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
-  const [addModuleGroupId, setAddModuleGroupId] = useState<string | null>(null);
 
-  // Close module picker on outside click
-  useEffect(() => {
-    if (!addModuleGroupId) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest("[data-module-picker]")) return;
-      setAddModuleGroupId(null);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [addModuleGroupId]);
+  const isEditing = isStartMenuOpen && startMenuEditMode;
 
   // When pinned (and not narrowed to a rail) or editing navigation, sidebar stays expanded
   const isExpanded = (isPinned && !isPinnedRail) || (!isPinned && !isCollapsed) || (isStartMenuOpen && startMenuEditMode);
@@ -853,7 +682,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const currentHidden = Array.isArray(userMetadata?.navHidden) ? userMetadata.navHidden : [];
     const newHidden = currentHidden.filter((id: string) => id !== itemId);
     onSaveUserLayout(newActiveLayout, newHidden, nextGroups);
-    setAddModuleGroupId(null);
   };
 
   // Move entire group up or down in sidebar
@@ -886,7 +714,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setDraggedItemId(null);
     (window as any).__draggedModuleId = null;
     setDragOverIndex(null);
-    setDragOverGroupId(null);
   };
 
   /**
@@ -940,7 +767,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       setDraggedItemId(null);
       (window as any).__draggedModuleId = null;
       setDragOverIndex(null);
-      setDragOverGroupId(null);
       return;
     }
 
@@ -949,7 +775,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setDraggedItemId(null);
     (window as any).__draggedModuleId = null;
     setDragOverIndex(null);
-    setDragOverGroupId(null);
+  };
+
+  const handleStartClick = () => {
+    if (isStartMenuOpen) {
+      setIsStartMenuOpen(false);
+      setStartMenuEditMode(false);
+      if (!isPinned) setIsCollapsed(true);
+    } else {
+      setStartMenuEditMode(false);
+      setIsStartMenuOpen(true);
+    }
   };
 
   const handleCreateDashboard = () => {
@@ -1051,8 +887,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onSaveUserLayout(flattenSidebarGroups(groups), undefined, groups);
     };
     runUndoable({
-      message: singleMessage(asLang(systemLanguage), "group", "delete", toDelete.title),
-      undoLabel: undoLabel(asLang(systemLanguage)),
+      message: menuEditStrings(systemLanguage).groupDeleted,
+      undoLabel: menuEditStrings(systemLanguage).undo,
       apply: () => write(remaining),
       revert: () => write(current),
     });
@@ -1064,7 +900,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       | { type: "item"; item: any; group: SidebarGroup; indexInGroup: number; totalInGroup: number }
       | { type: "header"; title: string; groupId: string; groupIndex: number }
       | { type: "divider"; groupId: string }
-      | { type: "dropzone"; groupId: string }
     > = [];
 
     sidebarGroups.forEach((group, gIdx) => {
@@ -1072,33 +907,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         .map((id) => allPossibleItems.find((i) => i.id === id))
         .filter(Boolean) as any[];
 
-      if (groupItemObjs.length === 0 && !(isStartMenuOpen && startMenuEditMode)) return;
+      if (groupItemObjs.length === 0) return;
 
       if (!isExpanded && gIdx > 0) {
         list.push({ type: "divider", groupId: group.id });
       }
 
-      const displayTitle =
-        group.title ||
-        (isStartMenuOpen && startMenuEditMode && sidebarGroups.length > 1
-          ? `${t("Group", "Skupina", "Csoport")} ${gIdx + 1}`
-          : "");
-
-      if (isExpanded && displayTitle) {
-        list.push({ type: "header", title: displayTitle, groupId: group.id, groupIndex: gIdx });
+      if (isExpanded && group.title) {
+        list.push({ type: "header", title: group.title, groupId: group.id, groupIndex: gIdx });
       }
 
       groupItemObjs.forEach((item, iIdx) => {
         list.push({ type: "item", item, group, indexInGroup: iIdx, totalInGroup: groupItemObjs.length });
       });
-
-      if (isStartMenuOpen && startMenuEditMode) {
-        list.push({ type: "dropzone", groupId: group.id });
-      }
     });
 
     return list;
-  }, [sidebarGroups, allPossibleItems, isExpanded, isStartMenuOpen, startMenuEditMode, systemLanguage]);
+  }, [sidebarGroups, allPossibleItems, isExpanded]);
 
   return (
     <>
@@ -1143,14 +968,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
           "view-size-fixed h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 select-none shrink-0 hidden lg:flex",
           isStartMenuOpen ? "z-[100001]" : "z-[1000]",
           isDockMode && !isExpanded && "overflow-visible",
-          isExpanded ? widthClasses.expanded : widthClasses.collapsed,
-          isPinned
+          isEditing ? "w-66" : isExpanded ? widthClasses.expanded : widthClasses.collapsed,
+          isEditing
+            ? "shadow-none border-r border-slate-200"
+            : isPinned
             ? "shadow-[inset_-10px_0_16px_-6px_rgba(0,0,0,0.08)] border-r border-slate-200/90"
-            : isCollapsed && !(isStartMenuOpen && startMenuEditMode)
+            : isCollapsed
               ? "shadow-none border-r border-slate-200/80"
               : "shadow-[10px_0_30px_rgba(0,0,0,0.06)] border-r-transparent"
         )}
       >
+        {isEditing ? (
+          <SidebarEditPanel
+            language={systemLanguage}
+            groups={sidebarGroups}
+            allItems={allPossibleItems as any[]}
+            availableModules={allPossibleItems
+              .filter((i) => isItemVisibleInSystem(i.id))
+              .map((i) => ({
+                id: i.id,
+                label: i.label,
+                icon: i.icon,
+                color: (i as any).color || (i as any).customColor,
+                kind: (i as any).isCustomDash ? ("dashboard" as const) : (i as any).isCustomUE ? ("table" as const) : undefined
+              }))}
+            onStartClick={handleStartClick}
+            renamingId={editingGroupId}
+            renameValue={editingGroupTitle}
+            onRenameValue={setEditingGroupTitle}
+            onStartRename={(id, title) => {
+              setEditingGroupId(id);
+              setEditingGroupTitle(title);
+            }}
+            onCancelRename={() => setEditingGroupId(null)}
+            onSaveRename={handleRenameSidebarGroup}
+            onMoveGroup={handleMoveSidebarGroup}
+            onDeleteGroup={handleDeleteSidebarGroup}
+            onAddGroup={() => handleAddNewSidebarGroup()}
+            onMoveItem={handleMoveItemInGroup}
+            onMoveItemToGroup={handleMoveItemToGroup}
+            onUnpin={handleTogglePinItem}
+            onAddItem={handleAddItemToGroup}
+            onSetDefault={(id) => {
+              onSaveDefaultPage?.(id);
+              setStoredDefaultPage(id);
+            }}
+            onCreateDashboard={() => setIsDashModalOpen(true)}
+            onItemDragStart={handleItemDragStart}
+            onItemDragEnd={handleItemDragEnd}
+            onDrop={handleDropOnSidebar}
+          />
+        ) : (
+        <>
         {/* Brand Header / Start Menu Launcher */}
         <div
           className={cn(
@@ -1164,14 +1033,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              if (isStartMenuOpen) {
-                setIsStartMenuOpen(false);
-                setStartMenuEditMode(false);
-                if (!isPinned) setIsCollapsed(true);
-              } else {
-                setStartMenuEditMode(false);
-                setIsStartMenuOpen(true);
-              }
+              handleStartClick();
             }}
             className={cn(
               "flex items-center gap-3 p-2 rounded-2xl bg-slate-50 border border-slate-200/90 shadow-xs hover:border-slate-300 hover:bg-slate-100 active:scale-[0.98] transition-all cursor-pointer group mx-auto focus:outline-none focus:ring-2 focus:ring-indigo-500/30",
@@ -1239,50 +1101,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             widthClasses.spacing
           )}
         >
-          {/* Editing Navigation Mode Indicator Banner */}
-          {isStartMenuOpen && startMenuEditMode && (
-            <div className="p-3 mb-2 rounded-2xl bg-indigo-50 border border-indigo-200/90 flex flex-col gap-2 animate-in fade-in duration-200 select-none">
-              <div className="flex items-center justify-between">
-                <span className="text-[10.5px] font-semibold text-slate-700 flex items-center gap-1.5">
-                  <Pencil className="h-3.5 w-3.5 text-slate-500" />
-                  {t("Edit Navigation", "Úprava menu", "Menü szerkesztése")}
-                </span>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsStartMenuOpen(false);
-                    setStartMenuEditMode(false);
-                    if (!isPinned) setIsCollapsed(true);
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs"
-                >
-                  {t("Done", "Hotovo", "Kész")}
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-600 leading-snug">
-                {t(
-                  "Use up/down arrows or drag items to reorder. Click '+ Add' on any group to insert modules.",
-                  "Použite šípky hore/dole alebo presuňte položky. Kliknite '+ Pridať' pre pridanie modulu.",
-                  "Használja a nyilakat vagy húzza az elemeket. Kattintson a '+ Hozzáadás' gombra a modulok beszúrásához."
-                )}
-              </p>
-              <button
-                type="button"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddNewSidebarGroup();
-                }}
-                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100/70 text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-[0.98]"
-              >
-                <Plus className="h-3.5 w-3.5 text-indigo-600" />
-                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
-              </button>
-            </div>
-          )}
-
           {flattenedNavItems.map((entry, idx) => {
             if (entry.type === "divider") {
               return (
@@ -1294,310 +1112,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }
 
             if (entry.type === "header") {
-              const isGroupEditing = editingGroupId === entry.groupId;
-              const isPickerOpenForThisGroup = addModuleGroupId === entry.groupId;
               return (
-                <div key={`hdr_wrap_${entry.groupId}_${idx}`} className="flex flex-col">
-                  <div
-                    className="px-3 pt-3 pb-1 flex items-center justify-between gap-1 group/header select-none"
-                  >
-                    {isGroupEditing ? (
-                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <input
-                          type="text"
-                          value={editingGroupTitle}
-                          onChange={(e) => setEditingGroupTitle(e.target.value)}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          placeholder={t("Group Title", "Názov skupiny", "Csoport neve")}
-                          className="flex-1 min-w-0 px-2 py-0.5 rounded-md bg-white border border-indigo-400 text-slate-800 text-[11px] font-bold focus:outline-none shadow-xs"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === "Enter") handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
-                            if (e.key === "Escape") setEditingGroupId(null);
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
-                          }}
-                          className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs shrink-0"
-                          title={t("Save", "Uložiť", "Mentés")}
-                        >
-                          <Check className="h-3 w-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingGroupId(null);
-                          }}
-                          className="p-1 rounded-md text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
-                          title={t("Cancel", "Zrušiť", "Mégse")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span className="text-[10px] font-semibold text-slate-500 truncate flex-1 min-w-0">
-                          {entry.title}
-                        </span>
-                        {isStartMenuOpen && startMenuEditMode && (
-                          <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover/header:opacity-100 transition-opacity">
-                            {/* Add Module to this group */}
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAddModuleGroupId(isPickerOpenForThisGroup ? null : entry.groupId);
-                              }}
-                              className={cn(
-                                "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer",
-                                isPickerOpenForThisGroup
-                                  ? "bg-indigo-600 text-white shadow-xs"
-                                  : "text-indigo-600 hover:bg-indigo-50 border border-indigo-200"
-                              )}
-                              title={t("Add module to this group", "Pridať modul do tejto skupiny", "Modul hozzáadása ehhez a csoporthoz")}
-                            >
-                              <Plus className="h-3 w-3" />
-                              <span>{t("Add", "Pridať", "Hozzáadás")}</span>
-                            </button>
-
-                            {/* Move Group Up */}
-                            {sidebarGroups.length > 1 && (
-                              <button
-                                type="button"
-                                disabled={entry.groupIndex === 0}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveSidebarGroup(entry.groupId, -1);
-                                }}
-                                className={cn(
-                                  "p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-                                  entry.groupIndex === 0 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-                                )}
-                                title={t("Move group up", "Posunúť skupinu nahor", "Csoport mozgatása fel")}
-                              >
-                                <ChevronUp className="h-3 w-3" />
-                              </button>
-                            )}
-
-                            {/* Move Group Down */}
-                            {sidebarGroups.length > 1 && (
-                              <button
-                                type="button"
-                                disabled={entry.groupIndex === sidebarGroups.length - 1}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveSidebarGroup(entry.groupId, 1);
-                                }}
-                                className={cn(
-                                  "p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
-                                  entry.groupIndex === sidebarGroups.length - 1 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
-                                )}
-                                title={t("Move group down", "Posunúť skupinu nadol", "Csoport mozgatása le")}
-                              >
-                                <ChevronDown className="h-3 w-3" />
-                              </button>
-                            )}
-
-                            {/* Rename */}
-                            <button
-                              type="button"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingGroupId(entry.groupId);
-                                setEditingGroupTitle(entry.title);
-                              }}
-                              className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                              title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-
-                            {/* Delete Group */}
-                            {sidebarGroups.length > 1 && (
-                              <HoldToConfirmButton
-                                  tone="danger"
-                                  lang={asLang(systemLanguage)}
-                                  what={entry.title}
-                                  onConfirm={() => {
-                                  handleDeleteSidebarGroup(entry.groupId);
-                                }}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                  title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </HoldToConfirmButton>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Inline Module Picker Popover when "+ Add" is clicked on group header */}
-                  {isPickerOpenForThisGroup && (
-                    <div
-                      data-module-picker="true"
-                      className="view-size-fixed mx-2 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
-                    >
-                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="text-[10px] font-semibold text-slate-600">
-                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAddModuleGroupId(null);
-                          }}
-                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {allPossibleItems
-                          .filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id))
-                          .map((mod) => {
-                            const ModIcon = mod.icon;
-                            return (
-                              <button
-                                key={mod.id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddItemToGroup(mod.id, entry.groupId);
-                                }}
-                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
-                              >
-                                <div
-                                  className="p-1 rounded-md shrink-0"
-                                  style={{ backgroundColor: `${(mod as any).color || '#6366f1'}15`, color: (mod as any).color || '#6366f1' }}
-                                >
-                                  <ModIcon className="h-3.5 w-3.5" />
-                                </div>
-                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
-                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
-                              </button>
-                            );
-                          })}
-                        {allPossibleItems.filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id)).length === 0 && (
-                          <p className="text-[11px] text-slate-400 text-center py-2">
-                            {t("All available modules added", "Všetky moduly sú už pridané", "Minden elérhető modul hozzáadva")}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                <div key={`hdr_${entry.groupId}_${idx}`} className="px-3 pt-3 pb-1 select-none">
+                  <span className="text-[10px] font-semibold text-slate-500 truncate block">{entry.title}</span>
                 </div>
               );
             }
 
-            if (entry.type === "dropzone") {
-              const isPickerOpenForThisDropzone = addModuleGroupId === entry.groupId;
-              return (
-                <div key={`dropzone_${entry.groupId}_${idx}`} className="flex flex-col">
-                  <div
-                    onClick={() => setAddModuleGroupId(isPickerOpenForThisDropzone ? null : entry.groupId)}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.dataTransfer.dropEffect = "move";
-                      setDragOverIndex(-1);
-                      setDragOverGroupId(entry.groupId);
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverGroupId === entry.groupId) setDragOverGroupId(null);
-                    }}
-                    onDrop={(e) => {
-                      e.stopPropagation();
-                      handleDropOnSidebar(e, entry.groupId);
-                      setDragOverGroupId(null);
-                    }}
-                    className={cn(
-                      "p-2.5 my-1.5 rounded-xl border-2 border-dashed transition-all text-center flex items-center justify-center gap-1.5 select-none cursor-pointer",
-                      dragOverGroupId === entry.groupId
-                        ? "border-indigo-500 bg-indigo-50/90 text-indigo-700 font-bold scale-[1.02]"
-                        : "border-slate-200/90 hover:border-indigo-300 text-slate-400 hover:text-indigo-600 bg-slate-50/50"
-                    )}
-                    title={t("Click to add module or drag module here", "Kliknite pre pridanie modulu alebo presuňte modul sem", "Kattintson modul hozzáadásához vagy húzza ide")}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold">
-                      {t("+ Add or Drop module here", "+ Pridať alebo presunúť modul sem", "+ Modul hozzáadása vagy áthúzása ide")}
-                    </span>
-                  </div>
-
-                  {/* Inline Module Picker Popover when Dropzone is clicked */}
-                  {isPickerOpenForThisDropzone && (
-                    <div
-                      data-module-picker="true"
-                      className="view-size-fixed mx-1 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
-                    >
-                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="text-[10px] font-semibold text-slate-600">
-                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAddModuleGroupId(null);
-                          }}
-                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {allPossibleItems
-                          .filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id))
-                          .map((mod) => {
-                            const ModIcon = mod.icon;
-                            return (
-                              <button
-                                key={mod.id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAddItemToGroup(mod.id, entry.groupId);
-                                }}
-                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
-                              >
-                                <div
-                                  className="p-1 rounded-md shrink-0"
-                                  style={{ backgroundColor: `${(mod as any).color || '#6366f1'}15`, color: (mod as any).color || '#6366f1' }}
-                                >
-                                  <ModIcon className="h-3.5 w-3.5" />
-                                </div>
-                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
-                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
-                              </button>
-                            );
-                          })}
-                        {allPossibleItems.filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id)).length === 0 && (
-                          <p className="text-[11px] text-slate-400 text-center py-2">
-                            {t("All available modules added", "Všetky moduly sú už pridané", "Minden elérhető modul hozzáadva")}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            }
 
             const item = entry.item;
             const isActive =
@@ -1617,9 +1138,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 mouseY={dockMouseY}
                 widthClasses={widthClasses}
                 dragOverIndex={dragOverIndex}
-                isStartMenuOpen={isStartMenuOpen}
-                startMenuEditMode={startMenuEditMode}
-                sidebarGroups={sidebarGroups}
                 onItemClick={(id) => {
                   setActiveTab(id);
                   if (!isPinned) setIsCollapsed(true);
@@ -1627,10 +1145,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onHoverStart={(id) => {
                   setHoveredItemId(id);
                 }}
-                onDragStartItem={handleItemDragStart}
-                onDragEndItem={handleItemDragEnd}
-                onMoveItemInGroup={handleMoveItemInGroup}
-                onMoveItemToGroup={handleMoveItemToGroup}
                 onDragOver={(e, indexInGrp) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1641,31 +1155,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   e.stopPropagation();
                   handleDropOnSidebar(e, grpId, indexInGrp);
                 }}
-                onTogglePinItem={(id) => {
-                  handleTogglePinItem(id);
-                }}
-                t={t}
               />
             );
           })}
-
-          {/* New Group Button (at bottom of nav list during edit mode) */}
-          {isStartMenuOpen && startMenuEditMode && (
-            <div className="pt-2 pb-1">
-              <button
-                type="button"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddNewSidebarGroup();
-                }}
-                className="w-full py-2 px-3 rounded-xl border border-dashed border-indigo-300 hover:border-indigo-400 bg-indigo-50/40 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
-              </button>
-            </div>
-          )}
 
           {/* Dynamic Dock Floating Tooltip */}
           {hoveredItemId && isDockMode && !isExpanded && (
@@ -1800,6 +1292,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </button>
           </div>
+        </>
+        )}
       </aside>
 
       {/* MOBILE BOTTOM DOCK */}
