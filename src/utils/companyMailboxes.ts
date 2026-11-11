@@ -767,11 +767,11 @@ export const setWhatsAppChatAgentTakeover = (params: {
   id: string;
   chatId: string;
   chatName?: string;
-  mode: "active" | "paused";
+  mode: "active" | "paused" | "auto";
   agentConnectorId?: string;
   subagentId?: string | null;
 }) =>
-  call<WhatsAppConnectorState & { takeover?: WhatsAppChatTakeoverState }>("wa_agent_takeover", params);
+  call<WhatsAppConnectorState & { takeover?: WhatsAppChatTakeoverState | null }>("wa_agent_takeover", params);
 
 // -----------------------------------------------------------------------------
 // Declarative BotMan Driver Registry (`botman/botman`) & Step-by-Step Setup Guides

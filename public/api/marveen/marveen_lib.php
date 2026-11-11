@@ -981,10 +981,14 @@ if (!function_exists('ccrm_marveen_save_subagent')) {
         $subs = is_file($subsFile) ? (json_decode((string)@file_get_contents($subsFile), true) ?: []) : [];
 
         $name = trim((string)($input['name'] ?? 'Subagent'));
-        $rawId = trim((string)($input['id'] ?? $name));
+        $rawSubId = trim((string)($input['subagentId'] ?? ($input['subagent_id'] ?? '')));
+        if ($rawSubId === '' && !empty($input['id']) && (string)$input['id'] !== $connectorId) {
+            $rawSubId = trim((string)$input['id']);
+        }
+        $rawId = $rawSubId !== '' ? $rawSubId : $name;
         $id = preg_replace('/[^a-z0-9_-]/', '-', strtolower($rawId)) ?: ('sub-' . substr(bin2hex(random_bytes(3)), 0, 6));
         $id = trim($id, '-');
-        if ($id === '' || $id === 'main') {
+        if ($id === '' || $id === 'main' || $id === strtolower($connectorId)) {
             $id = 'agent-' . substr(bin2hex(random_bytes(3)), 0, 6);
         }
 
@@ -3664,7 +3668,7 @@ if (!function_exists('ccrm_marveen_save_trigger')) {
             'minContextMessages' => max(10, (int)($input['minContextMessages'] ?? ($prev['minContextMessages'] ?? 50))),
             'minContextDays' => max(1, (int)($input['minContextDays'] ?? ($prev['minContextDays'] ?? 5))),
             'maxContextChars' => max(2000, (int)($input['maxContextChars'] ?? ($prev['maxContextChars'] ?? 16000))),
-            'watermarkTsMs' => isset($prev['watermarkTsMs']) ? (int)$prev['watermarkTsMs'] : $nowMs,
+            'watermarkTsMs' => isset($prev['watermarkTsMs']) ? (int)$prev['watermarkTsMs'] : 0,
             'lastEmailUid' => isset($prev['lastEmailUid']) ? (int)$prev['lastEmailUid'] : 0,
             'processedIds' => is_array($prev['processedIds'] ?? null) ? array_slice($prev['processedIds'], -200) : [],
             'triggerCount' => (int)($prev['triggerCount'] ?? 0),
@@ -3674,6 +3678,45 @@ if (!function_exists('ccrm_marveen_save_trigger')) {
             'createdAt' => (string)($prev['createdAt'] ?? $nowIso),
             'updatedAt' => $nowIso,
         ];
+
+        // For newly created messaging triggers, initialize watermarkTsMs from existing store.json max tsMs (never host clock, avoiding provider clock skew).
+        // Also clear stale "paused" session overrides on the target messaging connector when saving an enabled trigger.
+        if ($sourceType === 'whatsapp' && $sourceConnectorId !== '') {
+            try {
+                $st = $pdo->prepare("SELECT * FROM `company_mailboxes` WHERE `id` = ? LIMIT 1");
+                $st->execute([$sourceConnectorId]);
+                $srcRow = $st->fetch(PDO::FETCH_ASSOC);
+                if ($srcRow) {
+                    $srcRow['settings'] = json_decode((string)($srcRow['settings_json'] ?? '{}'), true) ?: [];
+                    $waAccId = ccrm_waai_resolve_account_id($srcRow);
+                    if ($existingIdx === null && $record['watermarkTsMs'] <= 0) {
+                        $storeFile = ccrm_waai_storage_root() . '/accounts/' . $waAccId . '/store.json';
+                        $store = is_file($storeFile) ? (json_decode((string)@file_get_contents($storeFile), true) ?: []) : [];
+                        $maxStoreTs = 0;
+                        foreach (($store['messages'] ?? []) as $tMsgs) {
+                            foreach ((is_array($tMsgs) ? $tMsgs : []) as $m) {
+                                $mTs = (int)($m['tsMs'] ?? 0);
+                                if ($mTs > $maxStoreTs) $maxStoreTs = $mTs;
+                            }
+                        }
+                        $record['watermarkTsMs'] = $maxStoreTs;
+                    }
+                    if (!empty($record['enabled'])) {
+                        $tkMap = ccrm_waai_get_takeover_map($waAccId);
+                        $tkChanged = false;
+                        foreach ($tkMap as $tkCid => $tkVal) {
+                            if (($tkVal['mode'] ?? '') === 'paused') {
+                                unset($tkMap[$tkCid]);
+                                $tkChanged = true;
+                            }
+                        }
+                        if ($tkChanged) {
+                            ccrm_waai_save_takeover_map($waAccId, $tkMap);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
 
         // If this is a newly created Email trigger and lastEmailUid is 0, initialize lastEmailUid to current max UID in INBOX
         if ($sourceType === 'email' && $record['lastEmailUid'] <= 0 && $sourceConnectorId !== '') {
@@ -3933,6 +3976,12 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                             if (in_array((string)($takeoverMap[$chatId]['mode'] ?? ''), ['paused', 'active'], true)) {
                                 continue;
                             }
+                            if (!empty($trig['filter']['onlyGroup']) && empty($chatMeta['isGroup'])) {
+                                continue;
+                            }
+                            if (!empty($trig['filter']['onlyDirect']) && !empty($chatMeta['isGroup'])) {
+                                continue;
+                            }
                             // Check chat filter
                             if ($chatFilter !== '' && $chatFilter !== '*') {
                                 if ($chatFilter === '@g.us' && empty($chatMeta['isGroup'])) {
@@ -4006,7 +4055,7 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                                     }
                                 }
                                 $trig['processedIds'] = array_values(array_slice(array_unique($processedIds), -200));
-                                $trig['watermarkTsMs'] = max($newMaxWatermarkMs, (int)round(microtime(true) * 1000));
+                                $trig['watermarkTsMs'] = $newMaxWatermarkMs;
                                 $dirty = true;
 
                                 $ctxWindow = ccrm_marveen_build_conversation_context($thread, $minMsgs, $minDays, $maxChars);
@@ -4252,7 +4301,7 @@ if (!function_exists('ccrm_marveen_process_event_triggers')) {
                     }
                 }
                 $tkEntry['processedIds'] = array_values(array_slice(array_unique($tkProcessed), -200));
-                $tkEntry['watermarkTsMs'] = max($newMaxWm, (int)round(microtime(true) * 1000));
+                $tkEntry['watermarkTsMs'] = $newMaxWm;
                 $tkDirty = true;
 
                 $chatName = (string)($tkEntry['chatName'] ?? $tkChatId);
@@ -6513,7 +6562,25 @@ if (!function_exists('ccrm_waai_storage_root')) {
             return [];
         }
         $decoded = json_decode((string)@file_get_contents($file), true);
-        return is_array($decoded) ? $decoded : [];
+        if (!is_array($decoded)) {
+            return [];
+        }
+        // Session pauses ("Turned off for session") expire after 8 hours so Visual Triggers aren't blocked forever across days
+        $now = time();
+        $dirty = false;
+        foreach ($decoded as $cid => $entry) {
+            if (($entry['mode'] ?? '') === 'paused' && !empty($entry['updatedAt'])) {
+                $ts = strtotime((string)$entry['updatedAt']);
+                if ($ts > 0 && ($now - $ts) > 28800) {
+                    unset($decoded[$cid]);
+                    $dirty = true;
+                }
+            }
+        }
+        if ($dirty) {
+            ccrm_waai_save_takeover_map($accountId, $decoded);
+        }
+        return $decoded;
     }
 
     function ccrm_waai_save_takeover_map(string $accountId, array $map): void {
@@ -6537,6 +6604,13 @@ if (!function_exists('ccrm_waai_storage_root')) {
     ): array {
         $accountId = ccrm_waai_resolve_account_id($mailboxRow);
         $map = ccrm_waai_get_takeover_map($accountId);
+        if ($mode === 'auto' || $mode === 'default') {
+            unset($map[$chatId]);
+            ccrm_waai_save_takeover_map($accountId, $map);
+            $chatsState = ccrm_waai_get_chats($mailboxRow);
+            $chatsState['takeover'] = null;
+            return $chatsState;
+        }
         $normalizedMode = ($mode === 'paused' || $mode === 'off') ? 'paused' : 'active';
         $prev = is_array($map[$chatId] ?? null) ? $map[$chatId] : [];
 
@@ -6620,7 +6694,7 @@ if (!function_exists('ccrm_waai_storage_root')) {
                         $proc[] = 'wa:' . $mId;
                     }
                     $map[$chatId]['processedIds'] = array_values(array_slice(array_unique($proc), -200));
-                    $map[$chatId]['watermarkTsMs'] = max($mTs, (int)round(microtime(true) * 1000));
+                    $map[$chatId]['watermarkTsMs'] = $mTs;
                     ccrm_waai_save_takeover_map($accountId, $map);
 
                     $ctxWindow = ccrm_marveen_build_conversation_context($thread, 50, 5, 16000);

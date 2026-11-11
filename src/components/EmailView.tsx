@@ -1653,7 +1653,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   const handleToggleWaChatAgentTakeover = async (
     chat: WhatsAppChatSummary,
-    nextMode: "active" | "paused",
+    nextMode: "active" | "paused" | "auto",
     preferredAgentId?: string,
     preferredSubagentId?: string | null,
   ) => {
@@ -1669,7 +1669,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
         subagentId: preferredSubagentId,
       });
       setWaState(st);
-      if (nextMode === "active") {
+      if (nextMode === "auto") {
+        notify(
+          t(
+            `Visual Trigger automation resumed for "${chat.name}".`,
+            `Automatizácia vizuálneho spúšťača obnovená pre „${chat.name}“.`,
+            `Vizuális trigger automatizáció visszaállítva a(z) „${chat.name}” beszélgetéshez.`,
+          ),
+        );
+      } else if (nextMode === "active") {
         notify(
           t(
             `AI Agent took over "${chat.name}" for this session.`,
@@ -3061,6 +3069,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   isAgentActive: false,
                   isAutoTakenOver: false,
                   isPausedForSession: false,
+                  isManualSessionActive: false,
                   agentName: "AI Agent",
                   agentConnectorId: aiAccounts[0]?.id || "",
                   subagentId: null as string | null,
@@ -3114,14 +3123,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 ? targetSub.name
                 : effectiveAgentAcc?.name || t("AI Agent", "AI Agent", "AI Ügynök");
 
-              return {
-                isAgentActive,
-                isAutoTakenOver,
-                isPausedForSession,
-                agentName,
-                agentConnectorId: effectiveAgentAcc?.id || "",
-                subagentId: targetSubId,
-              };
+                              return {
+                                isAgentActive,
+                                isAutoTakenOver,
+                                isPausedForSession,
+                                isManualSessionActive: sessionOverride?.mode === "active",
+                                agentName,
+                                agentConnectorId: effectiveAgentAcc?.id || "",
+                                subagentId: targetSubId,
+                              };
             };
 
             const activeChatTakeover = getChatTakeoverInfo(activeChat);
@@ -3611,13 +3621,17 @@ export const EmailView: React.FC<EmailViewProps> = ({
                               data-testid="wa-agent-takeover-btn"
                               disabled={waTakeoverBusyChatId === activeChat.id || aiAccounts.length === 0}
                               value={
-                                activeChatTakeover.isAgentActive && activeChatTakeover.agentConnectorId
+                                activeChatTakeover.isManualSessionActive && activeChatTakeover.agentConnectorId
                                   ? `${activeChatTakeover.agentConnectorId}:${activeChatTakeover.subagentId || "main"}`
-                                  : "off"
+                                  : activeChatTakeover.isAutoTakenOver && !activeChatTakeover.isPausedForSession
+                                    ? "auto"
+                                    : "off"
                               }
                               onChange={(e) => {
                                 const val = e.target.value;
-                                if (val === "off") {
+                                if (val === "auto") {
+                                  void handleToggleWaChatAgentTakeover(activeChat, "auto");
+                                } else if (val === "off") {
                                   void handleToggleWaChatAgentTakeover(activeChat, "paused");
                                 } else {
                                   const [agId, subRaw] = val.split(":");
@@ -3633,6 +3647,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
                                 activeChatTakeover.isAgentActive ? "text-white" : "text-slate-800"
                               }`}
                             >
+                              {activeChatTakeover.isAutoTakenOver && (
+                                <option value="auto" className="text-slate-900 bg-white">
+                                  ⚡{" "}
+                                  {t(
+                                    `Auto (Visual Trigger · ${activeChatTakeover.agentName})`,
+                                    `Auto (Vizuálny spúšťač · ${activeChatTakeover.agentName})`,
+                                    `Auto (Vizuális trigger · ${activeChatTakeover.agentName})`,
+                                  )}
+                                </option>
+                              )}
                               <option value="off" className="text-slate-900 bg-white">
                                 🚫{" "}
                                 {activeChatTakeover.isPausedForSession

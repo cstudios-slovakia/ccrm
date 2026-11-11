@@ -447,16 +447,18 @@ try {
             $res = ccrm_waai_get_chats($stored);
             $pollStampFile = ccrm_marveen_storage_root() . '/.last_trigger_poll';
             $lastPollTs = is_file($pollStampFile) ? (int)@filemtime($pollStampFile) : 0;
-            if ((time() - $lastPollTs) >= 15) {
+            $runGlobalTick = (time() - $lastPollTs) >= 15;
+            if ($runGlobalTick) {
                 @file_put_contents($pollStampFile, (string)time());
-                try {
-                    $trigRes = ccrm_marveen_process_event_triggers($pdo);
-                    if (!empty($trigRes['fired'])) {
-                        $res = ccrm_waai_get_chats($stored);
-                    }
-                } catch (\Throwable $e) {
-                    // Non-fatal background trigger check
+            }
+            try {
+                // Always inspect this connector's freshly synced store.json ($0 local read unless a new incoming message arrived)
+                $trigRes = ccrm_marveen_process_event_triggers($pdo, $runGlobalTick ? null : $id);
+                if (!empty($trigRes['fired'])) {
+                    $res = ccrm_waai_get_chats($stored);
                 }
+            } catch (\Throwable $e) {
+                // Non-fatal background trigger check
             }
             echo json_encode(array_merge(['success' => true], $res));
             exit;
@@ -489,6 +491,12 @@ try {
         if ($action === 'wa_resync') {
             $resyncChatId = trim((string)($input['chatId'] ?? ''));
             $res = ccrm_waai_resync_chats($stored, $resyncChatId);
+            try {
+                $trigRes = ccrm_marveen_process_event_triggers($pdo, $id);
+                if (!empty($trigRes['fired'])) {
+                    $res = ccrm_waai_get_chats($stored);
+                }
+            } catch (\Throwable $e) {}
             echo json_encode(array_merge(['success' => true], $res));
             exit;
         }
