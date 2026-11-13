@@ -1,0 +1,2 @@
+- **Updates page and the header's "new updates" dot hide release notes newer than the running version** (`src/utils/updateNotes.ts`): Craft can already hold the article for a release this server has not been updated to, which showed features the user does not have yet. `fetchUpdateNotes` now drops entries whose version is above `VERSION`.
+- **Tests**: `src/utils/updateNotes.test.ts` (`hideNewerThanRunning`).

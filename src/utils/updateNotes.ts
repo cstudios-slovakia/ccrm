@@ -5,6 +5,8 @@
  * Updates page cannot drift apart.
  */
 
+import { VERSION } from "./version.ts";
+
 export type UpdateLanguage = "en" | "sk" | "hu";
 
 export const CRAFT_GRAPHQL_URL =
@@ -153,5 +155,11 @@ export const fetchUpdateNotes = async (language: UpdateLanguage): Promise<Update
   if (!Array.isArray(json?.data?.entries)) {
     throw new Error(json?.errors?.[0]?.message || "Invalid response from Craft CMS");
   }
-  return localizeUpdateNotes(json.data.entries, language);
+  return hideNewerThanRunning(localizeUpdateNotes(json.data.entries, language));
 };
+
+/** Craft may already hold notes for a release this server has not been updated to yet. */
+export const hideNewerThanRunning = (
+  entries: UpdateEntry[],
+  running: string = VERSION,
+): UpdateEntry[] => entries.filter((e) => compareVersions(e.version, running) <= 0);
