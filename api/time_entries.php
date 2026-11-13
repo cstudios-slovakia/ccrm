@@ -657,7 +657,7 @@ if ($action === 'import') {
             continue;
         }
         $ph = implode(',', array_fill(0, count($chunk), '?'));
-        $ex = $pdo->prepare("SELECT `id`, `external_id`, `user_id`, `employee_id`, `project_id`, `entry_date`, `start_at`, `end_at`, `approval_status`, `deleted_at` FROM `time_entries` WHERE `source` = 'toggl' AND `external_id` IN ($ph)");
+        $ex = $pdo->prepare("SELECT `id`, `external_id`, `user_id`, `employee_id`, `project_id`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `origin_type`, `origin_id`, `approval_status`, `deleted_at` FROM `time_entries` WHERE `source` = 'toggl' AND `external_id` IN ($ph)");
         $ex->execute($chunk);
         foreach ($ex->fetchAll(\PDO::FETCH_ASSOC) as $exRow) {
             $existing[(string)$exRow['external_id']] = $exRow;
@@ -678,6 +678,15 @@ if ($action === 'import') {
     $lockToday = ccrm_tt_local_date(ccrm_tt_now_utc());
     $isAdminImport = ccrm_is_admin($sessionUser);
 
+    /* "Repair": an entry that is already imported is brought back in line with Toggl — the project
+       its Toggl project is paired with NOW, and Toggl's own start, end and duration. Off by
+       default, because it overwrites a project changed by hand; it exists for entries an
+       earlier import put on the wrong project or stored with shifted times. An entry whose
+       Toggl project is not paired keeps its project and only gets its times corrected. */
+    $repair = !empty($body['repair']);
+    $repairList = [];
+    $repairLocked = 0;
+
     $already = 0;
     $ready = [];
     $fill = [];
@@ -692,6 +701,39 @@ if ($action === 'import') {
         if (isset($existing[$r['id']])) {
             $already++;
             $stored = $existing[$r['id']];
+            if ($repair) {
+                if (!empty($stored['deleted_at'])) {
+                    continue; // a deleted entry stays deleted
+                }
+                $startUtc = ccrm_tt_to_utc($r['start']);
+                $endUtc = ccrm_tt_to_utc($r['stop']);
+                if ($startUtc === null || $endUtc === null) {
+                    continue;
+                }
+                $oldProject = (string)($stored['project_id'] ?? '');
+                $newProject = $pairedProject ?? ($oldProject !== '' ? $oldProject : null);
+                $entryDate = ccrm_tt_local_date($startUtc);
+                $projectChanged = (string)($newProject ?? '') !== $oldProject;
+                $timeChanged = strtotime((string)$stored['start_at'] . ' UTC') !== strtotime($startUtc . ' UTC')
+                    || strtotime((string)$stored['end_at'] . ' UTC') !== strtotime($endUtc . ' UTC')
+                    || (int)$stored['duration_sec'] !== (int)$r['seconds']
+                    || (string)$stored['entry_date'] !== $entryDate;
+                if (!$projectChanged && !$timeChanged) {
+                    continue;
+                }
+                if (!$isAdminImport && ccrm_te_lock_reason_of($pdo, $stored, $settings, $lockToday) !== null) {
+                    $repairLocked++;
+                    continue;
+                }
+                $repairList[] = [
+                    'id' => (string)$stored['id'], 'userId' => (string)$stored['user_id'], 'project' => $newProject,
+                    'oldProject' => $oldProject, 'projectChanged' => $projectChanged, 'timeChanged' => $timeChanged,
+                    'start' => $startUtc, 'end' => $endUtc, 'entryDate' => $entryDate, 'seconds' => (int)$r['seconds'],
+                    'originId' => $stored['origin_id'] ?? null,
+                    'originIsOldProject' => (string)($stored['origin_type'] ?? '') === 'project' && $oldProject !== '' && (string)($stored['origin_id'] ?? '') === $oldProject,
+                ];
+                continue;
+            }
             /* Imported earlier without a project, and its Toggl project is paired now: fill it in.
                A project set or changed by hand is never touched; a deleted entry stays deleted. */
             if ($pairedProject !== null && empty($stored['project_id']) && empty($stored['deleted_at'])) {
@@ -731,6 +773,39 @@ if ($action === 'import') {
             $projectsFilled += $fillStmt->rowCount();
         }
         ccrm_audit_log($pdo, $sessionUser, 'time_tracking.toggl_import', "Set the project on {$projectsFilled} Toggl entries imported earlier without one");
+    }
+    $repaired = 0;
+    $repairedProjects = 0;
+    if ($commit && $repairList) {
+        $repStmt = $pdo->prepare(
+            "UPDATE `time_entries` SET `project_id` = ?, `billable_rate` = ?, `origin_id` = ?, `entry_date` = ?, `start_at` = ?, `end_at` = ?, `duration_sec` = ?,
+                    `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ?
+              WHERE `id` = ? AND `source` = 'toggl' AND `deleted_at` IS NULL"
+        );
+        foreach ($repairList as $f) {
+            // Rate and cost are recomputed the same way a fresh import prices the entry.
+            $price = ccrm_tt_price($pdo, $f['userId'], $f['entryDate'], $f['seconds'], $settings, true);
+            $rate = ccrm_tt_lookup_billable_rate($pdo, $f['project'], null, $f['entryDate']);
+            // An entry that says it came from its (old) project follows the project.
+            $originId = $f['originIsOldProject'] ? $f['project'] : $f['originId'];
+            try {
+                $repStmt->execute([
+                    $f['project'], $rate, $originId, $f['entryDate'], $f['start'], $f['end'], $f['seconds'],
+                    $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'],
+                    $f['id'],
+                ]);
+            } catch (\PDOException $e) {
+                ccrm_log_exception($e);
+                ccrm_te_fail('save_failed', 500);
+            }
+            if ($repStmt->rowCount() > 0) {
+                $repaired++;
+                if ($f['projectChanged']) {
+                    $repairedProjects++;
+                }
+            }
+        }
+        ccrm_audit_log($pdo, $sessionUser, 'time_tracking.toggl_import', "Repaired {$repaired} imported Toggl entries from {$from} to {$to} to match Toggl ({$repairedProjects} moved to another project)");
     }
     if ($commit && $ready) {
         $ins = $pdo->prepare(
@@ -785,6 +860,11 @@ if ($action === 'import') {
         'projectsToFill' => count($fill),
         'projectsFilled' => $projectsFilled,
         'projectsFillLocked' => $fillLocked,
+        'toRepair' => count($repairList),
+        'toRepairProjects' => count(array_filter($repairList, fn($f) => $f['projectChanged'])),
+        'repaired' => $repaired,
+        'repairedProjects' => $repairedProjects,
+        'repairLocked' => $repairLocked,
         'truncated' => !empty($fetched['truncated']),
     ]);
 }

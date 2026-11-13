@@ -114,7 +114,7 @@ test('with nobody mapped, "only one Toggl user" is on and the picked user is sen
     }
     if (body.mode === 'preview') {
       runs.push(body);
-      return json({ success: true, preview: true, total: 3, ready: 3 });
+      return json({ success: true, preview: true, total: 3, ready: 3, ...(body.repair ? { toRepair: 5, toRepairProjects: 4 } : {}) });
     }
     return json({ success: true, saved: true });
   });
@@ -140,6 +140,14 @@ test('with nobody mapped, "only one Toggl user" is on and the picked user is sen
   await page.getByTestId('toggl-import-preview').click();
   await expect.poll(() => runs.length).toBe(3);
   expect(runs[2].onlyUser).toBe('');
+  expect(runs[2].repair).toBe(false);
+
+  // Repair mode is off by default; when ticked it is sent and the preview says what would change.
+  await page.getByTestId('toggl-import-repair').check();
+  await page.getByTestId('toggl-import-preview').click();
+  await expect.poll(() => runs.length).toBe(4);
+  expect(runs[3].repair).toBe(true);
+  await expect(page.getByTestId('toggl-import-repair-result')).toContainText(/\b5\b.*\b4\b/);
 });
 
 test('a multi-year period imports in short windows, adds up the counts and resets the hold ring', async ({ page }) => {

@@ -46,6 +46,13 @@ interface Preview {
   projectsFilled: number;
   /** Of those, locked entries a non-admin cannot change. */
   projectsFillLocked: number;
+  /** Repair mode: already imported entries that differ from Toggl (and how many change project). */
+  toRepair: number;
+  toRepairProjects: number;
+  repaired: number;
+  repairedProjects: number;
+  /** Of those, locked entries a non-admin cannot change. */
+  repairLocked: number;
   imported: number;
   preview: boolean;
   /** Toggl stopped answering part-way, so some entries of the period may be missing. */
@@ -62,6 +69,11 @@ const EMPTY_RESULT: Omit<Preview, "preview"> = {
   projectsToFill: 0,
   projectsFilled: 0,
   projectsFillLocked: 0,
+  toRepair: 0,
+  toRepairProjects: 0,
+  repaired: 0,
+  repairedProjects: 0,
+  repairLocked: 0,
   imported: 0,
   incomplete: false,
 };
@@ -118,6 +130,8 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skipUnpaired, setSkipUnpaired] = useState(true);
+  /** Bring already imported entries back in line with Toggl (project by today's pairing, times). */
+  const [repair, setRepair] = useState(false);
   /** Import only one picked Toggl user's entries, to the signed-in user, with no user mapping. */
   const [onlyMe, setOnlyMe] = useState(false);
   const [onlyUserId, setOnlyUserId] = useState("");
@@ -232,7 +246,12 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     try {
       for (let i = 0; i < windows.length; i++) {
         setStep({ done: i, total: windows.length, mode });
-        const body = await postImport({ mode, from: windows[i].from, to: windows[i].to, projectMap, userMap, skipUnpaired, onlyUser: onlyMe ? onlyUserId : "" });
+        const body = await postImport({ mode, from: windows[i].from, to: windows[i].to, projectMap, userMap, skipUnpaired, repair, onlyUser: onlyMe ? onlyUserId : "" });
+        sum.toRepair += n(body.toRepair);
+        sum.toRepairProjects += n(body.toRepairProjects);
+        sum.repaired += n(body.repaired);
+        sum.repairedProjects += n(body.repairedProjects);
+        sum.repairLocked += n(body.repairLocked);
         sum.alreadyImported += n(body.alreadyImported);
         sum.ready += n(body.ready);
         sum.total += n(body.total);
@@ -446,6 +465,29 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            disabled={!canEdit}
+            checked={repair}
+            onChange={(e) => {
+              setRepair(e.target.checked);
+              setPreview(null);
+            }}
+            className="mt-0.5 size-4 accent-teal-600"
+            data-testid="toggl-import-repair"
+          />
+          <span className="grid gap-0.5">
+            <span className="text-ui text-slate-800">{t("Repair entries imported earlier so they match Toggl", "Opraviť skôr importované záznamy, aby zodpovedali Toggl", "A korábban importált bejegyzések javítása a Toggl szerint")}</span>
+            <span className="text-caption text-slate-500">
+              {t(
+                "Entries already imported get the project their Toggl project is paired with now, and Toggl's start, end and duration. This overwrites a project changed by hand. An entry whose Toggl project is not paired keeps its project. Use Preview first.",
+                "Už importované záznamy dostanú projekt, ku ktorému je ich projekt Toggl priradený teraz, a začiatok, koniec a trvanie z Toggl. Prepíše to aj ručne zmenený projekt. Záznam, ktorého projekt Toggl nie je priradený, si projekt ponechá. Najprv použite Náhľad.",
+                "A már importált bejegyzések azt a projektet kapják, amelyhez a Toggl-projektjük most hozzá van rendelve, valamint a Toggl szerinti kezdetet, véget és időtartamot. A kézzel módosított projektet is felülírja. Ha a Toggl-projekt nincs hozzárendelve, a bejegyzés megtartja a projektjét. Előbb használja az Előnézetet.",
+              )}
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -480,6 +522,11 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
           {preview.preview && preview.projectsToFill > 0 ? ` ${t(`${preview.projectsToFill} imported earlier will get their project.`, `${preview.projectsToFill} skôr importovaných dostane projekt.`, `${preview.projectsToFill} korábban importált bejegyzés megkapja a projektjét.`)}` : ""}
           {!preview.preview && preview.projectsFilled > 0 ? ` ${t(`Project set on ${preview.projectsFilled} imported earlier.`, `Projekt doplnený pri ${preview.projectsFilled} skôr importovaných.`, `${preview.projectsFilled} korábban importált bejegyzés projektje beállítva.`)}` : ""}
           {preview.incomplete ? ` ${t("Some entries of this period may be missing because Toggl stopped answering. Run it again; nothing is imported twice.", "Niektoré záznamy z tohto obdobia môžu chýbať, lebo Toggl prestal odpovedať. Spustite to znova; nič sa neimportuje dvakrát.", "Az időszak néhány bejegyzése hiányozhat, mert a Toggl nem válaszolt tovább. Futtassa újra; semmi sem kerül be kétszer.")}` : ""}
+          <span data-testid="toggl-import-repair-result">
+            {preview.preview && preview.toRepair > 0 ? ` ${t(`${preview.toRepair} imported earlier will be repaired to match Toggl (${preview.toRepairProjects} move to another project).`, `${preview.toRepair} skôr importovaných sa opraví podľa Toggl (${preview.toRepairProjects} sa presunie na iný projekt).`, `${preview.toRepair} korábban importált bejegyzés javítva lesz a Toggl szerint (${preview.toRepairProjects} másik projektre kerül).`)}` : ""}
+            {!preview.preview && preview.repaired > 0 ? ` ${t(`${preview.repaired} imported earlier were repaired to match Toggl (${preview.repairedProjects} moved to another project).`, `${preview.repaired} skôr importovaných bolo opravených podľa Toggl (${preview.repairedProjects} presunutých na iný projekt).`, `${preview.repaired} korábban importált bejegyzés javítva a Toggl szerint (${preview.repairedProjects} másik projektre került).`)}` : ""}
+            {preview.repairLocked > 0 ? ` ${t(`${preview.repairLocked} are locked; an administrator can repair them.`, `${preview.repairLocked} je zamknutých; opraviť ich môže administrátor.`, `${preview.repairLocked} zárolva; adminisztrátor javíthatja őket.`)}` : ""}
+          </span>
           {preview.projectsFillLocked > 0 ? ` ${t(`${preview.projectsFillLocked} imported earlier are locked; an administrator can set their project.`, `${preview.projectsFillLocked} skôr importovaných je zamknutých; projekt im môže doplniť administrátor.`, `${preview.projectsFillLocked} korábban importált bejegyzés zárolva; a projektjüket adminisztrátor állíthatja be.`)}` : ""}
         </p>
       )}
