@@ -516,7 +516,7 @@ function ccrm_toggl_import_workspace(string $apiToken, string $workspaceId): str
 /**
  * Workspace projects and users for the mapping screen.
  *
- * @return array{ok: bool, code?: string, projects: list<array{id: string, name: string}>, projectsTruncated?: bool, users: list<array{id: string, name: string, email: string}>}
+ * @return array{ok: bool, code?: string, projects: list<array{id: string, name: string, archived: bool}>, projectsTruncated?: bool, users: list<array{id: string, name: string, email: string}>}
  */
 function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array {
     $empty = ['ok' => false, 'projects' => [], 'users' => []];
@@ -531,6 +531,9 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
     // time and still need a pairing). The safety limit is 20 000 projects; reaching it, or a
     // page failing half-way, sets `projectsTruncated` so the screen can say the list is incomplete.
     $projects = [];
+    // Toggl's pages are not guaranteed stable, so the same project can come back on two pages;
+    // it is listed once (a repeated id showed up as a second row with the same name).
+    $seenProjects = [];
     $truncated = false;
     $perPage = 200;
     $maxPages = 100;
@@ -550,10 +553,17 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
             break;
         }
         foreach ($res['data'] as $p) {
-            if (!isset($p['id'])) {
+            if (!isset($p['id']) || isset($seenProjects[(string)$p['id']])) {
                 continue;
             }
-            $projects[] = ['id' => (string)$p['id'], 'name' => (string)($p['name'] ?? '')];
+            $seenProjects[(string)$p['id']] = true;
+            // `archived` tells two projects of the same name apart: Toggl hides archived ones
+            // in its own lists, but their entries are still imported.
+            $projects[] = [
+                'id' => (string)$p['id'],
+                'name' => (string)($p['name'] ?? ''),
+                'archived' => array_key_exists('active', $p) && $p['active'] === false,
+            ];
         }
         if (count($res['data']) < $perPage) {
             break;
@@ -583,7 +593,10 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
  * Individual Toggl time entries in a date range, with their ids (the import key).
  * Uses the same reports endpoint as the month summary, then the /me fallback.
  *
- * @return array{ok: bool, code?: string, entries: list<array<string, mixed>>}
+ * `truncated` means Toggl stopped answering part-way or the page limit was reached, so some
+ * entries of the period may be missing (a later import of the same period picks them up).
+ *
+ * @return array{ok: bool, code?: string, entries: list<array<string, mixed>>, truncated?: bool}
  */
 function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $from, string $to): array {
     if ($apiToken === '') {
@@ -596,14 +609,29 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
     $reportsUrl = "https://api.track.toggl.com/reports/api/v3/workspace/{$ws}/search/time_entries";
     $raw = [];
     $firstRow = 1;
-    for ($page = 0; $page < 40; $page++) {
-        $res = toggl_curl($reportsUrl, $apiToken, 'POST', [
+    $maxPages = 40;
+    // A page that fails is not "no more entries": it used to end the loop silently, so an
+    // import could report success with part of the period missing.
+    $failed = false;
+    $truncated = false;
+    for ($page = 1; $page <= $maxPages; $page++) {
+        $payload = [
             'start_date' => $from,
             'end_date' => $to,
             'page_size' => 50,
             'first_row_number' => $firstRow,
-        ]);
-        if (empty($res['ok']) || !is_array($res['data']) || $res['data'] === []) {
+        ];
+        $res = toggl_curl($reportsUrl, $apiToken, 'POST', $payload);
+        if (($res['code'] ?? 0) === 429) {
+            // Toggl allows about one request a second; wait once and retry this page.
+            sleep(2);
+            $res = toggl_curl($reportsUrl, $apiToken, 'POST', $payload);
+        }
+        if (empty($res['ok']) || !is_array($res['data'])) {
+            $failed = true;
+            break;
+        }
+        if ($res['data'] === []) {
             break;
         }
         foreach ($res['data'] as $row) {
@@ -613,17 +641,24 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
             break;
         }
         $firstRow += count($res['data']);
+        if ($page === $maxPages) {
+            $truncated = true;
+        }
     }
-    if ($raw === []) {
+    if ($failed && $raw === []) {
+        // The reports API did not answer at all: fall back to the token owner's own entries.
         $fallback = toggl_curl(
             "https://api.track.toggl.com/api/v9/me/time_entries?start_date={$from}T00:00:00Z&end_date={$to}T23:59:59Z",
             $apiToken
         );
-        if (!empty($fallback['ok']) && is_array($fallback['data'])) {
-            $raw = $fallback['data'];
+        if (empty($fallback['ok']) || !is_array($fallback['data'])) {
+            return ['ok' => false, 'code' => 'toggl_unavailable', 'entries' => []];
         }
+        $raw = $fallback['data'];
+    } elseif ($failed) {
+        $truncated = true;
     }
-    return ['ok' => true, 'entries' => ccrm_toggl_import_flatten($raw, $from, $to)];
+    return ['ok' => true, 'entries' => ccrm_toggl_import_flatten($raw, $from, $to), 'truncated' => $truncated];
 }
 
 /**

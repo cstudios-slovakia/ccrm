@@ -576,12 +576,16 @@ if ($action === 'import') {
 
     $from = (string)($body['from'] ?? '');
     $to = (string)($body['to'] ?? '');
-    if (!ccrm_tt_valid_date($from) || !ccrm_tt_valid_date($to) || $from > $to) {
+    if (!ccrm_tt_valid_date($from) || !ccrm_tt_valid_date($to)) {
         ccrm_te_fail('bad_request', 400);
     }
+    if ($from > $to) {
+        ccrm_te_fail('bad_range', 400);
+    }
+    // One request covers at most a year; the screen splits a longer period into short windows.
     $span = (int)(new \DateTimeImmutable($from))->diff(new \DateTimeImmutable($to))->days;
     if ($span > 366) {
-        ccrm_te_fail('bad_request', 400);
+        ccrm_te_fail('range_too_long', 400);
     }
 
     $projectMap = ccrm_te_import_map($body['projectMap'] ?? ($saved['projects'] ?? []));
@@ -742,6 +746,7 @@ if ($action === 'import') {
         'projectsToFill' => count($fill),
         'projectsFilled' => $projectsFilled,
         'projectsFillLocked' => $fillLocked,
+        'truncated' => !empty($fetched['truncated']),
     ]);
 }
 /* PHASE6-LOCK-END */

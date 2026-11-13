@@ -249,6 +249,14 @@ export const timeErrorMessage = (code: string, t: (en: string, sk: string, hu: s
       return t("Weekly approval is turned off.", "Týždenné schvaľovanie je vypnuté.", "A heti jóváhagyás ki van kapcsolva.");
     case "toggl_not_configured":
       return t("Toggl is not configured. Add the token under Employees → Settings.", "Toggl nie je nastavený. Token pridajte v Zamestnanci → Nastavenia.", "A Toggl nincs beállítva. A tokent a Munkatársak → Beállítások alatt adja meg.");
+    case "range_too_long":
+      return t("That period is too long for one import. Pick at most a year.", "Toto obdobie je na jeden import príliš dlhé. Vyberte najviac rok.", "Ez az időszak túl hosszú egy importhoz. Legfeljebb egy évet válasszon.");
+    case "bad_range":
+      return t("Check the dates: the start must not be after the end.", "Skontrolujte dátumy: začiatok nesmie byť po konci.", "Ellenőrizze a dátumokat: a kezdet nem lehet a vég után.");
+    case "toggl_unavailable":
+      return t("Toggl did not answer. Wait a minute and try again; entries imported so far stay.", "Toggl neodpovedal. Počkajte minútu a skúste znova; doteraz importované záznamy zostávajú.", "A Toggl nem válaszolt. Várjon egy percet, és próbálja újra; az eddig importált bejegyzések megmaradnak.");
+    case "bad_request":
+      return t("The request was not valid. Reload the page and try again.", "Požiadavka nebola platná. Obnovte stránku a skúste znova.", "A kérés érvénytelen. Töltse újra az oldalt, és próbálja újra.");
     case "unsupported_provider":
       return t("Clockify import is not available.", "Import z Clockify nie je k dispozícii.", "A Clockify import nem érhető el.");
     case "not_paired":

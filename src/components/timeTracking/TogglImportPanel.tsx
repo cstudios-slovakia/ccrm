@@ -4,6 +4,7 @@ import { Surface } from "../layout";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
+import { splitImportRange } from "../../utils/togglImport.ts";
 import type { Language } from "../../utils/translations";
 import { PRODUCT_NAME } from "../../utils/brand";
 
@@ -11,6 +12,8 @@ interface Named {
   id: string;
   name: string;
   email?: string;
+  /** A Toggl project that is archived (hidden in Toggl's own lists, its entries still import). */
+  archived?: boolean;
 }
 
 interface Catalog {
@@ -41,7 +44,23 @@ interface Preview {
   projectsFillLocked: number;
   imported: number;
   preview: boolean;
+  /** Toggl stopped answering part-way, so some entries of the period may be missing. */
+  incomplete: boolean;
 }
+
+const EMPTY_RESULT: Omit<Preview, "preview"> = {
+  alreadyImported: 0,
+  ready: 0,
+  total: 0,
+  skippedUsers: 0,
+  skippedUnpaired: 0,
+  withoutProject: 0,
+  projectsToFill: 0,
+  projectsFilled: 0,
+  projectsFillLocked: 0,
+  imported: 0,
+  incomplete: false,
+};
 
 const asRecord = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -82,6 +101,8 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
   const [skipUnpaired, setSkipUnpaired] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** A long period runs as several short requests; this is how far the current run is. */
+  const [step, setStep] = useState<{ done: number; total: number; mode: "preview" | "commit" } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -148,39 +169,56 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit]);
 
+  // The server takes at most a year per request and Toggl answers slowly, so the period is
+  // imported in short windows one after another and the counts are added up. Every window is
+  // idempotent, so a run that stops part-way can simply be repeated.
   const run = async (mode: "preview" | "commit") => {
+    const windows = splitImportRange(from, to);
+    if (windows.length === 0) {
+      setError(timeErrorMessage("bad_range", t));
+      return;
+    }
     setLoading(true);
     setError(null);
+    setPreview(null);
+    const sum: Preview = { ...EMPTY_RESULT, preview: mode !== "commit" };
+    const n = (v: unknown) => Number(v) || 0;
     try {
-      const body = await postImport({ mode, from, to, projectMap, userMap, skipUnpaired });
-      const n = (v: unknown) => Number(v) || 0;
-      setPreview({
-        alreadyImported: n(body.alreadyImported),
-        ready: n(body.ready),
-        total: n(body.total),
-        skippedUsers: n(body.skippedUsers),
-        skippedUnpaired: n(body.skippedUnpaired),
-        withoutProject: n(body.withoutProject),
-        projectsToFill: n(body.projectsToFill),
-        projectsFilled: n(body.projectsFilled),
-        projectsFillLocked: n(body.projectsFillLocked),
-        imported: n(body.imported),
-        preview: body.preview !== false,
-      });
+      for (let i = 0; i < windows.length; i++) {
+        setStep({ done: i, total: windows.length, mode });
+        const body = await postImport({ mode, from: windows[i].from, to: windows[i].to, projectMap, userMap, skipUnpaired });
+        sum.alreadyImported += n(body.alreadyImported);
+        sum.ready += n(body.ready);
+        sum.total += n(body.total);
+        sum.skippedUsers += n(body.skippedUsers);
+        sum.skippedUnpaired += n(body.skippedUnpaired);
+        sum.withoutProject += n(body.withoutProject);
+        sum.projectsToFill += n(body.projectsToFill);
+        sum.projectsFilled += n(body.projectsFilled);
+        sum.projectsFillLocked += n(body.projectsFillLocked);
+        sum.imported += n(body.imported);
+        if (body.truncated === true) sum.incomplete = true;
+      }
+      setPreview({ ...sum });
       if (mode === "commit") {
-        const filled = n(body.projectsFilled);
+        const filled = sum.projectsFilled;
         window.showToast?.(t(
-          `Imported ${n(body.imported)} entries.${filled > 0 ? ` Project set on ${filled} imported earlier.` : ""}`,
-          `Importovaných záznamov: ${n(body.imported)}.${filled > 0 ? ` Projekt doplnený pri ${filled} skôr importovaných.` : ""}`,
-          `Importált bejegyzések: ${n(body.imported)}.${filled > 0 ? ` ${filled} korábban importált bejegyzés projektje beállítva.` : ""}`,
+          `Imported ${sum.imported} entries.${filled > 0 ? ` Project set on ${filled} imported earlier.` : ""}`,
+          `Importovaných záznamov: ${sum.imported}.${filled > 0 ? ` Projekt doplnený pri ${filled} skôr importovaných.` : ""}`,
+          `Importált bejegyzések: ${sum.imported}.${filled > 0 ? ` ${filled} korábban importált bejegyzés projektje beállítva.` : ""}`,
         ));
       }
     } catch (e) {
+      // What the finished windows imported is stored; show it rather than only the error.
+      if (sum.total > 0) setPreview({ ...sum, incomplete: true });
       setError(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t));
     } finally {
       setLoading(false);
+      setStep(null);
     }
   };
+
+  const stepLabel = step && step.total > 1 ? ` ${step.done + 1} / ${step.total}` : "";
 
   const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
 
@@ -305,16 +343,19 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
 
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" disabled={!canEdit || loading} onClick={() => void run("preview")} data-testid="toggl-import-preview" className="inline-flex h-10 items-center rounded-xl border border-slate-200 px-4 text-ui font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">
-          {loading ? t("Loading…", "Načítava sa…", "Betöltés…") : t("Preview", "Náhľad", "Előnézet")}
+          {loading && step?.mode !== "commit" ? `${t("Loading", "Načítava sa", "Betöltés")}${stepLabel}…` : t("Preview", "Náhľad", "Előnézet")}
         </button>
         {canEdit && (
           <HoldToConfirmButton
             onConfirm={() => void run("commit")}
+            disabled={loading}
             lang={language}
             what={`${from} – ${to}`}
             className="inline-flex h-10 items-center rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer"
           >
-            {t("Hold to import", "Podržte pre import", "Tartsa az importhoz")}
+            {step?.mode === "commit"
+              ? `${t("Importing", "Importuje sa", "Importálás")}${stepLabel}…`
+              : t("Hold to import", "Podržte pre import", "Tartsa az importhoz")}
           </HoldToConfirmButton>
         )}
       </div>
@@ -331,6 +372,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
           {preview.withoutProject > 0 ? ` ${t(`${preview.withoutProject} without a project.`, `${preview.withoutProject} bez projektu.`, `${preview.withoutProject} projekt nélkül.`)}` : ""}
           {preview.preview && preview.projectsToFill > 0 ? ` ${t(`${preview.projectsToFill} imported earlier will get their project.`, `${preview.projectsToFill} skôr importovaných dostane projekt.`, `${preview.projectsToFill} korábban importált bejegyzés megkapja a projektjét.`)}` : ""}
           {!preview.preview && preview.projectsFilled > 0 ? ` ${t(`Project set on ${preview.projectsFilled} imported earlier.`, `Projekt doplnený pri ${preview.projectsFilled} skôr importovaných.`, `${preview.projectsFilled} korábban importált bejegyzés projektje beállítva.`)}` : ""}
+          {preview.incomplete ? ` ${t("Some entries of this period may be missing because Toggl stopped answering. Run it again; nothing is imported twice.", "Niektoré záznamy z tohto obdobia môžu chýbať, lebo Toggl prestal odpovedať. Spustite to znova; nič sa neimportuje dvakrát.", "Az időszak néhány bejegyzése hiányozhat, mert a Toggl nem válaszolt tovább. Futtassa újra; semmi sem kerül be kétszer.")}` : ""}
           {preview.projectsFillLocked > 0 ? ` ${t(`${preview.projectsFillLocked} imported earlier are locked; an administrator can set their project.`, `${preview.projectsFillLocked} skôr importovaných je zamknutých; projekt im môže doplniť administrátor.`, `${preview.projectsFillLocked} korábban importált bejegyzés zárolva; a projektjüket adminisztrátor állíthatja be.`)}` : ""}
         </p>
       )}
@@ -433,7 +475,14 @@ function MappingList({
         <ul className="grid gap-2">
           {visible.map((row) => (
             <li key={row.id} className="grid items-center gap-2 ws-sm:grid-cols-2">
-              <span className="truncate text-ui text-slate-800">{row.name || row.id}</span>
+              <span className="flex min-w-0 items-center gap-2 text-ui text-slate-800">
+                <span className="truncate">{row.name || row.id}</span>
+                {row.archived && (
+                  <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-caption text-slate-500" data-testid={`${testId}-archived`}>
+                    {t("archived", "archivovaný", "archivált")}
+                  </span>
+                )}
+              </span>
               <CustomSelect
                 searchable
                 disabled={disabled}

@@ -33,3 +33,26 @@ export const countAlreadyImported = (incoming: readonly (string | number)[], exi
   }
   return count;
 };
+
+/** The server accepts at most this many days per import request; a longer period is split. */
+export const TOGGL_IMPORT_WINDOW_DAYS = 92;
+
+const DAY_MS = 86_400_000;
+const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+const dayMs = (iso: string): number => Date.parse(`${iso}T00:00:00Z`);
+
+/**
+ * Splits an inclusive `from`–`to` period (YYYY-MM-DD) into consecutive inclusive windows of at
+ * most `maxDays` days, so a multi-year import runs as several short requests instead of one
+ * that the server refuses or that times out. An invalid or reversed period gives no windows.
+ */
+export const splitImportRange = (from: string, to: string, maxDays = TOGGL_IMPORT_WINDOW_DAYS): { from: string; to: string }[] => {
+  const start = dayMs(from);
+  const end = dayMs(to);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || maxDays < 1) return [];
+  const out: { from: string; to: string }[] = [];
+  for (let cur = start; cur <= end; cur += maxDays * DAY_MS) {
+    out.push({ from: isoDay(cur), to: isoDay(Math.min(cur + (maxDays - 1) * DAY_MS, end)) });
+  }
+  return out;
+};

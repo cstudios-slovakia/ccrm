@@ -196,6 +196,9 @@ export function useHoldToConfirm({
     const run = () => {
       if (mountedRef.current) setPopping(false);
       onConfirmRef.current();
+      // A control that stays on screen after confirming (an import, a reset) must not keep a
+      // full ring; one that unmounted meanwhile has nothing to rewind.
+      if (mountedRef.current) rewind();
     };
     if (prefersReducedMotion()) run();
     else setTimeout(run, POP_MS);
