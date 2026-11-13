@@ -3208,7 +3208,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {activeRightTab === "time" && timeTracking.enabled && project && (
             <div className="flex-1 ws-lg:overflow-y-auto scrollbar-thin ws-lg:pr-1 animate-in fade-in duration-150">
               <ProjectTimeTab
-                project={project}
+                project={project} users={users}
                 language={userLanguage}
                 currency={currencyCode || "EUR"}
                 onPatch={(patch) => {

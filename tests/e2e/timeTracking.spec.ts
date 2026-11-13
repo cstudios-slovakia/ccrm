@@ -346,6 +346,34 @@ test.describe('Time tracking', () => {
     await expect(page.getByRole('tab', { name: /Zaznamenaný čas|Time Logged|Rögzített idő/ })).toHaveCount(0);
   });
 
+  test('the project Time tab lists the whole team\'s entries for a team viewer, naming colleagues and badging Toggl imports', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    // What the Toggl importer stores: an ordinary row of Mária's with source "toggl".
+    await page.evaluate(async () => {
+      await fetch('/api/time_entries.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', userId: 'user-maria', projectId: 'project-1', description: 'Z Togglu', entryDate: new Date().toISOString().slice(0, 10), durationSec: 1800, source: 'toggl' }),
+      });
+    });
+    await gotoView(page, '#projects/project-1?tab=time');
+    const entries = page.getByTestId('project-time-entry');
+    // Erik's own entry: no name, no badge.
+    const own = entries.filter({ hasText: 'Návrh cenovej ponuky' });
+    await expect(own).toBeVisible();
+    await expect(own).not.toContainText('Erik');
+    await expect(own.getByTestId('project-time-entry-toggl')).toHaveCount(0);
+    // A colleague's native entry is listed with her name, without the badge.
+    const colleague = entries.filter({ hasText: 'Fakturácia' });
+    await expect(colleague).toContainText('Mária');
+    await expect(colleague.getByTestId('project-time-entry-toggl')).toHaveCount(0);
+    // The imported one carries the badge.
+    const imported = entries.filter({ hasText: 'Z Togglu' });
+    await expect(imported).toContainText('Mária');
+    await expect(imported.getByTestId('project-time-entry-toggl')).toBeVisible();
+  });
+
   test('a stale screen pressing Start on the running project timer adopts it instead of splitting it into a new entry', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#projects/project-1?tab=time');

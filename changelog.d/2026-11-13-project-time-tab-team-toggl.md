@@ -1,0 +1,2 @@
+- **Project Time tab: the whole team's entries and a Toggl badge** (`src/components/timeTracking/ProjectTimeTab.tsx`): someone with team time-tracking rights now sees everyone's entries on the project, not only their own, so the list matches the tracked total above it. A colleague's entry shows their name after the date, and entries brought in by the Toggl import carry a "Toggl" badge. Without team rights the list still shows only your own entries.
+- **Tests**: `timeTracking.spec.ts` (the project Time tab lists a colleague's entry with their name and badges a Toggl import).

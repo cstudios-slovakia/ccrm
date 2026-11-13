@@ -6,25 +6,36 @@ import { clockTime, formatDuration, hoursOf } from "../../utils/timeTracking.ts"
 import { formatMoney } from "../../utils/currency";
 import { localeCodeFor } from "../../utils/localTime";
 import type { Language } from "../../utils/translations";
-import type { Project } from "../../types";
+import type { Project, UserProfile } from "../../types";
 
 /**
  * The project's Time tab: start a timer here, the hours budget against what was
- * tracked, and the entries the viewer may see.
+ * tracked, and the entries the viewer may see: the whole team's with
+ * time_tracking_team, otherwise their own. Entries imported from Toggl carry a badge.
  */
 export function ProjectTimeTab({
   project,
   language,
   currency,
+  users,
   onPatch,
 }: {
   project: Project;
   language: Language;
   currency: string;
+  users: UserProfile[];
   onPatch: (patch: Partial<Project>) => void;
 }) {
   const tt = useTimeTracking();
-  const { entries } = useTimeEntries({ projectId: project.id, from: "2000-01-01", to: "2100-01-01" });
+  const { entries } = useTimeEntries({
+    projectId: project.id,
+    from: "2000-01-01",
+    to: "2100-01-01",
+    ...(tt.viewer.canTeam ? { userId: "all" } : {}),
+  });
+  /** Someone else's entry names its person; the viewer's own stay unlabelled. */
+  const personOf = (userId: string) =>
+    userId && userId !== tt.userId ? users.find((u) => u.id === userId)?.name || tt.t("Unknown", "Neznámy", "Ismeretlen") : "";
   const totals = tt.totals.byProject[project.id];
   const seconds = totals?.seconds ?? entries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0);
   const [budget, setBudget] = useState(project.hoursBudget != null ? String(project.hoursBudget) : "");
@@ -136,10 +147,22 @@ export function ProjectTimeTab({
               return (
                 <li key={e.id} data-testid="project-time-entry" className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui">
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold text-slate-800">{e.title || e.note || t("No description", "Bez popisu", "Nincs leírás")}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span className="truncate font-semibold text-slate-800">{e.title || e.note || t("No description", "Bez popisu", "Nincs leírás")}</span>
+                      {e.source === "toggl" && (
+                        <span
+                          data-testid="project-time-entry-toggl"
+                          title={t("Imported from Toggl", "Importované z Toggl", "Togglból importálva")}
+                          className="shrink-0 px-1.5 py-px rounded-md text-micro font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                        >
+                          Toggl
+                        </span>
+                      )}
+                    </span>
                     <span className="block truncate text-caption font-medium text-slate-500 tabular-nums">
                       {dateLabel(e.entryDate)}
                       {span ? ` · ${span}` : ""}
+                      {personOf(e.userId) ? ` · ${personOf(e.userId)}` : ""}
                     </span>
                   </span>
                   <span className="shrink-0 tabular-nums font-bold text-slate-600">
