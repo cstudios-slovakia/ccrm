@@ -4,6 +4,7 @@
  *   php scripts/test-pipeline-extras.php        no database needed
  */
 require_once __DIR__ . '/../public/api/pipeline_extras.php';
+require_once __DIR__ . '/../public/api/pipeline_match.php';
 
 $fails = 0;
 $check = function (string $name, bool $ok) use (&$fails) {
@@ -55,6 +56,20 @@ $check('the total is capped', mb_strlen($text, 'UTF-8') <= CCRM_PIPELINE_EXTRA_T
 $check('a message with no extras is returned unchanged', ccrm_pipeline_with_extras('Hello', '') === 'Hello');
 $check('extras follow the message after a blank line', ccrm_pipeline_with_extras('Hello', 'A: 1') === "Hello\n\nA: 1");
 $check('extras alone become the note', ccrm_pipeline_with_extras('', 'A: 1') === 'A: 1');
+
+// which existing lead a repeat submission is appended to (pipeline_match.php)
+$groups = ['Nový' => 'new', 'V procese' => 'in_progress', 'Akceptovaná' => 'closed'];
+$pick = fn(array $rows) => (ccrm_pipeline_pick_open_lead($rows, $groups) ?? [])['id'] ?? null;
+$check('an open lead takes the inquiry', $pick([['id' => 'a', 'status' => 'V procese', 'archived' => 0]]) === 'a');
+$check('an archived lead never takes the inquiry', $pick([['id' => 'a', 'status' => 'Nový', 'archived' => 1]]) === null);
+$check('a closed lead never takes the inquiry', $pick([['id' => 'a', 'status' => 'Akceptovaná', 'archived' => 0]]) === null);
+$check('the newest open lead wins, archived ones are passed over', $pick([
+    ['id' => 'archived', 'status' => 'Nový', 'archived' => '1'],
+    ['id' => 'closed', 'status' => 'Akceptovaná', 'archived' => '0'],
+    ['id' => 'open', 'status' => 'V procese', 'archived' => '0'],
+]) === 'open');
+$check('an unknown status counts as open', $pick([['id' => 'a', 'status' => 'whatever', 'archived' => 0]]) === 'a');
+$check('no candidates means a new lead', $pick([]) === null);
 
 echo $fails === 0 ? "\nall passed\n" : "\n$fails FAILED\n";
 exit($fails === 0 ? 0 : 1);

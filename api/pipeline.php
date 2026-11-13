@@ -3,6 +3,7 @@ require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/pipeline_extras.php';
+require_once __DIR__ . '/pipeline_match.php';
 
 // This file exposes a PUBLIC lead-capture webhook (POST, authenticated by the
 // X-API-KEY header) that is intentionally reachable cross-origin from external
@@ -535,14 +536,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $potentialLeads = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    foreach ($potentialLeads as $pl) {
-        $leadStatus = $pl['status'];
-        $group = isset($leadStageGroups[$leadStatus]) ? $leadStageGroups[$leadStatus] : 'new';
-        if ($group !== 'closed') {
-            $existingLead = $pl;
-            break;
-        }
-    }
+    // Archived and closed leads never take the inquiry (see pipeline_match.php).
+    $existingLead = ccrm_pipeline_pick_open_lead($potentialLeads, is_array($leadStageGroups) ? $leadStageGroups : []);
 
     if ($existingLead !== null) {
         $existingLeadId = $existingLead['id'];
