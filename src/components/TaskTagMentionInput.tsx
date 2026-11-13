@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Hash, User, Briefcase, FolderKanban, Target } from "lucide-react";
+import {
+    Hash,
+    User,
+    UserCheck,
+    Briefcase,
+    FolderKanban,
+    Target,
+    Ticket as TicketIcon,
+    CheckSquare,
+} from "lucide-react";
 import type { MentionEntity } from "./TaskPillText";
 import { getStoredLanguage } from "../utils/translations";
 
@@ -15,6 +24,8 @@ interface TaskTagMentionInputProps {
     required?: boolean;
     maxLength?: number;
     onKeyDown?: (e: React.KeyboardEvent) => void;
+    /** Called when user presses Enter (without Shift) while autocomplete popover is closed. */
+    onSubmitOnEnter?: () => void;
     existingTags?: string[];
     onTagAdded?: (tag: string) => void;
     mentionEntities?: MentionEntity[];
@@ -41,6 +52,7 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     required = false,
     maxLength,
     onKeyDown,
+    onSubmitOnEnter,
     existingTags = [],
     onTagAdded,
     mentionEntities = [],
@@ -76,14 +88,16 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
     const mentionSuggestions = React.useMemo(() => {
         if (mode !== "mention") return [];
         const q = query.toLowerCase().trim();
-        if (!q) return mentionEntities.slice(0, 15);
+        if (!q) return mentionEntities.slice(0, 20);
         return mentionEntities
             .filter(
                 (e) =>
                     e.name.toLowerCase().includes(q) ||
-                    (e.detail && e.detail.toLowerCase().includes(q)),
+                    (e.detail && e.detail.toLowerCase().includes(q)) ||
+                    (e.subtitle && e.subtitle.toLowerCase().includes(q)) ||
+                    e.type.toLowerCase().includes(q),
             )
-            .slice(0, 15);
+            .slice(0, 20);
     }, [mode, query, mentionEntities]);
 
     // Keep selectedIndex in bounds
@@ -254,6 +268,17 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
             }
         }
 
+        if (
+            onSubmitOnEnter &&
+            e.key === "Enter" &&
+            !e.shiftKey &&
+            !e.nativeEvent.isComposing
+        ) {
+            e.preventDefault();
+            onSubmitOnEnter();
+            return;
+        }
+
         // Delegate to parent onKeyDown
         onKeyDown?.(e);
     };
@@ -349,6 +374,7 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                                 <button
                                     key={tag}
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => handleSelectTag(tag)}
                                     className={`w-full px-2.5 py-1.5 rounded-xl text-left text-ui font-bold flex items-center justify-between transition-colors ${
                                         isSelected
@@ -398,21 +424,34 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                             if (entity.type === "project") {
                                 colorClasses = "text-amber-600 bg-amber-50";
                                 IconComponent = FolderKanban;
-                                typeLabel = "Project";
+                                typeLabel = t("Project", "Projekt", "Projekt");
                             } else if (entity.type === "client") {
                                 colorClasses = "text-emerald-600 bg-emerald-50";
                                 IconComponent = Briefcase;
-                                typeLabel = "Client";
+                                typeLabel = t("Client", "Klient", "Ügyfél");
                             } else if (entity.type === "lead") {
                                 colorClasses = "text-sky-600 bg-sky-50";
                                 IconComponent = Target;
-                                typeLabel = "Lead";
+                                typeLabel = t("Lead", "Lead", "Lead");
+                            } else if (entity.type === "employee") {
+                                colorClasses = "text-teal-600 bg-teal-50";
+                                IconComponent = UserCheck;
+                                typeLabel = t("Employee", "Zamestnanec", "Alkalmazott");
+                            } else if (entity.type === "ticket") {
+                                colorClasses = "text-rose-600 bg-rose-50";
+                                IconComponent = TicketIcon;
+                                typeLabel = t("Ticket", "Tiket", "Jegy");
+                            } else if (entity.type === "task") {
+                                colorClasses = "text-indigo-600 bg-indigo-50";
+                                IconComponent = CheckSquare;
+                                typeLabel = t("Task", "Úloha", "Feladat");
                             }
 
                             return (
                                 <button
                                     key={`${entity.type}-${entity.id}`}
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => handleSelectMention(entity)}
                                     className={`w-full px-2.5 py-1.5 rounded-xl text-left text-ui font-bold flex items-center justify-between transition-colors ${
                                         isSelected

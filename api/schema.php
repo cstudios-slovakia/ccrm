@@ -1404,6 +1404,28 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
               INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Weekly Plan board cards (standalone planning cards, no task sync)
+            "CREATE TABLE IF NOT EXISTS `weekly_plan_cards` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `date` VARCHAR(10) NOT NULL,
+              `content` TEXT NOT NULL,
+              `position` INT NOT NULL DEFAULT 0,
+              `completed` TINYINT(1) NOT NULL DEFAULT 0,
+              `refs_json` LONGTEXT NULL,
+              `created_by` VARCHAR(64) NULL,
+              `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_weekly_plan_cards_date` (`date`, `position`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Weekly Plan per-day notes displayed under the column date
+            "CREATE TABLE IF NOT EXISTS `weekly_plan_day_notes` (
+              `date` VARCHAR(10) NOT NULL PRIMARY KEY,
+              `note` TEXT NOT NULL,
+              `updated_by` VARCHAR(64) NULL,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -1982,6 +2004,62 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_dedupe_exact_timeline_events($pdo);
         ccrm_migrate_ai_models($pdo);
         ccrm_migrate_recurring_tasks($pdo);
+        ccrm_migrate_weekly_plan($pdo);
+    }
+
+    /**
+     * Ensure Weekly Plan tables and columns exist on upgrades (idempotent).
+     */
+    function ccrm_migrate_weekly_plan(PDO $pdo): void {
+        try {
+            if (!ccrm_table_exists($pdo, 'weekly_plan_cards')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `weekly_plan_cards` (
+                  `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+                  `date` VARCHAR(10) NOT NULL,
+                  `content` TEXT NOT NULL,
+                  `position` INT NOT NULL DEFAULT 0,
+                  `completed` TINYINT(1) NOT NULL DEFAULT 0,
+                  `refs_json` LONGTEXT NULL,
+                  `created_by` VARCHAR(64) NULL,
+                  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX `idx_weekly_plan_cards_date` (`date`, `position`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            } else {
+                $cardCols = [
+                    'position'   => "INT NOT NULL DEFAULT 0 AFTER `content`",
+                    'completed'  => "TINYINT(1) NOT NULL DEFAULT 0 AFTER `position`",
+                    'refs_json'  => "LONGTEXT NULL AFTER `completed`",
+                    'created_by' => "VARCHAR(64) NULL AFTER `refs_json`",
+                ];
+                foreach ($cardCols as $col => $def) {
+                    if (!ccrm_column_exists($pdo, 'weekly_plan_cards', $col)) {
+                        $pdo->exec("ALTER TABLE `weekly_plan_cards` ADD COLUMN `{$col}` {$def}");
+                    }
+                }
+            }
+
+            if (!ccrm_table_exists($pdo, 'weekly_plan_day_notes')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `weekly_plan_day_notes` (
+                  `date` VARCHAR(10) NOT NULL PRIMARY KEY,
+                  `note` TEXT NOT NULL,
+                  `updated_by` VARCHAR(64) NULL,
+                  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            } else {
+                $noteCols = [
+                    'note'       => "TEXT NOT NULL AFTER `date`",
+                    'updated_by' => "VARCHAR(64) NULL AFTER `note`",
+                ];
+                foreach ($noteCols as $col => $def) {
+                    if (!ccrm_column_exists($pdo, 'weekly_plan_day_notes', $col)) {
+                        $pdo->exec("ALTER TABLE `weekly_plan_day_notes` ADD COLUMN `{$col}` {$def}");
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] weekly_plan migration skipped: ' . $e->getMessage());
+        }
     }
 
     /**

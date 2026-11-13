@@ -209,6 +209,7 @@ test("Employee defaults match prompt specification key-by-key", () => {
   assert.equal(defs.tasks, "edit");
   assert.equal(defs["tasks.delete"], "nothing");
   assert.equal(defs["tasks.view_all"], "nothing");
+  assert.equal(defs["tasks.weekly_plan"], "view");
   // No company data
   assert.equal(defs.dashboard, "nothing");
   assert.equal(defs["dashboard.custom"], "nothing");

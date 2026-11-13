@@ -63,11 +63,13 @@ const access = (
   legacyDefault: PermissionValue = "edit",
   newRoleDefault: PermissionValue = "nothing",
   legacy?: { keys: string[]; edit: string[] },
+  requires?: { key: string; level: AccessLevel },
 ): PermissionDef => ({
   key,
   kind: "access",
   legacyDefault,
   newRoleDefault,
+  requires,
   legacyKeys: legacy?.keys,
   legacyEdit: legacy?.edit,
 });
@@ -103,6 +105,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       deleteToggle("tasks", "nothing"),
       // On for every role until revoked — see resolveTaskViewAll in taskSelectors.
       toggle("tasks.view_all", "edit", "edit", { key: "tasks", level: "view" }),
+      // Standalone Weekly Plan board view inside Tasks.
+      access(
+        "tasks.weekly_plan",
+        "edit",
+        "nothing",
+        { keys: ["tasks.view", "tasks.create", "tasks.edit"], edit: ["tasks.create", "tasks.edit"] },
+        { key: "tasks", level: "view" },
+      ),
     ],
   },
   {
@@ -321,6 +331,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   tasks: "edit",
   "tasks.delete": "nothing",
   "tasks.view_all": "nothing",
+  "tasks.weekly_plan": "view",
   leads: "nothing",
   "leads.delete": "nothing",
   clients: "nothing",

@@ -1280,6 +1280,8 @@ ${log.payload || ''}
       edit: m.edit,
       delete: m.delete,
       viewAll: access.can("tasks.view_all"),
+      weeklyPlanView: access.can("tasks.weekly_plan"),
+      weeklyPlanEdit: access.canEdit("tasks.weekly_plan"),
     };
   })();
 
@@ -3449,6 +3451,8 @@ ${log.payload || ''}
           setRecurringTasks={updateRecurringTasksAndSync}
           leads={leads}
           projects={projects}
+          tickets={tickets}
+          employees={employees}
           users={users}
           systemLanguage={userLanguage}
           currentUser={activeUser}
@@ -4471,6 +4475,7 @@ ${log.payload || ''}
             leads={leads}
             projects={projects}
             tickets={tickets}
+            employees={employees}
             users={users}
             systemLanguage={userLanguage}
             currentUser={activeUser}

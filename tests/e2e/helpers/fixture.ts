@@ -1554,6 +1554,70 @@ export async function installBackendMocks(
     });
   });
 
+  // Stateful in-memory mock for Weekly Plan cards & day notes.
+  const weeklyPlanCards = new Map<string, any>();
+  const weeklyPlanNotes = new Map<string, string>();
+  await page.route('**/api/weekly_plan.php**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      const url = new URL(req.url());
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const cards = Array.from(weeklyPlanCards.values()).filter((c) =>
+        (!from || c.date >= from) && (!to || c.date <= to),
+      );
+      const notes = Array.from(weeklyPlanNotes.entries())
+        .filter(([date]) => (!from || date >= from) && (!to || date <= to))
+        .map(([date, note]) => ({ date, note }));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ cards, notes }),
+      });
+    }
+    const body = JSON.parse(req.postData() || '{}');
+    if (body.action === 'save_card') {
+      const card = {
+        id: body.id || `wpc_${Date.now()}`,
+        date: body.date,
+        content: body.content,
+        position: Number(body.position ?? 0),
+        completed: Boolean(body.completed),
+        refs: Array.isArray(body.refs) ? body.refs : [],
+        createdBy: signedIn.id,
+      };
+      weeklyPlanCards.set(card.id, card);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, card }),
+      });
+    }
+    if (body.action === 'reorder_cards') {
+      for (const item of body.items || []) {
+        const existing = weeklyPlanCards.get(item.id);
+        if (existing) {
+          weeklyPlanCards.set(item.id, { ...existing, date: item.date, position: Number(item.position ?? 0) });
+        }
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'delete_card') {
+      weeklyPlanCards.delete(body.id);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'save_note') {
+      if (body.note) weeklyPlanNotes.set(body.date, body.note);
+      else weeklyPlanNotes.delete(body.date);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, date: body.date, note: body.note || '' }),
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
   await page.route('**/upload.php', (route) =>
     route.fulfill({
       status: 200,

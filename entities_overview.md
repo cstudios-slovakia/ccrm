@@ -781,3 +781,22 @@ Logged support hours (billable and non-billable) against a ticket.
 * `note` VARCHAR(500) [NULLable]
 * `logged_at` DATE
 * `created_at` TIMESTAMP
+
+### `weekly_plan_cards`
+Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.
+* `id` VARCHAR(64) [PK]
+* `date` VARCHAR(10) (ISO date `YYYY-MM-DD`, indexed with `position`)
+* `content` TEXT
+* `position` INT
+* `completed` TINYINT(1)
+* `refs_json` LONGTEXT [NULLable] (JSON array of `{ kind, id, label }`)
+* `created_by` VARCHAR(64) [NULLable]
+* `created_at` DATETIME
+* `updated_at` DATETIME
+
+### `weekly_plan_day_notes`
+Per-day management notes displayed underneath each day header on the Weekly Plan board.
+* `date` VARCHAR(10) [PK] (ISO date `YYYY-MM-DD`)
+* `note` TEXT
+* `updated_by` VARCHAR(64) [NULLable]
+* `updated_at` DATETIME

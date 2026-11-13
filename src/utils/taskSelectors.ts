@@ -7,6 +7,9 @@ export type TaskAccess = {
   delete: boolean;
   /** Whether Global Tasks shows the whole team's workload or only your own. */
   viewAll: boolean;
+  /** Dedicated RBAC permissions for the Weekly Plan board inside Tasks. */
+  weeklyPlanView?: boolean;
+  weeklyPlanEdit?: boolean;
 };
 
 /** RBAC slug behind the team-wide Global Tasks board. */
