@@ -4,6 +4,8 @@ import { GripVertical, Trash2 } from "lucide-react";
 import type { FinancialCategory, FinancialRecord, FinancialType } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
+import { ListIcon } from "./ui/ListIcon";
+import { ListIconPicker } from "./ui/ListIconPicker";
 import { inheritedColor, nextCategoryColor } from "../utils/color";
 import type { Language } from "../utils/translations";
 import {
@@ -362,6 +364,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
             title={t("Change color", "Zmeniť farbu", "Szín módosítása")}
             className={styles.swatch}
           />
+          {canEdit ? <ListIconPicker kind="financialCategories" itemKey={cat.id} /> : <ListIcon kind="financialCategories" itemKey={cat.id} />}
           <span className={`truncate ${styles.name}`}>{cat.name}</span>
           <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
         </div>

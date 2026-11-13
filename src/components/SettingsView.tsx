@@ -38,6 +38,9 @@ import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
 import { InlineRenameName } from "./ui/InlineRenameName";
+import { ListIcon } from "./ui/ListIcon";
+import { ListIconPicker } from "./ui/ListIconPicker";
+import { renameListIconEntry } from "../utils/listIconStore";
 import { CommitOnBlurInput } from "./ui/CommitOnBlurInput";
 import { findSelf } from "../utils/sessionIdentity";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
@@ -875,6 +878,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     // The id belongs to the source, not to its name — a rename must not send
     // the web forms that already point at it somewhere else.
     setLeadSourceIds((prev) => migrateMapKey(prev, oldName, next));
+    void renameListIconEntry("leadSources", oldName, next);
     setLeads?.((prev) => prev.map((l) => (l.source === oldName ? { ...l, source: next } : l)));
   };
 
@@ -926,6 +930,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLeadCategoryColors((prev) => migrateMapKey(prev, oldName, next));
     // Same as for sources: the id follows the category through a rename.
     setLeadCategoryIds((prev) => migrateMapKey(prev, oldName, next));
+    void renameListIconEntry("leadCategories", oldName, next);
     // And so does the project type new leads in this category are given —
     // otherwise a rename quietly stops creating those projects.
     setProjectAutoCreate?.((prev) => ({ ...prev, categoryTypes: migrateMapKey(prev.categoryTypes, oldName, next) }));
@@ -1127,6 +1132,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       return;
     }
     setDivisions(divisions.map(d => d === oldName ? trimmed : d));
+    void renameListIconEntry("divisions", oldName, trimmed);
     setDivisionColors?.(prev => {
       const next = { ...prev };
       if (oldName in next) {
@@ -5325,6 +5331,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           variant="section"
           collection="offerCategories"
           idPrefix="oc"
+          iconKind="offerCategories"
           categories={offerCategories}
           setCategories={setOfferCategories}
           // Deleted categories leave their offers in place, uncategorised; Undo files them back.
@@ -5871,6 +5878,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
                                       )}
                                       <span className="type-overline text-slate-400">{color}</span>
+                                      {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="leadSources" itemKey={source} className="ml-1" />}
                                     </div>
                                   </td>
         
@@ -5899,6 +5907,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             borderColor: `${color}35`
                                           }}
                                         >
+                                          <ListIcon kind="leadSources" itemKey={source} />
                                           {source}
                                         </span>
                                       </InlineRenameName>
@@ -6028,6 +6037,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
                                       )}
                                       <span className="type-overline text-slate-400">{color}</span>
+                                      {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="leadCategories" itemKey={cat} className="ml-1" />}
                                     </div>
                                   </td>
         
@@ -6056,6 +6066,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             borderColor: `${color}35`
                                           }}
                                         >
+                                          <ListIcon kind="leadCategories" itemKey={cat} />
                                           {cat}
                                         </span>
                                       </InlineRenameName>
@@ -6185,6 +6196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
                                       )}
                                       <span className="type-overline text-slate-400">{color}</span>
+                                      {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="divisions" itemKey={div} className="ml-1" />}
                                     </div>
                                   </td>
         
@@ -6204,7 +6216,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           borderColor: `${color}35`,
                                         }}
                                       >
-                                        <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                        <ListIcon kind="divisions" itemKey={div} fallback={<Building2 className="h-3.5 w-3.5 shrink-0" />} />
                                         {div}
                                       </span>
                                     </InlineRenameName>

@@ -344,6 +344,8 @@ Global system configurations.
 * `value` LONGTEXT
 * `updated_at` TIMESTAMP
 
+The `LIST_ICONS` setting is a JSON object of icon ids (Twemoji names from `public/list-icons.svg`) per list: `{"leadSources": {"web .sk - cp": "flag-slovakia"}, "offerCategories": {"oc-1": "hammer"}}`. Kinds: `leadSources`, `divisions`, `leadCategories` (keyed by the lower-cased name; a rename moves the entry) and `offerCategories`, `financialCategories` (keyed by category id). Written only by `api/list_icons.php`, one change per request under a row lock, and never by `sync.php`; read by the client through the same endpoint (`src/utils/listIconStore.ts`). The `icon` columns of `offer_categories` / `financial_categories` are unrelated: they hold the automatic level marker (`Layers` / `Folder` / `Tag`).
+
 ### `plugins`
 Installed feature extensions.
 * `id` VARCHAR(50) [PK]

@@ -4,6 +4,9 @@ import type { ClientCategory } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import type { DropdownOption } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
+import { ListIcon } from "./ui/ListIcon";
+import { ListIconPicker } from "./ui/ListIconPicker";
+import type { ListIconKind } from "../utils/listIcons";
 import { cn } from "../utils/cn";
 import { nextCategoryColor } from "../utils/color";
 import {
@@ -169,6 +172,8 @@ export const ClientCategoryManager: React.FC<{
   /** `section` draws the Settings block (SectionCard header) instead of the module's own card. */
   variant?: "card" | "section";
   copy?: Partial<CategoryManagerCopy>;
+  /** Lets each category carry an icon from the list-icon set (price-offer categories do). */
+  iconKind?: ListIconKind;
 }> = ({
   categories,
   setCategories,
@@ -181,6 +186,7 @@ export const ClientCategoryManager: React.FC<{
   idPrefix = "cc",
   variant = "card",
   copy,
+  iconKind,
 }) => {
   const words: CategoryManagerCopy = {
     title: t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák"),
@@ -444,6 +450,7 @@ export const ClientCategoryManager: React.FC<{
             title={editable ? t("Change color", "Zmeniť farbu", "Szín módosítása") : undefined}
             className={styles.swatch}
           />
+          {iconKind && (editable ? <ListIconPicker kind={iconKind} itemKey={cat.id} /> : <ListIcon kind={iconKind} itemKey={cat.id} />)}
           {isRenaming && editable ? (
             <input
               autoFocus

@@ -1,5 +1,6 @@
 import { PRODUCT_NAME } from "../utils/brand";
 import { ContactNameFields } from "./ui/ContactNameFields";
+import { ListIcon } from "./ui/ListIcon";
 import { contactNameFieldsOf, contactNamePatch, type ContactNameParts } from "../utils/contactName";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
@@ -6274,7 +6275,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             />
                                         ) : (
                                             <div className="pt-2 px-3 text-slate-900 text-body font-bold cursor-default select-all">
-                                                🚀 {leadSource}
+                                                <ListIcon kind="leadSources" itemKey={leadSource} fallback="🚀" />{" "}
+                                                {leadSource}
                                             </div>
                                         )}
                                     </div>
@@ -6385,7 +6387,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             borderColor: `${divisionColors[leadDivision] || "#3b82f6"}30`,
                                                         }}
                                                     >
-                                                        <Building2 className="h-3 w-3 shrink-0" />
+                                                        <ListIcon kind="divisions" itemKey={leadDivision} fallback={<Building2 className="h-3 w-3 shrink-0" />} />
                                                         {leadDivision}
                                                     </span>
                                                 ) : (
@@ -6533,6 +6535,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     borderColor: `${color}35`,
                                                                 }}
                                                             >
+                                                                <ListIcon kind="leadCategories" itemKey={cat} className="mr-1" />
                                                                 {cat}
                                                             </span>
                                                         );
@@ -9670,6 +9673,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     borderColor: `${getSafeSourceColor(lead.source)}35`,
                                 }}
                             >
+                                <ListIcon kind="leadSources" itemKey={lead.source} className="mr-1" />
                                 {lead.source}
                             </span>
                         )}
@@ -9745,6 +9749,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     borderColor: `${divisionColors[lead.division] || "#3b82f6"}30`,
                                 }}
                             >
+                                <ListIcon kind="divisions" itemKey={lead.division} className="mr-1" />
                                 {lead.division}
                             </span>
                         ) : (
@@ -11358,6 +11363,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                         borderColor: `${getSafeSourceColor(lead.source)}35`,
                                                                                                     }}
                                                                                                 >
+                                                                                                    <ListIcon kind="leadSources" itemKey={lead.source} className="mr-1" />
                                                                                                     {lead.source}
                                                                                                 </span>
                                                                                             )}
@@ -12258,6 +12264,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         borderColor: `${getSafeSourceColor(leadSource)}35`,
                                                                                     }}
                                                                                 >
+                                                                                    <ListIcon kind="leadSources" itemKey={leadSource} className="mr-1" />
                                                                                     {
                                                                                         leadSource
                                                                                     }

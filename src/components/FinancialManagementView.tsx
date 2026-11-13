@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
+import { ListIcon } from "./ui/ListIcon";
 import { createPortal } from "react-dom";
 import {
   Coins, TrendingUp, TrendingDown,
@@ -1608,6 +1609,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         : "font-normal text-slate-500 "
                     }`}
                   >
+                    <ListIcon kind="financialCategories" itemKey={c.id} className="mr-1" />
                     {c.name}
                   </span>
                 </React.Fragment>

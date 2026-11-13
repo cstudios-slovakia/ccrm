@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
+import { ListIcon } from "./ui/ListIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import {
@@ -285,7 +286,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           value: category.id,
           searchText: category.name,
           icon: color ? <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} /> : undefined,
-          label: <span style={{ paddingLeft: `${(depth - 1) * 0.75}rem` }}>{category.name}</span>,
+          label: <span style={{ paddingLeft: `${(depth - 1) * 0.75}rem` }}><ListIcon kind="offerCategories" itemKey={category.id} className="mr-1" />{category.name}</span>,
         };
       }),
     ],
@@ -384,7 +385,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                 className="inline-flex items-center gap-1.5 max-w-full text-ui font-medium text-slate-700"
                 title={path.length > 1 ? path.map(c => c.name).join(" / ") : undefined}
               >
-                <span className="h-2 w-2 rounded-full shrink-0 bg-slate-300" style={color ? { backgroundColor: color } : undefined} />
+                <ListIcon kind="offerCategories" itemKey={leaf.id} fallback={<span className="h-2 w-2 rounded-full shrink-0 bg-slate-300" style={color ? { backgroundColor: color } : undefined} />} />
                 <span className="truncate">{leaf.name}</span>
               </span>
             ) : (
