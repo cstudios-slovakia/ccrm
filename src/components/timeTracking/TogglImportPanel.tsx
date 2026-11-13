@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-react";
 import { Surface } from "../layout";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
@@ -96,7 +96,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
         defaultUserMap: asRecord(body.defaultUserMap),
       };
       setCatalog(next);
-      // A reload keeps mappings edited here but not saved yet (they are saved on Preview / Import).
+      // A reload keeps mappings edited here whose save has not landed yet.
       setProjectMap((prev) => ({ ...next.projectMap, ...prev }));
       setUserMap((prev) => ({ ...next.defaultUserMap, ...next.userMap, ...prev }));
     } catch (e) {
@@ -105,6 +105,39 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       setLoading(false);
     }
   };
+
+  // Every dropdown change is saved on its own (shortly after, so a burst of picks is one
+  // request). Saves run one after another, each carrying the whole map, so the last pick wins.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const pendingMaps = useRef<{ projectMap: Record<string, string>; userMap: Record<string, string> } | null>(null);
+  const saveTimer = useRef<number | null>(null);
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
+  const flushSave = () => {
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const maps = pendingMaps.current;
+    if (!maps) return;
+    pendingMaps.current = null;
+    saveChain.current = saveChain.current.then(async () => {
+      try {
+        await postImport({ mode: "saveMap", ...maps });
+        if (!pendingMaps.current) setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    });
+  };
+  const saveMaps = (nextProjects: Record<string, string>, nextUsers: Record<string, string>) => {
+    pendingMaps.current = { projectMap: nextProjects, userMap: nextUsers };
+    setSaveState("saving");
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(flushSave, 400);
+  };
+  // Leaving the section right after a pick still saves it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => flushSave(), []);
 
   useEffect(() => {
     if (canEdit) void load();
@@ -177,12 +210,28 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
 
       {catalog && (
         <div className="grid gap-4">
+          {saveState !== "idle" && (
+            <p
+              data-testid="toggl-import-map-status"
+              aria-live="polite"
+              className={`text-caption font-medium ${saveState === "error" ? "text-rose-700" : saveState === "saved" ? "text-emerald-700" : "text-slate-500"}`}
+            >
+              {saveState === "saving"
+                ? t("Saving the mapping…", "Ukladá sa priradenie…", "Hozzárendelés mentése…")
+                : saveState === "saved"
+                  ? t("Mapping saved.", "Priradenie uložené.", "Hozzárendelés mentve.")
+                  : t("The mapping could not be saved. Pick again or press Preview.", "Priradenie sa nepodarilo uložiť. Vyberte znova alebo stlačte Náhľad.", "A hozzárendelést nem sikerült menteni. Válasszon újra, vagy nyomja meg az Előnézetet.")}
+            </p>
+          )}
           <MappingList
             title={t("Projects", "Projekty", "Projektek")}
             rows={catalog.projects}
             options={catalog.ccrmProjects}
             value={projectMap}
-            onChange={setProjectMap}
+            onChange={(next) => {
+              setProjectMap(next);
+              saveMaps(next, userMap);
+            }}
             emptyLabel={t("Leave unassigned", "Nepriradiť", "Nincs hozzárendelve")}
             disabled={!canEdit}
             t={t}
@@ -193,7 +242,10 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             rows={catalog.users}
             options={catalog.ccrmUsers}
             value={userMap}
-            onChange={setUserMap}
+            onChange={(next) => {
+              setUserMap(next);
+              saveMaps(projectMap, next);
+            }}
             emptyLabel={t("Skip this user", "Preskočiť používateľa", "Felhasználó kihagyása")}
             disabled={!canEdit}
             t={t}

@@ -559,6 +559,20 @@ if ($action === 'import') {
         ]);
     }
 
+    // The mapping screen saves every dropdown change on its own; Preview / Import save it too.
+    if ($mode === 'saveMap') {
+        $saveProjects = ccrm_te_import_map($body['projectMap'] ?? []);
+        $saveUsers = ccrm_te_import_map($body['userMap'] ?? []);
+        try {
+            $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('TOGGL_IMPORT_MAP', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+                ->execute([json_encode(['projects' => $saveProjects, 'users' => $saveUsers], JSON_UNESCAPED_UNICODE)]);
+        } catch (\Throwable $e) {
+            ccrm_log_exception($e);
+            ccrm_te_fail('save_failed', 500);
+        }
+        ccrm_te_respond(['saved' => true]);
+    }
+
     $from = (string)($body['from'] ?? '');
     $to = (string)($body['to'] ?? '');
     if (!ccrm_tt_valid_date($from) || !ccrm_tt_valid_date($to) || $from > $to) {

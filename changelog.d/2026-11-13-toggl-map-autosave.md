@@ -1,0 +1,2 @@
+- **Toggl import: the mapping saves itself** (`src/components/timeTracking/TogglImportPanel.tsx`, `public/api/time_entries.php`): picking a Koperniq project or user for a Toggl one in Settings → Time tracking now saves the mapping straight away (new `import` mode `saveMap`), with a "Mapping saved" line under the heading. Before, it was saved only on Preview or Import, so picks made without either were lost on the next page load.
+- **Tests**: `togglImportMap.spec.ts` (one pick sends one `saveMap` with that pairing and shows "Mapping saved").
