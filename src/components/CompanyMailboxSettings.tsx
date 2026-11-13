@@ -34,6 +34,7 @@ import {
   inferConnectorType,
   installAgentCli,
   isAgentConnector,
+  isApiKeyAgentConnector,
   isBotManConnector,
   isEmailConnector,
   listMailboxes,
@@ -576,7 +577,7 @@ export const PROVIDERS: Record<ConnectorType, ProviderMeta> = {
     accentBtn: "bg-violet-600 hover:bg-violet-500 text-white shadow-violet-500/20",
     accentRing: "ring-2 ring-violet-500/50",
   },
-  chatgpt: {
+    chatgpt: {
     type: "chatgpt",
     label: "ChatGPT (Subscription)",
     shortDesc: "ChatGPT Plus / Pro / Team via Marveen + MCP",
@@ -586,6 +587,51 @@ export const PROVIDERS: Record<ConnectorType, ProviderMeta> = {
     rowTint: "hover:from-teal-500/[0.13]",
     badgeClass: "bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30",
     iconBg: "bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-teal-500",
+    modalHeaderBg: "bg-gradient-to-r from-teal-500/15 via-teal-500/5 to-transparent border-b border-teal-500/20",
+    accentBtn: "bg-teal-600 hover:bg-teal-500 text-white shadow-teal-500/20",
+    accentRing: "ring-2 ring-teal-500/50",
+  },
+  claude_api: {
+    type: "claude_api",
+    label: "Claude (API Key)",
+    shortDesc: "Anthropic Messages API key (sk-ant-api03-…) — pure HTTPS cURL, works on any hosting",
+    category: "agents",
+    rowBorder: "border-l-4 border-l-amber-500",
+    rowBg: "bg-gradient-to-r from-amber-500/[0.07] via-white/80 to-white/80 dark:from-amber-500/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-amber-500/[0.13]",
+    badgeClass: "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30",
+    iconBg: "bg-[#D97757] text-white border border-amber-500/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-amber-500",
+    modalHeaderBg: "bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border-b border-amber-500/20",
+    accentBtn: "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-500/20",
+    accentRing: "ring-2 ring-amber-500/50",
+  },
+  gemini_api: {
+    type: "gemini_api",
+    label: "Google Gemini (API Key)",
+    shortDesc: "Google AI Studio API key (AIzaSy…) — pure HTTPS cURL, works on any hosting",
+    category: "agents",
+    rowBorder: "border-l-4 border-l-violet-500",
+    rowBg: "bg-gradient-to-r from-violet-500/[0.07] via-white/80 to-white/80 dark:from-violet-500/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-violet-500/[0.13]",
+    badgeClass: "bg-violet-500/15 text-violet-700 dark:text-violet-300 border border-violet-500/30",
+    iconBg: "bg-gradient-to-br from-indigo-500 via-violet-500 to-sky-500 text-white border border-violet-500/30 shadow-2xs",
+    modalBorder: "border-t-4 border-t-violet-500",
+    modalHeaderBg: "bg-gradient-to-r from-violet-500/15 via-violet-500/5 to-transparent border-b border-violet-500/20",
+    accentBtn: "bg-violet-600 hover:bg-violet-500 text-white shadow-violet-500/20",
+    accentRing: "ring-2 ring-violet-500/50",
+  },
+  openai_api: {
+    type: "openai_api",
+    label: "ChatGPT / OpenAI (API Key)",
+    shortDesc: "OpenAI Platform API key (sk-proj-…) — pure HTTPS cURL, works on any hosting",
+    category: "agents",
+    rowBorder: "border-l-4 border-l-teal-500",
+    rowBg: "bg-gradient-to-r from-teal-500/[0.07] via-white/80 to-white/80 dark:from-teal-500/[0.12] dark:via-slate-900/60 dark:to-slate-900/60",
+    rowTint: "hover:from-teal-500/[0.13]",
+    badgeClass: "bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30",
+    iconBg: "bg-[#10A37F] text-white border border-teal-500/30 shadow-2xs",
     modalBorder: "border-t-4 border-t-teal-500",
     modalHeaderBg: "bg-gradient-to-r from-teal-500/15 via-teal-500/5 to-transparent border-b border-teal-500/20",
     accentBtn: "bg-teal-600 hover:bg-teal-500 text-white shadow-teal-500/20",
@@ -609,7 +655,36 @@ export const ALL_PROVIDER_TYPES: ConnectorType[] = [
   "claude",
   "antigravity",
   "chatgpt",
+  "claude_api",
+  "gemini_api",
+  "openai_api",
 ];
+
+const CONNECTOR_MENU_GROUPS: Array<{
+  key: "email" | "whatsapp" | "agents_sub" | "agents_api";
+  filter: (p: ConnectorType) => boolean;
+}> = [
+  { key: "email", filter: (p) => PROVIDERS[p].category === "email" },
+  { key: "whatsapp", filter: (p) => PROVIDERS[p].category === "whatsapp" },
+  { key: "agents_sub", filter: (p) => PROVIDERS[p].category === "agents" && !isApiKeyAgentConnector(p) },
+  { key: "agents_api", filter: (p) => PROVIDERS[p].category === "agents" && isApiKeyAgentConnector(p) },
+];
+
+const getConnectorGroupTitle = (
+  key: "email" | "whatsapp" | "agents_sub" | "agents_api",
+  t: { filterEmail: string; filterWhatsapp: string; filterAgents: string }
+): string => {
+  switch (key) {
+    case "email":
+      return t.filterEmail;
+    case "whatsapp":
+      return `${t.filterWhatsapp} & BotMan`;
+    case "agents_sub":
+      return `${t.filterAgents} — Subscription`;
+    case "agents_api":
+      return `${t.filterAgents} — API Key`;
+  }
+};
 
 export const ProviderLogo: React.FC<{ type: ConnectorType; className?: string }> = ({
   type,
@@ -661,6 +736,7 @@ export const ProviderLogo: React.FC<{ type: ConnectorType; className?: string }>
         </svg>
       );
     case "claude":
+    case "claude_api":
       return (
         <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
           <path
@@ -672,6 +748,7 @@ export const ProviderLogo: React.FC<{ type: ConnectorType; className?: string }>
         </svg>
       );
     case "antigravity":
+    case "gemini_api":
       return (
         <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
           <path
@@ -684,6 +761,7 @@ export const ProviderLogo: React.FC<{ type: ConnectorType; className?: string }>
         </svg>
       );
     case "chatgpt":
+    case "openai_api":
       return (
         <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
           <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.8" />
@@ -888,10 +966,12 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
     setEditing((prev) => {
       const fresh = emptyMailboxDraft(nextType);
       if (!prev) return fresh;
+      const keepAddr = isAgentConnector(prev.connectorType) && isAgentConnector(nextType);
       return {
         ...fresh,
         id: prev.id,
         name: prev.name,
+        address: keepAddr ? prev.address : fresh.address,
         userIds: prev.userIds,
         ownerUserId: prev.ownerUserId,
         isActive: prev.isActive,
@@ -1304,6 +1384,9 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
       const spec = BOTMAN_DRIVER_SPECS[box.connectorType];
       return `${spec.driverClass.replace("BotMan\\Drivers\\", "BotMan · ")} · ${spec.supportsLocalPolling ? "Webhook + Poll" : "Webhook"}`;
     }
+    if (isApiKeyAgentConnector(box.connectorType) || Boolean(box.settings?.apiKey)) {
+      return `Direct HTTPS API · CCRM MCP${box.settings?.agentModel ? ` · ${box.settings.agentModel}` : ""}`;
+    }
     return `Subscription OAuth · CCRM MCP${box.settings?.agentModel ? ` · ${box.settings.agentModel}` : ""}`;
   };
 
@@ -1354,10 +1437,18 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
     }
 
     if (isAgentConnector(box.connectorType)) {
-      const hasToken = Boolean(box.settings?.subscriptionToken);
+      const hasToken = Boolean(box.settings?.subscriptionToken || box.settings?.apiKey);
+      const isApiMode = isApiKeyAgentConnector(box.connectorType);
+      const readyLabel = isApiMode
+        ? lang === "sk"
+          ? "API kľúč aktívny"
+          : lang === "hu"
+            ? "API kulcs aktív"
+            : "API Key Ready"
+        : t.agentReadyBadge;
       return hasToken ? (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-micro font-semibold text-emerald-700 dark:text-emerald-300">
-          <Sparkles className="w-3.5 h-3.5" /> {t.agentReadyBadge}
+          <Sparkles className="w-3.5 h-3.5" /> {readyLabel}
         </span>
       ) : (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-micro font-semibold text-amber-700 dark:text-amber-300">
@@ -1483,20 +1574,14 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
             {addMenuOpen && (
               <div
                 data-testid="add-connector-dropdown-menu"
-                className="absolute right-0 mt-1.5 w-72 max-h-96 overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-xl z-50 p-1.5 space-y-1.5"
+                className="absolute right-0 mt-1.5 w-72 max-h-[34rem] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-xl z-50 p-1.5 space-y-1.5"
               >
-                {(
-                  [
-                    { cat: "email" as const, title: t.filterEmail },
-                    { cat: "whatsapp" as const, title: `${t.filterWhatsapp} & BotMan` },
-                    { cat: "agents" as const, title: t.filterAgents },
-                  ]
-                ).map((group) => {
-                  const items = ALL_PROVIDER_TYPES.filter((p) => PROVIDERS[p].category === group.cat);
+                {CONNECTOR_MENU_GROUPS.map((group) => {
+                  const items = ALL_PROVIDER_TYPES.filter(group.filter);
                   return (
-                    <div key={group.cat}>
+                    <div key={group.key}>
                       <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                        {group.title}
+                        {getConnectorGroupTitle(group.key, t)}
                       </div>
                       <div className="space-y-0.5">
                         {items.map((pType) => {
@@ -1800,20 +1885,14 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 {modalTypeMenuOpen && (
                   <div
                     data-testid="modal-connector-type-menu"
-                    className="absolute left-0 right-0 mt-1.5 max-h-80 overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-2xl z-50 p-2 space-y-2"
+                    className="absolute left-0 right-0 mt-1.5 max-h-[34rem] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-2xl z-50 p-2 space-y-2"
                   >
-                    {(
-                      [
-                        { cat: "email" as const, title: t.filterEmail },
-                        { cat: "whatsapp" as const, title: `${t.filterWhatsapp} & BotMan` },
-                        { cat: "agents" as const, title: t.filterAgents },
-                      ]
-                    ).map((group) => {
-                      const items = ALL_PROVIDER_TYPES.filter((p) => PROVIDERS[p].category === group.cat);
+                    {CONNECTOR_MENU_GROUPS.map((group) => {
+                      const items = ALL_PROVIDER_TYPES.filter(group.filter);
                       return (
-                        <div key={group.cat}>
+                        <div key={group.key}>
                           <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                            {group.title}
+                            {getConnectorGroupTitle(group.key, t)}
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                             {items.map((pType) => {
@@ -2544,162 +2623,341 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 );
               })()}
 
-              {/* 5, 6, 7. SUBSCRIPTION AI AGENTS (CLAUDE / ANTIGRAVITY / CHATGPT via MARVEEN + CCRM MCP) */}
-              {isAgentConnector(editing.connectorType) && (
-                <div className={`p-4 rounded-2xl border space-y-3 ${activeMeta.badgeClass}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="type-label text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4" /> {t.agentSectionTitle}
-                      </div>
-                      <p className="text-micro text-slate-600 dark:text-slate-300 mt-0.5">{t.agentSectionDesc}</p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {data?.environment?.mode === "local_cli" &&
-                        !data.environment.clis[editing.connectorType as "claude" | "chatgpt" | "antigravity"] && (
-                          <button
-                            type="button"
-                            onClick={() => void onInstallCli(editing.connectorType)}
-                            disabled={busy !== null}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-micro font-semibold disabled:opacity-40"
-                          >
-                            {busy === "cli" ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Terminal className="w-3.5 h-3.5" />
-                            )}
-                            {t.agentInstallCli}
-                          </button>
-                        )}
-                      <button
-                        type="button"
-                        data-testid="agent-start-oauth-btn"
-                        onClick={() => void onStartSubscriptionOAuth()}
-                        disabled={busy !== null}
-                        className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-caption font-semibold shadow-xs disabled:opacity-40 ${activeMeta.accentBtn}`}
-                      >
-                        {busy === "login" ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <KeyRound className="w-3.5 h-3.5" />
-                        )}
-                        {t.agentStartLogin}
-                      </button>
-                    </div>
-                  </div>
+              {/* 5, 6, 7. AI AGENTS (SUBSCRIPTION OR DIRECT API KEY via PURE PHP HTTPS + CCRM MCP) */}
+              {isAgentConnector(editing.connectorType) && (() => {
+                const isApiMode = isApiKeyAgentConnector(editing.connectorType);
+                const subPair: Record<ConnectorType, ConnectorType> = {
+                  claude: "claude",
+                  claude_api: "claude",
+                  antigravity: "antigravity",
+                  gemini_api: "antigravity",
+                  chatgpt: "chatgpt",
+                  openai_api: "chatgpt",
+                } as Record<ConnectorType, ConnectorType>;
+                const apiPair: Record<ConnectorType, ConnectorType> = {
+                  claude: "claude_api",
+                  claude_api: "claude_api",
+                  antigravity: "gemini_api",
+                  gemini_api: "gemini_api",
+                  chatgpt: "openai_api",
+                  openai_api: "openai_api",
+                } as Record<ConnectorType, ConnectorType>;
+                const targetSubType = subPair[editing.connectorType] ?? "claude";
+                const targetApiType = apiPair[editing.connectorType] ?? "claude_api";
+                const apiKeyPortal =
+                  targetApiType === "claude_api"
+                    ? { url: "https://console.anthropic.com/settings/keys", name: "Anthropic Console", placeholder: "sk-ant-api03-…", modelPlaceholder: "claude-sonnet-4-5" }
+                    : targetApiType === "gemini_api"
+                      ? { url: "https://aistudio.google.com/app/apikey", name: "Google AI Studio", placeholder: "AIzaSy…", modelPlaceholder: "gemini-2.5-flash" }
+                      : { url: "https://platform.openai.com/api-keys", name: "OpenAI Platform", placeholder: "sk-proj-…", modelPlaceholder: "gpt-4o" };
 
-                  {/* Interactive PKCE / PTY OAuth Step */}
-                  {oauthUrl && (
-                    <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <a
-                          href={oauthUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-caption font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-                        >
-                          {t.agentOpenAuthUrl} <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          className={`${inp} flex-1 mt-0`}
-                          value={oauthCode}
-                          onChange={(e) => setOauthCode(e.target.value)}
-                          placeholder={t.agentCodePlaceholder}
-                        />
+                return (
+                  <div className={`p-4 rounded-2xl border space-y-3 ${activeMeta.badgeClass}`}>
+                    {/* Auth Mode Switcher: Subscription CLI/OAuth vs Universal API Key */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-black/10 dark:border-white/10">
+                      <div className="inline-flex rounded-xl bg-white/80 dark:bg-slate-900/80 p-1 border border-slate-200/80 dark:border-slate-700">
                         <button
                           type="button"
-                          onClick={() => void onSubmitSubscriptionCode()}
-                          disabled={busy !== null || !oauthCode.trim()}
-                          className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-semibold disabled:opacity-40"
+                          data-testid="agent-mode-subscription-btn"
+                          onClick={() => switchConnectorType(targetSubType)}
+                          className={`px-3 py-1 rounded-lg text-micro font-bold transition-colors ${
+                            !isApiMode
+                              ? `${activeMeta.accentBtn} shadow-2xs`
+                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
                         >
-                          {t.agentVerifyCode}
+                          {lang === "sk"
+                            ? "Predplatné (OAuth / CLI)"
+                            : lang === "hu"
+                              ? "Előfizetés (OAuth / CLI)"
+                              : "Subscription (CLI / OAuth)"}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="agent-mode-apikey-btn"
+                          onClick={() => switchConnectorType(targetApiType)}
+                          className={`px-3 py-1 rounded-lg text-micro font-bold transition-colors ${
+                            isApiMode
+                              ? `${activeMeta.accentBtn} shadow-2xs`
+                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          {lang === "sk"
+                            ? "API Kľúč (Všetky hostingy)"
+                            : lang === "hu"
+                              ? "API kulcs (Minden tárhely)"
+                              : "API Key (All Hostings)"}
                         </button>
                       </div>
-                    </div>
-                  )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className={lbl}>
-                        {t.agentTokenLabel}
-                        <input
-                          className={inp}
-                          type="password"
-                          value={editing.settings.subscriptionToken || ""}
-                          onChange={(e) => setSetting("subscriptionToken", e.target.value)}
-                          placeholder={
-                            editing.id
-                              ? t.passwordKeep
-                              : editing.connectorType === "claude"
-                                ? "sk-ant-oat01-…"
-                                : "OAuth session token"
-                          }
-                        />
-                      </label>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/80 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-700 text-micro font-semibold text-slate-700 dark:text-slate-200">
+                        <Terminal className="w-3.5 h-3.5 text-emerald-600" />
+                        {isApiMode
+                          ? lang === "sk"
+                            ? "Univerzálny hosting · Priame HTTPS REST"
+                            : lang === "hu"
+                              ? "Univerzális tárhely · Közvetlen HTTPS REST"
+                              : "Universal Hosting · Pure HTTPS REST"
+                          : t.envLocalCli}
+                      </span>
                     </div>
-                    <div>
-                      <label className={lbl}>
-                        {t.agentModelLabel}
-                        <input
-                          className={inp}
-                          value={editing.settings.agentModel || ""}
-                          onChange={(e) => setSetting("agentModel", e.target.value)}
-                          placeholder={
-                            editing.connectorType === "claude"
-                              ? "claude-sonnet-4-5"
-                              : editing.connectorType === "antigravity"
-                                ? "gemini-3.5-flash-lite"
-                                : "gpt-5"
-                          }
-                        />
-                      </label>
+
+                    {isApiMode ? (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="type-label text-slate-900 dark:text-white flex items-center gap-1.5">
+                              <KeyRound className="w-4 h-4" />{" "}
+                              {lang === "sk"
+                                ? "Priame HTTPS API pripojenie (Funguje na každom hostingu + CCRM MCP)"
+                                : lang === "hu"
+                                  ? "Közvetlen HTTPS API kapcsolat (Minden tárhelyen működik + CCRM MCP)"
+                                  : "Direct HTTPS API Key (Works on All Hostings + CCRM MCP)"}
+                            </div>
+                            <p className="text-micro text-slate-600 dark:text-slate-300 mt-0.5">
+                              {lang === "sk"
+                                ? "Komunikuje priamo cez PHP HTTPS (cURL) bez potreby CLI, Node.js alebo proc_open. Podporuje plné volanie CCRM MCP nástrojov, subagentov a spúšťačov."
+                                : lang === "hu"
+                                  ? "Közvetlen PHP HTTPS (cURL) kapcsolaton fut CLI, Node.js és proc_open nélkül. Teljes CCRM MCP eszköz-, alügynök- és indító-támogatással."
+                                  : "Runs via pure PHP HTTPS (cURL) with zero CLI, Node.js, or proc_open requirements. Supports full CCRM MCP tool calling, subagents, triggers, and follow-ups on any shared or cloud hosting."}
+                            </p>
+                          </div>
+                          <a
+                            href={apiKeyPortal.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-caption font-semibold shadow-2xs ${activeMeta.accentBtn}`}
+                          >
+                            <span>
+                              {lang === "sk"
+                                ? `Získať kľúč (${apiKeyPortal.name})`
+                                : lang === "hu"
+                                  ? `Kulcs igénylése (${apiKeyPortal.name})`
+                                  : `Get Key (${apiKeyPortal.name})`}
+                            </span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className={lbl}>
+                              {lang === "sk"
+                                ? "API Kľúč"
+                                : lang === "hu"
+                                  ? "API kulcs"
+                                  : "API Key"}
+                              <input
+                                className={inp}
+                                type="password"
+                                data-testid="agent-api-key-input"
+                                autoComplete="new-password"
+                                value={editing.settings.apiKey || editing.settings.subscriptionToken || ""}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setEditing((d) =>
+                                    d
+                                      ? {
+                                          ...d,
+                                          settings: {
+                                            ...d.settings,
+                                            apiKey: v,
+                                            subscriptionToken: v,
+                                          },
+                                        }
+                                      : d,
+                                  );
+                                }}
+                                placeholder={editing.id ? t.passwordKeep : apiKeyPortal.placeholder}
+                              />
+                            </label>
+                          </div>
+                          <div>
+                            <label className={lbl}>
+                              {t.agentModelLabel}
+                              <input
+                                className={inp}
+                                value={editing.settings.agentModel || ""}
+                                onChange={(e) => setSetting("agentModel", e.target.value)}
+                                placeholder={apiKeyPortal.modelPlaceholder}
+                              />
+                            </label>
+                          </div>
+                          <div>
+                            <label className={lbl}>
+                              {lang === "sk"
+                                ? "Vlastná API URL (voliteľné)"
+                                : lang === "hu"
+                                  ? "Egyéni API URL (opcionális)"
+                                  : "Custom API Base URL (optional)"}
+                              <input
+                                className={inp}
+                                value={editing.settings.agentEndpoint || ""}
+                                onChange={(e) => setSetting("agentEndpoint", e.target.value)}
+                                placeholder="Official HTTPS API (default)"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="type-label text-slate-900 dark:text-white flex items-center gap-1.5">
+                              <Sparkles className="w-4 h-4" /> {t.agentSectionTitle}
+                            </div>
+                            <p className="text-micro text-slate-600 dark:text-slate-300 mt-0.5">{t.agentSectionDesc}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {data?.environment?.mode === "local_cli" &&
+                              !data.environment.clis[editing.connectorType as "claude" | "chatgpt" | "antigravity"] && (
+                                <button
+                                  type="button"
+                                  onClick={() => void onInstallCli(editing.connectorType)}
+                                  disabled={busy !== null}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-micro font-semibold disabled:opacity-40"
+                                >
+                                  {busy === "cli" ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Terminal className="w-3.5 h-3.5" />
+                                  )}
+                                  {t.agentInstallCli}
+                                </button>
+                              )}
+                            <button
+                              type="button"
+                              data-testid="agent-start-oauth-btn"
+                              onClick={() => void onStartSubscriptionOAuth()}
+                              disabled={busy !== null}
+                              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-caption font-semibold shadow-xs disabled:opacity-40 ${activeMeta.accentBtn}`}
+                            >
+                              {busy === "login" ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <KeyRound className="w-3.5 h-3.5" />
+                              )}
+                              {t.agentStartLogin}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Interactive PKCE / PTY OAuth Step */}
+                        {oauthUrl && (
+                          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <a
+                                href={oauthUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-caption font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                              >
+                                {t.agentOpenAuthUrl} <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input
+                                className={`${inp} flex-1 mt-0`}
+                                value={oauthCode}
+                                onChange={(e) => setOauthCode(e.target.value)}
+                                placeholder={t.agentCodePlaceholder}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void onSubmitSubscriptionCode()}
+                                disabled={busy !== null || !oauthCode.trim()}
+                                className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-semibold disabled:opacity-40"
+                              >
+                                {t.agentVerifyCode}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className={lbl}>
+                              {t.agentTokenLabel}
+                              <input
+                                className={inp}
+                                type="password"
+                                value={editing.settings.subscriptionToken || ""}
+                                onChange={(e) => setSetting("subscriptionToken", e.target.value)}
+                                placeholder={
+                                  editing.id
+                                    ? t.passwordKeep
+                                    : editing.connectorType === "claude"
+                                      ? "sk-ant-oat01-…"
+                                      : "OAuth session token"
+                                }
+                              />
+                            </label>
+                          </div>
+                          <div>
+                            <label className={lbl}>
+                              {t.agentModelLabel}
+                              <input
+                                className={inp}
+                                value={editing.settings.agentModel || ""}
+                                onChange={(e) => setSetting("agentModel", e.target.value)}
+                                placeholder={
+                                  editing.connectorType === "claude"
+                                    ? "claude-sonnet-4-5"
+                                    : editing.connectorType === "antigravity"
+                                      ? "gemini-3.5-flash-lite"
+                                      : "gpt-5"
+                                }
+                              />
+                            </label>
+                          </div>
+                          <div>
+                            <label className={lbl}>
+                              {t.agentEndpointLabel}
+                              <input
+                                className={inp}
+                                value={editing.settings.agentEndpoint || ""}
+                                onChange={(e) => setSetting("agentEndpoint", e.target.value)}
+                                placeholder="Local embedded Marveen (default)"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* CCRM MCP Endpoint Info */}
+                    <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-micro text-slate-600 dark:text-slate-300">
+                      <span>
+                        CCRM MCP Endpoint:{" "}
+                        <code className="font-mono text-slate-800 dark:text-slate-100">
+                          {typeof window !== "undefined" ? `${window.location.origin}/api/mcp.php` : "/api/mcp.php"}
+                        </code>{" "}
+                        (auto-provisioned per assigned user)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${window.location.origin}/api/mcp.php`;
+                          void navigator.clipboard?.writeText(url);
+                          setCopiedKey(true);
+                          setTimeout(() => setCopiedKey(false), 1800);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/70 dark:border-slate-700"
+                      >
+                        {copiedKey ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                        Copy MCP URL
+                      </button>
                     </div>
-                    <div>
-                      <label className={lbl}>
-                        {t.agentEndpointLabel}
-                        <input
-                          className={inp}
-                          value={editing.settings.agentEndpoint || ""}
-                          onChange={(e) => setSetting("agentEndpoint", e.target.value)}
-                          placeholder="Local embedded Marveen (default)"
-                        />
-                      </label>
-                    </div>
+
+                    {agentTestOutput && (
+                      <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-300 font-mono text-micro">
+                        {agentTestOutput}
+                      </div>
+                    )}
                   </div>
-
-                  {/* CCRM MCP Endpoint Info */}
-                  <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-micro text-slate-600 dark:text-slate-300">
-                    <span>
-                      CCRM MCP Endpoint:{" "}
-                      <code className="font-mono text-slate-800 dark:text-slate-100">
-                        {typeof window !== "undefined" ? `${window.location.origin}/api/mcp.php` : "/api/mcp.php"}
-                      </code>{" "}
-                      (auto-provisioned per assigned user)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const url = `${window.location.origin}/api/mcp.php`;
-                        void navigator.clipboard?.writeText(url);
-                        setCopiedKey(true);
-                        setTimeout(() => setCopiedKey(false), 1800);
-                      }}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/70 dark:border-slate-700"
-                    >
-                      {copiedKey ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-                      Copy MCP URL
-                    </button>
-                  </div>
-
-                  {agentTestOutput && (
-                    <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-300 font-mono text-micro">
-                      {agentTestOutput}
-                    </div>
-                  )}
-                </div>
-              )}
+                );
+              })()}
 
               {/* Active & Self-Signed Toggles */}
               <div className="flex flex-wrap items-center gap-4">

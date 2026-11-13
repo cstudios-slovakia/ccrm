@@ -279,7 +279,7 @@ try {
         $rawC = json_decode((string)($cRow['settings_json'] ?? '{}'), true);
         $cSettings = ccrm_decrypt_email_settings(is_array($rawC) ? $rawC : []);
         $cType = strtolower(trim((string)($cSettings['connectorType'] ?? (($cSettings['provider'] ?? '') === 'exchange' ? 'exchange' : 'smtp'))));
-        if (in_array($cType, ['whatsapp', 'claude', 'antigravity', 'chatgpt'], true)) {
+        if (in_array($cType, ['whatsapp', 'claude', 'antigravity', 'chatgpt', 'claude_api', 'gemini_api', 'openai_api'], true)) {
             continue;
         }
         $uIds = is_array($cSettings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $cSettings['userIds']))) : [];

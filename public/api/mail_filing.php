@@ -314,7 +314,7 @@ function ccrm_mail_filing_sources(PDO $pdo): array {
     foreach ($pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `name`")->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $settings = ccrm_company_mailbox_settings($r);
         $connectorType = (string)($settings['connectorType'] ?? '');
-        if (in_array($connectorType, ['whatsapp', 'claude', 'antigravity', 'chatgpt'], true)) {
+        if (in_array($connectorType, ['whatsapp', 'claude', 'antigravity', 'chatgpt', 'claude_api', 'gemini_api', 'openai_api'], true)) {
             continue;
         }
         $owner = null;

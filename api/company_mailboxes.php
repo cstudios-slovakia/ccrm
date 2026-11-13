@@ -83,9 +83,10 @@ const CCRM_CONNECTOR_TYPES = [
     'gmail', 'smtp', 'exchange', 'whatsapp',
     'telegram', 'messenger', 'slack', 'discord', 'teams', 'viber', 'twilio', 'webchat',
     'claude', 'antigravity', 'chatgpt',
+    'claude_api', 'gemini_api', 'openai_api',
 ];
 const CCRM_EMAIL_CONNECTOR_TYPES = ['gmail', 'smtp', 'exchange'];
-const CCRM_AGENT_CONNECTOR_TYPES = ['claude', 'antigravity', 'chatgpt'];
+const CCRM_AGENT_CONNECTOR_TYPES = ['claude', 'antigravity', 'chatgpt', 'claude_api', 'gemini_api', 'openai_api'];
 
 function ccrm_infer_connector_type(array $s, string $address = ''): string {
     $explicit = strtolower(trim((string)($s['connectorType'] ?? '')));
@@ -159,8 +160,9 @@ function ccrm_company_mailbox_clean(array $in, string $address = '', ?string $fa
         'waStatus' => in_array(($in['waStatus'] ?? ''), ['connected', 'qr_required', 'disconnected'], true)
             ? $in['waStatus']
             : ($str('waAccountId', 120) !== '' ? 'connected' : 'qr_required'),
-        // Subscription AI Agent (Marveen) fields
+        // AI Agent (Marveen Subscription / Direct API Key) fields
         'subscriptionToken' => (string)($in['subscriptionToken'] ?? ''),
+        'apiKey' => (string)($in['apiKey'] ?? ''),
         'subscriptionPlan' => $str('subscriptionPlan', 80),
         'agentModel' => $str('agentModel', 120),
         'agentEndpoint' => $str('agentEndpoint', 500),
@@ -194,6 +196,21 @@ function ccrm_company_mailbox_clean(array $in, string $address = '', ?string $fa
     }
     if ($s['smtpPassword'] === '' && $s['imapPassword'] !== '' && $s['imapPassword'] !== CCRM_SECRET_MASK) {
         $s['smtpPassword'] = $s['imapPassword'];
+    }
+    if ($s['apiKey'] !== '' && $s['apiKey'] !== CCRM_SECRET_MASK && $s['subscriptionToken'] === '') {
+        $s['subscriptionToken'] = $s['apiKey'];
+    } elseif ($s['subscriptionToken'] !== '' && $s['subscriptionToken'] !== CCRM_SECRET_MASK && $s['apiKey'] === '' && in_array($connectorType, ['claude_api', 'gemini_api', 'openai_api'], true)) {
+        $s['apiKey'] = $s['subscriptionToken'];
+    }
+    if ($s['agentModel'] === '' && in_array($connectorType, CCRM_AGENT_CONNECTOR_TYPES, true)) {
+        $s['agentModel'] = match ($connectorType) {
+            'claude', 'claude_api' => 'claude-sonnet-4-5',
+            'antigravity' => 'gemini-3.5-flash-lite',
+            'gemini_api' => 'gemini-2.5-flash',
+            'chatgpt' => 'gpt-5',
+            'openai_api' => 'gpt-4o',
+            default => '',
+        };
     }
 
     foreach (ccrm_email_secret_keys() as $k) {
@@ -599,7 +616,7 @@ try {
         ccrm_marveen_ensure_worker_dir(
             $id,
             $provider,
-            (string)($settings['subscriptionToken'] ?? ''),
+            (string)(($settings['apiKey'] ?? '') !== '' ? $settings['apiKey'] : ($settings['subscriptionToken'] ?? '')),
             ccrm_marveen_internal_mcp_url(),
             $mcpKey
         );
@@ -863,11 +880,15 @@ try {
 
         if ($action === 'test') {
             if (in_array($connectorType, CCRM_AGENT_CONNECTOR_TYPES, true)) {
+                $cred = trim((string)($settings['apiKey'] ?? '')) !== ''
+                    ? (string)$settings['apiKey']
+                    : (string)($settings['subscriptionToken'] ?? '');
                 $probe = ccrm_marveen_live_probe(
                     $id ?: 'test',
                     $connectorType,
-                    (string)($settings['subscriptionToken'] ?? ''),
-                    (string)($settings['agentEndpoint'] ?? '')
+                    $cred,
+                    (string)($settings['agentEndpoint'] ?? ''),
+                    (string)($settings['agentModel'] ?? '')
                 );
                 echo json_encode([
                     'success' => !empty($probe['ok']),
@@ -996,7 +1017,7 @@ try {
                 ccrm_marveen_ensure_worker_dir(
                     $id,
                     $connectorType,
-                    (string)($settings['subscriptionToken'] ?? ''),
+                    (string)(($settings['apiKey'] ?? '') !== '' ? $settings['apiKey'] : ($settings['subscriptionToken'] ?? '')),
                     ccrm_marveen_internal_mcp_url(),
                     $firstMcpKey ?: 'provisioned'
                 );

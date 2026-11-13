@@ -2050,7 +2050,7 @@ HTACCESS;
     /** Per-user email & connector secrets (users.metadata_json -> emailSettings, company_mailboxes.settings_json). */
     function ccrm_email_secret_keys(): array {
         return [
-            'imapPassword', 'smtpPassword', 'password', 'subscriptionToken', 'graphClientSecret',
+            'imapPassword', 'smtpPassword', 'password', 'subscriptionToken', 'apiKey', 'graphClientSecret',
             'botmanToken', 'botmanAppSecret', 'botmanSigningSecret', 'botmanVerifyToken',
         ];
     }

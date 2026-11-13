@@ -26,7 +26,10 @@ export type ConnectorType =
   | BotManConnectorType
   | "claude"
   | "antigravity"
-  | "chatgpt";
+  | "chatgpt"
+  | "claude_api"
+  | "gemini_api"
+  | "openai_api";
 
 export const EMAIL_CONNECTOR_TYPES: readonly ConnectorType[] = ["gmail", "smtp", "exchange"];
 export const BOTMAN_CONNECTOR_TYPES: readonly BotManConnectorType[] = [
@@ -39,7 +42,16 @@ export const BOTMAN_CONNECTOR_TYPES: readonly BotManConnectorType[] = [
   "twilio",
   "webchat",
 ];
-export const AGENT_CONNECTOR_TYPES: readonly ConnectorType[] = ["claude", "antigravity", "chatgpt"];
+export const SUBSCRIPTION_AGENT_CONNECTOR_TYPES: readonly ConnectorType[] = ["claude", "antigravity", "chatgpt"];
+export const API_KEY_AGENT_CONNECTOR_TYPES: readonly ConnectorType[] = ["claude_api", "gemini_api", "openai_api"];
+export const AGENT_CONNECTOR_TYPES: readonly ConnectorType[] = [
+  "claude",
+  "antigravity",
+  "chatgpt",
+  "claude_api",
+  "gemini_api",
+  "openai_api",
+];
 
 export const isEmailConnector = (type?: string | null): boolean =>
   Boolean(type && (EMAIL_CONNECTOR_TYPES as readonly string[]).includes(type));
@@ -52,6 +64,9 @@ export const isMessagingConnector = (type?: string | null): boolean =>
 
 export const isAgentConnector = (type?: string | null): boolean =>
   Boolean(type && (AGENT_CONNECTOR_TYPES as readonly string[]).includes(type));
+
+export const isApiKeyAgentConnector = (type?: string | null): boolean =>
+  Boolean(type && (API_KEY_AGENT_CONNECTOR_TYPES as readonly string[]).includes(type));
 
 export interface MailboxFolderState {
   folder: string;
@@ -86,8 +101,9 @@ export interface MailboxSettings {
   waAccountId?: string;
   waServiceUrl?: string;
   waStatus?: "connected" | "qr_required" | "disconnected";
-  // Subscription AI Agent (Marveen) fields
+  // AI Agent (Marveen Subscription / Direct API Key) fields
   subscriptionToken?: string;
+  apiKey?: string;
   subscriptionPlan?: string;
   agentModel?: string;
   agentEndpoint?: string;
@@ -162,6 +178,9 @@ export const inferConnectorType = (
     explicit === "claude" ||
     explicit === "antigravity" ||
     explicit === "chatgpt" ||
+    explicit === "claude_api" ||
+    explicit === "gemini_api" ||
+    explicit === "openai_api" ||
     isBotManConnector(explicit)
   ) {
     return explicit;
@@ -174,10 +193,31 @@ export const inferConnectorType = (
   for (const bm of BOTMAN_CONNECTOR_TYPES) {
     if (addr.startsWith(`${bm}:`)) return bm;
   }
+  if (addr.startsWith("claude_api:")) return "claude_api";
+  if (addr.startsWith("gemini_api:")) return "gemini_api";
+  if (addr.startsWith("openai_api:")) return "openai_api";
   if (addr.startsWith("claude:")) return "claude";
   if (addr.startsWith("antigravity:")) return "antigravity";
   if (addr.startsWith("chatgpt:")) return "chatgpt";
   return "smtp";
+};
+
+const defaultAgentModelFor = (connectorType: ConnectorType): string => {
+  switch (connectorType) {
+    case "claude":
+    case "claude_api":
+      return "claude-sonnet-4-5";
+    case "antigravity":
+      return "gemini-3.5-flash-lite";
+    case "gemini_api":
+      return "gemini-2.5-flash";
+    case "chatgpt":
+      return "gpt-5";
+    case "openai_api":
+      return "gpt-4o";
+    default:
+      return "";
+  }
 };
 
 export const emptyMailboxDraft = (connectorType: ConnectorType = "smtp"): MailboxDraft => ({
@@ -213,8 +253,9 @@ export const emptyMailboxDraft = (connectorType: ConnectorType = "smtp"): Mailbo
     waServiceUrl: "",
     waStatus: "qr_required",
     subscriptionToken: "",
+    apiKey: "",
     subscriptionPlan: "pro",
-    agentModel: "",
+    agentModel: defaultAgentModelFor(connectorType),
     agentEndpoint: "",
     botmanToken: "",
     botmanAppId: "",
@@ -295,6 +336,7 @@ export const mailboxPayload = (draft: MailboxDraft) => {
   if (!s.imapPassword) delete settings.imapPassword;
   if (!s.smtpPassword) delete settings.smtpPassword;
   if (!s.subscriptionToken) delete settings.subscriptionToken;
+  if (!s.apiKey) delete settings.apiKey;
   if (!s.graphClientSecret) delete settings.graphClientSecret;
   if (!s.botmanToken) delete settings.botmanToken;
   if (!s.botmanAppSecret) delete settings.botmanAppSecret;
