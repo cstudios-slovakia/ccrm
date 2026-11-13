@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { countAlreadyImported, splitImportRange, togglImportKey } from "./togglImport.ts";
+import { countAlreadyImported, parseTogglProblem, splitImportRange, togglImportKey, togglProblemMessage } from "./togglImport.ts";
+
+const en = (text: string) => text;
+
+test("Toggl's reason is read from the server and anything else is ignored", () => {
+  assert.deepEqual(parseTogglProblem({ reason: "quota", status: 402, retryIn: "1500" }), { reason: "quota", status: 402, retryIn: 1500 });
+  assert.equal(parseTogglProblem(null), null);
+  assert.equal(parseTogglProblem({ reason: "something_else" }), null);
+});
+
+test("the message names the cause and the wait Toggl asked for", () => {
+  assert.match(togglProblemMessage({ reason: "quota", status: 402, retryIn: 1500 }, en), /hourly request limit.*25 min/);
+  assert.match(togglProblemMessage({ reason: "quota", status: 402, retryIn: 0 }, en), /in an hour/);
+  assert.match(togglProblemMessage({ reason: "rate_limited", status: 429, retryIn: 0 }, en), /too many requests/);
+  assert.match(togglProblemMessage({ reason: "auth", status: 403, retryIn: 0 }, en), /refused the API token \(HTTP 403\)/);
+  assert.match(togglProblemMessage({ reason: "unavailable", status: 500, retryIn: 0 }, en), /HTTP 500/);
+  assert.match(togglProblemMessage({ reason: "unavailable", status: 0, retryIn: 0 }, en), /could not be reached/);
+});
 
 test("the import key is source toggl plus the Toggl id, stable across calls", () => {
   const a = togglImportKey(48291);

@@ -63,6 +63,7 @@ test('mapped Toggl projects and users are listed first, and a partial project li
           { id: '3', name: 'Charlie unmapped' },
         ],
         projectsTruncated: true,
+        problem: { reason: 'quota', status: 402, retryIn: 1500 },
         users: [
           { id: '11', name: 'Ann unmapped', email: 'ann@example.com' },
           { id: '12', name: 'Ben mapped', email: 'ben@example.com' },
@@ -82,6 +83,8 @@ test('mapped Toggl projects and users are listed first, and a partial project li
   await expect(projects.locator('li').nth(1)).toContainText('Alpha unmapped');
   await expect(page.getByTestId('toggl-import-users').locator('li').first()).toContainText('Ben mapped');
   await expect(page.getByTestId('toggl-import-projects-truncated')).toBeVisible();
+  // The warning says why Toggl stopped and how long to wait (1500 s = 25 min).
+  await expect(page.getByTestId('toggl-import-problem')).toContainText(/25 min/);
 });
 
 test('with nobody mapped, "only one Toggl user" is on and the picked user is sent with the import', async ({ page }) => {

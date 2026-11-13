@@ -69,16 +69,73 @@ function toggl_curl(string $url, string $apiToken, string $method = 'GET', ?arra
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
         }
     }
+    // Response headers, lower-cased: Toggl says in them how long to wait after a refusal.
+    $respHeaders = [];
+    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function ($curl, string $line) use (&$respHeaders): int {
+        $parts = explode(':', $line, 2);
+        if (count($parts) === 2) {
+            $respHeaders[strtolower(trim($parts[0]))] = trim($parts[1]);
+        }
+        return strlen($line);
+    });
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
 
     if ($err) {
-        return ['ok' => false, 'code' => $httpCode, 'error' => 'cURL error: ' . $err];
+        return ['ok' => false, 'code' => $httpCode, 'error' => 'cURL error: ' . $err, 'headers' => $respHeaders];
     }
     $json = json_decode((string)$response, true);
-    return ['ok' => $httpCode >= 200 && $httpCode < 300, 'code' => $httpCode, 'data' => $json, 'raw' => $response];
+    return ['ok' => $httpCode >= 200 && $httpCode < 300, 'code' => $httpCode, 'data' => $json, 'raw' => $response, 'headers' => $respHeaders];
+}
+
+/**
+ * Why a Toggl request failed, in terms the screen can explain.
+ *
+ * `quota`        402: the hourly request allowance of this token's plan is used up
+ * `rate_limited` 429: too many requests in a short time
+ * `auth`         401/403: the token is refused or may not read this workspace
+ * `unavailable`  everything else (network error, 5xx, an unreadable answer)
+ *
+ * `retryIn` is the number of seconds Toggl asks to wait (0 when it does not say).
+ *
+ * @return array{reason: string, status: int, retryIn: int}
+ */
+function ccrm_toggl_failure(array $res): array {
+    $status = (int)($res['code'] ?? 0);
+    $headers = is_array($res['headers'] ?? null) ? $res['headers'] : [];
+    $retryIn = 0;
+    foreach (['x-toggl-quota-resets-in', 'retry-after'] as $name) {
+        if (isset($headers[$name]) && ctype_digit((string)$headers[$name])) {
+            $retryIn = max($retryIn, (int)$headers[$name]);
+        }
+    }
+    if ($status === 402) {
+        $reason = 'quota';
+    } elseif ($status === 429) {
+        $reason = 'rate_limited';
+    } elseif ($status === 401 || $status === 403) {
+        $reason = 'auth';
+    } else {
+        $reason = 'unavailable';
+    }
+    return ['reason' => $reason, 'status' => $status, 'retryIn' => min($retryIn, 86400)];
+}
+
+/**
+ * `toggl_curl` that waits and tries again when Toggl answers 429 (about one request a second
+ * is allowed). At most three attempts and a few seconds of waiting in total, so a request of
+ * ours never hangs; a used-up hourly allowance (402) is not retried, waiting would not help.
+ */
+function toggl_curl_retry(string $url, string $apiToken, string $method = 'GET', ?array $postData = null): array {
+    $res = toggl_curl($url, $apiToken, $method, $postData);
+    for ($attempt = 1; $attempt < 3 && ($res['code'] ?? 0) === 429; $attempt++) {
+        $wait = ccrm_toggl_failure($res)['retryIn'];
+        sleep(max(1, min($wait > 0 ? $wait : 2, 4)));
+        $res = toggl_curl($url, $apiToken, $method, $postData);
+    }
+    return $res;
 }
 
 /**
@@ -501,16 +558,29 @@ function ccrm_time_tracking_month_hours(string $apiToken, string $workspaceId, s
  * Clockify is not imported here.
  */
 
-/** Workspace id from settings, or the token's default workspace. */
-function ccrm_toggl_import_workspace(string $apiToken, string $workspaceId): string {
+/**
+ * Workspace id from settings, or the token's default workspace.
+ * `$problem` is set when Toggl refused the lookup, so "not configured" is not blamed for it.
+ */
+function ccrm_toggl_import_workspace(string $apiToken, string $workspaceId, ?array &$problem = null): string {
     if ($workspaceId !== '') {
         return $workspaceId;
     }
-    $me = toggl_curl('https://api.track.toggl.com/api/v9/me', $apiToken);
+    $me = toggl_curl_retry('https://api.track.toggl.com/api/v9/me', $apiToken);
     if (!empty($me['ok'])) {
         return trim((string)($me['data']['default_workspace_id'] ?? ''));
     }
+    $problem = ccrm_toggl_failure($me);
     return '';
+}
+
+/** The failure shape of the import functions when the workspace could not be found. */
+function ccrm_toggl_import_no_workspace(?array $problem): array {
+    // A refused token really is a configuration problem; a limit or an outage is not.
+    if ($problem === null || $problem['reason'] === 'auth') {
+        return ['ok' => false, 'code' => 'toggl_not_configured', 'problem' => $problem];
+    }
+    return ['ok' => false, 'code' => 'toggl_' . $problem['reason'], 'problem' => $problem];
 }
 
 /**
@@ -523,9 +593,10 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
     if ($apiToken === '') {
         return $empty + ['code' => 'toggl_not_configured'];
     }
-    $ws = ccrm_toggl_import_workspace($apiToken, $workspaceId);
+    $wsProblem = null;
+    $ws = ccrm_toggl_import_workspace($apiToken, $workspaceId, $wsProblem);
     if ($ws === '') {
-        return $empty + ['code' => 'toggl_not_configured'];
+        return ccrm_toggl_import_no_workspace($wsProblem) + $empty;
     }
     // Every page until Toggl runs out, archived projects included (they keep their tracked
     // time and still need a pairing). The safety limit is 20 000 projects; reaching it, or a
@@ -534,19 +605,17 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
     // Toggl's pages are not guaranteed stable, so the same project can come back on two pages;
     // it is listed once (a repeated id showed up as a second row with the same name).
     $seenProjects = [];
+    // Why Toggl stopped answering (see ccrm_toggl_failure), when it did.
+    $problem = null;
     $truncated = false;
     $perPage = 200;
     $maxPages = 100;
     for ($page = 1; $page <= $maxPages; $page++) {
         $url = "https://api.track.toggl.com/api/v9/workspaces/{$ws}/projects?per_page={$perPage}&page={$page}&active=both";
-        $res = toggl_curl($url, $apiToken);
-        if (($res['code'] ?? 0) === 429) {
-            // Toggl allows about one request a second; wait once and retry this page.
-            sleep(2);
-            $res = toggl_curl($url, $apiToken);
-        }
+        $res = toggl_curl_retry($url, $apiToken);
         if (empty($res['ok']) || !is_array($res['data'])) {
             $truncated = true;
+            $problem = ccrm_toggl_failure($res);
             break;
         }
         if ($res['data'] === []) {
@@ -573,8 +642,10 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
         }
     }
     $users = [];
-    $uRes = toggl_curl("https://api.track.toggl.com/api/v9/workspaces/{$ws}/users", $apiToken);
-    if (!empty($uRes['ok']) && is_array($uRes['data'])) {
+    $uRes = toggl_curl_retry("https://api.track.toggl.com/api/v9/workspaces/{$ws}/users", $apiToken);
+    if (empty($uRes['ok']) || !is_array($uRes['data'])) {
+        $problem = $problem ?? ccrm_toggl_failure($uRes);
+    } else {
         foreach ($uRes['data'] as $u) {
             if (!isset($u['id'])) {
                 continue;
@@ -586,7 +657,7 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
             ];
         }
     }
-    return ['ok' => true, 'projects' => $projects, 'projectsTruncated' => $truncated, 'users' => $users];
+    return ['ok' => true, 'projects' => $projects, 'projectsTruncated' => $truncated, 'users' => $users, 'problem' => $problem];
 }
 
 /**
@@ -602,9 +673,10 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
     if ($apiToken === '') {
         return ['ok' => false, 'code' => 'toggl_not_configured', 'entries' => []];
     }
-    $ws = ccrm_toggl_import_workspace($apiToken, $workspaceId);
+    $wsProblem = null;
+    $ws = ccrm_toggl_import_workspace($apiToken, $workspaceId, $wsProblem);
     if ($ws === '') {
-        return ['ok' => false, 'code' => 'toggl_not_configured', 'entries' => []];
+        return ccrm_toggl_import_no_workspace($wsProblem) + ['entries' => []];
     }
     $reportsUrl = "https://api.track.toggl.com/reports/api/v3/workspace/{$ws}/search/time_entries";
     $raw = [];
@@ -613,6 +685,7 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
     // A page that fails is not "no more entries": it used to end the loop silently, so an
     // import could report success with part of the period missing.
     $failed = false;
+    $problem = null;
     $truncated = false;
     for ($page = 1; $page <= $maxPages; $page++) {
         $payload = [
@@ -625,14 +698,10 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
             // One person's entries only: far fewer pages than the whole workspace.
             $payload['user_ids'] = [(int)$onlyUserId];
         }
-        $res = toggl_curl($reportsUrl, $apiToken, 'POST', $payload);
-        if (($res['code'] ?? 0) === 429) {
-            // Toggl allows about one request a second; wait once and retry this page.
-            sleep(2);
-            $res = toggl_curl($reportsUrl, $apiToken, 'POST', $payload);
-        }
+        $res = toggl_curl_retry($reportsUrl, $apiToken, 'POST', $payload);
         if (empty($res['ok']) || !is_array($res['data'])) {
             $failed = true;
+            $problem = ccrm_toggl_failure($res);
             break;
         }
         if ($res['data'] === []) {
@@ -649,6 +718,12 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
             $truncated = true;
         }
     }
+    if ($failed && $problem !== null && $problem['reason'] !== 'unavailable') {
+        // Toggl refused (allowance used up, too many requests, token not allowed): asking again
+        // right now cannot work, and half a period must not look like a whole one. The screen
+        // stops here and says why and for how long; what earlier periods imported stays.
+        return ['ok' => false, 'code' => 'toggl_' . $problem['reason'], 'entries' => [], 'problem' => $problem];
+    }
     if ($failed && $raw === []) {
         // The reports API did not answer at all: fall back to the token owner's own entries.
         $fallback = toggl_curl(
@@ -656,7 +731,7 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
             $apiToken
         );
         if (empty($fallback['ok']) || !is_array($fallback['data'])) {
-            return ['ok' => false, 'code' => 'toggl_unavailable', 'entries' => []];
+            return ['ok' => false, 'code' => 'toggl_unavailable', 'entries' => [], 'problem' => $problem];
         }
         $raw = $fallback['data'];
     } elseif ($failed) {

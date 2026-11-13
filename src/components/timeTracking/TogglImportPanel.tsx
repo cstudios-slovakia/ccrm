@@ -4,7 +4,7 @@ import { Surface } from "../layout";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
-import { splitImportRange } from "../../utils/togglImport.ts";
+import { parseTogglProblem, splitImportRange, togglProblemMessage, type TogglProblem } from "../../utils/togglImport.ts";
 import type { Language } from "../../utils/translations";
 import { PRODUCT_NAME } from "../../utils/brand";
 
@@ -20,6 +20,8 @@ interface Catalog {
   projects: Named[];
   /** The workspace has more projects than could be loaded; the list is incomplete. */
   projectsTruncated: boolean;
+  /** Why Toggl stopped answering while the lists were read, when it did. */
+  problem: TogglProblem | null;
   users: Named[];
   /** Toggl user with the signed-in person's e-mail (a suggestion, not the token's owner); "" when none. */
   me: string;
@@ -81,9 +83,24 @@ const postImport = async (payload: Record<string, unknown>): Promise<any> => {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body || body.success !== true) {
-    throw new TimeApiError(body?.code || "save_failed", res.status);
+    throw new ImportError(body?.code || "save_failed", res.status, parseTogglProblem(body?.problem));
   }
   return body;
+};
+
+/** A failed import request, with Toggl's own reason when the server passed one on. */
+class ImportError extends TimeApiError {
+  readonly problem: TogglProblem | null;
+  constructor(code: string, status: number, problem: TogglProblem | null) {
+    super(code, status);
+    this.problem = problem;
+  }
+}
+
+/** Toggl's reason and wait time when there is one, otherwise the sentence for the error code. */
+const importErrorText = (e: unknown, t: (en: string, sk: string, hu: string) => string): string => {
+  if (e instanceof ImportError && e.problem) return togglProblemMessage(e.problem, t);
+  return timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t);
 };
 
 /**
@@ -118,6 +135,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       const next: Catalog = {
         projects: body.projects ?? [],
         projectsTruncated: body.projectsTruncated === true,
+        problem: parseTogglProblem(body.problem),
         users: body.users ?? [],
         ccrmProjects: body.ccrmProjects ?? [],
         ccrmUsers: body.ccrmUsers ?? [],
@@ -126,7 +144,16 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
         defaultUserMap: asRecord(body.defaultUserMap),
         me: typeof body.me === "string" ? body.me : "",
       };
-      setCatalog(next);
+      // A reload that Toggl answered only in part must not shrink a list that was already
+      // loaded: rows it did not return this time are kept from the previous load.
+      setCatalog((prev) => {
+        if (!prev) return next;
+        const projects = next.projectsTruncated
+          ? [...next.projects, ...prev.projects.filter((p) => !next.projects.some((n) => n.id === p.id))]
+          : next.projects;
+        const users = next.users.length === 0 && next.problem ? prev.users : next.users;
+        return { ...next, projects, users };
+      });
       // A reload keeps mappings edited here whose save has not landed yet.
       setProjectMap((prev) => ({ ...next.projectMap, ...prev }));
       setUserMap((prev) => ({ ...next.defaultUserMap, ...next.userMap, ...prev }));
@@ -139,7 +166,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
         setOnlyUserId(next.me);
       }
     } catch (e) {
-      setError(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t));
+      setError(importErrorText(e, t));
     } finally {
       setLoading(false);
     }
@@ -230,7 +257,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     } catch (e) {
       // What the finished windows imported is stored; show it rather than only the error.
       if (sum.total > 0) setPreview({ ...sum, incomplete: true });
-      setError(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t));
+      setError(importErrorText(e, t));
     } finally {
       setLoading(false);
       setStep(null);
@@ -283,12 +310,29 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
                   : t("The mapping could not be saved. Pick again or press Preview.", "Priradenie sa nepodarilo uložiť. Vyberte znova alebo stlačte Náhľad.", "A hozzárendelést nem sikerült menteni. Válasszon újra, vagy nyomja meg az Előnézetet.")}
             </p>
           )}
-          {catalog.projectsTruncated && (
+          {(catalog.projectsTruncated || catalog.problem) && (
             <p data-testid="toggl-import-projects-truncated" role="alert" className="text-caption font-medium text-amber-700">
+              {catalog.projectsTruncated
+                ? t(
+                    "Toggl returned only part of the project list, so some projects may be missing here.",
+                    "Toggl vrátil iba časť zoznamu projektov, preto tu niektoré projekty môžu chýbať.",
+                    "A Toggl csak a projektlista egy részét adta vissza, ezért néhány projekt hiányozhat.",
+                  )
+                : t(
+                    "Toggl did not return the list of users.",
+                    "Toggl nevrátil zoznam používateľov.",
+                    "A Toggl nem adta vissza a felhasználók listáját.",
+                  )}{" "}
+              {/* The reason and the wait come from Toggl's own answer; without one, the old advice. */}
+              <span data-testid="toggl-import-problem">
+                {catalog.problem
+                  ? togglProblemMessage(catalog.problem, t)
+                  : t("Reload to try again.", "Skúste načítať znova.", "Töltse újra a listát.")}
+              </span>{" "}
               {t(
-                "Toggl returned only part of the project list, so some projects may be missing here. Reload to try again.",
-                "Toggl vrátil iba časť zoznamu projektov, preto tu niektoré projekty môžu chýbať. Skúste načítať znova.",
-                "A Toggl csak a projektlista egy részét adta vissza, ezért néhány projekt hiányozhat. Töltse újra a listát.",
+                "Pairings you already saved are kept and still apply to an import.",
+                "Už uložené priradenia zostávajú a pri importe platia.",
+                "A már mentett hozzárendelések megmaradnak, és az importnál érvényesek.",
               )}
             </p>
           )}

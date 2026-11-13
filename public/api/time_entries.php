@@ -542,7 +542,7 @@ if ($action === 'import') {
     if ($mode === 'catalog') {
         $cat = ccrm_toggl_import_catalog($token, $workspace);
         if (empty($cat['ok'])) {
-            ccrm_te_fail($cat['code'] ?? 'toggl_not_configured', 422);
+            ccrm_te_fail($cat['code'] ?? 'toggl_not_configured', 422, ['problem' => $cat['problem'] ?? null]);
         }
         $ccrmProjects = $pdo->query("SELECT `id`, `name` FROM `projects` ORDER BY `name` LIMIT 2000")->fetchAll(\PDO::FETCH_ASSOC);
         $ccrmUsers = $pdo->query("SELECT `id`, `name`, `email` FROM `users` ORDER BY `name`")->fetchAll(\PDO::FETCH_ASSOC);
@@ -569,6 +569,8 @@ if ($action === 'import') {
         ccrm_te_respond([
             'projects' => $cat['projects'],
             'projectsTruncated' => !empty($cat['projectsTruncated']),
+            // Why Toggl stopped answering, when it did: {reason, status, retryIn}.
+            'problem' => $cat['problem'] ?? null,
             'users' => $cat['users'],
             'me' => $togglMe,
             'ccrmProjects' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? '')], $ccrmProjects),
@@ -637,7 +639,7 @@ if ($action === 'import') {
 
     $fetched = ccrm_toggl_import_fetch($token, $workspace, $from, $to, $onlyMeId);
     if (empty($fetched['ok'])) {
-        ccrm_te_fail($fetched['code'] ?? 'toggl_not_configured', 422);
+        ccrm_te_fail($fetched['code'] ?? 'toggl_not_configured', 422, ['problem' => $fetched['problem'] ?? null]);
     }
     $rows = $fetched['entries'];
     if ($onlyMeId !== '') {
