@@ -282,6 +282,12 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
             }
         }
     }
+    // Archive instead of delete: MCP never deletes rows; list_tasks hides archived tasks by default.
+    if (array_key_exists('archived', $args)) {
+        $arch = filter_var($args['archived'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($arch === null) throw new \InvalidArgumentException("'archived' must be true or false.");
+        $add('archived', $arch ? 1 : 0);
+    }
     if (!$sets) return ['success' => true, 'message' => 'No fields updated'];
     $params[] = $id;
     mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner) {

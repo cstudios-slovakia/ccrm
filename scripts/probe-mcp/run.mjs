@@ -556,6 +556,21 @@ async function writeChecks() {
   check('bucket=upcoming does not', !(await call(A, 'list_tasks', { bucket: 'upcoming', search: 'Bucket' })).some?.((t) => t.id === t1), '');
   await call(A, 'update_task', { id: t1, owner: 'Probe Editor' });
   check('a new owner is added to the assignees (stays visible)', rows(`SELECT user_name FROM task_assignees WHERE task_id=${sq(t1)} ORDER BY 1`).map((x) => x[0]).join() === 'Probe Editor,Probe Viewer', '');
+  // A client can be linked (and unlinked) after the task exists; update_task advertises client_id.
+  const utDef = ((await rpc('tools/list', {}, A)).body?.result?.tools || []).find((t) => t.name === 'update_task');
+  check('update_task advertises client_id, deadline_time and archived', ['client_id', 'deadline_time', 'archived'].every((k) => utDef?.inputSchema?.properties?.[k]), JSON.stringify(utDef?.inputSchema?.properties || {}));
+  await call(A, 'update_task', { id: t1, client_id: leadId });
+  check('update_task links a client to an existing task', cell(`SELECT related_lead_id FROM tasks WHERE id=${sq(t1)}`) === leadId, '');
+  check('update_task refuses an unknown client', isErr(await call(A, 'update_task', { id: t1, client_id: 'no-such-client' }), /not found/i), '');
+  await call(A, 'update_task', { id: t1, client_id: '' });
+  check('update_task with an empty client_id unlinks it', cell(`SELECT related_lead_id IS NULL FROM tasks WHERE id=${sq(t1)}`) === '1', '');
+  // Archive is the MCP way to remove a task (no tool deletes rows).
+  await call(A, 'update_task', { id: t1, archived: true });
+  check('update_task archived=true hides the task from list_tasks', !(await call(A, 'list_tasks', { search: 'Bucket' })).some?.((t) => t.id === t1), '');
+  check('include_archived still lists it, marked archived', (await call(A, 'list_tasks', { search: 'Bucket', include_archived: true })).some?.((t) => t.id === t1 && t.archived === true), '');
+  check('update_task refuses a non-boolean archived', isErr(await call(A, 'update_task', { id: t1, archived: 'maybe' }), /true or false/), '');
+  await call(A, 'update_task', { id: t1, archived: false });
+  check('update_task archived=false restores it', cell(`SELECT archived FROM tasks WHERE id=${sq(t1)}`) === '0', '');
   check('set_task_assignees refuses non-users', isErr(await call(A, 'set_task_assignees', { task_id: t1, assignees: ['Ghost'] }), /not a registered user/), '');
   r = await call(A, 'set_task_assignees', { task_id: t1, assignees: ['probe admin'] });
   check('set_task_assignees adds (case-insensitive) and removes nobody', r.success && ['Probe Admin', 'Probe Editor', 'Probe Viewer'].every((n) => r.assignees.includes(n)), JSON.stringify(r));

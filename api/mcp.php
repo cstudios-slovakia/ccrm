@@ -5,7 +5,7 @@
  * Implements JSON-RPC 2.0 protocol for MCP clients (Antigravity, Claude Desktop, Cursor).
  * Supports both HTTP POST JSON-RPC execution and HTTP GET SSE streaming.
  * Security: every tool call is checked against the key owner's role permissions
- * (see mcp_tool_permissions). No tool deletes rows. System settings are limited to the two
+ * (see mcp_tool_permissions). No tool deletes rows (tasks are archived via update_task). System settings are limited to the two
  * finance-mode keys (FINANCIAL_MODE, FINANCIAL_SIMPLIFIED_TABLE); nothing else is reachable.
  */
 
@@ -650,7 +650,9 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'update_task',
-            'description' => 'Update task properties such as title, priority, deadline, or status.',
+            'description' => 'Update an existing task: title, description, priority, deadline, status, owner, its linked project or client (also after it was created), or archive / restore it. '
+                . 'Only the fields you pass change; pass an empty string for project_id or client_id to unlink. Tasks are never deleted through MCP: archive one instead (archived=true); '
+                . 'list_tasks hides it unless include_archived=true, and archived=false restores it.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -659,10 +661,13 @@ function mcp_core_tool_definitions(): array {
                     'description' => ['type' => 'string', 'description' => 'Updated description'],
                     'priority' => ['type' => 'string', 'description' => 'Priority: low, medium, high'],
                     'deadline' => ['type' => 'string', 'description' => 'Deadline in YYYY-MM-DD format'],
+                    'deadline_time' => ['type' => 'string', 'description' => 'Deadline time in HH:MM format; empty string clears it'],
                     'status' => ['type' => 'string', 'description' => 'A configured task status'],
                     'conclusion' => ['type' => 'string', 'description' => 'How the task was finished. Required when moving a task that has "requires conclusion" set to a done status.'],
                     'owner' => ['type' => 'string', 'description' => 'Primary assignee name'],
-                    'project_id' => ['type' => 'string', 'description' => 'Linked project ID']
+                    'project_id' => ['type' => 'string', 'description' => 'Linked project ID; empty string unlinks'],
+                    'client_id' => ['type' => 'string', 'description' => 'Linked client / lead ID (from list_clients, list_leads or search_entities); empty string unlinks'],
+                    'archived' => ['type' => 'boolean', 'description' => 'true archives the task (the MCP way to remove one), false restores it']
                 ],
                 'required' => ['id']
             ]
