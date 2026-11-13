@@ -104,3 +104,43 @@ function ccrm_pipeline_with_extras($message, $extraLines) {
     }
     return $message === '' ? $extraLines : $message . "\n\n" . $extraLines;
 }
+
+/**
+ * The timeline note for one submission: everything the form sent, one field per line.
+ * Used both for a new lead and for an inquiry appended to an open one, so the two
+ * timeline cards show the same thing. The lead's own fields (phone, e-mail, ...)
+ * change later; the note is what this submission said.
+ *
+ * $f keys: source, origin, origin_detail, name, contact_person, email, phone, city,
+ * categories (list), value (float), message, extra_lines.
+ */
+function ccrm_pipeline_submission_note(array $f) {
+    $lines = [];
+    $lines[] = 'Form submission received from source: ' . ($f['source'] ?? '');
+    $origin = $f['origin'] ?? null;
+    if ($origin !== null && $origin !== '') {
+        $detail = $f['origin_detail'] ?? null;
+        $lines[] = 'Origin: ' . $origin . ($detail !== null && $detail !== '' ? ' (' . $detail . ')' : '');
+    }
+    $lines[] = 'Name: ' . ($f['name'] ?? '');
+    foreach (['contact_person' => 'Contact person', 'email' => 'Email', 'phone' => 'Phone', 'city' => 'City'] as $key => $label) {
+        $v = (string)($f[$key] ?? '');
+        if ($v !== '') {
+            $lines[] = $label . ': ' . $v;
+        }
+    }
+    if (!empty($f['categories'])) {
+        $lines[] = 'Categories: ' . implode(', ', $f['categories']);
+    }
+    $value = (float)($f['value'] ?? 0);
+    if ($value > 0) {
+        $lines[] = 'Value: ' . number_format($value, 2, '.', '') . ' EUR';
+    }
+    $message = (string)($f['message'] ?? '');
+    $lines[] = 'Message: ' . ($message !== '' ? $message : 'Form submitted (no message content).');
+    $extra = (string)($f['extra_lines'] ?? '');
+    if ($extra !== '') {
+        $lines[] = $extra;
+    }
+    return implode("\n", $lines);
+}

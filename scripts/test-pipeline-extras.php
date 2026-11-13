@@ -71,5 +71,24 @@ $check('the newest open lead wins, archived ones are passed over', $pick([
 $check('an unknown status counts as open', $pick([['id' => 'a', 'status' => 'whatever', 'archived' => 0]]) === 'a');
 $check('no candidates means a new lead', $pick([]) === null);
 
+// a submission is matched on e-mail or phone, never on the name alone
+$check('no e-mail and no phone means nothing to match on', ccrm_pipeline_match_keys('', '  ') === null);
+$check('an e-mail alone is enough to match', ccrm_pipeline_match_keys(' a@b.sk ', '') === ['email' => 'a@b.sk', 'phone' => '']);
+$check('a phone alone is enough to match', ccrm_pipeline_match_keys('', '0905') === ['email' => '', 'phone' => '0905']);
+
+// the timeline note lists what the submission sent, for a new lead and an appended one alike
+$note = ccrm_pipeline_submission_note([
+    'source' => 'web .sk - kontakt', 'origin' => 'website', 'origin_detail' => 'landing',
+    'name' => 'Acme', 'contact_person' => 'Jan', 'email' => 'j@acme.sk', 'phone' => '0905555555',
+    'city' => 'Nitra', 'categories' => ['Strecha', 'Dlažba'], 'value' => 1200, 'message' => 'Hello',
+    'extra_lines' => "Produkt: TB-10\nFormulár: Cenová ponuka",
+]);
+$check('the note carries the contact details', strpos($note, "Email: j@acme.sk\nPhone: 0905555555\nCity: Nitra") !== false);
+$check('the note starts with the source and origin', strpos($note, "Form submission received from source: web .sk - kontakt\nOrigin: website (landing)\nName: Acme\nContact person: Jan") === 0);
+$check('the note ends with the message and the extra answers', substr($note, -strlen("Message: Hello\nProdukt: TB-10\nFormulár: Cenová ponuka")) === "Message: Hello\nProdukt: TB-10\nFormulár: Cenová ponuka");
+$check('categories and value are listed', strpos($note, "Categories: Strecha, Dlažba\nValue: 1200.00 EUR") !== false);
+$bare = ccrm_pipeline_submission_note(['source' => 'website', 'name' => 'X', 'email' => '', 'phone' => '', 'categories' => [], 'value' => 0, 'message' => '', 'extra_lines' => '']);
+$check('empty fields are left out of the note', $bare === "Form submission received from source: website\nName: X\nMessage: Form submitted (no message content).");
+
 echo $fails === 0 ? "\nall passed\n" : "\n$fails FAILED\n";
 exit($fails === 0 ? 0 : 1);

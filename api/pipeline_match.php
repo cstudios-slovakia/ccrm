@@ -26,3 +26,19 @@ function ccrm_pipeline_pick_open_lead(array $candidates, array $stageGroups): ?a
     }
     return null;
 }
+
+/**
+ * What a submission may be matched to an existing lead on: its e-mail and phone,
+ * or null when it sent neither. A name is never enough - two different people
+ * called "Ján Novák" would be merged into one lead - so a submission without
+ * contact details always becomes a new lead.
+ */
+function ccrm_pipeline_match_keys(string $email, string $phone): ?array
+{
+    $email = trim($email);
+    $phone = trim($phone);
+    if ($email === '' && $phone === '') {
+        return null;
+    }
+    return ['email' => $email, 'phone' => $phone];
+}

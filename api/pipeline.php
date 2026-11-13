@@ -525,16 +525,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         "rejected" => "closed"
     ]);
 
+    // Matched on e-mail or phone only, never on the name (pipeline_match.php):
+    // a submission without either always becomes a new lead.
     $potentialLeads = [];
-    if (!empty($email) || !empty($phone)) {
+    $matchKeys = ccrm_pipeline_match_keys($email, $phone);
+    if ($matchKeys !== null) {
         $stmt = $pdo->prepare("SELECT * FROM `leads` WHERE (email = ? AND email != '') OR (phone = ? AND phone != '') ORDER BY `created_at` DESC");
-        $stmt->execute([$email, $phone]);
-        $potentialLeads = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } else {
-        $stmt = $pdo->prepare("SELECT * FROM `leads` WHERE name = ? ORDER BY `created_at` DESC");
-        $stmt->execute([$name]);
+        $stmt->execute([$matchKeys['email'], $matchKeys['phone']]);
         $potentialLeads = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    // What this submission sent, for its timeline note (new lead or appended).
+    $submissionNoteFields = [
+        'source' => $source,
+        'origin' => $trafficOrigin,
+        'origin_detail' => $trafficOriginDetail,
+        'name' => $name,
+        'contact_person' => $contactPerson,
+        'email' => $email,
+        'phone' => $phone,
+        'city' => $city,
+        'categories' => $categories,
+        'value' => $value,
+        'message' => $formMessage,
+        'extra_lines' => $extraLines,
+    ];
 
     // Archived and closed leads never take the inquiry (see pipeline_match.php).
     $existingLead = ccrm_pipeline_pick_open_lead($potentialLeads, is_array($leadStageGroups) ? $leadStageGroups : []);
@@ -604,33 +619,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // 3. Insert timeline event note representing the new form submission
-            $messageLines = [];
-            $messageLines[] = "Form submission received from source: " . $source;
-            if ($trafficOrigin !== null) {
-                $messageLines[] = "Origin: " . $trafficOrigin . ($trafficOriginDetail !== null ? " (" . $trafficOriginDetail . ")" : "");
-            }
-            $messageLines[] = "Name: " . $name;
-            if ($contactPerson !== null) $messageLines[] = "Contact person: " . $contactPerson;
-            if (!empty($email)) $messageLines[] = "Email: " . $email;
-            if (!empty($phone)) $messageLines[] = "Phone: " . $phone;
-            if (!empty($city)) $messageLines[] = "City: " . $city;
-            if (!empty($categories)) $messageLines[] = "Categories: " . implode(', ', $categories);
-            if ($value > 0) $messageLines[] = "Value: " . number_format($value, 2, '.', '') . " EUR";
-            
-            $formMsg = $formMessage;
-            if (!empty($formMsg)) {
-                $messageLines[] = "Message: " . $formMsg;
-            } else {
-                $messageLines[] = "Message: Form submitted (no message content).";
-            }
+            // 3. Insert timeline event note representing the new form submission.
             // The existing lead's interest note is a person's text and is left
             // alone; the extra answers are kept on this timeline note only.
-            if ($extraLines !== '') {
-                $messageLines[] = $extraLines;
-            }
-
-            $teContent = implode("\n", $messageLines);
+            $teContent = ccrm_pipeline_submission_note($submissionNoteFields);
             $teId = 'ev-' . uniqid();
             $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'note', ?, 'Form Inquiry (Existing Active Lead)', ?)");
             $insTe->execute([
@@ -720,7 +712,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 3. Insert timeline event
         $teId = 'ev-' . uniqid();
-        $teContent = $newInterestNote !== '' ? $newInterestNote : "Lead received from external integration.";
+        // The same field-by-field note an appended inquiry gets: the lead's
+        // phone and e-mail can be edited later, the note keeps what was sent.
+        $teContent = ccrm_pipeline_submission_note($submissionNoteFields);
         $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'note', ?, 'Lead Created via Public API', ?)");
         $insTe->execute([
             $teId,
