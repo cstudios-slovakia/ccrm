@@ -1,0 +1,1 @@
+var e=`1.13.92-Nectarine`,t=`1.13.92-Nectarine`.split(`-`)[1]||`Nectarine`;export{t as n,e as t};
