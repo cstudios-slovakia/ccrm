@@ -1,0 +1,1 @@
+- **Tests**: `timeTracking.spec.ts` ("the timer bar takes a Description before Start…") now answers the "Require a project before Stop" picker; the dialog used to stay open and cover the timer bar.

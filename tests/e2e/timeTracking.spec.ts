@@ -312,6 +312,10 @@ test.describe('Time tracking', () => {
     await page.getByTestId('timer-start').click();
     await expect(page.getByTestId('timer-note')).toHaveValue('Prvý popis');
     await page.getByTestId('timer-stop').click();
+    // "Require a project before Stop": the picker opens and has to be answered first.
+    await expect(page.getByTestId('project-request-dialog')).toBeVisible();
+    await page.getByTestId('project-request-dialog').getByTestId('project-option').first().click();
+    await expect(page.getByTestId('project-request-dialog')).toHaveCount(0);
     await expect(row(page, 'Popisná práca').getByTestId('time-entry-note')).toHaveText('Prvý popis');
 
     await row(page, 'Popisná práca').getByTestId('time-entry-title').click();
