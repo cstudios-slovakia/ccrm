@@ -33,6 +33,7 @@ require_once __DIR__ . '/mcp_ext.php';
 require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
 require_once __DIR__ . '/mcp_ext_intel.php';
+require_once __DIR__ . '/mcp_ext_modules.php';
 
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
@@ -176,15 +177,16 @@ function mcp_tool_permissions(): array {
         'record_salary_payout' => ['edit' => ['employees'], 'view' => ['employees.salaries']],
         'list_vacations' => $v('employees', 'employees.vacations'),
         'record_vacation' => ['edit' => ['employees'], 'view' => ['employees.vacations']],
-        'whatsapp_list_chats' => [],
-        'whatsapp_read_messages' => [],
-        'whatsapp_send_message' => [],
-        'whatsapp_sync_chat' => [],
+        'whatsapp_list_chats' => $v('whatsapp'),
+        'whatsapp_read_messages' => $v('whatsapp'),
+        'whatsapp_send_message' => $e('whatsapp'),
+        'whatsapp_sync_chat' => $e('whatsapp'),
     ];
     // Part B tools (mcp_ext.php).
     $map += mcp_ext_fin_permissions();
     $map += mcp_ext_ops_permissions();
     $map += mcp_ext_intel_permissions();
+    $map += mcp_ext_modules_permissions();
     return $map;
 }
 
@@ -324,9 +326,9 @@ if ($method === 'GET') {
         'capabilities' => [
             'tools_count' => count(array_filter(mcp_get_tool_definitions(), fn($t) => mcp_tool_allowed((string)($t['name'] ?? '')))),
             'domains' => [
-                'leads', 'clients', 'tasks', 'projects', 'financials', 'invoices',
-                'warehouse', 'meetings', 'communications', 'search', 'team',
-                'employees', 'automation', 'files'
+                'leads', 'clients', 'tasks', 'weekly_plan', 'projects', 'financials', 'invoices',
+                'orders', 'warehouse', 'time_tracking', 'tickets', 'meetings', 'communications',
+                'search', 'team', 'employees', 'automation', 'files'
             ]
         ]
     ]);
@@ -468,7 +470,7 @@ switch ($rpcMethod) {
 // TOOL DEFINITIONS (core tools; the finance, operations and automation tools live in mcp_ext*.php)
 // ============================================================================
 function mcp_get_tool_definitions(): array {
-    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions());
+    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions(), mcp_get_module_tool_definitions());
 }
 
 function mcp_core_tool_definitions(): array {
@@ -1161,7 +1163,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 9: Cross-Entity Global Search
         [
             'name' => 'search_entities',
-            'description' => 'Search leads, clients, tasks, projects, invoices and the warehouse catalog. Every word of the query must match (case- and accent-insensitive), each in any searched field; the query run together also matches names written without spaces ("villa testa" and "villatesta" both find "Villatesta"). Leads/clients are searched by name, email, phone, IČO, DIČ, IČ DPH, contact person, notes, city and website; projects by their own and their client\'s name. Lead/client and project rows carry a `url` into the web app.',
+            'description' => 'Search leads, clients, tasks, projects, invoices, tickets, orders and the warehouse catalog. Every word of the query must match (case- and accent-insensitive), each in any searched field; the query run together also matches names written without spaces ("villa testa" and "villatesta" both find "Villatesta"). Leads/clients are searched by name, email, phone, IČO, DIČ, IČ DPH, contact person, notes, city and website; projects by their own and their client\'s name. Lead/client and project rows carry a `url` into the web app.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1169,7 +1171,7 @@ function mcp_core_tool_definitions(): array {
                     'entity_types' => [
                         'type' => 'array',
                         'items' => ['type' => 'string'],
-                        'description' => 'Optional filter: leads, clients, tasks, projects, invoices, warehouse'
+                        'description' => 'Optional filter: leads, clients, tasks, projects, invoices, tickets, orders, warehouse'
                     ],
                     'limit' => ['type' => 'integer', 'description' => 'Rows per section (default 15, max 50)']
                 ],
@@ -2834,6 +2836,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $extResult = mcp_ext_ops_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             $extResult = mcp_ext_intel_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_modules_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             throw new \Exception("Unrecognized tool name: " . htmlspecialchars($tool));
     }
