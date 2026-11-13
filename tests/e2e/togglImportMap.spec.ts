@@ -84,7 +84,7 @@ test('mapped Toggl projects and users are listed first, and a partial project li
   await expect(page.getByTestId('toggl-import-projects-truncated')).toBeVisible();
 });
 
-test('with nobody mapped, "only my entries" is on and is sent with the import', async ({ page }) => {
+test('with nobody mapped, "only one Toggl user" is on and the picked user is sent with the import', async ({ page }) => {
   await startSession(page);
   const runs: Array<Record<string, unknown>> = [];
   await page.route('**/api/time_entries.php**', async (route) => {
@@ -119,15 +119,24 @@ test('with nobody mapped, "only my entries" is on and is sent with the import', 
   await gotoView(page, '#settings/projects/time');
   const onlyMe = page.getByTestId('toggl-import-only-me');
   await expect(onlyMe).toBeChecked();
-  await expect(page.locator('label', { has: onlyMe })).toContainText('Token Owner');
+  // The Toggl user with the signed-in person's e-mail is preselected (never the token's owner).
+  const picker = page.getByTestId('toggl-import-only-user');
+  await expect(picker).toContainText('Token Owner');
   await page.getByTestId('toggl-import-preview').click();
   await expect(page.getByTestId('toggl-import-result')).toBeVisible();
-  expect(runs[0].onlyMe).toBe(true);
+  expect(runs[0].onlyUser).toBe('77');
+
+  // Any other Toggl user can be picked instead.
+  await picker.getByRole('button').click();
+  await page.getByRole('option', { name: /Somebody Else/ }).click();
+  await page.getByTestId('toggl-import-preview').click();
+  await expect.poll(() => runs.length).toBe(2);
+  expect(runs[1].onlyUser).toBe('78');
 
   await onlyMe.uncheck();
   await page.getByTestId('toggl-import-preview').click();
-  await expect.poll(() => runs.length).toBe(2);
-  expect(runs[1].onlyMe).toBe(false);
+  await expect.poll(() => runs.length).toBe(3);
+  expect(runs[2].onlyUser).toBe('');
 });
 
 test('a multi-year period imports in short windows, adds up the counts and resets the hold ring', async ({ page }) => {

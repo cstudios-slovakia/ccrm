@@ -21,7 +21,7 @@ interface Catalog {
   /** The workspace has more projects than could be loaded; the list is incomplete. */
   projectsTruncated: boolean;
   users: Named[];
-  /** Toggl user id of the token's owner; "" when Toggl did not say. */
+  /** Toggl user with the signed-in person's e-mail (a suggestion, not the token's owner); "" when none. */
   me: string;
   ccrmProjects: Named[];
   ccrmUsers: Named[];
@@ -101,8 +101,9 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skipUnpaired, setSkipUnpaired] = useState(true);
-  /** Import only the token owner's entries, to the signed-in user, with no user mapping. */
+  /** Import only one picked Toggl user's entries, to the signed-in user, with no user mapping. */
   const [onlyMe, setOnlyMe] = useState(false);
+  const [onlyUserId, setOnlyUserId] = useState("");
   const onlyMeTouched = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,10 +130,13 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       // A reload keeps mappings edited here whose save has not landed yet.
       setProjectMap((prev) => ({ ...next.projectMap, ...prev }));
       setUserMap((prev) => ({ ...next.defaultUserMap, ...next.userMap, ...prev }));
-      // Nobody is mapped yet: start with "only my entries", which needs no mapping at all.
-      if (!onlyMeTouched.current && next.me !== "") {
+      // Nobody is mapped yet: start with "only one Toggl user", which needs no mapping at all.
+      // The Toggl user with the signed-in person's e-mail is preselected when there is one.
+      if (!onlyMeTouched.current) {
         const mapped = { ...next.defaultUserMap, ...next.userMap };
-        setOnlyMe(!Object.values(mapped).some((v) => v !== ""));
+        // Without a suggestion it stays off, so an import is never blocked on an empty picker.
+        setOnlyMe(next.me !== "" && !Object.values(mapped).some((v) => v !== ""));
+        setOnlyUserId(next.me);
       }
     } catch (e) {
       setError(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t));
@@ -189,6 +193,10 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       setError(timeErrorMessage("bad_range", t));
       return;
     }
+    if (onlyMe && onlyUserId === "") {
+      setError(t("Pick which Toggl user's entries to import.", "Vyberte, ktorého používateľa Toggl záznamy sa majú importovať.", "Válassza ki, melyik Toggl-felhasználó bejegyzéseit importálja."));
+      return;
+    }
     setLoading(true);
     setError(null);
     setPreview(null);
@@ -197,7 +205,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     try {
       for (let i = 0; i < windows.length; i++) {
         setStep({ done: i, total: windows.length, mode });
-        const body = await postImport({ mode, from: windows[i].from, to: windows[i].to, projectMap, userMap, skipUnpaired, onlyMe });
+        const body = await postImport({ mode, from: windows[i].from, to: windows[i].to, projectMap, userMap, skipUnpaired, onlyUser: onlyMe ? onlyUserId : "" });
         sum.alreadyImported += n(body.alreadyImported);
         sum.ready += n(body.ready);
         sum.total += n(body.total);
@@ -229,8 +237,6 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     }
   };
 
-  const meUser = catalog?.users.find((u) => u.id === catalog.me);
-  const meName = meUser ? meUser.name || meUser.email || "" : "";
   const stepLabel =step && step.total > 1 ? ` ${step.done + 1} / ${step.total}` : "";
 
   const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
@@ -344,18 +350,35 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
           />
           <span className="grid gap-0.5">
             <span className="text-ui text-slate-800">
-              {t("Import only my own Toggl entries", "Importovať iba moje záznamy z Toggl", "Csak a saját Toggl-bejegyzéseim importálása")}
-              {meName ? ` (${meName})` : ""}
+              {t("Import only one Toggl user's entries, to me", "Importovať iba záznamy jedného používateľa Toggl, a to mne", "Csak egy Toggl-felhasználó bejegyzéseinek importálása, hozzám")}
             </span>
             <span className="text-caption text-slate-500">
               {t(
-                "The entries of the Toggl account the token belongs to are imported to you. Users do not have to be mapped; everyone else's entries are left out.",
-                "Záznamy účtu Toggl, ktorému patrí token, sa importujú vám. Používateľov netreba priraďovať; záznamy ostatných sa vynechajú.",
-                "A tokenhez tartozó Toggl-fiók bejegyzései Önhöz kerülnek. A felhasználókat nem kell hozzárendelni; mások bejegyzései kimaradnak.",
+                "Pick yourself in Toggl below. Those entries are imported to you; users do not have to be mapped and everyone else's entries are left out.",
+                "Nižšie vyberte seba v Toggl. Tieto záznamy sa importujú vám; používateľov netreba priraďovať a záznamy ostatných sa vynechajú.",
+                "Válassza ki alább önmagát a Togglban. Ezek a bejegyzések Önhöz kerülnek; a felhasználókat nem kell hozzárendelni, mások bejegyzései kimaradnak.",
               )}
             </span>
           </span>
         </label>
+        {onlyMe && (
+          <div className="ws-sm:w-80" data-testid="toggl-import-only-user">
+            <CustomSelect
+              searchable
+              disabled={!canEdit}
+              value={onlyUserId}
+              onChange={(v) => {
+                onlyMeTouched.current = true;
+                setOnlyUserId(v);
+                setPreview(null);
+              }}
+              options={[
+                { value: "", label: t("Pick the Toggl user…", "Vyberte používateľa Toggl…", "Válasszon Toggl-felhasználót…") },
+                ...(catalog?.users ?? []).map((u) => ({ value: u.id, label: u.email && u.name ? `${u.name} (${u.email})` : u.name || u.email || u.id })),
+              ]}
+            />
+          </div>
+        )}
         <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"

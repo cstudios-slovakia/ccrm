@@ -546,13 +546,31 @@ if ($action === 'import') {
         }
         $ccrmProjects = $pdo->query("SELECT `id`, `name` FROM `projects` ORDER BY `name` LIMIT 2000")->fetchAll(\PDO::FETCH_ASSOC);
         $ccrmUsers = $pdo->query("SELECT `id`, `name`, `email` FROM `users` ORDER BY `name`")->fetchAll(\PDO::FETCH_ASSOC);
+        /* The Toggl user that is probably the signed-in person (same e-mail), offered as the
+           default for "only one Toggl user". The token's owner is NOT assumed to be them: the
+           token is often an administrator's. */
+        $togglMe = '';
+        $myEmail = '';
+        foreach ($ccrmUsers as $cu) {
+            if ((string)$cu['id'] === $callerId) {
+                $myEmail = strtolower(trim((string)($cu['email'] ?? '')));
+            }
+        }
+        if ($myEmail !== '') {
+            foreach ($cat['users'] as $tu) {
+                if (strtolower(trim((string)$tu['email'])) === $myEmail) {
+                    $togglMe = (string)$tu['id'];
+                    break;
+                }
+            }
+        }
         $savedProjects = is_array($saved['projects'] ?? null) ? $saved['projects'] : [];
         $savedUsers = is_array($saved['users'] ?? null) ? $saved['users'] : [];
         ccrm_te_respond([
             'projects' => $cat['projects'],
             'projectsTruncated' => !empty($cat['projectsTruncated']),
             'users' => $cat['users'],
-            'me' => (string)($cat['me'] ?? ''),
+            'me' => $togglMe,
             'ccrmProjects' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? '')], $ccrmProjects),
             'ccrmUsers' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? ''), 'email' => (string)($r['email'] ?? '')], $ccrmUsers),
             'projectMap' => (object)$savedProjects,
@@ -603,15 +621,17 @@ if ($action === 'import') {
         /* the import still proceeds; the map is in this request */
     }
 
-    /* "Only my entries": the entries of the Toggl token's owner go to the signed-in user (or to
-       whoever that Toggl user is mapped to), and nobody else's are read. No user mapping needed.
+    /* "Only one Toggl user": the entries of the Toggl user picked on the screen go to the
+       signed-in user (or to whoever that Toggl user is mapped to), and nobody else's are read.
+       No user mapping needed. The Toggl user is picked, never taken from the token's owner.
        This override is for this request only; it is not written into the saved map above. */
     $onlyMeId = '';
-    if (!empty($body['onlyMe'])) {
-        $onlyMeId = ccrm_toggl_import_me($token);
-        if ($onlyMeId === '') {
-            ccrm_te_fail($token === '' ? 'toggl_not_configured' : 'toggl_unavailable', 422);
+    $onlyUser = trim((string)($body['onlyUser'] ?? ''));
+    if ($onlyUser !== '') {
+        if (!preg_match('/^\d{1,20}$/', $onlyUser)) {
+            ccrm_te_fail('bad_request', 400);
         }
+        $onlyMeId = $onlyUser;
         $userMap = [$onlyMeId => (($userMap[$onlyMeId] ?? '') !== '' ? $userMap[$onlyMeId] : $callerId)];
     }
 
@@ -621,11 +641,8 @@ if ($action === 'import') {
     }
     $rows = $fetched['entries'];
     if ($onlyMeId !== '') {
-        // The fallback and older report rows are not filtered by Toggl; keep only the owner's.
-        $rows = array_values(array_filter($rows, fn($r) => $r['userId'] === '' || $r['userId'] === $onlyMeId));
-        foreach ($rows as $i => $r) {
-            $rows[$i]['userId'] = $onlyMeId;
-        }
+        // The token-owner fallback is not filtered by Toggl; keep only the picked user's rows.
+        $rows = array_values(array_filter($rows, fn($r) => $r['userId'] === $onlyMeId));
     }
     $ids = [];
     foreach ($rows as $r) {

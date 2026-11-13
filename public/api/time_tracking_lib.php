@@ -513,18 +513,6 @@ function ccrm_toggl_import_workspace(string $apiToken, string $workspaceId): str
     return '';
 }
 
-/** Toggl user id of the token's owner ("my entries"), or '' when Toggl does not answer. */
-function ccrm_toggl_import_me(string $apiToken): string {
-    if ($apiToken === '') {
-        return '';
-    }
-    $me = toggl_curl('https://api.track.toggl.com/api/v9/me', $apiToken);
-    if (!empty($me['ok']) && is_array($me['data']) && isset($me['data']['id'])) {
-        return trim((string)$me['data']['id']);
-    }
-    return '';
-}
-
 /**
  * Workspace projects and users for the mapping screen.
  *
@@ -598,7 +586,7 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
             ];
         }
     }
-    return ['ok' => true, 'projects' => $projects, 'projectsTruncated' => $truncated, 'users' => $users, 'me' => ccrm_toggl_import_me($apiToken)];
+    return ['ok' => true, 'projects' => $projects, 'projectsTruncated' => $truncated, 'users' => $users];
 }
 
 /**
