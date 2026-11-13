@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-react";
 import { Surface } from "../layout";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
@@ -86,9 +87,9 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
         defaultUserMap: asRecord(body.defaultUserMap),
       };
       setCatalog(next);
-      setProjectMap(next.projectMap);
-      const users: Record<string, string> = { ...next.defaultUserMap, ...next.userMap };
-      setUserMap(users);
+      // A reload keeps mappings edited here but not saved yet (they are saved on Preview / Import).
+      setProjectMap((prev) => ({ ...next.projectMap, ...prev }));
+      setUserMap((prev) => ({ ...next.defaultUserMap, ...next.userMap, ...prev }));
     } catch (e) {
       setError(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t));
     } finally {
@@ -143,16 +144,21 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
         )}
       </p>
       {error && <p className="text-ui text-rose-700">{error}</p>}
-      <div className="grid gap-3 ws-sm:grid-cols-2">
-        <label className="grid gap-1">
-          <span className="type-label text-slate-600">{t("From", "Od", "Ettől")}</span>
-          <input type="date" disabled={!canEdit} value={from} onChange={(e) => setFrom(e.target.value)} className={field} data-testid="toggl-import-from" />
-        </label>
-        <label className="grid gap-1">
-          <span className="type-label text-slate-600">{t("To", "Do", "Eddig")}</span>
-          <input type="date" disabled={!canEdit} value={to} onChange={(e) => setTo(e.target.value)} className={field} data-testid="toggl-import-to" />
-        </label>
-      </div>
+      {canEdit && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" disabled={loading} onClick={() => void load()} data-testid="toggl-import-reload" className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
+            {t("Reload from Toggl", "Načítať znova z Toggl", "Újratöltés a Togglból")}
+          </button>
+          <span className="text-caption text-slate-500">
+            {t(
+              "Projects and users are read from Toggl when this section opens. Reload to see ones added since.",
+              "Projekty a používatelia sa načítajú z Toggl pri otvorení tejto sekcie. Nové, pridané medzitým, zobrazíte opätovným načítaním.",
+              "A projektek és felhasználók a szakasz megnyitásakor töltődnek be a Togglból. Az azóta hozzáadottakhoz töltse újra.",
+            )}
+          </span>
+        </div>
+      )}
 
       {catalog && (
         <div className="grid gap-4">
@@ -164,6 +170,8 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             onChange={setProjectMap}
             emptyLabel={t("Leave unassigned", "Nepriradiť", "Nincs hozzárendelve")}
             disabled={!canEdit}
+            t={t}
+            testId="toggl-import-projects"
           />
           <MappingList
             title={t("Users", "Používatelia", "Felhasználók")}
@@ -173,9 +181,25 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             onChange={setUserMap}
             emptyLabel={t("Skip this user", "Preskočiť používateľa", "Felhasználó kihagyása")}
             disabled={!canEdit}
+            t={t}
+            testId="toggl-import-users"
           />
         </div>
       )}
+
+      <div className="grid gap-3 border-t border-slate-100 pt-4">
+        <h4 className="type-label text-slate-600">{t("Period to import", "Obdobie na import", "Importálandó időszak")}</h4>
+        <div className="grid gap-3 ws-sm:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="type-label text-slate-600">{t("From", "Od", "Ettől")}</span>
+            <input type="date" disabled={!canEdit} value={from} onChange={(e) => setFrom(e.target.value)} className={field} data-testid="toggl-import-from" />
+          </label>
+          <label className="grid gap-1">
+            <span className="type-label text-slate-600">{t("To", "Do", "Eddig")}</span>
+            <input type="date" disabled={!canEdit} value={to} onChange={(e) => setTo(e.target.value)} className={field} data-testid="toggl-import-to" />
+          </label>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" disabled={!canEdit || loading} onClick={() => void run("preview")} data-testid="toggl-import-preview" className="inline-flex h-10 items-center rounded-xl border border-slate-200 px-4 text-ui font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">
@@ -208,6 +232,10 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
   );
 }
 
+const MAPPING_PAGE_SIZE = 20;
+
+const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
 function MappingList({
   title,
   rows,
@@ -216,6 +244,8 @@ function MappingList({
   onChange,
   emptyLabel,
   disabled,
+  t,
+  testId,
 }: {
   title: string;
   rows: Named[];
@@ -224,28 +254,95 @@ function MappingList({
   onChange: (next: Record<string, string>) => void;
   emptyLabel: string;
   disabled: boolean;
+  t: (en: string, sk: string, hu: string) => string;
+  testId: string;
 }) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+
+  const optionLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const opt of options) m.set(opt.id, opt.name || opt.email || opt.id);
+    return m;
+  }, [options]);
+
+  const selectOptions = useMemo(
+    () => [{ value: "", label: emptyLabel }, ...options.map((opt) => ({ value: opt.id, label: optionLabel.get(opt.id) ?? opt.id }))],
+    [options, optionLabel, emptyLabel],
+  );
+
+  // Matches the Toggl name (or e-mail) or the name it is mapped to, ignoring case and diacritics.
+  const filtered = useMemo(() => {
+    const q = fold(query.trim());
+    if (!q) return rows;
+    return rows.filter((row) => fold(`${row.name} ${row.email ?? ""} ${optionLabel.get(value[row.id] ?? "") ?? ""}`).includes(q));
+  }, [rows, query, value, optionLabel]);
+
   if (rows.length === 0) return null;
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / MAPPING_PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const first = current * MAPPING_PAGE_SIZE;
+  const visible = filtered.slice(first, first + MAPPING_PAGE_SIZE);
+  const mappedCount = rows.filter((row) => (value[row.id] ?? "") !== "").length;
+  const pagerBtn = "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer";
+
   return (
-    <div className="grid gap-2">
-      <h4 className="type-label text-slate-600">{title}</h4>
-      <ul className="grid gap-2">
-        {rows.map((row) => (
-          <li key={row.id} className="grid items-center gap-2 ws-sm:grid-cols-2">
-            <span className="truncate text-ui text-slate-800">{row.name || row.id}</span>
-            <CustomSelect
-              searchable
-              disabled={disabled}
-              value={value[row.id] ?? ""}
-              onChange={(v) => onChange({ ...value, [row.id]: v })}
-              options={[
-                { value: "", label: emptyLabel },
-                ...options.map((opt) => ({ value: opt.id, label: opt.name || opt.email || opt.id })),
-              ]}
-            />
-          </li>
-        ))}
-      </ul>
+    <div className="grid gap-2" data-testid={testId}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="type-label text-slate-600">
+          {title}{" "}
+          <span className="font-normal text-slate-400">
+            · {t(`${mappedCount} of ${rows.length} mapped`, `priradené ${mappedCount} z ${rows.length}`, `${mappedCount} / ${rows.length} hozzárendelve`)}
+          </span>
+        </h4>
+        <label className="relative w-full ws-sm:w-64">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(0);
+            }}
+            placeholder={t("Search…", "Hľadať…", "Keresés…")}
+            aria-label={`${title}: ${t("search", "hľadať", "keresés")}`}
+            className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-ui outline-none focus:border-primary"
+            data-testid={`${testId}-search`}
+          />
+        </label>
+      </div>
+      {visible.length === 0 ? (
+        <p className="py-3 text-ui text-slate-500">{t("Nothing matches the search.", "Hľadaniu nič nezodpovedá.", "Nincs találat.")}</p>
+      ) : (
+        <ul className="grid gap-2">
+          {visible.map((row) => (
+            <li key={row.id} className="grid items-center gap-2 ws-sm:grid-cols-2">
+              <span className="truncate text-ui text-slate-800">{row.name || row.id}</span>
+              <CustomSelect
+                searchable
+                disabled={disabled}
+                value={value[row.id] ?? ""}
+                onChange={(v) => onChange({ ...value, [row.id]: v })}
+                options={selectOptions}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {filtered.length > MAPPING_PAGE_SIZE && (
+        <div className="flex items-center justify-end gap-2 text-caption text-slate-500">
+          <span data-testid={`${testId}-range`}>
+            {first + 1}–{Math.min(first + MAPPING_PAGE_SIZE, filtered.length)} {t("of", "z", "/")} {filtered.length}
+          </span>
+          <button type="button" className={pagerBtn} disabled={current === 0} onClick={() => setPage(current - 1)} aria-label={t("Previous page", "Predchádzajúca strana", "Előző oldal")} data-testid={`${testId}-prev`}>
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+          </button>
+          <button type="button" className={pagerBtn} disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)} aria-label={t("Next page", "Ďalšia strana", "Következő oldal")} data-testid={`${testId}-next`}>
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
