@@ -592,16 +592,17 @@ if ($action === 'import') {
     foreach ($rows as $r) {
         $ids[] = $r['id'];
     }
+    /* external id => the stored row, so an entry imported without a project can get one later */
     $existing = [];
     foreach (array_chunk($ids, 200) as $chunk) {
         if ($chunk === []) {
             continue;
         }
         $ph = implode(',', array_fill(0, count($chunk), '?'));
-        $ex = $pdo->prepare("SELECT `external_id` FROM `time_entries` WHERE `source` = 'toggl' AND `external_id` IN ($ph)");
+        $ex = $pdo->prepare("SELECT `id`, `external_id`, `user_id`, `employee_id`, `project_id`, `entry_date`, `start_at`, `end_at`, `approval_status`, `deleted_at` FROM `time_entries` WHERE `source` = 'toggl' AND `external_id` IN ($ph)");
         $ex->execute($chunk);
-        foreach ($ex->fetchAll(\PDO::FETCH_COLUMN) as $eid) {
-            $existing[(string)$eid] = true;
+        foreach ($ex->fetchAll(\PDO::FETCH_ASSOC) as $exRow) {
+            $existing[(string)$exRow['external_id']] = $exRow;
         }
     }
     $knownUsers = [];
@@ -613,13 +614,35 @@ if ($action === 'import') {
         $knownProjects[(string)$pid] = true;
     }
 
+    /* Default on: an entry from a Toggl project that is not paired is left in Toggl, so a later
+       import (after pairing) brings it in with its project instead of it landing without one. */
+    $skipUnpaired = !array_key_exists('skipUnpaired', $body) || !empty($body['skipUnpaired']);
+    $lockToday = ccrm_tt_local_date(ccrm_tt_now_utc());
+    $isAdminImport = ccrm_is_admin($sessionUser);
+
     $already = 0;
     $ready = [];
+    $fill = [];
+    $fillLocked = 0;
     $skippedUsers = 0;
     $unmappedProjects = 0;
+    $skippedUnpaired = 0;
+    $withoutProject = 0;
     foreach ($rows as $r) {
+        $mapped = !empty($r['projectId']) ? ($projectMap[$r['projectId']] ?? '') : '';
+        $pairedProject = ($mapped !== '' && isset($knownProjects[$mapped])) ? $mapped : null;
         if (isset($existing[$r['id']])) {
             $already++;
+            $stored = $existing[$r['id']];
+            /* Imported earlier without a project, and its Toggl project is paired now: fill it in.
+               A project set or changed by hand is never touched; a deleted entry stays deleted. */
+            if ($pairedProject !== null && empty($stored['project_id']) && empty($stored['deleted_at'])) {
+                if (!$isAdminImport && ccrm_te_lock_reason_of($pdo, $stored, $settings, $lockToday) !== null) {
+                    $fillLocked++;
+                } else {
+                    $fill[] = ['id' => (string)$stored['id'], 'project' => $pairedProject, 'entryDate' => (string)$stored['entry_date']];
+                }
+            }
             continue;
         }
         $ccrmUser = $userMap[$r['userId']] ?? '';
@@ -627,20 +650,30 @@ if ($action === 'import') {
             $skippedUsers++;
             continue;
         }
-        $ccrmProject = null;
-        if (!empty($r['projectId'])) {
-            $mapped = $projectMap[$r['projectId']] ?? '';
-            if ($mapped !== '' && isset($knownProjects[$mapped])) {
-                $ccrmProject = $mapped;
-            } else {
-                $unmappedProjects++;
+        if (!empty($r['projectId']) && $pairedProject === null) {
+            if ($skipUnpaired) {
+                $skippedUnpaired++;
+                continue;
             }
+            $unmappedProjects++;
         }
-        $ready[] = $r + ['ccrmUser' => $ccrmUser, 'ccrmProject' => $ccrmProject];
+        if ($pairedProject === null) {
+            $withoutProject++;
+        }
+        $ready[] = $r + ['ccrmUser' => $ccrmUser, 'ccrmProject' => $pairedProject];
     }
 
     $commit = $mode === 'commit';
     $imported = 0;
+    $projectsFilled = 0;
+    if ($commit && $fill) {
+        $fillStmt = $pdo->prepare("UPDATE `time_entries` SET `project_id` = ?, `billable_rate` = ? WHERE `id` = ? AND `source` = 'toggl' AND `project_id` IS NULL AND `deleted_at` IS NULL");
+        foreach ($fill as $f) {
+            $fillStmt->execute([$f['project'], ccrm_tt_lookup_billable_rate($pdo, $f['project'], null, $f['entryDate']), $f['id']]);
+            $projectsFilled += $fillStmt->rowCount();
+        }
+        ccrm_audit_log($pdo, $sessionUser, 'time_tracking.toggl_import', "Set the project on {$projectsFilled} Toggl entries imported earlier without one");
+    }
     if ($commit && $ready) {
         $ins = $pdo->prepare(
             "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `external_id`)
@@ -689,6 +722,11 @@ if ($action === 'import') {
         'imported' => $imported,
         'skippedUsers' => $skippedUsers,
         'unmappedProjects' => $unmappedProjects,
+        'skippedUnpaired' => $skippedUnpaired,
+        'withoutProject' => $withoutProject,
+        'projectsToFill' => count($fill),
+        'projectsFilled' => $projectsFilled,
+        'projectsFillLocked' => $fillLocked,
     ]);
 }
 /* PHASE6-LOCK-END */

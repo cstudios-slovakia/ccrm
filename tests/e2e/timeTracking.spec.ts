@@ -244,6 +244,42 @@ test.describe('Time tracking', () => {
     await expect.poll(async () => page.getByTestId('tt-example').locator('b').first().innerText()).not.toBe(daysBefore);
   });
 
+  test('Toggl import skips unpaired projects by default and reports entries that get their project now', async ({ page }) => {
+    // The importer's rules run on the server against Toggl's API; here the browser side is checked:
+    // what the panel sends and how it reports the server's counts.
+    const sent: Record<string, unknown>[] = [];
+    await startSession(page);
+    await page.route('**/api/time_entries.php**', async (route) => {
+      const req = route.request();
+      const body = req.method() === 'POST' ? ((req.postDataJSON() ?? {}) as Record<string, unknown>) : {};
+      if (body.action !== 'import') return route.fallback();
+      if (body.mode === 'catalog') {
+        return route.fulfill({ json: { success: true, projects: [{ id: 'tg-1', name: 'Maba' }, { id: 'tg-2', name: 'Iné' }], users: [{ id: 'tu-1', name: 'Erik' }], ccrmProjects: [{ id: 'project-1', name: 'Maba Elektro' }], ccrmUsers: [], projectMap: { 'tg-1': 'project-1' }, userMap: {}, defaultUserMap: {} } });
+      }
+      sent.push(body);
+      const skip = body.skipUnpaired === true;
+      return route.fulfill({ json: { success: true, preview: body.mode !== 'commit', total: 10, alreadyImported: 3, ready: skip ? 4 : 7, imported: 0, skippedUsers: 0, unmappedProjects: skip ? 0 : 3, skippedUnpaired: skip ? 3 : 0, withoutProject: skip ? 0 : 3, projectsToFill: 2, projectsFilled: 0, projectsFillLocked: 0 } });
+    });
+    await gotoView(page, '#settings/time-tracking');
+    // Surface does not forward data-testid, so the panel's controls are found by their own ids.
+    const panel = page;
+    await expect(panel.getByTestId('toggl-import-skip-unpaired')).toBeChecked();
+
+    await panel.getByTestId('toggl-import-preview').click();
+    const result = panel.getByTestId('toggl-import-result');
+    await expect(result).toContainText(/3 left in Toggl|3 ponechaných v Toggl|3 a Togglban marad/);
+    await expect(result).toContainText(/2 imported earlier will get their project|2 skôr importovaných dostane projekt|2 korábban importált/);
+    await expect(result).not.toContainText(/without a project|bez projektu|projekt nélkül/);
+    expect(sent.at(-1)?.skipUnpaired).toBe(true);
+
+    // Turning it off clears the stale preview and asks the server to import them without a project.
+    await panel.getByTestId('toggl-import-skip-unpaired').uncheck();
+    await expect(result).toHaveCount(0);
+    await panel.getByTestId('toggl-import-preview').click();
+    await expect(result).toContainText(/3 without a project|3 bez projektu|3 projekt nélkül/);
+    expect(sent.at(-1)?.skipUnpaired).toBe(false);
+  });
+
   test('a task card has no timer; the task drawer starts it with a Description', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#tasks');

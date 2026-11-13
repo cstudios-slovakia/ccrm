@@ -28,7 +28,15 @@ interface Preview {
   ready: number;
   total: number;
   skippedUsers: number;
-  unmappedProjects: number;
+  /** Entries from a Toggl project that is not paired, left in Toggl (skipUnpaired). */
+  skippedUnpaired: number;
+  /** New entries that land without a project (no Toggl project, or unpaired and not skipped). */
+  withoutProject: number;
+  /** Entries imported earlier without a project whose Toggl project is paired now. */
+  projectsToFill: number;
+  projectsFilled: number;
+  /** Of those, locked entries a non-admin cannot change. */
+  projectsFillLocked: number;
   imported: number;
   preview: boolean;
 }
@@ -69,6 +77,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
   const [projectMap, setProjectMap] = useState<Record<string, string>>({});
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [skipUnpaired, setSkipUnpaired] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,21 +116,27 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     setLoading(true);
     setError(null);
     try {
-      const body = await postImport({ mode, from, to, projectMap, userMap });
+      const body = await postImport({ mode, from, to, projectMap, userMap, skipUnpaired });
+      const n = (v: unknown) => Number(v) || 0;
       setPreview({
-        alreadyImported: Number(body.alreadyImported) || 0,
-        ready: Number(body.ready) || 0,
-        total: Number(body.total) || 0,
-        skippedUsers: Number(body.skippedUsers) || 0,
-        unmappedProjects: Number(body.unmappedProjects) || 0,
-        imported: Number(body.imported) || 0,
+        alreadyImported: n(body.alreadyImported),
+        ready: n(body.ready),
+        total: n(body.total),
+        skippedUsers: n(body.skippedUsers),
+        skippedUnpaired: n(body.skippedUnpaired),
+        withoutProject: n(body.withoutProject),
+        projectsToFill: n(body.projectsToFill),
+        projectsFilled: n(body.projectsFilled),
+        projectsFillLocked: n(body.projectsFillLocked),
+        imported: n(body.imported),
         preview: body.preview !== false,
       });
       if (mode === "commit") {
+        const filled = n(body.projectsFilled);
         window.showToast?.(t(
-          `Imported ${Number(body.imported) || 0} entries.`,
-          `Importovaných záznamov: ${Number(body.imported) || 0}.`,
-          `Importált bejegyzések: ${Number(body.imported) || 0}.`,
+          `Imported ${n(body.imported)} entries.${filled > 0 ? ` Project set on ${filled} imported earlier.` : ""}`,
+          `Importovaných záznamov: ${n(body.imported)}.${filled > 0 ? ` Projekt doplnený pri ${filled} skôr importovaných.` : ""}`,
+          `Importált bejegyzések: ${n(body.imported)}.${filled > 0 ? ` ${filled} korábban importált bejegyzés projektje beállítva.` : ""}`,
         ));
       }
     } catch (e) {
@@ -138,9 +153,9 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       <h3 className="type-card-title text-slate-900">{t("Map projects and import from Toggl", "Mapovať projekty a importovať z Toggl", "Projektek hozzárendelése és importálás Togglból")}</h3>
       <p className="text-body text-slate-500">
         {t(
-          `One-way import into ${brand}. Toggl hours on the employee summary stay where they are. Clockify is not imported. The same Toggl entry is never imported twice.`,
-          `Jednosmerný import do ${brand}. Hodiny z Toggl v súhrne zamestnanca zostávajú. Clockify sa neimportuje. Ten istý záznam z Toggl sa nikdy neimportuje dvakrát.`,
-          `Egyirányú import a ${brand}-be. A Toggl-órák a munkatárs összesítőjében megmaradnak. A Clockify nem importálható. Ugyanaz a Toggl-bejegyzés nem kerül be kétszer.`,
+          `One-way import into ${brand}. Toggl hours on the employee summary stay where they are. Clockify is not imported. The same Toggl entry is never imported twice; an entry imported without a project gets one when you pair its Toggl project and import again.`,
+          `Jednosmerný import do ${brand}. Hodiny z Toggl v súhrne zamestnanca zostávajú. Clockify sa neimportuje. Ten istý záznam z Toggl sa nikdy neimportuje dvakrát; záznam importovaný bez projektu ho dostane, keď jeho projekt v Toggl priradíte a importujete znova.`,
+          `Egyirányú import a ${brand}-be. A Toggl-órák a munkatárs összesítőjében megmaradnak. A Clockify nem importálható. Ugyanaz a Toggl-bejegyzés nem kerül be kétszer; a projekt nélkül importált bejegyzés megkapja a projektjét, ha a Toggl-projektet hozzárendeli és újra importál.`,
         )}
       </p>
       {error && <p className="text-ui text-rose-700">{error}</p>}
@@ -199,6 +214,29 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             <input type="date" disabled={!canEdit} value={to} onChange={(e) => setTo(e.target.value)} className={field} data-testid="toggl-import-to" />
           </label>
         </div>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            disabled={!canEdit}
+            checked={skipUnpaired}
+            onChange={(e) => {
+              setSkipUnpaired(e.target.checked);
+              setPreview(null);
+            }}
+            className="mt-0.5 size-4 accent-teal-600"
+            data-testid="toggl-import-skip-unpaired"
+          />
+          <span className="grid gap-0.5">
+            <span className="text-ui text-slate-800">{t("Skip entries from Toggl projects that are not paired", "Preskočiť záznamy z nepriradených projektov Toggl", "A hozzá nem rendelt Toggl-projektek bejegyzéseinek kihagyása")}</span>
+            <span className="text-caption text-slate-500">
+              {t(
+                "They stay in Toggl and come in with their project once you pair it. Turn this off to import them without a project.",
+                "Zostanú v Toggl a prenesú sa aj s projektom, keď ho priradíte. Ak to vypnete, importujú sa bez projektu.",
+                "A Togglban maradnak, és a projekt hozzárendelése után a projekttel együtt kerülnek be. Kikapcsolva projekt nélkül importálódnak.",
+              )}
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -225,7 +263,11 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             `${preview.alreadyImported} bejegyzés már importálva. ${preview.preview ? preview.ready : preview.imported} ${preview.preview ? "importálásra kész" : "importálva"} a ${preview.total} közül.`,
           )}
           {preview.skippedUsers > 0 ? ` ${t(`${preview.skippedUsers} skipped (no user).`, `${preview.skippedUsers} preskočených (bez používateľa).`, `${preview.skippedUsers} kihagyva (nincs felhasználó).`)}` : ""}
-          {preview.unmappedProjects > 0 ? ` ${t(`${preview.unmappedProjects} without a project.`, `${preview.unmappedProjects} bez projektu.`, `${preview.unmappedProjects} projekt nélkül.`)}` : ""}
+          {preview.skippedUnpaired > 0 ? ` ${t(`${preview.skippedUnpaired} left in Toggl (project not paired).`, `${preview.skippedUnpaired} ponechaných v Toggl (projekt nie je priradený).`, `${preview.skippedUnpaired} a Togglban marad (a projekt nincs hozzárendelve).`)}` : ""}
+          {preview.withoutProject > 0 ? ` ${t(`${preview.withoutProject} without a project.`, `${preview.withoutProject} bez projektu.`, `${preview.withoutProject} projekt nélkül.`)}` : ""}
+          {preview.preview && preview.projectsToFill > 0 ? ` ${t(`${preview.projectsToFill} imported earlier will get their project.`, `${preview.projectsToFill} skôr importovaných dostane projekt.`, `${preview.projectsToFill} korábban importált bejegyzés megkapja a projektjét.`)}` : ""}
+          {!preview.preview && preview.projectsFilled > 0 ? ` ${t(`Project set on ${preview.projectsFilled} imported earlier.`, `Projekt doplnený pri ${preview.projectsFilled} skôr importovaných.`, `${preview.projectsFilled} korábban importált bejegyzés projektje beállítva.`)}` : ""}
+          {preview.projectsFillLocked > 0 ? ` ${t(`${preview.projectsFillLocked} imported earlier are locked; an administrator can set their project.`, `${preview.projectsFillLocked} skôr importovaných je zamknutých; projekt im môže doplniť administrátor.`, `${preview.projectsFillLocked} korábban importált bejegyzés zárolva; a projektjüket adminisztrátor állíthatja be.`)}` : ""}
         </p>
       )}
     </Surface>
