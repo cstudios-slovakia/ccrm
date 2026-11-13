@@ -47,7 +47,9 @@ import {
   HelpCircle,
   Sparkles,
   CreditCard,
+  UserCheck,
 } from "lucide-react";
+import { AgencyWorkerSelect } from "./agency/AgencyWorkerSelect";
 import type {
   Ticket,
   TicketAttachment,
@@ -207,6 +209,8 @@ interface TicketsViewProps {
   canSeeTicketTime?: boolean;
   /** May start a timer (`time_tracking` edit). */
   canTrackTime?: boolean;
+  /** True when the opt-in Agency & Workforce Leasing module is active. */
+  agencyEnabled?: boolean;
 }
 
 export const TicketsView: React.FC<TicketsViewProps> = ({
@@ -230,8 +234,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   access = FULL_MODULE_ACCESS,
   settingsAccess = FULL_MODULE_ACCESS,
   onRefreshSync,
+  onNavigate,
   canSeeTicketTime = false,
   canTrackTime = false,
+  agencyEnabled = false,
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -456,6 +462,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [newType, setNewType] = useState<TicketType>("bug");
   const [newProjectId, setNewProjectId] = useState<string>("");
   const [newLeadId, setNewLeadId] = useState<string>("");
+  const [newAgencyWorkerId, setNewAgencyWorkerId] = useState<string>("");
   const [newContractId] = useState<string>("");
   const [newReporterName, setNewReporterName] = useState("");
   const [newReporterEmail, setNewReporterEmail] = useState("");
@@ -779,6 +786,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       projectId: newProjectId || null,
       leadId: resolvedLeadId,
       clientId: resolvedLeadId,
+      agencyWorkerId: newAgencyWorkerId || null,
       contractId: newContractId || null,
       reporterName: newReporterName.trim() || currentUser?.name || "Client",
       reporterEmail: newReporterEmail.trim(),
@@ -819,6 +827,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     setNewTicketAttachments([]);
     setNewReporterName("");
     setNewReporterEmail("");
+    setNewAgencyWorkerId("");
     handleSelectTicket(newTicket.id);
     (window as any).showToast?.(
       t(
@@ -2351,6 +2360,38 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 </div>
               );
             })()}
+
+            {(agencyEnabled || Boolean(selectedTicket.agencyWorkerId)) && (
+              <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-4 shadow-sm space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="type-overline text-teal-700 flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5 text-teal-600" />
+                    {t("Rented Employee / Agency Worker", "Agentúrny pracovník", "Kölcsönzött dolgozó")}
+                  </span>
+                  {selectedTicket.agencyWorkerId && agencyEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = `agency/worker/${encodeURIComponent(selectedTicket.agencyWorkerId!)}`;
+                        if (onNavigate) onNavigate(target);
+                        else window.location.hash = target;
+                      }}
+                      className="type-overline text-teal-600 hover:text-teal-800 cursor-pointer"
+                    >
+                      {t("Open worker", "Otvoriť", "Megnyitás")} →
+                    </button>
+                  )}
+                </div>
+                <AgencyWorkerSelect
+                  value={selectedTicket.agencyWorkerId || ""}
+                  onChange={(val) => updateSelectedTicket({ agencyWorkerId: val || null })}
+                  lang={userLanguage}
+                  disabled={!canEdit}
+                  emptyLabel={t("— Not attached —", "— Nepriradený —", "— Nincs hozzárendelve —")}
+                  testId="ticket-detail-agency-worker"
+                />
+              </div>
+            )}
 
             {/* 3. CLIENT RELATIONSHIP CARD (BOTTOM) — matching ProjectDetailsView */}
             {(() => {
@@ -4907,6 +4948,21 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   </select>
                 </div>
               </div>
+
+              {agencyEnabled && (
+                <div>
+                  <label className="block type-overline text-slate-400 mb-1">
+                    {t("Agency Worker / Rented Employee", "Agentúrny pracovník", "Kölcsönzött dolgozó")}
+                  </label>
+                  <AgencyWorkerSelect
+                    value={newAgencyWorkerId}
+                    onChange={setNewAgencyWorkerId}
+                    lang={userLanguage}
+                    emptyLabel={t("— Optional worker —", "— Voliteľný pracovník —", "— Választható dolgozó —")}
+                    testId="ticket-modal-agency-worker"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-3">
                 <div>

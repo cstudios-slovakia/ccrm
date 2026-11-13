@@ -92,6 +92,7 @@ import { DEFAULT_BRAND_NAME, normalizeBrandOverride } from "../utils/brand";
 import { ScrollFade } from "./settings/ScrollFade";
 import { AiUsagePanel } from "./settings/AiUsagePanel";
 import { WaaiIntegrationSettings } from "./settings/WaaiIntegrationSettings";
+import { AgencySettingsSection } from "./agency/AgencySettingsSection";
 
 /** The billing fields the company forms own. Saving writes only these, so a payment or shipping edit made elsewhere is never overwritten. */
 const COMPANY_FORM_KEYS: Array<keyof CompanyBillingSettings> = [
@@ -7351,6 +7352,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         return <AiUsagePanel lang={userLanguage} />;
       case "integrations/waai":
         return <WaaiIntegrationSettings activeLang={userLanguage} />;
+      case "agency/workflow":
+        return (
+          <AgencySettingsSection
+            section="workflow"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
+      case "agency/schema":
+        return (
+          <AgencySettingsSection
+            section="schema"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
+      case "agency/shifts":
+        return (
+          <AgencySettingsSection
+            section="shifts"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
       default:
         return null;
     }

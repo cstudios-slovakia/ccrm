@@ -9,3 +9,5 @@ report, stop).
 
 **Demo mode rebuild:** one file, [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). When asked to
 "make demo phase N", follow Part A of that file.
+
+**Agency & Workforce Leasing module:** one file, [`docs/AGENCY-MODULE.md`](docs/AGENCY-MODULE.md). Status table, database/API contract, and per-phase checklists live there.

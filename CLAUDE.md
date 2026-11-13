@@ -130,3 +130,4 @@ follow its Part A.
 - The production server has **no build step**. The compiled frontend is built
   locally and committed to `dist/`, then published by `php ccrm update`.
 - A `tasks` row with `task_kind = 'recurring'` is a template; read tasks through `ccrm_sql_real_tasks()`. The guard test enforces it.
+- **Agency & Workforce Leasing module**: one file owns the spec and phased plan: [`docs/AGENCY-MODULE.md`](docs/AGENCY-MODULE.md). Rented employees (`agency_workers`) are a permanent entity separate from `leads` (contacts).

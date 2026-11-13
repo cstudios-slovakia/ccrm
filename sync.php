@@ -521,6 +521,17 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         if ($incLevel !== $dbLevel) return false;
     }
 
+    if (array_key_exists('companyClientId', $inc)) {
+        $incComp = ($inc['companyClientId'] ?? '') !== '' ? (string)$inc['companyClientId'] : null;
+        $dbComp = ($db['company_client_id'] ?? '') !== '' ? (string)$db['company_client_id'] : null;
+        if ($incComp !== $dbComp) return false;
+    }
+    if (array_key_exists('contactRole', $inc)) {
+        $incRole = ($inc['contactRole'] ?? '') !== '' ? (string)$inc['contactRole'] : null;
+        $dbRole = ($db['contact_role'] ?? '') !== '' ? (string)$db['contact_role'] : null;
+        if ($incRole !== $dbRole) return false;
+    }
+
     if (array_key_exists('ticketAllowedEmails', $inc)) {
         $incEmails = is_array($inc['ticketAllowedEmails']) ? array_values(array_filter(array_map('trim', $inc['ticketAllowedEmails']))) : [];
         $dbEmails = (!empty($db['ticket_allowed_emails'])) ? (json_decode($db['ticket_allowed_emails'], true) ?: []) : [];
@@ -1182,6 +1193,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'district' => $row['district'] ?? '',
                 'financialSummary' => $row['financial_summary'] ?? '',
                 'clientCategoryId' => $row['client_category_id'] ?? null,
+                'companyClientId' => ($row['company_client_id'] ?? '') !== '' ? $row['company_client_id'] : null,
+                'contactRole' => ($row['contact_role'] ?? '') !== '' ? $row['contact_role'] : null,
                 // Ticket-module data riding on the lead row: withheld without `tickets`.
                 'ticketAllowedEmails' => (ccrm_can($scope, 'tickets') && !empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
                 'archived' => intval($row['archived'] ?? 0) === 1,
@@ -1198,6 +1211,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // The ticket link on a task (`relatedTicketId`) is ticket-module data: a
     // caller without `tickets` sees the task but not which ticket it belongs to.
     $canTickets = ccrm_can($scope, 'tickets');
+    $canAgency = ccrm_can($scope, 'agency');
+    $refAgencyWorkerIds = [];
     $ticketByTask = [];
     if ($canTickets) {
         try {
@@ -1240,6 +1255,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 ? $row['related_ticket_id']
                 : ($ticketByTask[$taskId] ?? null));
 
+            $relAgencyWorkerId = ($canAgency && !empty($row['related_agency_worker_id'])) ? (string)$row['related_agency_worker_id'] : null;
+            if ($relAgencyWorkerId !== null) {
+                $refAgencyWorkerIds[$relAgencyWorkerId] = true;
+            }
+
             $taskItem = [
                 'id' => $taskId,
                 'title' => $row['title'],
@@ -1255,6 +1275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'relatedLeadId' => $row['related_lead_id'] ?? null,
                 'relatedProjectId' => $row['related_project_id'] ?? null,
                 'relatedTicketId' => $relTicketId,
+                'relatedAgencyWorkerId' => $relAgencyWorkerId,
                 'isLocking' => intval($row['is_locking']) === 1,
                 'archived' => intval($row['archived'] ?? 0) === 1,
                 'completedBy' => $row['completed_by'] ?? null,
@@ -1286,6 +1307,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $rId = $row['id'];
             $assignedUsers = $assigneesByTask[$rId] ?? [];
             $relTicketId = !$canTickets ? null : (!empty($row['related_ticket_id']) ? $row['related_ticket_id'] : ($ticketByTask[$rId] ?? null));
+            $relAgencyWorkerId = ($canAgency && !empty($row['related_agency_worker_id'])) ? (string)$row['related_agency_worker_id'] : null;
+            if ($relAgencyWorkerId !== null) {
+                $refAgencyWorkerIds[$relAgencyWorkerId] = true;
+            }
             $recItem = [
                 'id' => $rId,
                 'title' => $row['title'],
@@ -1300,6 +1325,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'relatedLeadId' => $row['related_lead_id'] ?? null,
                 'relatedProjectId' => $row['related_project_id'] ?? null,
                 'relatedTicketId' => $relTicketId,
+                'relatedAgencyWorkerId' => $relAgencyWorkerId,
                 'isLocking' => intval($row['is_locking']) === 1,
                 'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
                 'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
@@ -2518,6 +2544,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $assignedUsers = !empty($watchers) ? $watchers : ($assignedUser ? [$assignedUser] : []);
                 $loggedMins = $minutesByTicket[$tid] ?? 0;
                 $isArch = (int)($row['archived'] ?? 0) === 1;
+                $tckAgencyWorkerId = ($canAgency && !empty($row['agency_worker_id'])) ? (string)$row['agency_worker_id'] : null;
+                if ($tckAgencyWorkerId !== null) {
+                    $refAgencyWorkerIds[$tckAgencyWorkerId] = true;
+                }
                 $tickets[] = [
                     'id' => $tid,
                     'ticketNumber' => $row['ticket_number'],
@@ -2532,6 +2562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'projectId' => $row['project_id'] ?? null,
                     'leadId' => $row['client_id'] ?? null,
                     'clientId' => $row['client_id'] ?? null,
+                    'agencyWorkerId' => $tckAgencyWorkerId,
                     'reporterName' => $row['reporter_name'] ?? null,
                     'reporterEmail' => $row['reporter_email'] ?? null,
                     'reporterPhone' => $row['reporter_phone'] ?? null,
@@ -2757,12 +2788,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
+    $refAgencyWorkers = [];
+    if ($canAgency && !empty($refAgencyWorkerIds) && ccrm_table_exists($pdo, 'agency_workers')) {
+        $placeholders = implode(',', array_fill(0, count($refAgencyWorkerIds), '?'));
+        $refStmt = $pdo->prepare("SELECT `id`, `full_name` FROM `agency_workers` WHERE `id` IN ($placeholders)");
+        $refStmt->execute(array_keys($refAgencyWorkerIds));
+        while ($r = $refStmt->fetch(\PDO::FETCH_ASSOC)) {
+            $name = trim((string)($r['full_name'] ?? ''));
+            $refAgencyWorkers[$r['id']] = $name !== '' ? $name : 'Unknown';
+        }
+    }
+
     $readScope = [
         'restricted' => array_values(array_unique($restricted)),
         'rowScoped' => array_values(array_unique($rowScoped)),
         'referenceNames' => [
             'leads' => !empty($refLeads) ? (object)$refLeads : (object)[],
             'projects' => !empty($refProjects) ? (object)$refProjects : (object)[],
+            'agencyWorkers' => !empty($refAgencyWorkers) ? (object)$refAgencyWorkers : (object)[],
         ],
     ];
 
@@ -2979,6 +3022,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // right; this flag decides whether the ticket part of the payload counts.
     // Without it the stored value is kept: the client never saw the real one.
     $canEditTickets = $isAdmin || ccrm_perm_can_edit($perms, 'tickets');
+    $canEditAgency = $isAdmin || ccrm_perm_can_edit($perms, 'agency');
 
     // Read scope of the caller: the same resolution the GET filters by, so a write
     // is limited to what the caller was allowed to read in the first place.
@@ -3322,6 +3366,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!ccrm_index_exists($pdo, 'tasks', 'uq_recurring_occurrence')) {
                 try { $pdo->exec("ALTER TABLE `tasks` ADD UNIQUE KEY `uq_recurring_occurrence` (`recurring_source_id`, `recurring_occurrence_date`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
+            if (!ccrm_column_exists($pdo, 'leads', 'company_client_id')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `company_client_id` VARCHAR(50) NULL AFTER `client_category_id`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
+            }
+            if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
+                try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if ((isset($payload['tasks']) || isset($payload['recurringTasks'])) && !$ccrm_skip_writes('tasks', 'tasks')) {
+            if (!ccrm_column_exists($pdo, 'tasks', 'related_agency_worker_id')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_agency_worker_id` VARCHAR(64) NULL AFTER `related_ticket_id`");
+            }
+            if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_agency_worker')) {
+                try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_agency_worker` (`related_agency_worker_id`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if (isset($payload['tickets']) && is_array($payload['tickets']) && !$ccrm_skip_writes('tickets', 'tickets')) {
+            if (ccrm_table_exists($pdo, 'tickets')) {
+                if (!ccrm_column_exists($pdo, 'tickets', 'agency_worker_id')) {
+                    $pdo->exec("ALTER TABLE `tickets` ADD COLUMN `agency_worker_id` VARCHAR(64) NULL AFTER `client_id`");
+                }
+                if (!ccrm_index_exists($pdo, 'tickets', 'idx_tickets_agency_worker')) {
+                    try { $pdo->exec("ALTER TABLE `tickets` ADD INDEX `idx_tickets_agency_worker` (`agency_worker_id`)"); } catch (\Throwable $e) {}
+                }
             }
         }
 
@@ -4607,6 +4683,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("UPDATE `leads` SET `price_level_id` = ? WHERE `id` = ?")
                         ->execute([($l['priceLevelId'] ?? '') !== '' ? (string)$l['priceLevelId'] : null, $leadId]);
                 }
+                // Person contact-to-company attachment (`leads.company_client_id`, `leads.contact_role`).
+                if (array_key_exists('companyClientId', $l)) {
+                    $pdo->prepare("UPDATE `leads` SET `company_client_id` = ? WHERE `id` = ?")
+                        ->execute([($l['companyClientId'] ?? '') !== '' ? (string)$l['companyClientId'] : null, $leadId]);
+                }
+                if (array_key_exists('contactRole', $l)) {
+                    $pdo->prepare("UPDATE `leads` SET `contact_role` = ? WHERE `id` = ?")
+                        ->execute([($l['contactRole'] ?? '') !== '' ? trim((string)$l['contactRole']) : null, $leadId]);
+                }
 
                 // Automatic project creation (Projects → Settings). Runs before
                 // the workflow triggers below on purpose, so an automation
@@ -4937,7 +5022,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Deadline history is kept here, not trusted from the client: the two assignments before
             // `deadline = VALUES(deadline)` run first (MySQL evaluates SET left to right), so they still
             // see the stored date. A later date counts as one postponement and pins the original.
-                        $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`, `original_deadline`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `original_deadline` = IF(VALUES(`deadline`) > `deadline` AND `original_deadline` IS NULL, `deadline`, `original_deadline`), `deadline_moves` = `deadline_moves` + IF(VALUES(`deadline`) > `deadline`, 1, 0), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)"); /* recurring-template: sync creates or updates normal tasks */
+                        $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`, `original_deadline`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `original_deadline` = IF(VALUES(`deadline`) > `deadline` AND `original_deadline` IS NULL, `deadline`, `original_deadline`), `deadline_moves` = `deadline_moves` + IF(VALUES(`deadline`) > `deadline`, 1, 0), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)"); /* recurring-template: sync creates or updates normal tasks */
 
             // "Requires conclusion": which states finish a task, for the guard below.
             $conclusionTaskStates = json_decode((string)($pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'TASK_STATES'")->fetchColumn() ?: '[]'), true);
@@ -4988,8 +5073,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $oldTaskOwner = null;
                 $oldRequiresConclusion = false;
                 $oldRelatedTicketId = null;
+                $oldRelatedAgencyWorkerId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
@@ -4997,6 +5083,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $oldTaskOwner = $oldRow['owner'] ?? null;
                         $oldRequiresConclusion = intval($oldRow['requires_conclusion'] ?? 0) === 1;
                         $oldRelatedTicketId = (isset($oldRow['related_ticket_id']) && $oldRow['related_ticket_id'] !== '') ? $oldRow['related_ticket_id'] : null;
+                        $oldRelatedAgencyWorkerId = (isset($oldRow['related_agency_worker_id']) && $oldRow['related_agency_worker_id'] !== '') ? (string)$oldRow['related_agency_worker_id'] : null;
                     }
                 }
 
@@ -5024,6 +5111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$ticketLinkAllowed) {
                     $relTicketIdVal = $oldRelatedTicketId;
                 }
+                $relAgencyWorkerIdVal = (isset($t['relatedAgencyWorkerId']) && $t['relatedAgencyWorkerId'] !== '') ? (string)$t['relatedAgencyWorkerId'] : null;
+                if (!$canEditAgency) {
+                    $relAgencyWorkerIdVal = $oldRelatedAgencyWorkerId;
+                }
 
                 $insTask->execute([
                     $taskId,
@@ -5039,6 +5130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['relatedLeadId'] ?? null,
                     (isset($t['relatedProjectId']) && $t['relatedProjectId'] !== '') ? $t['relatedProjectId'] : null,
                     $relTicketIdVal,
+                    $relAgencyWorkerIdVal,
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
@@ -5183,14 +5275,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 4.4b. Synchronize Recurring Task Templates
         if (isset($payload['recurringTasks']) && is_array($payload['recurringTasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
             $dbTemplates = [];
-            $stmt = $pdo->query("SELECT `id`, `updated_at`, `recurrence_json` FROM `tasks` WHERE `task_kind` = 'recurring'"); /* recurring-template: sync existing templates */
+            $stmt = $pdo->query("SELECT `id`, `updated_at`, `recurrence_json`, `related_agency_worker_id` FROM `tasks` WHERE `task_kind` = 'recurring'"); /* recurring-template: sync existing templates */
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $dbTemplates[$row['id']] = $row;
             }
             $existingTemplateIds = array_keys($dbTemplates);
             $processedTemplateIds = [];
 
-            $insRecTemplate = $pdo->prepare("/* recurring-template: sync recurring task template */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `is_locking`, `archived`, `email_reminders_json`, `requires_conclusion`, `estimate_minutes`, `task_kind`, `recurrence_json`) VALUES (?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'recurring', ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `is_locking` = VALUES(`is_locking`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `estimate_minutes` = VALUES(`estimate_minutes`), `recurrence_json` = VALUES(`recurrence_json`)");
+            $insRecTemplate = $pdo->prepare("/* recurring-template: sync recurring task template */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`, `requires_conclusion`, `estimate_minutes`, `task_kind`, `recurrence_json`) VALUES (?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'recurring', ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `estimate_minutes` = VALUES(`estimate_minutes`), `recurrence_json` = VALUES(`recurrence_json`)");
 
             foreach ($payload['recurringTasks'] as $rt) {
                 if (!is_array($rt) || empty($rt['id']) || !isset($rt['title']) || $rt['title'] === '') {
@@ -5230,6 +5322,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $nextDeadline = $nextScheduled ? ccrm_recurring_shift_deadline($nextScheduled, $cleanRec['weekendRule'] ?? 'keep', $cleanRec['frequency'] ?? 'monthly') : null;
                 $nextStartDate = $nextDeadline ? ccrm_recurring_start_date($nextDeadline, (int)($cleanRec['leadDays'] ?? 0)) : null;
 
+                $recAgencyWorkerVal = $canEditAgency
+                    ? (!empty($rt['relatedAgencyWorkerId']) ? (string)$rt['relatedAgencyWorkerId'] : null)
+                    : (!empty($storedRow['related_agency_worker_id']) ? (string)$storedRow['related_agency_worker_id'] : null);
+
                 $insRecTemplate->execute([
                     $templateId,
                     $rt['title'],
@@ -5243,6 +5339,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($rt['relatedLeadId']) ? $rt['relatedLeadId'] : null,
                     !empty($rt['relatedProjectId']) ? $rt['relatedProjectId'] : null,
                     !empty($rt['relatedTicketId']) ? $rt['relatedTicketId'] : null,
+                    $recAgencyWorkerVal,
                     !empty($rt['isLocking']) ? 1 : 0,
                     !empty($rt['emailReminders']) ? json_encode($rt['emailReminders']) : null,
                     !empty($rt['requiresConclusion']) ? 1 : 0,
@@ -6887,19 +6984,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['tickets']) && is_array($payload['tickets']) && !$ccrm_skip_writes('tickets', 'tickets')) {
             try {
                 if ($pdo->query("SHOW TABLES LIKE 'tickets'")->rowCount() > 0) {
-                    $existingTicketIds = $pdo->query("SELECT `id` FROM `tickets`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                    $existingTicketWorkers = [];
+                    $tckWStmt = $pdo->query("SELECT `id`, `agency_worker_id` FROM `tickets`");
+                    while ($tw = $tckWStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $existingTicketWorkers[(string)$tw['id']] = !empty($tw['agency_worker_id']) ? (string)$tw['agency_worker_id'] : null;
+                    }
+                    $existingTicketIds = array_keys($existingTicketWorkers);
                     $processedTicketIds = [];
 
                     $upsertTicket = $pdo->prepare("
                         INSERT INTO `tickets` (
                             `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
-                            `project_id`, `client_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
+                            `project_id`, `client_id`, `agency_worker_id`, `reporter_name`, `reporter_email`, `reporter_phone`,
                             `assignee_id`, `assignee_name`, `watchers_json`, `tags_json`,
                             `metadata_json`, `attachments_json`, `email_message_id`,
                             `first_response_due_at`, `first_responded_at`, `resolve_due_at`, `sla_paused_at`, `sla_paused_seconds`,
                             `resolved_at`, `closed_at`, `satisfaction_score`, `satisfaction_comment`, `archived`,
                             `created_at`, `updated_at`
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE
                             `ticket_number` = VALUES(`ticket_number`),
                             `title` = VALUES(`title`),
@@ -6910,6 +7012,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             `source` = VALUES(`source`),
                             `project_id` = VALUES(`project_id`),
                             `client_id` = VALUES(`client_id`),
+                            `agency_worker_id` = VALUES(`agency_worker_id`),
                             `reporter_name` = VALUES(`reporter_name`),
                             `reporter_email` = VALUES(`reporter_email`),
                             `reporter_phone` = VALUES(`reporter_phone`),
@@ -6975,6 +7078,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pausedSecs = isset($tck['slaPausedTotalSeconds']) ? (int)$tck['slaPausedTotalSeconds'] : (int)($tck['slaPausedSeconds'] ?? 0);
                         $isArchivedVal = (!empty($tck['isArchived']) || !empty($tck['archived'])) ? 1 : 0;
 
+                        $tckAgencyWorkerVal = $canEditAgency
+                            ? (!empty($tck['agencyWorkerId']) ? (string)$tck['agencyWorkerId'] : null)
+                            : ($existingTicketWorkers[$tckId] ?? null);
+
                         $upsertTicket->execute([
                             $tckId,
                             $tckNum,
@@ -6986,6 +7093,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $sourceVal,
                             !empty($tck['projectId']) ? (string)$tck['projectId'] : null,
                             $clientIdVal,
+                            $tckAgencyWorkerVal,
                             isset($tck['reporterName']) ? (string)$tck['reporterName'] : null,
                             isset($tck['reporterEmail']) ? (string)$tck['reporterEmail'] : null,
                             isset($tck['reporterPhone']) ? (string)$tck['reporterPhone'] : null,

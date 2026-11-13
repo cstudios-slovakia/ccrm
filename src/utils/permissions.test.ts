@@ -391,3 +391,12 @@ test("time tracking: team and costs mean nothing without the module, and the rou
   assert.equal(b.can("time_tracking_costs"), true);
   assert.equal(permissionKeyForRoute("time-tracking/day"), "time_tracking");
 });
+
+test("agency: payroll/billing rates are opt-in and Employee role stays locked out", () => {
+  const sectionKeys = PERMISSION_SECTIONS.find((sec) => sec.id === "agency")!.permissions.map((p) => p.key);
+  assert.deepEqual(sectionKeys, ["agency", "agency.delete", "agency.personal", "agency.payments"]);
+  const emp = employeeRolePermissions();
+  assert.equal(emp.agency, "nothing");
+  assert.equal(emp["agency.payments"], "nothing");
+  assert.equal(permissionKeyForRoute("agency/worker/w1"), "agency");
+});

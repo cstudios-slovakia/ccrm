@@ -18,6 +18,7 @@ import {
   Sparkles,
   TableProperties,
   Timer,
+  UserCheck,
   Users,
   Workflow,
 } from "lucide-react";
@@ -76,6 +77,7 @@ const ICONS: Record<SectionVisualId, IconType> = {
   clients: Users,
   leads: TableProperties,
   employees: EmployeeTieIcon,
+  agency: UserCheck,
   projects: Briefcase,
   tickets: LifeBuoy,
   warehouse: Package,
@@ -113,6 +115,7 @@ export const SECTION_VISUALS: Record<SectionVisualId, SectionVisual> = {
   clients: build("clients"),
   leads: build("leads"),
   employees: build("employees"),
+  agency: build("agency"),
   projects: build("projects"),
   tickets: build("tickets"),
   warehouse: build("warehouse"),

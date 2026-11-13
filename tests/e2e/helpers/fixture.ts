@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { installTimeTrackingMock, timeTrackingSeed } from './timeTrackingMock';
+import { DEFAULT_AGENCY_SETTINGS } from '../../../src/types/agency';
 
 /**
  * Deterministic CRM dataset served to the app in place of the PHP backend.
@@ -1064,6 +1065,8 @@ export async function installBackendMocks(
     roles?: { name: string; permissions: Record<string, string> }[];
     /** Support tickets for specs that log time on one. Omitted means the workspace has none. */
     tickets?: Record<string, unknown>[];
+    /** Overrides `settings.integrationsConfig.disabledModules` for tests checking opt-in modules. */
+    disabledModules?: string[];
   } = {},
 ) {
   const baseUser = options.user ?? TEST_USER;
@@ -1109,9 +1112,17 @@ export async function installBackendMocks(
             .map((u) => (u.email === signedIn.email ? signedIn : u))
             .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
           settings:
-            pushedIntegrationsConfig === undefined
-              ? payload.settings
-              : { ...payload.settings, integrationsConfig: pushedIntegrationsConfig },
+            pushedIntegrationsConfig !== undefined
+              ? { ...payload.settings, integrationsConfig: pushedIntegrationsConfig }
+              : options.disabledModules
+                ? {
+                    ...payload.settings,
+                    integrationsConfig: {
+                      ...payload.settings.integrationsConfig,
+                      disabledModules: options.disabledModules,
+                    },
+                  }
+                : payload.settings,
           ...(options.tickets ? { tickets: options.tickets } : {}),
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
@@ -1636,6 +1647,47 @@ export async function installBackendMocks(
       body: JSON.stringify({ current: { temperature_2m: 14.2, weather_code: 2, is_day: 1 } }),
     }),
   );
+
+  await page.route('**/api/holidays.php**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        country: 'SK',
+        year: 2026,
+        days: [
+          { date: '2026-01-01', localName: 'Deň vzniku Slovenskej republiky', name: 'Day of the Establishment of the Slovak Republic' },
+          { date: '2026-05-01', localName: 'Sviatok práce', name: 'Labour Day' },
+        ],
+      }),
+    }),
+  );
+
+  await page.route('**/api/agency.php**', (route) => {
+    const url = new URL(route.request().url());
+    const action = url.searchParams.get('action') || 'bootstrap';
+    if (action === 'bootstrap' && route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          settings: DEFAULT_AGENCY_SETTINGS,
+          workers: [],
+          workplaces: [],
+          placements: [],
+          checklists: [],
+          shifts: [],
+          payments: [],
+        }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, settings: DEFAULT_AGENCY_SETTINGS }),
+    });
+  });
 
   await page.addInitScript((userJson: string) => {
     try {

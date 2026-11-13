@@ -92,6 +92,13 @@ const withTasksSection = (layout: string[]): string[] => {
       next.splice(at === -1 ? next.length : at + 1, 0, "employees");
     }
   }
+  // Agency & Workforce Leasing is opt-in (disabledModules includes "agency" by default);
+  // slot it behind Employees so enabling the module shows it without resetting layouts.
+  if (!next.includes("agency")) {
+    next = [...next];
+    const at = next.indexOf("employees");
+    next.splice(at === -1 ? next.length : at + 1, 0, "agency");
+  }
   return next;
 };
 
@@ -578,6 +585,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "warehouse",
       "financial",
       "employees",
+      "agency",
       "meetings",
       ...dynamicUeItems.map((item) => item.id),
       ...dynamicDashItems.map((item) => item.id),
@@ -632,6 +640,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)" },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)" },
       { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62" },
+      { id: "agency", label: systemLanguage === "sk" ? "Personálna agentúra" : systemLanguage === "hu" ? "Munkaerő-közvetítés" : "Agency", icon: Icons.UserCheck || Users, color: "#0f766e" },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)" },
       ...dynamicUeItems,
       ...dynamicDashItems,

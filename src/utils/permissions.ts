@@ -168,6 +168,15 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     ],
   },
   {
+    id: "agency",
+    permissions: [
+      access("agency"),
+      deleteToggle("agency"),
+      toggle("agency.personal", "edit", "nothing", { key: "agency", level: "view" }),
+      toggle("agency.payments", "nothing", "nothing", { key: "agency", level: "view" }),
+    ],
+  },
+  {
     id: "self_service",
     permissions: [
       access("self.profile", "nothing", "nothing"),
@@ -355,6 +364,10 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   "employees.vacations": "nothing",
   "employees.files": "nothing",
   "employees.personal": "nothing",
+  agency: "nothing",
+  "agency.delete": "nothing",
+  "agency.personal": "nothing",
+  "agency.payments": "nothing",
   meetings: "nothing",
   "meetings.delete": "nothing",
   time_tracking: "edit",
@@ -465,6 +478,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   // the My employment tab needs a self.* key. Either opens the section; `my-employment` is the
   // old address of that tab.
   if (base === "employees" || base === "my-employment") return "people";
+  if (base === "agency") return "agency";
   if (base === "time-tracking") return "time_tracking";
   if (base === "whatsapp") return "whatsapp";
   // SAI rehearses sales conversations against the lead / client base. It has no permission key of

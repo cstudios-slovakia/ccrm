@@ -11,9 +11,11 @@ import {
     RotateCcw,
     Ticket as TicketIcon,
     Trash2,
+    UserCheck,
     X,
 } from "lucide-react";
 import type { Lead, Project, Task, Ticket, UserProfile, RecurringTaskTemplate, TaskRecurrence } from "../types";
+import { AgencyWorkerSelect } from "./agency/AgencyWorkerSelect";
 import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
 import { RecurringOccurrenceDeleteDialog, type OccurrenceDeleteChoice } from "./RecurringOccurrenceDeleteDialog";
 import { describeRecurrence } from "../utils/recurringTasks";
@@ -172,6 +174,8 @@ interface TaskEditDrawerProps {
     canDelete?: boolean;
     /** False when no outgoing mail server is set up; the e-mail reminder then warns. */
     mailConfigured?: boolean;
+    /** True when the opt-in Agency & Workforce Leasing module is enabled. */
+    agencyEnabled?: boolean;
     existingTags?: string[];
     /** Lead-state settings, to keep closed leads out of the lead / client picker. */
     leadStageGroups?: Record<string, string>;
@@ -209,6 +213,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     canArchive = false,
     canDelete = false,
     mailConfigured,
+    agencyEnabled = false,
     existingTags = [],
     leadStageGroups,
     leadStateParents,
@@ -893,6 +898,38 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 options={projectOptions}
                             />
                         </div>
+
+                        {(agencyEnabled || Boolean(draft.relatedAgencyWorkerId)) && (
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                    <label className="type-overline text-slate-500 flex items-center gap-1">
+                                        <UserCheck className="h-3 w-3 text-teal-600" />
+                                        {t("Agency Worker / Rented Employee", "Agentúrny pracovník", "Kölcsönzött dolgozó")}
+                                    </label>
+                                    {draft.relatedAgencyWorkerId && draft.relatedAgencyWorkerId === (task as Task).relatedAgencyWorkerId && (
+                                        <a
+                                            href={`#agency/worker/${encodeURIComponent(draft.relatedAgencyWorkerId)}`}
+                                            data-testid="task-drawer-agency-worker-link"
+                                            className="group/worker type-overline text-teal-600 hover:text-teal-800 flex items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
+                                        >
+                                            {t("Open worker", "Otvoriť pracovníka", "Dolgozó megnyitása")}
+                                            <ArrowUpRight className="h-3 w-3 transition-transform group-hover/worker:translate-x-px group-hover/worker:-translate-y-px" />
+                                        </a>
+                                    )}
+                                </div>
+                                <AgencyWorkerSelect
+                                    value={draft.relatedAgencyWorkerId || ""}
+                                    onChange={(v) =>
+                                        update({
+                                            relatedAgencyWorkerId: isTemplate ? (v || null) : (v || undefined),
+                                        })
+                                    }
+                                    lang={systemLanguage}
+                                    disabled={!canEdit}
+                                    testId="task-drawer-agency-worker"
+                                />
+                            </div>
+                        )}
 
                         {(tickets.length > 0 || resolvedTicketId) && (
                             <div className="space-y-1">

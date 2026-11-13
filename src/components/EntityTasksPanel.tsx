@@ -63,7 +63,7 @@ const toast = (message: string) => {
 const QUICK_ADD_DEADLINE_TIME = "";
 
 export interface EntityTasksPanelProps {
-  entityType: "project" | "lead" | "client";
+  entityType: "project" | "lead" | "client" | "agency_worker";
   entityId: string;
   entityName?: string;
   /** Not saved yet: its tasks would point at an entity that may never exist. */
@@ -82,12 +82,14 @@ export interface EntityTasksPanelProps {
   mailConfigured?: boolean;
   relatedLeadId?: string;
   relatedProjectId?: string;
+  relatedAgencyWorkerId?: string;
+  agencyEnabled?: boolean;
   clientAssociatedLeadIds?: string[];
   accentColor?: "indigo" | "orange" | "blue" | "violet";
 }
 
 /**
- * Unified Tasks panel for Projects, Leads, and Clients.
+ * Unified Tasks panel for Projects, Leads, Clients, and Agency Workers.
  * Supports quick multi-line task creation, voice action bar, TaskEditDrawer,
  * and a date interval filter (All, Last week, Last month, Last quarter, Last year to date, Custom).
  * In all filter modes, completed tasks are displayed with strikethrough.
@@ -110,12 +112,16 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   mailConfigured,
   relatedLeadId,
   relatedProjectId,
+  relatedAgencyWorkerId,
+  agencyEnabled = false,
   clientAssociatedLeadIds,
   accentColor = entityType === "project"
     ? "indigo"
     : entityType === "client"
       ? "orange"
-      : "blue",
+      : entityType === "agency_worker"
+        ? "violet"
+        : "blue",
 }) => {
   const t: Translate = (en, sk, hu) => (userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en);
   const recurringTemplates = useRecurringTemplates();
@@ -149,6 +155,9 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     }
     if (entityType === "lead") {
       return tasks.filter((t) => t.relatedLeadId === entityId);
+    }
+    if (entityType === "agency_worker") {
+      return tasks.filter((t) => t.relatedAgencyWorkerId === entityId);
     }
     if (entityType === "client") {
       const leadIds = clientAssociatedLeadIds || [];
@@ -233,6 +242,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     const today = localDateStr(new Date());
     const created = buildProjectTasks(pendingTitles, {
       projectId: entityType === "project" ? entityId : (relatedProjectId || ""),
+      relatedAgencyWorkerId: entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined),
       status: taskStates[0] || "New",
       deadline: deadline || today,
       deadlineTime: QUICK_ADD_DEADLINE_TIME,
@@ -248,6 +258,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             ? (relatedLeadId || entityId)
             : (relatedLeadId || undefined),
       relatedProjectId: entityType === "project" ? entityId : (relatedProjectId || undefined),
+      relatedAgencyWorkerId: entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined),
     }));
 
     setTasks((prev) => [...created, ...prev]);
@@ -619,6 +630,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                   defaultAssignee={assignee}
                   defaultStatus={taskStates[0] || "New"}
                   relatedProjectId={entityType === "project" ? entityId : (relatedProjectId || undefined)}
+                  relatedAgencyWorkerId={entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined)}
                   relatedLeadId={
                     entityType === "lead"
                       ? entityId
@@ -645,6 +657,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                             ? (relatedLeadId || entityId)
                             : (relatedLeadId || undefined),
                       relatedProjectId: entityType === "project" ? entityId : (relatedProjectId || undefined),
+                      relatedAgencyWorkerId: entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined),
                     }));
                     setTasks((prev) => [...mapped, ...prev]);
                     setRecentIds(new Set(mapped.map((tk) => tk.id)));
@@ -867,6 +880,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           currentUser={currentUser}
           currentUserName={myName}
           mailConfigured={mailConfigured}
+          agencyEnabled={agencyEnabled || entityType === "agency_worker"}
           canEdit={canEditTask(editingTask, currentUser, taskAccess)}
           canArchive={taskAccess.edit && canArchiveTask(editingTask, currentUser)}
           canDelete={canDeleteTask(editingTask, currentUser, taskAccess)}

@@ -92,6 +92,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
               `client_category_id` VARCHAR(50) NULL COMMENT 'client_categories.id - not a foreign key, the app clears it when a category is deleted',
+              `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company for person client-side contacts (never rented workers)',
+              `contact_role` VARCHAR(120) NULL COMMENT 'Role at company for attached person contacts (e.g. HR, Site Manager)',
               `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains for support tickets',
               `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
               `created_at` DATE NOT NULL,
@@ -99,7 +101,8 @@ if (!function_exists('ccrm_schema_statements')) {
               PRIMARY KEY (`id`),
               INDEX idx_lead_status (`status`),
               INDEX idx_lead_owner (`owner`),
-              INDEX idx_lead_created (`created_at`)
+              INDEX idx_lead_created (`created_at`),
+              INDEX idx_lead_company_client (`company_client_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Lead Categories Link
@@ -150,6 +153,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `created_by` VARCHAR(100) NULL COMMENT 'Immutable task creator name; NULL for legacy rows',
               `related_lead_id` VARCHAR(50) NULL,
               `related_project_id` VARCHAR(50) NULL COMMENT 'Project the task belongs to; NULL when it has none',
+              `related_agency_worker_id` VARCHAR(64) NULL COMMENT 'References agency_workers.id',
               `workflow_id` VARCHAR(50) NULL COMMENT 'Automation that created this task; NULL for hand-made ones',
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
@@ -175,6 +179,7 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_task_status (`status`),
               INDEX idx_task_deadline (`deadline`),
               INDEX idx_task_project (`related_project_id`),
+              INDEX idx_task_agency_worker (`related_agency_worker_id`),
               INDEX idx_task_kind (`task_kind`),
               INDEX idx_task_recurring_source (`recurring_source_id`),
               UNIQUE KEY uq_recurring_occurrence (`recurring_source_id`, `recurring_occurrence_date`)
@@ -1185,6 +1190,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `source` VARCHAR(50) NOT NULL DEFAULT 'manual',
               `project_id` VARCHAR(50) NULL COMMENT 'References projects.id',
               `client_id` VARCHAR(50) NULL COMMENT 'References leads.id (auto-inherited from project if project has lead_id/client_id)',
+              `agency_worker_id` VARCHAR(64) NULL COMMENT 'References agency_workers.id',
               `reporter_name` VARCHAR(200) NULL,
               `reporter_email` VARCHAR(255) NULL,
               `reporter_phone` VARCHAR(50) NULL,
@@ -1209,6 +1215,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX `idx_tickets_project` (`project_id`),
               INDEX `idx_tickets_client` (`client_id`),
+              INDEX `idx_tickets_agency_worker` (`agency_worker_id`),
               INDEX `idx_tickets_status_prio` (`status`, `priority`),
               INDEX `idx_tickets_assignee` (`assignee_id`),
               INDEX `idx_tickets_email_msgid` (`email_message_id`)
@@ -1427,6 +1434,161 @@ if (!function_exists('ccrm_schema_statements')) {
               `note` TEXT NOT NULL,
               `updated_by` VARCHAR(64) NULL,
               `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Agency & Workforce Leasing module tables (opt-in module; separate from `leads`)
+            "CREATE TABLE IF NOT EXISTS `agency_workers` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_code` VARCHAR(50) NULL,
+              `full_name` VARCHAR(200) NOT NULL,
+              `preferred_name` VARCHAR(120) NULL,
+              `email` VARCHAR(255) NULL,
+              `phone` VARCHAR(60) NULL,
+              `stage_id` VARCHAR(80) NOT NULL DEFAULT 'sourced',
+              `worker_status` ENUM('candidate', 'rented', 'bench', 'archived') NOT NULL DEFAULT 'candidate',
+              `nationality` VARCHAR(100) NULL,
+              `date_of_birth` VARCHAR(20) NULL,
+              `profile_json` LONGTEXT NULL,
+              `skills_json` TEXT NULL,
+              `notes` LONGTEXT NULL,
+              `default_pay_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `default_bill_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `assigned_recruiter` VARCHAR(100) NULL,
+              `created_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_worker_stage` (`stage_id`),
+              INDEX `idx_agency_worker_status` (`worker_status`),
+              INDEX `idx_agency_worker_name` (`full_name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_workplaces` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `company_client_id` VARCHAR(100) NOT NULL,
+              `name` VARCHAR(160) NOT NULL,
+              `address` VARCHAR(255) NULL,
+              `contact_lead_id` VARCHAR(100) NULL,
+              `default_shift_code` VARCHAR(50) NULL,
+              `notes` TEXT NULL,
+              `active` TINYINT(1) NOT NULL DEFAULT 1,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_wp_company` (`company_client_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_placements` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `company_client_id` VARCHAR(100) NOT NULL,
+              `workplace_id` VARCHAR(100) NULL,
+              `contact_lead_id` VARCHAR(100) NULL,
+              `job_role` VARCHAR(160) NOT NULL DEFAULT '',
+              `status` ENUM('planned', 'active', 'completed', 'terminated') NOT NULL DEFAULT 'active',
+              `start_date` DATE NOT NULL,
+              `end_date` DATE NULL,
+              `pay_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `pay_rate_type` ENUM('hourly', 'monthly') NOT NULL DEFAULT 'hourly',
+              `bill_rate` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `bill_rate_type` ENUM('hourly', 'monthly') NOT NULL DEFAULT 'hourly',
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `notes` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_pl_worker` (`worker_id`),
+              INDEX `idx_agency_pl_company` (`company_client_id`),
+              INDEX `idx_agency_pl_status` (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_worker_checklists` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `item_key` VARCHAR(100) NOT NULL,
+              `label` VARCHAR(200) NOT NULL,
+              `status` ENUM('pending', 'submitted', 'verified', 'expired') NOT NULL DEFAULT 'pending',
+              `expires_at` DATE NULL,
+              `note` TEXT NULL,
+              `file_id` VARCHAR(100) NULL,
+              `sort_order` INT NOT NULL DEFAULT 0,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_agency_chk_worker` (`worker_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_worker_files` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `category` VARCHAR(60) NOT NULL DEFAULT 'other',
+              `checklist_item_id` VARCHAR(100) NULL,
+              `file_name` VARCHAR(255) NOT NULL,
+              `mime_type` VARCHAR(120) NULL,
+              `size_bytes` BIGINT NOT NULL DEFAULT 0,
+              `storage_name` VARCHAR(255) NOT NULL,
+              `uploaded_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_agency_files_worker` (`worker_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_timeline_events` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `event_type` ENUM('stage_change', 'contact', 'placement', 'sick_leave', 'compliance', 'note', 'work_log') NOT NULL DEFAULT 'note',
+              `title` VARCHAR(255) NOT NULL,
+              `description` TEXT NULL,
+              `meta_json` TEXT NULL,
+              `occurred_at` DATETIME NOT NULL,
+              `created_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_agency_tl_worker` (`worker_id`, `occurred_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_shifts` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `placement_id` VARCHAR(100) NULL,
+              `company_client_id` VARCHAR(100) NOT NULL,
+              `workplace_id` VARCHAR(100) NULL,
+              `work_date` DATE NOT NULL,
+              `shift_template_id` VARCHAR(80) NULL,
+              `shift_label` VARCHAR(120) NULL,
+              `start_time` VARCHAR(10) NULL,
+              `end_time` VARCHAR(10) NULL,
+              `hours` DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+              `overtime_hours` DECIMAL(6, 2) NOT NULL DEFAULT 0.00,
+              `status` ENUM('scheduled', 'worked', 'sick', 'absent', 'holiday') NOT NULL DEFAULT 'scheduled',
+              `sick_note` TEXT NULL,
+              `notes` TEXT NULL,
+              `created_by` VARCHAR(100) NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY `uq_agency_shift_worker_date_tpl` (`worker_id`, `work_date`, `company_client_id`),
+              INDEX `idx_agency_shift_company_date` (`company_client_id`, `work_date`),
+              INDEX `idx_agency_shift_date` (`work_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            "CREATE TABLE IF NOT EXISTS `agency_payments` (
+              `id` VARCHAR(100) NOT NULL PRIMARY KEY,
+              `worker_id` VARCHAR(100) NOT NULL,
+              `placement_id` VARCHAR(100) NULL,
+              `company_client_id` VARCHAR(100) NULL,
+              `period_ym` VARCHAR(10) NOT NULL,
+              `regular_hours` DECIMAL(8, 2) NOT NULL DEFAULT 0.00,
+              `overtime_hours` DECIMAL(8, 2) NOT NULL DEFAULT 0.00,
+              `sick_days` DECIMAL(6, 1) NOT NULL DEFAULT 0.0,
+              `base_pay` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `items_json` LONGTEXT NULL,
+              `gross_pay` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `deductions_total` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `net_pay` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `paid_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `billable_total` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `status` ENUM('draft', 'approved', 'paid') NOT NULL DEFAULT 'draft',
+              `paid_at` DATE NULL,
+              `financial_record_id` VARCHAR(100) NULL,
+              `notes` TEXT NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              UNIQUE KEY `uq_agency_pay_worker_period` (`worker_id`, `period_ym`),
+              INDEX `idx_agency_pay_period` (`period_ym`),
+              INDEX `idx_agency_pay_company` (`company_client_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -2006,6 +2168,67 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_ai_models($pdo);
         ccrm_migrate_recurring_tasks($pdo);
         ccrm_migrate_weekly_plan($pdo);
+        ccrm_migrate_agency($pdo);
+    }
+
+    /**
+     * Ensure Contacts-to-Companies columns and Agency & Workforce Leasing tables exist,
+     * and disable the opt-in `agency` module by default once on existing installs.
+     */
+    function ccrm_migrate_agency(PDO $pdo): void {
+        try {
+            if (ccrm_table_exists($pdo, 'leads')) {
+                if (!ccrm_column_exists($pdo, 'leads', 'company_client_id')) {
+                    $pdo->exec("ALTER TABLE `leads` ADD COLUMN `company_client_id` VARCHAR(50) NULL AFTER `client_category_id`");
+                }
+                if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
+                    $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
+                }
+                if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
+                    try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}
+                }
+            }
+            if (ccrm_table_exists($pdo, 'tasks')) {
+                if (!ccrm_column_exists($pdo, 'tasks', 'related_agency_worker_id')) {
+                    $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_agency_worker_id` VARCHAR(64) NULL AFTER `related_ticket_id`");
+                }
+                if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_agency_worker')) {
+                    try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_agency_worker` (`related_agency_worker_id`)"); } catch (\Throwable $e) {}
+                }
+            }
+            if (ccrm_table_exists($pdo, 'tickets')) {
+                if (!ccrm_column_exists($pdo, 'tickets', 'agency_worker_id')) {
+                    $pdo->exec("ALTER TABLE `tickets` ADD COLUMN `agency_worker_id` VARCHAR(64) NULL AFTER `client_id`");
+                }
+                if (!ccrm_index_exists($pdo, 'tickets', 'idx_tickets_agency_worker')) {
+                    try { $pdo->exec("ALTER TABLE `tickets` ADD INDEX `idx_tickets_agency_worker` (`agency_worker_id`)"); } catch (\Throwable $e) {}
+                }
+            }
+            if (ccrm_table_exists($pdo, 'system_settings')) {
+                $flag = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'AGENCY_DEFAULT_DISABLED_V1'")->fetchColumn();
+                if ($flag === false) {
+                    $raw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'")->fetchColumn();
+                    $cfg = (is_string($raw) && $raw !== '') ? json_decode($raw, true) : [];
+                    if (!is_array($cfg)) {
+                        $cfg = [];
+                    }
+                    $disabled = isset($cfg['disabledModules']) && is_array($cfg['disabledModules']) ? $cfg['disabledModules'] : [];
+                    if (!in_array('agency', $disabled, true)) {
+                        $disabled[] = 'agency';
+                    }
+                    $cfg['disabledModules'] = array_values(array_unique(array_map('strval', $disabled)));
+                    $encoded = json_encode($cfg, JSON_UNESCAPED_UNICODE);
+                    if ($encoded !== false) {
+                        $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('INTEGRATIONS_CONFIG', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+                            ->execute([$encoded]);
+                    }
+                    $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('AGENCY_DEFAULT_DISABLED_V1', '1') ON DUPLICATE KEY UPDATE `value` = '1'")
+                        ->execute();
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] agency migration skipped: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -3303,6 +3526,8 @@ if (!function_exists('ccrm_schema_statements')) {
             'LEAD_STATE_PARENTS' => $enc((object)[]),
             'TASK_STATES' => $enc($taskStates),
             'TASK_STATE_COLORS' => $enc(ccrm_default_task_state_colors($taskStates)),
+            'INTEGRATIONS_CONFIG' => $enc(['disabledModules' => ['agency']]),
+            'AGENCY_DEFAULT_DISABLED_V1' => '1',
         ];
     }
 

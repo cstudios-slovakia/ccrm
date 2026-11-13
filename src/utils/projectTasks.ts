@@ -56,6 +56,7 @@ export const parseTaskLines = (text: string): string[] =>
 /** What a quick-added task takes from the form around the box. */
 export type ProjectTaskDefaults = {
   projectId: string;
+  relatedAgencyWorkerId?: string;
   status: string;
   deadline: string;
   deadlineTime: string;
@@ -87,6 +88,7 @@ export const buildProjectTasks = (
     createdAt: localStampStr(new Date(now)),
     assignedUsers: defaults.assignee ? [defaults.assignee] : [],
     relatedProjectId: defaults.projectId,
+    relatedAgencyWorkerId: defaults.relatedAgencyWorkerId || undefined,
   }));
 
 /**

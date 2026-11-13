@@ -407,6 +407,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         bgColor: "rgba(194, 155, 98, 0.12)",
         defaultSection: "operations"
       },
+      {
+        id: "agency",
+        label: t("Agency & Leasing", "Personálna agentúra", "Munkaerő-közvetítés"),
+        description: t("Candidates pipeline, rented workers, host shifts, sick leave & payouts", "Kandidáti, prenajatí zamestnanci, rozvrh zmien, PN a výplaty", "Jelöltek, kölcsönzött munkavállalók, műszakok, betegszabadság és kifizetések"),
+        icon: Icons.UserCheck || Users,
+        color: "#0f766e",
+        bgColor: "rgba(15, 118, 110, 0.12)",
+        defaultSection: "operations"
+      },
 
       // 2. ANALYTICS & DASHBOARDS
       {

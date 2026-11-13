@@ -377,6 +377,8 @@ interface TaskDashboardViewProps {
     taskAccess?: TaskAccess;
     /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
     mailConfigured?: boolean;
+    /** True when the opt-in Agency & Workforce Leasing module is active. */
+    agencyEnabled?: boolean;
     /** Lead-state settings, to keep closed leads out of the lead / client picker. */
     leadStageGroups?: Record<string, string>;
     leadStateParents?: Record<string, string>;
@@ -558,6 +560,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     },
     taskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true },
     mailConfigured,
+    agencyEnabled = false,
     leadStageGroups,
     leadStateParents,
 }) => {
@@ -4607,6 +4610,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         systemLanguage={systemLanguage}
                         currentUserName={myName}
                         mailConfigured={mailConfigured}
+                        agencyEnabled={agencyEnabled}
                         leadStageGroups={leadStageGroups}
                         leadStateParents={leadStateParents}
                         initialDeadline={addDeadline}
@@ -5692,6 +5696,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     systemLanguage={systemLanguage}
                     currentUserName={myName}
                     mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
                     leadStageGroups={leadStageGroups}
                     leadStateParents={leadStateParents}
                     initialDeadline={addDeadline}
@@ -6134,6 +6139,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}
                     mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
                     canDelete={mayDeleteTask(editingTask)}
@@ -6164,6 +6170,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             assignedUsers: taskToConvert.assignedUsers,
                             relatedLeadId: taskToConvert.relatedLeadId,
                             relatedProjectId: taskToConvert.relatedProjectId,
+                            relatedAgencyWorkerId: taskToConvert.relatedAgencyWorkerId ?? null,
                             isLocking: taskToConvert.isLocking,
                             emailReminders: taskToConvert.emailReminders,
                             requiresConclusion: taskToConvert.requiresConclusion,
@@ -6237,6 +6244,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}
                     mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
                     canEdit={taskAccess.edit}
                     canArchive={false}
                     canDelete={taskAccess.delete}

@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/agency_lib.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, OPTIONS');
@@ -465,6 +466,60 @@ if ($allow('warehouse')) try {
 } catch (\Exception $e) {
     $searchErrors[] = $e->getMessage();
     error_log('[ccrm universal_search] product source failed: ' . $e->getMessage());
+}
+
+// 5. SEARCH AGENCY WORKERS & CANDIDATES
+try {
+    if ($allow('agency') && ccrm_agency_is_module_enabled($pdo)) {
+        $hasAgencyTbl = $pdo->query("SHOW TABLES LIKE 'agency_workers'")->rowCount() > 0;
+        if ($hasAgencyTbl) {
+            $canPersonal = $allow('agency.personal');
+            $stmt = $pdo->query("SELECT id, worker_code, full_name, preferred_name, email, phone, worker_status, nationality, profile_json, skills_json, notes FROM agency_workers WHERE worker_status != 'archived'");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $scoreName = get_fuzzy_score($query, $row['full_name'] ?? '') * 1.4;
+                $scoreCode = get_fuzzy_score($query, $row['worker_code'] ?? '') * 1.3;
+                $scorePref = get_fuzzy_score($query, $row['preferred_name'] ?? '') * 1.2;
+                $scoreEmail = get_fuzzy_score($query, $row['email'] ?? '') * 1.1;
+                $scorePhone = get_fuzzy_score($query, $row['phone'] ?? '');
+                $scoreSkills = get_fuzzy_score($query, $row['skills_json'] ?? '') * 0.8;
+                $scoreNotes = get_fuzzy_score($query, $row['notes'] ?? '') * 0.6;
+                $scoreNat = 0;
+                $scorePassport = 0;
+                if ($canPersonal) {
+                    $scoreNat = get_fuzzy_score($query, $row['nationality'] ?? '') * 0.8;
+                    $prof = json_decode((string)($row['profile_json'] ?? '{}'), true);
+                    $passportNum = is_array($prof) ? (string)($prof['passport']['number'] ?? '') : '';
+                    if ($passportNum !== '') {
+                        $scorePassport = get_fuzzy_score($query, $passportNum) * 1.3;
+                    }
+                }
+                $maxScore = max($scoreName, $scoreCode, $scorePref, $scoreEmail, $scorePhone, $scoreSkills, $scoreNotes, $scoreNat, $scorePassport);
+                if ($maxScore > 0) {
+                    $excerptSrc = trim(($row['email'] ? $row['email'] . ' ' : '') . ($row['phone'] ? $row['phone'] . ' ' : '') . ($row['notes'] ?? ''));
+                    if ($excerptSrc === '') {
+                        $excerptSrc = $row['worker_code'] ?: $row['worker_status'];
+                    }
+                    $subtitleParts = [];
+                    if (!empty($row['worker_code'])) $subtitleParts[] = $row['worker_code'];
+                    if (!empty($row['worker_status'])) $subtitleParts[] = ucfirst((string)$row['worker_status']);
+                    $candidates[] = [
+                        'score' => $maxScore,
+                        'item' => [
+                            'id' => 'agency-worker-' . $row['id'],
+                            'type' => 'agency_worker',
+                            'title' => $row['full_name'],
+                            'subtitle' => implode(' • ', $subtitleParts),
+                            'excerpt' => get_excerpt($excerptSrc, $query),
+                            'url' => '#agency/worker/' . rawurlencode((string)$row['id']),
+                        ],
+                    ];
+                }
+            }
+        }
+    }
+} catch (\Exception $e) {
+    $searchErrors[] = $e->getMessage();
+    error_log('[ccrm universal_search] agency source failed: ' . $e->getMessage());
 }
 
 // Sort candidates by score descending

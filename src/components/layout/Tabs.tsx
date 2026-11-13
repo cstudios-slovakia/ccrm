@@ -10,6 +10,7 @@ export interface TabItem<K extends string = string> {
   /** Free-form badge (e.g. a coloured amount), shown in place of `count`. */
   badge?: ReactNode;
   hidden?: boolean;
+  testId?: string;
 }
 
 /** Lets the user pin the tab they are on as the one this bar opens with. */
@@ -110,6 +111,7 @@ export function Tabs<K extends string>({
                 ref={active ? activeTabRef : undefined}
                 type="button"
                 role="tab"
+                data-testid={i.testId}
                 aria-selected={active}
                 onClick={() => onChange(i.key)}
                 className={`h-9 shrink-0 whitespace-nowrap inline-flex items-center gap-2 rounded-xl px-3 text-ui font-semibold transition-all cursor-pointer active:scale-[0.98] ${

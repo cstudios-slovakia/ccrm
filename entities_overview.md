@@ -100,6 +100,8 @@ Main table representing potential deals, customers, and client accounts.
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
 * `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
 * `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
+* `company_client_id` VARCHAR(50) [NULLable, indexed] (for person clients: optional parent Business/Partner company `leads.id` where they act as a client-side contact; rented agency employees never live in `leads`)
+* `contact_role` VARCHAR(120) [NULLable] (role/title of an attached person contact at their company, e.g. HR Manager)
 * `contact_person` VARCHAR(100)
 
 ### `client_adjustment_migration`
@@ -154,6 +156,7 @@ General system and operational tasks.
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)
+* `related_agency_worker_id` VARCHAR(64) [NULLable] (References `agency_workers.id`)
 * `is_locking` TINYINT(1)
 * `archived` TINYINT(1)
 * `external_source` VARCHAR(20) [NULLable] (integration client code that pushed the task, e.g. waai; server-only, never written by a client save)
@@ -725,6 +728,7 @@ Support tickets, bug reports, and client inquiries attached to projects and clie
 * `source` ENUM('email', 'widget', 'manual', 'phone')
 * `project_id` VARCHAR(50) [NULLable] (References `projects.id`)
 * `client_id` VARCHAR(50) [NULLable] (References `leads.id`)
+* `agency_worker_id` VARCHAR(64) [NULLable] (References `agency_workers.id`)
 * `reporter_name` VARCHAR(200) [NULLable]
 * `reporter_email` VARCHAR(255) [NULLable]
 * `reporter_phone` VARCHAR(50) [NULLable]
@@ -801,3 +805,145 @@ Per-day management notes displayed underneath each day header on the Weekly Plan
 * `note` TEXT
 * `updated_by` VARCHAR(64) [NULLable]
 * `updated_at` DATETIME
+
+---
+
+## 12. Agency & Workforce Leasing
+
+### `agency_workers`
+Permanent candidate and rented-employee profiles (separate entity from `leads` contacts).
+* `id` VARCHAR(100) [PK]
+* `worker_code` VARCHAR(50) [NULLable] (Human-readable reference e.g. `AGW-001`)
+* `full_name` VARCHAR(200)
+* `preferred_name` VARCHAR(120) [NULLable]
+* `email` VARCHAR(255) [NULLable]
+* `phone` VARCHAR(60) [NULLable]
+* `stage_id` VARCHAR(80) (Customizable recruitment stage key from `AGENCY_SETTINGS`)
+* `worker_status` ENUM('candidate', 'rented', 'bench', 'archived')
+* `nationality` VARCHAR(100) [NULLable]
+* `date_of_birth` VARCHAR(20) [NULLable]
+* `profile_json` LONGTEXT [NULLable] (Structured applicant, passport, permit, stayWork, addresses, family, and custom fields)
+* `skills_json` TEXT [NULLable]
+* `notes` LONGTEXT [NULLable]
+* `default_pay_rate` DECIMAL(12, 2)
+* `default_bill_rate` DECIMAL(12, 2)
+* `currency` VARCHAR(10)
+* `assigned_recruiter` VARCHAR(100) [NULLable]
+* `created_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_workplaces`
+External company worksites / shifts locations linked to Business/Partner clients in `leads`.
+* `id` VARCHAR(100) [PK]
+* `company_client_id` VARCHAR(100) (References company `leads.id`)
+* `name` VARCHAR(160)
+* `address` VARCHAR(255) [NULLable]
+* `contact_lead_id` VARCHAR(100) [NULLable] (Person contact in `leads` at that company)
+* `default_shift_code` VARCHAR(50) [NULLable]
+* `notes` TEXT [NULLable]
+* `active` TINYINT(1)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_placements`
+Historical and active workforce leasing placements assigning an `agency_workers` row to an external client company and workplace.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100) (References `agency_workers.id`)
+* `company_client_id` VARCHAR(100) (References company `leads.id`)
+* `workplace_id` VARCHAR(100) [NULLable] (References `agency_workplaces.id`)
+* `contact_lead_id` VARCHAR(100) [NULLable] (Client-side HR/site contact `leads.id`)
+* `job_role` VARCHAR(160)
+* `status` ENUM('planned', 'active', 'completed', 'terminated')
+* `start_date` DATE
+* `end_date` DATE [NULLable]
+* `pay_rate` DECIMAL(12, 2)
+* `pay_rate_type` ENUM('hourly', 'monthly')
+* `bill_rate` DECIMAL(12, 2)
+* `bill_rate_type` ENUM('hourly', 'monthly')
+* `currency` VARCHAR(10)
+* `notes` TEXT [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_worker_checklists`
+Customizable compliance and onboarding checklist items per worker.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `item_key` VARCHAR(100)
+* `label` VARCHAR(200)
+* `status` ENUM('pending', 'submitted', 'verified', 'expired')
+* `expires_at` DATE [NULLable]
+* `note` TEXT [NULLable]
+* `file_id` VARCHAR(100) [NULLable]
+* `sort_order` INT
+* `updated_at` TIMESTAMP
+
+### `agency_worker_files`
+Private candidate/worker documents stored outside the web root under `uploads/private/agency/` and served through `api/agency_file.php`.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `category` VARCHAR(60)
+* `checklist_item_id` VARCHAR(100) [NULLable]
+* `file_name` VARCHAR(255)
+* `mime_type` VARCHAR(120) [NULLable]
+* `size_bytes` BIGINT
+* `storage_name` VARCHAR(255)
+* `uploaded_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+
+### `agency_timeline_events`
+Lifecycle timeline per worker (`stage_change`, `contact`, `placement`, `sick_leave`, `compliance`, `note`, `work_log`).
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `event_type` ENUM('stage_change', 'contact', 'placement', 'sick_leave', 'compliance', 'note', 'work_log')
+* `title` VARCHAR(255)
+* `description` TEXT [NULLable]
+* `meta_json` TEXT [NULLable]
+* `occurred_at` DATETIME
+* `created_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+
+### `agency_shifts`
+Daily scheduled shifts, worked shifts, and sick leave entries per rented worker, company, and workplace.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `placement_id` VARCHAR(100) [NULLable]
+* `company_client_id` VARCHAR(100)
+* `workplace_id` VARCHAR(100) [NULLable]
+* `work_date` DATE
+* `shift_template_id` VARCHAR(80) [NULLable]
+* `shift_label` VARCHAR(120) [NULLable]
+* `start_time` VARCHAR(10) [NULLable]
+* `end_time` VARCHAR(10) [NULLable]
+* `hours` DECIMAL(6, 2)
+* `overtime_hours` DECIMAL(6, 2)
+* `status` ENUM('scheduled', 'worked', 'sick', 'absent', 'holiday')
+* `sick_note` TEXT [NULLable]
+* `notes` TEXT [NULLable]
+* `created_by` VARCHAR(100) [NULLable]
+* `updated_at` TIMESTAMP
+
+### `agency_payments`
+Monthly worker payout and client billing calculation records linked to `financial_records`.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `placement_id` VARCHAR(100) [NULLable]
+* `company_client_id` VARCHAR(100) [NULLable]
+* `period_ym` VARCHAR(10)
+* `regular_hours` DECIMAL(8, 2)
+* `overtime_hours` DECIMAL(8, 2)
+* `sick_days` DECIMAL(6, 1)
+* `base_pay` DECIMAL(12, 2)
+* `items_json` LONGTEXT [NULLable]
+* `gross_pay` DECIMAL(12, 2)
+* `deductions_total` DECIMAL(12, 2)
+* `net_pay` DECIMAL(12, 2)
+* `paid_amount` DECIMAL(12, 2)
+* `billable_total` DECIMAL(12, 2)
+* `currency` VARCHAR(10)
+* `status` ENUM('draft', 'approved', 'paid')
+* `paid_at` DATE [NULLable]
+* `financial_record_id` VARCHAR(100) [NULLable]
+* `notes` TEXT [NULLable]
+* `updated_at` TIMESTAMP

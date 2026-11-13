@@ -200,6 +200,12 @@ export interface Lead {
   // that no client has been created for or linked to yet.
   clientId?: string | null;
 
+  // For Person clients (`clientType === "person"`): optional link to a Business/Partner
+  // company client (`client-*`) where this person serves as a client-side contact (HR,
+  // site manager, billing contact). Rented agency employees NEVER live in `leads`.
+  companyClientId?: string | null;
+  contactRole?: string | null;
+
   // Which channel first brought the visitor to the website (facebook,
   // instagram, google, direct, ...) and a free-text detail (medium, campaign,
   // referrer, landing page). Reported by the public web-form webhook and
@@ -316,6 +322,8 @@ export interface Task {
   relatedProjectId?: string;
   /** The support ticket this task was created from or linked to, if any. */
   relatedTicketId?: string;
+  /** The rented employee / agency candidate (`agency_workers.id`) this task belongs to, if any. */
+  relatedAgencyWorkerId?: string | null;
   isLocking?: boolean; // if true, it blocks related lead from transitioning stages until done
   completedBy?: string; // name of user who completed the task
   completedAt?: string; // timestamp (YYYY-MM-DD HH:MM) when completed
@@ -414,6 +422,7 @@ export interface RecurringTaskTemplate {
   relatedLeadId?: string | null;
   relatedProjectId?: string | null;
   relatedTicketId?: string | null;
+  relatedAgencyWorkerId?: string | null;
   isLocking?: boolean;
   requiresConclusion?: boolean;
   estimateMinutes?: number | null;
@@ -1682,6 +1691,7 @@ export interface Ticket {
   projectId?: string | null;
   leadId?: string | null;
   clientId?: string | null;
+  agencyWorkerId?: string | null;
   contractId?: string | null;
   reporterName?: string | null;
   reporterEmail?: string | null;

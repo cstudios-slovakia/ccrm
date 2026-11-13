@@ -34,6 +34,7 @@ require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
 require_once __DIR__ . '/mcp_ext_intel.php';
 require_once __DIR__ . '/mcp_ext_modules.php';
+require_once __DIR__ . '/mcp_ext_agency.php';
 
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
@@ -187,6 +188,7 @@ function mcp_tool_permissions(): array {
     $map += mcp_ext_ops_permissions();
     $map += mcp_ext_intel_permissions();
     $map += mcp_ext_modules_permissions();
+    $map += mcp_ext_agency_permissions();
     return $map;
 }
 
@@ -470,7 +472,7 @@ switch ($rpcMethod) {
 // TOOL DEFINITIONS (core tools; the finance, operations and automation tools live in mcp_ext*.php)
 // ============================================================================
 function mcp_get_tool_definitions(): array {
-    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions(), mcp_get_module_tool_definitions());
+    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions(), mcp_get_module_tool_definitions(), mcp_get_agency_tool_definitions());
 }
 
 function mcp_core_tool_definitions(): array {
@@ -2838,6 +2840,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $extResult = mcp_ext_intel_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             $extResult = mcp_ext_modules_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_agency_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             throw new \Exception("Unrecognized tool name: " . htmlspecialchars($tool));
     }
