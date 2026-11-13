@@ -513,6 +513,18 @@ function ccrm_toggl_import_workspace(string $apiToken, string $workspaceId): str
     return '';
 }
 
+/** Toggl user id of the token's owner ("my entries"), or '' when Toggl does not answer. */
+function ccrm_toggl_import_me(string $apiToken): string {
+    if ($apiToken === '') {
+        return '';
+    }
+    $me = toggl_curl('https://api.track.toggl.com/api/v9/me', $apiToken);
+    if (!empty($me['ok']) && is_array($me['data']) && isset($me['data']['id'])) {
+        return trim((string)$me['data']['id']);
+    }
+    return '';
+}
+
 /**
  * Workspace projects and users for the mapping screen.
  *
@@ -586,7 +598,7 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
             ];
         }
     }
-    return ['ok' => true, 'projects' => $projects, 'projectsTruncated' => $truncated, 'users' => $users];
+    return ['ok' => true, 'projects' => $projects, 'projectsTruncated' => $truncated, 'users' => $users, 'me' => ccrm_toggl_import_me($apiToken)];
 }
 
 /**
@@ -598,7 +610,7 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
  *
  * @return array{ok: bool, code?: string, entries: list<array<string, mixed>>, truncated?: bool}
  */
-function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $from, string $to): array {
+function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $from, string $to, string $onlyUserId = ''): array {
     if ($apiToken === '') {
         return ['ok' => false, 'code' => 'toggl_not_configured', 'entries' => []];
     }
@@ -621,6 +633,10 @@ function ccrm_toggl_import_fetch(string $apiToken, string $workspaceId, string $
             'page_size' => 50,
             'first_row_number' => $firstRow,
         ];
+        if ($onlyUserId !== '') {
+            // One person's entries only: far fewer pages than the whole workspace.
+            $payload['user_ids'] = [(int)$onlyUserId];
+        }
         $res = toggl_curl($reportsUrl, $apiToken, 'POST', $payload);
         if (($res['code'] ?? 0) === 429) {
             // Toggl allows about one request a second; wait once and retry this page.

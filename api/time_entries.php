@@ -552,6 +552,7 @@ if ($action === 'import') {
             'projects' => $cat['projects'],
             'projectsTruncated' => !empty($cat['projectsTruncated']),
             'users' => $cat['users'],
+            'me' => (string)($cat['me'] ?? ''),
             'ccrmProjects' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? '')], $ccrmProjects),
             'ccrmUsers' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? ''), 'email' => (string)($r['email'] ?? '')], $ccrmUsers),
             'projectMap' => (object)$savedProjects,
@@ -602,11 +603,30 @@ if ($action === 'import') {
         /* the import still proceeds; the map is in this request */
     }
 
-    $fetched = ccrm_toggl_import_fetch($token, $workspace, $from, $to);
+    /* "Only my entries": the entries of the Toggl token's owner go to the signed-in user (or to
+       whoever that Toggl user is mapped to), and nobody else's are read. No user mapping needed.
+       This override is for this request only; it is not written into the saved map above. */
+    $onlyMeId = '';
+    if (!empty($body['onlyMe'])) {
+        $onlyMeId = ccrm_toggl_import_me($token);
+        if ($onlyMeId === '') {
+            ccrm_te_fail($token === '' ? 'toggl_not_configured' : 'toggl_unavailable', 422);
+        }
+        $userMap = [$onlyMeId => (($userMap[$onlyMeId] ?? '') !== '' ? $userMap[$onlyMeId] : $callerId)];
+    }
+
+    $fetched = ccrm_toggl_import_fetch($token, $workspace, $from, $to, $onlyMeId);
     if (empty($fetched['ok'])) {
         ccrm_te_fail($fetched['code'] ?? 'toggl_not_configured', 422);
     }
     $rows = $fetched['entries'];
+    if ($onlyMeId !== '') {
+        // The fallback and older report rows are not filtered by Toggl; keep only the owner's.
+        $rows = array_values(array_filter($rows, fn($r) => $r['userId'] === '' || $r['userId'] === $onlyMeId));
+        foreach ($rows as $i => $r) {
+            $rows[$i]['userId'] = $onlyMeId;
+        }
+    }
     $ids = [];
     foreach ($rows as $r) {
         $ids[] = $r['id'];

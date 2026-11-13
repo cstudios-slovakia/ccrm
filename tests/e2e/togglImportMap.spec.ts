@@ -84,6 +84,52 @@ test('mapped Toggl projects and users are listed first, and a partial project li
   await expect(page.getByTestId('toggl-import-projects-truncated')).toBeVisible();
 });
 
+test('with nobody mapped, "only my entries" is on and is sent with the import', async ({ page }) => {
+  await startSession(page);
+  const runs: Array<Record<string, unknown>> = [];
+  await page.route('**/api/time_entries.php**', async (route) => {
+    const req = route.request();
+    if (req.method() !== 'POST') return route.fallback();
+    const body = req.postDataJSON() as Record<string, unknown>;
+    if (body?.action !== 'import') return route.fallback();
+    const json = (payload: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+    if (body.mode === 'catalog') {
+      return json({
+        success: true,
+        projects: [{ id: '1', name: 'WAAI' }],
+        users: [
+          { id: '77', name: 'Token Owner', email: 'owner@example.com' },
+          { id: '78', name: 'Somebody Else', email: 'else@example.com' },
+        ],
+        me: '77',
+        ccrmProjects: [],
+        ccrmUsers: [],
+        projectMap: {},
+        userMap: {},
+        defaultUserMap: {},
+      });
+    }
+    if (body.mode === 'preview') {
+      runs.push(body);
+      return json({ success: true, preview: true, total: 3, ready: 3 });
+    }
+    return json({ success: true, saved: true });
+  });
+
+  await gotoView(page, '#settings/projects/time');
+  const onlyMe = page.getByTestId('toggl-import-only-me');
+  await expect(onlyMe).toBeChecked();
+  await expect(page.locator('label', { has: onlyMe })).toContainText('Token Owner');
+  await page.getByTestId('toggl-import-preview').click();
+  await expect(page.getByTestId('toggl-import-result')).toBeVisible();
+  expect(runs[0].onlyMe).toBe(true);
+
+  await onlyMe.uncheck();
+  await page.getByTestId('toggl-import-preview').click();
+  await expect.poll(() => runs.length).toBe(2);
+  expect(runs[1].onlyMe).toBe(false);
+});
+
 test('a multi-year period imports in short windows, adds up the counts and resets the hold ring', async ({ page }) => {
   await startSession(page);
   const commits: Array<{ from: string; to: string }> = [];
@@ -132,7 +178,8 @@ test('a multi-year period imports in short windows, adds up the counts and reset
   expect(commits.length).toBeGreaterThan(3);
   expect(commits[0].from).toBe('2024-01-13');
   expect(commits[commits.length - 1].to).toBe('2026-11-13');
-  await expect(page.getByTestId('toggl-import').getByText(/Záznam času sa nepodarilo uložiť|Could not save the time entry/)).toHaveCount(0);
+  // (The panel's Surface does not carry a test id, so this is checked on the page.)
+  await expect(page.getByText(/Záznam času sa nepodarilo uložiť|Could not save the time entry/)).toHaveCount(0);
   // The ring empties again instead of staying full over the button.
   await expect(holdButton.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
 });

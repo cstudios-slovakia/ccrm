@@ -21,6 +21,8 @@ interface Catalog {
   /** The workspace has more projects than could be loaded; the list is incomplete. */
   projectsTruncated: boolean;
   users: Named[];
+  /** Toggl user id of the token's owner; "" when Toggl did not say. */
+  me: string;
   ccrmProjects: Named[];
   ccrmUsers: Named[];
   projectMap: Record<string, string>;
@@ -99,6 +101,9 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<Preview | null>(null);
   const [skipUnpaired, setSkipUnpaired] = useState(true);
+  /** Import only the token owner's entries, to the signed-in user, with no user mapping. */
+  const [onlyMe, setOnlyMe] = useState(false);
+  const onlyMeTouched = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** A long period runs as several short requests; this is how far the current run is. */
@@ -118,11 +123,17 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
         projectMap: asRecord(body.projectMap),
         userMap: asRecord(body.userMap),
         defaultUserMap: asRecord(body.defaultUserMap),
+        me: typeof body.me === "string" ? body.me : "",
       };
       setCatalog(next);
       // A reload keeps mappings edited here whose save has not landed yet.
       setProjectMap((prev) => ({ ...next.projectMap, ...prev }));
       setUserMap((prev) => ({ ...next.defaultUserMap, ...next.userMap, ...prev }));
+      // Nobody is mapped yet: start with "only my entries", which needs no mapping at all.
+      if (!onlyMeTouched.current && next.me !== "") {
+        const mapped = { ...next.defaultUserMap, ...next.userMap };
+        setOnlyMe(!Object.values(mapped).some((v) => v !== ""));
+      }
     } catch (e) {
       setError(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t));
     } finally {
@@ -186,7 +197,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     try {
       for (let i = 0; i < windows.length; i++) {
         setStep({ done: i, total: windows.length, mode });
-        const body = await postImport({ mode, from: windows[i].from, to: windows[i].to, projectMap, userMap, skipUnpaired });
+        const body = await postImport({ mode, from: windows[i].from, to: windows[i].to, projectMap, userMap, skipUnpaired, onlyMe });
         sum.alreadyImported += n(body.alreadyImported);
         sum.ready += n(body.ready);
         sum.total += n(body.total);
@@ -218,7 +229,9 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
     }
   };
 
-  const stepLabel = step && step.total > 1 ? ` ${step.done + 1} / ${step.total}` : "";
+  const meUser = catalog?.users.find((u) => u.id === catalog.me);
+  const meName = meUser ? meUser.name || meUser.email || "" : "";
+  const stepLabel =step && step.total > 1 ? ` ${step.done + 1} / ${step.total}` : "";
 
   const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
 
@@ -316,6 +329,33 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             <input type="date" disabled={!canEdit} value={to} onChange={(e) => setTo(e.target.value)} className={field} data-testid="toggl-import-to" />
           </label>
         </div>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            disabled={!canEdit}
+            checked={onlyMe}
+            onChange={(e) => {
+              onlyMeTouched.current = true;
+              setOnlyMe(e.target.checked);
+              setPreview(null);
+            }}
+            className="mt-0.5 size-4 accent-teal-600"
+            data-testid="toggl-import-only-me"
+          />
+          <span className="grid gap-0.5">
+            <span className="text-ui text-slate-800">
+              {t("Import only my own Toggl entries", "Importovať iba moje záznamy z Toggl", "Csak a saját Toggl-bejegyzéseim importálása")}
+              {meName ? ` (${meName})` : ""}
+            </span>
+            <span className="text-caption text-slate-500">
+              {t(
+                "The entries of the Toggl account the token belongs to are imported to you. Users do not have to be mapped; everyone else's entries are left out.",
+                "Záznamy účtu Toggl, ktorému patrí token, sa importujú vám. Používateľov netreba priraďovať; záznamy ostatných sa vynechajú.",
+                "A tokenhez tartozó Toggl-fiók bejegyzései Önhöz kerülnek. A felhasználókat nem kell hozzárendelni; mások bejegyzései kimaradnak.",
+              )}
+            </span>
+          </span>
+        </label>
         <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"
