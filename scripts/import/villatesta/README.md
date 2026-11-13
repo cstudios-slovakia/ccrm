@@ -45,6 +45,27 @@ php scripts/import/villatesta/reconcile.php --data=scripts/import/villatesta/out
 first with a normal run or `php kprnq update`). `--only=config,users,clients,leads,projects,mail,products,files,leftovers`
 runs single steps, in that order. `--reset` removes what earlier runs created (ids `*-vt-*`): rehearsals only.
 
+## Cutover into a CRM that is already in use (`--add-only`)
+
+Once people work in the new CRM, a normal re-run would write the old CRM's values over their edits
+(status, owner, archiving) and create a second copy of every lead that reached both systems. Use:
+
+```bash
+php load.php --config=../crm/config.php --data=out --add-only --skip-leads=PL26518,PL26519 --dry-run
+php load.php --config=../crm/config.php --data=out --add-only --skip-leads=... --uploads-src=../system/storage/uploads
+```
+
+- Creates only clients, leads, projects, users and mail the CRM does not hold yet; an existing row is never changed
+  (fields, owner, status, categories, project managers and attributes stay as people left them).
+- Adds the history entries an existing record gained in the old CRM since the last load (insert-only, by id).
+- A new client or lead whose e-mail or phone (last 9 digits) matches a record made in the CRM itself (not a `*-vt-*`
+  row: typed in by hand, or sent by the website webhook) is passed over; whatever pointed at it (a lead's client,
+  a project, mail) is pointed at the CRM's own record instead.
+- `--skip-leads` takes old codes or ids (tests). Config and products never run in this mode; files already on disk
+  are not copied again.
+- The report lists every record created or passed over, and every existing lead whose status, owner or archive flag
+  differs between the two systems (the CRM keeps its value; decide by hand). A second run adds nothing.
+
 ## Rules the importer follows
 
 - Ids are deterministic (`client-vt-<org>`, `lead-vt-<prelead>`, `proj-vt-<zakazka>`, `te-vt-...`, `whi-vt-<MRP>`),

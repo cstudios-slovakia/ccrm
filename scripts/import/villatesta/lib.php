@@ -33,6 +33,7 @@ class VtReport {
     public array $warnings = [];
     public array $skipped = [];
     public array $notes = [];
+    public array $lists = [];
 
     public function count(string $key, int $n = 1): void {
         $this->counts[$key] = ($this->counts[$key] ?? 0) + $n;
@@ -54,6 +55,11 @@ class VtReport {
         $this->notes[] = $text;
     }
 
+    /** One line under its own heading, never cut (e.g. the records an add-only run created or passed over). */
+    public function line(string $section, string $text): void {
+        $this->lists[$section][] = $text;
+    }
+
     public function toArray(): array {
         $skipped = [];
         foreach ($this->skipped as $entity => $reasons) {
@@ -62,7 +68,7 @@ class VtReport {
             }
         }
         ksort($this->counts);
-        return ['counts' => $this->counts, 'skipped' => $skipped, 'warnings' => $this->warnings, 'notes' => $this->notes];
+        return ['counts' => $this->counts, 'skipped' => $skipped, 'warnings' => $this->warnings, 'notes' => $this->notes, 'lists' => $this->lists];
     }
 
     public function toMarkdown(string $title): string {
@@ -87,6 +93,10 @@ class VtReport {
                 foreach (array_slice($list, 0, 30) as $w) $md .= "- {$w}\n";
                 if (count($list) > 30) $md .= '- … ' . (count($list) - 30) . " more\n";
             }
+        }
+        foreach ($r['lists'] as $section => $lines) {
+            $md .= "\n## {$section} (" . count($lines) . ")\n\n";
+            foreach ($lines as $l) $md .= "- {$l}\n";
         }
         if ($r['notes']) {
             $md .= "\n## Notes\n\n";
