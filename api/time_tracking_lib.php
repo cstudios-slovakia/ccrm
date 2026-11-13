@@ -516,7 +516,7 @@ function ccrm_toggl_import_workspace(string $apiToken, string $workspaceId): str
 /**
  * Workspace projects and users for the mapping screen.
  *
- * @return array{ok: bool, code?: string, projects: list<array{id: string, name: string}>, users: list<array{id: string, name: string, email: string}>}
+ * @return array{ok: bool, code?: string, projects: list<array{id: string, name: string}>, projectsTruncated?: bool, users: list<array{id: string, name: string, email: string}>}
  */
 function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array {
     $empty = ['ok' => false, 'projects' => [], 'users' => []];
@@ -527,10 +527,26 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
     if ($ws === '') {
         return $empty + ['code' => 'toggl_not_configured'];
     }
+    // Every page until Toggl runs out, archived projects included (they keep their tracked
+    // time and still need a pairing). The safety limit is 20 000 projects; reaching it, or a
+    // page failing half-way, sets `projectsTruncated` so the screen can say the list is incomplete.
     $projects = [];
-    for ($page = 1; $page <= 5; $page++) {
-        $res = toggl_curl("https://api.track.toggl.com/api/v9/workspaces/{$ws}/projects?per_page=200&page={$page}", $apiToken);
-        if (empty($res['ok']) || !is_array($res['data']) || $res['data'] === []) {
+    $truncated = false;
+    $perPage = 200;
+    $maxPages = 100;
+    for ($page = 1; $page <= $maxPages; $page++) {
+        $url = "https://api.track.toggl.com/api/v9/workspaces/{$ws}/projects?per_page={$perPage}&page={$page}&active=both";
+        $res = toggl_curl($url, $apiToken);
+        if (($res['code'] ?? 0) === 429) {
+            // Toggl allows about one request a second; wait once and retry this page.
+            sleep(2);
+            $res = toggl_curl($url, $apiToken);
+        }
+        if (empty($res['ok']) || !is_array($res['data'])) {
+            $truncated = true;
+            break;
+        }
+        if ($res['data'] === []) {
             break;
         }
         foreach ($res['data'] as $p) {
@@ -539,8 +555,11 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
             }
             $projects[] = ['id' => (string)$p['id'], 'name' => (string)($p['name'] ?? '')];
         }
-        if (count($res['data']) < 200) {
+        if (count($res['data']) < $perPage) {
             break;
+        }
+        if ($page === $maxPages) {
+            $truncated = true;
         }
     }
     $users = [];
@@ -557,7 +576,7 @@ function ccrm_toggl_import_catalog(string $apiToken, string $workspaceId): array
             ];
         }
     }
-    return ['ok' => true, 'projects' => $projects, 'users' => $users];
+    return ['ok' => true, 'projects' => $projects, 'projectsTruncated' => $truncated, 'users' => $users];
 }
 
 /**

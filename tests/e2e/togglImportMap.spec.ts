@@ -43,3 +43,42 @@ test('a Toggl project mapping is saved as soon as it is picked', async ({ page }
   expect(saved).toHaveLength(1);
   expect(saved[0].projectMap).toEqual({ '9001': 'project-1' });
 });
+
+test('mapped Toggl projects and users are listed first, and a partial project list is flagged', async ({ page }) => {
+  await startSession(page);
+  await page.route('**/api/time_entries.php**', async (route) => {
+    const req = route.request();
+    if (req.method() !== 'POST') return route.fallback();
+    const body = req.postDataJSON() as Record<string, unknown>;
+    if (body?.action !== 'import' || body.mode !== 'catalog') return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        projects: [
+          { id: '1', name: 'Alpha unmapped' },
+          { id: '2', name: 'Bravo mapped' },
+          { id: '3', name: 'Charlie unmapped' },
+        ],
+        projectsTruncated: true,
+        users: [
+          { id: '11', name: 'Ann unmapped', email: 'ann@example.com' },
+          { id: '12', name: 'Ben mapped', email: 'ben@example.com' },
+        ],
+        ccrmProjects: [{ id: 'project-1', name: 'Strecha Silvia — etapa 1' }],
+        ccrmUsers: [{ id: 'user-1', name: 'Ben Local', email: 'ben@example.com' }],
+        projectMap: { '2': 'project-1' },
+        userMap: { '12': 'user-1' },
+        defaultUserMap: {},
+      }),
+    });
+  });
+
+  await gotoView(page, '#settings/projects/time');
+  const projects = page.getByTestId('toggl-import-projects');
+  await expect(projects.locator('li').first()).toContainText('Bravo mapped');
+  await expect(projects.locator('li').nth(1)).toContainText('Alpha unmapped');
+  await expect(page.getByTestId('toggl-import-users').locator('li').first()).toContainText('Ben mapped');
+  await expect(page.getByTestId('toggl-import-projects-truncated')).toBeVisible();
+});

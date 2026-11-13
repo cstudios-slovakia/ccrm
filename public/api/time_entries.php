@@ -550,6 +550,7 @@ if ($action === 'import') {
         $savedUsers = is_array($saved['users'] ?? null) ? $saved['users'] : [];
         ccrm_te_respond([
             'projects' => $cat['projects'],
+            'projectsTruncated' => !empty($cat['projectsTruncated']),
             'users' => $cat['users'],
             'ccrmProjects' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? '')], $ccrmProjects),
             'ccrmUsers' => array_map(fn($r) => ['id' => $r['id'], 'name' => (string)($r['name'] ?? ''), 'email' => (string)($r['email'] ?? '')], $ccrmUsers),

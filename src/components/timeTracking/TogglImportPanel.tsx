@@ -15,6 +15,8 @@ interface Named {
 
 interface Catalog {
   projects: Named[];
+  /** The workspace has more projects than could be loaded; the list is incomplete. */
+  projectsTruncated: boolean;
   users: Named[];
   ccrmProjects: Named[];
   ccrmUsers: Named[];
@@ -88,6 +90,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       const body = await postImport({ mode: "catalog" });
       const next: Catalog = {
         projects: body.projects ?? [],
+        projectsTruncated: body.projectsTruncated === true,
         users: body.users ?? [],
         ccrmProjects: body.ccrmProjects ?? [],
         ccrmUsers: body.ccrmUsers ?? [],
@@ -221,6 +224,15 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
                 : saveState === "saved"
                   ? t("Mapping saved.", "Priradenie uložené.", "Hozzárendelés mentve.")
                   : t("The mapping could not be saved. Pick again or press Preview.", "Priradenie sa nepodarilo uložiť. Vyberte znova alebo stlačte Náhľad.", "A hozzárendelést nem sikerült menteni. Válasszon újra, vagy nyomja meg az Előnézetet.")}
+            </p>
+          )}
+          {catalog.projectsTruncated && (
+            <p data-testid="toggl-import-projects-truncated" role="alert" className="text-caption font-medium text-amber-700">
+              {t(
+                "Toggl returned only part of the project list, so some projects may be missing here. Reload to try again.",
+                "Toggl vrátil iba časť zoznamu projektov, preto tu niektoré projekty môžu chýbať. Skúste načítať znova.",
+                "A Toggl csak a projektlista egy részét adta vissza, ezért néhány projekt hiányozhat. Töltse újra a listát.",
+              )}
             </p>
           )}
           <MappingList
@@ -365,12 +377,21 @@ function MappingList({
     [options, optionLabel, emptyLabel],
   );
 
+  // Rows that were already mapped when this list was loaded go first. The order is fixed per load
+  // (not per pick), so a row does not jump away from under the cursor the moment it is mapped.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const ordered = useMemo(() => {
+    const isMapped = (row: Named) => (valueRef.current[row.id] ?? "") !== "";
+    return [...rows.filter(isMapped), ...rows.filter((row) => !isMapped(row))];
+  }, [rows]);
+
   // Matches the Toggl name (or e-mail) or the name it is mapped to, ignoring case and diacritics.
   const filtered = useMemo(() => {
     const q = fold(query.trim());
-    if (!q) return rows;
-    return rows.filter((row) => fold(`${row.name} ${row.email ?? ""} ${optionLabel.get(value[row.id] ?? "") ?? ""}`).includes(q));
-  }, [rows, query, value, optionLabel]);
+    if (!q) return ordered;
+    return ordered.filter((row) => fold(`${row.name} ${row.email ?? ""} ${optionLabel.get(value[row.id] ?? "") ?? ""}`).includes(q));
+  }, [ordered, query, value, optionLabel]);
 
   if (rows.length === 0) return null;
 
